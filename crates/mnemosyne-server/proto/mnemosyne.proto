@@ -1,0 +1,157 @@
+// Mnemosyne gRPC transport schema (Round 91).
+//
+// Mirror of crates/mnemosyne-server/src/proposal.rs — the 5 ProposalKind
+// variants (entity_create / entity_update / changelog_append /
+// cross_ref_create / frozen_list_membership_change) surfaced as a proto
+// `oneof`. Conversion lives in src/grpc.rs and the embedded `Proposal` /
+// `ProposalResult` types remain authoritative — this proto is a transport
+// adapter, not an alternate domain model.
+
+syntax = "proto3";
+
+package mnemosyne.v1;
+
+// ---- request types ---------------------------------------------------------
+
+message EntityCreate {
+ string entity_type = 1;
+ uint64 branch_id = 2;
+ uint64 entity_id = 3;
+ uint64 valid_from = 4;
+ bytes payload = 5;
+}
+
+message EntityUpdate {
+ string entity_type = 1;
+ uint64 branch_id = 2;
+ uint64 entity_id = 3;
+ uint64 valid_from = 4;
+ bytes payload = 5;
+}
+
+message ChangelogAppend {
+ uint64 branch_id = 1;
+ uint64 entity_id = 2;
+ uint64 valid_from = 3;
+ bytes payload = 4;
+}
+
+message CrossRefCreate {
+ uint64 branch_id = 1;
+ uint64 from_section = 2;
+ uint64 to_section = 3;
+ string ref_kind = 4;
+}
+
+message FrozenListMembershipChange {
+ uint64 branch_id = 1;
+ uint64 list_id = 2;
+ uint64 valid_from = 3;
+ uint64 attached_changelog_entry_id = 4;
+ bytes payload = 5;
+}
+
+message ProposalKind {
+ oneof kind {
+ EntityCreate entity_create = 1;
+ EntityUpdate entity_update = 2;
+ ChangelogAppend changelog_append = 3;
+ CrossRefCreate cross_ref_create = 4;
+ FrozenListMembershipChange frozen_list_membership_change = 5;
+ }
+}
+
+message Proposal {
+ string proposal_id = 1;
+ string actor = 2;
+ ProposalKind kind = 3;
+}
+
+// ---- response type ---------------------------------------------------------
+
+message ProposalResult {
+ string proposal_id = 1;
+ bool accepted = 2;
+ // 0 sentinel maps to None on the Rust side via `audit_transaction_id_set`.
+ uint64 audit_transaction_id = 3;
+ bool audit_transaction_id_set = 4;
+ string rejection_reason = 5;
+ bool rejection_reason_set = 6;
+}
+
+// ---- streaming RPC types (Round 98) -----------------------------------------
+
+message SubscribeAuditRequest {
+ // Resume cursor: server emits records with transaction_id >= from_transaction_id.
+ // Set to 0 to replay the whole audit log from the beginning.
+ uint64 from_transaction_id = 1;
+ // Hard cap on records emitted in this subscription. 0 means unbounded —
+ // server emits everything currently visible at scan time (history) plus
+ // tail-follow when `follow_tail` is set.
+ uint32 max_records = 2;
+ // Round 103 — when true, after the historical drain the server attaches to
+ // the audit broadcast channel and forwards newly-committed records in real
+ // time. `max_records` still bounds the total emission across history +
+ // tail (unbounded when 0). Default false carries the snapshot semantics of
+ // Round 98.
+ bool follow_tail = 3;
+ // Round 109 — when true, a tail-follow Lagged event closes the stream with
+ // `Status::resource_exhausted` carrying the `lagged-at-txn` metadata key
+ // (last successfully emitted transaction_id). The client uses that cursor
+ // to retry via a fresh `SubscribeAudit` with `from_transaction_id = N+1`.
+ // Default false preserves the Round 103 graceful-close semantics
+ // (`Status::data_loss` without resume cursor).
+ bool resume_on_lag = 4;
+ // Round 110 — per-subscriber filter on `AuditRecord.proposal_kind_tag`.
+ // Empty list = forward every kind (Round 103 wholesale carry stable).
+ // Non-empty = forward only records whose `proposal_kind_tag` matches one
+ // of the supplied tags exactly (e.g. ["entity_create",
+ // "frozen_list_membership_change"]). Filter is applied in both the
+ // historical scan phase and the tail-follow phase.
+ repeated string proposal_kind_filter = 5;
+ // Round 110 — per-subscriber filter on `AuditRecord.actor`. Empty list =
+ // forward every actor. Non-empty = exact-match filter; combined with
+ // `proposal_kind_filter` via AND (record must satisfy both lists when
+ // both are non-empty).
+ repeated string actor_filter = 6;
+}
+
+// Wire image of `crate::audit::AuditRecord`. The embedded type stays
+// authoritative; this proto is a transport mirror so audit subscribers can
+// consume the trail without depending on the Rust crate.
+message AuditRecord {
+ uint64 transaction_id = 1;
+ string proposal_id = 2;
+ string actor = 3;
+ bool accepted = 4;
+ string gate_routing_reason = 5;
+ // 0 sentinel maps to None on the Rust side via `rejection_reason_set`.
+ string rejection_reason = 6;
+ bool rejection_reason_set = 7;
+ string proposal_kind_tag = 8;
+ // Round 99 — W3C trace context propagated from the inbound request, or a
+ // server-generated UUID fallback when no `traceparent` was supplied.
+ // Empty + flag-clear maps to None on the Rust side via `trace_id_set`.
+ string trace_id = 9;
+ bool trace_id_set = 10;
+ // Round 104 — W3C `tracestate` header passthrough, vendor-specific key/value
+ // list propagated verbatim from the inbound request. Absent on the wire
+ // when the inbound RPC carried no tracestate; `tracestate_set=false` maps
+ // to None on the Rust side. Pre-Round 104 wire records (pre-deployment)
+ // decode cleanly via the `#[serde(default)]` shape on AuditRecord.
+ string tracestate = 11;
+ bool tracestate_set = 12;
+}
+
+// ---- service ---------------------------------------------------------------
+
+service Mnemosyne {
+ rpc SubmitProposal(Proposal) returns (ProposalResult);
+ // Round 98 — client-streaming → server-streaming batch ingest. Each inbound
+ // Proposal routes through the same `ProposalHandler::handle` as the unary
+ // path; results are emitted in arrival order.
+ rpc SubmitProposalBatch(stream Proposal) returns (stream ProposalResult);
+ // Round 98 — server-streaming audit subscription. Resume from a given
+ // transaction_id; records are emitted in monotonic id order.
+ rpc SubscribeAuditTrail(SubscribeAuditRequest) returns (stream AuditRecord);
+}

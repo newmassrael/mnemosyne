@@ -1,0 +1,220 @@
+//! Atomic typed fields → markdown rendering (Round 162 ratify, Phase 0f
+//! output axis). Section / ChangelogEntry atomic fields → tera template
+//! render → MD bytes.
+//!
+//! Templates are compiled into the binary via `include_str!` from the
+//! workspace `templates/` directory — runtime path-independent (production
+//! crate carries 0 hardcoded paths, Round 151 closure-gate consistency).
+//!
+//! Round-trip invariant (Round 161 §56 ratify): atomic fields → render →
+//! markdown text is deterministic (same input always produces same output).
+//! Re-import path (§61) is multi-session migration scope (Round 164-166).
+
+use crate::atomic::{AtomicChangelogEntry, AtomicSection};
+use serde_json::json;
+use std::sync::OnceLock;
+use tera::{Context, Tera};
+use thiserror::Error;
+
+const SECTION_TEMPLATE: &str = include_str!("../../../templates/section.md.tera");
+const CHANGELOG_ENTRY_TEMPLATE: &str =
+ include_str!("../../../templates/changelog_entry.md.tera");
+
+const SECTION_TPL_NAME: &str = "section.md";
+const CHANGELOG_ENTRY_TPL_NAME: &str = "changelog_entry.md";
+
+#[derive(Debug, Error)]
+pub enum RenderError {
+ #[error("tera: {0}")]
+ Tera(#[from] tera::Error),
+}
+
+/// Lazily-initialized template engine. tera compilation is non-trivial; we
+/// compile once per process and reuse.
+fn engine() -> &'static Tera {
+ static ENGINE: OnceLock<Tera> = OnceLock::new();
+ ENGINE.get_or_init(|| {
+ let mut t = Tera::default();
+ t.add_raw_template(SECTION_TPL_NAME, SECTION_TEMPLATE)
+ .expect("section.md.tera compile-time template must parse");
+ t.add_raw_template(CHANGELOG_ENTRY_TPL_NAME, CHANGELOG_ENTRY_TEMPLATE)
+ .expect("changelog_entry.md.tera compile-time template must parse");
+ t
+ })
+}
+
+/// Render a Section's atomic fields to markdown.
+///
+/// `section_id` / `title` / `decision_status` are not part of the atomic
+/// store (they remain on the legacy `Section` struct, Round 161 §39 reframe
+/// carry — those 5 fields are stable; the atomic 8 fields are *additive*).
+/// Caller threads them in alongside the atomic block.
+pub fn render_section(
+ section_id: &str,
+ title: &str,
+ decision_status: &str,
+ atomic: &AtomicSection,
+) -> Result<String, RenderError> {
+ let mut ctx = Context::new();
+ ctx.insert("section_id", section_id);
+ ctx.insert("title", title);
+ ctx.insert("decision_status", decision_status);
+ if let Some(intent) = &atomic.intent {
+ ctx.insert("intent", intent);
+ }
+ if !atomic.rationale_bullets.is_empty() {
+ ctx.insert("rationale_bullets", &atomic.rationale_bullets);
+ }
+ if !atomic.inputs_bullets.is_empty() {
+ ctx.insert("inputs_bullets", &atomic.inputs_bullets);
+ }
+ if !atomic.outputs_bullets.is_empty() {
+ ctx.insert("outputs_bullets", &atomic.outputs_bullets);
+ }
+ if !atomic.caveats_bullets.is_empty() {
+ ctx.insert("caveats_bullets", &atomic.caveats_bullets);
+ }
+ if !atomic.alternatives_rejected.is_empty() {
+ let alts: Vec<_> = atomic
+ .alternatives_rejected
+ .iter()
+ .map(|a| json!({ "alternative": a.alternative, "reason": a.reason }))
+ .collect();
+ ctx.insert("alternatives_rejected", &alts);
+ }
+ if !atomic.impact_scope.is_empty() {
+ ctx.insert("impact_scope", &atomic.impact_scope);
+ }
+ if !atomic.examples.is_empty() {
+ let examples: Vec<_> = atomic
+ .examples
+ .iter()
+ .map(|e| json!({ "language": e.language, "code": e.code }))
+ .collect();
+ ctx.insert("examples", &examples);
+ }
+ Ok(engine().render(SECTION_TPL_NAME, &ctx)?)
+}
+
+/// Render a ChangelogEntry's atomic fields to markdown.
+pub fn render_changelog_entry(
+ entry_id: &str,
+ atomic: &AtomicChangelogEntry,
+) -> Result<String, RenderError> {
+ let mut ctx = Context::new();
+ ctx.insert("entry_id", entry_id);
+ ctx.insert(
+ "decision_summary",
+ atomic.decision_summary.as_deref().unwrap_or(""),
+ );
+ if !atomic.changes_bullets.is_empty() {
+ ctx.insert("changes_bullets", &atomic.changes_bullets);
+ }
+ if !atomic.verification_bullets.is_empty() {
+ ctx.insert("verification_bullets", &atomic.verification_bullets);
+ }
+ if !atomic.impact_refs.is_empty() {
+ ctx.insert("impact_refs", &atomic.impact_refs);
+ }
+ if !atomic.carry_forward_bullets.is_empty() {
+ ctx.insert("carry_forward_bullets", &atomic.carry_forward_bullets);
+ }
+ Ok(engine().render(CHANGELOG_ENTRY_TPL_NAME, &ctx)?)
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+ use crate::atomic::{ExampleBlock, RejectedAlternative};
+
+ #[test]
+ fn render_section_minimal_intent_only() {
+ let atomic = AtomicSection {
+ intent: Some("test intent".into()),
+ ..Default::default()
+ };
+ let out = render_section("43", "cascade_query kind", "active", &atomic).unwrap();
+ assert!(out.contains("## §43. cascade_query kind"));
+ assert!(out.contains("**Intent**: test intent"));
+ // No empty sections rendered.
+ assert!(!out.contains("**Rationale**"));
+ }
+
+ #[test]
+ fn render_section_full_shape() {
+ let atomic = AtomicSection {
+ intent: Some("primary intent text".into()),
+ rationale_bullets: vec!["reason A".into(), "reason B".into()],
+ inputs_bullets: vec!["input X".into()],
+ outputs_bullets: vec!["output Y".into()],
+ caveats_bullets: vec!["caveat Z".into()],
+ alternatives_rejected: vec![RejectedAlternative {
+  alternative: "approach A".into(),
+  reason: "doesn't scale".into(),
+ }],
+ impact_scope: vec!["15".into(), "39".into()],
+ examples: vec![ExampleBlock {
+  language: "rust".into(),
+  code: "fn main() {}".into(),
+ }],
+ };
+ let out = render_section("43", "test", "active", &atomic).unwrap();
+ assert!(out.contains("**Intent**: primary intent text"));
+ assert!(out.contains("- reason A"));
+ assert!(out.contains("- reason B"));
+ assert!(out.contains("- input X"));
+ assert!(out.contains("- output Y"));
+ assert!(out.contains("- caveat Z"));
+ assert!(out.contains("approach A — doesn't scale"));
+ assert!(out.contains("**Impact scope**: §15, §39"));
+ assert!(out.contains("```rust"));
+ assert!(out.contains("fn main() {}"));
+ }
+
+ #[test]
+ fn render_section_status_omitted_when_active() {
+ let atomic = AtomicSection {
+ intent: Some("x".into()),
+ ..Default::default()
+ };
+ let out = render_section("43", "test", "active", &atomic).unwrap();
+ assert!(!out.contains("**Status**"));
+ }
+
+ #[test]
+ fn render_section_status_emitted_when_superseded() {
+ let atomic = AtomicSection::default();
+ let out = render_section("43", "test", "superseded", &atomic).unwrap();
+ assert!(out.contains("**Status**: superseded"));
+ }
+
+ #[test]
+ fn render_changelog_entry_full_shape() {
+ let atomic = AtomicChangelogEntry {
+ decision_summary: Some("test decision summary".into()),
+ changes_bullets: vec!["change A".into(), "change B".into()],
+ verification_bullets: vec!["verify A".into()],
+ impact_refs: vec!["43".into(), "61".into()],
+ carry_forward_bullets: vec!["carry A".into()],
+ };
+ let out = render_changelog_entry("Round 162", &atomic).unwrap();
+ assert!(out.contains("### Round 162 — test decision summary"));
+ assert!(out.contains("- change A"));
+ assert!(out.contains("- change B"));
+ assert!(out.contains("- verify A"));
+ assert!(out.contains("**Impact**: §43, §61"));
+ assert!(out.contains("- carry A"));
+ }
+
+ #[test]
+ fn render_deterministic() {
+ let atomic = AtomicSection {
+ intent: Some("x".into()),
+ rationale_bullets: vec!["a".into(), "b".into()],
+ ..Default::default()
+ };
+ let out1 = render_section("43", "test", "active", &atomic).unwrap();
+ let out2 = render_section("43", "test", "active", &atomic).unwrap();
+ assert_eq!(out1, out2, "render must be deterministic");
+ }
+}

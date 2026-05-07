@@ -1,0 +1,63 @@
+# Mnemosyne — workspace config (Round 142 WORKSPACE-CONFIG-ABSTRACTION).
+#
+# Phase 0e generic library extraction: this file pulls out what used to be
+# hardcoded in `crates/mnemosyne-cli/src/main.rs::WORKSPACE_DOC_PATHS` and
+# `crates/mnemosyne-validator/src/workspace.rs::MNEMOSYNE_DEFAULT_DOC`.
+#
+# External users author their own `mnemosyne.toml` with the same shape; the
+# Mnemosyne self-application is now the first dogfood consumer of the
+# generic loader (round-tripped through the same code path external users
+# hit). Round 148 self-application re-import via generic ratifies this.
+#
+# Schema:
+# workspace.docs ordered list of doc paths (workspace-relative)
+# workspace.default_doc default cross-doc reclassify target (member of docs)
+# workspace.root optional root override (default = config file's dir)
+
+[workspace]
+# Round 251 — atomic store = sole source of truth post MD-DELETION-RATIFY.
+# GENERATED.md is the only readable artifact (derived from the atomic
+# sidecar). The 7 source markdowns (DESIGN/ARCHITECTURE/CONCEPTS/ROADMAP/
+# VISION/PRIOR_ART/README) were deleted in Round 251 — atomic store mutate
+# API is the canonical authoring surface.
+docs = [
+ "docs/GENERATED.md",
+]
+default_doc = "docs/GENERATED.md"
+
+# Round 143 — schema-as-input. The 4 entity types (Section / CrossRef /
+# ChangelogEntry / FrozenList) are fixed primitives; this section configures
+# *which markdown patterns* the parser maps onto them. External users
+# override `[schema]` to fit their conventions; Mnemosyne's self-application
+# below is the design_doc preset (first dogfood consumer).
+#
+# Round 144 — entry_id_prefix + anchor_convention plug-in (parser side).
+# `entry_id_prefix` is the literal string that opens a ChangelogEntry top
+# bullet (Mnemosyne = "Round ", ADR-style = "ADR-"); the parser captures
+# the digits + dot-separator chain that follows.
+# `anchor_convention` is a diagnostic label for the section anchor format
+# (Mnemosyne = "section_number" for `§N`, ADR = "adr_id" for `ADR-NNNN`).
+[schema]
+changelog_titles = ["Changelog", "changelog"]
+entry_id_prefix = "Round "
+anchor_convention = "section_number"
+medium_name = "design_doc"
+
+# Round 145 — style rule i18n + threshold tuning. `locale` selects the
+# sentence-boundary recognition profile. `thresholds` overrides per-rule
+# char-count caps without forking the validator (deeper locale wiring +
+# additional rule overrides land in Round 145+ as needed).
+[style]
+locale = "en"
+[style.thresholds]
+max_paragraph_length = 1000
+max_sentence_length = 300
+max_section_body_length = 5000
+
+# Round 145 — workspace terminology glossary (canonical → variant list).
+# Round 130 measurement-driven inventory + Round 132 conservative carry —
+# `Salsa`/`salsa` and `bi-temporal`/`bitemporal` are unambiguous case /
+# spelling errors. External users override with project-specific terms.
+[terminology.glossary]
+"Salsa" = ["salsa"]
+"bi-temporal" = ["bitemporal"]

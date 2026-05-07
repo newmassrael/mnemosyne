@@ -1,0 +1,19 @@
+### {{ entry_id }} — {{ decision_summary }}
+{% if changes_bullets %}
+**Changes**:
+{% for c in changes_bullets %}- {{ c }}
+{% endfor %}
+{% endif %}
+{% if verification_bullets %}
+**Verification**:
+{% for v in verification_bullets %}- {{ v }}
+{% endfor %}
+{% endif %}
+{% if impact_refs %}
+**Impact**: {% for r in impact_refs %}{% if not loop.first %}, {% endif %}§{{ r }}{% endfor %}
+{% endif %}
+{% if carry_forward_bullets %}
+**Carry forward**:
+{% for c in carry_forward_bullets %}- {{ c }}
+{% endfor %}
+{% endif %}

@@ -1,0 +1,1025 @@
+//! §41 closure runtime fallback path codegen prototype (Round 56, OPTION C-2).
+//!
+//! Round 35 substantive decision carry — closure runtime fallback path Rust-only
+//! emit scope (previously out-of-paradigm; the 5-language emit contract's closure-scope
+//! partial-break audit trail). Round 55 (OPTION C-1) decision ratify carry —
+//! 4th module added to the codegen-prototype crate — pattern-equivalent to the §42 / §43 modules.
+//!
+//! Input sources:
+//! - §11 inference rule format (`rule "name" depth k: premises ⇒ conclusion`)
+//! - §11 closure-compute form (bounded forward-chaining, default depth k=2)
+//! - §4 epistemic CF provenance enum (explicit / derived / retracted)
+//!
+//! output (DESIGN §41 closure runtime fallback path Rust-only carry):
+//! - per-rule expand function emit (`expand_{rule_id}`)
+//! - closure run aggregator (`run_closure`)
+//! - provenance marker enum emit (§4 epistemic CF schema field)
+//! - bounded forward-chaining loop scaffold (depth k bound)
+//!
+//! Prototype role (Round 55 decision ratify carry):
+//! - 4th module of the bench/codegen-prototype crate
+//! - Rust-only emit (Round 35 out-of-paradigm decision carry)
+//! - SCE-side derivation-kind RFC progresses upstream and is out of scope here (Phase-entry-block framing deprecated)
+//! - small fixture (§11 transitive_grandparent + knowledge_modus_ponens — 2 rules)
+//! - actual closure expand consistency validation (in-memory fact set in forward-chaining)
+
+use std::collections::BTreeSet;
+
+// ============================================================================
+// Closure rule spec — §11 inference rule format direct carry.
+// ============================================================================
+
+/// Closure inference rule — DESIGN §11 *Inference rule format* direct carry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosureRule {
+ /// Rule id (e.g., "transitive_grandparent", "knowledge_modus_ponens").
+ pub id: String,
+ /// Bounded forward-chaining depth — DESIGN §11 default k=2.
+ pub depth: u32,
+ /// Premises — antecedent fact patterns.
+ pub premises: Vec<RulePremise>,
+ /// Conclusion — derived fact pattern.
+ pub conclusion: RuleConclusion,
+}
+
+/// Rule premise — fact pattern with role bindings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RulePremise {
+ /// Predicate name (entity / relation / epistemic kind).
+ pub predicate: String,
+ /// Role bindings: `(role_name, variable_name)` e.g. `("subject", "A")`.
+ pub roles: Vec<(String, String)>,
+}
+
+/// Rule conclusion — derived fact pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleConclusion {
+ pub predicate: String,
+ pub roles: Vec<(String, String)>,
+}
+
+/// §11 small fixture — closure rule 2 rule (transitive_grandparent + knowledge_modus_ponens).
+pub fn closure_small_fixture() -> Vec<ClosureRule> {
+ vec![
+ // §11 body first e.g.- — `transitive_grandparent` depth 2.
+ ClosureRule {
+ id: "transitive_grandparent".to_string(),
+ depth: 2,
+ premises: vec![
+  RulePremise {
+  predicate: "is_parent_of".to_string(),
+  roles: vec![
+  ("subject".to_string(), "A".to_string()),
+  ("object".to_string(), "B".to_string()),
+  ],
+  },
+  RulePremise {
+  predicate: "is_parent_of".to_string(),
+  roles: vec![
+  ("subject".to_string(), "B".to_string()),
+  ("object".to_string(), "C".to_string()),
+  ],
+  },
+ ],
+ conclusion: RuleConclusion {
+  predicate: "is_grandparent_of".to_string(),
+  roles: vec![
+  ("subject".to_string(), "A".to_string()),
+  ("object".to_string(), "C".to_string()),
+  ],
+ },
+ },
+ // §11 body --th e.g.- — `knowledge_modus_ponens` depth 1.
+ ClosureRule {
+ id: "knowledge_modus_ponens".to_string(),
+ depth: 1,
+ premises: vec![
+  RulePremise {
+  predicate: "knows".to_string(),
+  roles: vec![
+  ("agent".to_string(), "A".to_string()),
+  ("fact".to_string(), "F".to_string()),
+  ],
+  },
+  RulePremise {
+  predicate: "implies".to_string(),
+  roles: vec![
+  ("antecedent".to_string(), "F".to_string()),
+  ("consequent".to_string(), "G".to_string()),
+  ],
+  },
+ ],
+ conclusion: RuleConclusion {
+  predicate: "knows".to_string(),
+  roles: vec![
+  ("agent".to_string(), "A".to_string()),
+  ("fact".to_string(), "G".to_string()),
+  ],
+ },
+ },
+ ]
+}
+
+// ============================================================================
+// Codegen emit — ClosureRule[] → Rust source string.
+// Round 35 out-of-paradigm decision carry — Rust-only emit, 5-language contract partial break.
+// ============================================================================
+
+/// Codegen emit result — closure runtime Rust source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedClosure {
+ pub source: String,
+ pub rule_count: usize,
+ pub max_depth: u32,
+}
+
+/// ClosureRule[] → Rust source emit. Deterministic — preserves the registered rule order.
+pub fn emit_closure_runtime(rules: &[ClosureRule]) -> EmittedClosure {
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 56, §41 closure_runtime).\n");
+ out.push_str("// Round 35 out-of-paradigm decision carry — Rust-only emit, 5-language contract partial break.\n");
+ out.push_str("// Round 55 decision ratify carry — closure_runtime module's mnemosyne itself codegen\n");
+ out.push_str("// file---recognize in 4-th module (entity_indexer / cf_wrapper / salsa_wire / closure_runtime).\n");
+ out.push_str("\n");
+ out.push_str("use std::collections::BTreeSet;\n");
+ out.push_str("\n");
+
+ // Provenance enum (§4 epistemic CF schema field carry).
+ out.push_str("// ─── Provenance marker (§4 epistemic CF schema field carry) ──────\n");
+ out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]\n");
+ out.push_str("pub enum Provenance {\n");
+ out.push_str(" /// small- explicit fact (count-mismatch retraction - as only remove).\n");
+ out.push_str(" Explicit,\n");
+ out.push_str(" /// closure runtime - derive one fact (cascade auto retraction).\n");
+ out.push_str(" Derived,\n");
+ out.push_str(" /// retracted state — query from invisible, audit / replay on visible.\n");
+ out.push_str(" Retracted,\n");
+ out.push_str("}\n\n");
+
+ // ClosureFact representation.
+ out.push_str("// ─── Closure fact representation (in-memory forward-chaining input) ─\n");
+ out.push_str("#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]\n");
+ out.push_str("pub struct ClosureFact {\n");
+ out.push_str(" pub predicate: String,\n");
+ out.push_str(" pub roles: Vec<(String, String)>,\n");
+ out.push_str(" pub provenance: Provenance,\n");
+ out.push_str(" /// derived_from — Some((rule_id, depth)) if derived.\n");
+ out.push_str(" pub derived_from: Option<(String, u32)>,\n");
+ out.push_str("}\n\n");
+
+ // Per-rule expand function emit.
+ let mut max_depth = 0u32;
+ for rule in rules {
+ if rule.depth > max_depth {
+ max_depth = rule.depth;
+ }
+ emit_rule_expand_fn(&mut out, rule);
+ }
+
+ // Aggregator — bounded forward-chaining loop.
+ out.push_str("// ─── Closure aggregator — bounded forward-chaining (DESIGN §11 default k=2) ─\n");
+ out.push_str("#[derive(Debug, Clone, Default)]\n");
+ out.push_str("pub struct ClosureStats {\n");
+ out.push_str(" pub iterations: u32,\n");
+ out.push_str(" pub derived_added: usize,\n");
+ out.push_str(" pub fixpoint_reached: bool,\n");
+ out.push_str("}\n\n");
+ out.push_str("/// Run all rules with bounded forward-chaining (max_depth iterations).\n");
+ out.push_str(&format!("pub const MAX_CLOSURE_DEPTH: u32 = {};\n\n", max_depth));
+ out.push_str("pub fn run_closure(facts: &mut BTreeSet<ClosureFact>) -> ClosureStats {\n");
+ out.push_str(" let mut stats = ClosureStats::default();\n");
+ out.push_str(" for iter in 0..MAX_CLOSURE_DEPTH {\n");
+ out.push_str(" let mut added_this_iter = 0usize;\n");
+ for rule in rules {
+ out.push_str(&format!(
+ " added_this_iter += expand_{}(facts);\n",
+ sanitize_id(&rule.id)
+ ));
+ }
+ out.push_str(" stats.iterations = iter + 1;\n");
+ out.push_str(" stats.derived_added += added_this_iter;\n");
+ out.push_str(" if added_this_iter == 0 {\n");
+ out.push_str(" stats.fixpoint_reached = true;\n");
+ out.push_str(" break;\n");
+ out.push_str(" }\n");
+ out.push_str(" }\n");
+ out.push_str(" stats\n");
+ out.push_str("}\n");
+
+ EmittedClosure {
+ source: out,
+ rule_count: rules.len(),
+ max_depth,
+ }
+}
+
+fn emit_rule_expand_fn(out: &mut String, rule: &ClosureRule) {
+ let id = sanitize_id(&rule.id);
+ out.push_str(&format!(
+ "// ─── Rule `{}` (depth {}) expand function ─────────────────────\n",
+ rule.id, rule.depth
+ ));
+ out.push_str("/// Premises:\n");
+ for (i, p) in rule.premises.iter().enumerate() {
+ let role_str: Vec<String> = p
+ .roles
+ .iter()
+ .map(|(r, v)| format!("{r}={v}"))
+ .collect();
+ out.push_str(&format!(
+ "/// ({i}) {} {{ {} }}\n",
+ p.predicate,
+ role_str.join(", ")
+ ));
+ }
+ let concl_roles: Vec<String> = rule
+ .conclusion
+ .roles
+ .iter()
+ .map(|(r, v)| format!("{r}={v}"))
+ .collect();
+ out.push_str(&format!(
+ "/// Conclusion: {} {{ {} }}\n",
+ rule.conclusion.predicate,
+ concl_roles.join(", ")
+ ));
+ out.push_str(&format!(
+ "pub fn expand_{}(facts: &mut BTreeSet<ClosureFact>) -> usize {{\n",
+ id
+ ));
+ out.push_str(" let mut added = 0usize;\n");
+ out.push_str(" let snapshot: Vec<ClosureFact> = facts.iter().cloned().collect();\n");
+
+ // For each premise, find matching fact and bind variables. Then check rest.
+ // For simplicity, we hard-code a 2-premise pattern matching (covers fixture rules).
+ if rule.premises.len() == 2 {
+ out.push_str(" for f1 in &snapshot {\n");
+ out.push_str(&format!(
+ " if f1.predicate != \"{}\" {{ continue; }}\n",
+ rule.premises[0].predicate
+ ));
+ out.push_str(" for f2 in &snapshot {\n");
+ out.push_str(&format!(
+ " if f2.predicate != \"{}\" {{ continue; }}\n",
+ rule.premises[1].predicate
+ ));
+ // Variable binding check: shared variables across premises must match.
+ // Identify shared variables.
+ let p1_vars: BTreeSet<&str> = rule.premises[0]
+ .roles
+ .iter()
+ .map(|(_, v)| v.as_str())
+ .collect();
+ let p2_vars: BTreeSet<&str> = rule.premises[1]
+ .roles
+ .iter()
+ .map(|(_, v)| v.as_str())
+ .collect();
+ let shared: Vec<&&str> = p1_vars.intersection(&p2_vars).collect();
+ for shared_var in &shared {
+ let p1_role = rule.premises[0]
+  .roles
+  .iter()
+  .find(|(_, v)| v == **shared_var)
+  .map(|(r, _)| r.clone())
+  .unwrap();
+ let p2_role = rule.premises[1]
+  .roles
+  .iter()
+  .find(|(_, v)| v == **shared_var)
+  .map(|(r, _)| r.clone())
+  .unwrap();
+ out.push_str(&format!(
+  " // shared var `{}` — f1.{} must equal f2.{}\n",
+  shared_var, p1_role, p2_role
+ ));
+ out.push_str(&format!(
+  " let v1 = f1.roles.iter().find(|(r, _)| r == \"{}\").map(|(_, v)| v.clone());\n",
+  p1_role
+ ));
+ out.push_str(&format!(
+  " let v2 = f2.roles.iter().find(|(r, _)| r == \"{}\").map(|(_, v)| v.clone());\n",
+  p2_role
+ ));
+ out.push_str(" if v1.is_none() || v1 != v2 { continue; }\n");
+ }
+ // Build conclusion fact: bind conclusion roles from premises.
+ out.push_str(" // Build conclusion fact with bound role values.\n");
+ out.push_str(" let mut concl_roles: Vec<(String, String)> = Vec::new();\n");
+ for (concl_role, concl_var) in &rule.conclusion.roles {
+ let mut bound_from: Option<(usize, String)> = None;
+ for (i, p) in rule.premises.iter().enumerate() {
+  if let Some((p_role, _)) = p.roles.iter().find(|(_, v)| v == concl_var) {
+  bound_from = Some((i, p_role.clone()));
+  break;
+  }
+ }
+ let (idx, p_role) = bound_from.unwrap_or((0, "subject".to_string()));
+ let f_var = if idx == 0 { "f1" } else { "f2" };
+ out.push_str(&format!(
+  " if let Some(v) = {f_var}.roles.iter().find(|(r, _)| r == \"{p_role}\").map(|(_, v)| v.clone()) {{\n"
+ ));
+ out.push_str(&format!(
+  "  concl_roles.push((\"{}\".to_string(), v));\n",
+  concl_role
+ ));
+ out.push_str(" }\n");
+ }
+ out.push_str(&format!(
+ " if concl_roles.len() == {} {{\n",
+ rule.conclusion.roles.len()
+ ));
+ out.push_str("  let derived = ClosureFact {\n");
+ out.push_str(&format!(
+ "  predicate: \"{}\".to_string(),\n",
+ rule.conclusion.predicate
+ ));
+ out.push_str("  roles: concl_roles,\n");
+ out.push_str("  provenance: Provenance::Derived,\n");
+ out.push_str(&format!(
+ "  derived_from: Some((\"{}\".to_string(), {})),\n",
+ rule.id, rule.depth
+ ));
+ out.push_str("  };\n");
+ out.push_str("  if facts.insert(derived) { added += 1; }\n");
+ out.push_str(" }\n");
+ out.push_str(" }\n");
+ out.push_str(" }\n");
+ } else {
+ // Generic fallback: emit unsupported placeholder.
+ out.push_str(&format!(
+ " // TODO: rule with {} premises not supported in prototype emit.\n",
+ rule.premises.len()
+ ));
+ }
+
+ out.push_str(" added\n");
+ out.push_str("}\n\n");
+}
+
+fn sanitize_id(id: &str) -> String {
+ id.chars()
+ .map(|c| if c.is_alphanumeric() { c } else { '_' })
+ .collect()
+}
+
+// ============================================================================
+// 5-language data-shape metadata emit (Round 76 Lock #1 closure measurement spike).
+//
+// closure_runtime's data shape (Provenance enum + ClosureFact struct + ClosureRule
+// metadata is measured within the 5-language emit's possible scope — Round 35 paradigm carry's partial break
+// floor definition: data shape 5-language emit O.K. (cascade metadata pattern equivalent, Round 54
+// salsa_wire `emit_cascade_metadata_*` equivalent), just actual *computation* (expand_* /
+// run_closure's forward-chaining loop body) - Rust-only carry — Round 35 paradigm
+// other scope decision source. floor = data shape 5-lang, ceiling = Rust runtime carry.
+//
+// measure source: this function - → byte size + sha256 + canonical_set Jaccard inclusion.
+// ============================================================================
+
+/// 6-language closure metadata emit aggregator (Round 95 — `go` added for §11
+/// canonical alignment; `protobuf` retained for backwards-compatible reference
+/// fixture, not part of §11's 5-backend list).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedClosureMetadata {
+ pub rust: String,
+ pub kotlin: String,
+ pub python: String,
+ pub cpp: String,
+ pub go: String,
+ pub protobuf: String,
+ pub rule_count: usize,
+}
+
+/// ClosureRule[] → metadata emit for all languages (data shape only). Includes the
+/// §11 canonical 5-backend tuple (rust/kotlin/python/cpp/go) plus the legacy
+/// protobuf reference (Round 76-93 carry).
+pub fn emit_closure_metadata_all_languages(rules: &[ClosureRule]) -> EmittedClosureMetadata {
+ EmittedClosureMetadata {
+ rust: emit_closure_metadata_rust(rules),
+ kotlin: emit_closure_metadata_kotlin(rules),
+ python: emit_closure_metadata_python(rules),
+ cpp: emit_closure_metadata_cpp(rules),
+ go: emit_closure_metadata_go(rules),
+ protobuf: emit_closure_metadata_protobuf(rules),
+ rule_count: rules.len(),
+ }
+}
+
+/// Canonical identifier set — Provenance variants + ClosureFact field names +
+/// Rule ids + premise/conclusion predicate names. All 5-language emits cover this set
+/// Jaccard inclusion = 1.0 validation (Lock #1 floor-measurement source).
+pub fn closure_metadata_canonical_set(rules: &[ClosureRule]) -> BTreeSet<String> {
+ let mut set = BTreeSet::new();
+ set.insert("Provenance".to_string());
+ set.insert("Explicit".to_string());
+ set.insert("Derived".to_string());
+ set.insert("Retracted".to_string());
+ set.insert("ClosureFact".to_string());
+ set.insert("predicate".to_string());
+ set.insert("roles".to_string());
+ set.insert("provenance".to_string());
+ set.insert("derived_from".to_string());
+ for rule in rules {
+ set.insert(rule.id.clone());
+ for p in &rule.premises {
+ set.insert(p.predicate.clone());
+ }
+ set.insert(rule.conclusion.predicate.clone());
+ }
+ set
+}
+
+fn emit_closure_metadata_rust(rules: &[ClosureRule]) -> String {
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 76 §41 closure_runtime 5-lang metadata Rust).\n");
+ out.push_str("// Lock #1 floor — data shape 5-language emit, computation Rust-only carry.\n\n");
+ out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+ out.push_str("pub enum Provenance { Explicit, Derived, Retracted }\n\n");
+ out.push_str("#[derive(Debug, Clone, PartialEq, Eq)]\n");
+ out.push_str("pub struct ClosureFact {\n");
+ out.push_str(" pub predicate: String,\n");
+ out.push_str(" pub roles: Vec<(String, String)>,\n");
+ out.push_str(" pub provenance: Provenance,\n");
+ out.push_str(" pub derived_from: Option<(String, u32)>,\n");
+ out.push_str("}\n\n");
+ out.push_str("pub fn rule_ids() -> &'static [&'static str] {\n");
+ out.push_str(" &[\n");
+ for rule in rules {
+ out.push_str(&format!(" \"{}\",\n", rule.id));
+ }
+ out.push_str(" ]\n");
+ out.push_str("}\n\n");
+ out.push_str("pub fn rule_predicates() -> &'static [(&'static str, &'static str)] {\n");
+ out.push_str(" &[\n");
+ for rule in rules {
+ for p in &rule.premises {
+ out.push_str(&format!(" (\"{}\", \"{}\"),\n", rule.id, p.predicate));
+ }
+ out.push_str(&format!(
+ " (\"{}\", \"{}\"),\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out.push_str(" ]\n");
+ out.push_str("}\n");
+ out
+}
+
+fn emit_closure_metadata_kotlin(rules: &[ClosureRule]) -> String {
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 76 §41 closure_runtime 5-lang metadata Kotlin).\n");
+ out.push_str("// Lock #1 floor — Studio cascade preview consumer path (read-only).\n\n");
+ out.push_str("package mnemosyne.generated.closure\n\n");
+ out.push_str("enum class Provenance { Explicit, Derived, Retracted }\n\n");
+ out.push_str("data class ClosureFact(\n");
+ out.push_str(" val predicate: String,\n");
+ out.push_str(" val roles: List<Pair<String, String>>,\n");
+ out.push_str(" val provenance: Provenance,\n");
+ out.push_str(" val derived_from: Pair<String, UInt>?,\n");
+ out.push_str(")\n\n");
+ out.push_str("val ruleIds: List<String> = listOf(\n");
+ for rule in rules {
+ out.push_str(&format!(" \"{}\",\n", rule.id));
+ }
+ out.push_str(")\n\n");
+ out.push_str("val rulePredicates: List<Pair<String, String>> = listOf(\n");
+ for rule in rules {
+ for p in &rule.premises {
+ out.push_str(&format!(" \"{}\" to \"{}\",\n", rule.id, p.predicate));
+ }
+ out.push_str(&format!(
+ " \"{}\" to \"{}\",\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out.push_str(")\n");
+ out
+}
+
+fn emit_closure_metadata_python(rules: &[ClosureRule]) -> String {
+ let mut out = String::new();
+ out.push_str("# Auto-generated by codegen-prototype (Round 76 §41 closure_runtime 5-lang metadata Python).\n");
+ out.push_str("# Lock #1 floor — CLI batch validation consumer path (read-only).\n\n");
+ out.push_str("from dataclasses import dataclass\n");
+ out.push_str("from enum import Enum\n");
+ out.push_str("from typing import List, Tuple, Optional\n\n");
+ out.push_str("class Provenance(Enum):\n");
+ out.push_str(" Explicit = 'Explicit'\n");
+ out.push_str(" Derived = 'Derived'\n");
+ out.push_str(" Retracted = 'Retracted'\n\n");
+ out.push_str("@dataclass\n");
+ out.push_str("class ClosureFact:\n");
+ out.push_str(" predicate: str\n");
+ out.push_str(" roles: List[Tuple[str, str]]\n");
+ out.push_str(" provenance: Provenance\n");
+ out.push_str(" derived_from: Optional[Tuple[str, int]]\n\n");
+ out.push_str("rule_ids: List[str] = [\n");
+ for rule in rules {
+ out.push_str(&format!(" \"{}\",\n", rule.id));
+ }
+ out.push_str("]\n\n");
+ out.push_str("rule_predicates: List[Tuple[str, str]] = [\n");
+ for rule in rules {
+ for p in &rule.premises {
+ out.push_str(&format!(
+  " (\"{}\", \"{}\"),\n",
+  rule.id, p.predicate
+ ));
+ }
+ out.push_str(&format!(
+ " (\"{}\", \"{}\"),\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out.push_str("]\n");
+ out
+}
+
+fn emit_closure_metadata_cpp(rules: &[ClosureRule]) -> String {
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 76 §41 closure_runtime 5-lang metadata C++).\n");
+ out.push_str("// Lock #1 floor — runtime SDK consumer path (read-only).\n\n");
+ out.push_str("#pragma once\n");
+ out.push_str("#include <array>\n");
+ out.push_str("#include <cstdint>\n");
+ out.push_str("#include <optional>\n");
+ out.push_str("#include <string>\n");
+ out.push_str("#include <utility>\n");
+ out.push_str("#include <vector>\n\n");
+ out.push_str("namespace mnemosyne::closure {\n\n");
+ out.push_str("enum class Provenance { Explicit, Derived, Retracted };\n\n");
+ out.push_str("struct ClosureFact {\n");
+ out.push_str(" std::string predicate;\n");
+ out.push_str(" std::vector<std::pair<std::string, std::string>> roles;\n");
+ out.push_str(" Provenance provenance;\n");
+ out.push_str(" std::optional<std::pair<std::string, uint32_t>> derived_from;\n");
+ out.push_str("};\n\n");
+
+ let total_predicates: usize = rules
+ .iter()
+ .map(|r| r.premises.len() + 1)
+ .sum();
+ out.push_str(&format!(
+ "constexpr std::array<std::string_view, {}> RULE_IDS = {{\n",
+ rules.len()
+ ));
+ for rule in rules {
+ out.push_str(&format!(" \"{}\",\n", rule.id));
+ }
+ out.push_str("};\n\n");
+
+ out.push_str(&format!(
+ "constexpr std::array<std::pair<std::string_view, std::string_view>, {}> RULE_PREDICATES = {{{{\n",
+ total_predicates
+ ));
+ for rule in rules {
+ for p in &rule.premises {
+ out.push_str(&format!(
+  " {{\"{}\", \"{}\"}},\n",
+  rule.id, p.predicate
+ ));
+ }
+ out.push_str(&format!(
+ " {{\"{}\", \"{}\"}},\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out.push_str("}};\n\n");
+ out.push_str("} // namespace mnemosyne::closure\n");
+ out
+}
+
+fn emit_closure_metadata_go(rules: &[ClosureRule]) -> String {
+ // Round 95 — Go emit added for §11 canonical 5-backend alignment
+ // (rust/kotlin/python/cpp/go). Same canonical_set carry as the other
+ // emits (Provenance + Explicit/Derived/Retracted + ClosureFact + field
+ // names + rule ids + premise/conclusion predicate names), so floor
+ // measurement (Jaccard inclusion = 1.0) holds for Go too.
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 95 §41 closure_runtime 5-lang metadata Go).\n");
+ out.push_str("// Lock #1 floor — §11 canonical 5-backend (rust/kotlin/python/cpp/go).\n\n");
+ out.push_str("package generated\n\n");
+ out.push_str("// Provenance — typed-fact identifier names carry as canonical_set members.\n");
+ out.push_str("type Provenance int\n\n");
+ out.push_str("const (\n");
+ out.push_str("\tExplicit Provenance = iota\n");
+ out.push_str("\tDerived\n");
+ out.push_str("\tRetracted\n");
+ out.push_str(")\n\n");
+ out.push_str("// ClosureFact — shape carry across the 5-backend canonical_set.\n");
+ out.push_str("type ClosureFact struct {\n");
+ out.push_str("\tpredicate string\n");
+ out.push_str("\troles [][2]string\n");
+ out.push_str("\tprovenance Provenance\n");
+ out.push_str("\tderived_from *DerivedFromTuple\n");
+ out.push_str("}\n\n");
+ out.push_str("// DerivedFromTuple — (rule_id, depth) tuple, optional via *.\n");
+ out.push_str("type DerivedFromTuple struct {\n");
+ out.push_str("\tRuleID string\n");
+ out.push_str("\tDepth uint32\n");
+ out.push_str("}\n\n");
+ out.push_str("var RuleIDs = []string{\n");
+ for rule in rules {
+ out.push_str(&format!("\t\"{}\",\n", rule.id));
+ }
+ out.push_str("}\n\n");
+ out.push_str("var RulePredicates = [][2]string{\n");
+ for rule in rules {
+ for p in &rule.premises {
+ out.push_str(&format!("\t{{\"{}\", \"{}\"}},\n", rule.id, p.predicate));
+ }
+ out.push_str(&format!(
+ "\t{{\"{}\", \"{}\"}},\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out.push_str("}\n");
+ out
+}
+
+fn emit_closure_metadata_protobuf(rules: &[ClosureRule]) -> String {
+ let mut out = String::new();
+ out.push_str("// Auto-generated by codegen-prototype (Round 76 §41 closure_runtime 5-lang metadata protobuf).\n");
+ out.push_str("// Lock #1 floor — wire format spec for closure metadata.\n\n");
+ out.push_str("syntax = \"proto3\";\n\n");
+ out.push_str("package mnemosyne.closure;\n\n");
+ out.push_str("// canonical Provenance variants (Explicit / Derived / Retracted) — proto3 SCREAMING_SNAKE_CASE\n");
+ out.push_str("// requires the comment to carry the typed-fact identifier names alongside.\n");
+ out.push_str("enum Provenance {\n");
+ out.push_str(" PROVENANCE_EXPLICIT = 0;\n");
+ out.push_str(" PROVENANCE_DERIVED = 1;\n");
+ out.push_str(" PROVENANCE_RETRACTED = 2;\n");
+ out.push_str("}\n\n");
+ out.push_str("message Role {\n");
+ out.push_str(" string role = 1;\n");
+ out.push_str(" string variable = 2;\n");
+ out.push_str("}\n\n");
+ out.push_str("message ClosureFact {\n");
+ out.push_str(" string predicate = 1;\n");
+ out.push_str(" repeated Role roles = 2;\n");
+ out.push_str(" Provenance provenance = 3;\n");
+ out.push_str(" optional string derived_from_rule = 4; // canonical: derived_from\n");
+ out.push_str(" optional uint32 derived_from_depth = 5;\n");
+ out.push_str("}\n\n");
+ out.push_str("// Fixture snapshot (comment-only, wire data separate):\n");
+ for rule in rules {
+ out.push_str(&format!("// rule_id: \"{}\"\n", rule.id));
+ for p in &rule.premises {
+ out.push_str(&format!(
+  "// rule_predicate: rule=\"{}\" predicate=\"{}\"\n",
+  rule.id, p.predicate
+ ));
+ }
+ out.push_str(&format!(
+ "// rule_predicate: rule=\"{}\" predicate=\"{}\"\n",
+ rule.id, rule.conclusion.predicate
+ ));
+ }
+ out
+}
+
+// ============================================================================
+// In-memory closure expand consistency validation — small fixture in forward-chaining actual execute.
+// this module's emit-time logic and actual semantics consistency validation (Round 56 measure source).
+// ============================================================================
+
+/// In-memory fact representation (codegen emit's ClosureFact and identical shape).
+/// this type is used by the prototype for closure-expansion validation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct InMemoryFact {
+ pub predicate: String,
+ pub roles: Vec<(String, String)>,
+ pub provenance: ProvenanceTag,
+ pub derived_from: Option<(String, u32)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ProvenanceTag {
+ Explicit,
+ Derived,
+ Retracted,
+}
+
+/// Bounded forward-chaining closure expand — actual semantics validation.
+/// This function executes the same logic as emit_closure_runtime's generated code, in-memory.
+pub fn run_closure_in_memory(
+ facts: &mut BTreeSet<InMemoryFact>,
+ rules: &[ClosureRule],
+ max_depth: u32,
+) -> ClosureRunStats {
+ let mut stats = ClosureRunStats::default();
+ for iter in 0..max_depth {
+ let mut added_this_iter = 0usize;
+ for rule in rules {
+ added_this_iter += apply_rule(facts, rule);
+ }
+ stats.iterations = iter + 1;
+ stats.derived_added += added_this_iter;
+ if added_this_iter == 0 {
+ stats.fixpoint_reached = true;
+ break;
+ }
+ }
+ stats
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClosureRunStats {
+ pub iterations: u32,
+ pub derived_added: usize,
+ pub fixpoint_reached: bool,
+}
+
+fn apply_rule(facts: &mut BTreeSet<InMemoryFact>, rule: &ClosureRule) -> usize {
+ if rule.premises.len() != 2 {
+ return 0;
+ }
+ let mut added = 0usize;
+ let snapshot: Vec<InMemoryFact> = facts.iter().cloned().collect();
+ for f1 in &snapshot {
+ if f1.predicate != rule.premises[0].predicate {
+ continue;
+ }
+ for f2 in &snapshot {
+ if f2.predicate != rule.premises[1].predicate {
+  continue;
+ }
+ // Build variable binding.
+ let mut binding: std::collections::BTreeMap<String, String> =
+  std::collections::BTreeMap::new();
+ let mut bind_ok = true;
+ for (role, var) in &rule.premises[0].roles {
+  if let Some((_, val)) =
+  f1.roles.iter().find(|(r, _)| r == role)
+  {
+  if let Some(existing) = binding.get(var) {
+  if existing != val {
+   bind_ok = false;
+   break;
+  }
+  } else {
+  binding.insert(var.clone(), val.clone());
+  }
+  } else {
+  bind_ok = false;
+  break;
+  }
+ }
+ if !bind_ok {
+  continue;
+ }
+ for (role, var) in &rule.premises[1].roles {
+  if let Some((_, val)) =
+  f2.roles.iter().find(|(r, _)| r == role)
+  {
+  if let Some(existing) = binding.get(var) {
+  if existing != val {
+   bind_ok = false;
+   break;
+  }
+  } else {
+  binding.insert(var.clone(), val.clone());
+  }
+  } else {
+  bind_ok = false;
+  break;
+  }
+ }
+ if !bind_ok {
+  continue;
+ }
+ // Build conclusion using binding.
+ let mut concl_roles: Vec<(String, String)> = Vec::new();
+ let mut concl_ok = true;
+ for (concl_role, concl_var) in &rule.conclusion.roles {
+  if let Some(val) = binding.get(concl_var) {
+  concl_roles.push((concl_role.clone(), val.clone()));
+  } else {
+  concl_ok = false;
+  break;
+  }
+ }
+ if !concl_ok {
+  continue;
+ }
+ let derived = InMemoryFact {
+  predicate: rule.conclusion.predicate.clone(),
+  roles: concl_roles,
+  provenance: ProvenanceTag::Derived,
+  derived_from: Some((rule.id.clone(), rule.depth)),
+ };
+ if facts.insert(derived) {
+  added += 1;
+ }
+ }
+ }
+ added
+}
+
+// ============================================================================
+// Tests — small fixture validation (Round 56 measure data source).
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+
+ #[test]
+ fn fixture_has_two_rules() {
+ let rules = closure_small_fixture();
+ assert_eq!(rules.len(), 2);
+ assert_eq!(rules[0].id, "transitive_grandparent");
+ assert_eq!(rules[1].id, "knowledge_modus_ponens");
+ assert_eq!(rules[0].depth, 2);
+ assert_eq!(rules[1].depth, 1);
+ }
+
+ #[test]
+ fn emit_closure_runtime_deterministic() {
+ let rules = closure_small_fixture();
+ let a = emit_closure_runtime(&rules);
+ let b = emit_closure_runtime(&rules);
+ assert_eq!(a, b);
+ assert_eq!(a.rule_count, 2);
+ assert_eq!(a.max_depth, 2);
+ }
+
+ #[test]
+ fn emit_provenance_enum() {
+ let rules = closure_small_fixture();
+ let emitted = emit_closure_runtime(&rules);
+ assert!(emitted.source.contains("pub enum Provenance"));
+ assert!(emitted.source.contains("Explicit"));
+ assert!(emitted.source.contains("Derived"));
+ assert!(emitted.source.contains("Retracted"));
+ }
+
+ #[test]
+ fn emit_per_rule_expand_function() {
+ let rules = closure_small_fixture();
+ let emitted = emit_closure_runtime(&rules);
+ assert!(emitted.source.contains("pub fn expand_transitive_grandparent"));
+ assert!(emitted.source.contains("pub fn expand_knowledge_modus_ponens"));
+ assert!(emitted.source.contains("MAX_CLOSURE_DEPTH"));
+ assert!(emitted.source.contains("pub fn run_closure"));
+ }
+
+ #[test]
+ fn emit_documentation_includes_rule_doc() {
+ let rules = closure_small_fixture();
+ let emitted = emit_closure_runtime(&rules);
+ assert!(emitted.source.contains("Rule `transitive_grandparent` (depth 2)"));
+ assert!(emitted.source.contains("Rule `knowledge_modus_ponens` (depth 1)"));
+ assert!(emitted.source.contains("is_parent_of"));
+ assert!(emitted.source.contains("is_grandparent_of"));
+ }
+
+ /// Small fixture closure expand consistency validation — Person A → Person B → Person C in
+ /// Applying the transitive_grandparent rule on (A, C) yields a derived fact.
+ #[test]
+ fn closure_expand_transitive_grandparent() {
+ let rules = closure_small_fixture();
+ let mut facts = BTreeSet::new();
+ // Explicit facts: A is_parent_of B, B is_parent_of C
+ facts.insert(InMemoryFact {
+ predicate: "is_parent_of".to_string(),
+ roles: vec![
+  ("subject".to_string(), "A".to_string()),
+  ("object".to_string(), "B".to_string()),
+ ],
+ provenance: ProvenanceTag::Explicit,
+ derived_from: None,
+ });
+ facts.insert(InMemoryFact {
+ predicate: "is_parent_of".to_string(),
+ roles: vec![
+  ("subject".to_string(), "B".to_string()),
+  ("object".to_string(), "C".to_string()),
+ ],
+ provenance: ProvenanceTag::Explicit,
+ derived_from: None,
+ });
+ let stats = run_closure_in_memory(&mut facts, &rules, 5);
+ assert!(stats.fixpoint_reached);
+ // Expected: A is_grandparent_of C derived
+ let derived = facts.iter().find(|f| {
+ f.predicate == "is_grandparent_of"
+  && f.roles.iter().any(|(r, v)| r == "subject" && v == "A")
+  && f.roles.iter().any(|(r, v)| r == "object" && v == "C")
+ });
+ assert!(
+ derived.is_some(),
+ "transitive_grandparent rule should derive A is_grandparent_of C"
+ );
+ let d = derived.unwrap();
+ assert_eq!(d.provenance, ProvenanceTag::Derived);
+ assert_eq!(
+ d.derived_from,
+ Some(("transitive_grandparent".to_string(), 2))
+ );
+ }
+
+ /// knowledge_modus_ponens rule — A knows F + F implies G ⇒ A knows G.
+ #[test]
+ fn closure_expand_knowledge_modus_ponens() {
+ let rules = closure_small_fixture();
+ let mut facts = BTreeSet::new();
+ facts.insert(InMemoryFact {
+ predicate: "knows".to_string(),
+ roles: vec![
+  ("agent".to_string(), "alice".to_string()),
+  ("fact".to_string(), "F1".to_string()),
+ ],
+ provenance: ProvenanceTag::Explicit,
+ derived_from: None,
+ });
+ facts.insert(InMemoryFact {
+ predicate: "implies".to_string(),
+ roles: vec![
+  ("antecedent".to_string(), "F1".to_string()),
+  ("consequent".to_string(), "G1".to_string()),
+ ],
+ provenance: ProvenanceTag::Explicit,
+ derived_from: None,
+ });
+ let stats = run_closure_in_memory(&mut facts, &rules, 5);
+ assert!(stats.fixpoint_reached);
+ let derived = facts.iter().find(|f| {
+ f.predicate == "knows"
+  && f.roles.iter().any(|(r, v)| r == "agent" && v == "alice")
+  && f.roles.iter().any(|(r, v)| r == "fact" && v == "G1")
+ });
+ assert!(
+ derived.is_some(),
+ "knowledge_modus_ponens should derive alice knows G1"
+ );
+ }
+
+ /// Bounded depth — depth 1 fact only derive, depth 2 fact not.erive.
+ /// (validates the prototype's actual max_depth iteration bound.)
+ #[test]
+ fn closure_expand_bounded_depth() {
+ let rules = closure_small_fixture();
+ let mut facts = BTreeSet::new();
+ // A is_parent_of B, B is_parent_of C, C is_parent_of D
+ for (s, o) in [("A", "B"), ("B", "C"), ("C", "D")] {
+ facts.insert(InMemoryFact {
+  predicate: "is_parent_of".to_string(),
+  roles: vec![
+  ("subject".to_string(), s.to_string()),
+  ("object".to_string(), o.to_string()),
+  ],
+  provenance: ProvenanceTag::Explicit,
+  derived_from: None,
+ });
+ }
+ // depth 1 only — A is_grandparent_of C / B is_grandparent_of D only derive possible.
+ // (A is_great_grandparent_of D same transitive add rule missing, fixture - 1 hop only.)
+ let stats = run_closure_in_memory(&mut facts, &rules, 1);
+ assert_eq!(stats.iterations, 1);
+ assert!(facts.iter().any(|f| {
+ f.predicate == "is_grandparent_of"
+  && f.roles.iter().any(|(r, v)| r == "subject" && v == "A")
+  && f.roles.iter().any(|(r, v)| r == "object" && v == "C")
+ }));
+ assert!(facts.iter().any(|f| {
+ f.predicate == "is_grandparent_of"
+  && f.roles.iter().any(|(r, v)| r == "subject" && v == "B")
+  && f.roles.iter().any(|(r, v)| r == "object" && v == "D")
+ }));
+ }
+
+ /// Emit byte size + sha256 — stable across content-addressable-hash validation.
+ #[test]
+ fn closure_emit_size_stable_and_hash_deterministic() {
+ use crate::entity_indexer::sha256_hex;
+ let rules = closure_small_fixture();
+ let emitted = emit_closure_runtime(&rules);
+ let size = emitted.source.len();
+ assert!(
+ size > 2000 && size < 12000,
+ "closure emit size: {} bytes (expected 2000-12000 range)",
+ size
+ );
+ let h1 = sha256_hex(&emitted.source);
+ let emitted2 = emit_closure_runtime(&rules);
+ let h2 = sha256_hex(&emitted2.source);
+ assert_eq!(h1, h2);
+ assert_eq!(h1.len(), 64);
+ }
+
+ /// Round 35 paradigm carry — explicit Rust-only emit boundary
+ /// Validates that no Kotlin / Python / C++ / Protobuf emit function is missing.
+ #[test]
+ fn closure_runtime_rust_only_emit_boundary() {
+ let rules = closure_small_fixture();
+ let emitted = emit_closure_runtime(&rules);
+ // emit source in multilang artifact (data class / @dataclass / namespace / message) not.nclude
+ assert!(!emitted.source.contains("data class"));
+ assert!(!emitted.source.contains("@dataclass"));
+ assert!(!emitted.source.contains("namespace mnemosyne::"));
+ assert!(!emitted.source.contains("message "));
+ // Rust-only marker comment registered validation
+ assert!(emitted.source.contains("Rust-only emit"));
+ }
+}

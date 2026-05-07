@@ -1,0 +1,40 @@
+name: mnemosyne-validate
+
+# Phase 0 self-application — DESIGN §66, Round 79 OPTION C carry.
+# design_doc change on cargo test + mnemosyne-cli validate-workspace auto validation.
+
+on:
+ push:
+ branches: [main]
+ pull_request:
+
+concurrency:
+ group: ${{ github.workflow }}-${{ github.ref }}
+ cancel-in-progress: true
+
+jobs:
+ validate:
+ runs-on: ubuntu-latest
+ timeout-minutes: 30
+ steps:
+ - uses: actions/checkout@v4
+
+ - name: Install rust toolchain (rust-toolchain.toml)
+ run: rustup show
+
+ - name: Cache cargo
+ uses: actions/cache@v4
+ with:
+  path: |
+ ~/.cargo/registry
+ ~/.cargo/git
+ target
+  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+  restore-keys: |
+ ${{ runner.os }}-cargo-
+
+ - name: cargo test --workspace
+ run: cargo test --workspace --locked
+
+ - name: mnemosyne-cli validate-workspace
+ run: cargo run --release -q -p mnemosyne-cli -- validate-workspace

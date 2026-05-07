@@ -1,0 +1,32 @@
+[package]
+name = "xtdb-baseline"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "xtdb-bench"
+path = "src/main.rs"
+
+[dependencies]
+workload-gen.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+hdrhistogram.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true

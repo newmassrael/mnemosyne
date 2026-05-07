@@ -1,0 +1,647 @@
+//! Atomic typed fields store — DESIGN §39 Section / ChangelogEntry atomic
+//! decomposition (Round 161 SCHEMA-DECOMPOSITION ratify, Phase 0f output axis).
+//!
+//! Phase 0e (Round 141-151) wired the *input axis* (markdown → typed facts via
+//! generic loader). Phase 0f wires the *output axis*: atomic typed fields →
+//! template render → MD bytes. The atomic store is the new authoritative
+//! source for new content (Round 163+ forward-wire); legacy `body` /
+//! `sub_bullets` field is carried stable on existing entries (Round 19 frozen
+//! ledger, Round 164-166 migration multi-session scope).
+//!
+//! Storage: sidecar JSON file (default `docs/.atomic/workspace.atomic.json`),
+//! workspace-wide single store keyed by `section_id` / `entry_id`.
+//! Persistence is atomic write (temp + rename) following the same pattern as
+//! the markdown mutate primitives (Round 124 atomic_write).
+//!
+//! API surface (DESIGN §15 spec mutate API atomic scope, Round 161 ratify):
+//! - Section atomic: `set_section_intent` / `set_section_rationale` /
+//! `set_section_inputs` / `set_section_outputs` / `add_section_caveat` /
+//! `set_section_alternatives` / `set_section_impact_scope` /
+//! `add_section_example`
+//! - ChangelogEntry atomic: `append_changelog_entry_v2`
+
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+/// Section atomic typed fields (Round 161 §39 reframe ratify).
+///
+/// Default = all empty / None. legacy `body` field (Section.body via parser
+/// `bodies` map carries stable — atomic fields are additive only.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AtomicSection {
+ /// 1-3 sentence summary. T3 style threshold: ≤ 200 char (Round 161 §41 ratify).
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub intent: Option<String>,
+ /// Preserved decision list. T3 style threshold: each bullet ≤ 100 chars.
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub rationale_bullets: Vec<String>,
+ /// input list.
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub inputs_bullets: Vec<String>,
+ /// output list.
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub outputs_bullets: Vec<String>,
+ /// threshold list. T3 style threshold: each bullet ≤ 100 char.
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub caveats_bullets: Vec<String>,
+ /// rejected option + reason pairs.
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub alternatives_rejected: Vec<RejectedAlternative>,
+ /// cross-ref list (target section_id without `§` prefix).
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub impact_scope: Vec<String>,
+ /// code/config block list. T3 style threshold: code block itself exempt (Round 161 §41).
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub examples: Vec<ExampleBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RejectedAlternative {
+ pub alternative: String,
+ pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExampleBlock {
+ /// Language tag for fenced code block (`rust` / `toml` / `markdown` / etc).
+ pub language: String,
+ pub code: String,
+}
+
+/// ChangelogEntry atomic typed fields (Round 161 §39 reframe ratify).
+///
+/// Default = all empty. The legacy `sub_bullets` field carries stable — atomic
+/// fields = additive only. T2 frozen_ledger_jaccard rule extends to atomic
+/// fields (Round 161 §41 ratify): once committed, atomic fields are frozen
+/// (deletion = T2 violation, addition = OK).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AtomicChangelogEntry {
+ /// 1 sentence headline.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub decision_summary: Option<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub changes_bullets: Vec<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub verification_bullets: Vec<String>,
+ /// cross-ref list (target section_id without `§` prefix).
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub impact_refs: Vec<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub carry_forward_bullets: Vec<String>,
+}
+
+/// Workspace-wide atomic store. Keys = canonical `section_id` / `entry_id`.
+/// On-disk shape = single JSON file at `docs/.atomic/workspace.atomic.json`
+/// (path configurable via `[atomic] sidecar_path` in mnemosyne.toml — extend
+/// 162 carry, default if unset).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AtomicStore {
+ #[serde(default)]
+ pub sections: BTreeMap<String, AtomicSection>,
+ #[serde(default)]
+ pub changelog_entries: BTreeMap<String, AtomicChangelogEntry>,
+ /// Schema version — bump on breaking shape change.
+ #[serde(default = "default_schema_version")]
+ pub schema_version: u32,
+}
+
+fn default_schema_version() -> u32 {
+ 1
+}
+
+#[derive(Debug, Error)]
+pub enum AtomicStoreError {
+ #[error("io: {0}")]
+ Io(#[from] std::io::Error),
+ #[error("json parse: {0}")]
+ Json(#[from] serde_json::Error),
+ #[error("schema version mismatch: store={store} expected ≤ {expected}")]
+ SchemaVersionMismatch { store: u32, expected: u32 },
+}
+
+const CURRENT_SCHEMA_VERSION: u32 = 1;
+const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
+
+impl AtomicStore {
+ pub fn new() -> Self {
+ Self::default()
+ }
+
+ /// Default sidecar path relative to workspace root.
+ pub fn default_sidecar_path(workspace_root: &Path) -> PathBuf {
+ workspace_root.join(DEFAULT_SIDECAR_REL)
+ }
+
+ /// Load from sidecar JSON. Returns empty store if file missing.
+ pub fn load(path: &Path) -> Result<Self, AtomicStoreError> {
+ if !path.exists() {
+ return Ok(Self::new());
+ }
+ let bytes = fs::read(path)?;
+ let store: AtomicStore = serde_json::from_slice(&bytes)?;
+ if store.schema_version > CURRENT_SCHEMA_VERSION {
+ return Err(AtomicStoreError::SchemaVersionMismatch {
+  store: store.schema_version,
+  expected: CURRENT_SCHEMA_VERSION,
+ });
+ }
+ Ok(store)
+ }
+
+ /// Atomic save (temp + rename). Creates parent dir as needed.
+ pub fn save(&self, path: &Path) -> Result<(), AtomicStoreError> {
+ if let Some(parent) = path.parent() {
+ if !parent.exists() {
+  fs::create_dir_all(parent)?;
+ }
+ }
+ let mut store = self.clone();
+ store.schema_version = CURRENT_SCHEMA_VERSION;
+ let json = serde_json::to_vec_pretty(&store)?;
+ let tmp_path = path.with_extension("json.tmp");
+ {
+ let mut tmp = fs::File::create(&tmp_path)?;
+ tmp.write_all(&json)?;
+ tmp.write_all(b"\n")?;
+ tmp.sync_all()?;
+ }
+ fs::rename(&tmp_path, path)?;
+ Ok(())
+ }
+
+ /// Get / create-default section atomic entry.
+ pub fn section_mut(&mut self, section_id: &str) -> &mut AtomicSection {
+ self.sections.entry(section_id.to_string()).or_default()
+ }
+
+ /// Get / create-default changelog atomic entry.
+ pub fn entry_mut(&mut self, entry_id: &str) -> &mut AtomicChangelogEntry {
+ self.changelog_entries
+ .entry(entry_id.to_string())
+ .or_default()
+ }
+
+ pub fn section(&self, section_id: &str) -> Option<&AtomicSection> {
+ self.sections.get(section_id)
+ }
+
+ pub fn entry(&self, entry_id: &str) -> Option<&AtomicChangelogEntry> {
+ self.changelog_entries.get(entry_id)
+ }
+
+ /// Round 243 — atomic-derived section_id set (MD-DELETION-RATIFY foundation).
+ ///
+ /// Returns workspace-wide section_id set sourced from atomic store keys
+ /// only — no markdown parsing required. Production use case: T1 cross-ref
+ /// Orphan check + atomic-store cross-ref resolution when 7 source MD files
+ /// are deleted (Round 244+ MD-DELETION-RATIFY entry path).
+ ///
+ /// Parallel to [`crate::query::workspace_section_id_set`] which sources
+ /// from `Workspace.docs.values().sections` (markdown-derived). When the
+ /// atomic store is the sole source of truth (Round 173 paradigm shift
+ /// complete), this becomes the canonical section_id set.
+ ///
+ /// Round 250 — also yields *implied parent prefixes* derived from `/`
+ /// path components in keys (e.g. key `architecture/layer/l0` implies
+ /// parent ids `architecture` and `architecture/layer`). This covers
+ /// heading-only roots that were intentionally skipped during atomic
+ /// decompose (ARCHITECTURE.md / VISION.md / PRIOR_ART.md h1 roots) but
+ /// are still legitimate cross-ref targets.
+ pub fn atomic_section_id_set(&self) -> std::collections::BTreeSet<String> {
+ let mut set: std::collections::BTreeSet<String> = self.sections.keys().cloned().collect();
+ for key in self.sections.keys() {
+ let mut start = 0usize;
+ while let Some(idx) = key[start..].find('/') {
+  let abs = start + idx;
+  set.insert(key[..abs].to_string());
+  start = abs + 1;
+ }
+ }
+ set
+ }
+}
+
+/// Render an [`AtomicSection`] into a paragraph-separated prose string
+/// (Round 247 cascade — moved from `style.rs::synthesize_atomic_body`).
+///
+/// Used by `style.rs` body rules (run-on / sentence-length scan) and
+/// `query.rs::build_section_view` (atomic-first body source). Bullet blocks
+/// render with `- ` prefixes (so `is_only_code_or_table` filters them out
+/// of paragraph-length checks); examples render as fenced code blocks
+/// (skipped by detectors).
+pub fn synthesize_section_body(atomic: &AtomicSection) -> String {
+ let mut parts: Vec<String> = Vec::new();
+ if let Some(intent) = atomic.intent.as_ref().filter(|s| !s.is_empty()) {
+ parts.push(intent.clone());
+ }
+ let push_bullet_block = |parts: &mut Vec<String>, bullets: &[String]| {
+ if bullets.is_empty() {
+ return;
+ }
+ let block: Vec<String> = bullets.iter().map(|b| format!("- {}", b)).collect();
+ parts.push(block.join("\n"));
+ };
+ push_bullet_block(&mut parts, &atomic.rationale_bullets);
+ push_bullet_block(&mut parts, &atomic.inputs_bullets);
+ push_bullet_block(&mut parts, &atomic.outputs_bullets);
+ push_bullet_block(&mut parts, &atomic.caveats_bullets);
+ if !atomic.alternatives_rejected.is_empty() {
+ let block: Vec<String> = atomic
+ .alternatives_rejected
+ .iter()
+ .map(|a| format!("- {} -- {}", a.alternative, a.reason))
+ .collect();
+ parts.push(block.join("\n"));
+ }
+ if !atomic.impact_scope.is_empty() {
+ let block: Vec<String> = atomic
+ .impact_scope
+ .iter()
+ .map(|s| format!("- §{}", s))
+ .collect();
+ parts.push(block.join("\n"));
+ }
+ for ex in &atomic.examples {
+ parts.push(format!("```{}\n{}\n```", ex.language, ex.code));
+ }
+ parts.join("\n\n")
+}
+
+/// Mutate primitive error.
+#[derive(Debug, Error)]
+pub enum AtomicMutateError {
+ #[error("validation: {0}")]
+ Validation(String),
+ #[error("not found: {0}")]
+ NotFound(String),
+ #[error("frozen ledger: {0}")]
+ FrozenLedger(String),
+ #[error("store: {0}")]
+ Store(#[from] AtomicStoreError),
+}
+
+/// Mutate primitive receipt — minimal shape for atomic mutations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AtomicMutateReceipt {
+ pub primitive: String,
+ pub target_kind: &'static str,
+ pub target_id: String,
+ pub sidecar_path: String,
+ pub written_bytes: usize,
+}
+
+// ============================================================================
+// Section atomic mutate primitives (Round 161 §15 reframe ratify).
+// ============================================================================
+
+const MAX_INTENT_CHAR: usize = 200;
+const MAX_BULLET_CHAR: usize = 100;
+
+fn check_intent_len(text: &str) -> Result<(), AtomicMutateError> {
+ if text.chars().count() > MAX_INTENT_CHAR {
+ return Err(AtomicMutateError::Validation(format!(
+ "intent length {} > MAX_INTENT_CHAR {} (Round 161 §41 threshold)",
+ text.chars().count(),
+ MAX_INTENT_CHAR
+ )));
+ }
+ Ok(())
+}
+
+fn check_bullet_len(text: &str, field: &str) -> Result<(), AtomicMutateError> {
+ if text.chars().count() > MAX_BULLET_CHAR {
+ return Err(AtomicMutateError::Validation(format!(
+ "{} bullet length {} > MAX_BULLET_CHAR {} (Round 161 §41 threshold)",
+ field,
+ text.chars().count(),
+ MAX_BULLET_CHAR
+ )));
+ }
+ Ok(())
+}
+
+fn save_with_receipt(
+ store: &AtomicStore,
+ sidecar_path: &Path,
+ primitive: &str,
+ target_kind: &'static str,
+ target_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ store.save(sidecar_path)?;
+ let written = fs::metadata(sidecar_path).map(|m| m.len() as usize).unwrap_or(0);
+ Ok(AtomicMutateReceipt {
+ primitive: primitive.to_string(),
+ target_kind,
+ target_id: target_id.to_string(),
+ sidecar_path: sidecar_path.display().to_string(),
+ written_bytes: written,
+ })
+}
+
+pub fn set_section_intent(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ intent: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ check_intent_len(intent)?;
+ store.section_mut(section_id).intent = Some(intent.to_string());
+ save_with_receipt(store, sidecar_path, "set_section_intent", "section", section_id)
+}
+
+pub fn set_section_rationale(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "rationale")?;
+ }
+ store.section_mut(section_id).rationale_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_rationale",
+ "section",
+ section_id,
+ )
+}
+
+pub fn set_section_inputs(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "inputs")?;
+ }
+ store.section_mut(section_id).inputs_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_inputs",
+ "section",
+ section_id,
+ )
+}
+
+pub fn set_section_outputs(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "outputs")?;
+ }
+ store.section_mut(section_id).outputs_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_outputs",
+ "section",
+ section_id,
+ )
+}
+
+pub fn add_section_caveat(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ bullet: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ check_bullet_len(bullet, "caveats")?;
+ store
+ .section_mut(section_id)
+ .caveats_bullets
+ .push(bullet.to_string());
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "add_section_caveat",
+ "section",
+ section_id,
+ )
+}
+
+pub fn set_section_alternatives(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ alternatives: &[RejectedAlternative],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ store.section_mut(section_id).alternatives_rejected = alternatives.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_alternatives",
+ "section",
+ section_id,
+ )
+}
+
+pub fn set_section_impact_scope(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ refs: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ store.section_mut(section_id).impact_scope = refs.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_impact_scope",
+ "section",
+ section_id,
+ )
+}
+
+pub fn add_section_example(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ example: ExampleBlock,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ store.section_mut(section_id).examples.push(example);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "add_section_example",
+ "section",
+ section_id,
+ )
+}
+
+// ============================================================================
+// ChangelogEntry atomic mutate primitive (Round 161 §15 reframe ratify).
+// ============================================================================
+
+/// `append_changelog_entry_v2` primitive — atomic-aware changelog append.
+///
+/// Frozen ledger semantics (Round 161 §41 reframe ratify): once committed,
+/// existing fields cannot be modified or removed (T2 jaccard); subsequent
+/// mutations to the same `entry_id` are rejected via FrozenLedger error.
+pub fn append_changelog_entry_v2(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ decision_summary: Option<&str>,
+ changes_bullets: &[String],
+ verification_bullets: &[String],
+ impact_refs: &[String],
+ carry_forward_bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if store.changelog_entries.contains_key(entry_id) {
+ return Err(AtomicMutateError::FrozenLedger(format!(
+ "entry_id `{}` already exists in atomic store; mutations to existing \
+  entries are forbidden (Round 161 §41 frozen ledger)",
+ entry_id
+ )));
+ }
+ let entry = AtomicChangelogEntry {
+ decision_summary: decision_summary.map(str::to_string),
+ changes_bullets: changes_bullets.to_vec(),
+ verification_bullets: verification_bullets.to_vec(),
+ impact_refs: impact_refs.to_vec(),
+ carry_forward_bullets: carry_forward_bullets.to_vec(),
+ };
+ store
+ .changelog_entries
+ .insert(entry_id.to_string(), entry);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "append_changelog_entry_v2",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+ use tempfile::TempDir;
+
+ #[test]
+ fn save_load_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_intent(&mut store, &path, "43", "test intent").unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(loaded.section("43").unwrap().intent.as_deref(), Some("test intent"));
+ }
+
+ #[test]
+ fn intent_threshold_rejects() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let too_long = "x".repeat(MAX_INTENT_CHAR + 1);
+ let err = set_section_intent(&mut store, &path, "43", &too_long).unwrap_err();
+ match err {
+ AtomicMutateError::Validation(_) => {}
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn rationale_bullet_threshold_rejects() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let too_long = vec!["x".repeat(MAX_BULLET_CHAR + 1)];
+ let err = set_section_rationale(&mut store, &path, "43", &too_long).unwrap_err();
+ match err {
+ AtomicMutateError::Validation(_) => {}
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn changelog_entry_v2_frozen_after_append() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 162",
+ Some("test summary"),
+ &["change 1".into()],
+ &["verify 1".into()],
+ &["43".into()],
+ &["carry 1".into()],
+ )
+ .unwrap();
+ let err = append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 162",
+ Some("attempted overwrite"),
+ &[],
+ &[],
+ &[],
+ &[],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::FrozenLedger(_) => {}
+ other => panic!("expected FrozenLedger, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn empty_store_load_when_missing() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join("no_such.json");
+ let store = AtomicStore::load(&path).unwrap();
+ assert!(store.sections.is_empty());
+ assert!(store.changelog_entries.is_empty());
+ }
+
+ #[test]
+ fn atomic_section_id_set_returns_section_keys() {
+ // Round 243 — MD-DELETION-RATIFY foundation: atomic store in section
+ // keys only source as one section_id set carry.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_intent(&mut store, &path, "39", "graph schema").unwrap();
+ set_section_intent(&mut store, &path, "41", "datalog rule").unwrap();
+ set_section_intent(&mut store, &path, "66", "self-application").unwrap();
+ let id_set = store.atomic_section_id_set();
+ assert_eq!(id_set.len(), 3);
+ assert!(id_set.contains("39"));
+ assert!(id_set.contains("41"));
+ assert!(id_set.contains("66"));
+ }
+
+ #[test]
+ fn atomic_section_id_set_empty_when_only_changelog() {
+ // changelog_entries-only stores have an empty section_id set (changelog vs section
+ // axis separation carry).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 243",
+ Some("test"),
+ &["change".into()],
+ &["verify".into()],
+ &[],
+ &["carry".into()],
+ )
+ .unwrap();
+ let id_set = store.atomic_section_id_set();
+ assert!(id_set.is_empty());
+ }
+}

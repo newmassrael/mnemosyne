@@ -1,0 +1,91 @@
+[package]
+name = "mnemosyne-server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+# Round 97 — opt-in TLS toggle. Default builds remain TLS-free (Round 91/96 carry
+# stable: no rustls/aws-lc-rs in the default closure, no extra build-time cost).
+# Enable via `--features tls` when transport encryption is required; this turns
+# on tonic's `tls` feature which pulls in tokio-rustls + rustls 0.23 internally.
+[features]
+default = []
+tls = ["tonic/tls", "dep:rustls", "dep:tokio-rustls", "dep:rustls-pemfile"]
+# Round 102 — opt-in OTLP tracing exporter. Default builds carry no
+# opentelemetry compile cost (Round 91/96/97/98/99/100/101 default-build carry
+# stable). Enable via `--features otlp` to wire `init_otlp_tracing_subscriber`
+# into the server bring-up path; the helper composes a tonic-backed OTLP
+# SpanExporter with the existing tracing subscriber.
+otlp = [
+ "dep:tracing-opentelemetry",
+ "dep:opentelemetry",
+ "dep:opentelemetry_sdk",
+ "dep:opentelemetry-otlp",
+ "dep:tracing-subscriber",
+]
+
+[dependencies]
+mnemosyne-store = { path = "../mnemosyne-store" }
+mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-cascade = { path = "../mnemosyne-cascade" }
+mnemosyne-validator = { path = "../mnemosyne-validator" }
+
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+byteorder.workspace = true
+
+tonic.workspace = true
+prost.workspace = true
+tonic-health.workspace = true
+tonic-reflection.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+
+# Round 97 — direct rustls dep, gated behind the `tls` feature so default builds
+# carry no rustls compile cost. Used by `install_default_crypto_provider` to
+# install the ring-backed default provider rustls 0.23 requires before any
+# TLS handshake.
+rustls = { workspace = true, optional = true }
+
+# Round 107 — tokio-rustls + rustls-pemfile for mTLS handshake (client cert
+# verification) + dynamic cert rotation. Gated behind the `tls` feature so
+# default builds remain rustls-free (Round 97 carry stable).
+tokio-rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }
+
+# Round 99 — uuid v4 for audit trace_id fallback generation.
+uuid.workspace = true
+
+# Round 102 — opentelemetry stack, gated behind the `otlp` feature so default
+# builds carry no opentelemetry compile cost.
+tracing-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", features = ["registry"], optional = true }
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Round 97 — self-signed cert generation source for tests/grpc_tls_smoke.rs.
+rcgen.workspace = true
+# Round 104 — tracing-subscriber as a dev-dep for span hierarchy capture in
+# `tests/grpc_tracestate_smoke.rs` (custom Layer that records nested spans).
+# Default builds carry no tracing-subscriber; the optional dep above (gated
+# behind the `otlp` feature) handles the production OTLP path.
+tracing-subscriber = { version = "0.3", features = ["registry"] }
+# Round 105 — opentelemetry-proto generated TraceServiceServer for the
+# in-process mock OTLP collector in `tests/grpc_otlp_collector_e2e.rs`.
+# Only consumed under `--features otlp` (the test file is fully gated).
+opentelemetry-proto.workspace = true

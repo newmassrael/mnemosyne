@@ -1,0 +1,39 @@
+[package]
+name = "lmdb-baseline"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "lmdb-bench"
+path = "src/main.rs"
+
+[dependencies]
+workload-gen.workspace = true
+heed.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+byteorder.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+hdrhistogram.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "branching_sla"
+harness = false

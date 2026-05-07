@@ -1,0 +1,24 @@
+[package]
+name = "mnemosyne-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-store = { path = "../mnemosyne-store" }
+
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+byteorder.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

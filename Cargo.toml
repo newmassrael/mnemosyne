@@ -1,0 +1,95 @@
+[workspace]
+resolver = "2"
+members = [
+ "crates/mnemosyne-validator",
+ "crates/mnemosyne-store",
+ "crates/mnemosyne-core",
+ "crates/mnemosyne-cascade",
+ "crates/mnemosyne-server",
+ "crates/mnemosyne-cli",
+ "crates/mnemosyne-mcp",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.94"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Round 142 — workspace config abstraction (mnemosyne.toml).
+# Phase 0e generic library extraction: replaces hardcoded WORKSPACE_DOC_PATHS
+# + MNEMOSYNE_DEFAULT_DOC with TOML-driven config (workspace.docs +
+# workspace.default_doc + workspace.root).
+toml = "0.8"
+
+# Round 162 — template engine for Phase 0f atomic typed facts → markdown
+# rendering (output axis carry). Section / ChangelogEntry atomic field
+# decomposition (Round 161 ratify) → tera template render → MD bytes path.
+# Round 163+ forward-wire time GENERATED.md primary readable artifact source.
+tera = { version = "1", default-features = false }
+
+anyhow = "1"
+thiserror = "1"
+
+tracing = "0.1"
+
+sha2 = "0.10"
+
+byteorder = "1"
+rocksdb = "0.24"
+tempfile = "3"
+
+salsa = "0.26"
+
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
+tonic-health = "0.12"
+tonic-reflection = "0.12"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+
+# Round 97 — rcgen for self-signed cert generation in TLS smoke tests.
+# Always-available workspace dep; consumer crates pull as dev-dependency only.
+rcgen = "0.13"
+# Round 97 — rustls 0.23 with ring backend. Optional in consumer crates (gated
+# behind their `tls` feature) so default builds carry no rustls compile cost.
+# `default-features = false` + explicit `ring` feature avoids AWS-LC-RS which
+# would force a C toolchain on builders.
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+
+# Round 99 — uuid v4 backs the audit trace_id fallback when no W3C traceparent
+# header is present on the inbound request. `v4` only — no extra runtime cost
+# beyond random generation.
+uuid = { version = "1", features = ["v4"] }
+
+# Round 102 — tracing-opentelemetry + OTLP gRPC exporter stack. Optional in
+# consumer crates (gated behind their `otlp` feature) so default builds carry
+# no opentelemetry compile cost. Versions pinned together for ABI alignment:
+# tracing-opentelemetry 0.27 ↔ opentelemetry 0.26 ↔ opentelemetry_sdk 0.26 ↔
+# opentelemetry-otlp 0.26. The `grpc-tonic` feature pulls in opentelemetry-otlp's
+# gRPC transport (compatible with tonic 0.12 already in the workspace).
+tracing-opentelemetry = "0.27"
+opentelemetry = "0.26"
+opentelemetry_sdk = { version = "0.26", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.26", features = ["grpc-tonic"] }
+# Round 105 — OTLP collector E2E harness. Pinned to opentelemetry 0.26 ABI for
+# alignment with the exporter stack above; `gen-tonic` produces the
+# TraceServiceServer trait used by the in-process mock collector in
+# `crates/mnemosyne-server/tests/grpc_otlp_collector_e2e.rs`.
+opentelemetry-proto = { version = "0.26", features = ["gen-tonic", "trace"] }
+# Round 107 — tokio-rustls + rustls-pemfile for mTLS handshake + dynamic cert
+# rotation. Gated through mnemosyne-server's `tls` feature so default builds
+# carry no rustls compile cost (Round 97 carry stable). Versions pinned to the
+# rustls 0.23 ABI already used by tonic 0.12 + opentelemetry-otlp 0.26.
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"

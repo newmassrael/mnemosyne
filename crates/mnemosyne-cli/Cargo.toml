@@ -1,0 +1,28 @@
+[package]
+name = "mnemosyne-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — markdown spec/doc management infrastructure for LLM-using codebases (CLI for the reference application + generic library)"
+keywords = ["markdown", "spec", "documentation", "llm", "validator"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "mnemosyne-cli"
+path = "src/main.rs"
+
+[dependencies]
+mnemosyne-validator = { path = "../mnemosyne-validator" }
+mnemosyne-server = { path = "../mnemosyne-server" }
+mnemosyne-store = { path = "../mnemosyne-store" }
+
+anyhow.workspace = true
+sha2.workspace = true
+# Round 120 — query subcommand JSON envelope output in serde_json (Claude
+# consumable shape, Round 117 §15 body registered carry).
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,33 @@
+[package]
+name = "codegen-prototype"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "codegen-bench"
+path = "src/main.rs"
+
+# Round 116 — spec query API CLI prototype. workspace 7 docs query primitive
+# 4-call demo path. production lift in Round 120 follow-up.
+[[bin]]
+name = "query-cli"
+path = "src/bin/query_cli.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+byteorder.workspace = true
+bytes.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+salsa.workspace = true
