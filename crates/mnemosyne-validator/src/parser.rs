@@ -59,8 +59,10 @@ pub fn parse_markdown_with_schema(
  let line = raw_line;
  state.current_line = line_idx + 1;
 
- // Code fence boundary — lines inside the fence are verbatim and not interpreted by the parser.
- if line.starts_with("```") {
+ // Code fence boundary — CommonMark §98 allows 0–3 leading spaces.
+ // Lines inside the fence are verbatim and not interpreted by the parser.
+ let leading_ws = line.len() - line.trim_start().len();
+ if leading_ws <= 3 && line.trim_start().starts_with("```") {
  state.in_code_fence = !state.in_code_fence;
  state.append_body_line(line);
  continue;
@@ -269,6 +271,15 @@ struct ParsedHeading {
 }
 
 fn parse_heading(line: &str) -> Option<ParsedHeading> {
+ // ATX heading per CommonMark §62: 0–3 leading spaces, then 1–6 `#`,
+ // then a space/tab or end-of-line. `#1` (hash directly followed by a
+ // non-space) is *not* a heading; treating it as one creates spurious
+ // sections from prose like "Phase 0 #1 and softened..." (round-trip
+ // break — false-positive H1 from inline-`#N` references).
+ let leading_ws = line.len() - line.trim_start().len();
+ if leading_ws > 3 {
+ return None;
+ }
  let trimmed = line.trim_start();
  if !trimmed.starts_with('#') {
  return None;
@@ -277,7 +288,14 @@ fn parse_heading(line: &str) -> Option<ParsedHeading> {
  if depth == 0 || depth > 6 {
  return None;
  }
- let after_hashes = trimmed[depth..].trim_start();
+ let after_hashes_raw = &trimmed[depth..];
+ if !after_hashes_raw.is_empty()
+ && !after_hashes_raw.starts_with(' ')
+ && !after_hashes_raw.starts_with('\t')
+ {
+ return None;
+ }
+ let after_hashes = after_hashes_raw.trim_start();
  if after_hashes.is_empty() {
  return None;
  }
@@ -933,5 +951,124 @@ mod tests {
  assert!(!is_directory_ref("file.md"));
  assert!(!is_directory_ref("dir/file.rs"));
  assert!(!is_directory_ref("docs/DESIGN.md#§39"));
+ }
+
+ // CommonMark §62 ATX-heading conformance — `#` must be followed by a
+ // space, tab, or end of line. Inline `#N` references (e.g. "Phase 0
+ // #1 and softened ...") must not be lifted to a numbered H1, or the
+ // emitter produces `# 1. and softened ...` and round-trip breaks.
+ #[test]
+ fn atx_heading_requires_space_after_hashes() {
+ // Hash directly followed by digit — not a heading.
+ assert!(parse_heading("#1 and softened §5.J.3").is_none());
+ // Hash directly followed by a letter — not a heading.
+ assert!(parse_heading("#endif").is_none());
+ // Hash + space + content — valid heading.
+ let h = parse_heading("# 1. Title text").unwrap();
+ assert_eq!(h.depth, 1);
+ assert_eq!(h.section_number.as_deref(), Some("1"));
+ assert_eq!(h.title, "Title text");
+ // Hash + tab + content — valid heading per spec.
+ let h = parse_heading("#\tafter tab").unwrap();
+ assert_eq!(h.depth, 1);
+ assert_eq!(h.title, "after tab");
+ // Bare hashes only — not a heading (no content after trim).
+ assert!(parse_heading("###").is_none());
+ }
+
+ // CommonMark §62 — ATX heading allows 0–3 leading spaces. Four or more
+ // spaces puts the line into indented-code-block territory.
+ #[test]
+ fn atx_heading_rejects_four_plus_leading_spaces() {
+ assert!(parse_heading("    # title").is_none());
+ assert!(parse_heading("     #5 footnote").is_none());
+ // 0–3 leading spaces are accepted.
+ assert!(parse_heading("# title").is_some());
+ assert!(parse_heading(" # title").is_some());
+ assert!(parse_heading("  # title").is_some());
+ assert!(parse_heading("   # title").is_some());
+ }
+
+ // CommonMark §98 — fenced code blocks may be indented up to three
+ // spaces. Lines inside the fence are verbatim, so a `#endif` line
+ // inside an indented C example must not surface as an H1 section.
+ #[test]
+ fn parse_markdown_indented_fence_is_recognized() {
+ let input = concat!(
+ "# Doc\n",
+ "\n",
+ "Prose paragraph.\n",
+ "\n",
+ "  ```c\n",
+ "  #if Z_FEATURE == 1\n",
+ "      do_thing();\n",
+ "  #endif\n",
+ "  ```\n",
+ "\n",
+ "More prose.\n",
+ );
+ let doc = parse_markdown(input, "test.md");
+ // Only the H1 'Doc' should be a section. `#if` / `#endif` inside the
+ // 2-space-indented fence must not be promoted to headings.
+ let titles: Vec<&str> = doc.sections.iter().map(|s| s.title.as_str()).collect();
+ assert_eq!(titles, vec!["Doc"], "got titles: {:?}", titles);
+ }
+
+ #[test]
+ fn parse_markdown_round_trips_indented_fence_with_hash_lines() {
+ // End-to-end round-trip: parse → emit → re-parse must yield the
+ // same typed facts. The pre-fix parser created spurious `endif` /
+ // `if z_feature_fragmentation--1` H1 sections from the fence body,
+ // breaking section_identity even though no real heading existed.
+ let input = concat!(
+ "# RFC\n",
+ "\n",
+ "## OQ-W7\n",
+ "\n",
+ "- bullet:\n",
+ "  ```c\n",
+ "  #if Z_FEATURE_FRAGMENTATION == 1\n",
+ "      ret = ok;\n",
+ "  #endif\n",
+ "  ```\n",
+ "  After-fence prose with §2 reference.\n",
+ "\n",
+ "## OQ-W8\n",
+ "\n",
+ "Trailing section.\n",
+ );
+ let parsed = parse_markdown(input, "rfc.md");
+ let emitted = crate::emitter::emit_markdown_with_default(&parsed, None);
+ let reparsed = parse_markdown(&emitted, "rfc.md");
+ let diff = crate::emitter::compare_typed_facts(&parsed, &reparsed);
+ assert!(
+ diff.section_identity_match,
+ "section_identity broke: a={} b={}",
+ diff.section_count_a,
+ diff.section_count_b,
+ );
+ assert!(
+ diff.cross_ref_set_match,
+ "cross_ref_set broke: a={} b={}",
+ diff.cross_ref_count_a,
+ diff.cross_ref_count_b,
+ );
+ }
+
+ // Inline `#N` style references in prose — common in review-comment
+ // text like "(retracted Phase 0 #1)" — must not be parsed as headings.
+ #[test]
+ fn parse_markdown_inline_hash_number_in_prose_is_not_heading() {
+ let input = concat!(
+ "# Doc\n",
+ "\n",
+ "Some bullet with continuation:\n",
+ "\n",
+ "- item one with reviewer phrasing (retracted Phase 0\n",
+ "  #1 and softened §5 variant criticism).\n",
+ );
+ let doc = parse_markdown(input, "test.md");
+ let titles: Vec<&str> = doc.sections.iter().map(|s| s.title.as_str()).collect();
+ assert_eq!(titles, vec!["Doc"], "got titles: {:?}", titles);
  }
 }

@@ -286,6 +286,49 @@ fn cmd_validate(file: &str) -> Result<()> {
  );
 
  if !diff.mandatory_preserved {
+ // Round-trip diagnostic — surface the typed-fact diff so authors can
+ // pinpoint which section_id / cross_ref tuples drifted between
+ // parse → emit → re-parse. Without this dump the only signal is a
+ // boolean per dimension, which is insufficient to locate the cause
+ // in a real-world doc with hundreds of sections.
+ let a_keys: BTreeSet<(String, Option<String>, String)> = parsed
+ .sections
+ .iter()
+ .map(|s| (s.section_id.clone(), s.parent_section.clone(), s.title.clone()))
+ .collect();
+ let b_keys: BTreeSet<(String, Option<String>, String)> = reparsed
+ .sections
+ .iter()
+ .map(|s| (s.section_id.clone(), s.parent_section.clone(), s.title.clone()))
+ .collect();
+ if !diff.section_identity_match {
+ eprintln!("--- section diff (a-only / b-only, up to 15 each) ---");
+ for k in a_keys.difference(&b_keys).take(15) {
+ eprintln!("  -A {:?}", k);
+ }
+ for k in b_keys.difference(&a_keys).take(15) {
+ eprintln!("  +B {:?}", k);
+ }
+ }
+ if !diff.cross_ref_set_match {
+ let a_cross: BTreeSet<(String, String, String)> = parsed
+ .cross_refs
+ .iter()
+ .map(|c| (c.from_section.clone(), c.to_target.clone(), format!("{:?}", c.ref_kind)))
+ .collect();
+ let b_cross: BTreeSet<(String, String, String)> = reparsed
+ .cross_refs
+ .iter()
+ .map(|c| (c.from_section.clone(), c.to_target.clone(), format!("{:?}", c.ref_kind)))
+ .collect();
+ eprintln!("--- cross_ref diff (a-only / b-only, up to 20 each) ---");
+ for c in a_cross.difference(&b_cross).take(20) {
+ eprintln!("  -A {:?}", c);
+ }
+ for c in b_cross.difference(&a_cross).take(20) {
+ eprintln!("  +B {:?}", c);
+ }
+ }
  bail!(
  "round-trip mandatory preserved break — sections {}->{} / changelog {}->{} / cross_ref {}->{}",
  diff.section_count_a,
@@ -965,8 +1008,14 @@ fn cmd_validate_workspace() -> Result<()> {
  }
  }
 
- // Ledger set-equality (Option D): actual orphan set ⇔ KNOWN_STALE_ORPHANS.
- let known_orphan_keys: BTreeSet<OrphanKey> = KNOWN_STALE_ORPHANS
+ // Ledger set-equality (Option D): actual orphan set ⇔ ledger.
+ // Round 253 — ledger composes (set-union) from two sources:
+ // 1. `KNOWN_STALE_ORPHANS` const, baked into the binary for
+ //  mnemosyne self-application carry (currently empty).
+ // 2. `[[orphan_ledger]]` rows from the workspace's mnemosyne.toml,
+ //  authored by external workspaces to register their own legacy
+ //  carry without modifying the binary.
+ let mut known_orphan_keys: BTreeSet<OrphanKey> = KNOWN_STALE_ORPHANS
  .iter()
  .map(|k| OrphanKey {
  doc: k.doc.to_string(),
@@ -974,6 +1023,14 @@ fn cmd_validate_workspace() -> Result<()> {
  to_target: k.to_target.to_string(),
  })
  .collect();
+ let validate_workspace_cfg_for_ledger = workspace_config()?;
+ for entry in &validate_workspace_cfg_for_ledger.config.orphan_ledger {
+ known_orphan_keys.insert(OrphanKey {
+ doc: entry.doc.clone(),
+ from_section: entry.from.clone(),
+ to_target: entry.to.clone(),
+ });
+ }
  let new_orphans: Vec<&OrphanKey> = actual_orphan_keys
  .difference(&known_orphan_keys)
  .collect();
@@ -1012,12 +1069,21 @@ fn cmd_validate_workspace() -> Result<()> {
  );
  }
  }
- if !KNOWN_STALE_ORPHANS.is_empty() {
+ let ledger_entries_count =
+ KNOWN_STALE_ORPHANS.len() + validate_workspace_cfg_for_ledger.config.orphan_ledger.len();
+ if ledger_entries_count > 0 {
  println!("known-stale ledger:");
  for entry in KNOWN_STALE_ORPHANS {
  println!(
-  " [{}] {}: §{} -> §{}",
+  " [{}] (const) {}: §{} -> §{}",
   entry.tracked_since, entry.doc, entry.from_section, entry.to_target,
+ );
+ println!(" reason: {}", entry.reason);
+ }
+ for entry in &validate_workspace_cfg_for_ledger.config.orphan_ledger {
+ println!(
+  " [{}] (config) {}: §{} -> §{}",
+  entry.since, entry.doc, entry.from, entry.to,
  );
  println!(" reason: {}", entry.reason);
  }

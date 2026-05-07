@@ -41,6 +41,41 @@ pub struct WorkspaceConfig {
  pub style: Option<StyleSection>,
  #[serde(default)]
  pub terminology: Option<TerminologySection>,
+ /// Per-workspace orphan ledger (Round 253 EXTERNAL-LEDGER). Round 80
+ /// OPTION D originally hardcoded ledger entries in mnemosyne-cli's
+ /// `KNOWN_STALE_ORPHANS` const — fine for self-application but unusable
+ /// for external workspaces that need to register their own legacy
+ /// orphans without modifying mnemosyne. This config-based ledger
+ /// composes (set-union) with the const ledger; bidirectional set
+ /// equality semantics (new orphan / resolved entry drift catch) are
+ /// preserved across both sources.
+ #[serde(default, rename = "orphan_ledger")]
+ pub orphan_ledger: Vec<OrphanLedgerEntry>,
+}
+
+/// One row of `[[orphan_ledger]]` in `mnemosyne.toml` — a known-stale
+/// cross-ref that the workspace explicitly accepts as legacy carry.
+///
+/// Validate-workspace requires the actual orphan set to set-equal the
+/// merged ledger (config + const). Adding an entry here suppresses one
+/// orphan from "new"; removing an entry whose ref is still broken
+/// surfaces it as new again. If an authored ref is later fixed in
+/// source, validate-workspace flags the orphan as "resolved" so the
+/// stale entry can be removed from the ledger.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrphanLedgerEntry {
+ /// Doc path (workspace-relative) of the orphan's source.
+ pub doc: String,
+ /// Section id the orphan ref is authored from (without leading `§`).
+ pub from: String,
+ /// Section id the orphan ref points to (without leading `§`).
+ pub to: String,
+ /// Why this orphan is acceptable (target pending authoring,
+ /// cross-doc placeholder, etc.). Required field — the orphan is
+ /// frozen-by-rationale, not silently suppressed.
+ pub reason: String,
+ /// When the entry was registered (free-form date or round id).
+ pub since: String,
 }
 
 /// `[style]` table — locale + threshold overrides for T3/T4 style rules
@@ -450,6 +485,70 @@ medium_name = "design_doc"
  let generic = SchemaSection::generic_default();
  assert!(generic.is_changelog_title("Changelog"));
  assert!(generic.is_changelog_title("CHANGELOG"));
+ }
+
+ // Round 253 — per-workspace orphan ledger config table (composes with
+ // the compile-time KNOWN_STALE_ORPHANS const in mnemosyne-cli). External
+ // workspaces author their legacy orphans here instead of patching the
+ // const.
+ #[test]
+ fn orphan_ledger_omitted_yields_empty_vec() {
+ let content = "[workspace]\ndocs = [\"a.md\"]\n";
+ let cfg = parse_config(content).unwrap();
+ assert!(cfg.orphan_ledger.is_empty());
+ }
+
+ #[test]
+ fn orphan_ledger_array_of_tables_parses() {
+ let content = r#"
+[workspace]
+docs = ["ARCHITECTURE.md"]
+
+[[orphan_ledger]]
+doc = "ARCHITECTURE.md"
+from = "11/11.5"
+to = "6.2.6"
+reason = "Cross-doc to RFC §6.2.6, target pending authoring"
+since = "2026-05-08"
+
+[[orphan_ledger]]
+doc = "ARCHITECTURE.md"
+from = "13"
+to = "6.2.6"
+reason = "Same target as 11/11.5 entry"
+since = "2026-05-08"
+"#;
+ let cfg = parse_config(content).unwrap();
+ assert_eq!(cfg.orphan_ledger.len(), 2);
+ let first = &cfg.orphan_ledger[0];
+ assert_eq!(first.doc, "ARCHITECTURE.md");
+ assert_eq!(first.from, "11/11.5");
+ assert_eq!(first.to, "6.2.6");
+ assert!(first.reason.contains("Cross-doc"));
+ assert_eq!(first.since, "2026-05-08");
+ }
+
+ #[test]
+ fn orphan_ledger_missing_required_field_rejected() {
+ // `reason` is required — silent suppression is not allowed. The
+ // anyhow context wraps the serde error, so check the full chain.
+ let content = r#"
+[workspace]
+docs = ["a.md"]
+
+[[orphan_ledger]]
+doc = "a.md"
+from = "1"
+to = "2"
+since = "2026-05-08"
+"#;
+ let err = parse_config(content).unwrap_err();
+ let chain = format!("{:#}", err);
+ assert!(
+ chain.contains("reason"),
+ "missing-reason error should mention the field; full chain: {}",
+ chain
+ );
  }
 
  #[test]

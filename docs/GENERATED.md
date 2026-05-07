@@ -8,5 +8,53 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 ## Changelog (atomic ledger)
 
-(empty — first atomic entry will populate this section.)
+### Round 252 — Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)
+
+**Changes**:
+- crates/mnemosyne-validator/src/parser.rs: fenced-code-block detection now allows 0–3 leading spaces (CommonMark §98). Previously `line.starts_with("```")` required the fence at column 0, so indented fences (common inside list items) were ignored and their body lines were re-interpreted as ATX headings.
+- crates/mnemosyne-validator/src/parser.rs::parse_heading: require space, tab, or end-of-line after the `#{1,6}` sequence and reject lines with 4+ leading spaces (CommonMark §62). Previously `#1 prose` and `    # x` were lifted to headings, creating spurious numbered H1 sections from inline `#N` prose references.
+- crates/mnemosyne-validator/src/parser.rs tests: 5 regression tests added — `atx_heading_requires_space_after_hashes`, `atx_heading_rejects_four_plus_leading_spaces`, `parse_markdown_indented_fence_is_recognized`, `parse_markdown_round_trips_indented_fence_with_hash_lines`, `parse_markdown_inline_hash_number_in_prose_is_not_heading`.
+- crates/mnemosyne-cli/src/main.rs::cmd_validate: when round-trip fails, dump the section_id and cross_ref BTreeSet diff (a-only / b-only, capped at 15 / 20 entries) so authors can locate which typed-fact tuples drifted between parse → emit → re-parse. Diagnostic only fires on failure path — happy-path output unchanged.
+
+
+
+**Verification**:
+- cargo test --release -p mnemosyne-validator: 28 parser tests pass (23 pre-existing + 5 new regression tests).
+- watching-zenoh adoption regression: round-trip mandatory 10/13 → 13/13 with parser fix alone, no source-markdown edits required. T1 orphan total 87 → 75 across changelog-config alignment + parser fix.
+- mnemosyne self-application validate-workspace unaffected: docs=1/1, T1 orphan=0, round-trip=1/1, style violation counts unchanged from pre-fix baseline.
+
+
+
+
+**Carry forward**:
+- list-item-nested fences (CommonMark §49) — where the fence indent matches the enclosing list item's content-indent column rather than 0–3 spaces — remain unhandled; the parser still treats them as plain prose. Full coverage requires list-item state tracking, which is a larger refactor than this conformance round. Acceptable carry: no current Mnemosyne self-doc or known external workspace depends on this case.
+- diagnostic dump in cmd_validate could later evolve into a structured `--diff-format=json` flag for tooling consumers; current eprintln-only form is sufficient for human authoring loops.
+
+
+
+### Round 253 — External-workspace orphan ledger via mnemosyne.toml [[orphan_ledger]] — Round 80 OPTION D extended to non-self-application carriers
+
+**Changes**:
+- crates/mnemosyne-validator/src/config.rs: add `OrphanLedgerEntry` struct + `WorkspaceConfig.orphan_ledger: Vec<OrphanLedgerEntry>` field. Each entry carries `doc / from / to / reason / since`; `reason` is required so suppression cannot be silent. Re-exported from `lib.rs` for downstream consumers.
+- crates/mnemosyne-cli/src/main.rs::cmd_validate_workspace: known_orphan_keys now composes (set-union) from two sources — the compile-time `KNOWN_STALE_ORPHANS` const (mnemosyne self-application carry, currently empty) and the workspace's `[[orphan_ledger]]` config rows. Set-equality drift catch (new orphan / resolved entry) preserved across both sources. Ledger output distinguishes `(const)` vs `(config)` rows for tracing.
+- crates/mnemosyne-validator/src/config.rs tests: 3 new tests — `orphan_ledger_omitted_yields_empty_vec`, `orphan_ledger_array_of_tables_parses`, `orphan_ledger_missing_required_field_rejected` (chain-format assertion to see through anyhow context wrapping).
+- watching-zenoh adoption proof: 75 legacy orphan entries authored as `[[orphan_ledger]]` in watching-zenoh/mnemosyne.toml; validate-workspace post-adoption reports `T1 orphan total=75 (ledger=75, new=+0, resolved=-0)` with exit code 0.
+
+
+
+**Verification**:
+- cargo test --release -p mnemosyne-validator --lib config::: 14 config tests pass (3 new + 11 pre-existing).
+- cargo test --release -p mnemosyne-validator: 159 tests pass total, no regressions.
+- mnemosyne self-validate-workspace post-feature: docs=1/1, T1 orphan=0 (ledger=0, new=+0), round-trip=1/1, atomic ledger entries=2 (Round 252 + Round 253), GENERATED.md=sync.
+- watching-zenoh validate-workspace post-feature + adoption: exit code 0, T1 orphan=75 (ledger=75, new=+0, resolved=-0), round-trip=13/13.
+
+
+
+
+**Carry forward**:
+- Migration of `KNOWN_STALE_ORPHANS` const-based ledger to fully config-based remains optional — the const is empty in current self-application, so the union semantics are no-op in practice. Removing the const entirely is a future cleanup round if no future entry is ever added there.
+- External users adopting mnemosyne in legacy multi-doc mode now have a textbook path for legacy orphan carry. Atomic-store-mode workspaces still use the FrozenList primitive for the same goal at the entity level; the two ledgers serve different layers (cross-ref baseline vs. ChangelogEntry membership) and do not conflict.
+- Triage path for watching-zenoh's 75 entries: incremental rewrite as `[link](other.md#anchor)` cross-doc form when targets are identified, or author the missing target sections in rfc-sce-protocol-synthesis.md. Each resolved orphan auto-surfaces via drift catch.
+
+
 
