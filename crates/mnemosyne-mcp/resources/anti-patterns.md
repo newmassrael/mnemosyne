@@ -74,6 +74,31 @@ types (Section / ChangelogEntry / FrozenList / CrossRef) are
 closed-form per Round 60 ratify. Schema decomposition (Round 162) is a
 separate spec round, not a per-session concern.
 
+## ❌ "Let me drop the doc from `workspace.docs` to silence its orphans"
+
+Editing `mnemosyne.toml::workspace.docs` to make a problem disappear
+is silence-bypass — the orphans become invisible without the project
+auditing why. **Distinct from**: a *ratified* scope correction, which
+is the textbook path:
+
+✅ DO: append a Round entry whose `decision_summary` records the scope
+   change ("Doc X removed from workspace.docs as <reason>"). Edit
+   `mnemosyne.toml::workspace.docs`. Register the now-dangling atomic
+   refs in `[[orphan_ledger]]` with `kind = atomic_entry_ref` (for
+   ChangelogEntry impact_refs) or `kind = atomic_section_ref` (for
+   Section impact_scope), `reason` pointing back at the Round entry.
+   Run `validate_workspace`; the dangling refs now appear as
+   `ledger=N` carry, not `new=+M` reject (Round 254).
+
+❌ DON'T: silently shrink `workspace.docs` and accept the resulting
+   orphans without a Round entry recording why. The orphan ledger
+   `reason` field is required precisely to prevent this.
+
+The distinction is whether the audit trail records *why* the scope
+shrank. Frozen-ledger preserves Round N's body; orphan-ledger absorbs
+Round N's now-dangling refs. Together they cleanly separate "history
+record" from "current state".
+
 ## Self-check questions
 
 Before any non-trivial action on the atomic store, run through these:

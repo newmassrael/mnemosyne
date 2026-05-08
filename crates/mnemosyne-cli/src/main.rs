@@ -29,7 +29,8 @@ use mnemosyne_validator::{
  set_section_body, set_section_decision_status,
  style::{StyleSeverity, StyleViolation},
  validator::cross_ref_orphan_reject_with_workspace,
- AtomicStore, LoadedConfig, MutateError, ParsedDoc, SchemaSection, ValidationError, Workspace,
+ AtomicStore, LoadedConfig, MutateError, OrphanKind, ParsedDoc, SchemaSection, ValidationError,
+ Workspace,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -1024,7 +1025,14 @@ fn cmd_validate_workspace() -> Result<()> {
  })
  .collect();
  let validate_workspace_cfg_for_ledger = workspace_config()?;
+ // Round 254 — only kind=MarkdownRef entries compose into the markdown
+ // orphan ledger. Atomic-internal kinds (AtomicEntryRef / AtomicSectionRef)
+ // are composed into separate atomic-orphan ledger sets below at the
+ // atomic store validation step.
  for entry in &validate_workspace_cfg_for_ledger.config.orphan_ledger {
+ if entry.kind != OrphanKind::MarkdownRef {
+ continue;
+ }
  known_orphan_keys.insert(OrphanKey {
  doc: entry.doc.clone(),
  from_section: entry.from.clone(),
@@ -1186,6 +1194,41 @@ fn cmd_validate_workspace() -> Result<()> {
  let mut id_set = workspace_section_id_set(&ws);
  id_set.extend(ws.atomic_id_set.iter().cloned());
  let atomic = atomic_cli::validate_atomic_store(&root, &id_set)?;
+ // Round 254 — atomic-internal orphan ledger composition. Compose
+ // (from, to) BTreeSets per kind from the same `[[orphan_ledger]]` table
+ // that already cover markdown refs (Round 253). `kind = AtomicEntryRef`
+ // covers ChangelogEntry impact_refs; `kind = AtomicSectionRef` covers
+ // Section impact_scope. Set-equality drift catch (new / resolved)
+ // mirrors the Round 253 markdown-ref pattern.
+ let atomic_entry_actual: BTreeSet<(String, String)> =
+ atomic.orphan_entry_refs.iter().cloned().collect();
+ let atomic_section_actual: BTreeSet<(String, String)> =
+ atomic.orphan_section_refs.iter().cloned().collect();
+ let mut atomic_entry_ledger: BTreeSet<(String, String)> = BTreeSet::new();
+ let mut atomic_section_ledger: BTreeSet<(String, String)> = BTreeSet::new();
+ for entry in &validate_workspace_cfg_for_ledger.config.orphan_ledger {
+ match entry.kind {
+ OrphanKind::AtomicEntryRef => {
+ atomic_entry_ledger.insert((entry.from.clone(), entry.to.clone()));
+ }
+ OrphanKind::AtomicSectionRef => {
+ atomic_section_ledger.insert((entry.from.clone(), entry.to.clone()));
+ }
+ OrphanKind::MarkdownRef => {} // already composed into known_orphan_keys
+ }
+ }
+ let new_atomic_entries: Vec<&(String, String)> = atomic_entry_actual
+ .difference(&atomic_entry_ledger)
+ .collect();
+ let resolved_atomic_entries: Vec<&(String, String)> = atomic_entry_ledger
+ .difference(&atomic_entry_actual)
+ .collect();
+ let new_atomic_sections: Vec<&(String, String)> = atomic_section_actual
+ .difference(&atomic_section_ledger)
+ .collect();
+ let resolved_atomic_sections: Vec<&(String, String)> = atomic_section_ledger
+ .difference(&atomic_section_actual)
+ .collect();
  println!(
  "atomic ledger: entries={} / sections={} / orphan_refs={}+{} / GENERATED.md={}",
  atomic.entries,
@@ -1194,23 +1237,63 @@ fn cmd_validate_workspace() -> Result<()> {
  atomic.orphan_section_refs.len(),
  if atomic.generated_in_sync { "sync" } else { "STALE" }
  );
- if !atomic.orphan_entry_refs.is_empty() {
- println!("atomic entry orphan_refs:");
+ if !atomic.orphan_entry_refs.is_empty() || !atomic_entry_ledger.is_empty() {
+ println!(
+ "atomic entry orphan_refs: ledger={}, new=+{}, resolved=-{}",
+ atomic_entry_ledger.len(),
+ new_atomic_entries.len(),
+ resolved_atomic_entries.len(),
+ );
  for (entry, target) in &atomic.orphan_entry_refs {
- println!(" + {}: §{}", entry, target);
+ let status =
+ if atomic_entry_ledger.contains(&(entry.clone(), target.clone())) {
+ "ledgered"
+ } else {
+ "new"
+ };
+ println!(" {} {}: §{}", status, entry, target);
+ }
+ for (entry, target) in &resolved_atomic_entries {
+ println!(" resolved- {}: §{}", entry, target);
  }
  }
- if !atomic.orphan_section_refs.is_empty() {
- println!("atomic section orphan_refs:");
+ if !atomic.orphan_section_refs.is_empty() || !atomic_section_ledger.is_empty() {
+ println!(
+ "atomic section orphan_refs: ledger={}, new=+{}, resolved=-{}",
+ atomic_section_ledger.len(),
+ new_atomic_sections.len(),
+ resolved_atomic_sections.len(),
+ );
  for (section, target) in &atomic.orphan_section_refs {
- println!(" + §{}: §{}", section, target);
+ let status = if atomic_section_ledger
+ .contains(&(section.clone(), target.clone()))
+ {
+ "ledgered"
+ } else {
+ "new"
+ };
+ println!(" {} §{}: §{}", status, section, target);
+ }
+ for (section, target) in &resolved_atomic_sections {
+ println!(" resolved- §{}: §{}", section, target);
  }
  }
- if !atomic.orphan_entry_refs.is_empty() || !atomic.orphan_section_refs.is_empty() {
+ // Round 254 — reject only on un-ledgered new orphans or ledgered-but-
+ // fixed (resolved) drift. Pure ledger carry passes. This is the textbook
+ // scope-correction path: a Round entry records the scope change, then
+ // the dangling refs are registered here with kind=atomic_entry_ref or
+ // kind=atomic_section_ref pointing back at that Round in `reason`.
+ let atomic_orphan_drift = new_atomic_entries.len()
+ + resolved_atomic_entries.len()
+ + new_atomic_sections.len()
+ + resolved_atomic_sections.len();
+ if atomic_orphan_drift > 0 {
  bail!(
- "atomic store cross-ref orphan {}cases — workspace_section_id_set missing \
-  (Round 169 dogfood-switch ratify, T1 atomic scope equivalent)",
- atomic.orphan_entry_refs.len() + atomic.orphan_section_refs.len()
+ "atomic store cross-ref orphan drift {}cases — register in \
+  [[orphan_ledger]] with kind=atomic_entry_ref or \
+  kind=atomic_section_ref, or fix the source (Round 254 atomic-internal \
+  orphan ledger; Round 169 dogfood-switch carry)",
+ atomic_orphan_drift
  );
  }
  if !atomic.generated_in_sync {

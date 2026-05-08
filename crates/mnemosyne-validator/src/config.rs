@@ -53,26 +53,70 @@ pub struct WorkspaceConfig {
  pub orphan_ledger: Vec<OrphanLedgerEntry>,
 }
 
+/// Round 254 — atomic-internal orphan ledger kind.
+///
+/// Round 253 introduced `[[orphan_ledger]]` for markdown-body cross-ref
+/// orphans. Round 254 extends the ledger to also cover atomic-internal
+/// orphans introduced by Round 169 dogfood-switch ratify — namely
+/// dangling refs in `ChangelogEntry.impact_refs` and `Section.impact_scope`
+/// that arise when a doc/section is removed from `workspace.docs` after a
+/// prior `Round N` entry has cited it. The frozen-ledger invariant blocks
+/// rewriting the prior entry; the orphan ledger absorbs the dangling refs
+/// without silencing them. This is the textbook scope-correction path:
+/// append a new Round entry recording the scope change, then register the
+/// now-dangling atomic refs here with `reason` pointing to that entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OrphanKind {
+ /// Markdown body cross-ref orphan (Round 253 default). Existing toml
+ /// rows without `kind` parse as this variant via serde default,
+ /// preserving Round 253 behavior.
+ MarkdownRef,
+ /// ChangelogEntry `impact_refs` orphan (Round 254). `from` = entry_id
+ /// (e.g. `"Round 1"`); `to` = atomic section_id missing from id_set;
+ /// `doc` = `"<atomic-changelog>"` by convention.
+ AtomicEntryRef,
+ /// Section `impact_scope` orphan (Round 254). `from` = section_id
+ /// authoring the impact_scope; `to` = atomic section_id missing from
+ /// id_set; `doc` = `"<atomic-section>"` by convention.
+ AtomicSectionRef,
+}
+
+fn default_orphan_kind() -> OrphanKind {
+ OrphanKind::MarkdownRef
+}
+
 /// One row of `[[orphan_ledger]]` in `mnemosyne.toml` — a known-stale
 /// cross-ref that the workspace explicitly accepts as legacy carry.
 ///
-/// Validate-workspace requires the actual orphan set to set-equal the
-/// merged ledger (config + const). Adding an entry here suppresses one
-/// orphan from "new"; removing an entry whose ref is still broken
-/// surfaces it as new again. If an authored ref is later fixed in
-/// source, validate-workspace flags the orphan as "resolved" so the
-/// stale entry can be removed from the ledger.
+/// Round 253 covered markdown-body cross-refs; Round 254 generalized the
+/// ledger to also cover atomic-internal orphans (ChangelogEntry impact_refs
+/// + Section impact_scope) via the `kind` field.
+///
+/// Validate-workspace requires the actual orphan set (per kind) to
+/// set-equal the merged ledger (config + const). Adding an entry here
+/// suppresses one orphan from "new"; removing an entry whose ref is still
+/// broken surfaces it as new again. If an authored ref is later fixed,
+/// validate-workspace flags the orphan as "resolved" so the stale entry
+/// can be removed from the ledger.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrphanLedgerEntry {
- /// Doc path (workspace-relative) of the orphan's source.
+ /// Round 254 — orphan kind. Default = `MarkdownRef` for backward
+ /// compatibility with Round 253 toml rows.
+ #[serde(default = "default_orphan_kind")]
+ pub kind: OrphanKind,
+ /// Doc path (workspace-relative) of the orphan's source. For
+ /// `kind = AtomicEntryRef`, by convention `"<atomic-changelog>"`.
+ /// For `kind = AtomicSectionRef`, `"<atomic-section>"`.
  pub doc: String,
- /// Section id the orphan ref is authored from (without leading `§`).
+ /// Section id (or entry_id for `AtomicEntryRef`) the orphan ref is
+ /// authored from (without leading `§`).
  pub from: String,
  /// Section id the orphan ref points to (without leading `§`).
  pub to: String,
  /// Why this orphan is acceptable (target pending authoring,
- /// cross-doc placeholder, etc.). Required field — the orphan is
- /// frozen-by-rationale, not silently suppressed.
+ /// cross-doc placeholder, scope-correction carry, etc.). Required
+ /// field — the orphan is frozen-by-rationale, not silently suppressed.
  pub reason: String,
  /// When the entry was registered (free-form date or round id).
  pub since: String,
@@ -526,6 +570,102 @@ since = "2026-05-08"
  assert_eq!(first.to, "6.2.6");
  assert!(first.reason.contains("Cross-doc"));
  assert_eq!(first.since, "2026-05-08");
+ // Round 254 — kind defaults to MarkdownRef when omitted (Round 253
+ // backward compatibility).
+ assert_eq!(first.kind, OrphanKind::MarkdownRef);
+ }
+
+ // Round 254 — atomic-internal orphan ledger kind variants.
+ #[test]
+ fn orphan_ledger_kind_atomic_entry_ref_parses() {
+ let content = r#"
+[workspace]
+docs = ["a.md"]
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 1"
+to = "missing-section"
+reason = "Round 7 scope correction; doc removed from workspace.docs"
+since = "Round 7"
+"#;
+ let cfg = parse_config(content).unwrap();
+ assert_eq!(cfg.orphan_ledger.len(), 1);
+ let entry = &cfg.orphan_ledger[0];
+ assert_eq!(entry.kind, OrphanKind::AtomicEntryRef);
+ assert_eq!(entry.doc, "<atomic-changelog>");
+ assert_eq!(entry.from, "Round 1");
+ assert_eq!(entry.to, "missing-section");
+ }
+
+ #[test]
+ fn orphan_ledger_kind_atomic_section_ref_parses() {
+ let content = r#"
+[workspace]
+docs = ["a.md"]
+
+[[orphan_ledger]]
+kind = "atomic_section_ref"
+doc = "<atomic-section>"
+from = "some-section"
+to = "missing-target"
+reason = "scope correction carry"
+since = "Round 7"
+"#;
+ let cfg = parse_config(content).unwrap();
+ assert_eq!(cfg.orphan_ledger.len(), 1);
+ assert_eq!(cfg.orphan_ledger[0].kind, OrphanKind::AtomicSectionRef);
+ }
+
+ #[test]
+ fn orphan_ledger_mixed_kinds_parses() {
+ let content = r#"
+[workspace]
+docs = ["a.md"]
+
+[[orphan_ledger]]
+doc = "a.md"
+from = "1"
+to = "2"
+reason = "markdown carry"
+since = "Round 5"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 1"
+to = "removed-section"
+reason = "scope-correction carry"
+since = "Round 7"
+"#;
+ let cfg = parse_config(content).unwrap();
+ assert_eq!(cfg.orphan_ledger.len(), 2);
+ assert_eq!(cfg.orphan_ledger[0].kind, OrphanKind::MarkdownRef);
+ assert_eq!(cfg.orphan_ledger[1].kind, OrphanKind::AtomicEntryRef);
+ }
+
+ #[test]
+ fn orphan_ledger_kind_unknown_variant_rejected() {
+ let content = r#"
+[workspace]
+docs = ["a.md"]
+
+[[orphan_ledger]]
+kind = "bogus_kind"
+doc = "a.md"
+from = "1"
+to = "2"
+reason = "test"
+since = "Round 5"
+"#;
+ let err = parse_config(content).unwrap_err();
+ let chain = format!("{:#}", err);
+ assert!(
+ chain.contains("kind") || chain.contains("variant"),
+ "unknown-kind error should mention the field/variant; full chain: {}",
+ chain
+ );
  }
 
  #[test]

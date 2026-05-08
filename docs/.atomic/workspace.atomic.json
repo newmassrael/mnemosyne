@@ -38,6 +38,31 @@
         "External users adopting mnemosyne in legacy multi-doc mode now have a textbook path for legacy orphan carry. Atomic-store-mode workspaces still use the FrozenList primitive for the same goal at the entity level; the two ledgers serve different layers (cross-ref baseline vs. ChangelogEntry membership) and do not conflict.",
         "Triage path for watching-zenoh's 75 entries: incremental rewrite as `[link](other.md#anchor)` cross-doc form when targets are identified, or author the missing target sections in rfc-sce-protocol-synthesis.md. Each resolved orphan auto-surfaces via drift catch."
       ]
+    },
+    "Round 254": {
+      "decision_summary": "atomic-internal orphan ledger — extends [[orphan_ledger]] to cover ChangelogEntry impact_refs and Section impact_scope dangling refs (kind = atomic_entry_ref / atomic_section_ref); resolves frozen-ledger vs scope-change confusion.",
+      "changes_bullets": [
+        "config.rs: OrphanKind enum + OrphanLedgerEntry.kind field (default = MarkdownRef for compat)",
+        "main.rs validate-workspace: kind-aware ledger; 3 categories with new/resolved drift catch",
+        "frozen-ledger.md: 'frozen ≠ scope-immutable' carve-out + textbook scope-correction path documented",
+        "anti-patterns.md: silence-bypass vs ratified-scope-change separation as new anti-pattern entry",
+        "schema-guide.md: [[orphan_ledger]] section added with kind field documentation and examples",
+        "config.rs tests: 4 new tests covering kind default, atomic kinds, mixed, unknown reject"
+      ],
+      "verification_bullets": [
+        "cargo check --release -p mnemosyne-cli -p mnemosyne-validator: clean compile, no new warnings",
+        "cargo test --release -p mnemosyne-validator: all tests pass (4 new + existing)",
+        "cargo install --path crates/mnemosyne-cli --force: binary replaced",
+        "cargo install --path crates/mnemosyne-mcp --force: binary replaced"
+      ],
+      "impact_refs": [
+        "generatedmd--atomic-store-derived-view/changelog-atomic-ledger"
+      ],
+      "carry_forward_bullets": [
+        "External adoption: watching-zenoh Round 7 — README/SESSION_KICKOFF via kind=atomic_entry_ref",
+        "MCP server reconnect required for external clients to pick up new mnemosyne-mcp build",
+        "Schema documentation alignment: [[orphan_ledger]] section reflects Round 253+254 wire"
+      ]
     }
   },
   "schema_version": 1

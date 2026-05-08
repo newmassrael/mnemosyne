@@ -53,6 +53,42 @@ These are hard violations, not stylistic preferences:
 ✅ Mutate `Section` atomic fields — sections are not frozen, only
    ChangelogEntries.
 ✅ Add CrossRefs between existing sections.
+✅ **Record a scope change** (e.g. removing a doc from `workspace.docs`
+   after a prior `Round N` cited it) by appending a *new* Round entry
+   that records the scope correction, then registering the now-dangling
+   atomic refs in `[[orphan_ledger]]` with `kind = atomic_entry_ref`
+   or `kind = atomic_section_ref` (Round 254).
+
+## Frozen ≠ scope-immutable
+
+A common confusion: frozen-ledger forbids **rewriting** a past entry's
+body. It does **not** forbid the project from later *changing scope*
+in ways that leave the past entry's `impact_refs` dangling. The
+textbook scope-correction path:
+
+1. Append a new `Round N+k` entry whose `decision_summary` records the
+   scope change ("Doc X removed from workspace.docs as activity-log
+   genre misfit", etc.). Past Round N is unchanged.
+2. Edit `mnemosyne.toml::workspace.docs` to remove the doc.
+3. Register the now-dangling atomic refs in `[[orphan_ledger]]`:
+   ```toml
+   [[orphan_ledger]]
+   kind = "atomic_entry_ref"
+   doc = "<atomic-changelog>"
+   from = "Round N"
+   to = "<section_id that was in the removed doc>"
+   reason = "Round N+k scope correction; doc removed from workspace.docs"
+   since = "Round N+k"
+   ```
+4. Run `validate_workspace`. The atomic-internal orphan now appears as
+   `ledger=N` carry, not `new=+M` reject. Frozen-ledger preserved
+   (Round N body unchanged); scope correctly reflected (workspace.docs
+   shrunk); audit-traceable (Round N+k entry pinpoints why).
+
+This is how audit-traced systems (accounting, git, banking) handle
+state changes: history is preserved, future state is mutable, and
+each change leaves a record. Frozen-ledger is about the *records*,
+not the *state they describe*.
 
 ## Strong-carry sections
 

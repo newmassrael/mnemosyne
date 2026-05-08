@@ -58,3 +58,33 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 254 — atomic-internal orphan ledger — extends [[orphan_ledger]] to cover ChangelogEntry impact_refs and Section impact_scope dangling refs (kind = atomic_entry_ref / atomic_section_ref); resolves frozen-ledger vs scope-change confusion.
+
+**Changes**:
+- config.rs: OrphanKind enum + OrphanLedgerEntry.kind field (default = MarkdownRef for compat)
+- main.rs validate-workspace: kind-aware ledger; 3 categories with new/resolved drift catch
+- frozen-ledger.md: 'frozen ≠ scope-immutable' carve-out + textbook scope-correction path documented
+- anti-patterns.md: silence-bypass vs ratified-scope-change separation as new anti-pattern entry
+- schema-guide.md: [[orphan_ledger]] section added with kind field documentation and examples
+- config.rs tests: 4 new tests covering kind default, atomic kinds, mixed, unknown reject
+
+
+
+**Verification**:
+- cargo check --release -p mnemosyne-cli -p mnemosyne-validator: clean compile, no new warnings
+- cargo test --release -p mnemosyne-validator: all tests pass (4 new + existing)
+- cargo install --path crates/mnemosyne-cli --force: binary replaced
+- cargo install --path crates/mnemosyne-mcp --force: binary replaced
+
+
+
+**Impact**: §generatedmd--atomic-store-derived-view/changelog-atomic-ledger
+
+
+**Carry forward**:
+- External adoption: watching-zenoh Round 7 — README/SESSION_KICKOFF via kind=atomic_entry_ref
+- MCP server reconnect required for external clients to pick up new mnemosyne-mcp build
+- Schema documentation alignment: [[orphan_ledger]] section reflects Round 253+254 wire
+
+
+

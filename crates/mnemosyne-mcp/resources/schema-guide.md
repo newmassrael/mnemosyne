@@ -94,6 +94,66 @@ Maps a canonical form to a list of non-canonical variants for the
 |---|---|---|---|
 | `sidecar_path` | path | `"docs/.atomic/workspace.atomic.json"` | atomic store JSON location |
 
+### `[[orphan_ledger]]` (Round 253 + 254)
+
+Per-workspace registration of known-stale cross-refs. Each row is a
+table of arrays. `reason` is required — silent suppression is not
+allowed.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `kind` | enum | `"markdown_ref"` | `markdown_ref` / `atomic_entry_ref` / `atomic_section_ref` (Round 254) |
+| `doc` | string | (required) | source doc path (workspace-relative); `"<atomic-changelog>"` or `"<atomic-section>"` for atomic kinds |
+| `from` | string | (required) | section_id (or entry_id for `atomic_entry_ref`) authoring the ref |
+| `to` | string | (required) | section_id the ref points to (without leading `§`) |
+| `reason` | string | (required) | why this orphan is acceptable; for scope-correction carry, point at the Round entry |
+| `since` | string | (required) | when registered (free-form date or round id) |
+
+**Round 253** introduced `markdown_ref` kind — markdown body cross-ref
+orphans (e.g. cross-doc placeholder targets pending authoring). The
+ledger composes (set-union) with the binary's `KNOWN_STALE_ORPHANS`
+const for self-application.
+
+**Round 254** added `atomic_entry_ref` and `atomic_section_ref` kinds
+to cover atomic-internal orphans introduced by Round 169 dogfood-switch
+ratify. Use these when a doc/section removal from `workspace.docs`
+leaves prior `ChangelogEntry.impact_refs` or `Section.impact_scope`
+pointing at now-missing atomic IDs. See `frozen-ledger` and
+`anti-patterns` concepts for the textbook scope-correction path.
+
+```toml
+# Markdown body orphan (Round 253 default)
+[[orphan_ledger]]
+doc = "ARCHITECTURE.md"
+from = "11/11.5"
+to = "6.2.6"
+reason = "Cross-doc to RFC §6.2.6, target pending authoring"
+since = "2026-05-08"
+
+# Atomic-internal ChangelogEntry impact_ref orphan (Round 254)
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 1"
+to = "watching-zenoh"
+reason = "Round 7 scope correction: README removed from workspace.docs"
+since = "Round 7"
+
+# Atomic-internal Section impact_scope orphan (Round 254)
+[[orphan_ledger]]
+kind = "atomic_section_ref"
+doc = "<atomic-section>"
+from = "some-section/sub-id"
+to = "removed-target-id"
+reason = "Round N scope correction; target was in removed doc"
+since = "Round N"
+```
+
+Set-equality drift catch: `validate-workspace` reports `new=+M` when a
+new orphan appears (must be ledgered or fixed) and `resolved=-K` when
+a ledgered ref is later fixed in source (entry should be deleted from
+the ledger).
+
 ## Conventions for new projects
 
 If you're standing up a new Mnemosyne project, these defaults work:
