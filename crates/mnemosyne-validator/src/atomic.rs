@@ -17,8 +17,16 @@
 //! - Section atomic: `set_section_intent` / `set_section_rationale` /
 //! `set_section_inputs` / `set_section_outputs` / `add_section_caveat` /
 //! `set_section_alternatives` / `set_section_impact_scope` /
-//! `add_section_example`
+//! `add_section_example` / `add_section_implementation` (Round 259)
 //! - ChangelogEntry atomic: `append_changelog_entry_v2`
+//!
+//! Round 259 — `Section.implementations` lands as the substrate for Path B
+//! of the code-citation defense (Spec ↔ Code bidirectional binding). The
+//! atomic store records "this section is implemented at file:symbol";
+//! Round 260+ cross-checks code citations against the spec's authoritative
+//! binding (set-equality, the Round 80 OPTION D pattern lifted from cross-
+//! ref orphan reject). Schema + mutate primitive only — validator
+//! extension and section seeding are deferred to later rounds.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -57,6 +65,13 @@ pub struct AtomicSection {
  /// code/config block list. T3 style threshold: code block itself exempt (Round 161 §41).
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub examples: Vec<ExampleBlock>,
+ /// Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate.
+ /// Set of `(file, symbol?)` bindings that authoritatively own "this
+ /// section is implemented here". Round 260+ cross-checks code citations
+ /// against this set. Append-only (no replace/remove primitive); duplicate
+ /// `(file, symbol)` rejected at write time (set semantics).
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub implementations: Vec<Implementation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +85,22 @@ pub struct ExampleBlock {
  /// Language tag for fenced code block (`rust` / `toml` / `markdown` / etc).
  pub language: String,
  pub code: String,
+}
+
+/// Round 259 — Path B binding entry (Spec → Code).
+///
+/// `file` = workspace-relative POSIX path (no leading `/`, no `..` segment,
+/// no backslash; validated at write time by [`add_section_implementation`]).
+/// `symbol` = optional opaque language-agnostic identifier (function /
+/// type / qualified path); when present, narrows the binding from "this
+/// file" to "this symbol within this file". Stored opaquely — the spec
+/// layer does not encode language grammar; Round 260's bidirectional
+/// cross-check operates on the strings as-is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Implementation {
+ pub file: String,
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub symbol: Option<String>,
 }
 
 /// ChangelogEntry atomic typed fields (Round 161 §39 reframe ratify).
@@ -262,6 +293,17 @@ pub fn synthesize_section_body(atomic: &AtomicSection) -> String {
  .impact_scope
  .iter()
  .map(|s| format!("- §{}", s))
+ .collect();
+ parts.push(block.join("\n"));
+ }
+ if !atomic.implementations.is_empty() {
+ let block: Vec<String> = atomic
+ .implementations
+ .iter()
+ .map(|i| match &i.symbol {
+ Some(s) => format!("- {}:{}", i.file, s),
+ None => format!("- {}", i.file),
+ })
  .collect();
  parts.push(block.join("\n"));
  }
@@ -478,6 +520,137 @@ pub fn add_section_example(
  )
 }
 
+/// Round 259 — Path B binding entry append.
+///
+/// Validation at the trust boundary (data integrity only — language
+/// grammar belongs in Round 260's cross-check):
+/// - `file`: non-empty after trim, workspace-relative POSIX shape (reject
+///   leading `/`, leading `./`, `..` segment, `\`, internal `//`,
+///   trailing `/`). File existence is *not* checked — schema records
+///   intent; consumption-time check is Round 260's concern.
+/// - `symbol`: when `Some`, non-empty after trim, no whitespace edges,
+///   no internal newline. Opaque otherwise (no language regex).
+///
+/// Set semantics: duplicate `(file, symbol)` returns Validation error
+/// (fail-loud > silent dedup; the data model is a set of bindings).
+/// Existing entries are append-only — no remove/replace primitive
+/// exists in this round (Round 161 §41 frozen-ledger doctrine for
+/// atomic fields).
+pub fn add_section_implementation(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ file: &str,
+ symbol: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ let file_clean = validate_implementation_file(file)?;
+ let symbol_clean = match symbol {
+ Some(s) => Some(validate_implementation_symbol(s)?),
+ None => None,
+ };
+ let candidate = Implementation {
+ file: file_clean,
+ symbol: symbol_clean,
+ };
+ let section = store.section_mut(section_id);
+ if section.implementations.contains(&candidate) {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation `{}{}` already present on §{} (set semantics — duplicates rejected at write time)",
+ candidate.file,
+ candidate
+ .symbol
+ .as_deref()
+ .map(|s| format!(":{}", s))
+ .unwrap_or_default(),
+ section_id,
+ )));
+ }
+ section.implementations.push(candidate);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "add_section_implementation",
+ "section",
+ section_id,
+ )
+}
+
+fn validate_implementation_file(raw: &str) -> Result<String, AtomicMutateError> {
+ let trimmed = raw.trim();
+ if trimmed.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "implementation file: must be non-empty".to_string(),
+ ));
+ }
+ if trimmed != raw {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: leading or trailing whitespace not allowed (`{}`)",
+ raw
+ )));
+ }
+ if trimmed.starts_with('/') {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: must be workspace-relative (no leading `/`): `{}`",
+ trimmed
+ )));
+ }
+ if trimmed.starts_with("./") {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: drop leading `./` for canonical form (`{}`)",
+ trimmed
+ )));
+ }
+ if trimmed.contains('\\') {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: backslash not allowed (workspace paths are POSIX): `{}`",
+ trimmed
+ )));
+ }
+ if trimmed.contains("//") {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: collapse internal `//` (`{}`)",
+ trimmed
+ )));
+ }
+ if trimmed.ends_with('/') {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: trailing `/` not allowed (must point at a file, not a dir): `{}`",
+ trimmed
+ )));
+ }
+ for seg in trimmed.split('/') {
+ if seg == ".." {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation file: `..` segment not allowed (no traversal in normalized paths): `{}`",
+ trimmed
+ )));
+ }
+ }
+ Ok(trimmed.to_string())
+}
+
+fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError> {
+ let trimmed = raw.trim();
+ if trimmed.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "implementation symbol: must be non-empty when supplied (omit the field for file-level binding)".to_string(),
+ ));
+ }
+ if trimmed != raw {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation symbol: leading or trailing whitespace not allowed (`{}`)",
+ raw
+ )));
+ }
+ if trimmed.contains('\n') || trimmed.contains('\r') {
+ return Err(AtomicMutateError::Validation(format!(
+ "implementation symbol: newline not allowed (`{:?}`)",
+ raw
+ )));
+ }
+ Ok(trimmed.to_string())
+}
+
 // ============================================================================
 // ChangelogEntry atomic mutate primitive (Round 161 §15 reframe ratify).
 // ============================================================================
@@ -621,6 +794,121 @@ mod tests {
  assert!(id_set.contains("39"));
  assert!(id_set.contains("41"));
  assert!(id_set.contains("66"));
+ }
+
+ #[test]
+ fn add_section_implementation_basic_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(
+ &mut store,
+ &path,
+ "39",
+ "crates/mnemosyne-validator/src/atomic.rs",
+ Some("AtomicSection"),
+ )
+ .unwrap();
+ add_section_implementation(
+ &mut store,
+ &path,
+ "39",
+ "crates/mnemosyne-cli/src/atomic_cli.rs",
+ None,
+ )
+ .unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let impls = &loaded.section("39").unwrap().implementations;
+ assert_eq!(impls.len(), 2);
+ assert_eq!(impls[0].file, "crates/mnemosyne-validator/src/atomic.rs");
+ assert_eq!(impls[0].symbol.as_deref(), Some("AtomicSection"));
+ assert_eq!(impls[1].file, "crates/mnemosyne-cli/src/atomic_cli.rs");
+ assert!(impls[1].symbol.is_none());
+ }
+
+ #[test]
+ fn add_section_implementation_rejects_duplicate() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar")).unwrap();
+ let err = add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar"))
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => assert!(msg.contains("already present")),
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ // file-only vs symbol-qualified are distinct entries.
+ add_section_implementation(&mut store, &path, "39", "src/foo.rs", None).unwrap();
+ assert_eq!(store.section("39").unwrap().implementations.len(), 2);
+ }
+
+ #[test]
+ fn add_section_implementation_rejects_malformed_file() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let cases = [
+ "",
+ "   ",
+ "/abs/path.rs",
+ "./rel.rs",
+ "a/../b.rs",
+ "a\\b.rs",
+ "a//b.rs",
+ "dir/",
+ " leading.rs",
+ "trailing.rs ",
+ ];
+ for bad in cases {
+ let err =
+ add_section_implementation(&mut store, &path, "39", bad, None).unwrap_err();
+ assert!(
+ matches!(err, AtomicMutateError::Validation(_)),
+ "expected Validation for `{}`, got {:?}",
+ bad,
+ err
+ );
+ }
+ }
+
+ #[test]
+ fn add_section_implementation_rejects_malformed_symbol() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ // empty / whitespace symbol.
+ for bad in ["", "   ", " sym", "sym ", "sym\nname"] {
+ let err =
+ add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(bad))
+ .unwrap_err();
+ assert!(
+ matches!(err, AtomicMutateError::Validation(_)),
+ "expected Validation for symbol `{:?}`, got {:?}",
+ bad,
+ err
+ );
+ }
+ }
+
+ #[test]
+ fn add_section_implementation_accepts_opaque_qualified_symbols() {
+ // Symbol is opaque — language-agnostic. No grammar regex; any
+ // non-empty trimmed string with no internal newline is accepted.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ for sym in [
+ "foo",
+ "module::path::foo",
+ "Class.method",
+ "Foo<T>::bar",
+ "pkg/Type#method",
+ "ns.sub.fn",
+ ] {
+ add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(sym)).unwrap();
+ }
+ assert_eq!(store.section("39").unwrap().implementations.len(), 6);
  }
 
  #[test]

@@ -202,3 +202,42 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 259 — AtomicSection.implementations + add_section_implementation mutate primitive — Stage 4 (Path B Spec ↔ Code bidirectional binding) substrate; schema only, validator extension + section seeding + self-application deferred to Round 260-262
+
+**Changes**:
+- AtomicSection.implementations: Vec<Implementation> field added (Round 259 schema)
+- Implementation struct { file: String, symbol: Option<String> } — opaque language-agnostic binding
+- add_section_implementation mutate primitive (append-only, set semantics, validation at trust boundary)
+- file path validation: workspace-relative POSIX shape (reject /, ./, .., \, //, trailing /)
+- symbol validation: non-empty trimmed, no whitespace edges, no internal newline; no language regex
+- duplicate (file, symbol) rejected as Validation error — fail-loud > silent dedup
+- synthesize_section_body renders implementations as bullet block (style.rs paragraph filter)
+- templates/section.md.tera adds **Implementations** block after **Examples**
+- render.rs threads implementations into tera context with {file, symbol} JSON shape
+- cmd_add_section_implementation CLI subcommand: --section / --file / --symbol / --sidecar / --json / --no-regenerate
+- mnemosyne-cli main.rs dispatch arm + usage line + help text wired
+- mnemosyne-mcp AddSectionImplementationArgs + add_section_implementation tool wrapping CLI
+- no schema_version bump (additive serde-default-empty, backwards compatible)
+
+
+
+**Verification**:
+- cargo test --release --workspace PASS (449 tests, no regressions)
+- cargo run --release -p mnemosyne-cli -- validate-workspace PASS (T1 orphan=0, round-trip 1/1, T3 reject=0, GENERATED.md=sync)
+- new inline tests: round-trip, duplicate rejection, malformed file rejection, malformed symbol rejection, opaque symbol acceptance
+- integration test atomic_section_round_trip_full_shape extended with implementations entries — render path verified
+- render.rs render_section_full_shape extended; new Implementations block bytes verified
+- existing atomic store ledger (7 entries, Rounds 252-258) deserializes unchanged — additive field defaults to empty
+
+
+
+
+**Carry forward**:
+- Round 260: extend code_refs.rs to detect §<id> citations + cross-check against implementations (bidirectional set-equality, Round 80 OPTION D pattern)
+- Round 261: seed 3-5 atomic sections with implementations entries against real code files to exercise end-to-end check
+- Round 262: self-application activation — enable [code_refs] in mnemosyne.toml, bulk-register 119 historical citations via orphan_ledger kind="code_citation" or severity_missing="warn"
+- deferred: ranking / dedup heuristics for fuzzy file matches (only if Round 260+ surfaces friction)
+- deferred: validator-time enforcement that every Active section have ≥1 implementations entry (consider only after 261 seeding informs realistic coverage)
+
+
+

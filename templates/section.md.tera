@@ -41,3 +41,8 @@
 ```
 {% endfor %}
 {% endif %}
+{% if implementations %}
+**Implementations**:
+{% for i in implementations %}- {{ i.file }}{% if i.symbol %}:{{ i.symbol }}{% endif %}
+{% endfor %}
+{% endif %}

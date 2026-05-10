@@ -93,6 +93,14 @@ pub fn render_section(
  .collect();
  ctx.insert("examples", &examples);
  }
+ if !atomic.implementations.is_empty() {
+ let impls: Vec<_> = atomic
+ .implementations
+ .iter()
+ .map(|i| json!({ "file": i.file, "symbol": i.symbol }))
+ .collect();
+ ctx.insert("implementations", &impls);
+ }
  Ok(engine().render(SECTION_TPL_NAME, &ctx)?)
 }
 
@@ -125,7 +133,7 @@ pub fn render_changelog_entry(
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::atomic::{ExampleBlock, RejectedAlternative};
+ use crate::atomic::{ExampleBlock, Implementation, RejectedAlternative};
 
  #[test]
  fn render_section_minimal_intent_only() {
@@ -157,6 +165,16 @@ mod tests {
   language: "rust".into(),
   code: "fn main() {}".into(),
  }],
+ implementations: vec![
+ Implementation {
+  file: "crates/mnemosyne-validator/src/atomic.rs".into(),
+  symbol: Some("AtomicSection".into()),
+ },
+ Implementation {
+  file: "crates/mnemosyne-cli/src/atomic_cli.rs".into(),
+  symbol: None,
+ },
+ ],
  };
  let out = render_section("43", "test", "active", &atomic).unwrap();
  assert!(out.contains("**Intent**: primary intent text"));
@@ -169,6 +187,9 @@ mod tests {
  assert!(out.contains("**Impact scope**: §15, §39"));
  assert!(out.contains("```rust"));
  assert!(out.contains("fn main() {}"));
+ assert!(out.contains("**Implementations**"));
+ assert!(out.contains("- crates/mnemosyne-validator/src/atomic.rs:AtomicSection"));
+ assert!(out.contains("- crates/mnemosyne-cli/src/atomic_cli.rs"));
  }
 
  #[test]

@@ -1,7 +1,7 @@
 //! Atomic mutate CLI subcommands — DESIGN §15 spec mutate API atomic scope
 //! (Round 161 §15 reframe ratify, Round 162 production wire).
 //!
-//! 9 subcommands cover the 8 atomic Section primitives + 1 atomic ChangelogEntry primitive:
+//! 10 subcommands cover the 9 atomic Section primitives + 1 atomic ChangelogEntry primitive:
 //! - `set-section-intent` — set Section.intent (1-3 sentence summary)
 //! - `set-section-rationale` — set Section.rationale_bullets (list)
 //! - `set-section-inputs` — set Section.inputs_bullets
@@ -10,6 +10,8 @@
 //! - `set-section-alternatives` — set Section.alternatives_rejected
 //! - `set-section-impact-scope` — set Section.impact_scope (cross-ref list)
 //! - `add-section-example` — append to Section.examples (code block)
+//! - `add-section-implementation` — append to Section.implementations
+//! (Round 259, Path B Spec → Code binding entry)
 //! - `append-changelog-entry-v2` — atomic-aware changelog append
 //! (decision_summary + changes + verification + impact + carry_forward)
 //!
@@ -26,11 +28,11 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
- add_section_caveat, add_section_example, append_changelog_entry_v2,
- render_changelog_entry, set_section_alternatives, set_section_impact_scope,
- set_section_inputs, set_section_intent, set_section_outputs,
- set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
- ExampleBlock, RejectedAlternative,
+ add_section_caveat, add_section_example, add_section_implementation,
+ append_changelog_entry_v2, render_changelog_entry, set_section_alternatives,
+ set_section_impact_scope, set_section_inputs, set_section_intent,
+ set_section_outputs, set_section_rationale, AtomicMutateError,
+ AtomicMutateReceipt, AtomicStore, ExampleBlock, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;
@@ -424,6 +426,54 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
  finalize_mutate(
  workspace_root,
  add_section_example(&mut store, &sidecar_path, &section, example),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate.
+///
+/// Append a `(file, symbol?)` binding entry to `Section.implementations`.
+/// File path is workspace-relative POSIX shape; symbol is opaque (no
+/// language grammar regex). Set semantics: duplicate `(file, symbol)`
+/// rejected at write time.
+///
+/// Validator extension and section seeding are deferred to Round 260+.
+pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut file: Option<String> = None;
+ let mut symbol: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--file" => {
+  file = Some(iter.next().ok_or_else(|| anyhow!("--file missing"))?.clone())
+ }
+ "--symbol" => {
+  symbol = Some(iter.next().ok_or_else(|| anyhow!("--symbol missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let file = file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ add_section_implementation(&mut store, &sidecar_path, &section, &file, symbol.as_deref()),
  sidecar.as_deref(),
  regenerate,
  json,

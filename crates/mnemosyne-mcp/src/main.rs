@@ -104,6 +104,21 @@ pub struct AddSectionExampleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddSectionImplementationArgs {
+    /// Section ID without the `§` prefix.
+    pub section_id: String,
+    /// Workspace-relative POSIX file path. No leading `/`, no leading
+    /// `./`, no `..` segment, no backslash. The file does not need to
+    /// exist at write time — schema records intent.
+    pub file: String,
+    /// Optional opaque language-agnostic identifier (function / type /
+    /// qualified path). Stored as-is; no language-grammar regex applied.
+    /// Omit for file-level binding.
+    #[serde(default)]
+    pub symbol: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppendChangelogEntryArgs {
     /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
     /// monotonic (greater than the last entry's id).
@@ -377,6 +392,27 @@ impl MnemosyneServer {
             path.to_string_lossy().into_owned(),
         ];
         self.run_cli_with_files(argv, vec![path]).await
+    }
+
+    #[tool(
+        description = "Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate. Append a (file, symbol?) implementation binding to Section.implementations. file = workspace-relative POSIX path (no leading `/`, no `..`, no `\\`); symbol = optional opaque identifier (function/type/qualified path; language-agnostic, no grammar regex). Set semantics — duplicate (file, symbol) rejected at write time. The schema records intent; file existence is not checked here (Round 260+ cross-checks code citations against this set)."
+    )]
+    async fn add_section_implementation(
+        &self,
+        args: Parameters<AddSectionImplementationArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "add-section-implementation".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--file".to_string(),
+            args.0.file.clone(),
+        ];
+        if let Some(symbol) = &args.0.symbol {
+            argv.push("--symbol".to_string());
+            argv.push(symbol.clone());
+        }
+        self.run_cli_with_files(argv, vec![]).await
     }
 
     #[tool(
