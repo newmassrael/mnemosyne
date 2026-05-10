@@ -6,6 +6,18 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 ---
 
+## Sections
+
+### §atomic-store-mutate-api (atomic-only — title from workspace pending Round 164+)
+
+### §code-citation-defense (atomic-only — title from workspace pending Round 164+)
+
+### §code-citation-defense/bidirectional-binding (atomic-only — title from workspace pending Round 164+)
+
+### §markdown-parser (atomic-only — title from workspace pending Round 164+)
+
+### §orphan-ledger (atomic-only — title from workspace pending Round 164+)
+
 ## Changelog (atomic ledger)
 
 ### Round 252 — Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)
@@ -279,6 +291,38 @@ Source: `docs/.atomic/workspace.atomic.json`
 - deferred: validator-time enforcement that every Active section have ≥1 implementations entry (consider only after 261 seeding informs realistic coverage)
 - deferred: auto-cascade trigger on set-section-decision-status (still blocked behind AtomicSection.decision_status schema extension)
 - deferred: ranking / dedup heuristics for fuzzy file matches (only if Round 261+ surfaces friction)
+
+
+
+### Round 261 — 5 atomic store sections seeded with 8 file-only implementation bindings — Path B (Round 260) validator gains spec-side coverage; namespace ratified as flat kebab + 1-level hierarchical sub-component (frozen)
+
+**Changes**:
+- §code-citation-defense seeded → code_refs.rs + main.rs (Round 255-260 layer)
+- §code-citation-defense/bidirectional-binding seeded → code_refs.rs + atomic.rs (Round 259-260)
+- §orphan-ledger seeded → config.rs (Round 80/253/254/260 set-equality reject pattern)
+- §atomic-store-mutate-api seeded → atomic.rs + atomic_cli.rs (Round 161+ primitives)
+- §markdown-parser seeded → parser.rs (Round 252 ATX + indented fence fix carry layer)
+- atomic store sections count 0 → 5 explicit (+1 implied parent via Round 250 derivation)
+- v1 file-only binding convention ratified — Round 260 matching is file-only, symbol opaque
+
+
+
+**Verification**:
+- cargo test --release --workspace PASS — no regression
+- mnemosyne-cli validate-workspace PASS: sections=5, GENERATED.md=sync, orphan_refs=0+0
+- T3 reject=0 carry stable (Round 138 tier mobility ratify)
+- pre-commit hook gates 1-3 PASS (gate 3 still skip — [code_refs] unconfigured)
+
+
+
+**Impact**: §code-citation-defense, §code-citation-defense/bidirectional-binding, §orphan-ledger, §atomic-store-mutate-api, §markdown-parser
+
+
+**Carry forward**:
+- Round 262: enable [code_refs] in mnemosyne.toml; observe ImplementationUnbacked surface
+- Round 262 carry decision: bulk register kind=CodeCitation rows vs severity_binding=warn
+- Round 263+: AtomicSection.decision_status atomic field extension (Stage B freshness)
+- v1 file-only binding; v2 symbol-level matching deferred until empirical need surfaces
 
 
 
