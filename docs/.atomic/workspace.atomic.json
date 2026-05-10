@@ -186,6 +186,41 @@
         "deferred: ranking / dedup heuristics for fuzzy file matches (only if Round 260+ surfaces friction)",
         "deferred: validator-time enforcement that every Active section have ≥1 implementations entry (consider only after 261 seeding informs realistic coverage)"
       ]
+    },
+    "Round 260": {
+      "decision_summary": "validate-code-refs bidirectional Spec ↔ Code binding — §<id> citation extractor + AtomicSection.implementations cross-check (Round 80 OPTION D pattern), Path B Stage 4 close",
+      "changes_bullets": [
+        "code_refs.rs: CodeRefViolation split into Citation + ImplementationUnbacked enum variants — domain asymmetry modeled honestly (no line=0 sentinel)",
+        "code_refs.rs: ViolationKind extended with SectionMissing + CitationUnbound (Round 260 §<id> axis)",
+        "code_refs.rs: extract_section_citations — §[A-Za-z0-9._/-]+ extractor with trailing-dot carve-out",
+        "code_refs.rs: scan_paths_bidirectional — Round NNN axis + §<id> bidirectional set-equality + ledger suppression",
+        "code_refs.rs: DefectClass enum (Hallucination | Binding | Decay) for semantic severity bucketing",
+        "code_refs.rs: scan_paths / scan_paths_filtered retained as thin wrappers for Round 256/258 legacy callers",
+        "config.rs: OrphanKind::CodeCitation variant added — code-axis suppression shape stable for Round 262 bulk register",
+        "config.rs: CodeRefsSection.severity_binding field added (default reject); severity_missing doc updated to cover SectionMissing",
+        "cli main.rs: cmd_validate_code_refs rewritten on the new shape; --severity-binding flag added parallel to --severity-missing",
+        "cli main.rs: usage banner + help text updated for Round 260 bidirectional semantics",
+        "cli main.rs: JSON shape extended with section_missing_count / citation_unbound_count / impl_unbacked_count / severity_binding",
+        "cli main.rs: validate-workspace OrphanKind match arm extended for CodeCitation (no-op — code-axis handled by validate-code-refs)",
+        "validate_code_refs_smoke.rs: 4 new cases viii/ix/x/xi covering SectionMissing / CitationUnbound / ImplementationUnbacked / severity-binding warn",
+        "code_refs.rs inline tests: 11 new tests for §<id> extractor + bidirectional matrix + ledger suppression"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace PASS — no regressions across all crates",
+        "cargo test --release -p mnemosyne-validator code_refs:: PASS (26 tests; 11 new for §<id> axis + bidirectional)",
+        "cargo test --release -p mnemosyne-cli --test validate_code_refs_smoke PASS (11 tests; 4 new for Round 260 cases viii-xi)",
+        "cargo run --release -p mnemosyne-cli -- validate-workspace PASS (T1 orphan=0, round-trip 1/1, T3 reject=0, GENERATED.md=sync)",
+        "new bidirectional unit tests: clean codebase / SectionMissing / CitationUnbound / ImplementationUnbacked / orphan-ledger suppression both directions / filter-id silences section axis",
+        "new §<id> extractor tests: basic numeric / fractional / slash slug / trailing dot / brackets-parens / solitary sigil / underscore allowed",
+        "cli smoke cases viii-xi exercise the full CLI surface end-to-end including JSON shape and severity-binding flag"
+      ],
+      "carry_forward_bullets": [
+        "Round 261: seed 3-5 real Mnemosyne sections with implementations entries to exercise the bidirectional check against the live store",
+        "Round 262: self-application activation — enable [code_refs] in mnemosyne.toml + bulk-register historical Round NNN citations as kind=code_citation orphan ledger rows",
+        "deferred: validator-time enforcement that every Active section have ≥1 implementations entry (consider only after 261 seeding informs realistic coverage)",
+        "deferred: auto-cascade trigger on set-section-decision-status (still blocked behind AtomicSection.decision_status schema extension)",
+        "deferred: ranking / dedup heuristics for fuzzy file matches (only if Round 261+ surfaces friction)"
+      ]
     }
   },
   "schema_version": 1

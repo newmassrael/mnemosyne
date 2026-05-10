@@ -72,6 +72,11 @@ pub struct WorkspaceConfig {
 /// without silencing them. This is the textbook scope-correction path:
 /// append a new Round entry recording the scope change, then register the
 /// now-dangling atomic refs here with `reason` pointing to that entry.
+///
+/// Round 260 — adds `CodeCitation` for code-side citation suppression
+/// (Path B Spec ↔ Code bidirectional check). Each axis carries one
+/// dedicated kind so a Round 262 bulk register against `CodeCitation`
+/// can land without touching the atomic-internal axes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OrphanKind {
@@ -87,6 +92,14 @@ pub enum OrphanKind {
  /// authoring the impact_scope; `to` = atomic section_id missing from
  /// id_set; `doc` = `"<atomic-section>"` by convention.
  AtomicSectionRef,
+ /// Code-side citation suppression (Round 260, Path B substrate).
+ /// `from` = workspace-relative file path containing the citation;
+ /// `to` = section_id without leading `§` (or `entry_id` for
+ /// Round NNN-shaped suppression, deferred to Round 262 bulk
+ /// register); `doc` = `"<code-citation>"` by convention. Suppresses
+ /// `SectionMissing` / `CitationUnbound` / `ImplementationUnbacked`
+ /// when the (from, to) pair matches.
+ CodeCitation,
 }
 
 fn default_orphan_kind() -> OrphanKind {
@@ -156,13 +169,21 @@ pub struct CodeRefsSection {
  #[serde(default)]
  pub paths: Vec<String>,
 
- /// Severity for missing citations (entry_id not present in the atomic
- /// store `changelog_entries` map). Recognized values:
- /// - `"reject"` (default) — exit code 1; CI / pre-commit gate
- /// - `"warn"` — exit code 0 with report
- /// - `"info"` — exit code 0 with report (lower visual weight)
+ /// Severity for hallucination-class violations (Round 256 + Round 260):
+ /// - `Missing` — Round NNN entry_id not in `changelog_entries`
+ /// - `SectionMissing` — §<id> not in atomic section_id set
+ /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
  #[serde(default = "default_severity_reject")]
  pub severity_missing: String,
+
+ /// Round 260 — severity for binding-class violations (Path B Spec ↔
+ /// Code bidirectional set-equality):
+ /// - `CitationUnbound` — code cites §X but file not in §X.implementations
+ /// - `ImplementationUnbacked` — §X.implementations names file F but F
+ ///   has no §X citation
+ /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
+ #[serde(default = "default_severity_reject")]
+ pub severity_binding: String,
 }
 
 fn default_severity_reject() -> String {

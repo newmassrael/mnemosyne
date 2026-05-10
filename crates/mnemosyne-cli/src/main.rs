@@ -18,7 +18,7 @@ use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
  add_cross_ref, add_section, append_changelog_entry, check_style,
- code_refs::{scan_paths_filtered, ViolationKind},
+ code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
@@ -262,16 +262,27 @@ fn print_help(prog: &str) {
  "   atomic mutate subcommands above auto-regenerate GENERATED.md (override: --no-regenerate)"
  );
  println!();
- println!(" --- code citation defense (Round 255-258, 3-stage) ---");
+ println!(" --- code citation defense (Round 255-260, Path B bidirectional) ---");
  println!(
- " {} validate-code-refs [--severity-missing reject|warn|info] [--filter-id <entry_id>] [--json]",
+ " {} validate-code-refs [--severity-missing reject|warn|info]\n\
+ \x20                       [--severity-binding reject|warn|info]\n\
+ \x20                       [--filter-id <entry_id>] [--json]",
  prog
  );
  println!(
- "   scan [code_refs].paths for <entry_id_prefix><digits> citations,"
+ "   Round 256: scan [code_refs].paths for <entry_id_prefix><digits> citations,"
  );
  println!(
  "   reject those whose entry_id is missing from atomic store changelog_entries"
+ );
+ println!(
+ "   Round 260: §<id> citations cross-checked against AtomicSection.implementations"
+ );
+ println!(
+ "   --severity-missing: Missing + SectionMissing (hallucination class)"
+ );
+ println!(
+ "   --severity-binding (Round 260): CitationUnbound + ImplementationUnbacked (set-equality class)"
  );
  println!(
  "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
@@ -1245,6 +1256,7 @@ fn cmd_validate_workspace() -> Result<()> {
  atomic_section_ledger.insert((entry.from.clone(), entry.to.clone()));
  }
  OrphanKind::MarkdownRef => {} // already composed into known_orphan_keys
+ OrphanKind::CodeCitation => {} // Round 260 — code-axis ledger handled by validate-code-refs, not validate-workspace
  }
  }
  let new_atomic_entries: Vec<&(String, String)> = atomic_entry_actual
@@ -1609,7 +1621,8 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 /// promise carry for external users who don't cite spec entries in code.
 fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let mut json = false;
- let mut severity_override: Option<String> = None;
+ let mut severity_missing_override: Option<String> = None;
+ let mut severity_binding_override: Option<String> = None;
  // Round 258 — explicit decay filter (cascade caller restricts the scan
  // to citations of one entry_id, e.g. an entry that just transitioned
  // Active → Superseded).
@@ -1619,9 +1632,16 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  match a.as_str() {
  "--json" => json = true,
  "--severity-missing" => {
- severity_override = Some(
+ severity_missing_override = Some(
  iter.next()
  .ok_or_else(|| anyhow!("--severity-missing missing value"))?
+ .clone(),
+ );
+ }
+ "--severity-binding" => {
+ severity_binding_override = Some(
+ iter.next()
+ .ok_or_else(|| anyhow!("--severity-binding missing value"))?
  .clone(),
  );
  }
@@ -1660,14 +1680,24 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  }
  };
 
- let severity = severity_override
+ let severity_missing = severity_missing_override
  .as_deref()
  .unwrap_or(&cfg.severity_missing)
  .to_string();
- if !matches!(severity.as_str(), "reject" | "warn" | "info") {
+ if !matches!(severity_missing.as_str(), "reject" | "warn" | "info") {
  bail!(
- "invalid severity `{}` — expected one of: reject | warn | info",
- severity
+ "invalid --severity-missing `{}` — expected one of: reject | warn | info",
+ severity_missing
+ );
+ }
+ let severity_binding = severity_binding_override
+ .as_deref()
+ .unwrap_or(&cfg.severity_binding)
+ .to_string();
+ if !matches!(severity_binding.as_str(), "reject" | "warn" | "info") {
+ bail!(
+ "invalid --severity-binding `{}` — expected one of: reject | warn | info",
+ severity_binding
  );
  }
 
@@ -1678,50 +1708,70 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
- let valid_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
-
- let violations = scan_paths_filtered(
+ let violations = scan_paths_bidirectional(
  &root,
  &cfg.paths,
  &prefix,
- &valid_ids,
+ &store,
+ &loaded.config.orphan_ledger,
  filter_id.as_deref(),
  )
- .context("scan_paths failed")?;
+ .context("scan_paths_bidirectional failed")?;
 
- let missing_count = violations
- .iter()
- .filter(|v| matches!(v.kind, ViolationKind::Missing))
- .count();
- let decay_count = violations
- .iter()
- .filter(|v| matches!(v.kind, ViolationKind::Decay))
- .count();
+ let mut counts = [0usize; 5]; // missing / section_missing / citation_unbound / impl_unbacked / decay
+ for v in &violations {
+ match v {
+ CodeRefViolation::Citation { kind, .. } => match kind {
+ ViolationKind::Missing => counts[0] += 1,
+ ViolationKind::SectionMissing => counts[1] += 1,
+ ViolationKind::CitationUnbound => counts[2] += 1,
+ ViolationKind::Decay => counts[4] += 1,
+ },
+ CodeRefViolation::ImplementationUnbacked { .. } => counts[3] += 1,
+ }
+ }
+ let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count] =
+ counts;
+ let hallucination_count = missing_count + section_missing_count;
+ let binding_count = citation_unbound_count + impl_unbacked_count;
 
  if json {
  let view: Vec<_> = violations
  .iter()
- .map(|v| {
- serde_json::json!({
- "kind": match v.kind {
- ViolationKind::Missing => "missing",
- ViolationKind::Decay => "decay",
- },
- "file": v.citation.file.to_string_lossy(),
- "line": v.citation.line,
- "entry_id": v.citation.entry_id,
- })
+ .map(|v| match v {
+ CodeRefViolation::Citation { citation, .. } => serde_json::json!({
+ "kind": v.kind_tag(),
+ "file": citation.file.to_string_lossy(),
+ "line": citation.line,
+ "entry_id": citation.entry_id,
+ }),
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => serde_json::json!({
+ "kind": v.kind_tag(),
+ "file": file.to_string_lossy(),
+ "section_id": section_id,
+ "symbol": symbol,
+ }),
  })
  .collect();
+ let valid_entry_count = store.changelog_entries.len();
  println!(
  "{}",
  serde_json::json!({
  "primitive": "validate-code-refs",
  "scanned_paths": cfg.paths,
- "valid_entry_count": valid_ids.len(),
+ "valid_entry_count": valid_entry_count,
+ "valid_section_count": store.sections.len(),
  "missing_count": missing_count,
+ "section_missing_count": section_missing_count,
+ "citation_unbound_count": citation_unbound_count,
+ "impl_unbacked_count": impl_unbacked_count,
  "decay_count": decay_count,
- "severity_missing": severity,
+ "severity_missing": severity_missing,
+ "severity_binding": severity_binding,
  "filter_id": filter_id,
  "violations": view,
  })
@@ -1729,42 +1779,74 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  } else {
  println!("=== mnemosyne-cli validate-code-refs ===");
  println!(
- "prefix={:?} valid_entries={} scanned_paths={:?}",
+ "prefix={:?} valid_entries={} valid_sections={} scanned_paths={:?}",
  prefix,
- valid_ids.len(),
+ store.changelog_entries.len(),
+ store.sections.len(),
  cfg.paths
  );
  if let Some(ref fid) = filter_id {
  println!("filter_id={:?} (Round 258 decay scan mode)", fid);
  }
  println!(
- "violations: total={} missing={} decay={} (severity_missing={})",
+ "violations: total={} missing={} section_missing={} \
+ citation_unbound={} impl_unbacked={} decay={} \
+ (severity_missing={} severity_binding={})",
  violations.len(),
  missing_count,
+ section_missing_count,
+ citation_unbound_count,
+ impl_unbacked_count,
  decay_count,
- severity
+ severity_missing,
+ severity_binding,
  );
  for v in &violations {
- let kind = match v.kind {
- ViolationKind::Missing => "missing",
- ViolationKind::Decay => "decay",
- };
- println!(
+ match v {
+ CodeRefViolation::Citation { citation, .. } => println!(
  " [{}] {}:{} {}",
- kind,
- v.citation.file.to_string_lossy(),
- v.citation.line,
- v.citation.entry_id
- );
+ v.kind_tag(),
+ citation.file.to_string_lossy(),
+ citation.line,
+ citation.entry_id,
+ ),
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => println!(
+ " [{}] {}:<no-cite> §{}{}",
+ v.kind_tag(),
+ file.to_string_lossy(),
+ section_id,
+ symbol
+ .as_deref()
+ .map(|s| format!(" ({})", s))
+ .unwrap_or_default(),
+ ),
+ }
  }
  }
 
- if missing_count > 0 && severity == "reject" {
- bail!(
- "{} citation(s) missing from atomic store — reject (severity={})",
- missing_count,
- severity
- );
+ // Reject gates by defect class (Round 260) — each class gated by its
+ // own severity flag. Decay never rejects (informational).
+ let mut reject_msgs: Vec<String> = Vec::new();
+ if hallucination_count > 0 && severity_missing == "reject" {
+ reject_msgs.push(format!(
+ "{} hallucination-class citation(s) — Missing={} SectionMissing={} \
+ (severity_missing=reject)",
+ hallucination_count, missing_count, section_missing_count,
+ ));
+ }
+ if binding_count > 0 && severity_binding == "reject" {
+ reject_msgs.push(format!(
+ "{} binding-class violation(s) — CitationUnbound={} ImplementationUnbacked={} \
+ (severity_binding=reject)",
+ binding_count, citation_unbound_count, impl_unbacked_count,
+ ));
+ }
+ if !reject_msgs.is_empty() {
+ bail!("{}", reject_msgs.join("; "));
  }
  Ok(())
 }

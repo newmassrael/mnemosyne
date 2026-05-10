@@ -1,57 +1,141 @@
 //! Round 256 — code citation verification (Stage 2 of the 3-stage
 //! code-citation defense — Round 255 introduced the agent-time CLAUDE.md
 //! rule, this module backs the validator-time `validate-code-refs`
-//! subcommand, Round 257 + 258 will wire pre-commit / cascade triggers).
+//! subcommand, Round 257 + 258 wire pre-commit / cascade triggers).
 //!
-//! The scanner walks configured code paths, extracts citation candidates
-//! matching the `entry_id_prefix` from `[schema]`, and reports each
-//! citation whose target entry_id is missing from the atomic store.
+//! Round 260 extends the scanner with the spec ↔ code bidirectional
+//! binding check (Path B substrate from Round 259's
+//! `AtomicSection.implementations`). The scanner now also extracts
+//! `§<id>` citations and applies set-equality against each section's
+//! `implementations` set (Round 80 OPTION D pattern lifted from the
+//! cross-ref orphan ledger).
 //!
 //! ## Pattern derivation
 //!
-//! No separate regex configuration. The scanner uses the same
-//! `entry_id_prefix` the parser uses (Round 144 carry — Mnemosyne preset
-//! = `"Round "`, ADR preset = `"ADR-"`). Match shape:
+//! `Round NNN`-shaped citations use the configured `entry_id_prefix`
+//! (Round 144 carry — Mnemosyne preset = `"Round "`, ADR preset = `"ADR-"`):
 //!
 //! ```text
 //! \b<prefix><digits>(\.<digits>)?\b
 //! ```
 //!
-//! Word-boundary on both sides excludes identifier-like incidental hits
-//! (`TestRound254Helper`, `round_254_helper`) — citations must stand
-//! alone in the surrounding text.
+//! `§<id>`-shaped citations use a fixed `§` sigil + opaque token shape
+//! `[A-Za-z0-9._/-]+` (covers numeric ids `§39`, fractional `§61.1`,
+//! kebab + slash slugs `§atomic-store/changelog-atomic-ledger`):
 //!
-//! ## Out of scope (Round 256 MVP)
+//! ```text
+//! §[A-Za-z0-9._/-]+    (trailing `.` not consumed)
+//! ```
 //!
-//! - Section `§<id>` citations + decision_status (Active vs Superseded)
-//!  — `AtomicChangelogEntry` has no `decision_status` field; entries are
-//!  frozen-ledger by definition. Section status check is a clean
-//!  follow-up scope (future round) once Section primitives populate the
-//!  atomic store.
-//! - Tree-sitter language-aware extraction. v1 is a uniform text scan
-//!  (citations live in author-written text — comments, strings, doc
-//!  blocks — and grep semantics are good enough). False positives are
-//!  absorbed by the existing `[[orphan_ledger]]` pattern (Round 253-254).
+//! Word-boundary discipline excludes identifier-like incidental hits.
+//!
+//! ## Violation taxonomy (Round 260)
+//!
+//! `Round NNN` axis (existing — Round 256/258):
+//! - `Missing` — entry_id not in `changelog_entries`
+//! - `Decay` — `--filter-id` cascade scan match
+//!
+//! `§<id>` axis (Round 260 — Path B bidirectional check):
+//! - `SectionMissing` — §<id> not in `atomic_section_id_set`
+//! - `CitationUnbound` — §<id> exists but citing file F not in
+//!   §<id>.`implementations` (code-side; spec doesn't agree)
+//! - `ImplementationUnbacked` — (file F, sym?) in
+//!   §<id>.`implementations` but F has no §<id> citation (spec-side;
+//!   code doesn't agree)
+//!
+//! The first two binding directions are *asymmetric in shape*: code-side
+//! violations have a concrete (file, line, entry_id); spec-side
+//! violations have no line and carry the impl-entry symbol. This is
+//! modeled as a 2-variant `CodeRefViolation` enum rather than collapsing
+//! both directions into one struct with a `line: 0` sentinel — the
+//! shape difference is a domain fact, not an encoding accident.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-/// One citation candidate extracted from a source file.
+use crate::atomic::AtomicStore;
+use crate::config::{OrphanKind, OrphanLedgerEntry};
+
+/// One `Round NNN` / `§<id>` citation candidate extracted from a source
+/// file. `entry_id` retains the cite shape verbatim (`"Round 254"` or
+/// `"§39"` — `§` prefix kept so the kind axis is readable from the id
+/// alone).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Citation {
- /// Workspace-relative file path the citation was found in.
  pub file: PathBuf,
- /// 1-indexed line number.
  pub line: usize,
- /// Reconstructed entry_id, e.g. `"Round 254"` or `"Round 33.5"`.
  pub entry_id: String,
 }
 
 /// One verification failure surfaced to the caller.
+///
+/// Two variants — code-side citations (`Citation`) and spec-side claims
+/// (`ImplementationUnbacked`) have structurally different evidence
+/// (a concrete file:line vs an impl-entry without a code witness), so
+/// the enum splits at that natural boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CodeRefViolation {
- pub citation: Citation,
- pub kind: ViolationKind,
+pub enum CodeRefViolation {
+ /// Citation-side violation — there is a concrete cite at file:line,
+ /// and the cite is wrong in some way (`kind` distinguishes how).
+ Citation {
+ citation: Citation,
+ kind: ViolationKind,
+ },
+ /// Spec-side violation (Round 260) — the atomic store records
+ /// `§section_id.implementations` containing (file, symbol?), but the
+ /// file has no `§section_id` citation. The spec claims an
+ /// implementation that the code does not witness.
+ ImplementationUnbacked {
+ section_id: String,
+ file: PathBuf,
+ symbol: Option<String>,
+ },
+}
+
+impl CodeRefViolation {
+ /// Stable kind tag for JSON output / CLI rendering. Citation
+ /// violations carry their `ViolationKind` tag; `ImplementationUnbacked`
+ /// is its own top-level kind.
+ pub fn kind_tag(&self) -> &'static str {
+ match self {
+ CodeRefViolation::Citation { kind, .. } => match kind {
+ ViolationKind::Missing => "missing",
+ ViolationKind::Decay => "decay",
+ ViolationKind::SectionMissing => "section_missing",
+ ViolationKind::CitationUnbound => "citation_unbound",
+ },
+ CodeRefViolation::ImplementationUnbacked { .. } => "impl_unbacked",
+ }
+ }
+
+ /// Defect class (Round 260) — drives `--severity-missing` vs
+ /// `--severity-binding` bucketing. Hallucination-class = cited
+ /// identifier doesn't exist (Missing, SectionMissing). Binding-class
+ /// = set-equality violation (CitationUnbound, ImplementationUnbacked).
+ /// Decay is its own informational class — never reject-bucketed.
+ pub fn defect_class(&self) -> DefectClass {
+ match self {
+ CodeRefViolation::Citation { kind, .. } => match kind {
+ ViolationKind::Missing | ViolationKind::SectionMissing => {
+ DefectClass::Hallucination
+ }
+ ViolationKind::CitationUnbound => DefectClass::Binding,
+ ViolationKind::Decay => DefectClass::Decay,
+ },
+ CodeRefViolation::ImplementationUnbacked { .. } => DefectClass::Binding,
+ }
+ }
+}
+
+/// Round 260 — semantic axis that drives CLI severity flag bucketing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefectClass {
+ /// Cited identifier doesn't exist (Missing, SectionMissing).
+ Hallucination,
+ /// Set-equality violation (CitationUnbound, ImplementationUnbacked).
+ Binding,
+ /// Cascade scan informational surface (Decay).
+ Decay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +149,14 @@ pub enum ViolationKind {
  /// the entry exists, but author should review whether the code is
  /// still accurate against the new decision.
  Decay,
+ /// Round 260 — `§<id>` citation where `<id>` is not in the atomic
+ /// store's section_id set (analog of `Missing` on the section axis).
+ SectionMissing,
+ /// Round 260 — `§<id>` citation where `<id>` exists in the atomic
+ /// store but the citing file is not registered in
+ /// `§<id>.implementations`. The code-side half of the bidirectional
+ /// set-equality violation (spec disagrees with code).
+ CitationUnbound,
 }
 
 /// Walk configured paths under `root`, collecting all readable files.
@@ -158,6 +250,71 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
  out
 }
 
+/// Round 260 — extract every `§<id>` citation candidate from `content`.
+///
+/// Token shape: `§` followed by 1+ chars from `[A-Za-z0-9._/-]`. Tail
+/// trailing `.` is not consumed (mirrors `scan_round_number` so `§39.` at
+/// end of sentence yields `39`, not `39.`). Returned entries use the bare
+/// id (no `§` prefix) so callers can directly index `AtomicSection` keys.
+/// Line numbers are 1-indexed.
+///
+/// `§` is itself a non-ASCII / non-identifier character, so prefix-side
+/// word-boundary is implicit. Tail-side boundary: id terminates on any
+/// char outside the token shape.
+pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
+ let mut out = Vec::new();
+ for (line_idx, line) in content.lines().enumerate() {
+ let mut chars = line.char_indices().peekable();
+ while let Some((i, c)) = chars.next() {
+ if c != '§' {
+ continue;
+ }
+ // Tail: read [A-Za-z0-9._/-]+ starting at the byte after `§`.
+ let tail_start = i + c.len_utf8();
+ let tail = &line[tail_start..];
+ let mut last_byte = 0usize;
+ for (j, t) in tail.char_indices() {
+ if is_section_id_char(t) {
+ last_byte = j + t.len_utf8();
+ } else {
+ break;
+ }
+ }
+ if last_byte == 0 {
+ continue;
+ }
+ // Drop a single trailing `.` (sentence-ending), mirroring the
+ // Round NNN scanner's "trailing dot without fractional digits
+ // is not consumed" rule.
+ let mut end = last_byte;
+ if tail[..end].ends_with('.') {
+ end -= 1;
+ }
+ if end == 0 {
+ continue;
+ }
+ let id = tail[..end].to_string();
+ out.push((line_idx + 1, id));
+ // Advance the outer iterator past what we consumed.
+ // (peekable / char_indices doesn't have skip-to-byte, so we
+ // re-seek by consuming until we pass `tail_start + end`.)
+ let consumed_until = tail_start + end;
+ while let Some(&(k, _)) = chars.peek() {
+ if k < consumed_until {
+ chars.next();
+ } else {
+ break;
+ }
+ }
+ }
+ }
+ out
+}
+
+fn is_section_id_char(c: char) -> bool {
+ c.is_ascii_alphanumeric() || c == '.' || c == '/' || c == '-' || c == '_'
+}
+
 /// Read `<digits>(.<digits>)?` from the start of `s`. Returns the
 /// matched substring, or `None` if `s` does not start with a digit.
 /// Trailing `.` without fractional digits is not consumed.
@@ -195,12 +352,9 @@ fn scan_round_number(s: &str) -> Option<String> {
  Some(buf)
 }
 
-/// Scan all configured paths for citations and return violations against
-/// `valid_entry_ids`. Files that cannot be read as UTF-8 are silently
-/// skipped (binary blobs, lock files, etc.).
-///
-/// The returned list is sorted by `(file, line)` for deterministic
-/// reporting.
+/// Round 256 — entry_id-only scan (legacy thin wrapper, retained for
+/// backward compatibility with callers that don't carry the full atomic
+/// store). New callers should use [`scan_paths_bidirectional`].
 pub fn scan_paths(
  workspace_root: &Path,
  paths: &[String],
@@ -210,20 +364,9 @@ pub fn scan_paths(
  scan_paths_filtered(workspace_root, paths, prefix, valid_entry_ids, None)
 }
 
-/// Round 258 — same as [`scan_paths`] but the result is restricted to
-/// citations whose `entry_id` equals `filter_id` (when `Some`). This is
-/// the read side of the *Stage 3 supersede cascade* — when a decision
-/// transitions Active → Superseded, the cascade caller invokes this with
-/// the superseded entry_id to enumerate the code locations that now
-/// reference a stale decision.
-///
-/// `filter_id = None` ⇒ no filtering (identical to [`scan_paths`]).
-///
-/// Note: the auto-cascade trigger (post-mutate hook on
-/// `set-section-decision-status`) is *not* wired here. That requires
-/// `AtomicSection.decision_status` as a first-class atomic field
-/// (schema extension carry, future round). Once present, the cascade
-/// caller is a one-line invocation of this function.
+/// Round 258 — entry_id-only scan with optional decay filter (legacy
+/// thin wrapper). New callers should use [`scan_paths_bidirectional`]
+/// which also covers the §<id> axis and the Path B bidirectional check.
 pub fn scan_paths_filtered(
  workspace_root: &Path,
  paths: &[String],
@@ -252,28 +395,236 @@ pub fn scan_paths_filtered(
  } else {
  continue;
  };
- violations.push(CodeRefViolation {
+ violations.push(CodeRefViolation::Citation {
  citation: Citation {
- file: rel.clone(),
- line,
- entry_id,
+  file: rel.clone(),
+  line,
+  entry_id,
  },
  kind,
  });
  }
  }
- violations.sort_by(|a, b| {
- a.citation
- .file
- .cmp(&b.citation.file)
- .then(a.citation.line.cmp(&b.citation.line))
- });
+ sort_violations(&mut violations);
  Ok(violations)
+}
+
+/// Round 260 — full Path B scan: Round NNN axis + §<id> axis +
+/// bidirectional set-equality check + orphan ledger suppression for
+/// `OrphanKind::CodeCitation` rows.
+///
+/// Algorithm (per scanned file F):
+/// 1. Extract `<prefix>NNN` citations → `Missing` (or `Decay` under
+///    `filter_id`) using existing Round 256/258 path.
+/// 2. Extract `§<id>` citations:
+///    - `<id>` not in `store.atomic_section_id_set()` → `SectionMissing`
+///    - `<id>` exists but F not in `§<id>.implementations` files →
+///      `CitationUnbound`
+///    - else OK (record F in `cited_by[<id>]` for step 3)
+/// 3. After all files scanned, walk `store.sections`. For each §X, for
+///    each `Implementation { file, symbol }` in `§X.implementations`:
+///    if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
+///
+/// `filter_id` is the Round 258 decay-scan toggle. When `Some`, only
+/// Round NNN citations matching the filter are surfaced (as `Decay`);
+/// all other Round NNN citations are suppressed, and the §<id> axis
+/// stays silent for symmetry (a Superseded-decision cascade caller is
+/// asking "where is this entry_id mentioned?", not "audit the whole
+/// store" — keep the surface narrow).
+///
+/// `orphan_ledger` rows with `kind = CodeCitation` suppress any §<id>
+/// violation matching `(from = file, to = id)`. Other kinds are
+/// ignored by this scanner (they belong to the atomic-internal /
+/// markdown axes).
+pub fn scan_paths_bidirectional(
+ workspace_root: &Path,
+ paths: &[String],
+ prefix: &str,
+ store: &AtomicStore,
+ orphan_ledger: &[OrphanLedgerEntry],
+ filter_id: Option<&str>,
+) -> std::io::Result<Vec<CodeRefViolation>> {
+ let valid_entry_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
+ let section_id_set = store.atomic_section_id_set();
+
+ // Pre-index §X.implementations by section_id (so we can membership-check
+ // (file in §X.implementations files) in O(log n) per cite, and so we
+ // know the full impls universe for step 3).
+ let impl_files_by_section: BTreeMap<&str, BTreeSet<&str>> = store
+ .sections
+ .iter()
+ .map(|(sid, sec)| {
+ let files: BTreeSet<&str> = sec
+ .implementations
+ .iter()
+ .map(|i| i.file.as_str())
+ .collect();
+ (sid.as_str(), files)
+ })
+ .collect();
+
+ // Orphan ledger lookup: (file, id) pairs explicitly registered as
+ // known-stale code citations.
+ let ledger_index: BTreeSet<(&str, &str)> = orphan_ledger
+ .iter()
+ .filter(|e| e.kind == OrphanKind::CodeCitation)
+ .map(|e| (e.from.as_str(), e.to.as_str()))
+ .collect();
+
+ let files = walk_paths(workspace_root, paths)?;
+ let mut violations: Vec<CodeRefViolation> = Vec::new();
+
+ // file_path → BTreeSet<section_id> citations actually observed.
+ // Drives step 3's bidirectional check.
+ let mut cited_by: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+ for abs in files {
+ let content = match std::fs::read_to_string(&abs) {
+ Ok(c) => c,
+ Err(_) => continue,
+ };
+ let rel = abs
+ .strip_prefix(workspace_root)
+ .map(|p| p.to_path_buf())
+ .unwrap_or(abs.clone());
+ let rel_str = rel.to_string_lossy().to_string();
+
+ // ---- Round NNN axis (Round 256/258) ----
+ for (line, entry_id) in extract_citations(prefix, &content) {
+ let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
+ let is_missing = !valid_entry_ids.contains(&entry_id);
+ let kind = if matches_filter {
+ ViolationKind::Decay
+ } else if filter_id.is_none() && is_missing {
+ ViolationKind::Missing
+ } else {
+ continue;
+ };
+ violations.push(CodeRefViolation::Citation {
+ citation: Citation {
+  file: rel.clone(),
+  line,
+  entry_id,
+ },
+ kind,
+ });
+ }
+
+ // ---- §<id> axis (Round 260) ----
+ // Decay-filter mode narrows the surface to Round NNN only — Path B
+ // cross-check stays silent (cascade caller's question is targeted).
+ if filter_id.is_some() {
+ continue;
+ }
+ for (line, section_id) in extract_section_citations(&content) {
+ // Ledger suppression — if (file, id) is explicitly registered
+ // as a known-stale code citation, treat as if the binding were
+ // correct (record in `cited_by` so step 3 doesn't double-fire).
+ let suppressed = ledger_index.contains(&(rel_str.as_str(), section_id.as_str()));
+ cited_by
+ .entry(rel_str.clone())
+ .or_default()
+ .insert(section_id.clone());
+ if suppressed {
+ continue;
+ }
+ if !section_id_set.contains(&section_id) {
+ violations.push(CodeRefViolation::Citation {
+ citation: Citation {
+  file: rel.clone(),
+  line,
+  entry_id: format!("§{}", section_id),
+ },
+ kind: ViolationKind::SectionMissing,
+ });
+ continue;
+ }
+ // Section exists — check spec-side membership of (file in
+ // §<id>.implementations files). Note: matching is by `file`
+ // string only (symbol is opaque metadata, not part of the
+ // bidirectional set-equality in v1 — same fact treated
+ // consistently from both directions).
+ let bound = impl_files_by_section
+ .get(section_id.as_str())
+ .map(|files| files.contains(rel_str.as_str()))
+ .unwrap_or(false);
+ if !bound {
+ violations.push(CodeRefViolation::Citation {
+ citation: Citation {
+  file: rel.clone(),
+  line,
+  entry_id: format!("§{}", section_id),
+ },
+ kind: ViolationKind::CitationUnbound,
+ });
+ }
+ }
+ }
+
+ // ---- Step 3: spec-side bidirectional half (Round 260) ----
+ // Skip under decay-filter mode (Round 258 narrow scope).
+ if filter_id.is_none() {
+ for (section_id, section) in &store.sections {
+ for impl_entry in &section.implementations {
+ let suppressed =
+ ledger_index.contains(&(impl_entry.file.as_str(), section_id.as_str()));
+ if suppressed {
+ continue;
+ }
+ let cited = cited_by
+ .get(&impl_entry.file)
+ .map(|set| set.contains(section_id))
+ .unwrap_or(false);
+ if !cited {
+ violations.push(CodeRefViolation::ImplementationUnbacked {
+ section_id: section_id.clone(),
+ file: PathBuf::from(&impl_entry.file),
+ symbol: impl_entry.symbol.clone(),
+ });
+ }
+ }
+ }
+ }
+
+ sort_violations(&mut violations);
+ Ok(violations)
+}
+
+/// Deterministic ordering — Citation variants sort by (file, line, entry_id);
+/// ImplementationUnbacked variants sort by (file, section_id, symbol) and
+/// come after Citation variants for predictable reporting.
+fn sort_violations(violations: &mut Vec<CodeRefViolation>) {
+ violations.sort_by(|a, b| {
+ use CodeRefViolation::*;
+ match (a, b) {
+ (Citation { citation: c1, .. }, Citation { citation: c2, .. }) => c1
+ .file
+ .cmp(&c2.file)
+ .then(c1.line.cmp(&c2.line))
+ .then(c1.entry_id.cmp(&c2.entry_id)),
+ (Citation { .. }, ImplementationUnbacked { .. }) => std::cmp::Ordering::Less,
+ (ImplementationUnbacked { .. }, Citation { .. }) => std::cmp::Ordering::Greater,
+ (
+ ImplementationUnbacked {
+ file: f1,
+ section_id: s1,
+ symbol: y1,
+ },
+ ImplementationUnbacked {
+ file: f2,
+ section_id: s2,
+ symbol: y2,
+ },
+ ) => f1.cmp(f2).then(s1.cmp(s2)).then(y1.cmp(y2)),
+ }
+ });
 }
 
 #[cfg(test)]
 mod tests {
  use super::*;
+ use crate::atomic::{add_section_implementation, AtomicStore};
+ use tempfile::TempDir;
 
  #[test]
  fn scan_round_number_plain() {
@@ -311,10 +662,6 @@ mod tests {
 
  #[test]
  fn extract_citations_skips_identifier_like() {
- // Identifier `TestRound254Helper` and `round_254_helper` should not
- // match — word boundary excludes them. Note: `TestRound 254` (with
- // space) WOULD match `Round 254` after `Test`; the boundary is on
- // the prefix start, not at `Round`.
  let src = "TestRound254Helper\nlet round_254_helper = 1;\n";
  let out = extract_citations("Round ", src);
  assert_eq!(out, vec![]);
@@ -322,8 +669,6 @@ mod tests {
 
  #[test]
  fn extract_citations_post_boundary_excludes_alphanumeric_tail() {
- // `Round 254a` is not a citation — the trailing `a` makes it look
- // like an identifier (or typo), not a clean entry_id.
  let src = "see Round 254a here\n";
  let out = extract_citations("Round ", src);
  assert_eq!(out, vec![]);
@@ -361,11 +706,309 @@ mod tests {
  assert!(extract_citations("", "Round 254\n").is_empty());
  }
 
+ // ============ Round 260 — §<id> extractor unit tests ============
+
+ #[test]
+ fn extract_section_citations_basic_numeric() {
+ let src = "// §39 carry\n// also §61 for context\n";
+ let out = extract_section_citations(src);
+ assert_eq!(
+ out,
+ vec![(1, "39".to_string()), (2, "61".to_string())]
+ );
+ }
+
+ #[test]
+ fn extract_section_citations_fractional_id() {
+ let src = "// see §61.1 for sub-section\n";
+ let out = extract_section_citations(src);
+ assert_eq!(out, vec![(1, "61.1".to_string())]);
+ }
+
+ #[test]
+ fn extract_section_citations_slash_slug() {
+ let src = "// §atomic-store/changelog-atomic-ledger anchor\n";
+ let out = extract_section_citations(src);
+ assert_eq!(
+ out,
+ vec![(1, "atomic-store/changelog-atomic-ledger".to_string())]
+ );
+ }
+
+ #[test]
+ fn extract_section_citations_trailing_dot_not_consumed() {
+ let src = "End of sentence §39. Next line\n";
+ let out = extract_section_citations(src);
+ assert_eq!(out, vec![(1, "39".to_string())]);
+ }
+
+ #[test]
+ fn extract_section_citations_brackets_and_parens() {
+ let src = "(§39) [§61.1] {§atomic-store}\n";
+ let out = extract_section_citations(src);
+ assert_eq!(
+ out,
+ vec![
+ (1, "39".to_string()),
+ (1, "61.1".to_string()),
+ (1, "atomic-store".to_string())
+ ]
+ );
+ }
+
+ #[test]
+ fn extract_section_citations_solitary_sigil_no_id_skipped() {
+ let src = "Just a § sigil with no id following\n";
+ let out = extract_section_citations(src);
+ assert!(out.is_empty());
+ }
+
+ #[test]
+ fn extract_section_citations_underscore_allowed() {
+ let src = "// §atomic_store snake case slug\n";
+ let out = extract_section_citations(src);
+ assert_eq!(out, vec![(1, "atomic_store".to_string())]);
+ }
+
+ // ============ Round 260 — bidirectional scan integration tests ============
+
+ fn build_store_with_impl(
+ path: &Path,
+ section_id: &str,
+ impl_file: &str,
+ symbol: Option<&str>,
+ ) -> AtomicStore {
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, path, section_id, impl_file, symbol).unwrap();
+ store
+ }
+
+ #[test]
+ fn bidirectional_clean_codebase_no_violations() {
+ // §39 cite in src/foo.rs + §39.implementations contains src/foo.rs.
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/foo.rs", Some("Foo"));
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// §39 — Foo binds here\nfn main() {}\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "unexpected violations: {:?}", v);
+ }
+
+ #[test]
+ fn bidirectional_section_missing_when_id_not_in_store() {
+ // §999 cite but no §999 in the store.
+ let tmp = TempDir::new().unwrap();
+ let store = AtomicStore::new();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// see §999 hallucinated\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1);
+ match &v[0] {
+ CodeRefViolation::Citation { citation, kind } => {
+ assert_eq!(*kind, ViolationKind::SectionMissing);
+ assert_eq!(citation.entry_id, "§999");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn bidirectional_citation_unbound_when_file_not_in_impls() {
+ // §39 exists with impl src/bar.rs, but src/foo.rs cites §39.
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/bar.rs", None);
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// §39 — unauthorized cite\n",
+ )
+ .unwrap();
+ std::fs::write(tmp.path().join("src/bar.rs"), "// §39 — authoritative\n").unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { citation, kind } => {
+ assert_eq!(*kind, ViolationKind::CitationUnbound);
+ assert_eq!(citation.entry_id, "§39");
+ assert_eq!(citation.file.to_string_lossy(), "src/foo.rs");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn bidirectional_implementation_unbacked_when_impl_file_lacks_cite() {
+ // §39.implementations contains src/foo.rs:Foo, but src/foo.rs has
+ // no §39 citation.
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/foo.rs", Some("Foo"));
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// no spec citation at all\nfn foo() {}\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => {
+ assert_eq!(section_id, "39");
+ assert_eq!(file.to_string_lossy(), "src/foo.rs");
+ assert_eq!(symbol.as_deref(), Some("Foo"));
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn bidirectional_orphan_ledger_suppresses_citation_unbound() {
+ // §39.implementations names src/bar.rs only; src/foo.rs cites §39
+ // but is registered in the orphan ledger as a known-stale code
+ // citation. Suppressed.
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/bar.rs", None);
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// §39 cite\n").unwrap();
+ std::fs::write(tmp.path().join("src/bar.rs"), "// §39 cite\n").unwrap();
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::CodeCitation,
+ doc: "<code-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "39".to_string(),
+ reason: "legacy carry".to_string(),
+ since: "Round 260".to_string(),
+ }];
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "expected suppression, got: {:?}", v);
+ }
+
+ #[test]
+ fn bidirectional_orphan_ledger_suppresses_implementation_unbacked() {
+ // §39.implementations names src/foo.rs, src/foo.rs has no cite,
+ // but ledger registers (src/foo.rs, 39) as known-stale. Suppressed.
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/foo.rs", None);
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// no cite here\n").unwrap();
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::CodeCitation,
+ doc: "<code-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "39".to_string(),
+ reason: "legacy carry".to_string(),
+ since: "Round 260".to_string(),
+ }];
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "expected suppression, got: {:?}", v);
+ }
+
+ #[test]
+ fn bidirectional_filter_id_silences_section_axis() {
+ // Decay-filter narrows surface to Round NNN only; §<id> binding
+ // violations should not surface even if present.
+ let tmp = TempDir::new().unwrap();
+ let store = AtomicStore::new();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// §999 hallucinated\n// Round 1 cite\n",
+ )
+ .unwrap();
+ // Round 1 is in the store; Round 999 is not. With filter_id=Round 1,
+ // we expect Round 1 to surface as Decay and §999 to stay silent.
+ let mut s2 = store.clone();
+ s2.changelog_entries.insert(
+ "Round 1".to_string(),
+ crate::atomic::AtomicChangelogEntry::default(),
+ );
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &s2,
+ &[],
+ Some("Round 1"),
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1);
+ match &v[0] {
+ CodeRefViolation::Citation { citation, kind } => {
+ assert_eq!(*kind, ViolationKind::Decay);
+ assert_eq!(citation.entry_id, "Round 1");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ // ============ Legacy Round 256/258 thin-wrapper tests ============
+
  #[test]
  fn scan_paths_filtered_decay_surfaces_filter_id_match() {
- // Round 258 — when filter_id is set, citations matching it are
- // reported as Decay regardless of whether the id is in the valid
- // set. Other citations are not reported.
  let tmp = tempfile::tempdir().unwrap();
  let src = tmp.path().join("src");
  std::fs::create_dir_all(&src).unwrap();
@@ -374,11 +1017,9 @@ mod tests {
  "// Round 1 here\n// Round 5 here\n// Round 1 again\n",
  )
  .unwrap();
-
  let mut valid = BTreeSet::new();
  valid.insert("Round 1".to_string());
  valid.insert("Round 5".to_string());
-
  let v = scan_paths_filtered(
  tmp.path(),
  &["src/".to_string()],
@@ -387,25 +1028,26 @@ mod tests {
  Some("Round 1"),
  )
  .unwrap();
-
- // 2 citations of Round 1, none of Round 5 (filter excludes).
  assert_eq!(v.len(), 2);
- assert!(v.iter().all(|x| x.kind == ViolationKind::Decay));
- assert!(v.iter().all(|x| x.citation.entry_id == "Round 1"));
+ for x in &v {
+ match x {
+ CodeRefViolation::Citation { kind, citation } => {
+ assert_eq!(*kind, ViolationKind::Decay);
+ assert_eq!(citation.entry_id, "Round 1");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
  }
 
  #[test]
  fn scan_paths_filter_none_reports_only_missing() {
- // When filter_id is None, only citations missing from the valid
- // set are reported (Missing kind).
  let tmp = tempfile::tempdir().unwrap();
  let src = tmp.path().join("src");
  std::fs::create_dir_all(&src).unwrap();
  std::fs::write(src.join("a.rs"), "// Round 1\n// Round 999\n").unwrap();
-
  let mut valid = BTreeSet::new();
  valid.insert("Round 1".to_string());
-
  let v = scan_paths_filtered(
  tmp.path(),
  &["src/".to_string()],
@@ -415,7 +1057,12 @@ mod tests {
  )
  .unwrap();
  assert_eq!(v.len(), 1);
- assert_eq!(v[0].citation.entry_id, "Round 999");
- assert_eq!(v[0].kind, ViolationKind::Missing);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, citation } => {
+ assert_eq!(*kind, ViolationKind::Missing);
+ assert_eq!(citation.entry_id, "Round 999");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
  }
 }
