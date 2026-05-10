@@ -12,7 +12,7 @@
 # 4. No `Co-Authored-By:` trailer
 # 5. No `🤖` emoji or `Generated with Claude` attribution line
 # 6. Body (when present): blank line after subject, then `- ` bullets only
-# (continuation lines starting with whitespace are allowed); 1–3 bullets
+#    (continuation lines starting with whitespace are allowed); 1–3 bullets
 #
 # Install: scripts/install-hooks.sh
 
@@ -36,11 +36,11 @@ raw = path.read_text(encoding="utf-8").splitlines()
 # Strip git's comment lines (start with #) and the optional `-v` diff block.
 lines = [l for l in raw if not l.startswith("#")]
 while lines and lines[-1].strip() == "":
- lines.pop()
+    lines.pop()
 
 if not lines:
- print("[mnemosyne commit-msg] empty commit message", file=sys.stderr)
- sys.exit(1)
+    print("[mnemosyne commit-msg] empty commit message", file=sys.stderr)
+    sys.exit(1)
 
 errors = []
 subject = lines[0]
@@ -48,82 +48,82 @@ subject = lines[0]
 # Rule 1+2: subject shape and type
 m = SUBJECT_RE.match(subject)
 if not m:
- errors.append(
- "subject must match `<type>(<scope>): <description>` "
- "(scope optional but strongly preferred)"
- )
+    errors.append(
+        "subject must match `<type>(<scope>): <description>` "
+        "(scope optional but strongly preferred)"
+    )
 else:
- if m.group("type") not in VALID_TYPES:
- errors.append(
- f"unknown type `{m.group('type')}` — allowed: "
- f"{', '.join(sorted(VALID_TYPES))}"
- )
- if subject.rstrip().endswith("."):
- errors.append("subject must not end with a period")
+    if m.group("type") not in VALID_TYPES:
+        errors.append(
+            f"unknown type `{m.group('type')}` — allowed: "
+            f"{', '.join(sorted(VALID_TYPES))}"
+        )
+    if subject.rstrip().endswith("."):
+        errors.append("subject must not end with a period")
 
 # Rule 3: subject ≤ 72 characters (code points)
 if len(subject) > MAX_SUBJECT:
- errors.append(
- f"subject is {len(subject)} characters; max {MAX_SUBJECT} per COMMIT_FORMAT.md"
- )
+    errors.append(
+        f"subject is {len(subject)} characters; max {MAX_SUBJECT} per COMMIT_FORMAT.md"
+    )
 
 # Rule 4: no Co-Authored-By trailer (CLAUDE Code commit convention forbidden)
 for i, l in enumerate(lines):
- if l.startswith("Co-Authored-By:"):
- errors.append(f"line {i+1}: `Co-Authored-By:` trailer is forbidden")
- break
+    if l.startswith("Co-Authored-By:"):
+        errors.append(f"line {i+1}: `Co-Authored-By:` trailer is forbidden")
+        break
 
 # Rule 5: no Claude attribution / 🤖 emoji
 for i, l in enumerate(lines):
- if "🤖" in l or "Generated with Claude" in l or "Generated with [Claude" in l:
- errors.append(
- f"line {i+1}: 🤖 emoji or `Generated with Claude` attribution is forbidden"
- )
- break
+    if "🤖" in l or "Generated with Claude" in l or "Generated with [Claude" in l:
+        errors.append(
+            f"line {i+1}: 🤖 emoji or `Generated with Claude` attribution is forbidden"
+        )
+        break
 
 # Rule 6: body — blank line separator + `- ` bullets only + 1–3 items
 body = lines[1:]
 if body:
- if body[0].strip() != "":
- errors.append("body must be preceded by a blank line after the subject")
- body_content = body[1:] if body[0].strip() == "" else body
+    if body[0].strip() != "":
+        errors.append("body must be preceded by a blank line after the subject")
+    body_content = body[1:] if body[0].strip() == "" else body
 
- bullet_count = 0
- bad_lines = []
- for i, l in enumerate(body_content):
- if l.startswith("- "):
- bullet_count += 1
- elif l.strip() == "":
- continue
- elif l and l[0] in (" ", "\t"):
- # Continuation of the previous bullet (indented)
- continue
- else:
- bad_lines.append((i + 1, l))
+    bullet_count = 0
+    bad_lines = []
+    for i, l in enumerate(body_content):
+        if l.startswith("- "):
+            bullet_count += 1
+        elif l.strip() == "":
+            continue
+        elif l and l[0] in (" ", "\t"):
+            # Continuation of the previous bullet (indented)
+            continue
+        else:
+            bad_lines.append((i + 1, l))
 
- if bad_lines:
- line_no, content = bad_lines[0]
- errors.append(
- f"body line {line_no} is neither a `- ` bullet nor a continuation: {content!r}"
- )
+    if bad_lines:
+        line_no, content = bad_lines[0]
+        errors.append(
+            f"body line {line_no} is neither a `- ` bullet nor a continuation: {content!r}"
+        )
 
- if bullet_count > MAX_BULLETS:
- errors.append(
- f"body has {bullet_count} bullets; max {MAX_BULLETS} per COMMIT_FORMAT.md "
- f"(consider quantifying / consolidating)"
- )
+    if bullet_count > MAX_BULLETS:
+        errors.append(
+            f"body has {bullet_count} bullets; max {MAX_BULLETS} per COMMIT_FORMAT.md "
+            f"(consider quantifying / consolidating)"
+        )
 
 if errors:
- print(
- "[mnemosyne commit-msg] commit message violates COMMIT_FORMAT.md:",
- file=sys.stderr,
- )
- for e in errors:
- print(f" - {e}", file=sys.stderr)
- print(
- "\nSee COMMIT_FORMAT.md for the full rule set.\n"
- "Bypass: --no-verify (discouraged).",
- file=sys.stderr,
- )
- sys.exit(1)
+    print(
+        "[mnemosyne commit-msg] commit message violates COMMIT_FORMAT.md:",
+        file=sys.stderr,
+    )
+    for e in errors:
+        print(f"  - {e}", file=sys.stderr)
+    print(
+        "\nSee COMMIT_FORMAT.md for the full rule set.\n"
+        "Bypass: --no-verify (discouraged).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 PY
