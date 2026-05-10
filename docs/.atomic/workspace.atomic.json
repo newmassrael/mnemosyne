@@ -63,6 +63,96 @@
         "MCP server reconnect required for external clients to pick up new mnemosyne-mcp build",
         "Schema documentation alignment: [[orphan_ledger]] section reflects Round 253+254 wire"
       ]
+    },
+    "Round 255": {
+      "decision_summary": "Stage 1 LLM citation hygiene wired — agent verifies Round NNN citations via existing list_sections + query_section before writing. Rule documented in project CLAUDE.md + external GETTING_STARTED.md.",
+      "changes_bullets": [
+        "CLAUDE.md: new \"Citation hygiene\" section with 3-step verification path",
+        "CLAUDE.md: explicit out-of-scope carve-out (no Stage 2/3 / no semantic / no new tool)",
+        "GETTING_STARTED.md: new section 7 explaining LLM agent citation wire for external users",
+        "No new MCP primitive: existing list_sections + query_section verified sufficient"
+      ],
+      "verification_bullets": [
+        "cargo build --release -p mnemosyne-cli: clean compile",
+        "mnemosyne-mcp/src/main.rs read: list_sections + query_section confirmed exposed with decision_status",
+        "Edits to external instruction docs only — atomic store JSON / GENERATED.md untouched"
+      ],
+      "carry_forward_bullets": [
+        "Round 256: validate-code-refs CLI MVP — foundation for Stage 2 + Stage 3",
+        "Round 257: Stage 2 — pre-commit hook gate using validate-code-refs",
+        "Round 258: Stage 3 — supersede cascade trigger to surface decay",
+        "verify_round_citation MCP tool: add only if two-call dance friction observed",
+        "GETTING_STARTED.md broader staleness (DESIGN.md / ROADMAP.md refs) — separate cleanup round"
+      ]
+    },
+    "Round 256": {
+      "decision_summary": "validate-code-refs CLI MVP — scans configured [code_refs].paths for <entry_id_prefix><digits> citations, rejects those missing from atomic store changelog_entries. Stage 2 of code-citation defense (Round 255 carry).",
+      "changes_bullets": [
+        "mnemosyne-validator: new code_refs module (extract_citations + scan_paths + walk_paths + 10 unit tests)",
+        "mnemosyne-validator/config.rs: new CodeRefsSection (paths + severity_missing) + WorkspaceConfig.code_refs Option field",
+        "mnemosyne-cli/main.rs: new validate-code-refs subcommand + help text + cli_schema-derived prefix",
+        "mnemosyne-cli tests: 6 integration smoke tests (skip / clean / reject / warn / identifier-shape / JSON)"
+      ],
+      "verification_bullets": [
+        "cargo build --release -p mnemosyne-cli: clean compile, 0 warnings",
+        "cargo test --release -p mnemosyne-validator --lib code_refs: 10/10 PASS",
+        "cargo test --release -p mnemosyne-cli --test validate_code_refs_smoke: 6/6 PASS",
+        "cargo test --release --workspace: all suites PASS, 0 failures, no regressions",
+        "self-application probe: 4 valid entries, 119 historical missing citations (off-main carry)"
+      ],
+      "carry_forward_bullets": [
+        "Round 257: Stage 2 — wire validate-code-refs into scripts/hooks/pre-commit + GitHub Actions",
+        "Round 258: Stage 3 — supersede cascade trigger (set-section-decision-status auto-runs validate-code-refs)",
+        "Self-application activation deferred — 119 off-main historical citations require bulk orphan_ledger entries",
+        "Section §<id> citation + decision_status check: future round (AtomicChangelogEntry has no status field)",
+        "Tree-sitter language-aware extraction: future round (false-positive precision via [[orphan_ledger]] for now)"
+      ]
+    },
+    "Round 257": {
+      "decision_summary": "Stage 2 wire — pre-commit hook adds Gate 3 (validate-code-refs always-runs) + GitHub Actions step. Subcommand internally skips when [code_refs] unconfigured (Round 256 carry).",
+      "changes_bullets": [
+        "scripts/hooks/pre-commit: new Gate 3 (validate-code-refs) always-runs after Gate 2",
+        "scripts/hooks/pre-commit: header comment updated from \"Two gates\" to \"Three gates\" with Gate 3 description",
+        ".github/workflows/mnemosyne-validate.yml: new step \"validate-code-refs (Round 257 Stage 2)\" after validate-workspace",
+        "Hook design: subcommand internally skips when [code_refs] unconfigured (5-min setup carry preserved)"
+      ],
+      "verification_bullets": [
+        "bash scripts/hooks/pre-commit (no [code_refs]): Gate 3 prints \"skipped\", exit 0",
+        "bash scripts/hooks/pre-commit (with [code_refs] paths=nonexistent): missing=0, exit 0",
+        "cargo build --release: clean compile, 0 warnings (no production code touched)",
+        "cargo test --release --workspace: no regressions (hook is shell-only)",
+        "install-hooks.sh: untouched (already copies all scripts/hooks/* files generically)"
+      ],
+      "carry_forward_bullets": [
+        "Round 258: Stage 3 — supersede cascade trigger (Active → Superseded surfaces decay listing)",
+        "Self-application activation: 119 historical citations require bulk orphan_ledger entries (separate round)",
+        "Hook perf optim: only run Gate 3 when staged files intersect [code_refs].paths (carry, optional)",
+        "External user adoption: GETTING_STARTED.md section 7 (Round 255) documents the agent-side path"
+      ]
+    },
+    "Round 258": {
+      "decision_summary": "Stage 3 capability layer — validate-code-refs --filter-id flag exposes decay scan (citations of one entry_id surface as Decay kind regardless of valid set membership). Auto-cascade trigger deferred behind AtomicSection.decision_status schema extension.",
+      "changes_bullets": [
+        "code_refs.rs: scan_paths_filtered + ViolationKind::Decay variant for explicit decay scan",
+        "code_refs.rs: 2 new unit tests (filter_id surfaces decay; filter_id=None reports only missing)",
+        "mnemosyne-cli/main.rs: --filter-id <entry_id> flag on validate-code-refs (decay scan mode)",
+        "mnemosyne-cli/main.rs: text + JSON output now reports both missing_count and decay_count",
+        "mnemosyne-cli/tests: case_vii integration test (filter-id mode, JSON shape, decay surfacing)"
+      ],
+      "verification_bullets": [
+        "cargo test --release -p mnemosyne-validator --lib code_refs: 12/12 PASS (10 prior + 2 Round 258)",
+        "cargo test --release -p mnemosyne-cli --test validate_code_refs_smoke: 7/7 PASS (6 prior + 1)",
+        "cargo test --release --workspace: validator unit count 173 → 175 (+2), no regressions",
+        "cargo build --release: clean compile, 0 warnings",
+        "manual probe: validate-code-refs --filter-id \"Round 254\" --json works, returns decay_count"
+      ],
+      "carry_forward_bullets": [
+        "Auto-cascade trigger deferred — requires AtomicSection.decision_status schema field (future round)",
+        "Once schema lands: post-mutate hook in set_section_decision_status invokes scan_paths_filtered",
+        "docs/.atomic/code_ref_decay.json audit trail file format: future round when auto-cascade lands",
+        "Section §<id> citation pattern (in addition to Round NNN): future round, parallel extraction path",
+        "Self-application activation of [code_refs] still pending — 119 historical citations need bulk ledger"
+      ]
     }
   },
   "schema_version": 1

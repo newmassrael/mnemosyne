@@ -17,8 +17,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
- add_cross_ref, add_section, append_changelog_entry, check_style, compare_typed_facts,
- default_ruleset_with_config, discover_config,
+ add_cross_ref, add_section, append_changelog_entry, check_style,
+ code_refs::{scan_paths_filtered, ViolationKind},
+ compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
  query::{
@@ -157,6 +158,9 @@ fn run(args: &[String]) -> Result<()> {
  }
  "generate-docs" => atomic_cli::cmd_generate_docs(&repo_root()?, &args[2..]),
  "verify-generated" => atomic_cli::cmd_verify_generated(&repo_root()?, &args[2..]),
+ // Round 256 — Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
+ // rule, Round 255 carry).
+ "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
  "--help" | "-h" | "help" => {
  print_help(prog);
  Ok(())
@@ -245,6 +249,21 @@ fn print_help(prog: &str) {
  );
  println!(
  "   atomic mutate subcommands above auto-regenerate GENERATED.md (override: --no-regenerate)"
+ );
+ println!();
+ println!(" --- code citation defense (Round 255-258, 3-stage) ---");
+ println!(
+ " {} validate-code-refs [--severity-missing reject|warn|info] [--filter-id <entry_id>] [--json]",
+ prog
+ );
+ println!(
+ "   scan [code_refs].paths for <entry_id_prefix><digits> citations,"
+ );
+ println!(
+ "   reject those whose entry_id is missing from atomic store changelog_entries"
+ );
+ println!(
+ "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
  );
 }
 
@@ -1558,6 +1577,183 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
  for (doc, count) in &per_doc {
  println!(" {}: {}", doc, count);
  }
+ }
+ Ok(())
+}
+
+// ============================================================================
+// validate-code-refs — Round 256 Stage 2 code-citation defense.
+// ============================================================================
+
+/// Round 256 — scan configured code paths for `<entry_id_prefix><digits>`
+/// citations and reject those whose target entry_id is missing from the
+/// atomic store `changelog_entries` map.
+///
+/// Stage 1 of the 3-stage defense (Round 255) is the agent-time CLAUDE.md
+/// rule; this subcommand is the validator-time gate. Round 257 wires it
+/// into the pre-commit hook; Round 258 wires the supersede cascade
+/// trigger.
+///
+/// `[code_refs]` omission ⇒ skip (exit 0 with log line) — 5-min setup
+/// promise carry for external users who don't cite spec entries in code.
+fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
+ let mut json = false;
+ let mut severity_override: Option<String> = None;
+ // Round 258 — explicit decay filter (cascade caller restricts the scan
+ // to citations of one entry_id, e.g. an entry that just transitioned
+ // Active → Superseded).
+ let mut filter_id: Option<String> = None;
+ let mut iter = args.iter();
+ while let Some(a) = iter.next() {
+ match a.as_str() {
+ "--json" => json = true,
+ "--severity-missing" => {
+ severity_override = Some(
+ iter.next()
+ .ok_or_else(|| anyhow!("--severity-missing missing value"))?
+ .clone(),
+ );
+ }
+ "--filter-id" => {
+ filter_id = Some(
+ iter.next()
+ .ok_or_else(|| anyhow!("--filter-id missing value"))?
+ .clone(),
+ );
+ }
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+
+ let loaded = workspace_config()?;
+ let cfg = match &loaded.config.code_refs {
+ Some(c) => c,
+ None => {
+ if json {
+ println!(
+ "{}",
+ serde_json::json!({
+ "primitive": "validate-code-refs",
+ "status": "skipped",
+ "reason": "[code_refs] not configured in mnemosyne.toml",
+ })
+ );
+ } else {
+ println!("=== mnemosyne-cli validate-code-refs ===");
+ println!(
+ "skipped — [code_refs] not configured in mnemosyne.toml \
+ (5-min setup promise carry — Round 256)"
+ );
+ }
+ return Ok(());
+ }
+ };
+
+ let severity = severity_override
+ .as_deref()
+ .unwrap_or(&cfg.severity_missing)
+ .to_string();
+ if !matches!(severity.as_str(), "reject" | "warn" | "info") {
+ bail!(
+ "invalid severity `{}` — expected one of: reject | warn | info",
+ severity
+ );
+ }
+
+ let prefix = cli_schema()?.entry_id_prefix.clone();
+ let root = loaded.workspace_root.clone();
+
+ let atomic_path = AtomicStore::default_sidecar_path(&root);
+ let store = AtomicStore::load(&atomic_path)
+ .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+
+ let valid_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
+
+ let violations = scan_paths_filtered(
+ &root,
+ &cfg.paths,
+ &prefix,
+ &valid_ids,
+ filter_id.as_deref(),
+ )
+ .context("scan_paths failed")?;
+
+ let missing_count = violations
+ .iter()
+ .filter(|v| matches!(v.kind, ViolationKind::Missing))
+ .count();
+ let decay_count = violations
+ .iter()
+ .filter(|v| matches!(v.kind, ViolationKind::Decay))
+ .count();
+
+ if json {
+ let view: Vec<_> = violations
+ .iter()
+ .map(|v| {
+ serde_json::json!({
+ "kind": match v.kind {
+ ViolationKind::Missing => "missing",
+ ViolationKind::Decay => "decay",
+ },
+ "file": v.citation.file.to_string_lossy(),
+ "line": v.citation.line,
+ "entry_id": v.citation.entry_id,
+ })
+ })
+ .collect();
+ println!(
+ "{}",
+ serde_json::json!({
+ "primitive": "validate-code-refs",
+ "scanned_paths": cfg.paths,
+ "valid_entry_count": valid_ids.len(),
+ "missing_count": missing_count,
+ "decay_count": decay_count,
+ "severity_missing": severity,
+ "filter_id": filter_id,
+ "violations": view,
+ })
+ );
+ } else {
+ println!("=== mnemosyne-cli validate-code-refs ===");
+ println!(
+ "prefix={:?} valid_entries={} scanned_paths={:?}",
+ prefix,
+ valid_ids.len(),
+ cfg.paths
+ );
+ if let Some(ref fid) = filter_id {
+ println!("filter_id={:?} (Round 258 decay scan mode)", fid);
+ }
+ println!(
+ "violations: total={} missing={} decay={} (severity_missing={})",
+ violations.len(),
+ missing_count,
+ decay_count,
+ severity
+ );
+ for v in &violations {
+ let kind = match v.kind {
+ ViolationKind::Missing => "missing",
+ ViolationKind::Decay => "decay",
+ };
+ println!(
+ " [{}] {}:{} {}",
+ kind,
+ v.citation.file.to_string_lossy(),
+ v.citation.line,
+ v.citation.entry_id
+ );
+ }
+ }
+
+ if missing_count > 0 && severity == "reject" {
+ bail!(
+ "{} citation(s) missing from atomic store — reject (severity={})",
+ missing_count,
+ severity
+ );
  }
  Ok(())
 }

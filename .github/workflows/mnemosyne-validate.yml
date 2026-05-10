@@ -38,3 +38,9 @@ jobs:
 
  - name: mnemosyne-cli validate-workspace
  run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
+
+ - name: mnemosyne-cli validate-code-refs (Round 257 Stage 2)
+ # Subcommand internally skips when [code_refs] is unconfigured;
+ # when configured with severity_missing = "reject", missing
+ # citations fail the build.
+ run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs

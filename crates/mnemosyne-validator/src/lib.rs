@@ -37,6 +37,7 @@ pub mod mutate;
 pub mod style;
 pub mod atomic;
 pub mod render;
+pub mod code_refs;
 
 pub use schema::{
  ChangelogEntry, CrossRef, DecisionStatus, FrozenList, LockKind, ParsedDoc, RefKind, Section,
@@ -49,8 +50,9 @@ pub use validator::{
 };
 pub use workspace::Workspace;
 pub use config::{
- discover_config, load_config, parse_config, LoadedConfig, OrphanKind, OrphanLedgerEntry,
- SchemaSection, StyleSection, TerminologySection, WorkspaceConfig, WorkspaceSection,
+ discover_config, load_config, parse_config, CodeRefsSection, LoadedConfig, OrphanKind,
+ OrphanLedgerEntry, SchemaSection, StyleSection, TerminologySection, WorkspaceConfig,
+ WorkspaceSection,
 };
 pub use query::{
  build_envelope, changelog_entries_for_section, related_sections,

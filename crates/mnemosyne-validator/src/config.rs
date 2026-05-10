@@ -51,6 +51,13 @@ pub struct WorkspaceConfig {
  /// preserved across both sources.
  #[serde(default, rename = "orphan_ledger")]
  pub orphan_ledger: Vec<OrphanLedgerEntry>,
+ /// Round 256 — code citation verification config (Stage 2 of the
+ /// 3-stage code-citation defense, Round 255 carry). When `[code_refs]`
+ /// is omitted, the `validate-code-refs` subcommand exits 0 with a
+ /// "skipped, no config" log line — preserving the 5-min setup promise
+ /// for external users who don't cite spec entries in code.
+ #[serde(default)]
+ pub code_refs: Option<CodeRefsSection>,
 }
 
 /// Round 254 — atomic-internal orphan ledger kind.
@@ -120,6 +127,46 @@ pub struct OrphanLedgerEntry {
  pub reason: String,
  /// When the entry was registered (free-form date or round id).
  pub since: String,
+}
+
+/// `[code_refs]` table — code citation verification config (Round 256).
+///
+/// Stage 2 of the 3-stage code-citation defense. Round 255 introduced the
+/// agent-time CLAUDE.md rule directing LLM agents to verify before citing;
+/// Round 256 wires the validator-time CLI subcommand `validate-code-refs`
+/// that scans configured paths for `<entry_id_prefix><digits>` patterns
+/// (e.g. `Round 254`, `ADR-0042`) and rejects citations whose target id
+/// is missing from the atomic store `changelog_entries` map.
+///
+/// The pattern is derived from `[schema].entry_id_prefix` — no separate
+/// regex configuration. Default Mnemosyne preset = `Round ` ⇒ matches
+/// `\bRound (\d+(?:\.\d+)?)\b`. External users override via
+/// `[schema].entry_id_prefix` and the same derivation applies to both
+/// the parser (Round 144) and the code-ref scanner (Round 256).
+///
+/// Section omission disables the subcommand entirely (`exit 0` with a
+/// "skipped, no config" log line) — 5-min setup promise carry for users
+/// who don't cite spec entries in code.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CodeRefsSection {
+ /// Workspace-relative paths to scan recursively. Each entry may be a
+ /// file or directory. Hidden directories (`.git/`, `.mnemosyne/`),
+ /// `target/`, and `node_modules/` are always skipped (build artifacts
+ /// and vendored deps shouldn't carry author-written citations).
+ #[serde(default)]
+ pub paths: Vec<String>,
+
+ /// Severity for missing citations (entry_id not present in the atomic
+ /// store `changelog_entries` map). Recognized values:
+ /// - `"reject"` (default) — exit code 1; CI / pre-commit gate
+ /// - `"warn"` — exit code 0 with report
+ /// - `"info"` — exit code 0 with report (lower visual weight)
+ #[serde(default = "default_severity_reject")]
+ pub severity_missing: String,
+}
+
+fn default_severity_reject() -> String {
+ "reject".to_string()
 }
 
 /// `[style]` table — locale + threshold overrides for T3/T4 style rules

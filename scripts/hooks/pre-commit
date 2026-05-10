@@ -2,12 +2,16 @@
 # mnemosyne pre-commit hook — DESIGN §66 *self-application* (- 79 OPTION C
 # carry, - 146 generic via mnemosyne.toml, - 168 cascade auto-update).
 #
-# Two gates:
+# Three gates:
 # 1. workspace doc gate — validate-workspace whenever a tracked doc
 # (per `mnemosyne-cli list-docs`) is staged.
 # 2. atomic sidecar gate — verify-generated whenever the atomic store
 # sidecar `docs/.atomic/workspace.atomic.json` is staged. Rejects the
 # commit if GENERATED.md is stale (- 168 cascade auto-update gate).
+# 3. code citation gate (Round 257) — validate-code-refs always runs;
+# the subcommand internally skips when `[code_refs]` is unconfigured
+# in `mnemosyne.toml` (5-min setup carry), otherwise scans configured
+# paths for citations whose target entry_id is missing from atomic.
 #
 # -: scripts/install-hooks.sh - -
 # `cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x ...`.
@@ -25,6 +29,17 @@ if printf '%s\n' "$staged" | grep -qx -- "$ATOMIC_SIDECAR"; then
  echo " fix: cargo run -q -p mnemosyne-cli -- generate-docs && git add docs/GENERATED.md" >&2
  exit 1
  fi
+fi
+
+# Gate 3 (Round 257) — code citation defense. Subcommand internally
+# skips when [code_refs] is unconfigured. When configured with
+# severity_missing = "reject", missing citations block the commit.
+echo "[mnemosyne pre-commit] code citation defense — validate-code-refs"
+if ! cargo run -q -p mnemosyne-cli -- validate-code-refs; then
+ echo "[mnemosyne pre-commit] commit rejected — code citation violations" >&2
+ echo " fix: verify each cited entry_id exists in atomic store, or" >&2
+ echo " register stale citations in mnemosyne.toml [[orphan_ledger]]" >&2
+ exit 1
 fi
 
 # Gate 1 — resolve the configured doc list via the CLI itself (single

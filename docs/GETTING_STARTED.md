@@ -131,6 +131,38 @@ every `git commit` whose staged set touches a tracked doc. The hook reads
 the doc list from `mnemosyne.toml` via `mnemosyne-cli list-docs`, so
 adopting a new doc only needs a `mnemosyne.toml` edit.
 
+## 7. LLM agent citation hygiene
+
+When you wire an LLM coding agent (Claude Code / Cursor / Aider) to your
+mnemosyne workspace via the MCP server, the agent will reference your
+spec entries by id (e.g. `Round 254`, `§42`) in the code, comments, and
+commit messages it generates. Hallucinated references — entry ids that
+do not exist, or that point to a Superseded decision — are silent
+corruption of the audit trail. No compiler catches it; `git blame`
+chases the wrong rationale.
+
+The MCP server already exposes the verification primitives:
+
+- `list_sections` returns every section_id, including changelog entry
+ ids like `round-254--<slug>`. Have the agent call this once at
+ session start and cache the set, then prefix-match `round-NNN--`
+ before writing any `Round NNN` citation.
+- `query_section(section_id)` returns the SectionView with
+ `decision_status`. Use this to distinguish Active from Superseded
+ entries; only Active entries should be cited without explicit
+ historical-reference framing.
+
+Add a one-line rule to your project's `CLAUDE.md` (or equivalent agent
+instruction file) telling the agent to verify before citing. Mnemosyne's
+own project `CLAUDE.md` carries the example pattern under the *Citation
+hygiene* section.
+
+This is **Stage 1** of a three-stage defense. Stage 2 (pre-commit gate
+that rejects missing or superseded citations) and Stage 3 (cascade
+decay scan when an entry transitions to Superseded) ship in subsequent
+rounds; until then, agent-side verification at write time is the
+primary protection.
+
 ## What's next
 
 - **Schema customization**: see [SCHEMA_GUIDE.md](SCHEMA_GUIDE.md).

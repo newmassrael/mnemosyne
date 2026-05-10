@@ -124,3 +124,43 @@ All spec mutation routes through `mnemosyne-cli` mutate API:
 Direct `Edit` / `Write` on the atomic store JSON or generated artifacts =
 0 calls enforced. Exception: explicit user *override grant* (Round 126
 option (iii) escape hatch).
+
+## Citation hygiene (Round 255 — Stage 1 of code-citation-verification)
+
+Before writing `Round NNN` or `§<id>` references in code / comments /
+commit messages, *verify the target exists in the atomic store*. LLM
+hallucination of round numbers is silent corruption of the audit trail —
+no compiler catches it, and `git blame` chases the wrong rationale.
+
+**Verification path** (existing MCP tools, no new primitives needed):
+
+1. Call `list_sections` once at session start → cache the section_id set.
+2. For each cited `Round NNN`, prefix-match `round-NNN--` in the cached
+ set:
+ - 0 matches = hallucinated. Do NOT write the citation. Find the
+ actually-relevant round, or stop and ask the user.
+ - ≥ 1 match = exists. Proceed.
+3. For decision_status (Active vs Superseded), call
+ `query_section(section_id=<full-slug>)` and read `decision_status`.
+ Only cite Active entries; Superseded entries require explicit "this is
+ a historical reference to a superseded decision" framing.
+
+CLI equivalents (when MCP unavailable): `mnemosyne-cli query
+--list-sections` for step 1, `mnemosyne-cli query §<full-section-id>` for
+step 3.
+
+**Why**: atomic store is the single source of truth for round-numbered
+decisions. Citations that name a non-existent or superseded round break
+audit-trail correctness silently. Catching it at the *agent's writing
+moment* is dramatically cheaper than catching it later (pre-commit / CI
+/ post-merge decay scan).
+
+**Out of scope** (carry forward, future rounds):
+
+- Pre-commit gate that rejects missing/superseded citations (Stage 2)
+- Cascade trigger that surfaces decay when an entry transitions to
+ Superseded (Stage 3)
+- Semantic match check ("Round NNN actually decides *this* code") —
+ T3/T4 heuristic territory, not v1
+- Dedicated `verify_round_citation(n)` MCP tool — add only if the
+ two-call dance shows real friction in practice
