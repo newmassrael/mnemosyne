@@ -61,3 +61,17 @@ max_section_body_length = 5000
 [terminology.glossary]
 "Salsa" = ["salsa"]
 "bi-temporal" = ["bitemporal"]
+
+# Round 262 — code citation defense activation (Path B Spec ↔ Code
+# bidirectional binding). `paths` = workspace-relative directory list to
+# scan recursively. `severity_*` = "warn" baseline; Round 263+ promotes
+# to "reject" once the small ImplementationUnbacked surface (8 from
+# Round 261 seeds) is cleared. `comment_only = true` (Round 262 precision
+# layer) restricts citation extraction to language-comment text only —
+# string-literal fixtures and bare code identifiers no longer surface
+# as false-positive citations.
+[code_refs]
+paths = ["crates/"]
+severity_missing = "warn"
+severity_binding = "warn"
+comment_only = true

@@ -1715,6 +1715,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  &store,
  &loaded.config.orphan_ledger,
  filter_id.as_deref(),
+ cfg.comment_only,
  )
  .context("scan_paths_bidirectional failed")?;
 

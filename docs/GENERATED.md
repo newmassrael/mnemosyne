@@ -326,3 +326,35 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 262 — code-citation-defense comment-only precision layer + [code_refs] permanent activation — strip_to_comments via CommentSyntax dispatch eliminates string-literal noise (1581 → 1107, -30%); severity warn baseline pending Round 263 reject promotion
+
+**Changes**:
+- comment_scanner layer in code_refs.rs — CommentSyntax (Slash/Hash/Unknown) + per-extension dispatch
+- strip_to_comments preserves line numbers 1:1 (non-comment chars → spaces, line breaks intact)
+- CodeRefsSection.comment_only config option (default true), unknown extension passthrough preserved
+- scan_paths_bidirectional + scan_paths_filtered gain comment_only flag (legacy thin wrapper carries false)
+- 11 unit tests for comment-only: syntax dispatch, line/block comment, string literal exclusion, unknown passthrough
+- mnemosyne.toml [code_refs] permanent activation: paths=crates/, severity=warn/warn, comment_only=true
+- surface reduction: 1581 → 1107 (-30% noise removal, mostly string-literal fixtures in tests)
+
+
+
+**Verification**:
+- cargo test --release --workspace PASS — 37 code_refs tests (11 new + 26 existing) all pass
+- validate-workspace PASS: entries=10, sections=5, GENERATED.md=sync, orphan_refs=0+0
+- pre-commit hook gates 1-3 PASS (gate 3 now active under warn — exits 0, prints surface)
+- T3 reject=0 carry stable, no style regression
+
+
+
+**Impact**: §code-citation-defense, §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- Round 263: add // §slug comments to 8 ImplementationUnbacked files; promote severity_binding=reject
+- Round 264+: legacy // Round N (N<252) comment handling — atomic absorb vs orphan_ledger vs comment delete
+- v1 strip_to_comments limitations: raw strings, triple-quoted, shell heredocs — accepted miss cases
+- formatted-marker option (require_marker=true) deferred until empirical need surfaces
+
+
+

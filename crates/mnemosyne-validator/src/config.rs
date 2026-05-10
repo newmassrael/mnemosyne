@@ -184,10 +184,26 @@ pub struct CodeRefsSection {
  /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
  #[serde(default = "default_severity_reject")]
  pub severity_binding: String,
+
+ /// Round 262 — comment-only filtering toggle. When `true` (default),
+ /// the citation extractor only sees text inside language comments
+ /// (`//`, `/* */`, `#`); string-literal contents and code identifiers
+ /// are stripped out, eliminating the dominant false-positive surface
+ /// from test fixtures and inline string data. Unknown file extensions
+ /// fall through to whole-text scan regardless of this flag.
+ ///
+ /// Set to `false` to restore the Round 256 whole-text scan (back-compat
+ /// for users whose citation discipline relies on non-comment markers).
+ #[serde(default = "default_comment_only")]
+ pub comment_only: bool,
 }
 
 fn default_severity_reject() -> String {
  "reject".to_string()
+}
+
+fn default_comment_only() -> bool {
+ true
 }
 
 /// `[style]` table — locale + threshold overrides for T3/T4 style rules

@@ -315,6 +315,182 @@ fn is_section_id_char(c: char) -> bool {
  c.is_ascii_alphanumeric() || c == '.' || c == '/' || c == '-' || c == '_'
 }
 
+// ============================================================================
+// Comment-only filtering (Round 262 — Path B precision layer).
+//
+// The Round 256 scanner pattern-matches the entire file body, which surfaces
+// string-literal fixtures (e.g. test markdown that contains "Round 1" as
+// data) as false-positive citations. The comment-only layer strips
+// non-comment chars to a single space so that line numbers are preserved
+// 1:1 while only language-comment text reaches the citation extractor.
+//
+// This is a *heuristic*, not a full parser: ~95% accuracy with ~100 LOC,
+// which keeps the 5-min setup promise (no AST dependency). Limitations:
+// - Rust raw strings (`r"..."`, `r#"..."#`) treated as normal strings;
+// - Python triple-quoted strings not recognized;
+// - shell heredocs not recognized;
+// - escape rules simplified (`\X` skips one char inside strings).
+// These miss cases are deliberately deferred — when they bite, opt-out via
+// `[code_refs] comment_only = false` restores the Round 256 whole-text scan.
+// ============================================================================
+
+/// Per-language comment recognition mode. The dispatcher in
+/// [`comment_syntax_for`] maps file extensions onto these variants;
+/// `Unknown` extensions fall through to whole-text scan (back-compat).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommentSyntax {
+ /// C-family: `// line` + `/* block */` (Rust, C/C++, Go, JS/TS, Java, Kotlin, Swift, Scala).
+ Slash,
+ /// Hash-family: `# line` only, no block syntax (Python, shell, Ruby, TOML, YAML).
+ Hash,
+ /// No filtering — whole text is scanned (back-compat for unknown extensions).
+ Unknown,
+}
+
+/// Map a file path's extension to the appropriate [`CommentSyntax`].
+/// Case-insensitive on the extension. Files with no extension fall to
+/// [`CommentSyntax::Unknown`].
+pub fn comment_syntax_for(path: &Path) -> CommentSyntax {
+ let ext = match path.extension().and_then(|s| s.to_str()) {
+ Some(e) => e.to_ascii_lowercase(),
+ None => return CommentSyntax::Unknown,
+ };
+ match ext.as_str() {
+ "rs" | "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "hxx" | "hh" | "go"
+ | "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" | "java" | "scala"
+ | "kt" | "kts" | "swift" => CommentSyntax::Slash,
+ "py" | "sh" | "bash" | "zsh" | "rb" | "toml" | "yaml" | "yml" => {
+ CommentSyntax::Hash
+ }
+ _ => CommentSyntax::Unknown,
+ }
+}
+
+/// Replace non-comment characters with spaces so citation extractors see
+/// only comment text. Line breaks are preserved 1:1 so line numbers stay
+/// accurate. Unknown syntax returns the input unchanged.
+pub fn strip_to_comments(content: &str, syntax: CommentSyntax) -> String {
+ match syntax {
+ CommentSyntax::Unknown => content.to_string(),
+ CommentSyntax::Slash => strip_slash(content),
+ CommentSyntax::Hash => strip_hash(content),
+ }
+}
+
+fn strip_slash(content: &str) -> String {
+ let mut out = String::with_capacity(content.len());
+ let mut in_block = false;
+ for (line_idx, line) in content.lines().enumerate() {
+ if line_idx > 0 {
+ out.push('\n');
+ }
+ let mut in_string = false;
+ let mut chars = line.char_indices().peekable();
+ while let Some((_, c)) = chars.next() {
+ if in_block {
+ if c == '*' && chars.peek().map(|(_, n)| *n) == Some('/') {
+ out.push('*');
+ chars.next();
+ out.push('/');
+ in_block = false;
+ } else {
+ out.push(c);
+ }
+ continue;
+ }
+ if in_string {
+ if c == '\\' {
+ out.push(' ');
+ if chars.next().is_some() {
+ out.push(' ');
+ }
+ continue;
+ }
+ if c == '"' {
+ in_string = false;
+ }
+ out.push(' ');
+ continue;
+ }
+ // Code state — look for comment openers.
+ if c == '/' && chars.peek().map(|(_, n)| *n) == Some('/') {
+ out.push('/');
+ chars.next();
+ out.push('/');
+ while let Some((_, rest)) = chars.next() {
+ out.push(rest);
+ }
+ break;
+ }
+ if c == '/' && chars.peek().map(|(_, n)| *n) == Some('*') {
+ out.push('/');
+ chars.next();
+ out.push('*');
+ in_block = true;
+ continue;
+ }
+ if c == '"' {
+ in_string = true;
+ out.push(' ');
+ continue;
+ }
+ out.push(' ');
+ }
+ // EOL — single-line strings auto-close (we don't carry in_string
+ // across lines; multi-line raw strings are an accepted miss case).
+ }
+ out
+}
+
+fn strip_hash(content: &str) -> String {
+ let mut out = String::with_capacity(content.len());
+ for (line_idx, line) in content.lines().enumerate() {
+ if line_idx > 0 {
+ out.push('\n');
+ }
+ let mut in_single = false;
+ let mut in_double = false;
+ let mut chars = line.char_indices().peekable();
+ while let Some((_, c)) = chars.next() {
+ if in_single || in_double {
+ if c == '\\' {
+ out.push(' ');
+ if chars.next().is_some() {
+ out.push(' ');
+ }
+ continue;
+ }
+ if in_single && c == '\'' {
+ in_single = false;
+ } else if in_double && c == '"' {
+ in_double = false;
+ }
+ out.push(' ');
+ continue;
+ }
+ if c == '#' {
+ out.push('#');
+ while let Some((_, rest)) = chars.next() {
+ out.push(rest);
+ }
+ break;
+ }
+ if c == '"' {
+ in_double = true;
+ out.push(' ');
+ continue;
+ }
+ if c == '\'' {
+ in_single = true;
+ out.push(' ');
+ continue;
+ }
+ out.push(' ');
+ }
+ }
+ out
+}
+
 /// Read `<digits>(.<digits>)?` from the start of `s`. Returns the
 /// matched substring, or `None` if `s` does not start with a digit.
 /// Trailing `.` without fractional digits is not consumed.
@@ -355,31 +531,47 @@ fn scan_round_number(s: &str) -> Option<String> {
 /// Round 256 — entry_id-only scan (legacy thin wrapper, retained for
 /// backward compatibility with callers that don't carry the full atomic
 /// store). New callers should use [`scan_paths_bidirectional`].
+///
+/// Round 262 — defaults `comment_only=false` to preserve the Round
+/// 256/258 whole-text scan semantics for any external caller still bound
+/// to this entrypoint.
 pub fn scan_paths(
  workspace_root: &Path,
  paths: &[String],
  prefix: &str,
  valid_entry_ids: &BTreeSet<String>,
 ) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_filtered(workspace_root, paths, prefix, valid_entry_ids, None)
+ scan_paths_filtered(workspace_root, paths, prefix, valid_entry_ids, None, false)
 }
 
 /// Round 258 — entry_id-only scan with optional decay filter (legacy
 /// thin wrapper). New callers should use [`scan_paths_bidirectional`]
 /// which also covers the §<id> axis and the Path B bidirectional check.
+///
+/// Round 262 — `comment_only` toggles the comment-only filtering layer.
+/// When `true`, each file's content is passed through [`strip_to_comments`]
+/// (with [`comment_syntax_for`] picking the per-extension mode) before
+/// citation extraction; when `false`, the whole file is scanned (Round
+/// 256/258 semantics).
 pub fn scan_paths_filtered(
  workspace_root: &Path,
  paths: &[String],
  prefix: &str,
  valid_entry_ids: &BTreeSet<String>,
  filter_id: Option<&str>,
+ comment_only: bool,
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  let files = walk_paths(workspace_root, paths)?;
  let mut violations = Vec::new();
  for abs in files {
- let content = match std::fs::read_to_string(&abs) {
+ let raw = match std::fs::read_to_string(&abs) {
  Ok(c) => c,
  Err(_) => continue,
+ };
+ let content = if comment_only {
+ strip_to_comments(&raw, comment_syntax_for(&abs))
+ } else {
+ raw
  };
  let rel = abs
  .strip_prefix(workspace_root)
@@ -436,6 +628,12 @@ pub fn scan_paths_filtered(
 /// violation matching `(from = file, to = id)`. Other kinds are
 /// ignored by this scanner (they belong to the atomic-internal /
 /// markdown axes).
+///
+/// Round 262 — `comment_only` toggles the comment-only filtering layer.
+/// When `true`, each file's content is passed through [`strip_to_comments`]
+/// (per-extension dispatch via [`comment_syntax_for`]) so the citation
+/// extractor only sees comment text. Unknown extensions fall through to
+/// whole-text scan regardless of the flag.
 pub fn scan_paths_bidirectional(
  workspace_root: &Path,
  paths: &[String],
@@ -443,6 +641,7 @@ pub fn scan_paths_bidirectional(
  store: &AtomicStore,
  orphan_ledger: &[OrphanLedgerEntry],
  filter_id: Option<&str>,
+ comment_only: bool,
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  let valid_entry_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
  let section_id_set = store.atomic_section_id_set();
@@ -479,9 +678,14 @@ pub fn scan_paths_bidirectional(
  let mut cited_by: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
  for abs in files {
- let content = match std::fs::read_to_string(&abs) {
+ let raw = match std::fs::read_to_string(&abs) {
  Ok(c) => c,
  Err(_) => continue,
+ };
+ let content = if comment_only {
+ strip_to_comments(&raw, comment_syntax_for(&abs))
+ } else {
+ raw
  };
  let rel = abs
  .strip_prefix(workspace_root)
@@ -802,6 +1006,7 @@ mod tests {
  &store,
  &[],
  None,
+ true,
  )
  .unwrap();
  assert!(v.is_empty(), "unexpected violations: {:?}", v);
@@ -825,6 +1030,7 @@ mod tests {
  &store,
  &[],
  None,
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 1);
@@ -857,6 +1063,7 @@ mod tests {
  &store,
  &[],
  None,
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -890,6 +1097,7 @@ mod tests {
  &store,
  &[],
  None,
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -933,6 +1141,7 @@ mod tests {
  &store,
  &ledger,
  None,
+ true,
  )
  .unwrap();
  assert!(v.is_empty(), "expected suppression, got: {:?}", v);
@@ -962,6 +1171,7 @@ mod tests {
  &store,
  &ledger,
  None,
+ true,
  )
  .unwrap();
  assert!(v.is_empty(), "expected suppression, got: {:?}", v);
@@ -993,6 +1203,7 @@ mod tests {
  &s2,
  &[],
  Some("Round 1"),
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 1);
@@ -1026,6 +1237,7 @@ mod tests {
  "Round ",
  &valid,
  Some("Round 1"),
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 2);
@@ -1054,6 +1266,7 @@ mod tests {
  "Round ",
  &valid,
  None,
+ true,
  )
  .unwrap();
  assert_eq!(v.len(), 1);
@@ -1064,5 +1277,210 @@ mod tests {
  }
  other => panic!("unexpected variant: {:?}", other),
  }
+ }
+
+ // ============ Round 262 — comment-only filtering tests ============
+
+ #[test]
+ fn comment_syntax_dispatch_by_extension() {
+ use std::path::PathBuf;
+ // Slash family.
+ for ext in [
+ "rs", "c", "h", "cc", "cpp", "hpp", "go", "js", "ts", "jsx", "tsx",
+ "java", "kt", "swift",
+ ] {
+ let p = PathBuf::from(format!("a.{}", ext));
+ assert_eq!(
+ comment_syntax_for(&p),
+ CommentSyntax::Slash,
+ "expected Slash for .{}",
+ ext
+ );
+ }
+ // Hash family.
+ for ext in ["py", "sh", "bash", "rb", "toml", "yaml", "yml"] {
+ let p = PathBuf::from(format!("a.{}", ext));
+ assert_eq!(
+ comment_syntax_for(&p),
+ CommentSyntax::Hash,
+ "expected Hash for .{}",
+ ext
+ );
+ }
+ // Unknown / extensionless.
+ assert_eq!(
+ comment_syntax_for(&PathBuf::from("a.unknown")),
+ CommentSyntax::Unknown
+ );
+ assert_eq!(comment_syntax_for(&PathBuf::from("a")), CommentSyntax::Unknown);
+ // Case-insensitive.
+ assert_eq!(
+ comment_syntax_for(&PathBuf::from("a.RS")),
+ CommentSyntax::Slash
+ );
+ }
+
+ #[test]
+ fn strip_slash_preserves_line_comment_content() {
+ let src = "let x = 1; // Round 254 carry\nlet y = 2;\n";
+ let out = strip_to_comments(src, CommentSyntax::Slash);
+ // Comment text retained, code chars stripped to spaces.
+ assert!(out.contains("// Round 254 carry"));
+ assert!(!out.contains("let x = 1;"));
+ assert!(!out.contains("let y = 2;"));
+ // Line count preserved.
+ assert_eq!(out.lines().count(), src.lines().count());
+ }
+
+ #[test]
+ fn strip_slash_removes_round_inside_string_literal() {
+ // `Round 254` inside string literal must NOT survive comment-only mode.
+ let src = "let s = \"Round 254\";\n";
+ let out = strip_to_comments(src, CommentSyntax::Slash);
+ assert!(!out.contains("Round 254"));
+ assert!(!out.contains("Round"));
+ }
+
+ #[test]
+ fn strip_slash_block_comment_multiline() {
+ let src = "let x = 1; /* Round 254\n carry */ let y = 2;\n";
+ let out = strip_to_comments(src, CommentSyntax::Slash);
+ assert!(out.contains("Round 254"));
+ assert!(out.contains("carry"));
+ // Code outside block stripped.
+ assert!(!out.contains("let x = 1;"));
+ assert!(!out.contains("let y = 2;"));
+ }
+
+ #[test]
+ fn strip_slash_string_with_double_slash_not_treated_as_comment() {
+ // The `//` inside a string is NOT a comment opener.
+ let src = "let s = \"// not a comment\"; // real comment\n";
+ let out = strip_to_comments(src, CommentSyntax::Slash);
+ // The real comment survives.
+ assert!(out.contains("// real comment"));
+ // The fake one (inside string) does not.
+ assert!(!out.contains("not a comment"));
+ }
+
+ #[test]
+ fn strip_hash_preserves_line_comment_content() {
+ let src = "x = 1 # Round 254 carry\ny = 2\n";
+ let out = strip_to_comments(src, CommentSyntax::Hash);
+ assert!(out.contains("# Round 254 carry"));
+ assert!(!out.contains("x = 1"));
+ assert_eq!(out.lines().count(), src.lines().count());
+ }
+
+ #[test]
+ fn strip_hash_removes_hash_inside_string_literal() {
+ // `#` inside a quoted string must NOT be treated as a comment opener.
+ let src = "url = \"http://example.com/#anchor\" # real comment\n";
+ let out = strip_to_comments(src, CommentSyntax::Hash);
+ assert!(out.contains("# real comment"));
+ // The url content stripped — `#anchor` should not survive as a hash-comment.
+ assert!(!out.contains("anchor\""));
+ }
+
+ #[test]
+ fn strip_unknown_is_passthrough() {
+ let src = "raw text with Round 254 anywhere\n";
+ let out = strip_to_comments(src, CommentSyntax::Unknown);
+ assert_eq!(out, src);
+ }
+
+ #[test]
+ fn bidirectional_comment_only_filters_string_literal_noise() {
+ // .rs file: only the comment cite should fire; string-literal Round NNN
+ // must NOT produce a Missing violation under comment_only=true.
+ let tmp = TempDir::new().unwrap();
+ let store = AtomicStore::new();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "let fixture = \"Round 999 is fixture data\";\n// Round 999 real cite\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ // Only one Missing (the line 2 comment); line 1 string literal suppressed.
+ let missing: Vec<_> = v
+ .iter()
+ .filter(|x| matches!(
+ x,
+ CodeRefViolation::Citation { kind: ViolationKind::Missing, .. }
+ ))
+ .collect();
+ assert_eq!(missing.len(), 1, "got: {:?}", v);
+ if let CodeRefViolation::Citation { citation, .. } = missing[0] {
+ assert_eq!(citation.line, 2, "comment is on line 2, not line 1");
+ }
+ }
+
+ #[test]
+ fn bidirectional_comment_only_false_legacy_back_compat() {
+ // With comment_only=false, both string-literal and comment cites fire
+ // (Round 256/258 whole-text scan semantics).
+ let tmp = TempDir::new().unwrap();
+ let store = AtomicStore::new();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "let fixture = \"Round 999 fixture\";\n// Round 999 cite\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ false,
+ )
+ .unwrap();
+ // Whole-text scan picks up BOTH occurrences (line 1 and line 2).
+ let missing: Vec<_> = v
+ .iter()
+ .filter(|x| matches!(
+ x,
+ CodeRefViolation::Citation { kind: ViolationKind::Missing, .. }
+ ))
+ .collect();
+ assert_eq!(missing.len(), 2, "got: {:?}", v);
+ }
+
+ #[test]
+ fn bidirectional_comment_only_unknown_extension_passthrough() {
+ // .unknown extension → CommentSyntax::Unknown → whole-text scan even
+ // under comment_only=true.
+ let tmp = TempDir::new().unwrap();
+ let store = AtomicStore::new();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/notes.unknown"),
+ "raw text Round 999 anywhere\n",
+ )
+ .unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ // Unknown extension preserves Round 256/258 whole-text behavior.
+ assert_eq!(v.len(), 1, "got: {:?}", v);
  }
 }
