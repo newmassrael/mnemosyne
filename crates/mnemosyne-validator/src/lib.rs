@@ -72,9 +72,10 @@ pub use style::{
 pub use atomic::{
  add_section_caveat, add_section_example, add_section_implementation,
  append_changelog_entry_v2, set_section_alternatives,
- set_section_impact_scope, set_section_inputs, set_section_intent,
- set_section_outputs, set_section_rationale, AtomicChangelogEntry,
- AtomicMutateError, AtomicMutateReceipt, AtomicSection, AtomicStore,
- AtomicStoreError, ExampleBlock, Implementation, RejectedAlternative,
+ set_section_decision_status_atomic, set_section_impact_scope,
+ set_section_inputs, set_section_intent, set_section_outputs,
+ set_section_rationale, AtomicChangelogEntry, AtomicMutateError,
+ AtomicMutateReceipt, AtomicSection, AtomicStore, AtomicStoreError,
+ ExampleBlock, Implementation, RejectedAlternative,
 };
 pub use render::{render_changelog_entry, render_section, RenderError};

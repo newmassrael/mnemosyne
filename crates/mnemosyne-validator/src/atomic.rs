@@ -30,6 +30,7 @@
 //! ref orphan reject). Schema + mutate primitive only — validator
 //! extension and section seeding are deferred to later rounds.
 
+use crate::schema::DecisionStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -74,6 +75,19 @@ pub struct AtomicSection {
  /// `(file, symbol)` rejected at write time (set semantics).
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub implementations: Vec<Implementation>,
+ /// Round 265 — atomic decision_status override.
+ ///
+ /// `None` = no atomic override; consumers fall back to the parser-derived
+ /// status (currently hard-coded to `Active` workspace-wide). `Some(_)` =
+ /// the atomic store authoritatively declares the section's status,
+ /// overriding the parser default. Wired through `query::build_section_view`
+ /// so SectionView reports the atomic value when present.
+ ///
+ /// Unblocks Stage B freshness — once a section transitions to
+ /// `Superseded` here, downstream tooling (auto-cascade trigger, decay scan)
+ /// can react. Trigger wiring itself is a later round.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub decision_status: Option<DecisionStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -538,6 +552,32 @@ pub fn add_section_example(
 /// Existing entries are append-only — no remove/replace primitive
 /// exists in this round (frozen-ledger doctrine for
 /// atomic fields).
+/// Round 265 — atomic decision_status setter (Stage B freshness substrate).
+///
+/// Sets `AtomicSection.decision_status` to `Some(new_status)`. Idempotent
+/// at the value level (re-setting the same status is a no-op write); always
+/// persists to keep mutate semantics uniform with the other primitives.
+///
+/// Cross-doc T1 rule 4 (active → superseded requires superseding cross-ref)
+/// is enforced at `validate-workspace` time on the markdown-derived
+/// snapshot pair, not at this atomic write — the atomic store is the
+/// authoring surface, validate-workspace is the gate.
+pub fn set_section_decision_status_atomic(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ new_status: DecisionStatus,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ store.section_mut(section_id).decision_status = Some(new_status);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_decision_status_atomic",
+ "section",
+ section_id,
+ )
+}
+
 pub fn add_section_implementation(
  store: &mut AtomicStore,
  sidecar_path: &Path,
@@ -911,6 +951,58 @@ mod tests {
  add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(sym)).unwrap();
  }
  assert_eq!(store.section("39").unwrap().implementations.len(), 6);
+ }
+
+ #[test]
+ fn set_section_decision_status_atomic_persists_and_round_trips() {
+ // Round 265 — atomic decision_status field round-trips through
+ // sidecar JSON. Default = None (skip_serializing_if), Some(_) appears
+ // as lowercase string in JSON, deserializes back to enum.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_decision_status_atomic(&mut store, &path, "39", DecisionStatus::Superseded)
+ .unwrap();
+ let raw = std::fs::read_to_string(&path).unwrap();
+ assert!(raw.contains("\"decision_status\": \"superseded\""));
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(
+ reloaded.section("39").unwrap().decision_status,
+ Some(DecisionStatus::Superseded)
+ );
+ }
+
+ #[test]
+ fn set_section_decision_status_atomic_overwrite_is_idempotent() {
+ // Re-setting the same status does not error, and overwriting with a
+ // different status replaces the previous value (no append-only semantics
+ // — this is a single-field setter).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active).unwrap();
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active).unwrap();
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Superseded)
+ .unwrap();
+ assert_eq!(
+ store.section("1").unwrap().decision_status,
+ Some(DecisionStatus::Superseded)
+ );
+ }
+
+ #[test]
+ fn atomic_section_decision_status_default_is_none() {
+ // Default = None (no atomic override). Mutate primitives that don't
+ // touch decision_status leave the field at None — consumers fall back
+ // to the parser-derived status.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_intent(&mut store, &path, "1", "test intent").unwrap();
+ assert!(store.section("1").unwrap().decision_status.is_none());
+ // serde skip_serializing_if confirms field is absent in JSON.
+ let raw = std::fs::read_to_string(&path).unwrap();
+ assert!(!raw.contains("decision_status"));
  }
 
  #[test]

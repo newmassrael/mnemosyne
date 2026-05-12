@@ -32,9 +32,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
  add_section_caveat, add_section_example, add_section_implementation,
  append_changelog_entry_v2, render_changelog_entry, set_section_alternatives,
- set_section_impact_scope, set_section_inputs, set_section_intent,
- set_section_outputs, set_section_rationale, AtomicMutateError,
- AtomicMutateReceipt, AtomicStore, ExampleBlock, RejectedAlternative,
+ set_section_decision_status_atomic, set_section_impact_scope,
+ set_section_inputs, set_section_intent, set_section_outputs,
+ set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
+ DecisionStatus, ExampleBlock, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;
@@ -476,6 +477,62 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
  finalize_mutate(
  workspace_root,
  add_section_implementation(&mut store, &sidecar_path, &section, &file, symbol.as_deref()),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 265 — atomic decision_status setter CLI surface.
+///
+/// `--section §<id> --status active|superseded|removed [--sidecar <path>] [--json]`
+///
+/// Sets `AtomicSection.decision_status` on the atomic store. Stage B
+/// freshness substrate — once the atomic store carries non-Active status,
+/// downstream tooling (auto-cascade trigger, decay scan) becomes wireable.
+pub fn cmd_set_section_decision_status_atomic(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut status_str: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--status" => {
+  status_str = Some(iter.next().ok_or_else(|| anyhow!("--status missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let status_raw = status_str
+ .ok_or_else(|| anyhow!("--status arg required (active|superseded|removed)"))?;
+ let new_status = match status_raw.to_ascii_lowercase().as_str() {
+ "active" => DecisionStatus::Active,
+ "superseded" => DecisionStatus::Superseded,
+ "removed" => DecisionStatus::Removed,
+ other => bail!(
+ "--status `{}` invalid (expected active|superseded|removed)",
+ other
+ ),
+ };
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_section_decision_status_atomic(&mut store, &sidecar_path, &section, new_status),
  sidecar.as_deref(),
  regenerate,
  json,

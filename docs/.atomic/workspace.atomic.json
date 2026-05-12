@@ -382,6 +382,33 @@
         "formatted-marker [code_refs] require_marker = true option deferred until empirical need surfaces.",
         "Tree-sitter language-aware extraction, fuzzy file match ranking/dedup, verify_round_citation MCP tool — deferred (no friction observed in two-call dance)."
       ]
+    },
+    "Round 265": {
+      "decision_summary": "AtomicSection.decision_status atomic field added (Stage B freshness substrate) — Option<DecisionStatus> with serde default None / skip_if_none, set_section_decision_status_atomic mutate primitive + CLI surface, query.rs atomic-first override of parser-hardcoded Active; auto-cascade trigger wiring deferred to Round 266+",
+      "changes_bullets": [
+        "AtomicSection.decision_status field added — Option<DecisionStatus>, serde default = None, skip_serializing_if = Option::is_none. Backward-compatible additive change (no schema_version bump needed; older readers see missing field as None).",
+        "DecisionStatus enum gains Serialize/Deserialize derives with rename_all = lowercase, so JSON shape is \"active\" / \"superseded\" / \"removed\" matching the existing decision_status_str surface.",
+        "New atomic mutate primitive set_section_decision_status_atomic (atomic.rs) + CLI surface set-section-decision-status-atomic (atomic_cli.rs + main.rs dispatch). Idempotent setter with no cross-doc validation — T1 rule 4 (active → superseded requires superseding cross-ref) carries to validate-workspace gate, not to the atomic write.",
+        "query.rs build_section_view atomic-first decision_status resolution: atomic_store.section(id).decision_status overrides the parser-derived hardcoded Active when present; None falls back to parser status. Atomic-only section branch also reads atomic.decision_status with Active fallback.",
+        "4 new unit tests: serde round-trip persistence, idempotent overwrite, default-None / skip-serializing, atomic-override resolution across markdown-backed / atomic-only / no-override paths."
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace PASS — 482 tests (478 baseline + 4 new), 0 failures.",
+        "cargo test --release -p mnemosyne-validator --lib PASS — 209 unit tests (was 205).",
+        "cargo run --release -p mnemosyne-cli -- validate-workspace PASS — entries 13 → 14 after this Round 265 entry, sections=5, GENERATED.md=sync, T1 orphan=0, T3 reject=0.",
+        "cargo run --release -p mnemosyne-cli -- validate-code-refs PASS under reject mode — Round 265 entry presence in atomic store unblocks the new src/ comment citations introduced by this round (validates the citation hygiene pipeline end-to-end).",
+        "pre-commit hook gate 3 reject behavior verified mid-development: missing Round 265 entry caught 7 hallucinated citations from the same change set; entry registration cleared all 7. Demonstrates the Round 263 enforcement working as designed on a real authoring loop."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "Round 266+ — auto-cascade trigger wiring: when set_section_decision_status_atomic transitions a section to Superseded, automatically run validate-code-refs --filter-id against citing entries to surface decay. Substrate (atomic field + setter) is now in place; trigger glue is the missing piece.",
+        "Round 266+ — validator-time T1 rule 4 atomic-side enforcement: extend section_decision_status_transition to also cross-check the atomic override (currently only checks parser snapshot pair). Required when atomic-only sections start carrying Superseded status without a markdown counterpart.",
+        "Legacy set_section_decision_status stub in mutate.rs still rejects with Phase 1+ carry message; deprecation path: route legacy callers to the atomic primitive once cascade trigger lands. Stub kept as-is to preserve §15 mutate API surface registration.",
+        "AtomicStore schema_version stays at 1 (additive Option field is forward/backward compatible). Bump only when a non-additive change lands."
+      ]
     }
   },
   "schema_version": 1

@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|append-changelog-entry-v2|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|append-changelog-entry-v2|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -158,6 +158,10 @@ fn run(args: &[String]) -> Result<()> {
  // Path B (Spec ↔ Code bidirectional binding) substrate.
  "add-section-implementation" => {
  atomic_cli::cmd_add_section_implementation(&repo_root()?, &args[2..])
+ }
+ // Round 265 — Stage B freshness substrate.
+ "set-section-decision-status-atomic" => {
+ atomic_cli::cmd_set_section_decision_status_atomic(&repo_root()?, &args[2..])
  }
  "append-changelog-entry-v2" => {
  atomic_cli::cmd_append_changelog_entry_v2(&repo_root()?, &args[2..])
@@ -247,6 +251,13 @@ fn print_help(prog: &str) {
  );
  println!(
  "   Round 259 Path B substrate (Spec ↔ Code binding); validator cross-check is Round 260+"
+ );
+ println!(
+ " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ "   Round 265 atomic decision_status setter (Stage B freshness substrate)"
  );
  println!(
  " {} append-changelog-entry-v2 --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",

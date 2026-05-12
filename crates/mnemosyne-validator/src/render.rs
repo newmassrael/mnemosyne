@@ -175,6 +175,7 @@ mod tests {
   symbol: None,
  },
  ],
+ decision_status: None,
  };
  let out = render_section("43", "test", "active", &atomic).unwrap();
  assert!(out.contains("**Intent**: primary intent text"));

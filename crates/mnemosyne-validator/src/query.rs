@@ -150,7 +150,7 @@ pub fn section_by_id(
   .intent
   .clone()
   .unwrap_or_else(|| section_id.to_string()),
- decision_status: DecisionStatus::Active,
+ decision_status: atomic.decision_status.unwrap_or(DecisionStatus::Active),
  };
  let synthetic_doc = ParsedDoc::default();
  return Some(build_section_view(
@@ -184,12 +184,19 @@ fn build_section_view(
  .get(&section.section_id)
  .copied()
  .unwrap_or(0);
+ // Round 265 — atomic decision_status overrides parser-derived default
+ // when present. parser hardcodes Active workspace-wide; the atomic
+ // override is the only path to surface Superseded / Removed.
+ let resolved_status = atomic_store
+ .section(&section.section_id)
+ .and_then(|a| a.decision_status)
+ .unwrap_or(section.decision_status);
  SectionView {
  section_id: section.section_id.clone(),
  parent_doc: path.to_string(),
  parent_section: section.parent_section.clone(),
  title: section.title.clone(),
- decision_status: decision_status_str(section.decision_status).to_string(),
+ decision_status: decision_status_str(resolved_status).to_string(),
  body,
  line_anchor,
  }
@@ -680,6 +687,82 @@ mod tests {
  let view = section_by_id(&ws, &store, "777").expect("§777 atomic-only");
  assert_eq!(view.parent_doc, ATOMIC_ONLY_PARENT_DOC);
  assert!(view.body.contains("atomic-only test"));
+ }
+
+ #[test]
+ fn section_by_id_atomic_decision_status_overrides_parser_default() {
+ // Round 265 — atomic store's decision_status field, when Some(_),
+ // overrides the parser's hardcoded Active. Verifies both code paths:
+ // (1) markdown-backed section + atomic override, (2) atomic-only section
+ // with explicit Superseded.
+ use crate::atomic::AtomicSection;
+
+ // Path 1: markdown-backed section with Active parser status, atomic
+ // override to Superseded.
+ let mut ws = Workspace::mnemosyne();
+ let mut doc = ParsedDoc::default();
+ doc.sections.push(Section {
+ section_id: "555".to_string(),
+ parent_doc: "docs/DESIGN.md".to_string(),
+ parent_section: None,
+ title: "MD-backed".to_string(),
+ decision_status: DecisionStatus::Active,
+ });
+ ws.insert("docs/DESIGN.md", doc);
+
+ let mut store = AtomicStore::default();
+ store.sections.insert(
+ "555".to_string(),
+ AtomicSection {
+  decision_status: Some(DecisionStatus::Superseded),
+  ..Default::default()
+ },
+ );
+ let view = section_by_id(&ws, &store, "555").expect("§555 exists");
+ assert_eq!(
+ view.decision_status, "superseded",
+ "atomic Some(Superseded) overrides parser-hardcoded Active"
+ );
+
+ // Path 2: atomic-only section with explicit Removed.
+ let ws2 = Workspace::mnemosyne();
+ let mut store2 = AtomicStore::default();
+ store2.sections.insert(
+ "666".to_string(),
+ AtomicSection {
+  intent: Some("removed atomic-only".to_string()),
+  decision_status: Some(DecisionStatus::Removed),
+  ..Default::default()
+ },
+ );
+ let view2 = section_by_id(&ws2, &store2, "666").expect("§666 atomic-only");
+ assert_eq!(view2.decision_status, "removed");
+
+ // Path 3: atomic field None (default) — parser status carries through.
+ let mut ws3 = Workspace::mnemosyne();
+ let mut doc3 = ParsedDoc::default();
+ doc3.sections.push(Section {
+ section_id: "444".to_string(),
+ parent_doc: "docs/DESIGN.md".to_string(),
+ parent_section: None,
+ title: "no override".to_string(),
+ decision_status: DecisionStatus::Active,
+ });
+ ws3.insert("docs/DESIGN.md", doc3);
+ let mut store3 = AtomicStore::default();
+ store3.sections.insert(
+ "444".to_string(),
+ AtomicSection {
+  intent: Some("no status override".to_string()),
+  decision_status: None,
+  ..Default::default()
+ },
+ );
+ let view3 = section_by_id(&ws3, &store3, "444").expect("§444 exists");
+ assert_eq!(
+ view3.decision_status, "active",
+ "atomic None falls back to parser-derived status"
+ );
  }
 
  #[test]
