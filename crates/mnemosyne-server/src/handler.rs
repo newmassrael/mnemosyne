@@ -37,7 +37,7 @@ impl ProposalHandler {
  }
  }
 
- /// Round 109 — construct with an explicit audit broadcast channel capacity.
+ /// construct with an explicit audit broadcast channel capacity.
  /// Wires through to [`AuditAppender::with_broadcast_capacity`]. Used by
  /// integration tests / sizing benchmarks that need a deterministic
  /// Lagged threshold.
@@ -52,7 +52,7 @@ impl ProposalHandler {
  }
  }
 
- /// Round 111 — construct with a custom [`AuditFanout`] for cross-process
+ /// construct with a custom [`AuditFanout`] for cross-process
  /// audit observation. The fanout's `publish` runs after every
  /// successful audit write, so observer servers attached to the same
  /// fanout backends see commits from this server in real time.
@@ -85,17 +85,17 @@ impl ProposalHandler {
  self.handle_with_trace_context(proposal, &TraceContext::default())
  }
 
- /// Round 99 + Round 104 — pipeline entry carrying an explicit
+ /// + pipeline entry carrying an explicit
  /// [`TraceContext`] (trace_id + tracestate). Both fields flow into every
  /// audit record this proposal produces (accept *or* reject), so
  /// observability tooling can join logs across the gRPC layer and the
  /// audit trail by trace_id and preserves vendor-specific tracestate.
  ///
- /// Round 104 — instruments each gate evaluation and the audit append as
+ /// instruments each gate evaluation and the audit append as
  /// nested `tracing` spans (`gate.evaluate` with `tier` attribute,
  /// `audit.append`) parented to the active span at call time. When the
  /// caller is the gRPC service the parent span is the entry-level RPC
- /// span (Round 96/99/102), giving an OTLP exporter a full hierarchy
+ /// span, giving an OTLP exporter a full hierarchy
  /// without further code changes.
  pub fn handle_with_trace_context(
  &self,
@@ -159,7 +159,7 @@ impl ProposalHandler {
  })
  }
 
- /// Round 112 — atomic batch handler. Evaluates gates on every proposal
+ /// atomic batch handler. Evaluates gates on every proposal
  /// in order; if any proposal rejects, EVERY proposal in the batch is
  /// rejected (per-proposal rejection result + per-proposal audit
  /// record carrying the original rejection reason from the failing
@@ -167,7 +167,7 @@ impl ProposalHandler {
  /// in a single `write_batch_multi_cf` call — RocksDB's all-or-nothing
  /// transactional batch.
  ///
- /// Audit records are still emitted per proposal (per the §6 audit
+ /// Audit records are still emitted per proposal (per the audit
  /// append-only invariant); the atomicity guarantee covers the
  /// *entity / relations* CFs, not the audit ledger. A rejected batch
  /// audits each proposal as rejected with reason
@@ -232,7 +232,7 @@ impl ProposalHandler {
  for (p, (outcome, _w)) in proposals.iter().zip(outcomes.into_iter()) {
   let (tier, _orig_reason) = match outcome {
   GateOutcome::Reject { tier, reason } => (tier, reason),
-  // Even accepted proposals get rejected under atomic.
+ // Even accepted proposals get rejected under atomic.
   GateOutcome::Accept { .. } => (GateTier::Tier1, String::new()),
   };
   let txn = tracing::info_span!("audit.append", outcome = "atomic_reject")
@@ -335,7 +335,7 @@ impl ProposalHandler {
  }
 }
 
-/// Round 112 — extract the storage write tuple from a proposal for use in
+/// extract the storage write tuple from a proposal for use in
 /// `write_batch_multi_cf`. Returns `None` when the proposal has no
 /// storage side effect (currently every kind writes; this stays a
 /// nullable shape so future read-only proposal kinds plug in cleanly).
@@ -403,7 +403,7 @@ impl ProposalHandler {
  &self.store
  }
 }
-// Round 112 — top-level closure of the inner impl block above; the helper
+// top-level closure of the inner impl block above; the helper
 // `proposal_storage_tuple` lives between two impl blocks for legibility.
 
 /// `MnemosyneServer` — embedded API facade. Wraps `ProposalHandler` for direct

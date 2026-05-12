@@ -1,28 +1,28 @@
-//! Mnemosyne validator — Phase 0 production crate (DESIGN.md §39 / §56 / §61 / §66).
+//! Mnemosyne validator — Phase 0 production crate (DESIGN.md / / /).
 //!
-//! This crate is the mnemosyne workspace's *first production crate* (Round 41-71 prototype
-//! end-of-sequence carry signal — Round 67 *Phase 0 implementation-layer first carry*.
+//! This crate is the mnemosyne workspace's *first production crate* (-71 prototype
+//! end-of-sequence carry signal — *Phase 0 implementation-layer first carry*.
 //! design_doc medium's 4 typed-fact entities/relations (Section / ChangelogEntry /
-//! FrozenList / CrossRef — §39 closed-form registered source carry) bridging markdown ↔ typed
+//! FrozenList / CrossRef closed-form registered source carry) bridging markdown ↔ typed
 //! facts transform + T1 validator 4 rule standalone behavior source of truth.
 //!
 //! ## Module separation (5 modules)
 //!
-//! - [`schema`]: §39 closed-form full shape — Section / ChangelogEntry / FrozenList /
+//! - [`schema`]: closed-form full shape — Section / ChangelogEntry / FrozenList /
 //! CrossRef + DecisionStatus / LockKind / RefKind enum (4 entity/relation typed facts).
-//! - [`parser`]: §61 markdown variant spec — markdown bytes → typed facts (lookup
-//! Lookup-priority step 3 (Round 70 OPTION H-2 adoption carry).
-//! - [`emitter`]: §56 markdown variant spec — typed facts → markdown bytes (row 7/8/9
-//! branch logic Round 70 OPTION H-2 adoption carry).
-//! - [`validator`]: §66 *Phase 0 Validator (T1 standalone behavior, 4 rule)* + ValidationError
-//! 4-variant typed enum (Round 70 step (2) lookup carry).
-//! - [`workspace`]: workspace-level config (default-doc binding, Round 22
+//! - [`parser`]: markdown variant spec — markdown bytes → typed facts (lookup
+//! Lookup-priority step 3.
+//! - [`emitter`]: markdown variant spec — typed facts → markdown bytes (row 7/8/9
+//! branch logic OPTION H-2 adoption carry).
+//! - [`validator`]: *Phase 0 Validator (T1 standalone behavior, 4 rule)* + ValidationError
+//! 4-variant typed enum lookup carry).
+//! - [`workspace`]: workspace-level config (default-doc binding
 //! ops-tuning param spec decision surface separation pattern equivalent — mnemosyne workspace
 //! default_doc = DESIGN.md).
-//! - [`query`]: §15 *Spec query API surface* 4 primitive (Round 117 ratify +
-//! Round 120 production lift) — section_by_id / related_sections /
+//! - [`query`]: *Spec query API surface* 4 primitive (ratify +
+//! production lift) — section_by_id / related_sections /
 //! changelog_entries_for_section / workspace_section_id_set + JSON envelope
-//! shape (Claude-consumable). §66 prerequisite #5 *AI agent dogfood proof*
+//! shape (Claude-consumable). prerequisite #5 *AI agent dogfood proof*
 //! production gate.
 
 pub mod schema;

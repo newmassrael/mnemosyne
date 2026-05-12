@@ -62,16 +62,25 @@ max_section_body_length = 5000
 "Salsa" = ["salsa"]
 "bi-temporal" = ["bitemporal"]
 
-# Round 262 — code citation defense activation (Path B Spec ↔ Code
-# bidirectional binding). `paths` = workspace-relative directory list to
-# scan recursively. `severity_*` = "warn" baseline; Round 263+ promotes
-# to "reject" once the small ImplementationUnbacked surface (8 from
-# Round 261 seeds) is cleared. `comment_only = true` (Round 262 precision
-# layer) restricts citation extraction to language-comment text only —
-# string-literal fixtures and bare code identifiers no longer surface
-# as false-positive citations.
+# Round 263 — code citation defense full reject. Path scope = production
+# `src/` only (tests/ excluded — Round 264 carry, tests carry intentional
+# Round NNN fixture data that needs different handling). Both severities
+# promoted to "reject" after Round 263 cleanup brought src/ surface to 0:
+# - 8 ImplementationUnbacked → §slug binding markers added
+# - 192 src/ hallucination violations → comment-only sed transforms
+#   (Round NNN + legacy §digit tokens dropped, design rationale prose
+#   preserved) plus extractor improvements (placeholder + backtick skip).
+# `comment_only = true` keeps the Round 262 precision layer.
 [code_refs]
-paths = ["crates/"]
-severity_missing = "warn"
-severity_binding = "warn"
+paths = [
+ "crates/mnemosyne-cascade/src/",
+ "crates/mnemosyne-cli/src/",
+ "crates/mnemosyne-core/src/",
+ "crates/mnemosyne-mcp/src/",
+ "crates/mnemosyne-server/src/",
+ "crates/mnemosyne-store/src/",
+ "crates/mnemosyne-validator/src/",
+]
+severity_missing = "reject"
+severity_binding = "reject"
 comment_only = true

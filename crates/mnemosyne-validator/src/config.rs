@@ -1,7 +1,8 @@
-//! Workspace config — `mnemosyne.toml` schema + load + discovery (Round 142
-//! WORKSPACE-CONFIG-ABSTRACTION, Phase 0e generic library extraction).
+//! Workspace config — `mnemosyne.toml` schema + load + discovery (//! WORKSPACE-CONFIG-ABSTRACTION, Phase 0e generic library extraction).
 //!
-//! Phase 0e framing reset (Round 141): Mnemosyne is *LLM-driven MD management
+//! Spec binding: §orphan-ledger (OrphanKind + OrphanLedgerEntry).
+//!
+//! Phase 0e framing reset: Mnemosyne is *LLM-driven MD management
 //! infrastructure for any codebase*, not a project-specific tool. The
 //! workspace path list / default cross-doc target / repo root that used to be
 //! hardcoded in `WORKSPACE_DOC_PATHS` / `MNEMOSYNE_DEFAULT_DOC` are pulled out
@@ -13,7 +14,7 @@
 //! [workspace]
 //! docs = ["docs/DESIGN.md", "docs/ARCHITECTURE.md", "README.md"]
 //! default_doc = "docs/DESIGN.md" # optional
-//! root = "."  # optional, default = file's dir
+//! root = "." # optional, default = file's dir
 //! ```
 //!
 //! ## Discovery
@@ -41,7 +42,7 @@ pub struct WorkspaceConfig {
  pub style: Option<StyleSection>,
  #[serde(default)]
  pub terminology: Option<TerminologySection>,
- /// Per-workspace orphan ledger (Round 253 EXTERNAL-LEDGER). Round 80
+ /// Per-workspace orphan ledger. 
  /// OPTION D originally hardcoded ledger entries in mnemosyne-cli's
  /// `KNOWN_STALE_ORPHANS` const — fine for self-application but unusable
  /// for external workspaces that need to register their own legacy
@@ -51,8 +52,8 @@ pub struct WorkspaceConfig {
  /// preserved across both sources.
  #[serde(default, rename = "orphan_ledger")]
  pub orphan_ledger: Vec<OrphanLedgerEntry>,
- /// Round 256 — code citation verification config (Stage 2 of the
- /// 3-stage code-citation defense, Round 255 carry). When `[code_refs]`
+ /// code citation verification config (Stage 2 of the
+ /// 3-stage code-citation defense, carry). When `[code_refs]`
  /// is omitted, the `validate-code-refs` subcommand exits 0 with a
  /// "skipped, no config" log line — preserving the 5-min setup promise
  /// for external users who don't cite spec entries in code.
@@ -60,11 +61,11 @@ pub struct WorkspaceConfig {
  pub code_refs: Option<CodeRefsSection>,
 }
 
-/// Round 254 — atomic-internal orphan ledger kind.
+/// atomic-internal orphan ledger kind.
 ///
-/// Round 253 introduced `[[orphan_ledger]]` for markdown-body cross-ref
-/// orphans. Round 254 extends the ledger to also cover atomic-internal
-/// orphans introduced by Round 169 dogfood-switch ratify — namely
+/// introduced `[[orphan_ledger]]` for markdown-body cross-ref
+/// orphans. extends the ledger to also cover atomic-internal
+/// orphans introduced by dogfood-switch ratify — namely
 /// dangling refs in `ChangelogEntry.impact_refs` and `Section.impact_scope`
 /// that arise when a doc/section is removed from `workspace.docs` after a
 /// prior `Round N` entry has cited it. The frozen-ledger invariant blocks
@@ -73,29 +74,29 @@ pub struct WorkspaceConfig {
 /// append a new Round entry recording the scope change, then register the
 /// now-dangling atomic refs here with `reason` pointing to that entry.
 ///
-/// Round 260 — adds `CodeCitation` for code-side citation suppression
+/// adds `CodeCitation` for code-side citation suppression
 /// (Path B Spec ↔ Code bidirectional check). Each axis carries one
-/// dedicated kind so a Round 262 bulk register against `CodeCitation`
+/// dedicated kind so a bulk register against `CodeCitation`
 /// can land without touching the atomic-internal axes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum OrphanKind {
- /// Markdown body cross-ref orphan (Round 253 default). Existing toml
+ /// Markdown body cross-ref orphan. Existing toml
  /// rows without `kind` parse as this variant via serde default,
- /// preserving Round 253 behavior.
+ /// preserving behavior.
  MarkdownRef,
- /// ChangelogEntry `impact_refs` orphan (Round 254). `from` = entry_id
- /// (e.g. `"Round 1"`); `to` = atomic section_id missing from id_set;
+ /// ChangelogEntry `impact_refs` orphan. `from` = entry_id
+ /// (e.g. `""`); `to` = atomic section_id missing from id_set;
  /// `doc` = `"<atomic-changelog>"` by convention.
  AtomicEntryRef,
- /// Section `impact_scope` orphan (Round 254). `from` = section_id
+ /// Section `impact_scope` orphan. `from` = section_id
  /// authoring the impact_scope; `to` = atomic section_id missing from
  /// id_set; `doc` = `"<atomic-section>"` by convention.
  AtomicSectionRef,
- /// Code-side citation suppression (Round 260, Path B substrate).
+ /// Code-side citation suppression.
  /// `from` = workspace-relative file path containing the citation;
  /// `to` = section_id without leading `§` (or `entry_id` for
- /// Round NNN-shaped suppression, deferred to Round 262 bulk
+ /// Round NNN-shaped suppression, deferred to bulk
  /// register); `doc` = `"<code-citation>"` by convention. Suppresses
  /// `SectionMissing` / `CitationUnbound` / `ImplementationUnbacked`
  /// when the (from, to) pair matches.
@@ -109,7 +110,7 @@ fn default_orphan_kind() -> OrphanKind {
 /// One row of `[[orphan_ledger]]` in `mnemosyne.toml` — a known-stale
 /// cross-ref that the workspace explicitly accepts as legacy carry.
 ///
-/// Round 253 covered markdown-body cross-refs; Round 254 generalized the
+/// covered markdown-body cross-refs; generalized the
 /// ledger to also cover atomic-internal orphans (ChangelogEntry impact_refs
 /// + Section impact_scope) via the `kind` field.
 ///
@@ -121,8 +122,8 @@ fn default_orphan_kind() -> OrphanKind {
 /// can be removed from the ledger.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrphanLedgerEntry {
- /// Round 254 — orphan kind. Default = `MarkdownRef` for backward
- /// compatibility with Round 253 toml rows.
+ /// orphan kind. Default = `MarkdownRef` for backward
+ /// compatibility with toml rows.
  #[serde(default = "default_orphan_kind")]
  pub kind: OrphanKind,
  /// Doc path (workspace-relative) of the orphan's source. For
@@ -142,20 +143,20 @@ pub struct OrphanLedgerEntry {
  pub since: String,
 }
 
-/// `[code_refs]` table — code citation verification config (Round 256).
+/// `[code_refs]` table — code citation verification config.
 ///
-/// Stage 2 of the 3-stage code-citation defense. Round 255 introduced the
+/// Stage 2 of the 3-stage code-citation defense. introduced the
 /// agent-time CLAUDE.md rule directing LLM agents to verify before citing;
-/// Round 256 wires the validator-time CLI subcommand `validate-code-refs`
+/// wires the validator-time CLI subcommand `validate-code-refs`
 /// that scans configured paths for `<entry_id_prefix><digits>` patterns
-/// (e.g. `Round 254`, `ADR-0042`) and rejects citations whose target id
+/// (e.g. ``, `ADR-0042`) and rejects citations whose target id
 /// is missing from the atomic store `changelog_entries` map.
 ///
 /// The pattern is derived from `[schema].entry_id_prefix` — no separate
 /// regex configuration. Default Mnemosyne preset = `Round ` ⇒ matches
 /// `\bRound (\d+(?:\.\d+)?)\b`. External users override via
 /// `[schema].entry_id_prefix` and the same derivation applies to both
-/// the parser (Round 144) and the code-ref scanner (Round 256).
+/// the parser and the code-ref scanner.
 ///
 /// Section omission disables the subcommand entirely (`exit 0` with a
 /// "skipped, no config" log line) — 5-min setup promise carry for users
@@ -169,30 +170,30 @@ pub struct CodeRefsSection {
  #[serde(default)]
  pub paths: Vec<String>,
 
- /// Severity for hallucination-class violations (Round 256 + Round 260):
+ /// Severity for hallucination-class violations:
  /// - `Missing` — Round NNN entry_id not in `changelog_entries`
  /// - `SectionMissing` — §<id> not in atomic section_id set
  /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
  #[serde(default = "default_severity_reject")]
  pub severity_missing: String,
 
- /// Round 260 — severity for binding-class violations (Path B Spec ↔
+ /// severity for binding-class violations (Path B Spec ↔
  /// Code bidirectional set-equality):
  /// - `CitationUnbound` — code cites §X but file not in §X.implementations
  /// - `ImplementationUnbacked` — §X.implementations names file F but F
- ///   has no §X citation
+ /// has no §X citation
  /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
  #[serde(default = "default_severity_reject")]
  pub severity_binding: String,
 
- /// Round 262 — comment-only filtering toggle. When `true` (default),
+ /// comment-only filtering toggle. When `true` (default),
  /// the citation extractor only sees text inside language comments
  /// (`//`, `/* */`, `#`); string-literal contents and code identifiers
  /// are stripped out, eliminating the dominant false-positive surface
  /// from test fixtures and inline string data. Unknown file extensions
  /// fall through to whole-text scan regardless of this flag.
  ///
- /// Set to `false` to restore the Round 256 whole-text scan (back-compat
+ /// Set to `false` to restore the whole-text scan (back-compat
  /// for users whose citation discipline relies on non-comment markers).
  #[serde(default = "default_comment_only")]
  pub comment_only: bool,
@@ -207,7 +208,7 @@ fn default_comment_only() -> bool {
 }
 
 /// `[style]` table — locale + threshold overrides for T3/T4 style rules
-/// (Round 145 STYLE-RULE-I18N).
+///.
 ///
 /// `locale` selects the sentence-boundary handler (Korean / Japanese /
 /// Chinese / English). `thresholds` lets external users override per-rule
@@ -229,7 +230,7 @@ pub struct StyleSection {
 }
 
 /// `[terminology]` table — workspace-wide glossary of canonical terms +
-/// non-canonical variants the parser should warn about (Round 145).
+/// non-canonical variants the parser should warn about.
 ///
 /// Schema: each `[terminology.glossary]` row maps a canonical form to a
 /// list of non-canonical variants. The Mnemosyne preset registers
@@ -247,7 +248,7 @@ fn default_locale() -> String {
  "ko".to_string()
 }
 
-/// `[schema]` table — markdown-to-entity mapping config (Round 143).
+/// `[schema]` table — markdown-to-entity mapping config.
 ///
 /// The 4 entity types (Section / CrossRef / ChangelogEntry / FrozenList)
 /// are fixed primitives; this section configures *which markdown patterns*
@@ -262,19 +263,19 @@ pub struct SchemaSection {
  #[serde(default = "default_changelog_titles")]
  pub changelog_titles: Vec<String>,
 
- /// Round 144 — string prefix that opens a ChangelogEntry top bullet.
+ /// string prefix that opens a ChangelogEntry top bullet.
  /// Mnemosyne preset = `"Round "`; ADR preset = `"ADR-"`; Round preset =
  /// `"Round "`; Decision preset = `"Decision "`. The parser extracts
  /// digits (with `.` separator) immediately after this prefix as the
  /// numeric portion of `entry_id`; the full entry_id includes the prefix
- /// (e.g., `"Round 33.5"`, `"ADR-0042"`).
+ /// (e.g., `""`, `"ADR-0042"`).
  #[serde(default = "default_entry_id_prefix")]
  pub entry_id_prefix: String,
 
- /// Round 144 — anchor convention placeholder. The Mnemosyne preset is
+ /// anchor convention placeholder. The Mnemosyne preset is
  /// `"section_number"` (legacy `§N` literal). External users can label
  /// their convention here for diagnostics; deeper anchor-pattern wiring
- /// (heading anchor / ADR-NNNN / custom regex parser) is a Round 145+
+ /// (heading anchor / ADR-NNNN / custom regex parser) is a +
  /// concern and the parser still derives section_id by the legacy rules.
  #[serde(default = "default_anchor_convention")]
  pub anchor_convention: String,
@@ -332,7 +333,7 @@ impl SchemaSection {
  }
  }
 
- /// Round 144 — ADR-style preset (anchor = `ADR-NNNN`, entries = `ADR-`).
+ /// ADR-style preset (anchor = `ADR-NNNN`, entries = `ADR-`).
  /// Useful as a sample for external users authoring an `mnemosyne.toml`
  /// against an Architectural Decision Records project.
  pub fn adr_preset() -> Self {
@@ -370,7 +371,7 @@ pub struct WorkspaceSection {
 
  /// Optional default cross-doc target — when a §N reference fails the
  /// intra-doc lookup and the target is registered here, the parser
- /// reclassifies as `cross_doc` (DESIGN §61 mapping table row 12 step 2).
+ /// reclassifies as `cross_doc`.
  /// Must be a member of `docs` if set.
  #[serde(default)]
  pub default_doc: Option<String>,
@@ -615,7 +616,7 @@ medium_name = "design_doc"
  assert!(generic.is_changelog_title("CHANGELOG"));
  }
 
- // Round 253 — per-workspace orphan ledger config table (composes with
+ // per-workspace orphan ledger config table (composes with
  // the compile-time KNOWN_STALE_ORPHANS const in mnemosyne-cli). External
  // workspaces author their legacy orphans here instead of patching the
  // const.
@@ -654,12 +655,11 @@ since = "2026-05-08"
  assert_eq!(first.to, "6.2.6");
  assert!(first.reason.contains("Cross-doc"));
  assert_eq!(first.since, "2026-05-08");
- // Round 254 — kind defaults to MarkdownRef when omitted (Round 253
- // backward compatibility).
+ // kind defaults to MarkdownRef when omitted ( // backward compatibility).
  assert_eq!(first.kind, OrphanKind::MarkdownRef);
  }
 
- // Round 254 — atomic-internal orphan ledger kind variants.
+ // atomic-internal orphan ledger kind variants.
  #[test]
  fn orphan_ledger_kind_atomic_entry_ref_parses() {
  let content = r#"

@@ -1,6 +1,6 @@
-//! Mnemosyne core — Phase 0 production crate (DESIGN.md §39).
+//! Mnemosyne core — Phase 0 production crate (DESIGN.md).
 //!
-//! This crate registers the 4 entity/relation defined in §39 *Phase 0 design_doc schema closed-form registered*.
+//! This crate registers the 4 entity/relation defined in *Phase 0 design_doc schema closed-form registered*.
 //! (Section / ChangelogEntry / FrozenList / CrossRef) in production typed facts
 //! source of truth. The bench prototype `entity_indexer.rs` codegen emit (template
 //! Production binding for the source — `mnemosyne-store`'s 24 B BE composite
@@ -12,7 +12,7 @@
 //!
 //! - [`schema`]: meta-level GraphSpec / EntityDef / RelationDef / FieldType /
 //! Persistence — language-agnostic schema description.
-//! - [`fixture`]: §39 closed-form 4 entity/relation `design_doc_schema_fixture`.
+//! - [`fixture`]: closed-form 4 entity/relation `design_doc_schema_fixture`.
 //! - [`emit`]: 5-language code emit (rust / kotlin / python / cpp / protobuf).
 //! Deterministic — identical input → byte-identical output.
 //! - [`canonical`]: canonical_identifier_set + jaccard_inclusion + sha256_hex

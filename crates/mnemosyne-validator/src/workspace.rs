@@ -1,8 +1,8 @@
-//! Workspace-level config — DESIGN §61 mapping table row 12 lookup priority step (2)
-//! source. Round 70 OPTION H-2 adoption (workspace default cross-doc target binding,
+//! Workspace-level config — mapping table row 12 lookup priority step (2)
+//! source. OPTION H-2 adoption (workspace default cross-doc target binding,
 //! (mnemosyne workspace = DESIGN.md) carry.
 //!
-//! Round 22 ops-tuning param-spec / decision-surface separation pattern equivalent — for the workspace
+//! ops-tuning param-spec / decision-surface separation pattern equivalent — for the workspace
 //! the default cross-doc target itself is not part of the spec-decision surface (it's workspace-level
 //! config); other design_doc workspaces are free to choose their own self-default — mnemosyne
 //! Only this production crate binds the workspace default to DESIGN.md.
@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// (default = DESIGN.md). Parser lookup priority step (2) consults this default_doc
 /// Performs the cross-doc auto-reclassify check using the section_id_set fallback.
 ///
-/// Round 249 — `atomic_id_set` is the atomic-store-derived section_id set
+/// `atomic_id_set` is the atomic-store-derived section_id set
 /// populated by `cmd_validate_workspace`. When markdown re-parse cannot
 /// resolve a `to_target` (workspace.docs=[GENERATED.md] mode or 7-md
 /// deletion path), step (2.5) checks atomic store as the canonical source.
@@ -28,23 +28,23 @@ pub struct Workspace {
  /// Workspace default cross-doc target (e.g. "docs/GENERATED.md").
  /// None = default unspecified (lookup priority step (2) skip).
  pub default_doc: Option<String>,
- /// Atomic-store-derived section_id set — Round 249 cross_ref atomic-first.
+ /// Atomic-store-derived section_id set — cross_ref atomic-first.
  /// Empty = atomic source unspecified (step (2.5) skip, existing markdown-only behavior).
  pub atomic_id_set: BTreeSet<String>,
 }
 
 impl Workspace {
- /// Mnemosyne workspace default — `docs/GENERATED.md` post Round 251
+ /// Mnemosyne workspace default — `docs/GENERATED.md` post 
  /// MD-DELETION-RATIFY (atomic store = sole source of truth, GENERATED.md
  /// = sole readable artifact). Pre-deletion this constant pointed to
- /// `docs/DESIGN.md` (Round 70 OPTION H-2 adoption carry).
+ /// `docs/DESIGN.md`.
  ///
- /// Round 142 framing-reset (Phase 0e generic library extraction): this
+ /// framing-reset (Phase 0e generic library extraction): this
  /// constant is retained as a *fallback only* for callers that cannot
  /// load `mnemosyne.toml`. Production paths route through
  /// [`Workspace::from_config`] + [`crate::config::discover_config`]; this
  /// constant must not appear in public-facing call sites of external
- /// users (Round 151 closure gate audit).
+ /// users.
  pub const MNEMOSYNE_DEFAULT_DOC: &'static str = "docs/GENERATED.md";
 
  /// Empty workspace with default_doc unset.
@@ -63,7 +63,7 @@ impl Workspace {
  }
  }
 
- /// Round 142 — build an empty workspace whose `default_doc` comes from a
+ /// build an empty workspace whose `default_doc` comes from a
  /// loaded config (replaces the hardcoded `MNEMOSYNE_DEFAULT_DOC`
  /// fallback). Docs are still inserted by the caller via [`Self::insert`]
  /// once parsed; this factory only sets the cross-doc reclassify target.
@@ -84,7 +84,7 @@ impl Workspace {
  /// Returns `false` if default_doc is unset OR not loaded into workspace.
  ///
  /// Match precedence: full section_id, then trailing-segment alias for
- /// nested numbered sections (so `§2.1` resolves to `2/2.1`).
+ /// nested numbered sections (so `` resolves to `2/2.1`).
  pub fn default_doc_has_section(&self, section_id: &str) -> bool {
  let Some(default) = self.default_doc.as_ref() else {
  return false;
@@ -100,20 +100,20 @@ impl Workspace {
  })
  }
 
- /// Round 249 — atomic-store section_id existence check (cross_ref atomic-first).
+ /// atomic-store section_id existence check (cross_ref atomic-first).
  /// If `atomic_id_set` is empty, step (2.5) is skipped and returns `false`.
  pub fn atomic_has_section(&self, section_id: &str) -> bool {
  self.atomic_id_set.contains(section_id)
  }
 
- /// Round 249 — inject the atomic-store-derived section_id set (cmd_validate_workspace
+ /// inject the atomic-store-derived section_id set (cmd_validate_workspace
  /// invokes `AtomicStore::atomic_section_id_set` for the source.
  pub fn set_atomic_id_set(&mut self, set: BTreeSet<String>) {
  self.atomic_id_set = set;
  }
 
- /// Reclassify CrossRef ref_kind via lookup priority 3 step (Round 70 OPTION
- /// H-2 adoption carry — DESIGN §61 mapping table row 12 source binding).
+ /// Reclassify CrossRef ref_kind via lookup priority 3 step (OPTION
+ /// H-2 adoption carry — mapping table row 12 source binding).
  ///
  /// Step:
  /// (1) intra-doc — if §N exists in self doc's section_id_set, ref_kind = `decision`
@@ -200,7 +200,7 @@ mod tests {
 
  #[test]
  fn reclassify_step_2_promotes_to_cross_doc() {
- // other doc in §39 citation — intra-doc missing, default-doc in exists → cross_doc reclassify.
+ // other doc in citation — intra-doc missing, default-doc in exists → cross_doc reclassify.
  let mut ws = Workspace::mnemosyne();
 
  let design = ParsedDoc {
@@ -229,7 +229,7 @@ mod tests {
 
  #[test]
  fn reclassify_step_1_intra_doc_unchanged() {
- // self doc in §39 exists → step (1), change missing.
+ // self doc in exists → step (1), change missing.
  let mut ws = Workspace::mnemosyne();
  let doc = ParsedDoc {
  sections: vec![

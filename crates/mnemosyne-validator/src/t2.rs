@@ -1,6 +1,6 @@
-//! T2 datalog rules — DESIGN §41 / §66 *T2 add* binding source (Round 121 ratify).
+//! T2 datalog rules — / *T2 add* binding source (ratify).
 //!
-//! Phase 0b entry #6 — Round 121 ratify carry. §66 Bootstrap stages' T2 datalog
+//! Phase 0b entry #6 — ratify carry. Bootstrap stages' T2 datalog
 //! rule's *frozen-ledger-jaccard rule single-item* Stage 3 → Stage 1 pull-in
 //! then Phase 0 entry. Remaining T2 rules (body-ref vs. frozen-list jaccard, etc.)
 //! Phase 1B follow-up — introduced after the entry round.
@@ -47,8 +47,8 @@ pub enum T2ValidationError {
  missing_in_curr: Vec<String>,
  jaccard_asymmetric: f64,
  },
- /// Round 242 — atomic Section field append-only violation.
- /// `field` = "intent" / "rationale_bullets" / ... etc. any atomic 8 field
+ /// — atomic Section field append-only violation.
+ /// `field` = "intent" / "rationale_bullets" /... etc. any atomic 8 field
  /// Explicit out-of-scope violation. `missing_in_curr` = exists in prev but not in curr.
  /// no entries (intent: compare prev and curr values).
  AtomicSectionFrozen {
@@ -56,7 +56,7 @@ pub enum T2ValidationError {
  field: &'static str,
  missing_in_curr: Vec<String>,
  },
- /// Round 242 — atomic ChangelogEntry field append-only violation.
+ /// — atomic ChangelogEntry field append-only violation.
  /// 5 field (decision_summary / changes_bullets / verification_bullets /
  /// impact_refs / carry_forward_bullets) — registers a `prev ⊆ curr` violation when violated.
  AtomicChangelogFrozen {
@@ -133,10 +133,10 @@ pub fn frozen_ledger_jaccard(prev: &ParsedDoc, curr: &ParsedDoc) -> Vec<T2Valida
  errors
 }
 
-/// `frozen_ledger_atomic` — Round 242 LEGACY-FIELD-REMOVAL round 2 ratify.
+/// `frozen_ledger_atomic` — LEGACY-FIELD-REMOVAL round 2 ratify.
 ///
 /// AtomicStore prev/curr snapshot covers the atomic Section 8 fields + atomic
-/// Append-only invariant check across ChangelogEntry's 5 atomic fields. Round 161 §41 ratify
+/// Append-only invariant check across ChangelogEntry's 5 atomic fields. ratify
 /// (T2 frozen_ledger_jaccard rule extends to atomic fields) production wire.
 ///
 /// **rule** (Section scope, 8 field):
@@ -502,7 +502,7 @@ mod tests {
  }
 
  // ========================================================================
- // Round 242 — atomic frozen ledger tests (LEGACY-FIELD-REMOVAL round 2).
+ // — atomic frozen ledger tests (LEGACY-FIELD-REMOVAL round 2).
  // ========================================================================
 
  fn atomic_section_with(intent: &str, rationale: &[&str]) -> AtomicSection {

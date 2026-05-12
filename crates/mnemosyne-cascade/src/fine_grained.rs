@@ -1,6 +1,6 @@
-//! Fine-grained Salsa dependency tracking layer (Round 92).
+//! Fine-grained Salsa dependency tracking layer.
 //!
-//! Round 89 measurement surfaced *Gate (ii) limitation* — the default
+//! measurement surfaced *Gate (ii) limitation* — the default
 //! `section_decision_status` / `frozen_list_membership` queries re-execute at
 //! *branch granularity*. This module is the follow-up layer: it carries a
 //! per-Section / per-CrossRef / per-FrozenList Salsa input pattern with
@@ -42,7 +42,7 @@
 //! CascadeBranch)` is the opaque-`Vec<u8>`-snapshot, branch-level full
 //! re-execution path — the Phase 0 production stack's stable carry. This
 //! fine-grained API is a separate parallel path: bench measurement +
-//! Phase 1.5+ production substitution candidate. §43 *cascade_query Forge
+//! Phase 1.5+ production substitution candidate. *cascade_query Forge
 //! kind* body framing is unmutated; this layer's introduction is ratified
 //! through Changelog entries only.
 
@@ -122,13 +122,13 @@ pub struct BranchIndex {
  pub cross_refs: Vec<CrossRefRecord>,
  pub frozen_lists: Vec<FrozenListRecord>,
  pub changelog_entries: Vec<ChangelogRecord>,
- /// Round 114 — entity_id-keyed pre-indexed map for `sections`. Kept in
+ /// entity_id-keyed pre-indexed map for `sections`. Kept in
  /// sync with the `sections` Vec at build time (`build_branch_index`
  /// fills both atomically). Lookup-only consumers
  /// (`section_by_entity_id`) hit this field for O(log n) `get`; snapshot
  /// / iterator consumers fall back to the existing `sections` Vec.
  pub sections_map: std::collections::BTreeMap<u64, SectionRecord>,
- /// Round 114 — round_number-keyed pre-indexed map for
+ /// round_number-keyed pre-indexed map for
  /// `changelog_entries`. Kept in sync with the `changelog_entries` Vec
  /// at build time. Lookup-only consumers (`changelog_by_round_number`)
  /// hit this field for O(log n) `get`; iteration consumers fall back to
@@ -142,7 +142,7 @@ pub struct BranchIndex {
 
 // --- per-record tracked sub-queries ----------------------------------------
 
-/// Per-section outbound CrossRef pre-indexed cache (Round 94 (b)). Returns the
+/// Per-section outbound CrossRef pre-indexed cache). Returns the
 /// CrossRef handles whose `from_section` matches the requested section_id.
 ///
 /// ## Why per-section indexing
@@ -188,7 +188,7 @@ pub fn outbound_crossrefs_by_section<'db>(
 /// so mutating any CrossRef does NOT invalidate this sub-query for active
 /// sections.
 ///
-/// Round 94 (b) — for Superseded sections, delegates to
+/// (b) — for Superseded sections, delegates to
 /// [`outbound_crossrefs_by_section`] for per-section CrossRef list isolation.
 /// `ref_kind`/`from_section` field reads occur only on the pre-indexed result,
 /// not on the entire BranchIndex CrossRef Vec.
@@ -215,7 +215,7 @@ pub fn section_decision_violation<'db>(
  }
 }
 
-/// Per-entity-id Section pre-indexed cache (Round 100). Returns the
+/// Per-entity-id Section pre-indexed cache. Returns the
 /// `SectionRecord` whose `entity_id` matches the requested `entity_id`, or
 /// `None` if no section is found.
 ///
@@ -244,26 +244,26 @@ pub fn section_decision_violation<'db>(
 /// `frozen_list_owner_resolution` re-runs only for FrozenLists whose
 /// owner_section now resolves to a different handle.
 ///
-/// Round 94 (b) `outbound_crossrefs_by_section` pattern equivalent.
+/// (b) `outbound_crossrefs_by_section` pattern equivalent.
 #[salsa::tracked]
 pub fn section_by_entity_id<'db>(
  db: &'db dyn CascadeDb,
  branch_index: BranchIndex,
  entity_id: u64,
 ) -> Option<SectionRecord> {
- // Round 114 — BTreeMap-backed O(log n) lookup. The body reads
+ // BTreeMap-backed O(log n) lookup. The body reads
  // `sections_map` rather than the `sections` Vec, so a Vec-only
  // mutation that does NOT update the map (must not happen — they
  // are kept in sync at build time) would not invalidate this
  // sub-query. The pre-indexed Salsa cache + map source carry per-
- // entity_id cache slot semantics inherited from Round 100.
+ // entity_id cache slot semantics inherited from.
  branch_index.sections_map(db).get(&entity_id).copied()
 }
 
 /// Per-frozen-list owner resolution check. Returns 0 on pass, 1 on violation
 /// (owner_section not present in the branch's section list).
 ///
-/// Round 100 — delegates to [`section_by_entity_id`] for per-entity_id cache
+/// delegates to [`section_by_entity_id`] for per-entity_id cache
 /// isolation. This body now only reads the resolved handle's presence —
 /// downstream sub-queries no longer pay for the full sections-Vec scan.
 #[salsa::tracked]
@@ -280,7 +280,7 @@ pub fn frozen_list_owner_resolution<'db>(
  }
 }
 
-/// Per-round_number ChangelogEntry pre-indexed cache (Round 101). Returns the
+/// Per-round_number ChangelogEntry pre-indexed cache. Returns the
 /// `ChangelogRecord` whose `round_number` matches the requested round, or
 /// `None` if no entry is found.
 ///
@@ -309,14 +309,14 @@ pub fn frozen_list_owner_resolution<'db>(
 /// round's indexed cache; downstream invalidation gated by per-round
 /// result equality.
 ///
-/// Round 100's `section_by_entity_id` pattern equivalent.
+/// 's `section_by_entity_id` pattern equivalent.
 #[salsa::tracked]
 pub fn changelog_by_round_number<'db>(
  db: &'db dyn CascadeDb,
  branch_index: BranchIndex,
  round_number: u64,
 ) -> Option<ChangelogRecord> {
- // Round 114 — BTreeMap-backed O(log n) lookup. Mirrors `section_by_entity_id`.
+ // BTreeMap-backed O(log n) lookup. Mirrors `section_by_entity_id`.
  branch_index
  .changelog_entries_map(db)
  .get(&round_number)
@@ -327,7 +327,7 @@ pub fn changelog_by_round_number<'db>(
 /// count — one violation per FrozenList whose `frozen_round` does not resolve
 /// to any ChangelogEntry on the branch.
 ///
-/// Round 101 — refactored from branch-wide check to per-FrozenList round
+/// refactored from branch-wide check to per-FrozenList round
 /// resolution via [`changelog_by_round_number`]. Each FrozenList's
 /// `frozen_round` is independently resolved against the changelog index;
 /// missing rounds count toward the violation total. Salsa per-field tracking
@@ -514,7 +514,7 @@ pub fn build_branch_index(
  )
  })
  .collect();
- // Round 114 — populate the BTreeMap pre-indexed layers alongside the
+ // populate the BTreeMap pre-indexed layers alongside the
  // canonical Vecs. Both stay in lockstep through `build_branch_index`;
  // mutating tests that call BranchIndex setters directly must update
  // both the Vec and the Map fields together.
@@ -748,7 +748,7 @@ mod tests {
  let r1 = section_decision_status_aggregated(&db, idx);
  assert_eq!(r1.violation_count, 1);
  let exec = db.exec_counter();
- // Round 94 (b) per-section CrossRef pre-indexed layer breakdown:
+ // (b) per-section CrossRef pre-indexed layer breakdown:
  // 1. Target sub-query re-executes (decision_status changed)
  // 2. outbound_crossrefs_by_section(idx, target.entity_id) first
  // invocation — newly-Superseded sections delegate to this layer,
@@ -858,7 +858,7 @@ mod tests {
 
  #[test]
  fn outbound_crossrefs_by_section_returns_only_matching_handles() {
- // Round 94 (b) — pre-indexed layer correctness check.
+ // (b) — pre-indexed layer correctness check.
  let db = FineCascadeDb::new();
  let idx = build_branch_index(
  &db,
@@ -886,7 +886,7 @@ mod tests {
 
  #[test]
  fn unrelated_crossref_ref_kind_mutation_isolates_other_superseded_sections() {
- // Round 94 (b) isolation property — single CrossRef.ref_kind mutation
+ // (b) isolation property — single CrossRef.ref_kind mutation
  // affects ONLY the from_section's sub-query. Other Superseded sections
  // (whose outbound list does not contain the mutated CrossRef) stay
  // cached.
@@ -990,7 +990,7 @@ mod tests {
 
  #[test]
  fn section_by_entity_id_returns_matching_handle() {
- // Round 100 — pre-indexed layer correctness check. 5 sections covering
+ // pre-indexed layer correctness check. 5 sections covering
  // the matched-id, missing-id, and zero-id boundary cases.
  let db = FineCascadeDb::new();
  let idx = build_branch_index(
@@ -1024,7 +1024,7 @@ mod tests {
 
  #[test]
  fn frozen_list_owner_unrelated_section_field_mutation_isolates_other_frozen_lists() {
- // Round 100 isolation property — Section.title (a field NOT read by
+ // isolation property — Section.title (a field NOT read by
  // section_by_entity_id, which only reads entity_id) mutation must
  // produce zero re-executions in the frozen_list_owner_resolution
  // pipeline. Demonstrates per-field dep tracking carries through the
@@ -1081,7 +1081,7 @@ mod tests {
 
  #[test]
  fn section_by_entity_id_caches_per_entity_id() {
- // Round 100 — each (idx, entity_id) pair produces an independent cache
+ // each (idx, entity_id) pair produces an independent cache
  // slot. Repeated calls with the same arguments must NOT increment the
  // exec counter.
  let db = FineCascadeDb::new();
@@ -1111,7 +1111,7 @@ mod tests {
 
  #[test]
  fn changelog_by_round_number_returns_matching_handle() {
- // Round 101 — pre-indexed layer correctness check. 5 changelog entries
+ // pre-indexed layer correctness check. 5 changelog entries
  // covering matched-round, missing-round, and zero-id boundary cases.
  let db = FineCascadeDb::new();
  let idx = build_branch_index(
@@ -1145,7 +1145,7 @@ mod tests {
 
  #[test]
  fn frozen_list_changelog_unrelated_changelog_field_mutation_isolates_other_frozen_lists() {
- // Round 101 isolation property — ChangelogEntry.summary (a field NOT
+ // isolation property — ChangelogEntry.summary (a field NOT
  // read by changelog_by_round_number, which only reads round_number)
  // mutation must produce zero re-executions in the
  // frozen_list_changelog_attachment pipeline. Demonstrates per-field
@@ -1210,7 +1210,7 @@ mod tests {
 
  #[test]
  fn section_by_entity_id_uses_btreemap_layer_not_vec_scan() {
- // Round 114 — `section_by_entity_id` reads `sections_map` rather than
+ // `section_by_entity_id` reads `sections_map` rather than
  // the `sections` Vec. Demonstrate by mutating ONLY the map (via
  // setter), leaving the Vec stale, and verifying the lookup follows
  // the map. In production, `build_branch_index` keeps both in sync;
@@ -1257,7 +1257,7 @@ mod tests {
 
  #[test]
  fn changelog_by_round_number_uses_btreemap_layer_not_vec_scan() {
- // Round 114 — mirror of the section test for the changelog layer.
+ // mirror of the section test for the changelog layer.
  use salsa::Setter;
  let mut db = FineCascadeDb::new();
  let idx = build_branch_index(
@@ -1288,7 +1288,7 @@ mod tests {
 
  #[test]
  fn changelog_by_round_number_caches_per_round_number() {
- // Round 101 — each (idx, round_number) pair produces an independent
+ // each (idx, round_number) pair produces an independent
  // cache slot. Repeated calls with the same arguments must NOT
  // increment the exec counter.
  let db = FineCascadeDb::new();
@@ -1318,7 +1318,7 @@ mod tests {
 
  #[test]
  fn frozen_list_lifecycle_field_mutation_isolates_other_frozen_lists() {
- // Round 115 — `frozen_list_owner_resolution` reads only
+ // `frozen_list_owner_resolution` reads only
  // `frozen_list.owner_section(db)`; `frozen_list_changelog_attachment`
  // iterates the frozen-lists Vec and reads only `fl.frozen_round(db)`.
  // Neither body reads `valid_from` or `kind`. Salsa's per-field
@@ -1328,7 +1328,7 @@ mod tests {
  // Setup: 3 FrozenLists with frozen_round ∈ {10, 20, 30}, owners 100/200/300,
  // 3 Sections matching the owners, 3 ChangelogEntries matching the rounds.
  // Baseline aggregator runs, all sub-queries cache.
- // Then mutate FrozenList[round=20].valid_from and .kind in turn. Each
+ // Then mutate FrozenList[round=20].valid_from and.kind in turn. Each
  // mutation must produce exec_counter == 0.
  use salsa::Setter;
  let mut db = FineCascadeDb::new();

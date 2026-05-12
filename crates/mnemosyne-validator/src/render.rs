@@ -1,14 +1,14 @@
-//! Atomic typed fields → markdown rendering (Round 162 ratify, Phase 0f
+//! Atomic typed fields → markdown rendering (ratify, Phase 0f
 //! output axis). Section / ChangelogEntry atomic fields → tera template
 //! render → MD bytes.
 //!
 //! Templates are compiled into the binary via `include_str!` from the
 //! workspace `templates/` directory — runtime path-independent (production
-//! crate carries 0 hardcoded paths, Round 151 closure-gate consistency).
+//! crate carries 0 hardcoded paths, closure-gate consistency).
 //!
-//! Round-trip invariant (Round 161 §56 ratify): atomic fields → render →
+//! Round-trip invariant: atomic fields → render →
 //! markdown text is deterministic (same input always produces same output).
-//! Re-import path (§61) is multi-session migration scope (Round 164-166).
+//! Re-import path () is multi-session migration scope.
 
 use crate::atomic::{AtomicChangelogEntry, AtomicSection};
 use serde_json::json;
@@ -46,7 +46,7 @@ fn engine() -> &'static Tera {
 /// Render a Section's atomic fields to markdown.
 ///
 /// `section_id` / `title` / `decision_status` are not part of the atomic
-/// store (they remain on the legacy `Section` struct, Round 161 §39 reframe
+/// store (they remain on the legacy `Section` struct, reframe
 /// carry — those 5 fields are stable; the atomic 8 fields are *additive*).
 /// Caller threads them in alongside the atomic block.
 pub fn render_section(

@@ -1,4 +1,4 @@
-//! T1 validator — DESIGN §66 *Phase 0 Validator (T1 standalone behavior, 4 rule)* source binding.
+//! T1 validator — *Phase 0 Validator (T1 standalone behavior, 4 rule)* source binding.
 //!
 //! 4 rules:
 //! 1. **CrossRef orphan reject** — `to_target` missing reject (rule 1)
@@ -6,7 +6,7 @@
 //! 3. **FrozenList membership delta** — member changes require a new ChangelogEntry attachment (rule 3)
 //! 4. **Section decision_status transition** — active → superseded on superseding cross-ref enforced (rule 4)
 //!
-//! Round 70 OPTION H-2 adoption carry — rule 1 step (2) lookup:
+//! OPTION H-2 adoption carry — rule 1 step (2) lookup:
 //! single-doc orphan check failure on [`crate::workspace::Workspace::default_doc_has_section`]
 //! reclassify-possibility fallback check. If both are missing, step (3) rejects as orphan.
 
@@ -74,17 +74,17 @@ pub fn cross_ref_orphan_reject(doc: &ParsedDoc) -> Vec<ValidationError> {
  errors
 }
 
-/// Workspace-aware rule 1 — Round 70 OPTION H-2 adoption lookup priority 3 step
-/// + Round 249 atomic-first step (2.5).
+/// Workspace-aware rule 1 — OPTION H-2 adoption lookup priority 3 step
+/// + atomic-first step (2.5).
 ///
 /// step (1) intra-doc → step (2) workspace.default_doc fallback →
-/// step (2.5) atomic store fallback (Round 249 cross_ref atomic-first) →
+/// step (2.5) atomic store fallback →
 /// step (3) reject.
 ///
 /// step (2) PASS one cross_ref reject not done — workspace.reclassify_cross_refs -
 /// In a subsequent pass, ref_kind is reclassified to CrossDoc, preserving round-trip equivalence.
 /// step (2.5) — atomic store as the sole source of truth when markdown re-parse
-/// validates a missing `to_target` directly against the atomic store (Round 173 paradigm shift carry).
+/// validates a missing `to_target` directly against the atomic store.
 pub fn cross_ref_orphan_reject_with_workspace(
  doc: &ParsedDoc,
  workspace: &Workspace,
@@ -95,7 +95,7 @@ pub fn cross_ref_orphan_reject_with_workspace(
  .map(|s| s.section_id.as_str())
  .collect();
  // Last-segment alias set: a section_id like "2/2.1" is also resolvable
- // by its trailing "2.1" segment. Lets authors write `§2.1` for nested
+ // by its trailing "2.1" segment. Lets authors write `` for nested
  // numbered sections without spelling out the full parent path.
  let last_segment_set: BTreeSet<&str> = doc
  .sections
@@ -120,7 +120,7 @@ pub fn cross_ref_orphan_reject_with_workspace(
  if workspace.default_doc_has_section(&cr.to_target) {
  continue;
  }
- // Step (2.5): atomic store fallback (Round 249 cross_ref atomic-first).
+ // Step (2.5): atomic store fallback.
  if workspace.atomic_has_section(&cr.to_target) {
  continue;
  }
@@ -356,11 +356,11 @@ mod tests {
  assert!(errors.is_empty());
  }
 
- // ── Rule 1 step (2) — workspace-aware lookup priority (Round 70 carry) ─
+ // ── Rule 1 step (2) — workspace-aware lookup priority ─
 
  #[test]
  fn rule1_step_2_default_doc_fallback_passes() {
- // self doc missing + workspace default_doc in §39 exists → step (2) PASS.
+ // self doc missing + workspace default_doc in exists → step (2) PASS.
  let mut ws = Workspace::mnemosyne();
  let design = make_doc(
  vec![sec("39", None, "Graph schema", DecisionStatus::Active)],
@@ -388,7 +388,7 @@ mod tests {
 
  #[test]
  fn rule1_step_3_both_missing_orphan_reject() {
- // self doc + default_doc all §99 missing → step (3) reject.
+ // self doc + default_doc all missing → step (3) reject.
  let mut ws = Workspace::mnemosyne();
  let design = make_doc(
  vec![sec("39", None, "Graph schema", DecisionStatus::Active)],
@@ -416,7 +416,7 @@ mod tests {
 
  #[test]
  fn rule1_step_1_intra_doc_priority_over_default_doc() {
- // self doc + default_doc all §39 exists → step (1) intra-doc priority PASS.
+ // self doc + default_doc all exists → step (1) intra-doc priority PASS.
  let mut ws = Workspace::mnemosyne();
  let design = make_doc(
  vec![sec("39", None, "Graph schema", DecisionStatus::Active)],

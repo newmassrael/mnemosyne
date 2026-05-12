@@ -1,15 +1,17 @@
-//! mnemosyne-cli — Phase 0 dogfood entry point (DESIGN §66 *self-application*).
+//! mnemosyne-cli — Phase 0 dogfood entry point.
+//!
+//! Spec binding: §code-citation-defense (via cmd_validate_code_refs).
 //!
 //! 3 sub-commands:
 //!
 //! - `validate <file>` — single doc T1 + intra-doc round-trip validation.
 //! - `validate-workspace` — 7 markdown doc workspace lookup + reclassify +
-//! round-trip 7/7 mandatory preserved (Round 67 carry).
+//! round-trip 7/7 mandatory preserved.
 //! - `commit <file>` — file validation, then binding through ProposalHandler with audit append
 //! (mnemosyne-server embedded API).
 //!
 //! pre-commit hook + CI workflow this binary invoke with design_doc lifecycle
-//! Performs auto-validation — Round 79 OPTION C Phase 0 dogfood entry source.
+//! Performs auto-validation — OPTION C Phase 0 dogfood entry source.
 
 mod atomic_cli;
 
@@ -40,7 +42,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 use std::{env, fs};
 
-/// Round 142 — workspace config (mnemosyne.toml) cached on first lookup.
+/// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`
 /// (or `.mnemosyne/config.toml`); the loaded config provides
 /// `workspace.docs` + `workspace.default_doc` + workspace_root.
@@ -56,7 +58,7 @@ fn workspace_config() -> Result<&'static LoadedConfig> {
  Ok(CACHE.get().expect("just set"))
 }
 
-/// Round 143 — schema config (mnemosyne.toml `[schema]`) cached on first
+/// schema config (mnemosyne.toml `[schema]`) cached on first
 /// lookup. Falls back to [`SchemaSection::mnemosyne_preset`] when the
 /// loaded config omits `[schema]` (back-compat with pre-143 configs).
 fn cli_schema() -> Result<&'static SchemaSection> {
@@ -75,14 +77,14 @@ fn cli_schema() -> Result<&'static SchemaSection> {
 }
 
 /// Known-stale orphan ledger — type-system escape hatch pattern (TypeScript
-/// `@ts-expect-error` / Rust `#[allow(lint, reason)]` equivalent, Round 80 ratify).
+/// `@ts-expect-error` / Rust `#[allow(lint, reason)]` equivalent, ratify).
 ///
 /// validate-workspace invariant: the actual orphan set must exactly match this ledger.
 /// **set-equal**. bidirectional validation:
 /// - actual ∖ ledger ≠ ∅ → new orphan (ledger registered or fix enforced)
 /// - ledger ∖ actual ≠ ∅ → some ledger entry was resolved (delete the entry — drift catch)
 ///
-/// This ledger is an information-complete replacement for the baseline counter (Round 80 OPTION D adopted).
+/// This ledger is an information-complete replacement for the baseline counter.
 struct KnownStaleOrphan {
  doc: &'static str,
  from_section: &'static str,
@@ -140,7 +142,7 @@ fn run(args: &[String]) -> Result<()> {
  "set-section-body" => cmd_set_section_body(prog, &args[2..]),
  "style-check" => cmd_style_check(prog, &args[2..]),
  "list-docs" => cmd_list_docs(),
- // Round 162 — atomic mutate API surface (DESIGN §15 reframe ratify).
+ // atomic mutate API surface.
  "set-section-intent" => atomic_cli::cmd_set_section_intent(&repo_root()?, &args[2..]),
  "set-section-rationale" => atomic_cli::cmd_set_section_rationale(&repo_root()?, &args[2..]),
  "set-section-inputs" => atomic_cli::cmd_set_section_inputs(&repo_root()?, &args[2..]),
@@ -153,7 +155,7 @@ fn run(args: &[String]) -> Result<()> {
  atomic_cli::cmd_set_section_impact_scope(&repo_root()?, &args[2..])
  }
  "add-section-example" => atomic_cli::cmd_add_section_example(&repo_root()?, &args[2..]),
- // Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate.
+ // Path B (Spec ↔ Code bidirectional binding) substrate.
  "add-section-implementation" => {
  atomic_cli::cmd_add_section_implementation(&repo_root()?, &args[2..])
  }
@@ -162,8 +164,8 @@ fn run(args: &[String]) -> Result<()> {
  }
  "generate-docs" => atomic_cli::cmd_generate_docs(&repo_root()?, &args[2..]),
  "verify-generated" => atomic_cli::cmd_verify_generated(&repo_root()?, &args[2..]),
- // Round 256 — Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
- // rule, Round 255 carry).
+ // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
+ // rule, carry).
  "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
  "--help" | "-h" | "help" => {
  print_help(prog);
@@ -173,7 +175,7 @@ fn run(args: &[String]) -> Result<()> {
  }
 }
 
-/// Round 146 — print the configured workspace doc list (one per line) for
+/// print the configured workspace doc list (one per line) for
 /// shell consumers (pre-commit hook, CI scripts, external user automation).
 fn cmd_list_docs() -> Result<()> {
  for path in workspace_config()?.doc_paths() {
@@ -392,7 +394,7 @@ fn cmd_validate(file: &str) -> Result<()> {
 }
 
 // ============================================================================
-// query — §15 spec query API surface (Round 120 production lift, §66 prereq #5).
+// query spec query API surface.
 // ============================================================================
 
 #[derive(Debug, Default)]
@@ -429,12 +431,12 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  let qargs = parse_query_args(args)?;
  let root = repo_root()?;
  let (ws, _parsed_docs) = load_workspace(&root)?;
- // Round 245 cascade B — atomic-first citation surface in atomic store load.
+ // cascade B — atomic-first citation surface in atomic store load.
  let atomic_store =
  AtomicStore::load(&AtomicStore::default_sidecar_path(&root)).unwrap_or_default();
 
  if qargs.list_sections {
- // Round 251 — list_sections covers BOTH the markdown-derived workspace
+ // list_sections covers BOTH the markdown-derived workspace
  // sections and the atomic-store-derived sections. Post 7-md deletion
  // the markdown side is GENERATED.md only (slug-form headings), and
  // the canonical numeric/`X/Y` ids live in the atomic store.
@@ -501,7 +503,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  println!();
  println!("related_changelog_entries ({}):", entries.len());
  for e in &entries {
- // Round 245 — atomic surface exposed: atomic_changes/verification/carry
+ // atomic surface exposed: atomic_changes/verification/carry
  // bullets summed + impact_refs structural count.
  let atomic_field_count = e.atomic_decision_summary.is_some() as usize
   + e.atomic_changes_bullets.len()
@@ -524,7 +526,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
 }
 
 // ============================================================================
-// append-changelog-entry — §15 mutate API surface (Round 124 production lift).
+// append-changelog-entry mutate API surface.
 // ============================================================================
 
 #[derive(Debug, Default)]
@@ -623,9 +625,9 @@ fn parse_body_file(content: &str) -> Result<Vec<String>> {
  Ok(bullets)
 }
 
-/// Round 246 — *legacy v1 markdown-mutate path* (sub_bullets cascade C
+/// *legacy v1 markdown-mutate path* (sub_bullets cascade C
 /// marker). Production = [`cmd_append_changelog_entry_v2`] via
-/// [`crate::atomic::append_changelog_entry_v2`]. This entry point handles the Round 1-162
+/// [`crate::atomic::append_changelog_entry_v2`]. This entry point handles the -162
 /// Surgical insert is a dedicated legacy-markdown carry; new entries should use v2.
 fn cmd_append_changelog_entry(prog: &str, args: &[String]) -> Result<()> {
  let cargs = parse_append_changelog_args(args)?;
@@ -740,7 +742,7 @@ fn print_mutate_receipt(receipt: &mnemosyne_validator::MutateReceipt, json: bool
 
 /// Re-parse the affected docs and run the default style ruleset, returning
 /// per-doc (warn_count, info_count). Pure side-effect-free read pass — used
-/// to attach a style summary to mutate receipts (Round 131 wire).
+/// to attach a style summary to mutate receipts.
 fn compute_post_mutate_style_summary(
  affected_docs: &[String],
 ) -> std::collections::BTreeMap<String, (usize, usize)> {
@@ -1051,12 +1053,12 @@ fn cmd_validate_workspace() -> Result<()> {
  }
 
  // Ledger set-equality (Option D): actual orphan set ⇔ ledger.
- // Round 253 — ledger composes (set-union) from two sources:
+ // ledger composes (set-union) from two sources:
  // 1. `KNOWN_STALE_ORPHANS` const, baked into the binary for
- //  mnemosyne self-application carry (currently empty).
+ // mnemosyne self-application carry (currently empty).
  // 2. `[[orphan_ledger]]` rows from the workspace's mnemosyne.toml,
- //  authored by external workspaces to register their own legacy
- //  carry without modifying the binary.
+ // authored by external workspaces to register their own legacy
+ // carry without modifying the binary.
  let mut known_orphan_keys: BTreeSet<OrphanKey> = KNOWN_STALE_ORPHANS
  .iter()
  .map(|k| OrphanKey {
@@ -1066,7 +1068,7 @@ fn cmd_validate_workspace() -> Result<()> {
  })
  .collect();
  let validate_workspace_cfg_for_ledger = workspace_config()?;
- // Round 254 — only kind=MarkdownRef entries compose into the markdown
+ // only kind=MarkdownRef entries compose into the markdown
  // orphan ledger. Atomic-internal kinds (AtomicEntryRef / AtomicSectionRef)
  // are composed into separate atomic-orphan ledger sets below at the
  // atomic store validation step.
@@ -1146,12 +1148,12 @@ fn cmd_validate_workspace() -> Result<()> {
  println!("{}", line);
  }
 
- // Round 131 — style violation summary surface; Round 138 — tier mobility:
+ // style violation summary surface; tier mobility:
  // T3 deterministic rule (`terminology_consistency`) reject is activated;
  // other T3 rules stay as warn (heuristic / subjective threshold) and T4
- // rules stay as info. See §2 *Tier-per response* table for the closed-form
+ // rules stay as info. See *Tier-per response* table for the closed-form
  // matrix.
- // Round 145 — ruleset thresholds + terminology glossary route through
+ // ruleset thresholds + terminology glossary route through
  // mnemosyne.toml when present; mnemosyne_preset is the fallback.
  let validate_workspace_cfg = workspace_config()?;
  let ruleset = default_ruleset_with_config(
@@ -1221,12 +1223,12 @@ fn cmd_validate_workspace() -> Result<()> {
  );
  }
 
- // Round 169 dogfood-switch — atomic store = first-class workspace artifact.
+ // dogfood-switch — atomic store = first-class workspace artifact.
  // Surface entries/sections count + cross-ref orphans + GENERATED.md sync.
  // Bail if atomic invariants violated (atomic ledger now part of the
  // validate-workspace contract, not just opt-in audit tests).
  //
- // Round 249 — atomic-first: orphan resolution uses the union of markdown-
+ // atomic-first: orphan resolution uses the union of markdown-
  // derived workspace sections AND atomic store sections. When markdown is
  // the canonical source the two sets coincide; when atomic store becomes
  // sole source-of-truth (post 7-md deletion path) the markdown side may
@@ -1235,12 +1237,12 @@ fn cmd_validate_workspace() -> Result<()> {
  let mut id_set = workspace_section_id_set(&ws);
  id_set.extend(ws.atomic_id_set.iter().cloned());
  let atomic = atomic_cli::validate_atomic_store(&root, &id_set)?;
- // Round 254 — atomic-internal orphan ledger composition. Compose
+ // atomic-internal orphan ledger composition. Compose
  // (from, to) BTreeSets per kind from the same `[[orphan_ledger]]` table
- // that already cover markdown refs (Round 253). `kind = AtomicEntryRef`
+ // that already cover markdown refs. `kind = AtomicEntryRef`
  // covers ChangelogEntry impact_refs; `kind = AtomicSectionRef` covers
  // Section impact_scope. Set-equality drift catch (new / resolved)
- // mirrors the Round 253 markdown-ref pattern.
+ // mirrors the markdown-ref pattern.
  let atomic_entry_actual: BTreeSet<(String, String)> =
  atomic.orphan_entry_refs.iter().cloned().collect();
  let atomic_section_actual: BTreeSet<(String, String)> =
@@ -1320,7 +1322,7 @@ fn cmd_validate_workspace() -> Result<()> {
  println!(" resolved- §{}: §{}", section, target);
  }
  }
- // Round 254 — reject only on un-ledgered new orphans or ledgered-but-
+ // reject only on un-ledgered new orphans or ledgered-but-
  // fixed (resolved) drift. Pure ledger carry passes. This is the textbook
  // scope-correction path: a Round entry records the scope change, then
  // the dangling refs are registered here with kind=atomic_entry_ref or
@@ -1417,7 +1419,7 @@ fn cmd_commit(file: &str) -> Result<()> {
 // ============================================================================
 
 fn repo_root() -> Result<PathBuf> {
- // Round 142 — repo root = workspace_root from discovered mnemosyne.toml.
+ // repo root = workspace_root from discovered mnemosyne.toml.
  // The legacy `.git + docs/DESIGN.md` heuristic is replaced by the explicit
  // config-driven workspace root (the config file's dir, or the
  // `[workspace] root` override).
@@ -1433,12 +1435,12 @@ fn repo_relative_path(abs: &Path) -> Result<String> {
 }
 
 fn load_workspace(root: &Path) -> Result<(Workspace, Vec<(String, ParsedDoc)>)> {
- // Round 142 — workspace.docs + workspace.default_doc come from the
+ // workspace.docs + workspace.default_doc come from the
  // discovered config. `root` is the same workspace_root the config picks;
  // we accept it as parameter for callers that already resolved it.
- // Round 143 — schema config (changelog title set + medium_name) routes
+ // schema config (changelog title set + medium_name) routes
  // through `parse_markdown_with_schema`, the production schema-aware path.
- // Round 249 — atomic store derived section_id set is injected into the
+ // atomic store derived section_id set is injected into the
  // workspace so that `cross_ref_orphan_reject_with_workspace` step (2.5)
  // can resolve `to_target` against atomic store keys when markdown re-parse
  // (workspace.docs=[GENERATED.md] mode or 7-md deletion path) cannot.
@@ -1497,7 +1499,7 @@ fn stable_entity_id(rel_path: &str) -> u64 {
 }
 
 // ============================================================================
-// style-check — T3/T4 style rule layer (Round 129 production wire).
+// style-check — T3/T4 style rule layer.
 // ============================================================================
 
 fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
@@ -1605,16 +1607,16 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 }
 
 // ============================================================================
-// validate-code-refs — Round 256 Stage 2 code-citation defense.
+// validate-code-refs — Stage 2 code-citation defense.
 // ============================================================================
 
-/// Round 256 — scan configured code paths for `<entry_id_prefix><digits>`
+/// scan configured code paths for `<entry_id_prefix><digits>`
 /// citations and reject those whose target entry_id is missing from the
 /// atomic store `changelog_entries` map.
 ///
-/// Stage 1 of the 3-stage defense (Round 255) is the agent-time CLAUDE.md
-/// rule; this subcommand is the validator-time gate. Round 257 wires it
-/// into the pre-commit hook; Round 258 wires the supersede cascade
+/// Stage 1 of the 3-stage defense is the agent-time CLAUDE.md
+/// rule; this subcommand is the validator-time gate. wires it
+/// into the pre-commit hook; wires the supersede cascade
 /// trigger.
 ///
 /// `[code_refs]` omission ⇒ skip (exit 0 with log line) — 5-min setup
@@ -1623,7 +1625,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let mut json = false;
  let mut severity_missing_override: Option<String> = None;
  let mut severity_binding_override: Option<String> = None;
- // Round 258 — explicit decay filter (cascade caller restricts the scan
+ // explicit decay filter (cascade caller restricts the scan
  // to citations of one entry_id, e.g. an entry that just transitioned
  // Active → Superseded).
  let mut filter_id: Option<String> = None;
@@ -1829,7 +1831,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  }
  }
 
- // Reject gates by defect class (Round 260) — each class gated by its
+ // Reject gates by defect class — each class gated by its
  // own severity flag. Decay never rejects (informational).
  let mut reject_msgs: Vec<String> = Vec::new();
  if hallucination_count > 0 && severity_missing == "reject" {

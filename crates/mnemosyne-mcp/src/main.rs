@@ -8,12 +8,12 @@
 //!
 //! ```jsonc
 //! {
-//!   "mcpServers": {
-//!     "mnemosyne": {
-//!       "command": "mnemosyne-mcp",
-//!       "args": ["--workspace", "."]
-//!     }
-//!   }
+//! "mcpServers": {
+//! "mnemosyne": {
+//! "command": "mnemosyne-mcp",
+//! "args": ["--workspace", "."]
+//! }
+//! }
 //! }
 //! ```
 
@@ -42,97 +42,97 @@ pub struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QuerySectionArgs {
-    /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
-    /// `"changelog"`). Pass `--list-sections` form via `list_sections`
-    /// instead.
+ /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
+ /// `"changelog"`). Pass `--list-sections` form via `list_sections`
+ /// instead.
     pub section_id: String,
-    /// Include 1-hop CrossRef neighborhood (outbound + inbound).
+ /// Include 1-hop CrossRef neighborhood (outbound + inbound).
     #[serde(default)]
     pub include_related: bool,
-    /// Include §N citations from changelog entries.
+ /// Include §N citations from changelog entries.
     #[serde(default)]
     pub include_changelog: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StyleCheckArgs {
-    /// Optional doc path relative to workspace root. Omit to check
-    /// every doc listed in `mnemosyne.toml`.
+ /// Optional doc path relative to workspace root. Omit to check
+ /// every doc listed in `mnemosyne.toml`.
     #[serde(default)]
     pub doc: Option<String>,
-    /// Severity filter — `"t3"`, `"t4"`, or `"all"` (default).
+ /// Severity filter — `"t3"`, `"t4"`, or `"all"` (default).
     #[serde(default)]
     pub severity: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionTextArgs {
-    /// Section ID to mutate. Pass `"39"`, not `"§39"`.
+ /// Section ID to mutate. Pass `"39"`, not `""`.
     pub section_id: String,
-    /// New value. For intent: a single sentence, max ~200 chars.
+ /// New value. For intent: a single sentence, max ~200 chars.
     pub text: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionBulletsArgs {
     pub section_id: String,
-    /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
+ /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
     pub bullets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionCaveatArgs {
     pub section_id: String,
-    /// Single caveat bullet to append.
+ /// Single caveat bullet to append.
     pub bullet: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetImpactScopeArgs {
     pub section_id: String,
-    /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
+ /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
     pub refs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionExampleArgs {
     pub section_id: String,
-    /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
+ /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
     pub language: String,
-    /// Code body — embedded inside a fenced block. No leading fence.
+ /// Code body — embedded inside a fenced block. No leading fence.
     pub code: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionImplementationArgs {
-    /// Section ID without the `§` prefix.
+ /// Section ID without the `§` prefix.
     pub section_id: String,
-    /// Workspace-relative POSIX file path. No leading `/`, no leading
-    /// `./`, no `..` segment, no backslash. The file does not need to
-    /// exist at write time — schema records intent.
+ /// Workspace-relative POSIX file path. No leading `/`, no leading
+ /// `./`, no `..` segment, no backslash. The file does not need to
+ /// exist at write time — schema records intent.
     pub file: String,
-    /// Optional opaque language-agnostic identifier (function / type /
-    /// qualified path). Stored as-is; no language-grammar regex applied.
-    /// Omit for file-level binding.
+ /// Optional opaque language-agnostic identifier (function / type /
+ /// qualified path). Stored as-is; no language-grammar regex applied.
+ /// Omit for file-level binding.
     #[serde(default)]
     pub symbol: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppendChangelogEntryArgs {
-    /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
-    /// monotonic (greater than the last entry's id).
+ /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
+ /// monotonic (greater than the last entry's id).
     pub entry_id: String,
-    /// One-sentence headline of the decision.
+ /// One-sentence headline of the decision.
     pub decision_summary: String,
-    /// What concretely changed. File paths, primitives, etc.
+ /// What concretely changed. File paths, primitives, etc.
     pub changes_bullets: Vec<String>,
-    /// How the change was validated (tests, measurements).
+ /// How the change was validated (tests, measurements).
     pub verification_bullets: Vec<String>,
-    /// Section ids affected (without `§`), e.g. `["39", "66"]`.
+ /// Section ids affected (without `§`), e.g. `["39", "66"]`.
     #[serde(default)]
     pub impact_refs: Vec<String>,
-    /// Carry-forward items for next round.
+ /// Carry-forward items for next round.
     #[serde(default)]
     pub carry_forward_bullets: Vec<String>,
 }

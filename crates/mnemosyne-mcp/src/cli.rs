@@ -30,7 +30,7 @@ impl CliOutput {
         self.status == 0
     }
 
-    /// Collapse stdout + stderr into a single human-readable string.
+ /// Collapse stdout + stderr into a single human-readable string.
     pub fn combined(&self) -> String {
         if self.stderr.is_empty() {
             self.stdout.clone()

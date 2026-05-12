@@ -1,4 +1,4 @@
-//! `MnemosyneStore` — `rocksdb::DB` wrapper over the §4 ten-CF schema.
+//! `MnemosyneStore` — `rocksdb::DB` wrapper over the ten-CF schema.
 //!
 //! Provides per-CF put / get / iter_branch / iter_branch_entity / write_batch
 //! against the 24 B BE composite key. The prototype `cf_wrapper.rs::emit_wrapper`
@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Mnemosyne-store handle. Holds an `Arc<DB>` so multiple typed callers
-/// (entity wrapper, relation wrapper, audit appender, ...) can share one DB
+/// (entity wrapper, relation wrapper, audit appender,...) can share one DB
 /// instance without cloning RocksDB resources.
 #[derive(Clone)]
 pub struct MnemosyneStore {
@@ -101,7 +101,7 @@ impl MnemosyneStore {
  Ok(out)
  }
 
- /// Round 113 — callback-based streaming variant. Each (valid_from, value)
+ /// callback-based streaming variant. Each (valid_from, value)
  /// pair is delivered to the callback as it is decoded from RocksDB,
  /// avoiding the materialization of the whole branch+entity range into
  /// a single `Vec`. The callback returns `true` to continue or `false`

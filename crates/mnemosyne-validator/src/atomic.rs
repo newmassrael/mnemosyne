@@ -1,30 +1,32 @@
-//! Atomic typed fields store — DESIGN §39 Section / ChangelogEntry atomic
-//! decomposition (Round 161 SCHEMA-DECOMPOSITION ratify, Phase 0f output axis).
+//! Atomic typed fields store — Section / ChangelogEntry atomic
+//! decomposition.
 //!
-//! Phase 0e (Round 141-151) wired the *input axis* (markdown → typed facts via
+//! Spec binding: §atomic-store-mutate-api, §code-citation-defense/bidirectional-binding.
+//!
+//! Phase 0e wired the *input axis* (markdown → typed facts via
 //! generic loader). Phase 0f wires the *output axis*: atomic typed fields →
 //! template render → MD bytes. The atomic store is the new authoritative
-//! source for new content (Round 163+ forward-wire); legacy `body` /
-//! `sub_bullets` field is carried stable on existing entries (Round 19 frozen
-//! ledger, Round 164-166 migration multi-session scope).
+//! source for new content; legacy `body` /
+//! `sub_bullets` field is carried stable on existing entries (frozen
+//! ledger-166 migration multi-session scope).
 //!
 //! Storage: sidecar JSON file (default `docs/.atomic/workspace.atomic.json`),
 //! workspace-wide single store keyed by `section_id` / `entry_id`.
 //! Persistence is atomic write (temp + rename) following the same pattern as
-//! the markdown mutate primitives (Round 124 atomic_write).
+//! the markdown mutate primitives.
 //!
-//! API surface (DESIGN §15 spec mutate API atomic scope, Round 161 ratify):
+//! API surface:
 //! - Section atomic: `set_section_intent` / `set_section_rationale` /
 //! `set_section_inputs` / `set_section_outputs` / `add_section_caveat` /
 //! `set_section_alternatives` / `set_section_impact_scope` /
-//! `add_section_example` / `add_section_implementation` (Round 259)
+//! `add_section_example` / `add_section_implementation`
 //! - ChangelogEntry atomic: `append_changelog_entry_v2`
 //!
-//! Round 259 — `Section.implementations` lands as the substrate for Path B
+//! `Section.implementations` lands as the substrate for Path B
 //! of the code-citation defense (Spec ↔ Code bidirectional binding). The
 //! atomic store records "this section is implemented at file:symbol";
-//! Round 260+ cross-checks code citations against the spec's authoritative
-//! binding (set-equality, the Round 80 OPTION D pattern lifted from cross-
+//! cross-checks code citations against the spec's authoritative
+//! binding (set-equality, the OPTION D pattern lifted from cross-
 //! ref orphan reject). Schema + mutate primitive only — validator
 //! extension and section seeding are deferred to later rounds.
 
@@ -35,13 +37,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Section atomic typed fields (Round 161 §39 reframe ratify).
+/// Section atomic typed fields.
 ///
 /// Default = all empty / None. legacy `body` field (Section.body via parser
 /// `bodies` map carries stable — atomic fields are additive only.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicSection {
- /// 1-3 sentence summary. T3 style threshold: ≤ 200 char (Round 161 §41 ratify).
+ /// 1-3 sentence summary. T3 style threshold: ≤ 200 char.
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub intent: Option<String>,
  /// Preserved decision list. T3 style threshold: each bullet ≤ 100 chars.
@@ -62,12 +64,12 @@ pub struct AtomicSection {
  /// cross-ref list (target section_id without `§` prefix).
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub impact_scope: Vec<String>,
- /// code/config block list. T3 style threshold: code block itself exempt (Round 161 §41).
+ /// code/config block list. T3 style threshold: code block itself exempt.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub examples: Vec<ExampleBlock>,
- /// Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate.
+ /// Path B (Spec ↔ Code bidirectional binding) substrate.
  /// Set of `(file, symbol?)` bindings that authoritatively own "this
- /// section is implemented here". Round 260+ cross-checks code citations
+ /// section is implemented here". cross-checks code citations
  /// against this set. Append-only (no replace/remove primitive); duplicate
  /// `(file, symbol)` rejected at write time (set semantics).
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -87,14 +89,14 @@ pub struct ExampleBlock {
  pub code: String,
 }
 
-/// Round 259 — Path B binding entry (Spec → Code).
+/// Path B binding entry (Spec → Code).
 ///
 /// `file` = workspace-relative POSIX path (no leading `/`, no `..` segment,
 /// no backslash; validated at write time by [`add_section_implementation`]).
 /// `symbol` = optional opaque language-agnostic identifier (function /
 /// type / qualified path); when present, narrows the binding from "this
 /// file" to "this symbol within this file". Stored opaquely — the spec
-/// layer does not encode language grammar; Round 260's bidirectional
+/// layer does not encode language grammar; 's bidirectional
 /// cross-check operates on the strings as-is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Implementation {
@@ -103,11 +105,11 @@ pub struct Implementation {
  pub symbol: Option<String>,
 }
 
-/// ChangelogEntry atomic typed fields (Round 161 §39 reframe ratify).
+/// ChangelogEntry atomic typed fields.
 ///
 /// Default = all empty. The legacy `sub_bullets` field carries stable — atomic
 /// fields = additive only. T2 frozen_ledger_jaccard rule extends to atomic
-/// fields (Round 161 §41 ratify): once committed, atomic fields are frozen
+/// fields: once committed, atomic fields are frozen
 /// (deletion = T2 violation, addition = OK).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicChangelogEntry {
@@ -224,19 +226,19 @@ impl AtomicStore {
  self.changelog_entries.get(entry_id)
  }
 
- /// Round 243 — atomic-derived section_id set (MD-DELETION-RATIFY foundation).
+ /// atomic-derived section_id set (MD-DELETION-RATIFY foundation).
  ///
  /// Returns workspace-wide section_id set sourced from atomic store keys
  /// only — no markdown parsing required. Production use case: T1 cross-ref
  /// Orphan check + atomic-store cross-ref resolution when 7 source MD files
- /// are deleted (Round 244+ MD-DELETION-RATIFY entry path).
+ /// are deleted.
  ///
  /// Parallel to [`crate::query::workspace_section_id_set`] which sources
  /// from `Workspace.docs.values().sections` (markdown-derived). When the
- /// atomic store is the sole source of truth (Round 173 paradigm shift
+ /// atomic store is the sole source of truth (paradigm shift
  /// complete), this becomes the canonical section_id set.
  ///
- /// Round 250 — also yields *implied parent prefixes* derived from `/`
+ /// also yields *implied parent prefixes* derived from `/`
  /// path components in keys (e.g. key `architecture/layer/l0` implies
  /// parent ids `architecture` and `architecture/layer`). This covers
  /// heading-only roots that were intentionally skipped during atomic
@@ -257,7 +259,7 @@ impl AtomicStore {
 }
 
 /// Render an [`AtomicSection`] into a paragraph-separated prose string
-/// (Round 247 cascade — moved from `style.rs::synthesize_atomic_body`).
+///.
 ///
 /// Used by `style.rs` body rules (run-on / sentence-length scan) and
 /// `query.rs::build_section_view` (atomic-first body source). Bullet blocks
@@ -337,7 +339,7 @@ pub struct AtomicMutateReceipt {
 }
 
 // ============================================================================
-// Section atomic mutate primitives (Round 161 §15 reframe ratify).
+// Section atomic mutate primitives.
 // ============================================================================
 
 const MAX_INTENT_CHAR: usize = 200;
@@ -520,21 +522,21 @@ pub fn add_section_example(
  )
 }
 
-/// Round 259 — Path B binding entry append.
+/// Path B binding entry append.
 ///
 /// Validation at the trust boundary (data integrity only — language
-/// grammar belongs in Round 260's cross-check):
+/// grammar belongs in 's cross-check):
 /// - `file`: non-empty after trim, workspace-relative POSIX shape (reject
-///   leading `/`, leading `./`, `..` segment, `\`, internal `//`,
-///   trailing `/`). File existence is *not* checked — schema records
-///   intent; consumption-time check is Round 260's concern.
+/// leading `/`, leading `./`, `..` segment, `\`, internal `//`,
+/// trailing `/`). File existence is *not* checked — schema records
+/// intent; consumption-time check is 's concern.
 /// - `symbol`: when `Some`, non-empty after trim, no whitespace edges,
-///   no internal newline. Opaque otherwise (no language regex).
+/// no internal newline. Opaque otherwise (no language regex).
 ///
 /// Set semantics: duplicate `(file, symbol)` returns Validation error
 /// (fail-loud > silent dedup; the data model is a set of bindings).
 /// Existing entries are append-only — no remove/replace primitive
-/// exists in this round (Round 161 §41 frozen-ledger doctrine for
+/// exists in this round (frozen-ledger doctrine for
 /// atomic fields).
 pub fn add_section_implementation(
  store: &mut AtomicStore,
@@ -652,12 +654,12 @@ fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError
 }
 
 // ============================================================================
-// ChangelogEntry atomic mutate primitive (Round 161 §15 reframe ratify).
+// ChangelogEntry atomic mutate primitive.
 // ============================================================================
 
 /// `append_changelog_entry_v2` primitive — atomic-aware changelog append.
 ///
-/// Frozen ledger semantics (Round 161 §41 reframe ratify): once committed,
+/// Frozen ledger semantics: once committed,
 /// existing fields cannot be modified or removed (T2 jaccard); subsequent
 /// mutations to the same `entry_id` are rejected via FrozenLedger error.
 pub fn append_changelog_entry_v2(
@@ -781,7 +783,7 @@ mod tests {
 
  #[test]
  fn atomic_section_id_set_returns_section_keys() {
- // Round 243 — MD-DELETION-RATIFY foundation: atomic store in section
+ // MD-DELETION-RATIFY foundation: atomic store in section
  // keys only source as one section_id set carry.
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");

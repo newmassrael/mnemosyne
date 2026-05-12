@@ -1,16 +1,16 @@
-//! Spec mutate API surface — DESIGN §15 *Spec mutate API surface* binding source
-//! (Round 123 ratify, Phase 0c gate). Round 124 was the first mutate primitive
+//! Spec mutate API surface — *Spec mutate API surface* binding source
+//!. was the first mutate primitive
 //! production lift.
 //!
-//! Round 246 — *legacy v1 markdown-mutate path* (sub_bullets cascade C marker).
-//! This module's [`append_changelog_entry`] = Round 1-162 legacy markdown
-//! surgical insert path. Round 173 paradigm shift carry: production primitive =
+//! *legacy v1 markdown-mutate path* (sub_bullets cascade C marker).
+//! This module's [`append_changelog_entry`] = -162 legacy markdown
+//! surgical insert path. paradigm shift carry: production primitive =
 //! [`crate::atomic::append_changelog_entry_v2`] (atomic store standalone mutate,
-//! Round 162 production wire). v1 path's sub_bullets dependency carries stable
-//! for frozen ledger compatibility — post Round 248 MD-DELETION-RATIFY the v1
+//! production wire). v1 path's sub_bullets dependency carries stable
+//! for frozen ledger compatibility — post MD-DELETION-RATIFY the v1
 //! entry point is effectively unused.
 //!
-//! ## append_changelog_entry primitive (Round 124, first mutate primitive)
+//! ## append_changelog_entry primitive
 //!
 //! Append a new ChangelogEntry as a direct child of the `## Changelog` heading
 //! (entry_id monotonic enforced + frozen_at_transaction_time monotonic enforced
@@ -29,7 +29,7 @@
 //! ↓
 //! 3. Find the insert position (`## Changelog` direct child, last line + 1).
 //! ↓
-//! 4. Format the new entry (`- Round N (TITLE):\n  - bullet 1\n  - bullet 2\n...`).
+//! 4. Format the new entry (`- Round N (TITLE):\n - bullet 1\n - bullet 2\n...`).
 //! ↓
 //! 5. Surgical insert into the byte snapshot (preserves all bytes outside the affected region).
 //! ↓
@@ -48,12 +48,12 @@
 //!
 //! ### Surgical insert vs full re-emit
 //!
-//! This first primitive (Round 124) adopts *surgical insert* (byte preservation
+//! This first primitive adopts *surgical insert* (byte preservation
 //! outside the affected region, 0 mutation elsewhere) — emit-based full-doc
 //! recreation through the current parser/emitter pair drops ChangelogEntry
 //! title-in-parens information (the parser captures only entry_id), so a
 //! re-emit would be destructive (rich title-in-parens info on disk would be
-//! lost). First round of Phase 0c (Round 124) = surgical carry + round-trip
+//! lost). First round of Phase 0c = surgical carry + round-trip
 //! diff = ∅ validation (typed-facts unit). Lossy full re-emit is deferred to
 //! Phase 1A+ post-schema-extension carry.
 
@@ -68,7 +68,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Mutate operation receipt — DESIGN §15 *MutateReceipt envelope shape* source binding.
+/// Mutate operation receipt — *MutateReceipt envelope shape* source binding.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MutateReceipt {
  pub primitive: String,
@@ -80,7 +80,7 @@ pub struct MutateReceipt {
  pub applied_at_transaction_time: i64,
 }
 
-/// Mutate operation error — DESIGN §15 *MutateError* enum source binding.
+/// Mutate operation error — *MutateError* enum source binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MutateError {
  pub primitive: String,
@@ -115,20 +115,20 @@ impl std::error::Error for MutateError {}
 
 /// Append a new ChangelogEntry to `## Changelog` section of the target doc.
 ///
-/// Atomic round-trip flow + rollback-on-failure (DESIGN §15 mutate API surface
-/// binding source). The Round 124 production lift uses surgical insert —
+/// Atomic round-trip flow + rollback-on-failure (mutate API surface
+/// binding source). The production lift uses surgical insert —
 /// byte preservation outside the affected region, round-trip diff = ∅ enforced.
 ///
-/// Round 246 — *legacy v1 path* (sub_bullets cascade C marker). Production
+/// *legacy v1 path* (sub_bullets cascade C marker). Production
 /// primitive = [`crate::atomic::append_changelog_entry_v2`]. This function's
-/// `sub_bullets` dependency stays stable for existing markdown — post Round 248
+/// `sub_bullets` dependency stays stable for existing markdown — post 
 /// MD-DELETION-RATIFY this entry point is effectively unused; new entries should
 /// use v2.
 ///
 /// # Arguments
 /// - `workspace`: typed facts workspace (the target doc must already be loaded).
 /// - `doc_path`: workspace-relative path of the doc to mutate (e.g. `"docs/DESIGN.md"`).
-/// - `entry_id`: new entry_id (e.g. `"Round 124"`). Must equal the last entry's
+/// - `entry_id`: new entry_id (e.g. `""`). Must equal the last entry's
 /// next Round N (monotonic enforcement).
 /// - `title`: optional title-in-parens (e.g. `"APPEND-CHANGELOG-ENTRY-MUTATE-PRIMITIVE"`).
 /// `None` emits `- {entry_id}:` only.
@@ -428,7 +428,7 @@ fn orphan_key(err: ValidationError) -> Option<(String, String)> {
  }
 }
 
-/// Parse `Round N` to numeric N (e.g. "Round 124" -> 124).
+/// Parse `Round N` to numeric N (e.g. "" -> 124).
 fn parse_entry_n(entry_id: &str) -> Option<u32> {
  let after = entry_id.strip_prefix("Round ")?;
  after.parse::<u32>().ok()
@@ -441,7 +441,7 @@ fn parse_entry_n(entry_id: &str) -> Option<u32> {
 /// sibling section heading). If no subsequent sibling section exists, EOF.
 ///
 /// Marker detection *line-start* enforced — `## Changelog` literal body
-/// content can appear inside (e.g. a Round entry containing `... ` Changelog ` ...`); therefore
+/// content can appear inside (e.g. a Round entry containing `... ` Changelog `...`); therefore
 /// `## Changelog` only counts when at line start (file start or preceded by `\n`)
 /// real heading as recognized.
 fn find_changelog_insert_position(content: &str) -> Option<usize> {
@@ -489,7 +489,7 @@ fn find_line_start_marker(content: &str, marker: &str) -> Option<usize> {
  None
 }
 
-/// Format new entry text — `- Round N (TITLE):\n  - bullet 1\n  - bullet 2\n`.
+/// Format new entry text — `- Round N (TITLE):\n - bullet 1\n - bullet 2\n`.
 fn format_new_entry(entry_id: &str, title: Option<&str>, sub_bullets: &[String]) -> String {
  let mut out = String::new();
  // Leading blank line for separation from previous entry's last bullet.
@@ -523,14 +523,14 @@ fn atomic_write(path: &Path, content: &str) -> io::Result<()> {
 }
 
 // ============================================================================
-// Round 125 — remaining 4 mutate primitive (Phase 0c entry #3).
+// remaining 4 mutate primitive (Phase 0c entry #3).
 // ============================================================================
 
 use crate::schema::RefKind;
 
 /// `add_section` primitive — Section append.
 ///
-/// Round 125 carry — adopts surgical insert (Round 124 equivalent path). This primitive
+/// carry — adopts surgical insert. This primitive
 /// Surgical-carry scope: parent_section must exist in the doc, plus new-section
 /// Inserts at the end of the parent's last child (next sibling or EOF).
 ///
@@ -576,7 +576,7 @@ pub fn add_section(
  }
 
  // Determine new section_id (predicted — verification via re-parse later).
- // Round 128 fix: nested sub-sections take a `{parent}/...` prefix per parser
+ // fix: nested sub-sections take a `{parent}/...` prefix per parser
  // rule (parser.rs:257-263). Pre-128 logic predicted bare slug/number, which
  // caused StructuralVerificationFailed for any append under a parent.
  let new_depth = parent_section
@@ -839,18 +839,18 @@ pub fn add_cross_ref(
  )
 }
 
-/// `set_section_decision_status` primitive — DESIGN §15 mutate API surface
-/// (Round 123 ratify, Round 125 stub carry).
+/// `set_section_decision_status` primitive — mutate API surface
+///.
 ///
 /// **Phase 1+ schema extension carry** — current parser hardcodes
 /// `decision_status: DecisionStatus::Active` for all parsed sections (no
 /// markdown convention captures the field). This primitive's semantic meaning is mutate
 /// ChangelogEntry schema path's `decision_status` field is decoupled from the markdown body.
-/// convention ( e.g. section body in `**Decision status: superseded by §X**`
-/// marker) — the parser/emitter pair can carry this once a post-design lands. Round 125's
+/// convention (e.g. section body in `**Decision status: superseded by §X**`
+/// marker) — the parser/emitter pair can carry this once a post-design lands. 's
 /// out-of-scope (Phase 1A+ schema-extension carry).
 ///
-/// This stub registers the spec surface (§15 mutate API surface — all 5 primitives
+/// This stub registers the spec surface (mutate API surface — all 5 primitives
 /// production wire) — placeholder; invoked on `MutateErrorKind::ValidatorReject`
 /// + Phase 1 schema extension explicit detail.
 pub fn set_section_decision_status(
@@ -1000,7 +1000,7 @@ pub fn set_section_body(
 }
 
 // ============================================================================
-// Helpers for Round 125 primitives.
+// Helpers for primitives.
 // ============================================================================
 
 fn slug_for_unnumbered_external(title: &str) -> String {
@@ -1102,7 +1102,7 @@ fn find_section_end_position(content: &str, section_id: &str) -> Option<usize> {
 ///
 /// Tracks a section stack while scanning so nested sub-sections under numbered
 /// or unnumbered parents resolve to the correct `{parent}/{slug}` form (parser
-/// rule, parser.rs:257-263). Round 128 fix — pre-128 logic was predicted from the title
+/// rule, parser.rs:257-263). fix — pre-128 logic was predicted from the title
 /// alone (no parent prefix), causing mutate API sub-section ops to fail with
 /// StructuralVerificationFailed for any depth ≥ 3 section.
 fn find_section_heading(content: &str, section_id: &str) -> Option<usize> {
@@ -1157,7 +1157,7 @@ fn predict_section_id_for_heading(
 }
 
 /// Extract a leading section-number prefix from a heading title, mirroring
-/// `parser::split_section_number` (parser.rs:209). Round 132 fix — pre-132
+/// `parser::split_section_number` (parser.rs:209). fix — pre-132
 /// logic required a `.` after the digit run, so headings like `### 6axis
 /// enforce` (parsed by parser as section_number="6") were missed by the
 /// mutate-API lookup. The parser accepts any digit-or-dot run as the prefix
@@ -1202,11 +1202,11 @@ fn find_section_body_range(content: &str, section_id: &str) -> Option<(usize, us
  let after = &content[heading_pos..];
  let line_end = after.find('\n').map(|n| n + 1).unwrap_or(after.len());
  let body_start = heading_pos + line_end;
- // Round 129 fix: body ends at the FIRST heading after this section's heading
+ // fix: body ends at the FIRST heading after this section's heading
  // (any depth ≥ 1) — not at the next sibling. The pre-129 logic used
  // find_section_end_position which scans for `depth ≤ cur_depth`, so
  // set_section_body would overwrite all nested sub-sections inside the
- // section's range. Caught when Round 128's first attempt at §41 deleted
+ // section's range. Caught when 's first attempt at deleted
  // 13 sub-sections (~290 lines) silently while passing round-trip.
  let body_end = find_first_heading_after(content, body_start).unwrap_or(content.len());
  Some((body_start, body_end))

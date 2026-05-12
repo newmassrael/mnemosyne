@@ -1,12 +1,12 @@
-//! Mnemosyne store — Phase 0 production crate (DESIGN.md §4 / §42).
+//! Mnemosyne store — Phase 0 production crate (DESIGN.md /).
 //!
-//! this crate §4 10 CF schema (entities / relations / temporal_index /
+//! this crate 10 CF schema (entities / relations / temporal_index /
 //! temporal_index_open / branch_meta / assets / asset_refs / audit /
 //! epistemic / secrets) in actual `rocksdb::DB` binding + ColumnFamilyDescriptor
 //! registered + 24 B BE composite key encode/decode + WriteBatch + iterator
 //! source of truth.
 //!
-//! Round 73 OPTION B-2 production carry — bench/codegen-prototype/src/cf_wrapper.rs
+//! OPTION B-2 production carry — bench/codegen-prototype/src/cf_wrapper.rs
 //! Typed CRUD wrapper emit pattern (`{Entity}CF::put / get / iter_branch /
 //! Production runtime binding for `write_batch` — prototype-scope codegen emit
 //! source string only output, this production crate emit pattern's actual rocksdb
@@ -14,7 +14,7 @@
 //!
 //! ## Module separation
 //!
-//! - [`cf_layout`]: §4 10 CF metadata (CfId enum + CfMeta struct + IterPattern
+//! - [`cf_layout`]: 10 CF metadata (CfId enum + CfMeta struct + IterPattern
 //! enum + secondary_readable flag + schema_version).
 //! - [`key_codec`]: 24 B BE composite key encode/decode (Phase -1A stage 2C
 //! decision carry — branch_id (8 B BE) || entity_id (8 B BE) || valid_from (8 B BE)).

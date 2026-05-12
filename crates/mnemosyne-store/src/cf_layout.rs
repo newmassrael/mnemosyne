@@ -1,4 +1,4 @@
-//! 10 CF layout — DESIGN §4 / §42 source of truth.
+//! 10 CF layout — / source of truth.
 //!
 //! `entities / relations / temporal_index / temporal_index_open / branch_meta /
 //! assets / asset_refs / audit / epistemic / secrets`.
@@ -7,7 +7,7 @@
 //! - `name`: RocksDB ColumnFamily handle name (snake_case literal).
 //! - `iter_pattern`: `prefix_scan` (entity-shaped) / `range_scan` (open-interval) /
 //! `append_only_seq` (audit-shaped, monotonic key).
-//! - `secondary_readable`: §15 secondary read-access (audit / secrets are blocked).
+//! - `secondary_readable`: secondary read-access (audit / secrets are blocked).
 //! - `schema_version`: per-CF migration marker (start at 1, bump on schema change).
 
 use rocksdb::{ColumnFamilyDescriptor, Options};
@@ -35,7 +35,7 @@ pub enum CfId {
  Epistemic,
  Secrets,
  /// Internal CF for schema-version metadata persistence (migration source).
- /// Not in DESIGN §4 enumeration — wrapper-internal, not user-facing.
+ /// Not in enumeration — wrapper-internal, not user-facing.
  MigrationMeta,
 }
 
@@ -71,8 +71,8 @@ impl CfMeta {
  }
 }
 
-/// DESIGN §4 ten CF + internal `migration_meta` (eleven total descriptors).
-/// secondary_readable / iter_pattern policy directly mirrors §4 / §42 / §15.
+/// ten CF + internal `migration_meta` (eleven total descriptors).
+/// secondary_readable / iter_pattern policy directly mirrors / /.
 pub const ALL_CFS: &[CfMeta] = &[
  CfMeta {
  id: CfId::Entities,
@@ -119,7 +119,7 @@ pub const ALL_CFS: &[CfMeta] = &[
  CfMeta {
  id: CfId::Audit,
  iter_pattern: IterPattern::AppendOnlySeq,
- // §15 — audit is intentionally blocked from secondary read.
+ // — audit is intentionally blocked from secondary read.
  secondary_readable: false,
  schema_version: 1,
  },
@@ -132,7 +132,7 @@ pub const ALL_CFS: &[CfMeta] = &[
  CfMeta {
  id: CfId::Secrets,
  iter_pattern: IterPattern::AppendOnlySeq,
- // §17 secrets — blocked from secondary read (encrypted at rest).
+ // secrets — blocked from secondary read (encrypted at rest).
  secondary_readable: false,
  schema_version: 1,
  },
@@ -162,7 +162,7 @@ pub fn meta(id: CfId) -> &'static CfMeta {
  .expect("ALL_CFS covers every CfId variant")
 }
 
-/// `secondary_readable=true` subset — §15 secondary subset filter.
+/// `secondary_readable=true` subset secondary subset filter.
 pub fn secondary_readable_cfs() -> Vec<&'static CfMeta> {
  ALL_CFS.iter().filter(|m| m.secondary_readable).collect()
 }
@@ -171,7 +171,7 @@ pub fn secondary_readable_cfs() -> Vec<&'static CfMeta> {
 mod tests {
  use super::*;
 
- /// DESIGN §4 enumerates exactly ten user-facing CFs (audit + secrets blocked
+ /// enumerates exactly ten user-facing CFs (audit + secrets blocked
  /// from secondary, all others readable). The wrapper adds one internal
  /// `migration_meta` CF, so descriptor list = 11.
  #[test]
@@ -203,7 +203,7 @@ mod tests {
  assert_eq!(actual, expected);
  }
 
- /// §15 — audit + secrets are blocked from secondary read.
+ /// — audit + secrets are blocked from secondary read.
  #[test]
  fn audit_and_secrets_blocked_from_secondary() {
  assert!(!meta(CfId::Audit).secondary_readable);

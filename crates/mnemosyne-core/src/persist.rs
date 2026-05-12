@@ -6,7 +6,7 @@
 //! - `FrozenListFact` → `entities`
 //! - `CrossRefFact` → `relations` (key: branch_id || from_section || to_section)
 //!
-//! Convention follows DESIGN §4: all entity-shaped facts share the `entities`
+//! Convention follows : all entity-shaped facts share the `entities`
 //! CF, all relations share `relations`. Per-entity-kind discrimination is left
 //! to the caller's `entity_id` allocation strategy (Phase 0 implementation
 //! concern, not in scope here).

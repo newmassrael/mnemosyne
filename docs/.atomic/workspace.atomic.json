@@ -325,6 +325,34 @@
         "v1 strip_to_comments limitations: raw strings, triple-quoted, shell heredocs — accepted miss cases",
         "formatted-marker option (require_marker=true) deferred until empirical need surfaces"
       ]
+    },
+    "Round 263": {
+      "decision_summary": "code-citation defense full reject — 8 ImpUnbacked binding markers + 192 src/ hallucination cleanup via comment-only sed transforms + extractor placeholder/backtick/digit-boundary improvements; mnemosyne.toml severity promoted to reject (paths narrowed to crates/*/src/); pre-commit gate 3 now actively blocks new hallucinated citations",
+      "changes_bullets": [
+        "8 ImplementationUnbacked clears: §slug binding markers added to atomic.rs/atomic_cli.rs/code_refs.rs/config.rs/main.rs/parser.rs module doc-comments",
+        "extract_section_citations gains placeholder filter (skip §X/§N single uppercase letters) and digit-digit boundary for `.` (so §39.implementations parses as §39 not §39.implementations)",
+        "extract_section_citations gains single-line backtick skip — doc-comment `§39` examples no longer count as citations",
+        "60+ production src/*.rs files transformed via comment-only sed (Round NNN + legacy §digit tokens removed from line comments; string literals untouched)",
+        "mnemosyne.toml [code_refs] paths narrowed to crates/*/src/; severity_missing + severity_binding promoted to \"reject\"",
+        "src/ surface 192 → 0; pre-commit gate 3 now blocks any new hallucinated citation",
+        "tests/ scope deferred to Round 264 (intentional Round NNN fixture data needs different handling)"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace PASS — 478 tests pass, no regression",
+        "validate-code-refs PASS: total=0 across all kinds under severity=reject",
+        "pre-commit hook 3 gates all PASS (gate 3 now active reject — would block any new hallucination)",
+        "mnemosyne-cli validate-workspace PASS: entries=11, sections=5, GENERATED.md=sync, T1 orphan=0"
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "Round 264: tests/ scope strategy — intentional fixture cites need either kind=CodeCitation orphan_ledger entries or per-file [code_refs] exclusion list",
+        "Round 264: legacy `// Round N (N<252)` retroactive atomic absorb option (versus permanent removal) for design rationale preservation",
+        "v1 comment-only stripper limitations carry — raw strings, triple-quoted, shell heredocs (deferred until empirical bite)",
+        "formatted-marker `[code_refs] require_marker = true` option deferred until empirical need surfaces"
+      ]
     }
   },
   "schema_version": 1

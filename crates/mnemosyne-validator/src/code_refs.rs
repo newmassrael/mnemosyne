@@ -1,47 +1,49 @@
-//! Round 256 — code citation verification (Stage 2 of the 3-stage
-//! code-citation defense — Round 255 introduced the agent-time CLAUDE.md
-//! rule, this module backs the validator-time `validate-code-refs`
-//! subcommand, Round 257 + 258 wire pre-commit / cascade triggers).
+//! Spec binding: §code-citation-defense, §code-citation-defense/bidirectional-binding.
 //!
-//! Round 260 extends the scanner with the spec ↔ code bidirectional
-//! binding check (Path B substrate from Round 259's
+//! code citation verification (Stage 2 of the 3-stage
+//! code-citation defense — introduced the agent-time CLAUDE.md
+//! rule, this module backs the validator-time `validate-code-refs`
+//! subcommand, + 258 wire pre-commit / cascade triggers).
+//!
+//! extends the scanner with the spec ↔ code bidirectional
+//! binding check (Path B substrate from 's
 //! `AtomicSection.implementations`). The scanner now also extracts
 //! `§<id>` citations and applies set-equality against each section's
-//! `implementations` set (Round 80 OPTION D pattern lifted from the
+//! `implementations` set (OPTION D pattern lifted from the
 //! cross-ref orphan ledger).
 //!
 //! ## Pattern derivation
 //!
 //! `Round NNN`-shaped citations use the configured `entry_id_prefix`
-//! (Round 144 carry — Mnemosyne preset = `"Round "`, ADR preset = `"ADR-"`):
+//!:
 //!
 //! ```text
 //! \b<prefix><digits>(\.<digits>)?\b
 //! ```
 //!
 //! `§<id>`-shaped citations use a fixed `§` sigil + opaque token shape
-//! `[A-Za-z0-9._/-]+` (covers numeric ids `§39`, fractional `§61.1`,
+//! `[A-Za-z0-9._/-]+` (covers numeric ids ``, fractional ``,
 //! kebab + slash slugs `§atomic-store/changelog-atomic-ledger`):
 //!
 //! ```text
-//! §[A-Za-z0-9._/-]+    (trailing `.` not consumed)
+//! §[A-Za-z0-9._/-]+ (trailing `.` not consumed)
 //! ```
 //!
 //! Word-boundary discipline excludes identifier-like incidental hits.
 //!
-//! ## Violation taxonomy (Round 260)
+//! ## Violation taxonomy
 //!
-//! `Round NNN` axis (existing — Round 256/258):
+//! `Round NNN` axis (existing — /258):
 //! - `Missing` — entry_id not in `changelog_entries`
 //! - `Decay` — `--filter-id` cascade scan match
 //!
-//! `§<id>` axis (Round 260 — Path B bidirectional check):
+//! `§<id>` axis:
 //! - `SectionMissing` — §<id> not in `atomic_section_id_set`
 //! - `CitationUnbound` — §<id> exists but citing file F not in
-//!   §<id>.`implementations` (code-side; spec doesn't agree)
+//! §<id>.`implementations` (code-side; spec doesn't agree)
 //! - `ImplementationUnbacked` — (file F, sym?) in
-//!   §<id>.`implementations` but F has no §<id> citation (spec-side;
-//!   code doesn't agree)
+//! §<id>.`implementations` but F has no §<id> citation (spec-side;
+//! code doesn't agree)
 //!
 //! The first two binding directions are *asymmetric in shape*: code-side
 //! violations have a concrete (file, line, entry_id); spec-side
@@ -57,8 +59,8 @@ use crate::atomic::AtomicStore;
 use crate::config::{OrphanKind, OrphanLedgerEntry};
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
-/// file. `entry_id` retains the cite shape verbatim (`"Round 254"` or
-/// `"§39"` — `§` prefix kept so the kind axis is readable from the id
+/// file. `entry_id` retains the cite shape verbatim (`""` or
+/// `""` — `§` prefix kept so the kind axis is readable from the id
 /// alone).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Citation {
@@ -81,7 +83,7 @@ pub enum CodeRefViolation {
  citation: Citation,
  kind: ViolationKind,
  },
- /// Spec-side violation (Round 260) — the atomic store records
+ /// Spec-side violation — the atomic store records
  /// `§section_id.implementations` containing (file, symbol?), but the
  /// file has no `§section_id` citation. The spec claims an
  /// implementation that the code does not witness.
@@ -108,7 +110,7 @@ impl CodeRefViolation {
  }
  }
 
- /// Defect class (Round 260) — drives `--severity-missing` vs
+ /// Defect class — drives `--severity-missing` vs
  /// `--severity-binding` bucketing. Hallucination-class = cited
  /// identifier doesn't exist (Missing, SectionMissing). Binding-class
  /// = set-equality violation (CitationUnbound, ImplementationUnbacked).
@@ -127,7 +129,7 @@ impl CodeRefViolation {
  }
 }
 
-/// Round 260 — semantic axis that drives CLI severity flag bucketing.
+/// semantic axis that drives CLI severity flag bucketing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DefectClass {
  /// Cited identifier doesn't exist (Missing, SectionMissing).
@@ -143,16 +145,16 @@ pub enum ViolationKind {
  /// `entry_id` not in the atomic store `changelog_entries` map
  /// (hallucinated or refers to a removed entry).
  Missing,
- /// Round 258 — citation matches an explicit decay filter (e.g. an
+ /// citation matches an explicit decay filter (e.g. an
  /// entry_id the cascade caller knows just transitioned to Superseded).
  /// Surfaced regardless of whether the id is still in the valid set —
  /// the entry exists, but author should review whether the code is
  /// still accurate against the new decision.
  Decay,
- /// Round 260 — `§<id>` citation where `<id>` is not in the atomic
+ /// `§<id>` citation where `<id>` is not in the atomic
  /// store's section_id set (analog of `Missing` on the section axis).
  SectionMissing,
- /// Round 260 — `§<id>` citation where `<id>` exists in the atomic
+ /// `§<id>` citation where `<id>` exists in the atomic
  /// store but the citing file is not registered in
  /// `§<id>.implementations`. The code-side half of the bidirectional
  /// set-equality violation (spec disagrees with code).
@@ -250,10 +252,10 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
  out
 }
 
-/// Round 260 — extract every `§<id>` citation candidate from `content`.
+/// extract every `§<id>` citation candidate from `content`.
 ///
 /// Token shape: `§` followed by 1+ chars from `[A-Za-z0-9._/-]`. Tail
-/// trailing `.` is not consumed (mirrors `scan_round_number` so `§39.` at
+/// trailing `.` is not consumed (mirrors `scan_round_number` so `.` at
 /// end of sentence yields `39`, not `39.`). Returned entries use the bare
 /// id (no `§` prefix) so callers can directly index `AtomicSection` keys.
 /// Line numbers are 1-indexed.
@@ -264,28 +266,55 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
  let mut out = Vec::new();
  for (line_idx, line) in content.lines().enumerate() {
+ // — single-line backtick state. `` inside a code-span
+ // is documentation example, not a citation. Toggled on each backtick
+ // and reset at line end (multi-line fenced code spans are not
+ // recognized in v1; the comment-only stripper already gates this for
+ // most source files, and inline backtick spans cover the doc-comment
+ // example case that survives stripping).
+ let mut in_backtick = false;
  let mut chars = line.char_indices().peekable();
  while let Some((i, c)) = chars.next() {
+ if c == '`' {
+ in_backtick = !in_backtick;
+ continue;
+ }
+ if in_backtick {
+ continue;
+ }
  if c != '§' {
  continue;
  }
  // Tail: read [A-Za-z0-9._/-]+ starting at the byte after `§`.
+ // `.` is constrained to digit-digit boundaries so
+ // `.implementations` parses as `39` (the prose-style field
+ // reference suffix is not part of the section_id) while
+ // `` (fractional id) remains intact.
  let tail_start = i + c.len_utf8();
  let tail = &line[tail_start..];
+ let tail_chars: Vec<(usize, char)> = tail.char_indices().collect();
  let mut last_byte = 0usize;
- for (j, t) in tail.char_indices() {
- if is_section_id_char(t) {
+ for (idx, &(j, t)) in tail_chars.iter().enumerate() {
+ if t == '.' {
+ let prev_is_digit = idx > 0 && tail_chars[idx - 1].1.is_ascii_digit();
+ let next_is_digit = tail_chars
+ .get(idx + 1)
+ .map(|(_, c)| c.is_ascii_digit())
+ .unwrap_or(false);
+ if !(prev_is_digit && next_is_digit) {
+  break;
+ }
  last_byte = j + t.len_utf8();
- } else {
+ continue;
+ }
+ if !is_section_id_char(t) {
  break;
  }
+ last_byte = j + t.len_utf8();
  }
  if last_byte == 0 {
  continue;
  }
- // Drop a single trailing `.` (sentence-ending), mirroring the
- // Round NNN scanner's "trailing dot without fractional digits
- // is not consumed" rule.
  let mut end = last_byte;
  if tail[..end].ends_with('.') {
  end -= 1;
@@ -294,7 +323,15 @@ pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
  continue;
  }
  let id = tail[..end].to_string();
+ // skip metavariable placeholders like `§N`, `§X`,
+ // `§Y` used in doc-comments to mean "any section id". A real
+ // section_id is either multi-char or starts with lowercase /
+ // digit; a single uppercase letter is metasyntax.
+ let is_metavar = id.chars().count() == 1
+ && id.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false);
+ if !is_metavar {
  out.push((line_idx + 1, id));
+ }
  // Advance the outer iterator past what we consumed.
  // (peekable / char_indices doesn't have skip-to-byte, so we
  // re-seek by consuming until we pass `tail_start + end`.)
@@ -316,10 +353,10 @@ fn is_section_id_char(c: char) -> bool {
 }
 
 // ============================================================================
-// Comment-only filtering (Round 262 — Path B precision layer).
+// Comment-only filtering.
 //
-// The Round 256 scanner pattern-matches the entire file body, which surfaces
-// string-literal fixtures (e.g. test markdown that contains "Round 1" as
+// The scanner pattern-matches the entire file body, which surfaces
+// string-literal fixtures (e.g. test markdown that contains "" as
 // data) as false-positive citations. The comment-only layer strips
 // non-comment chars to a single space so that line numbers are preserved
 // 1:1 while only language-comment text reaches the citation extractor.
@@ -331,7 +368,7 @@ fn is_section_id_char(c: char) -> bool {
 // - shell heredocs not recognized;
 // - escape rules simplified (`\X` skips one char inside strings).
 // These miss cases are deliberately deferred — when they bite, opt-out via
-// `[code_refs] comment_only = false` restores the Round 256 whole-text scan.
+// `[code_refs] comment_only = false` restores the whole-text scan.
 // ============================================================================
 
 /// Per-language comment recognition mode. The dispatcher in
@@ -528,11 +565,11 @@ fn scan_round_number(s: &str) -> Option<String> {
  Some(buf)
 }
 
-/// Round 256 — entry_id-only scan (legacy thin wrapper, retained for
+/// entry_id-only scan (legacy thin wrapper, retained for
 /// backward compatibility with callers that don't carry the full atomic
 /// store). New callers should use [`scan_paths_bidirectional`].
 ///
-/// Round 262 — defaults `comment_only=false` to preserve the Round
+/// defaults `comment_only=false` to preserve the Round
 /// 256/258 whole-text scan semantics for any external caller still bound
 /// to this entrypoint.
 pub fn scan_paths(
@@ -544,11 +581,11 @@ pub fn scan_paths(
  scan_paths_filtered(workspace_root, paths, prefix, valid_entry_ids, None, false)
 }
 
-/// Round 258 — entry_id-only scan with optional decay filter (legacy
+/// entry_id-only scan with optional decay filter (legacy
 /// thin wrapper). New callers should use [`scan_paths_bidirectional`]
 /// which also covers the §<id> axis and the Path B bidirectional check.
 ///
-/// Round 262 — `comment_only` toggles the comment-only filtering layer.
+/// `comment_only` toggles the comment-only filtering layer.
 /// When `true`, each file's content is passed through [`strip_to_comments`]
 /// (with [`comment_syntax_for`] picking the per-extension mode) before
 /// citation extraction; when `false`, the whole file is scanned (Round
@@ -601,23 +638,23 @@ pub fn scan_paths_filtered(
  Ok(violations)
 }
 
-/// Round 260 — full Path B scan: Round NNN axis + §<id> axis +
+/// full Path B scan: Round NNN axis + §<id> axis +
 /// bidirectional set-equality check + orphan ledger suppression for
 /// `OrphanKind::CodeCitation` rows.
 ///
 /// Algorithm (per scanned file F):
 /// 1. Extract `<prefix>NNN` citations → `Missing` (or `Decay` under
-///    `filter_id`) using existing Round 256/258 path.
+/// `filter_id`) using existing /258 path.
 /// 2. Extract `§<id>` citations:
-///    - `<id>` not in `store.atomic_section_id_set()` → `SectionMissing`
-///    - `<id>` exists but F not in `§<id>.implementations` files →
-///      `CitationUnbound`
-///    - else OK (record F in `cited_by[<id>]` for step 3)
+/// - `<id>` not in `store.atomic_section_id_set()` → `SectionMissing`
+/// - `<id>` exists but F not in `§<id>.implementations` files →
+/// `CitationUnbound`
+/// - else OK (record F in `cited_by[<id>]` for step 3)
 /// 3. After all files scanned, walk `store.sections`. For each §X, for
-///    each `Implementation { file, symbol }` in `§X.implementations`:
-///    if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
+/// each `Implementation { file, symbol }` in `§X.implementations`:
+/// if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
 ///
-/// `filter_id` is the Round 258 decay-scan toggle. When `Some`, only
+/// `filter_id` is the decay-scan toggle. When `Some`, only
 /// Round NNN citations matching the filter are surfaced (as `Decay`);
 /// all other Round NNN citations are suppressed, and the §<id> axis
 /// stays silent for symmetry (a Superseded-decision cascade caller is
@@ -629,7 +666,7 @@ pub fn scan_paths_filtered(
 /// ignored by this scanner (they belong to the atomic-internal /
 /// markdown axes).
 ///
-/// Round 262 — `comment_only` toggles the comment-only filtering layer.
+/// `comment_only` toggles the comment-only filtering layer.
 /// When `true`, each file's content is passed through [`strip_to_comments`]
 /// (per-extension dispatch via [`comment_syntax_for`]) so the citation
 /// extractor only sees comment text. Unknown extensions fall through to
@@ -693,7 +730,7 @@ pub fn scan_paths_bidirectional(
  .unwrap_or(abs.clone());
  let rel_str = rel.to_string_lossy().to_string();
 
- // ---- Round NNN axis (Round 256/258) ----
+ // ---- Round NNN axis ----
  for (line, entry_id) in extract_citations(prefix, &content) {
  let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
  let is_missing = !valid_entry_ids.contains(&entry_id);
@@ -714,7 +751,7 @@ pub fn scan_paths_bidirectional(
  });
  }
 
- // ---- §<id> axis (Round 260) ----
+ // ---- §<id> axis ----
  // Decay-filter mode narrows the surface to Round NNN only — Path B
  // cross-check stays silent (cascade caller's question is targeted).
  if filter_id.is_some() {
@@ -765,8 +802,8 @@ pub fn scan_paths_bidirectional(
  }
  }
 
- // ---- Step 3: spec-side bidirectional half (Round 260) ----
- // Skip under decay-filter mode (Round 258 narrow scope).
+ // ---- Step 3: spec-side bidirectional half ----
+ // Skip under decay-filter mode.
  if filter_id.is_none() {
  for (section_id, section) in &store.sections {
  for impl_entry in &section.implementations {
@@ -910,7 +947,7 @@ mod tests {
  assert!(extract_citations("", "Round 254\n").is_empty());
  }
 
- // ============ Round 260 — §<id> extractor unit tests ============
+ // ============ §<id> extractor unit tests ============
 
  #[test]
  fn extract_section_citations_basic_numeric() {
@@ -974,7 +1011,7 @@ mod tests {
  assert_eq!(out, vec![(1, "atomic_store".to_string())]);
  }
 
- // ============ Round 260 — bidirectional scan integration tests ============
+ // ============ bidirectional scan integration tests ============
 
  fn build_store_with_impl(
  path: &Path,
@@ -989,7 +1026,7 @@ mod tests {
 
  #[test]
  fn bidirectional_clean_codebase_no_violations() {
- // §39 cite in src/foo.rs + §39.implementations contains src/foo.rs.
+ // cite in src/foo.rs +.implementations contains src/foo.rs.
  let tmp = TempDir::new().unwrap();
  let store_path = tmp.path().join(".atomic/workspace.atomic.json");
  let store = build_store_with_impl(&store_path, "39", "src/foo.rs", Some("Foo"));
@@ -1014,7 +1051,7 @@ mod tests {
 
  #[test]
  fn bidirectional_section_missing_when_id_not_in_store() {
- // §999 cite but no §999 in the store.
+ // cite but no in the store.
  let tmp = TempDir::new().unwrap();
  let store = AtomicStore::new();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -1045,7 +1082,7 @@ mod tests {
 
  #[test]
  fn bidirectional_citation_unbound_when_file_not_in_impls() {
- // §39 exists with impl src/bar.rs, but src/foo.rs cites §39.
+ // exists with impl src/bar.rs, but src/foo.rs cites.
  let tmp = TempDir::new().unwrap();
  let store_path = tmp.path().join(".atomic/workspace.atomic.json");
  let store = build_store_with_impl(&store_path, "39", "src/bar.rs", None);
@@ -1079,8 +1116,8 @@ mod tests {
 
  #[test]
  fn bidirectional_implementation_unbacked_when_impl_file_lacks_cite() {
- // §39.implementations contains src/foo.rs:Foo, but src/foo.rs has
- // no §39 citation.
+ //.implementations contains src/foo.rs:Foo, but src/foo.rs has
+ // no citation.
  let tmp = TempDir::new().unwrap();
  let store_path = tmp.path().join(".atomic/workspace.atomic.json");
  let store = build_store_with_impl(&store_path, "39", "src/foo.rs", Some("Foo"));
@@ -1117,7 +1154,7 @@ mod tests {
 
  #[test]
  fn bidirectional_orphan_ledger_suppresses_citation_unbound() {
- // §39.implementations names src/bar.rs only; src/foo.rs cites §39
+ //.implementations names src/bar.rs only; src/foo.rs cites
  // but is registered in the orphan ledger as a known-stale code
  // citation. Suppressed.
  let tmp = TempDir::new().unwrap();
@@ -1149,7 +1186,7 @@ mod tests {
 
  #[test]
  fn bidirectional_orphan_ledger_suppresses_implementation_unbacked() {
- // §39.implementations names src/foo.rs, src/foo.rs has no cite,
+ //.implementations names src/foo.rs, src/foo.rs has no cite,
  // but ledger registers (src/foo.rs, 39) as known-stale. Suppressed.
  let tmp = TempDir::new().unwrap();
  let store_path = tmp.path().join(".atomic/workspace.atomic.json");
@@ -1189,8 +1226,8 @@ mod tests {
  "// §999 hallucinated\n// Round 1 cite\n",
  )
  .unwrap();
- // Round 1 is in the store; Round 999 is not. With filter_id=Round 1,
- // we expect Round 1 to surface as Decay and §999 to stay silent.
+ // is in the store; is not. With filter_id=,
+ // we expect to surface as Decay and to stay silent.
  let mut s2 = store.clone();
  s2.changelog_entries.insert(
  "Round 1".to_string(),
@@ -1216,7 +1253,7 @@ mod tests {
  }
  }
 
- // ============ Legacy Round 256/258 thin-wrapper tests ============
+ // ============ Legacy /258 thin-wrapper tests ============
 
  #[test]
  fn scan_paths_filtered_decay_surfaces_filter_id_match() {
@@ -1279,7 +1316,7 @@ mod tests {
  }
  }
 
- // ============ Round 262 — comment-only filtering tests ============
+ // ============ comment-only filtering tests ============
 
  #[test]
  fn comment_syntax_dispatch_by_extension() {
@@ -1334,7 +1371,7 @@ mod tests {
 
  #[test]
  fn strip_slash_removes_round_inside_string_literal() {
- // `Round 254` inside string literal must NOT survive comment-only mode.
+ // `` inside string literal must NOT survive comment-only mode.
  let src = "let s = \"Round 254\";\n";
  let out = strip_to_comments(src, CommentSyntax::Slash);
  assert!(!out.contains("Round 254"));
@@ -1391,7 +1428,7 @@ mod tests {
 
  #[test]
  fn bidirectional_comment_only_filters_string_literal_noise() {
- // .rs file: only the comment cite should fire; string-literal Round NNN
+ //.rs file: only the comment cite should fire; string-literal Round NNN
  // must NOT produce a Missing violation under comment_only=true.
  let tmp = TempDir::new().unwrap();
  let store = AtomicStore::new();
@@ -1428,7 +1465,7 @@ mod tests {
  #[test]
  fn bidirectional_comment_only_false_legacy_back_compat() {
  // With comment_only=false, both string-literal and comment cites fire
- // (Round 256/258 whole-text scan semantics).
+ //.
  let tmp = TempDir::new().unwrap();
  let store = AtomicStore::new();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -1460,7 +1497,7 @@ mod tests {
 
  #[test]
  fn bidirectional_comment_only_unknown_extension_passthrough() {
- // .unknown extension → CommentSyntax::Unknown → whole-text scan even
+ //.unknown extension → CommentSyntax::Unknown → whole-text scan even
  // under comment_only=true.
  let tmp = TempDir::new().unwrap();
  let store = AtomicStore::new();
@@ -1480,7 +1517,7 @@ mod tests {
  true,
  )
  .unwrap();
- // Unknown extension preserves Round 256/258 whole-text behavior.
+ // Unknown extension preserves /258 whole-text behavior.
  assert_eq!(v.len(), 1, "got: {:?}", v);
  }
 }

@@ -1,34 +1,34 @@
-//! §15 *Spec query API surface* — production lift (Round 120, Phase 0b entry #5).
+//! *Spec query API surface* — production lift.
 //!
-//! Round 116 bench prototype (`bench/crates/codegen-prototype/src/query_api.rs`)
-//! First round of the production lift. Round 117 §15 *Spec query API surface* body
-//! registered + §66 prerequisite #5 *AI agent dogfood proof* binding source — *AI
+//! bench prototype (`bench/crates/codegen-prototype/src/query_api.rs`)
+//! First round of the production lift. *Spec query API surface* body
+//! registered + prerequisite #5 *AI agent dogfood proof* binding source — *AI
 //! agent (Claude / future LLM) markdown grep = 0 calls + 0 direct DESIGN.md reads
 //! Zero-time + spec-query-API-only entry contract — production
 //! data path.
 //!
-//! ## 4 primitive (§15 closed-form, Round 117 ratify carry)
+//! ## 4 primitive (closed-form, ratify carry)
 //!
 //! - [`section_by_id`] — deterministic section_id scan across the workspace (BTreeMap
 //! path order) in first match carry, body + line_anchor + decision_status
 //! surface.
 //! - [`related_sections`] — outbound + inbound 1-hop CrossRef traversal
-//! (self doc in + cross-doc form `{path}#§N` tail anchor consistency, Round 70
+//! (self doc in + cross-doc form `{path}#§N` tail anchor consistency
 //! OPTION H-2 carry).
 //! - [`changelog_entries_for_section`] — workspace in all doc in
 //! Detects §N citations in changelog_entries fulltext (with boundary checks against longer
-//! Blocks false positives on numeric forms `§434` / `§43.1`.
+//! Blocks false positives on numeric forms `` / ``.
 //! - [`workspace_section_id_set`] — full section_id dict across all docs.
 //!
-//! ## JSON envelope shape (Claude-consumable; §15 body-registered carry)
+//! ## JSON envelope shape (Claude-consumable; body-registered carry)
 //!
 //! - [`QueryEnvelope`] = section + outbound_refs + inbound_refs +
 //! related_changelog_entries unified nested shape.
 //! - `serde::Serialize` derive in `serde_json::to_string_pretty` serialize.
 //!
-//! ## CLI surface (Round 120 production lift)
+//! ## CLI surface
 //!
-//! - `mnemosyne-cli query §43 [--include-related] [--include-changelog] [--json]`
+//! - `mnemosyne-cli query [--include-related] [--include-changelog] [--json]`
 //! - `mnemosyne-cli query --list-sections`
 
 use crate::atomic::{synthesize_section_body, AtomicChangelogEntry, AtomicStore};
@@ -72,10 +72,10 @@ pub struct CrossRefView {
 
 /// ChangelogEntryView — `changelog_entries_for_section` carry form.
 ///
-/// Round 245 — atomic-first surface (sub_bullets cascade B). Round 163+ atomic
+/// atomic-first surface (sub_bullets cascade B). atomic
 /// store entry's 5 fields (decision_summary / changes_bullets /
 /// verification_bullets / impact_refs / carry_forward_bullets) separate field
-/// is directly exposed. The `sub_bullets` field stays stable for Round 1-162 legacy entries; extending
+/// is directly exposed. The `sub_bullets` field stays stable for -162 legacy entries; extending
 /// 244 schema-doc consistency. citation_count = sub_bullets + atomic 5-field
 /// summed across fulltext + impact_refs structural matches.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -86,23 +86,23 @@ pub struct ChangelogEntryView {
  pub frozen_at_transaction_time: i64,
  pub sub_bullets: Vec<String>,
  /// §N citation count in this entry's body (sub_bullets + atomic 5-field fulltext +
- /// atomic impact_refs are structurally summed (Round 245 cascade B).
+ /// atomic impact_refs are structurally summed.
  pub citation_count: usize,
- /// Round 245 — atomic decision_summary surface (atomic store unregistered entry =
+ /// atomic decision_summary surface (atomic store unregistered entry =
  /// `None`).
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub atomic_decision_summary: Option<String>,
- /// Round 245 — atomic changes_bullets surface.
+ /// atomic changes_bullets surface.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub atomic_changes_bullets: Vec<String>,
- /// Round 245 — atomic verification_bullets surface.
+ /// atomic verification_bullets surface.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub atomic_verification_bullets: Vec<String>,
- /// Round 245 — atomic impact_refs surface (target section_id without `§`
+ /// atomic impact_refs surface (target section_id without `§`
  /// prefix). Structural cross-ref shapes are summed directly into citation_count.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub atomic_impact_refs: Vec<String>,
- /// Round 245 — atomic carry_forward_bullets surface.
+ /// atomic carry_forward_bullets surface.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub atomic_carry_forward_bullets: Vec<String>,
 }
@@ -125,7 +125,7 @@ pub struct QueryEnvelope {
 /// Lookup priority: first match in BTreeMap path order.
 /// not found → `None` (CLI in error code 1 + stderr explicit).
 ///
-/// Round 247 — atomic-first body source carry (sub_bullets cascade D).
+/// atomic-first body source carry (sub_bullets cascade D).
 /// atomic-store-registered section: prose is synthesized from the 8 atomic fields.
 /// SectionView.body, fallback = parsed.bodies (legacy markdown).
 pub fn section_by_id(
@@ -138,8 +138,8 @@ pub fn section_by_id(
  return Some(build_section_view(path, section, doc, atomic_store));
  }
  }
- // Round 247 — atomic-only section surface (markdown missing + atomic_store
- // standalone registered scope, MD-DELETION-RATIFY (Round 248) thereafter sole iteration
+ // atomic-only section surface (markdown missing + atomic_store
+ // standalone registered scope, MD-DELETION-RATIFY thereafter sole iteration
  // source path).
  if let Some(atomic) = atomic_store.section(section_id) {
  let synthetic_section = Section {
@@ -169,7 +169,7 @@ fn build_section_view(
  doc: &ParsedDoc,
  atomic_store: &AtomicStore,
 ) -> SectionView {
- // Round 247 — atomic-first body source. atomic store in section is present
+ // atomic-first body source. atomic store in section is present
  // synthesize_section_body result, fallback = parsed.bodies (legacy markdown).
  let body = if let Some(atomic) = atomic_store.section(&section.section_id) {
  synthesize_section_body(atomic)
@@ -215,12 +215,12 @@ fn ref_kind_str(k: RefKind) -> &'static str {
 ///
 /// outbound = cross_refs whose from_section is this section_id (within self doc).
 /// inbound = cross_refs whose to_target is this section_id (scanned across all workspace docs;
-/// cross-doc form `{path}#§N` tail anchor strip consistency — Round 70
+/// cross-doc form `{path}#§N` tail anchor strip consistency — 
 /// OPTION H-2 carry).
 ///
 /// Markdown-derived signature only. For atomic-store-aware traversal that
 /// surfaces `impact_refs` reverse lookup post 7-md deletion, callers should
-/// prefer [`related_sections_with_atomic`] (Round 251 wire).
+/// prefer [`related_sections_with_atomic`].
 pub fn related_sections(workspace: &Workspace, section_id: &str) -> RelatedSections {
  let mut out = RelatedSections::default();
  for (path, doc) in &workspace.docs {
@@ -236,7 +236,7 @@ pub fn related_sections(workspace: &Workspace, section_id: &str) -> RelatedSecti
  out
 }
 
-/// Round 251 — atomic-aware variant of [`related_sections`]. Adds two new
+/// atomic-aware variant of [`related_sections`]. Adds two new
 /// inbound traversal sources sourced from the atomic store:
 ///
 /// - `entry.impact_refs` — every changelog entry whose impact_refs
@@ -295,7 +295,7 @@ fn build_cross_ref_view(from_doc: &str, cr: &CrossRef) -> CrossRefView {
  }
 }
 
-/// Check whether CrossRef.to_target leaks the section_id (Round 70 OPTION H-2 carry).
+/// Check whether CrossRef.to_target leaks the section_id.
 ///
 /// match shape:
 /// - decision form: bare `§N` → to_target == section_id
@@ -319,20 +319,20 @@ fn cross_ref_targets_section(cr: &CrossRef, section_id: &str) -> bool {
 }
 
 /// `changelog_entries_for_section` — detect §N citations across the full workspace
-/// (atomic-first surface, Round 245 cascade B).
+/// (atomic-first surface, cascade B).
 ///
 /// citation source = this entry's (1) sub_bullets fulltext (legacy carry,
-/// Round 1-162) + (2) atomic_store entry's 5-field fulltext (Round 163+) +
+/// -162) + (2) atomic_store entry's 5-field fulltext +
 /// (3) atomic impact_refs structural match — boundary check guards against longer numeric
-/// false-positive block for forms `§434` / `§43.1` (next byte after the needle —
+/// false-positive block for forms `` / `` (next byte after the needle —
 /// ASCII digit OR `.` (in which case it mismatches).
 ///
 /// Iteration order:
 /// - workspace.docs in ChangelogEntry markdown-derived entry first
-/// (legacy Round 1-162 + atomic-migrated Round 163+ both visible),
+/// (legacy -162 + atomic-migrated both visible),
 /// - then atomic-only entries (markdown absent, atomic-store-standalone),
-/// (Round 173 paradigm-shift category). parent_doc = "<atomic>" sentinel,
-/// MD-DELETION-RATIFY (Round 248) — sole iteration source thereafter.
+///. parent_doc = "<atomic>" sentinel,
+/// MD-DELETION-RATIFY — sole iteration source thereafter.
 pub fn changelog_entries_for_section(
  workspace: &Workspace,
  atomic_store: &AtomicStore,
@@ -351,7 +351,7 @@ pub fn changelog_entries_for_section(
  seen_entry_ids.insert(entry.entry_id.clone());
  }
  }
- // Round 245 — atomic-only entry surface (markdown missing atomic_store standalone).
+ // atomic-only entry surface (markdown missing atomic_store standalone).
  for (entry_id, atomic) in &atomic_store.changelog_entries {
  if seen_entry_ids.contains(entry_id) {
  continue;
@@ -370,7 +370,7 @@ pub fn changelog_entries_for_section(
  out
 }
 
-/// Sentinel `parent_doc` for atomic-only entries (Round 245 cascade B).
+/// Sentinel `parent_doc` for atomic-only entries.
 /// markdown-absent + atomic-store-standalone entries use a placeholder notation in view.parent_doc.
 pub const ATOMIC_ONLY_PARENT_DOC: &str = "<atomic>";
 
@@ -468,7 +468,7 @@ pub fn workspace_section_id_set(workspace: &Workspace) -> BTreeSet<String> {
 /// `build_envelope` — section_by_id + related_sections +
 /// changelog_entries_for_section unified envelope (Claude consumable).
 ///
-/// Round 245 — atomic-first surface carry (cascade B). atomic-store-entry-driven.
+/// atomic-first surface carry (cascade B). atomic-store-entry-driven.
 /// 5-field ChangelogEntryView — `atomic_*` fields exposed, citation_count
 /// atomic-field citations are summed.
 pub fn build_envelope(
@@ -477,7 +477,7 @@ pub fn build_envelope(
  section_id: &str,
 ) -> Option<QueryEnvelope> {
  let section = section_by_id(workspace, atomic_store, section_id)?;
- // Round 251 — atomic-aware traversal (post 7-md deletion the markdown
+ // atomic-aware traversal (post 7-md deletion the markdown
  // cross_ref graph collapses; impact_refs / impact_scope reverse lookup
  // restores inbound visibility).
  let related = related_sections_with_atomic(workspace, atomic_store, section_id);
@@ -568,7 +568,7 @@ mod tests {
 
  #[test]
  fn count_citations_includes_atomic_fulltext() {
- // Round 245 — atomic-first surface: atomic 5 field fulltext in §N detect.
+ // atomic-first surface: atomic 5 field fulltext in §N detect.
  let entry = ChangelogEntry {
  entry_id: "Round X".to_string(),
  parent_changelog_entry: None,
@@ -587,7 +587,7 @@ mod tests {
 
  #[test]
  fn count_citations_includes_atomic_impact_refs_structural() {
- // Round 245 — impact_refs structural match (1 iteration count, fulltext distinct).
+ // impact_refs structural match (1 iteration count, fulltext distinct).
  let entry = ChangelogEntry {
  entry_id: "Round X".to_string(),
  parent_changelog_entry: None,
@@ -607,7 +607,7 @@ mod tests {
 
  #[test]
  fn section_by_id_atomic_first_body_source() {
- // Round 247 — atomic-first body: atomic store in section is present
+ // atomic-first body: atomic store in section is present
  // synthesize_section_body result SectionView.body authoritative source.
  use crate::atomic::AtomicSection;
  let mut ws = Workspace::mnemosyne();
@@ -644,7 +644,7 @@ mod tests {
 
  #[test]
  fn section_by_id_legacy_body_fallback() {
- // Round 247 — atomic store unregistered section: parsed.bodies fallback carry.
+ // atomic store unregistered section: parsed.bodies fallback carry.
  let mut ws = Workspace::mnemosyne();
  let mut doc = ParsedDoc::default();
  doc.sections.push(Section {
@@ -665,8 +665,8 @@ mod tests {
 
  #[test]
  fn section_by_id_atomic_only_section_surface() {
- // Round 247 — markdown missing + atomic store standalone registered section carry.
- // MD-DELETION-RATIFY (Round 248) thereafter sole iteration source path.
+ // markdown missing + atomic store standalone registered section carry.
+ // MD-DELETION-RATIFY thereafter sole iteration source path.
  use crate::atomic::AtomicSection;
  let ws = Workspace::mnemosyne();
  let mut store = AtomicStore::default();
@@ -684,8 +684,8 @@ mod tests {
 
  #[test]
  fn changelog_entries_for_section_surfaces_atomic_only_entry() {
- // Round 245 — markdown missing + atomic_store standalone entry also query carry.
- // MD-DELETION-RATIFY (Round 248) thereafter sole iteration source path.
+ // markdown missing + atomic_store standalone entry also query carry.
+ // MD-DELETION-RATIFY thereafter sole iteration source path.
  let ws = Workspace::mnemosyne();
  let mut store = AtomicStore::default();
  store.changelog_entries.insert(
@@ -707,7 +707,7 @@ mod tests {
 
  #[test]
  fn changelog_entries_for_section_dedupes_markdown_and_atomic() {
- // Round 245 — markdown observed entry atomic-only dedupe.
+ // markdown observed entry atomic-only dedupe.
  let mut ws = Workspace::mnemosyne();
  let mut doc = ParsedDoc::default();
  doc.changelog_entries.push(ChangelogEntry {
@@ -736,7 +736,7 @@ mod tests {
 
  #[test]
  fn changelog_entries_for_section_surfaces_atomic_fields() {
- // Round 245 — atomic surface field exposed validation.
+ // atomic surface field exposed validation.
  let mut ws = Workspace::mnemosyne();
  let mut doc = ParsedDoc::default();
  doc.changelog_entries.push(ChangelogEntry {

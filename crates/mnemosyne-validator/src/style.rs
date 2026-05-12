@@ -1,23 +1,23 @@
-//! Style rule layer (T3/T4 — MD-quality validator) — Round 128 spec ratify carry,
-//! Round 129 production wire (DESIGN.md §41 *Style rule layer (T3/T4 — MD-quality)*
-//! sub-section + §66 Stage 1 dogfood depth carry).
+//! Style rule layer (T3/T4 — MD-quality validator) — spec ratify carry,
+//! production wire (DESIGN.md *Style rule layer (T3/T4 — MD-quality)*
+//! sub-section + Stage 1 dogfood depth carry).
 //!
 //! Layer responsibility: prose property check on parsed design_doc workspace.
-//! Parallel to T1/T2 (typed-fact inference) layer in §41 — different validation
+//! Parallel to T1/T2 (typed-fact inference) layer in — different validation
 //! dimension (prose readability vs typed-fact consistency).
 //!
 //! Reject power: none. T3 = warn surface (override possible), T4 = info surface
-//! (author-checkpoint flag only). Round 33 signal-4 carry — LLM-eval / cosine
+//! (author-checkpoint flag only). signal-4 carry — LLM-eval / cosine
 //! similarity / classifier output is forbidden in this layer; only deterministic
 //! check kinds (char_count / jaccard / regex / lookup) are admissible.
 //!
-//! Rule catalog (closed-form, Round 128 ratify):
+//! Rule catalog (closed-form, ratify):
 //!
 //! T3 (warn):
 //! - `max_paragraph_length` (default 1000 char) — single paragraph char count
 //! - `max_sentence_length` (default 200 char) — single sentence char count
-//! - `terminology_consistency` — workspace glossary lookup (Round 130 fill)
-//! - `cross_doc_reference_explicit` — cross-doc reference syntax (Round 70 OPTION H-2)
+//! - `terminology_consistency` — workspace glossary lookup
+//! - `cross_doc_reference_explicit` — cross-doc reference syntax
 //!
 //! T4 (info):
 //! - `boilerplate_repetition_jaccard` (default 0.7) — ChangelogEntry sub_bullets pairwise jaccard
@@ -91,15 +91,15 @@ pub struct StyleViolation {
  pub suggested_fix: Option<String>,
 }
 
-/// Workspace terminology glossary (Round 130 measurement-driven inventory,
-/// Round 132 conservative carry, Round 145 config-driven entry point).
+/// Workspace terminology glossary (measurement-driven inventory,
+/// conservative carry, config-driven entry point).
 ///
-/// The Round 130 first inventory listed five entries; the Round 132 review
+/// The first inventory listed five entries; the review
 /// drops three (`design_doc`/`design doc`, `cascade_query`/`cascade query`,
 /// `Forge`/`forge`) because the variants name **different things** rather
 /// than misspellings. The Mnemosyne preset retains the unambiguous pair.
 ///
-/// Round 145 — external users override via
+/// external users override via
 /// `mnemosyne.toml::[terminology.glossary]`. This factory returns the
 /// Mnemosyne self-application preset; [`glossary_from_config`] takes a
 /// `TerminologySection` and produces a parser-shape map.
@@ -114,7 +114,7 @@ pub fn workspace_glossary() -> BTreeMap<String, BTreeSet<String>> {
  g
 }
 
-/// Round 145 — convert a `TerminologySection` into the parser's glossary
+/// convert a `TerminologySection` into the parser's glossary
 /// shape. Empty config → empty glossary (terminology rule disabled).
 pub fn glossary_from_config(
  config: &crate::config::TerminologySection,
@@ -127,7 +127,7 @@ pub fn glossary_from_config(
  g
 }
 
-/// Round 145 — config-driven ruleset factory. Per-rule char count thresholds
+/// config-driven ruleset factory. Per-rule char count thresholds
 /// override compile-time defaults via `style.thresholds`; glossary populates
 /// from `[terminology.glossary]`. Empty glossary disables the
 /// `terminology_consistency` rule's reject power without removing the rule.
@@ -152,7 +152,7 @@ pub fn default_ruleset_with_config(
  rules
 }
 
-/// Round 145 — build the default ruleset with a custom glossary. The
+/// build the default ruleset with a custom glossary. The
 /// glossary argument replaces the Mnemosyne preset (Salsa / bi-temporal);
 /// pass an empty BTreeMap to disable terminology checks.
 fn default_ruleset_with_glossary(
@@ -167,10 +167,10 @@ fn default_ruleset_with_glossary(
  rules
 }
 
-/// Default ruleset — Round 128 closed-form catalog (Round 140 detector tightening
+/// Default ruleset — closed-form catalog (detector tightening
 /// + threshold tuning carry: max_sentence_length 200 → 300 char, em-dash
 /// subclause in effective length, strong-carry section skip).
-/// `terminology_consistency` glossary populated at Round 130 measurement round.
+/// `terminology_consistency` glossary populated at measurement round.
 pub fn default_ruleset() -> Vec<StyleRule> {
  vec![
  StyleRule {
@@ -227,7 +227,7 @@ pub fn default_ruleset() -> Vec<StyleRule> {
 
 /// Strong-carry section — frozen-feeling section bodies where length-rule
 /// edits risk T2 frozen-ledger jaccard drift or carry-trail readability loss.
-/// Mirrors the audit ledger classifier (Round 139 STYLE-WARN-CARRY-AUDIT) so
+/// Mirrors the audit ledger classifier so
 /// production detection skips the same regions the audit identified as
 /// HARD_CASE. `terminology_consistency` and `cross_doc_reference_explicit`
 /// continue to apply universally — they don't risk semantic drift.
@@ -261,10 +261,10 @@ fn rule_skips_strong_carry(rule_id: &str) -> bool {
  matches!(rule_id, "max_paragraph_length" | "max_sentence_length")
 }
 
-/// Round 250 — true when `section_id` is a descendant of (or is) the
+/// true when `section_id` is a descendant of (or is) the
 /// changelog area. Used by `check_style` to skip rules whose violations
 /// inside frozen changelog entries can never be acted on (the entry text
-/// (append-only per Round 161 §41 frozen ledger).
+/// (append-only per frozen ledger).
 ///
 /// Pattern: section_id contains the changelog title slug. Matches both
 /// the bare `change-history` section and any nested per-entry slug like
@@ -274,11 +274,11 @@ fn is_changelog_area_section(section_id: &str) -> bool {
  lower.contains("changelog") || section_id.contains("change-history")
 }
 
-/// Round 250 — true when the rule's violations are unactionable inside
+/// true when the rule's violations are unactionable inside
 /// frozen changelog entries (atomic store ledger). `terminology_consistency`
 /// fires on legacy variant text (`salsa` / `bitemporal`) embedded in
 /// historical entries' decision_summary/changes/etc; those entries are
-/// frozen by Round 161 §41 ledger and cannot be retroactively fixed. The
+/// frozen by ledger and cannot be retroactively fixed. The
 /// canonical-form contract still applies to live spec body via
 /// `parsed.sections` outside the changelog area.
 fn rule_skips_changelog_area(rule_id: &str) -> bool {
@@ -301,11 +301,11 @@ pub fn check_style(
   {
   continue;
   }
-  // Round 250 — skip terminology check on changelog-area
-  // sections. Frozen ledger entries (atomic store) cannot
-  // be retroactively fixed; flagged variants stay as
-  // *historical* text. Live spec body outside changelog
-  // still gets full terminology coverage.
+ // skip terminology check on changelog-area
+ // sections. Frozen ledger entries (atomic store) cannot
+ // be retroactively fixed; flagged variants stay as
+ // *historical* text. Live spec body outside changelog
+ // still gets full terminology coverage.
   if rule_skips_changelog_area(&rule.rule_id)
   && is_changelog_area_section(&section.section_id)
   {
@@ -335,7 +335,7 @@ pub fn check_style(
 }
 
 /// Resolve the prose body for a section's style checks. atomic-first source
-/// (Round 241 LEGACY-FIELD-REMOVAL round 1): if the atomic store has an entry
+///: if the atomic store has an entry
 /// for `section_id`, synthesize a prose body from its 8 fields; otherwise
 /// fall back to the legacy `parsed.bodies` map for sections that have not
 /// yet been atomic-decomposed. Both branches return `None` when no source
@@ -352,7 +352,7 @@ fn resolve_section_body(
  parsed.bodies.get(section_id).cloned()
 }
 
-// Round 247 — `synthesize_atomic_body` moved to
+// `synthesize_atomic_body` moved to
 // [`crate::atomic::synthesize_section_body`] for shared use (query.rs
 // SectionView.body atomic-first source). this module-level wrapper
 // maintain in minimal carry — call site change no atomic-first surface scope
@@ -486,7 +486,7 @@ fn check_changelog_entry_rule(
  if let (StyleThreshold::Jaccard(cap), "boilerplate_repetition_jaccard") =
  (&rule.threshold, rule.rule_id.as_str())
  {
- // Round 242 — atomic-first source: atomic ChangelogEntry changes_bullets
+ // atomic-first source: atomic ChangelogEntry changes_bullets
  // existswhen atomic source in jaccard check. atomic entry missing or
  // changes_bullets when empty legacy `entry.sub_bullets` fallback (LEGACY-
  // FIELD-REMOVAL round 2 carry; sub_bullets field self-carries stable
@@ -663,7 +663,7 @@ fn is_korean(c: char) -> bool {
  matches!(c as u32, 0xAC00..=0xD7AF)
 }
 
-/// Effective sentence length for `max_sentence_length` (Round 140 detector
+/// Effective sentence length for `max_sentence_length` (detector
 /// tightening). Korean technical prose chains multiple semantic clauses with
 /// em-dashes (`A — B — C`) inside what reads as a single author-intended
 /// sentence; counting the whole chain inflates length false-positively. This
@@ -716,9 +716,8 @@ const KNOWN_DOCS: &[&str] = &[
 ];
 
 /// Heuristic — informal cross-doc references like "see DESIGN" without
-/// `#§N` anchor. Skips the following non-navigational contexts (Round 130
-/// false-positive triage):
-/// - inside backticks (already exempt before Round 130)
+/// `#§N` anchor. Skips the following non-navigational contexts (/// false-positive triage):
+/// - inside backticks (already exempt before)
 /// - reference to the parser's own doc (self-reference is not cross-doc)
 /// - followed by `#` (already anchored)
 /// - immediately followed by a Korean nominal particle (eu / e / an / wi / deung / man / do / gwa / wa / eun / neun / i / ga / eul / reul / ro)
@@ -755,7 +754,7 @@ fn detect_implicit_cross_doc_references(body: &str, parent_doc_path: &str) -> Ve
 }
 
 /// True if the next non-space token signals noun/source usage rather than
-/// navigation. English-only after Round 252; Korean particle detection
+/// navigation. English-only after; Korean particle detection
 /// retired (workspace is English-only, AI-consumed; Korean prose is no
 /// longer expected anywhere in the validated content).
 fn is_followed_by_nominal_context(after: &str) -> bool {
@@ -837,7 +836,7 @@ mod tests {
  #[test]
  fn max_paragraph_length_detects_run_on() {
  let mut doc = ParsedDoc::default();
- // Use a prose_named section so the Round 140 strong-carry skip does not apply.
+ // Use a prose_named section so the strong-carry skip does not apply.
  doc.sections.push(Section {
  section_id: "test/prose-section".into(),
  parent_doc: "TEST".into(),

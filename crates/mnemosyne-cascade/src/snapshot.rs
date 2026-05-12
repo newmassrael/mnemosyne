@@ -1,7 +1,7 @@
 //! Branch snapshot — typed-fact bundle that the cascade query body reads.
 //!
-//! this module §43 cascade_query's actual body invariant validation in use-
-//! Per-branch typed-fact snapshot wire format + load helper. Round 81 round
+//! this module cascade_query's actual body invariant validation in use-
+//! Per-branch typed-fact snapshot wire format + load helper. round
 //! Actual body carry — `mnemosyne-store` raw bytes → `mnemosyne-core` typed
 //! facts → this snapshot's read path.
 //!
@@ -17,7 +17,7 @@
 //! cannot identify itself by byte-shape alone (encode_value's length-prefix is coincidental).
 //! match possible). Phase 0 contract — callers must partition entity_id explicitly (any
 //! any entity_id is recognized regardless of fact kind). Phase 1.5+ entity_id namespace allocation
-//! the policy explicitly enables an auto-dispatch entry path (Round 82+ scope).
+//! the policy explicitly enables an auto-dispatch entry path.
 
 use mnemosyne_core::{
  ChangelogEntryFact, CrossRefFact, FrozenListFact, PersistError, SectionFact, TypedFactStore,

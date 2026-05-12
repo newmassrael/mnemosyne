@@ -1,4 +1,4 @@
-//! 24 B fixed-width BE composite key codec — DESIGN §4 / Phase -1A stage 2C
+//! 24 B fixed-width BE composite key codec — / Phase -1A stage 2C
 //! decision carry: `branch_id (u64 BE 8B) || entity_id (u64 BE 8B) || valid_from (u64 BE 8B)`.
 //!
 //! prototype `bench/codegen-prototype/src/entity_indexer.rs` (`encode_composite_key`,

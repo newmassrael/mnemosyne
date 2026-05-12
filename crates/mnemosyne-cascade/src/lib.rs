@@ -1,6 +1,6 @@
-//! Mnemosyne cascade — Phase 0 production crate (DESIGN.md §43).
+//! Mnemosyne cascade — Phase 0 production crate (DESIGN.md).
 //!
-//! This crate is §43 *cascade_query kind*'s actual Salsa 0.26 runtime binding —
+//! This crate is *cascade_query kind*'s actual Salsa 0.26 runtime binding —
 //! `#[salsa::input]` CascadeBranch + entity input structs + `#[salsa::tracked]`
 //! cascade query functions + `#[salsa::db]` `CascadeDb` trait + concrete
 //! `MnemosyneCascadeDb` runtime + cascade dependency graph metadata.
@@ -9,7 +9,7 @@
 //! Production binding — emits one source string compiled via the actual Rust pipeline
 //! direct dogfood of the codegen result.
 //!
-//! Round 36 paradigm carry — the Salsa runtime itself emits Rust-only (cascade_query
+//! paradigm carry — the Salsa runtime itself emits Rust-only (cascade_query
 //! scope — *partial break of the 5-language emit contract* (audit trail). Studio Kotlin / CLI
 //! Python's dependency-graph visualization `metadata` module — the 5-language emit
 //! in read-only consumer path.
@@ -24,7 +24,7 @@
 //! - [`spec`]: cascade query spec types (CascadeQuerySpec / ReadDep / TriggerSpec)
 //! + `design_doc_cascade_fixture`.
 //! - [`snapshot`]: per-branch typed-fact bundle + serde encoding + store load
-//! helper (Round 81 — actual cascade body carry).
+//! helper.
 
 pub mod fine_grained;
 pub mod metadata;

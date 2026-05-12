@@ -1,8 +1,8 @@
-//! Cascade dependency-graph metadata — DESIGN §43 *output* dependency-graph carry.
+//! Cascade dependency-graph metadata — *output* dependency-graph carry.
 //! auto visualize (Studio cascade preview affected_asset_count + CLI batch
 //! validation source). Read-only consumer path, runtime-independent.
 //!
-//! Round 36 paradigm carry — Salsa runtime is itself Rust-only; this metadata
+//! paradigm carry — Salsa runtime is itself Rust-only; this metadata
 //! 5-language emit scope (Studio Kotlin / CLI Python / C++ runtime SDK
 //! cascade preview output source).
 

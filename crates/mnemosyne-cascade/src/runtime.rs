@@ -1,5 +1,5 @@
 //! Salsa 0.26 runtime — actual `#[salsa::input]` / `#[salsa::tracked]` /
-//! `#[salsa::db]` binding for the §66 design_doc cascade queries.
+//! `#[salsa::db]` binding for the design_doc cascade queries.
 //!
 //! Mirror of the prototype golden `bench/codegen-prototype/tests/fixtures/
 //! salsa_wire_emit.rs` — that file exists as a regen-able snapshot of the
@@ -9,7 +9,7 @@
 //! `MnemosyneCascadeDb` owns the `salsa::Storage<Self>` and implements both
 //! `salsa::Database` and the local `CascadeDb` trait. Tracked functions read
 //! the per-branch `BranchSnapshotData` (decoded from `CascadeBranch.snapshot_payload`)
-//! and validate the §66 T1 invariants surfaced as cascade queries:
+//! and validate the T1 invariants surfaced as cascade queries:
 //!
 //! - `section_decision_status` — for each Section with `decision_status =
 //! "Superseded"`, there must exist an outbound CrossRef of kind
@@ -17,7 +17,7 @@
 //! - `frozen_list_membership` — for each FrozenList, the `owner_section` must
 //! exist as a Section in the snapshot, and at least one ChangelogEntry must
 //! accompany the snapshot (membership delta requires changelog attachment
-//! per §66 T1 rule 3).
+//! per T1 rule 3).
 
 use crate::snapshot::BranchSnapshotData;
 
@@ -96,8 +96,8 @@ pub trait CascadeDb: salsa::Database {
 /// Invariant — each `Section` whose `decision_status` is `"Superseded"` must
 /// have at least one outbound `CrossRef` (`from_section == section.section_id`)
 /// of `ref_kind ∈ {"decision", "impl"}` — the supersession pointer to the
-/// superseding section. Mirrors §66 T1 rule 4 (`section_decision_status_transition`)
-/// surfaced as a cascade query (per §43 *cascade_query Forge kind*).
+/// superseding section. Mirrors T1 rule 4 (`section_decision_status_transition`)
+/// surfaced as a cascade query (per *cascade_query Forge kind*).
 #[salsa::tracked]
 pub fn section_decision_status<'db>(
  db: &'db dyn CascadeDb,
@@ -141,7 +141,7 @@ pub fn section_decision_status<'db>(
 /// in the snapshot's Section set (referential integrity).
 /// 2. When the snapshot contains at least one `FrozenList`, at least one
 /// `ChangelogEntry` must accompany — membership delta requires changelog
-/// attachment per §66 T1 rule 3 (`frozen_list_membership_delta`).
+/// attachment per T1 rule 3 (`frozen_list_membership_delta`).
 #[salsa::tracked]
 pub fn frozen_list_membership<'db>(
  db: &'db dyn CascadeDb,

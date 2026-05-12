@@ -1,6 +1,6 @@
-//! design_doc schema — DESIGN §39 *Phase 0 design_doc schema closed-form registered* full shape.
+//! design_doc schema — *Phase 0 design_doc schema closed-form registered* full shape.
 //!
-//! Full 4 entity/relation shape (§39 closed-form registered — Round 60 ratify carry):
+//! Full 4 entity/relation shape (closed-form registered — ratify carry):
 //! - **Section** (entity, 5 field): `section_id` canonical / `parent_doc` /
 //! `parent_section` nullable ref / `title` / `decision_status` enum
 //! - **ChangelogEntry** (entity, append-only, 4 field): `entry_id` canonical /
@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-/// Section entity — DESIGN §39 closed-form 5 field full shape.
+/// Section entity — closed-form 5 field full shape.
 /// `parent_section` nullable ref (file doc-root = None).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
@@ -28,7 +28,7 @@ pub struct Section {
  pub decision_status: DecisionStatus,
 }
 
-/// Section.decision_status enum — DESIGN §39 closed-form registered carry.
+/// Section.decision_status enum — closed-form registered carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DecisionStatus {
  Active,
@@ -36,22 +36,22 @@ pub enum DecisionStatus {
  Removed,
 }
 
-/// ChangelogEntry — DESIGN §39 closed-form 4 field, append-only.
+/// ChangelogEntry — closed-form 4 field, append-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangelogEntry {
  /// Canonical key — "Round N" format.
  pub entry_id: String,
- /// nullable ref — chained sub-entry parent (Round 33 → 33.5 same chain).
+ /// nullable ref — chained sub-entry parent.
  pub parent_changelog_entry: Option<String>,
  /// Ordered nested bullet content (raw markdown text preserved).
  ///
- /// Round 244 — *legacy field, carry stable* (sub_bullets cascade A scope
- /// decision). Round 19 frozen ledger consistency — this field Round 1-162 legacy
+ /// *legacy field, carry stable* (sub_bullets cascade A scope
+ /// decision). frozen ledger consistency — this field -162 legacy
  /// Markdown entry's prose body — carried until the atomic store is registered as the source.
- /// New entry (Round 163+) — empty. Atomic dimension is the authoritative source.
+ /// New entry — empty. Atomic dimension is the authoritative source.
  /// [`crate::atomic::AtomicChangelogEntry`] (`changes_bullets` /
  /// `verification_bullets` / `impact_refs` / `carry_forward_bullets`).
- /// MD-DELETION-RATIFY (Round 248) carry on parser extraction skip path
+ /// MD-DELETION-RATIFY carry on parser extraction skip path
  /// entry — for those, this field defaults to empty.
  pub sub_bullets: Vec<String>,
  /// frozen_at_transaction_time -- in the Phase 0 prototype this captures register-order
@@ -60,7 +60,7 @@ pub struct ChangelogEntry {
  pub frozen_at_transaction_time: i64,
 }
 
-/// FrozenList — DESIGN §39 closed-form 4 field, version-locked.
+/// FrozenList — closed-form 4 field, version-locked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrozenList {
  pub list_id: String,
@@ -95,9 +95,9 @@ pub enum RefKind {
 
 /// Parser/emitter typed-facts container — in-memory state for the 4 entity/relation kinds.
 ///
-/// Round 118 carry — `bodies` + `line_anchors` in §15 *Spec query API surface*
-/// SectionView carry source (Round 117 §15 body-registered carry). The bench prototype
-/// (Round 116) production lift — `parsed_doc_canonical` is out of scope (carry)
+/// carry — `bodies` + `line_anchors` in *Spec query API surface*
+/// SectionView carry source. The bench prototype
+/// production lift — `parsed_doc_canonical` is out of scope (carry)
 /// (round-trip diff = ∅ validation cardinality identical maintain, derived dimension).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedDoc {
@@ -106,25 +106,25 @@ pub struct ParsedDoc {
  pub frozen_lists: Vec<FrozenList>,
  pub cross_refs: Vec<CrossRef>,
  /// Parser warnings — line ref legacy / unmapped construct / FrozenList
- /// lock_kind such as absence (DESIGN §61 *parser warn exposed* carry).
+ /// lock_kind such as absence.
  pub warnings: Vec<String>,
- /// Round 118 — section_id → raw body lines (everything from after the heading up to before the next heading,
- /// code-fence interiors preserved verbatim. Source for §15 spec query API's SectionView.body
+ /// section_id → raw body lines (everything from after the heading up to before the next heading,
+ /// code-fence interiors preserved verbatim. Source for spec query API's SectionView.body
  /// source — derived dimension (excluded from round-trip diff comparisons).
  ///
- /// Round 247 — *legacy field, atomic-first fallback only*. atomic store
+ /// *legacy field, atomic-first fallback only*. atomic store
  /// for the section, this returns [`crate::atomic::synthesize_section_body`]'s result.
  /// SectionView.body authoritative source, this field legacy markdown
- /// (Round 1-162 prose body) carry stable scope. MD-DELETION-RATIFY (extend
+ /// carry stable scope. MD-DELETION-RATIFY (extend
  /// 248) carry on parser extraction-skip + this field defaults to empty only.
  pub bodies: BTreeMap<String, String>,
- /// Round 118 — section_id → heading line number (1-indexed). §15 spec query
+ /// section_id → heading line number (1-indexed). spec query
  /// Source for the API's SectionView.line_anchor — derived dimension.
  pub line_anchors: BTreeMap<String, usize>,
 }
 
 /// Render ParsedDoc as canonical text (deterministic ordering for hash check).
-/// Round 52 sha256 canon pattern equivalent.
+/// sha256 canon pattern equivalent.
 pub fn parsed_doc_canonical(doc: &ParsedDoc) -> String {
  let mut out = String::new();
  out.push_str("=== sections ===\n");

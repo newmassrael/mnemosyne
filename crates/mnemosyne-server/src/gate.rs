@@ -1,4 +1,4 @@
-//! 3-tier gate (T1/T2/T3) — DESIGN §19 routing matrix carry.
+//! 3-tier gate (T1/T2/T3) — routing matrix carry.
 //!
 //! - **Tier 1** (semantic): cross-ref orphan reject + append-only enforcement +
 //! FrozenList membership-delta + supersede ref enforcement. Routed to

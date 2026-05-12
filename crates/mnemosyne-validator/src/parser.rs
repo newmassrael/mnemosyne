@@ -1,21 +1,23 @@
-//! markdown → typed facts parser — DESIGN §61 *Markdown variant spec* source binding.
+//! markdown → typed facts parser — *Markdown variant spec* source binding.
 //!
-//! Single-pass mechanical parse. Round 71 OPTION H-3 carry — markdown link
+//! Spec binding: §markdown-parser.
+//!
+//! Single-pass mechanical parse. OPTION H-3 carry — markdown link
 //! Excludes the `[text](#anchor)` anchor href from CrossRef emit (intra-doc anchor and
 //! Prevents silent orphan rejection caused by §N section_id slug-form mismatches.
 //!
 //! This module's scope is *single-doc* — multi-doc lookup priority step (2)
 //! [`crate::workspace::Workspace::reclassify_cross_refs`] subsequent pass.
 //! parser §N inline literal all default `RefKind::Decision` as emit, workspace
-//! Reclassify step (2) performs the cross-doc auto-reclassify (Round 70 OPTION H-2 adoption carry).
+//! Reclassify step (2) performs the cross-doc auto-reclassify.
 //!
-//! Round 244 — *sub_bullets extraction = legacy fallback path*. The parser's
+//! *sub_bullets extraction = legacy fallback path*. The parser's
 //! `## Changelog` block in sub-bullet → [`ChangelogEntry::sub_bullets`]
-//! population scope = only the legacy Round 1-162 markdown entries carry as a source; extension
+//! population scope = only the legacy -162 markdown entries carry as a source; extension
 //! 163+ entry atomic store ([`crate::atomic::AtomicChangelogEntry`]) in
-//! once the markdown decomposition into sub_bullets is gone. MD-DELETION-RATIFY (Round 248)
+//! once the markdown decomposition into sub_bullets is gone. MD-DELETION-RATIFY
 //! carry = 7 source MDs deleted + parser changelog-block path unused → this extraction
-//! Skip-entry path. Cascade B/C (Round 245-246) = surface scope (emitter / query
+//! Skip-entry path. Cascade B/C = surface scope (emitter / query
 //! / mutate / validator) — once they rebase to atomic-first, this path's effectiveness drops to 0.
 
 use crate::config::SchemaSection;
@@ -26,12 +28,12 @@ use std::collections::BTreeMap;
 
 /// markdown bytes → typed facts state. Deterministic — same input → same ParsedDoc.
 ///
-/// This parser is *single-doc single-pass* (DESIGN §61 *Iterative bootstrap protocol*
+/// This parser is *single-doc single-pass* (*Iterative bootstrap protocol*
 /// Markdown-specialization carry — Phase A/B no-op, Phase C mechanical, Phase D
 /// fallback). Workspace-level cross-doc reclassify [`crate::workspace::Workspace`]
 /// subsequent pass.
 ///
-/// Round 143 SCHEMA-AS-INPUT carry: forwards to
+/// SCHEMA-AS-INPUT carry: forwards to
 /// [`parse_markdown_with_schema`] with the Mnemosyne preset
 /// ([`SchemaSection::mnemosyne_preset`]). External users wanting a
 /// different changelog title set call the schema-aware entry directly.
@@ -40,7 +42,7 @@ pub fn parse_markdown(input: &str, parent_doc: &str) -> ParsedDoc {
  parse_markdown_with_schema(input, parent_doc, &schema)
 }
 
-/// Round 143 — schema-aware variant of [`parse_markdown`]. The `schema`
+/// schema-aware variant of [`parse_markdown`]. The `schema`
 /// argument decides which heading titles open a `## Changelog` section
 /// (and, in subsequent rounds, anchor / changelog-entry / locale rules).
 ///
@@ -59,7 +61,7 @@ pub fn parse_markdown_with_schema(
  let line = raw_line;
  state.current_line = line_idx + 1;
 
- // Code fence boundary — CommonMark §98 allows 0–3 leading spaces.
+ // Code fence boundary — CommonMark allows 0–3 leading spaces.
  // Lines inside the fence are verbatim and not interpreted by the parser.
  let leading_ws = line.len() - line.trim_start().len();
  if leading_ws <= 3 && line.trim_start().starts_with("```") {
@@ -110,7 +112,7 @@ pub fn parse_markdown_with_schema(
  }
 
  // CrossRef extraction — §N inline literal + [text](url) markdown link.
- // Round 249 — skip cross_ref extraction inside the changelog section.
+ // skip cross_ref extraction inside the changelog section.
  // Legacy DESIGN.md had bullets (consumed via `parse_changelog_top_bullet`
  // continue); GENERATED.md emits per-entry `###` sub-sections whose
  // prose body would otherwise capture textual `§X.Y` references from
@@ -123,7 +125,7 @@ pub fn parse_markdown_with_schema(
  }
  }
 
- // Line ref legacy detection — DESIGN §61 mapping table row 13 NOT capture, warn only.
+ // Line ref legacy detection — mapping table row 13 NOT capture, warn only.
  if let Some(line_ref_warn) = detect_legacy_line_ref(line, state.current_line) {
  out.warnings.push(line_ref_warn);
  }
@@ -134,9 +136,9 @@ pub fn parse_markdown_with_schema(
 
  state.flush_pending_changelog(&mut out);
 
- // Round 118 — section_body buffer → ParsedDoc.bodies (raw lines joined).
- // bench/codegen-prototype/src/markdown_import.rs in Round 116 equivalent path —
- // §15 spec query API 's SectionView.body source. derived dimension (round-trip
+ // section_body buffer → ParsedDoc.bodies (raw lines joined).
+ // bench/codegen-prototype/src/markdown_import.rs in equivalent path —
+ // spec query API 's SectionView.body source. derived dimension (round-trip
  // compare other) -therefore sections vec ordering and separate.
  for (section_id, lines) in state.section_body.into_iter() {
  out.bodies.insert(section_id, lines.join("\n"));
@@ -161,15 +163,15 @@ struct ParseState {
  /// True iff the current section is the changelog section itself
  /// (heading title matches `changelog_titles`). Reset on every heading.
  in_changelog: bool,
- /// Round 249 — depth at which the changelog section opened. Subsequent
+ /// depth at which the changelog section opened. Subsequent
  /// headings at strictly greater depth stay inside the changelog scope
  /// (so their body lines are skipped from cross_ref extraction). Cleared
  /// when a heading at depth ≤ this value is encountered.
  changelog_open_depth: Option<usize>,
- /// Round 143 — owned snapshot of the schema's changelog title set.
+ /// owned snapshot of the schema's changelog title set.
  /// Owned (not a borrow) so `ParseState` carries no lifetime.
  changelog_titles: Vec<String>,
- /// Round 144 — string prefix that opens a ChangelogEntry top bullet
+ /// string prefix that opens a ChangelogEntry top bullet
  /// (`"Round "` for Mnemosyne preset, `"ADR-"` for ADR-style, `""` to
  /// disable numeric entry_id capture).
  entry_id_prefix: String,
@@ -198,10 +200,10 @@ impl ParseState {
  }
  }
 
- /// Round 143 — case-sensitive match against the schema's configured
+ /// case-sensitive match against the schema's configured
  /// changelog title set, with case-insensitive `changelog` carry.
  ///
- /// Round 249 — prefix match (split on first whitespace) so that GENERATED.md
+ /// prefix match (split on first whitespace) so that GENERATED.md
  /// emit form `Changelog (atomic ledger)` matches schema title `Changelog`.
  /// Legacy DESIGN.md form `Changelog` matches via exact equality (prefix
  /// is the whole string). The check is intentionally non-greedy: if the
@@ -230,7 +232,7 @@ impl ParseState {
  }
 
  fn in_changelog_section(&self) -> bool {
- // Round 249 — true if the current section heading is itself a
+ // true if the current section heading is itself a
  // changelog title OR if any ancestor still inside the open
  // changelog scope (depth-aware: GENERATED.md emits per-entry `###`
  // sub-sections whose body would otherwise leak textual `§X.Y`
@@ -260,7 +262,7 @@ impl ParseState {
 }
 
 // ============================================================================
-// Heading parser — DESIGN §61 mapping table row 1-4.
+// Heading parser — mapping table row 1-4.
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,7 +273,7 @@ struct ParsedHeading {
 }
 
 fn parse_heading(line: &str) -> Option<ParsedHeading> {
- // ATX heading per CommonMark §62: 0–3 leading spaces, then 1–6 `#`,
+ // ATX heading per CommonMark: 0–3 leading spaces, then 1–6 `#`,
  // then a space/tab or end-of-line. `#1` (hash directly followed by a
  // non-space) is *not* a heading; treating it as one creates spurious
  // sections from prose like "Phase 0 #1 and softened..." (round-trip
@@ -308,7 +310,7 @@ fn parse_heading(line: &str) -> Option<ParsedHeading> {
 }
 
 /// `39. Graph schema codegen` → (Some("39"), "Graph schema codegen").
-/// Also accepts a leading `§` prefix: `§1 Framing overview` → (Some("1"), "Framing overview").
+/// Also accepts a leading `§` prefix: `Framing overview` → (Some("1"), "Framing overview").
 fn split_section_number(s: &str) -> (Option<String>, String) {
  let scan_from = s.strip_prefix('§').unwrap_or(s);
  let bytes = scan_from.as_bytes();
@@ -353,9 +355,9 @@ fn apply_heading(state: &mut ParseState, out: &mut ParsedDoc, heading: ParsedHea
  }
  let parent_section = state.section_stack.last().map(|(id, _)| id.clone());
 
- // section_id decision (Round 67 fix carry):
+ // section_id decision:
  // - depth 2 numbered (top-level decision section §N): bare §N
- // - depth >= 3 numbered (nested ### N. ...): `{parent}/{N}` prefix
+ // - depth >= 3 numbered (nested ### N....): `{parent}/{N}` prefix
  // - h1 doc-root unnumbered (parent = None): bare slug
  // - depth >= 2 unnumbered nested: `{parent}/{slug}` prefix
  let section_id = match (&heading.section_number, heading.depth, &parent_section) {
@@ -371,7 +373,7 @@ fn apply_heading(state: &mut ParseState, out: &mut ParsedDoc, heading: ParsedHea
  .push((section_id.clone(), heading.depth));
 
  state.in_changelog = state.is_changelog_title(&heading.title);
- // Round 249 — open / close the changelog scope so descendants stay
+ // open / close the changelog scope so descendants stay
  // inside it (cross_ref extraction skipped) until a heading at depth
  // ≤ open_depth is encountered.
  if state.in_changelog {
@@ -382,7 +384,7 @@ fn apply_heading(state: &mut ParseState, out: &mut ParsedDoc, heading: ParsedHea
  }
  }
 
- // Round 118 — heading line anchor (1-indexed) capture. same section_id -
+ // heading line anchor (1-indexed) capture. same section_id -
  // If a section_id appears twice, first-write-wins (cycle warn; line_anchors keeps the first).
  out.line_anchors
  .entry(section_id.clone())
@@ -430,12 +432,12 @@ fn is_cjk(ch: char) -> bool {
  )
 }
 
-// Round 249 — legacy free-function `is_changelog_title` removed; production
+// legacy free-function `is_changelog_title` removed; production
 // + tests now route through `ParseState::is_changelog_title` (schema-aware
 // prefix match) and `SchemaSection::is_changelog_title` (config-aware).
 
 // ============================================================================
-// ChangelogEntry parser — DESIGN §61 mapping table row 5-6.
+// ChangelogEntry parser — mapping table row 5-6.
 // ============================================================================
 
 struct TopBullet {
@@ -451,11 +453,11 @@ fn parse_changelog_top_bullet(line: &str, prefix: &str) -> Option<TopBullet> {
  Some(TopBullet { entry_id })
 }
 
-/// Round 144 — schema-driven entry_id extraction. The schema's
+/// schema-driven entry_id extraction. The schema's
 /// `entry_id_prefix` (e.g., `"Round "`, `"ADR-"`, `"Round "`) opens an entry
 /// bullet; the digits + dot-separator chain that follow produce the
 /// numeric portion. Returns the full id including the prefix
-/// (`"Round 33.5"`, `"ADR-0042"`).
+/// (`""`, `"ADR-0042"`).
 ///
 /// Empty `prefix` disables capture (returns `None` for any input) — the
 /// generic_default preset uses this when the user has not declared an
@@ -505,14 +507,14 @@ fn parse_changelog_sub_bullet(line: &str) -> Option<String> {
 }
 
 // ============================================================================
-// CrossRef extraction — DESIGN §61 mapping table row 12 (lookup priority step (1) default).
+// CrossRef extraction — mapping table row 12 (lookup priority step (1) default).
 // ============================================================================
 
 /// Extract CrossRef from a single line within enclosing section.
 ///
 /// This stage = lookup priority step (1) only — emits `RefKind::Decision` by default.
 /// step (2) workspace default-doc auto-reclassify [`crate::workspace::Workspace`]
-/// Subsequent pass (Round 70 OPTION H-2 adoption carry).
+/// Subsequent pass.
 fn extract_cross_refs(line: &str, state: &ParseState) -> Vec<CrossRef> {
  let mut out = Vec::new();
  let from_section = match state.current_section_id() {
@@ -578,15 +580,15 @@ fn extract_cross_refs(line: &str, state: &ParseState) -> Vec<CrossRef> {
  if line[after_close..].starts_with('(') {
  if let Some(close_paren) = line[after_close..].find(')') {
   let url = &line[after_close + 1..after_close + close_paren];
-  // Intra-doc anchor href `#anchor` CrossRef emit out of scope — slug
-  // form mismatch silent orphan reject prevent (Round 71 OPTION H-3 carry).
+ // Intra-doc anchor href `#anchor` CrossRef emit out of scope — slug
+ // form mismatch silent orphan reject prevent.
   if url.starts_with('#') {
   idx = after_close + close_paren + 1;
   continue;
   }
-  // Directory ref `[text](dir/)` — DESIGN §61 row directory_ref policy
-  // (Round 78 ratify, Round 80 production migration). Filesystem path
-  // notice marker, not a design fact — dropped silently from cross_refs.
+ // Directory ref `[text](dir/)` — row directory_ref policy
+ //. Filesystem path
+ // notice marker, not a design fact — dropped silently from cross_refs.
   if is_directory_ref(url) {
   idx = after_close + close_paren + 1;
   continue;
@@ -612,7 +614,7 @@ fn extract_cross_refs(line: &str, state: &ParseState) -> Vec<CrossRef> {
  out
 }
 
-/// Markdown link target directory path recognized check — DESIGN §61 Round 78 ratify carry.
+/// Markdown link target directory path recognized check — ratify carry.
 ///
 /// rule: a trailing `/` marks a directory (`bench/`, `crates/`, `path/to/dir/`).
 /// all relevant. `.md` file path directory not (separate cross-doc kind).
@@ -638,7 +640,7 @@ fn detect_legacy_line_ref(line: &str, line_no: usize) -> Option<String> {
 // Small fixture — bench prototype carry, production reference.
 // ============================================================================
 
-/// Small fixture markdown string covering DESIGN §61 mapping rule row 13's subset.
+/// Small fixture markdown string covering mapping rule row 13's subset.
 pub fn design_doc_small_fixture() -> &'static str {
  r#"# Mnemosyne Design Decisions
 
@@ -838,7 +840,7 @@ mod tests {
 
  #[test]
  fn parse_populates_bodies_for_known_section() {
- // Round 118 — production import wire in §15 spec query API's
+ // production import wire in spec query API's
  // SectionView.body source validation.
  let doc = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
  let body_39 = doc
@@ -853,7 +855,7 @@ mod tests {
 
  #[test]
  fn parse_populates_line_anchors_one_indexed() {
- // Round 118 — production import wire in §15 spec query API's
+ // production import wire in spec query API's
  // SectionView.line_anchor source validation (1-indexed).
  let doc = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
  let anchor_39 = doc
@@ -872,12 +874,12 @@ mod tests {
 
  #[test]
  fn parse_bodies_excluded_from_canonical_hash() {
- // Round 118 — bodies / line_anchors two derived field -
+ // bodies / line_anchors two derived field -
  // parsed_doc_canonical output out of scope (round-trip diff = ∅ validation
- // cardinality identical maintain). bench (Round 116) equivalent path.
+ // cardinality identical maintain). bench equivalent path.
  let doc = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
  let canonical = parsed_doc_canonical(&doc);
- // canonical in §39 body content unregistered (derived dimension carry).
+ // canonical in body content unregistered (derived dimension carry).
  assert!(
  !canonical.contains("=== bodies ==="),
  "canonical must not include bodies section"
@@ -918,7 +920,7 @@ mod tests {
 
  #[test]
  fn parse_intra_doc_anchor_link_excluded_from_cross_ref() {
- // Round 71 OPTION H-3 fix carry — `[text](#anchor)` 's anchor href -
+ // OPTION H-3 fix carry — `[text](#anchor)` 's anchor href -
  // CrossRef emit from exclude (silent orphan prevent).
  let input = "## 39. Test\n\nSee [link to here](#anchor-here) and [other](other.md#anchor).\n";
  let doc = parse_markdown(input, "DESIGN.md");
@@ -933,7 +935,7 @@ mod tests {
 
  #[test]
  fn parse_directory_ref_excluded_from_cross_ref() {
- // Round 78 ratify, Round 80 production migration — markdown link target's
+ // ratify, production migration — markdown link target's
  // directory path (`[text](dir/)` form) dropped silently from cross_refs.
  let input = "## status\n\n[bench](bench/) [crates](crates/) [file](crates/foo.rs)\n";
  let doc = parse_markdown(input, "README.md");
@@ -953,10 +955,10 @@ mod tests {
  assert!(!is_directory_ref("docs/DESIGN.md#§39"));
  }
 
- // CommonMark §62 ATX-heading conformance — `#` must be followed by a
+ // CommonMark ATX-heading conformance — `#` must be followed by a
  // space, tab, or end of line. Inline `#N` references (e.g. "Phase 0
- // #1 and softened ...") must not be lifted to a numbered H1, or the
- // emitter produces `# 1. and softened ...` and round-trip breaks.
+ // #1 and softened...") must not be lifted to a numbered H1, or the
+ // emitter produces `# 1. and softened...` and round-trip breaks.
  #[test]
  fn atx_heading_requires_space_after_hashes() {
  // Hash directly followed by digit — not a heading.
@@ -976,7 +978,7 @@ mod tests {
  assert!(parse_heading("###").is_none());
  }
 
- // CommonMark §62 — ATX heading allows 0–3 leading spaces. Four or more
+ // CommonMark — ATX heading allows 0–3 leading spaces. Four or more
  // spaces puts the line into indented-code-block territory.
  #[test]
  fn atx_heading_rejects_four_plus_leading_spaces() {
@@ -989,7 +991,7 @@ mod tests {
  assert!(parse_heading("   # title").is_some());
  }
 
- // CommonMark §98 — fenced code blocks may be indented up to three
+ // CommonMark — fenced code blocks may be indented up to three
  // spaces. Lines inside the fence are verbatim, so a `#endif` line
  // inside an indented C example must not surface as an H1 section.
  #[test]

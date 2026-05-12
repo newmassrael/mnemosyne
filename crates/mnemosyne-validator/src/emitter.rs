@@ -1,11 +1,11 @@
-//! typed facts → markdown emitter — DESIGN §56 *Markdown variant spec* source binding.
+//! typed facts → markdown emitter — *Markdown variant spec* source binding.
 //!
-//! Round 70 OPTION H-2 adoption carry — emit table row 7/8/9 branch logic:
+//! OPTION H-2 adoption carry — emit table row 7/8/9 branch logic:
 //! - **row 7**: CrossRef (ref_kind ∈ {decision, impl}, intra-doc) → `§{N}` inline literal
 //! - **row 8**: CrossRef (ref_kind = cross_doc, to_target = workspace default cross-doc
 //! target = DESIGN.md) → `§{N}` inline literal (default-doc target source-markdown
 //! notation preserved; the parser reclassifies, then emits §N inline verbatim — round-trip
-//! diff = ∅ guaranteed; symmetric to §61 mapping table row 12 lookup priority (2)'s emit side.
+//! diff = ∅ guaranteed; symmetric to mapping table row 12 lookup priority (2)'s emit side.
 //! - **row 9**: CrossRef (ref_kind = cross_doc, to_target ≠ workspace default cross-doc
 //! target) → `[{text}]({other.md}#{anchor})` markdown link
 
@@ -13,7 +13,7 @@ use crate::schema::{section_by_id, FrozenList, LockKind, ParsedDoc, RefKind};
 
 /// Convert heading text → GitHub-flavored markdown anchor.
 ///
-/// DESIGN §56 spec 3 step:
+/// spec 3 step:
 /// 1. lowercase
 /// 2. Strip every character that is not alphanumeric / hyphen / underscore / CJK.
 /// 3. Substitute remaining whitespace with `-` (adjacent dashes from a double space → `--` preserved).
@@ -81,7 +81,7 @@ pub fn emit_markdown_with_default(doc: &ParsedDoc, default_doc: Option<&str>) ->
  out.push_str(&heading_line);
  out.push_str("\n\n");
 
- // CrossRef inline emit — row 7/8/9 branch logic (Round 70 OPTION H-2 carry).
+ // CrossRef inline emit — row 7/8/9 branch logic.
  let mut cross_ref_line = String::new();
  let mut first = true;
  for cr in doc.cross_refs.iter().filter(|c| c.from_section == section.section_id) {
@@ -130,7 +130,7 @@ fn emit_cross_ref(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> St
 fn emit_cross_doc(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> String {
  if let Some(default) = default_doc {
  // Row 8: to_target = `{default_doc}#§{N}` canonical form
- //  → `§{N}` inline literal (source markdown notation preserved).
+ // → `§{N}` inline literal (source markdown notation preserved).
  let canonical_prefix = format!("{}#§", default);
  if let Some(rest) = cr.to_target.strip_prefix(&canonical_prefix) {
  return format!("§{}", rest);
@@ -170,7 +170,7 @@ fn build_section_depth_map<'a>(
 }
 
 /// If the last segment is numeric (`N` / `N.M`), return that segment.
-/// Round 67 fix carry — emit on `60/1`, `roadmap/.../5` and other prefixed numbered nested forms.
+/// fix carry — emit on `60/1`, `roadmap/.../5` and other prefixed numbered nested forms.
 /// nested form also emits the last segment's number prefix (re-parse recognizes the number +
 /// parent prefix reapplied).
 fn numbered_last_segment(id: &str) -> Option<&str> {
@@ -231,10 +231,10 @@ pub struct RoundTripDiff {
  pub mandatory_preserved: bool,
 }
 
-/// Compare two ParsedDoc on preserved mandatory dimension only (DESIGN §61 carry).
+/// Compare two ParsedDoc on preserved mandatory dimension only.
 ///
-/// Round 245 — `sub_bullets` compare *legacy carry stable* (Round 1-162 entry
-/// prose-body round-trip validation source). Round 163+ atomic-store entries:
+/// `sub_bullets` compare *legacy carry stable* (-162 entry
+/// prose-body round-trip validation source). atomic-store entries:
 /// An empty markdown sub_bullets list makes the comparison vacuously equal. The atomic-first
 /// citation surface [`crate::query::changelog_entries_for_section`] scope,
 /// this round-trip diff and distinct dimension (cascade B consistency).
@@ -460,7 +460,7 @@ mod tests {
  assert!(table.contains("| entities |"));
  }
 
- // ── Round 70 OPTION H-2 row 8/9 branch logic new test ────────────────────
+ // ── OPTION H-2 row 8/9 branch logic new test ────────────────────
 
  #[test]
  fn row_8_cross_doc_to_default_doc_emits_section_literal() {
@@ -502,7 +502,7 @@ mod tests {
 
  #[test]
  fn row_8_round_trip_cross_doc_default_doc_preserved() {
- // Round 70 carry — default-doc target source notation preserved round-trip equivalent.
+ // carry — default-doc target source notation preserved round-trip equivalent.
  let original_md = "## 61. Test\n\nreference §39 (DESIGN.md cross-doc auto-reclassify then emit).\n";
  let parsed = parse_markdown(original_md, "docs/ARCHITECTURE.md");
  // workspace reclassify simulation: parser default = Decision, this test -

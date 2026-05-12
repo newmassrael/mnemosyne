@@ -1,5 +1,7 @@
-//! Atomic mutate CLI subcommands — DESIGN §15 spec mutate API atomic scope
-//! (Round 161 §15 reframe ratify, Round 162 production wire).
+//! Atomic mutate CLI subcommands — spec mutate API atomic scope
+//!.
+//!
+//! Spec binding: §atomic-store-mutate-api.
 //!
 //! 10 subcommands cover the 9 atomic Section primitives + 1 atomic ChangelogEntry primitive:
 //! - `set-section-intent` — set Section.intent (1-3 sentence summary)
@@ -11,7 +13,7 @@
 //! - `set-section-impact-scope` — set Section.impact_scope (cross-ref list)
 //! - `add-section-example` — append to Section.examples (code block)
 //! - `add-section-implementation` — append to Section.implementations
-//! (Round 259, Path B Spec → Code binding entry)
+//!
 //! - `append-changelog-entry-v2` — atomic-aware changelog append
 //! (decision_summary + changes + verification + impact + carry_forward)
 //!
@@ -19,11 +21,11 @@
 //! 1. Loads `AtomicStore` from sidecar JSON (default `docs/.atomic/
 //! workspace.atomic.json`, configurable via `--sidecar <path>`).
 //! 2. Invokes the relevant mutate primitive (T3 threshold validation).
-//! 3. Persists the store atomically (temp + rename, Round 124 pattern).
+//! 3. Persists the store atomically (temp + rename, pattern).
 //! 4. Prints `AtomicMutateReceipt` (text or `--json`).
 //!
 //! permission boundary: production crate atomic scope only — DESIGN.md / ROADMAP.md
-//! / 6-doc scope — 0 mutations. Round 19 frozen ledger consistency (legacy body /
+//! / 6-doc scope — 0 mutations. frozen ledger consistency (legacy body /
 //! sub_bullets field preserved).
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -148,7 +150,7 @@ fn parse_alternatives_file(path: &str) -> Result<Vec<RejectedAlternative>> {
  Ok(out)
 }
 
-/// Parse `--section §43` or `--section 43` → "43".
+/// Parse `--section` or `--section 43` → "43".
 fn strip_section_prefix(s: &str) -> String {
  s.strip_prefix('§').unwrap_or(s).to_string()
 }
@@ -432,14 +434,14 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
  )
 }
 
-/// Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate.
+/// Path B (Spec ↔ Code bidirectional binding) substrate.
 ///
 /// Append a `(file, symbol?)` binding entry to `Section.implementations`.
 /// File path is workspace-relative POSIX shape; symbol is opaque (no
 /// language grammar regex). Set semantics: duplicate `(file, symbol)`
 /// rejected at write time.
 ///
-/// Validator extension and section seeding are deferred to Round 260+.
+/// Validator extension and section seeding are deferred to +.
 pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) -> Result<()> {
  let mut section: Option<String> = None;
  let mut file: Option<String> = None;
@@ -485,7 +487,7 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
 /// both `generate-docs` (writes the bytes) and `verify-generated` (compares
 /// the bytes).
 ///
-/// Round 168 — extracted from the original cmd_generate_docs body so the
+/// extracted from the original cmd_generate_docs body so the
 /// cascade auto-update wire (atomic mutate → regenerate, pre-commit sync
 /// check) can share the single render path. `Source:` line uses a path
 /// relative to `workspace_root` so the output is portable across checkouts.
@@ -511,16 +513,16 @@ fn render_atomic_store_to_md(
  out.push_str(&format!("Source: `{}`\n\n", source_rel));
  out.push_str("---\n\n");
 
- // Sections — Round 164+ migration scope. Round 168 wire: render path is
+ // Sections — migration scope. wire: render path is
  // present, but title / decision_status come from the parsed default_doc
  // workspace (cross-ref shift wire). Section atomic decomposition
- // migration (Round 164+) populates this map; until then the loop is
+ // migration populates this map; until then the loop is
  // empty and emits nothing.
  if !store.sections.is_empty() {
  out.push_str("## Sections\n\n");
  for (section_id, _atomic) in &store.sections {
  // Atomic-only fallback header — title / decision_status fetch
- // from workspace lands with section migration (Round 164+) so
+ // from workspace lands with section migration so
  // the cross-ref shift wire is testable end-to-end at that point.
  out.push_str(&format!(
   "### §{} (atomic-only — title from workspace pending Round 164+)\n\n",
@@ -581,8 +583,8 @@ fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
 
 /// `generate-docs` subcommand — render atomic store → GENERATED.md.
 ///
-/// Round 163 forward-wire: from this round, the atomic store is the primary changelog
-/// ledger scope (legacy DESIGN.md Changelog stays frozen — Round 19 consistency).
+/// forward-wire: from this round, the atomic store is the primary changelog
+/// ledger scope (legacy DESIGN.md Changelog stays frozen — consistency).
 /// Output path = `<workspace_root>/docs/GENERATED.md` (default, configurable
 /// via `--output <path>`).
 pub fn cmd_generate_docs(workspace_root: &Path, args: &[String]) -> Result<()> {
@@ -618,7 +620,7 @@ pub fn cmd_generate_docs(workspace_root: &Path, args: &[String]) -> Result<()> {
 /// `verify-generated` subcommand — verify GENERATED.md matches what
 /// generate-docs would produce from the current sidecar (read-only).
 ///
-/// Round 168 — pre-commit hook entry point. Exit 0 = sync, exit 1 = stale.
+/// pre-commit hook entry point. Exit 0 = sync, exit 1 = stale.
 /// Caller (script / CI) inspects the exit code; stderr prints a one-line
 /// hint if stale.
 pub fn cmd_verify_generated(workspace_root: &Path, args: &[String]) -> Result<()> {
@@ -662,7 +664,7 @@ pub fn cmd_verify_generated(workspace_root: &Path, args: &[String]) -> Result<()
 }
 
 /// Atomic-first validation summary — shape consumed by validate-workspace
-/// (Round 169 dogfood-switch ratify).
+///.
 #[derive(Debug, Clone)]
 pub struct AtomicValidationSummary {
  pub entries: usize,
@@ -680,7 +682,7 @@ pub struct AtomicValidationSummary {
 
 /// Validate the atomic store against the supplied workspace section id
 /// set. Pure read — no file writes, side effect free. Used by
-/// validate-workspace (Round 169) and audit ledgers (Round 167) to share a
+/// validate-workspace and audit ledgers to share a
 /// single audit definition.
 pub fn validate_atomic_store(
  workspace_root: &Path,
@@ -742,7 +744,7 @@ fn auto_regenerate(workspace_root: &Path, sidecar: Option<&str>) -> Result<()> {
 /// Wrap a mutate primitive call: print the receipt (or error), then auto-
 /// regenerate GENERATED.md if `regenerate` is true. Each atomic mutate
 /// CLI subcommand routes through this finalizer to keep the cascade
-/// auto-update behavior single-sourced (Round 168 ratify).
+/// auto-update behavior single-sourced.
 fn finalize_mutate(
  workspace_root: &Path,
  result: Result<AtomicMutateReceipt, AtomicMutateError>,

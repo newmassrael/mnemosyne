@@ -1,4 +1,4 @@
-//! Cascade query spec types — DESIGN §43 *input*'s `<query>` block carry.
+//! Cascade query spec types — *input*'s `<query>` block carry.
 //!
 //! Spec types describe cascade queries declaratively. The actual Salsa runtime
 //! lives in [`crate::runtime`]; this module captures the query topology used
@@ -22,7 +22,7 @@ pub struct CascadeQuerySpec {
  pub reads: Vec<ReadDep>,
  pub output: String,
  pub triggers: Vec<TriggerSpec>,
- /// CascadeOrdering axis — §39 inter-kind dependency, §47 default `global_fifo`.
+ /// CascadeOrdering axis inter-kind dependency, default `global_fifo`.
  pub ordering: String,
 }
 
@@ -31,7 +31,7 @@ pub struct CascadeWireSpec {
  pub queries: Vec<CascadeQuerySpec>,
 }
 
-/// §66 design_doc cascade fixture — `section_decision_status` and
+/// design_doc cascade fixture — `section_decision_status` and
 /// `frozen_list_membership`. Mirror of bench prototype `design_doc_cascade_fixture`.
 pub fn design_doc_cascade_fixture() -> CascadeWireSpec {
  CascadeWireSpec {

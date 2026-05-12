@@ -1,4 +1,4 @@
-//! gRPC transport adapter (Round 91, hardened in Round 96).
+//! gRPC transport adapter.
 //!
 //! Wraps [`crate::handler::ProposalHandler`] in the tonic-generated `Mnemosyne`
 //! service trait. The proto schema in `proto/mnemosyne.proto` is the wire
@@ -15,7 +15,7 @@
 //! impl drives it under `tokio::task::spawn_blocking` to keep the tonic
 //! async runtime non-blocking.
 //!
-//! ## Round 96 — server-side hardening
+//! ## server-side hardening
 //!
 //! - **Health-check** (`grpc.health.v1.Health`): standard
 //! `tonic_health::server::health_reporter` — clients query `Check` and
@@ -23,11 +23,11 @@
 //! - **Reflection** (`grpc.reflection.v1alpha.ServerReflection`):
 //! `tonic_reflection::server::Builder` registers the proto's
 //! `FileDescriptorSet` (emitted by `build.rs`) so clients can list services
-//! and descriptors at runtime without a static .proto.
+//! and descriptors at runtime without a static.proto.
 //! - **Tracing interceptor**: a thin `tonic::service::Interceptor` records
 //! the incoming method path on the current `tracing` span — wires gRPC
 //! audit trail into the existing tracing fabric.
-//! - **TLS toggle**: opt-in via the `tls` cargo feature (Round 97). When the
+//! - **TLS toggle**: opt-in via the `tls` cargo feature. When the
 //! feature is on, `tls_identity_from_pem` and `server_tls_config` build a
 //! `tonic::transport::ServerTlsConfig` from PEM-encoded cert/key bytes that
 //! the caller passes to `Server::builder().tls_config(...)`. Default builds
@@ -78,7 +78,7 @@ impl MnemosyneGrpcService {
 /// receiver half and the server task exits the next send attempt.
 const STREAM_CHANNEL_BUFFER: usize = 16;
 
-/// Round 99 — extract the W3C trace-id portion of a `traceparent` header.
+/// extract the W3C trace-id portion of a `traceparent` header.
 ///
 /// Format: `00-{32-hex trace-id}-{16-hex parent-id}-{2-hex flags}`. Returns
 /// `None` if the header is missing, malformed, or has a trace-id that does
@@ -96,7 +96,7 @@ fn extract_traceparent_trace_id(metadata: &MetadataMap) -> Option<String> {
  }
 }
 
-/// Round 99 — resolve a trace_id from incoming metadata. Honors a valid W3C
+/// resolve a trace_id from incoming metadata. Honors a valid W3C
 /// `traceparent` header if present; otherwise mints a fresh UUID v4 so every
 /// audited proposal carries a non-`None` trace_id when crossing the gRPC
 /// boundary. Embedded callers without metadata stay on the `handle` path
@@ -105,8 +105,8 @@ fn resolve_trace_id(metadata: &MetadataMap) -> String {
  extract_traceparent_trace_id(metadata).unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
-/// Round 104 — extract the W3C `tracestate` header verbatim. Format
-/// (RFC W3C Trace Context §3.3): a comma-separated list of `key=value`
+/// extract the W3C `tracestate` header verbatim. Format
+/// (RFC W3C Trace Context): a comma-separated list of `key=value`
 /// vendor entries, each up to 256 chars. We do *not* parse or normalize the
 /// list — observability tooling on the consuming side relies on exact
 /// passthrough so vendor-specific information survives the gRPC boundary
@@ -115,8 +115,8 @@ fn extract_tracestate(metadata: &MetadataMap) -> Option<String> {
  metadata.get("tracestate")?.to_str().ok().map(str::to_string)
 }
 
-/// Round 104 — resolve the full [`TraceContext`] (trace_id + tracestate) from
-/// incoming metadata. trace_id follows the Round 99 traceparent + UUID-fallback
+/// resolve the full [`TraceContext`] (trace_id + tracestate) from
+/// incoming metadata. trace_id follows the traceparent + UUID-fallback
 /// path; tracestate is a strict passthrough that stays `None` when absent
 /// (no fallback — there is no server-minted equivalent of vendor state).
 fn resolve_trace_context(metadata: &MetadataMap) -> TraceContext {
@@ -132,9 +132,9 @@ impl Mnemosyne for MnemosyneGrpcService {
  &self,
  request: Request<proto::Proposal>,
  ) -> Result<Response<proto::ProposalResult>, Status> {
- // Round 105 — create an explicit entry-level RPC span. Tonic does NOT
+ // create an explicit entry-level RPC span. Tonic does NOT
  // auto-instrument requests with a tracing span, so prior calls to
- // `Span::current().record(...)` (Round 96/99/102) were silent no-ops
+ // `Span::current().record(...)` were silent no-ops
  // when no caller-supplied parent span existed. Wrapping the body in
  // an explicit `submit_proposal` span makes the recorded fields
  // (grpc.method, trace_id, trace.id, tracestate) actually surface in
@@ -151,15 +151,15 @@ impl Mnemosyne for MnemosyneGrpcService {
  );
  let _enter = span.enter();
 
- // Round 96 — record the gRPC method on the entry span.
+ // record the gRPC method on the entry span.
  tracing::Span::current().record("grpc.method", "submit_proposal");
 
- // Round 99 — propagate W3C traceparent into the audit trail, or mint a
- // server-side UUID when no header was supplied. Round 102 — also record
+ // propagate W3C traceparent into the audit trail, or mint a
+ // server-side UUID when no header was supplied. also record
  // the trace_id under OTLP-compatible span attribute keys (`trace.id`)
  // so the OpenTelemetry exporter (when the `otlp` feature is enabled)
  // surfaces it in the standard semantic-convention shape.
- // Round 104 — also propagate the W3C `tracestate` header verbatim into
+ // also propagate the W3C `tracestate` header verbatim into
  // the audit trail (vendor-specific key/value passthrough).
  let trace_ctx = resolve_trace_context(request.metadata());
  if let Some(id) = trace_ctx.trace_id.as_deref() {
@@ -174,7 +174,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  let proposal = decode_proposal(wire)
  .map_err(|reason| Status::invalid_argument(reason))?;
  let handler = Arc::clone(&self.handler);
- // Round 104 — capture the entry-level RPC span and re-enter it inside
+ // capture the entry-level RPC span and re-enter it inside
  // the blocking task so the gate.evaluate / audit.append child spans
  // emitted by the handler are parented correctly. spawn_blocking does
  // not propagate tracing's thread-local context on its own.
@@ -192,7 +192,7 @@ impl Mnemosyne for MnemosyneGrpcService {
 
  type SubmitProposalBatchStream = ReceiverStream<Result<proto::ProposalResult, Status>>;
 
- /// Round 98 — client-streaming → server-streaming batch ingest. Each inbound
+ /// client-streaming → server-streaming batch ingest. Each inbound
  /// `Proposal` flows through the same `ProposalHandler::handle` path as
  /// the unary RPC; results stream back in arrival order. Per-proposal
  /// errors decode into per-result `Status` items so a malformed proposal
@@ -201,7 +201,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  &self,
  request: Request<Streaming<proto::Proposal>>,
  ) -> Result<Response<Self::SubmitProposalBatchStream>, Status> {
- // Round 105 — explicit entry-level RPC span (see submit_proposal for
+ // explicit entry-level RPC span (see submit_proposal for
  // rationale). Empty-field declaration so subsequent record() calls
  // mutate declared slots rather than being dropped.
  let span = tracing::info_span!(
@@ -215,11 +215,11 @@ impl Mnemosyne for MnemosyneGrpcService {
 
  tracing::Span::current().record("grpc.method", "submit_proposal_batch");
 
- // Round 99 — single trace context pinned to the whole batch RPC.
+ // single trace context pinned to the whole batch RPC.
  // Every proposal in the inbound stream lands in the audit trail with
- // the same trace_id (and tracestate, Round 104), so observability
+ // the same trace_id (and tracestate), so observability
  // tools can group batch submissions and preserve vendor context.
- // Round 102 — also record under the OTLP-compatible `trace.id` key.
+ // also record under the OTLP-compatible `trace.id` key.
  let batch_ctx = resolve_trace_context(request.metadata());
  if let Some(id) = batch_ctx.trace_id.as_deref() {
  tracing::Span::current().record("trace_id", id);
@@ -229,9 +229,9 @@ impl Mnemosyne for MnemosyneGrpcService {
  tracing::Span::current().record("tracestate", ts);
  }
 
- // Round 112 — opt-in atomic batch mode. Metadata key
+ // opt-in atomic batch mode. Metadata key
  // `x-mnemosyne-batch-atomic = "true"` switches the batch from
- // per-proposal incremental commits (Round 98 default) to a single
+ // per-proposal incremental commits to a single
  // all-or-nothing transactional commit. Any value other than
  // exactly `"true"` (case-sensitive) selects the default mode.
  let atomic_batch = request
@@ -244,7 +244,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  let mut inbound = request.into_inner();
  let handler = Arc::clone(&self.handler);
  let (tx, rx) = tokio::sync::mpsc::channel(STREAM_CHANNEL_BUFFER);
- // Round 104 — capture the parent batch span for propagation into each
+ // capture the parent batch span for propagation into each
  // per-proposal blocking task; child spans (gate.evaluate /
  // audit.append) thus parent correctly to the batch entry span.
  let parent_span = tracing::Span::current();
@@ -266,9 +266,9 @@ impl Mnemosyne for MnemosyneGrpcService {
   match decode_proposal(wire) {
   Ok(p) => proposals.push(p),
   Err(reason) => {
-   // Even one decode failure poisons the whole atomic batch:
-   // emit a single invalid_argument and stop. The batch is
-   // not committed, no per-proposal results emitted.
+ // Even one decode failure poisons the whole atomic batch:
+ // emit a single invalid_argument and stop. The batch is
+ // not committed, no per-proposal results emitted.
    let _ = tx
    .send(Err(Status::invalid_argument(format!(
    "atomic batch decode failure: {reason}"
@@ -356,11 +356,11 @@ impl Mnemosyne for MnemosyneGrpcService {
 
  type SubscribeAuditTrailStream = ReceiverStream<Result<proto::AuditRecord, Status>>;
 
- /// Round 98 — server-streaming audit subscription. The audit appender's
+ /// server-streaming audit subscription. The audit appender's
  /// `iter_from` materializes the records visible at scan time; the stream
  /// drains them honoring `max_records` (0 = unbounded).
  ///
- /// Round 103 — when `follow_tail` is true, after the historical drain the
+ /// when `follow_tail` is true, after the historical drain the
  /// server attaches to the audit broadcast channel and forwards
  /// newly-committed records in real time. `max_records` (when non-zero)
  /// caps the *combined* history + tail emission count; 0 means unbounded
@@ -371,7 +371,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  &self,
  request: Request<proto::SubscribeAuditRequest>,
  ) -> Result<Response<Self::SubscribeAuditTrailStream>, Status> {
- // Round 105 — explicit entry-level RPC span (see submit_proposal).
+ // explicit entry-level RPC span (see submit_proposal).
  let span = tracing::info_span!(
  "subscribe_audit_trail",
  grpc.method = tracing::field::Empty,
@@ -383,7 +383,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  let handler = Arc::clone(&self.handler);
  let (tx, rx) = tokio::sync::mpsc::channel(STREAM_CHANNEL_BUFFER);
 
- // Round 103 — attach the tail subscriber BEFORE the historical scan so
+ // attach the tail subscriber BEFORE the historical scan so
  // any record committed during the scan window is captured by the
  // broadcast receiver instead of lost between the snapshot cursor and
  // the tail handoff.
@@ -394,7 +394,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  };
 
  let resume_on_lag = req.resume_on_lag;
- // Round 110 — capture per-subscriber filters once. Empty lists (the
+ // capture per-subscriber filters once. Empty lists (the
  // default for both fields) short-circuit predicate evaluation in
  // the inner loop so the filtered code path costs ~0 when no
  // filtering is requested.
@@ -422,7 +422,7 @@ impl Mnemosyne for MnemosyneGrpcService {
   max_records as usize
  };
 
- // Round 113 — per-record streaming history drain. The blocking
+ // per-record streaming history drain. The blocking
  // task pumps records into `tx` via `blocking_send`, so the
  // RocksDB iterator never materializes the full audit log
  // into memory. Returns the count actually emitted plus the
@@ -474,7 +474,7 @@ impl Mnemosyne for MnemosyneGrpcService {
   Ok(Ok(pair)) => pair,
  };
 
- // Round 103 — tail-follow phase. `emitted` already counts history;
+ // tail-follow phase. `emitted` already counts history;
  // continue forwarding until the cap fires, the client closes, or
  // the broadcast lags. The `select!` between `tail.recv()` and
  // `tx.closed()` is essential — without the second branch the
@@ -493,16 +493,16 @@ impl Mnemosyne for MnemosyneGrpcService {
   };
   match next {
   Ok(record) => {
-   // Skip records the historical scan already
-   // emitted. Records committed during the scan
-   // window may surface in both phases — bias the
-   // wire output toward strict monotonicity.
+ // Skip records the historical scan already
+ // emitted. Records committed during the scan
+ // window may surface in both phases — bias the
+ // wire output toward strict monotonicity.
    if record.transaction_id < from_txn {
    continue;
    }
-   // Round 110 — apply the per-subscriber filter on
-   // the tail phase too, so filtered subscribers
-   // never see non-matching records anywhere.
+ // apply the per-subscriber filter on
+ // the tail phase too, so filtered subscribers
+ // never see non-matching records anywhere.
    if !matches_filters(&record) {
    continue;
    }
@@ -519,10 +519,10 @@ impl Mnemosyne for MnemosyneGrpcService {
   }
   Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
   Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-   // Round 109 — branch on resume_on_lag.
-   // true → resource_exhausted with `lagged-at-txn`
-   // metadata for client-side cursor retry.
-   // false → Round 103 graceful close (data_loss).
+ // branch on resume_on_lag.
+ // true → resource_exhausted with `lagged-at-txn`
+ // metadata for client-side cursor retry.
+ // false → graceful close (data_loss).
    let status = if resume_on_lag {
    let mut s = Status::resource_exhausted(format!(
    "audit broadcast lagged — last_emitted_txn={last_emitted_txn}, retry with from_transaction_id={}",
@@ -549,7 +549,7 @@ impl Mnemosyne for MnemosyneGrpcService {
  }
 }
 
-/// Round 108 — client-side helper that builds a tonic [`Channel`] which
+/// client-side helper that builds a tonic [`Channel`] which
 /// load-balances inbound RPCs across a fixed list of server endpoints. Each
 /// endpoint string must be a fully-qualified URL (e.g. `http://host:port`).
 /// The returned channel uses tonic's built-in round-robin discovery — every
@@ -580,7 +580,7 @@ pub fn balanced_channel(
  Ok(tonic::transport::Channel::balance_list(parsed.into_iter()))
 }
 
-/// Round 108 — server-side authentication interceptor. Rejects any inbound
+/// server-side authentication interceptor. Rejects any inbound
 /// RPC whose metadata lacks an `authorization` header with `Status::
 /// unauthenticated`. Compose via
 /// `Server::builder().add_service(InterceptedService::new(svc, require_authorization_metadata))`
@@ -618,7 +618,7 @@ pub fn with_tracing_span(req: Request<()>) -> Result<Request<()>, Status> {
 /// callers can update health status dynamically (e.g. mark `NOT_SERVING`
 /// during graceful shutdown) and add the health service to the server.
 ///
-/// Round 96 — standard `grpc.health.v1.Health` protocol. The health-service
+/// standard `grpc.health.v1.Health` protocol. The health-service
 /// type is opaque because tonic-health 0.12 returns
 /// `HealthServer<impl Health>` and the inner type is not part of the public
 /// API.
@@ -635,9 +635,9 @@ pub async fn build_health_service() -> (
 
 /// Build a gRPC reflection service that serves the `mnemosyne.v1` proto
 /// schema at runtime. Clients can use grpcurl-style tooling to enumerate
-/// services and methods without a local .proto.
+/// services and methods without a local.proto.
 ///
-/// Round 96 — `grpc.reflection.v1alpha.ServerReflection` protocol.
+/// `grpc.reflection.v1alpha.ServerReflection` protocol.
 pub fn build_reflection_service(
 ) -> Result<tonic_reflection::server::v1alpha::ServerReflectionServer<impl tonic_reflection::server::v1alpha::ServerReflection>, tonic_reflection::server::Error> {
  tonic_reflection::server::Builder::configure()
@@ -649,7 +649,7 @@ pub fn build_reflection_service(
 /// Thin wrapper that surfaces tonic's TLS construction without forcing
 /// callers to depend on tonic directly.
 ///
-/// Round 97 — gated behind the `tls` feature; default builds carry no rustls.
+/// gated behind the `tls` feature; default builds carry no rustls.
 #[cfg(feature = "tls")]
 pub fn tls_identity_from_pem(
  cert_pem: impl AsRef<[u8]>,
@@ -661,13 +661,13 @@ pub fn tls_identity_from_pem(
 /// Build a `tonic::transport::ServerTlsConfig` from a server identity.
 /// Pass the result to `Server::builder().tls_config(config)?`.
 ///
-/// Round 97 — gated behind the `tls` feature; pairs with `tls_identity_from_pem`.
+/// gated behind the `tls` feature; pairs with `tls_identity_from_pem`.
 #[cfg(feature = "tls")]
 pub fn server_tls_config(identity: tonic::transport::Identity) -> tonic::transport::ServerTlsConfig {
  tonic::transport::ServerTlsConfig::new().identity(identity)
 }
 
-/// Round 107 — mTLS variant: server identity *plus* a client CA root for
+/// mTLS variant: server identity *plus* a client CA root for
 /// peer verification. Tonic's `ServerTlsConfig::client_ca_root` switches the
 /// underlying rustls config from `with_no_client_auth()` to
 /// `with_client_cert_verifier(...)`, so any inbound connection without a
@@ -693,7 +693,7 @@ pub fn server_tls_config_mtls(
 /// before the first `tls_config(...)` build, otherwise rustls panics with
 /// "no process-level CryptoProvider available".
 ///
-/// Round 97 — gated behind the `tls` feature. The helper is idempotent so both
+/// gated behind the `tls` feature. The helper is idempotent so both
 /// server bring-up and client bring-up paths can call it independently without
 /// risk of double-install.
 #[cfg(feature = "tls")]
@@ -701,9 +701,9 @@ pub fn install_default_crypto_provider() {
  let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-// --- Round 107 — dynamic TLS cert rotation -----------------------------------
+// --- dynamic TLS cert rotation -----------------------------------
 
-/// Round 107 — build a `rustls::ServerConfig` from PEM cert/key bytes, with
+/// build a `rustls::ServerConfig` from PEM cert/key bytes, with
 /// optional mTLS client cert verification. Returns the rustls config rather
 /// than tonic's `ServerTlsConfig` because the rotation path bypasses tonic's
 /// `tls_config(...)` (which is static after Server::builder build) and feeds
@@ -765,7 +765,7 @@ pub fn build_rustls_server_config(
  Ok(Arc::new(cfg))
 }
 
-/// Round 107 — handle to a watch channel carrying the *current* rustls
+/// handle to a watch channel carrying the *current* rustls
 /// `ServerConfig`. New TLS handshakes performed by
 /// [`spawn_rotating_tls_acceptor`] read this watch every accept, so a
 /// successful [`Self::rotate`] takes effect on the *next* connection without
@@ -805,7 +805,7 @@ impl TlsIdentityRotator {
  }
 }
 
-/// Round 107 — handle consumed by the rotating TLS acceptor. Wraps the
+/// handle consumed by the rotating TLS acceptor. Wraps the
 /// receiver half of the rotation watch.
 #[cfg(feature = "tls")]
 pub struct TlsIdentityHandle {
@@ -821,7 +821,7 @@ impl TlsIdentityHandle {
  }
 }
 
-/// Round 107 — spawn a TCP accept loop that wraps each accepted stream with a
+/// spawn a TCP accept loop that wraps each accepted stream with a
 /// fresh `tokio_rustls::TlsAcceptor` built from the *current* `ServerConfig`
 /// in the rotation watch. Yields `Result<TlsStream<TcpStream>, std::io::Error>`
 /// items into a `tokio_stream::wrappers::UnboundedReceiverStream` shaped for
@@ -862,10 +862,10 @@ pub fn spawn_rotating_tls_acceptor(
   let _ = tx2.send(Ok(stream));
   }
   Err(e) => {
-  // Surface handshake failures to the consuming
-  // server only as logged events — tonic treats
-  // a single Err item as fatal for the whole
-  // listener stream, so we drop the failure.
+ // Surface handshake failures to the consuming
+ // server only as logged events — tonic treats
+ // a single Err item as fatal for the whole
+ // listener stream, so we drop the failure.
   tracing::debug!(error = %e, "rotating tls handshake failed");
   }
   }
@@ -875,7 +875,7 @@ pub fn spawn_rotating_tls_acceptor(
  tokio_stream::wrappers::UnboundedReceiverStream::new(rx)
 }
 
-/// Round 106 — value-typed configuration for [`init_otlp_tracing_subscriber_with_config`].
+/// value-typed configuration for [`init_otlp_tracing_subscriber_with_config`].
 /// Carries the OTLP endpoint plus tunables for the batch span processor
 /// (`max_export_batch_size` / `scheduled_delay`), the sampling decision
 /// (`sampling_rate`, mapped to `Sampler::TraceIdRatioBased`), and resource
@@ -941,10 +941,10 @@ impl OtlpExporterConfig {
  }
 }
 
-/// Round 102 — initialize a tracing subscriber that forwards spans to an OTLP
+/// initialize a tracing subscriber that forwards spans to an OTLP
 /// gRPC collector. Composes `opentelemetry-otlp` (tonic transport) with
 /// `tracing-opentelemetry`, so existing `tracing::Span` instrumentation
-/// (Round 96 grpc.method, Round 99 trace_id) propagates through the OTLP wire
+/// propagates through the OTLP wire
 /// format without further code changes.
 ///
 /// `endpoint` is an `http://host:port` URL; the helper routes via the
@@ -952,7 +952,7 @@ impl OtlpExporterConfig {
 /// `SdkTracerProvider` alive for the lifetime of the process — drop it during
 /// graceful shutdown to flush in-flight spans.
 ///
-/// Round 106 — thin wrapper around [`init_otlp_tracing_subscriber_with_config`]
+/// thin wrapper around [`init_otlp_tracing_subscriber_with_config`]
 /// using SDK defaults. Use the `_with_config` entry point when batch tuning,
 /// sampling, or resource attribute injection is needed.
 ///
@@ -961,15 +961,15 @@ impl OtlpExporterConfig {
 /// process panics — the helper is intended for the server's bring-up path
 /// (or in tests, behind a one-shot `Once` guard).
 ///
-/// Round 102 — gated behind the `otlp` feature. Default builds carry no
-/// opentelemetry compile cost (Round 99 trace_id field stays a plain `String`
+/// gated behind the `otlp` feature. Default builds carry no
+/// opentelemetry compile cost (trace_id field stays a plain `String`
 /// without OTLP wiring).
 #[cfg(feature = "otlp")]
 pub fn init_otlp_tracing_subscriber(endpoint: &str) -> Result<OtlpTracerGuard, String> {
  init_otlp_tracing_subscriber_with_config(OtlpExporterConfig::new(endpoint))
 }
 
-/// Round 106 — initialize an OTLP tracing subscriber from a fully-specified
+/// initialize an OTLP tracing subscriber from a fully-specified
 /// [`OtlpExporterConfig`]. Wires the batch span processor (queue size +
 /// scheduled delay), the trace-id-ratio sampler, and resource attributes
 /// onto the SDK pipeline.
@@ -1028,7 +1028,7 @@ pub fn init_otlp_tracing_subscriber_with_config(
  Ok(OtlpTracerGuard { provider })
 }
 
-/// Round 102 — RAII guard that owns the OTLP tracer provider; dropping flushes
+/// RAII guard that owns the OTLP tracer provider; dropping flushes
 /// pending spans (best-effort — relies on the SDK's batch exporter shutdown).
 #[cfg(feature = "otlp")]
 pub struct OtlpTracerGuard {
@@ -1125,9 +1125,9 @@ pub fn decode_result(wire: proto::ProposalResult) -> ProposalResult {
  }
 }
 
-/// Round 98 — encode the embedded `AuditRecord` into its proto wire form for
-/// `SubscribeAuditTrail` streaming. Round 99 — also carries `trace_id`.
-/// Round 104 — also carries `tracestate`.
+/// encode the embedded `AuditRecord` into its proto wire form for
+/// `SubscribeAuditTrail` streaming. also carries `trace_id`.
+/// also carries `tracestate`.
 pub fn encode_audit_record(record: &AuditRecord) -> proto::AuditRecord {
  let (reason, reason_set) = match &record.rejection_reason {
  Some(r) => (r.clone(), true),
@@ -1158,8 +1158,8 @@ pub fn encode_audit_record(record: &AuditRecord) -> proto::AuditRecord {
 }
 
 /// Inverse of `encode_audit_record` — used by client integration tests to
-/// recover the embedded record shape from the wire message. Round 99 — also
-/// recovers `trace_id`. Round 104 — also recovers `tracestate`.
+/// recover the embedded record shape from the wire message. also
+/// recovers `trace_id`. also recovers `tracestate`.
 pub fn decode_audit_record(wire: proto::AuditRecord) -> AuditRecord {
  AuditRecord {
  transaction_id: wire.transaction_id,

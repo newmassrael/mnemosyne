@@ -1,4 +1,4 @@
-//! §39 design_doc closed-form schema fixture — Section / ChangelogEntry /
+//! design_doc closed-form schema fixture — Section / ChangelogEntry /
 //! FrozenList / CrossRef. Single canonical instance used by tests and downstream
 //! crates (mnemosyne-cascade for cascade-query input shape).
 

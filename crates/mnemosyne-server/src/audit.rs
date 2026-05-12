@@ -1,11 +1,11 @@
-//! Audit append-only enforcement — DESIGN §6 audit CF source of truth.
+//! Audit append-only enforcement — audit CF source of truth.
 //!
 //! `AuditAppender` writes one `AuditRecord` per accepted proposal (or per
 //! rejection that needs durable record). Transaction id is a monotonic u64
-//! seeded from `audit_cf.last_key + 1` at server startup (DESIGN §4.378).
+//! seeded from `audit_cf.last_key + 1` at server startup.
 //!
 //! Append-only enforcement applies at both the API surface (no mutate /
-//! delete operations) AND at the storage layer (DESIGN §15 secondary read on
+//! delete operations) AND at the storage layer (secondary read on
 //! audit CF is blocked, but writes are permitted because audit IS the
 //! append-only target).
 
@@ -27,25 +27,25 @@ pub struct AuditRecord {
  pub gate_routing_reason: String,
  pub rejection_reason: Option<String>,
  pub proposal_kind_tag: String,
- /// Round 99 — W3C trace context propagated from the inbound request, or a
+ /// W3C trace context propagated from the inbound request, or a
  /// server-generated UUID fallback when no `traceparent` was supplied.
- /// `#[serde(default)]` lets pre-Round 99 audit records (which never had
+ /// `#[serde(default)]` lets pre-audit records (which never had
  /// this field on disk) decode cleanly as `None`.
  #[serde(default)]
  pub trace_id: Option<String>,
- /// Round 104 — W3C `tracestate` header passthrough. The vendor-specific
+ /// W3C `tracestate` header passthrough. The vendor-specific
  /// key/value list from the inbound `tracestate` RPC metadata, propagated
  /// verbatim into the audit trail so observability tooling joining logs
  /// across the gRPC boundary preserves vendor context. `None` when the
  /// inbound RPC carried no tracestate or for embedded callers without an
- /// explicit context. `#[serde(default)]` keeps pre-Round 104 records
+ /// explicit context. `#[serde(default)]` keeps pre-records
  /// (without this field) decodable as `None`.
  #[serde(default)]
  pub tracestate: Option<String>,
 }
 
-/// Round 104 — W3C trace context propagated alongside a proposal through the
-/// pipeline. Composes `trace_id` (Round 99) and `tracestate` (Round 104) into a
+/// W3C trace context propagated alongside a proposal through the
+/// pipeline. Composes `trace_id` and `tracestate` into a
 /// single value-typed handle so audit-append signatures stay stable as future
 /// trace propagation fields (baggage, etc.) extend the struct without further
 /// signature churn.
@@ -59,7 +59,7 @@ pub struct TraceContext {
 }
 
 impl TraceContext {
- /// Convenience constructor for trace-id-only contexts (Round 99 carry path
+ /// Convenience constructor for trace-id-only contexts (carry path
  /// where no tracestate is available yet, or test fixtures that only
  /// exercise trace_id propagation).
  pub fn with_trace_id(trace_id: String) -> Self {
@@ -70,21 +70,21 @@ impl TraceContext {
  }
 }
 
-/// Default capacity of the audit broadcast channel (Round 103). Sized so brief
+/// Default capacity of the audit broadcast channel. Sized so brief
 /// bursts of commits do not stall slow subscribers; when a subscriber lags
 /// past this capacity its `Receiver` returns `RecvError::Lagged` and the
 /// gRPC tail loop closes the stream rather than corrupting ordering.
 ///
-/// Round 109 — exposed as a `pub const` so callers (deployment harness, sizing
+/// exposed as a `pub const` so callers (deployment harness, sizing
 /// audit benchmarks, integration tests) can compare against the live value
 /// instead of duplicating the magic number. The constructor [`AuditAppender::new`]
 /// uses this default; callers needing a different size go through
 /// [`AuditAppender::with_broadcast_capacity`].
 pub const AUDIT_BROADCAST_CAPACITY: usize = 256;
 
-/// Round 111 — outbound fanout trait for cross-process audit-record
+/// outbound fanout trait for cross-process audit-record
 /// distribution. The default Mnemosyne deployment runs single-process, so
-/// the in-memory broadcast (Round 103) covers tail-following on its own.
+/// the in-memory broadcast covers tail-following on its own.
 /// Multi-server fanout (audit observers running on a different host than
 /// the writing server) plugs an [`AuditFanout`] impl into the appender;
 /// each successful `write` calls [`AuditFanout::publish`] *after* the
@@ -96,11 +96,11 @@ pub const AUDIT_BROADCAST_CAPACITY: usize = 256;
 /// [`InMemoryAuditBroker::subscriber`] for that path; a redis-backed
 /// or NATS impl spawns its own listener task).
 ///
-/// Note on §6 framing: the audit append-only invariant lives on each
+/// Note on framing: the audit append-only invariant lives on each
 /// server's RocksDB audit CF and is unaffected by fanout — fanout is an
 /// *observation* layer, not a write path. A cross-process subscriber
 /// receives a copy of the record but never writes to the local audit CF
-/// of the originating server. DESIGN.md §6 spec stays frozen.
+/// of the originating server. DESIGN.md spec stays frozen.
 pub trait AuditFanout: Send + Sync + std::fmt::Debug {
  fn publish(&self, record: &AuditRecord);
 }
@@ -115,7 +115,7 @@ impl AuditFanout for NoopAuditFanout {
  fn publish(&self, _record: &AuditRecord) {}
 }
 
-/// Round 111 — in-memory implementation of the cross-process broker. Two
+/// in-memory implementation of the cross-process broker. Two
 /// `AuditAppender` instances, each holding an [`InMemoryAuditPublisher`]
 /// pointing at the same broker, observe each other's commits without any
 /// network hop. Used by integration tests in lieu of a real
@@ -175,7 +175,7 @@ impl AuditFanout for InMemoryAuditPublisher {
  }
 }
 
-/// Round 111 — relay loop pushing every record received on `inbound` into
+/// relay loop pushing every record received on `inbound` into
 /// `target`'s broadcast channel via [`AuditAppender::publish_external`].
 /// Spawn as a dedicated tokio task; the loop exits when the broker
 /// channel is closed or every relay sink is dropped.
@@ -199,11 +199,11 @@ pub async fn relay_inbound_to_appender(
 pub struct AuditAppender {
  store: Arc<MnemosyneStore>,
  next_transaction_id: AtomicU64,
- /// Round 103 — broadcast channel for live tail-following subscribers. Each
+ /// broadcast channel for live tail-following subscribers. Each
  /// successful RocksDB put pushes a clone of the record onto the channel;
  /// failure to send (no active subscribers) is silently ignored.
  broadcast_tx: tokio::sync::broadcast::Sender<AuditRecord>,
- /// Round 111 — outbound fanout for cross-process audit observers.
+ /// outbound fanout for cross-process audit observers.
  /// Defaults to [`NoopAuditFanout`] for single-process deployments;
  /// [`AuditAppender::with_fanout`] swaps in a real implementation
  /// (in-memory broker, redis pub/sub, NATS, etc.).
@@ -219,7 +219,7 @@ impl AuditAppender {
  Self::with_broadcast_capacity(store, AUDIT_BROADCAST_CAPACITY)
  }
 
- /// Round 109 — construct with an explicit broadcast channel capacity.
+ /// construct with an explicit broadcast channel capacity.
  /// `capacity` is the maximum number of in-flight records the broadcast
  /// retains before the oldest unread record is overwritten and a slow
  /// subscriber sees `RecvError::Lagged` on its next `recv`. Production
@@ -230,7 +230,7 @@ impl AuditAppender {
  Self::with_broadcast_capacity_and_fanout(store, capacity, Arc::new(NoopAuditFanout))
  }
 
- /// Round 111 — construct with a custom [`AuditFanout`]. Used by
+ /// construct with a custom [`AuditFanout`]. Used by
  /// deployments that fan out audit observation to other servers
  /// (multi-host clusters) via an in-memory broker, redis pub/sub, or
  /// any other AuditFanout-compatible transport. Pass [`Arc::new(NoopAuditFanout)`]
@@ -249,7 +249,7 @@ impl AuditAppender {
  }
  }
 
- /// Round 103 — subscribe to newly-committed audit records. Returns a
+ /// subscribe to newly-committed audit records. Returns a
  /// `Receiver` that observes every record written via [`Self::write`]
  /// after the call. Subscribers attached before any commits see all
  /// subsequent commits; lagging subscribers receive `RecvError::Lagged`
@@ -270,7 +270,7 @@ impl AuditAppender {
  self.append_accepted_with_trace_context(proposal, warnings, &TraceContext::default())
  }
 
- /// Round 99 + Round 104 — accepted-record append carrying an explicit
+ /// + accepted-record append carrying an explicit
  /// trace context (trace_id + tracestate). Embedded callers without a
  /// context use [`Self::append_accepted`] which substitutes
  /// [`TraceContext::default`].
@@ -309,7 +309,7 @@ impl AuditAppender {
  self.append_rejected_with_trace_context(proposal, tier, reason, &TraceContext::default())
  }
 
- /// Round 99 + Round 104 — rejected-record append carrying an explicit
+ /// + rejected-record append carrying an explicit
  /// trace context (trace_id + tracestate).
  pub fn append_rejected_with_trace_context(
  &self,
@@ -340,29 +340,29 @@ impl AuditAppender {
 
  fn write(&self, record: &AuditRecord) -> Result<()> {
  // Audit CF key: branch_id=0 || entity_id=0 || valid_from=transaction_id.
- // The transaction_id slot mirrors §4.378 monotonic key encoding.
+ // The transaction_id slot mirrors monotonic key encoding.
  let payload = serde_json::to_vec(record).map_err(|e| {
  ServerError::AuditViolation(format!("audit serde: {e}"))
  })?;
  self.store
  .put(CfId::Audit, 0, 0, record.transaction_id, &payload)?;
- // Round 103 — push to the live tail-following broadcast channel after
+ // push to the live tail-following broadcast channel after
  // the durable write. `send` returns `Err` only when no subscribers
  // are attached; that is the steady-state case for embedded callers
  // and is intentionally ignored.
  let _ = self.broadcast_tx.send(record.clone());
- // Round 111 — outbound fanout to cross-process subscribers (no-op
+ // outbound fanout to cross-process subscribers (no-op
  // by default). Best-effort: a fanout backend failure must not
  // poison the local audit commit.
  self.fanout.publish(record);
  Ok(())
  }
 
- /// Round 111 — push a record received from an external fanout source
+ /// push a record received from an external fanout source
  /// (redis subscriber, in-memory broker relay, etc.) onto the local
  /// broadcast channel. Does NOT touch the local RocksDB audit CF —
  /// the originating server's append-only ledger remains the source of
- /// truth (DESIGN §6 spec stays frozen). Tail subscribers attached to
+ /// truth. Tail subscribers attached to
  /// this appender observes external records alongside locally-
  /// committed records.
  pub fn publish_external(&self, record: AuditRecord) {
@@ -388,9 +388,9 @@ impl AuditAppender {
  /// Records are returned in monotonic transaction-id order, matching the
  /// audit CF key encoding (`branch_id=0, entity_id=0, valid_from=txn_id`).
  ///
- /// Round 98 — source for `SubscribeAuditTrail` streaming RPC. Phase 0
+ /// source for `SubscribeAuditTrail` streaming RPC. Phase 0
  /// implementation materializes the result eagerly; per-record streaming
- /// over the RocksDB iterator is exposed in Round 113 via
+ /// over the RocksDB iterator is exposed in via
  /// [`Self::iter_from_streaming`].
  pub fn iter_from(&self, start: u64) -> Result<Vec<AuditRecord>> {
  let pairs = self.store.iter_branch_entity(CfId::Audit, 0, 0)?;
@@ -407,7 +407,7 @@ impl AuditAppender {
  Ok(out)
  }
 
- /// Round 113 — per-record streaming over the audit log. Hands every
+ /// per-record streaming over the audit log. Hands every
  /// record with `transaction_id >= start` to `callback` as it is
  /// decoded from RocksDB; the callback returns `true` to continue or
  /// `false` to stop early. Memory profile: ~constant (one record at
@@ -417,7 +417,7 @@ impl AuditAppender {
  ///
  /// Decode failures stop iteration with `Err(AuditViolation)` —
  /// caller-visible failure rather than silent skip, since a corrupted
- /// audit record on disk is a §6 invariant violation.
+ /// audit record on disk is a invariant violation.
  pub fn iter_from_streaming<F>(&self, start: u64, mut callback: F) -> Result<()>
  where
  F: FnMut(AuditRecord) -> bool,
@@ -490,7 +490,7 @@ pub fn append_outcome(
  append_outcome_with_trace_context(appender, proposal, outcome, &TraceContext::default())
 }
 
-/// Round 99 + Round 104 — `append_outcome` variant carrying an explicit trace
+/// + `append_outcome` variant carrying an explicit trace
 /// context (trace_id + tracestate). Routes Accept/Reject outcomes to the
 /// matching context-aware audit append.
 pub fn append_outcome_with_trace_context(
@@ -603,7 +603,7 @@ mod tests {
 
  #[tokio::test]
  async fn slow_subscriber_with_full_broadcast_returns_lagged() {
- // Round 109 — substantiate the broadcast Lagged path that the gRPC
+ // substantiate the broadcast Lagged path that the gRPC
  // resume_on_lag protocol surfaces: a Receiver that has not polled
  // while the Sender writes more than `capacity` records sees
  // RecvError::Lagged on its next recv(). The integration-level
@@ -661,7 +661,7 @@ mod tests {
 
  #[tokio::test]
  async fn subscribe_receives_newly_committed_records() {
- // Round 103 — broadcast channel correctness. A subscriber attached
+ // broadcast channel correctness. A subscriber attached
  // before any commits observes every subsequent record; appends
  // before subscription are not replayed (snapshot semantics covered
  // separately by `iter_from`).

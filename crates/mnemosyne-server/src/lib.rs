@@ -1,17 +1,17 @@
-//! Mnemosyne server — Phase 0 production crate (DESIGN.md §19 / §6 / §66).
+//! Mnemosyne server — Phase 0 production crate (DESIGN.md / /).
 //!
 //! Phase 0 server-side stack entry point for this crate — proposal handler
 //! ([`handler`]) + 3-tier gate (T1/T2/T3, [`gate`]) + audit append-only
 //! enforcement ([`audit`]) + service interface ([`service`]).
 //!
-//! Round 77 OPTION B-5 production carry — full Phase 0 stack binding (store +
+//! OPTION B-5 production carry — full Phase 0 stack binding (store +
 //! core + cascade + validator).
 //!
 //! ## Transport binding
 //!
 //! This crate's embedded service interface — a plain Rust trait
 //! ([`service::MnemosyneService`]) — host application is the in-process server
-//! direct invoke path. Round 91 carry — gRPC transport (tonic + prost) -
+//! direct invoke path. carry — gRPC transport (tonic + prost) -
 //! [`grpc`] module's [`grpc::MnemosyneGrpcService`] wraps the same [`handler::ProposalHandler`]
 //! Direct wrap. Embedded ↔ gRPC `ProposalResult` value-equal (transport
 //! independence validation = `tests/grpc_smoke.rs`).
@@ -22,14 +22,14 @@
 //! `ProposalKind` enum (entity_create / entity_update / changelog_append /
 //! cross_ref_create / frozen_list_membership_change).
 //! - [`gate`]: 3-tier gate (T1 cross-ref orphan reject + append-only +
-//! membership-delta + supersede; T2 structural; T3 convention) — DESIGN §19
+//! membership-delta + supersede; T2 structural; T3 convention) — 
 //! Tier mapping carry.
 //! - [`audit`]: `AuditAppender` — append-only audit CF in transaction-record
-//! write (DESIGN §6 audit append-only enforcement).
+//! write.
 //! - [`handler`]: `ProposalHandler` — proposal pipeline orchestrator (parse →
 //! gate → audit → commit).
 //! - [`service`]: `MnemosyneService` async trait — embedded API surface.
-//! - [`grpc`]: tonic-generated `Mnemosyne` service binding (Round 91).
+//! - [`grpc`]: tonic-generated `Mnemosyne` service binding.
 //! - [`error`]: `ServerError` typed enum.
 
 pub mod audit;

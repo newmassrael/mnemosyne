@@ -1,8 +1,8 @@
-//! Schema description types — DESIGN §39 graph_schema's meta-level shape.
+//! Schema description types — graph_schema's meta-level shape.
 //!
 //! `GraphSpec` carries `EntityDef` / `RelationDef` / `FieldDef` / `FieldType` /
 //! `Persistence` enums. Single canonical structural representation; the 5-language
-//! emit modules (`emit::rust` / `emit::kotlin` / ...) consume this and produce the target
+//! emit modules (`emit::rust` / `emit::kotlin` /...) consume this and produce the target
 //! source.
 
 use serde::{Deserialize, Serialize};
@@ -18,9 +18,9 @@ pub enum FieldType {
  Bytes,
  /// Foreign-entity reference (u64 BE wire form; target-name carried for codegen).
  EntityRef { target: String },
- /// Row-per-(asset, fact) normalized refs (DESIGN §18 line 1901).
+ /// Row-per-(asset, fact) normalized refs.
  NormalizedAssetRefs,
- /// Row-per-encounter (§44 meta-agent measurement).
+ /// Row-per-encounter (meta-agent measurement).
  RowPerEncounter,
 }
 
@@ -28,7 +28,7 @@ pub enum FieldType {
 pub enum Persistence {
  /// `@persistent` — explicit CF.
  Persistent,
- /// `@derived` — derived CF (epistemic split, §11 closure separation).
+ /// `@derived` — derived CF (epistemic split, closure separation).
  Derived,
 }
 

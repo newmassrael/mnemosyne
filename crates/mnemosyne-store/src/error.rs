@@ -1,4 +1,4 @@
-//! Typed store errors — DESIGN §42 *RocksDB CF runtime wrapper* failure modes.
+//! Typed store errors — *RocksDB CF runtime wrapper* failure modes.
 
 use thiserror::Error;
 
