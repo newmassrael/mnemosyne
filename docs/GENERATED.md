@@ -486,3 +486,33 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 267 — remove-section mutate primitive added (closes Round 266 carry) — drops section from atomic store, requires --reason audit safeguard, NotFound on missing id; CLI surface + 3 unit tests; eliminates need for CLAUDE.md override-grant exception path on self-introduced authoring pollution
+
+**Changes**:
+- atomic::remove_section primitive added — drops a section entry from AtomicStore.sections, requires --reason (audit safeguard, mandatory non-empty trim check), returns NotFound when section_id absent (no silent no-op).
+- atomic_cli::cmd_remove_section CLI surface + main.rs dispatch + help text. Mnemosyne mutate API surface count grows by 1 (remove-section); usage line updated.
+- 3 new unit tests: drop+persist round-trip, empty reason rejection, NotFound for missing id. 215 validator-lib tests pass (was 212).
+- Closes Round 266 carry item 1: smoke-test pollution (or any wrong-section_id authoring loop) now has a clean self-cleanup route without the CLAUDE.md override-grant exception path.
+
+
+
+**Verification**:
+- cargo test --release -p mnemosyne-validator --lib PASS — 215 tests (was 212 after Round 266, +3 remove_section).
+- cargo build --release --workspace PASS across 7 crates.
+- validate-code-refs caught 4 self-introduced Round 267 src/ comments under reject mode pre-entry-registration; entry presence clears all 4 — citation hygiene loop validated end-to-end again.
+- No referential-integrity check inside the primitive: cross_refs / impact_scope dangling against a removed section_id surface at validate-workspace gate (kind=AtomicSectionRef) or [orphan_ledger] entries — separation of concerns preserved.
+- Audit safeguard verified: remove_section with --reason "   " (empty after trim) rejected with Validation error; section unchanged.
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- Round 268+ — validate-workspace integration: extend the workspace gate to also auto-run section_decay scan for every atomic Superseded/Removed section, surfacing decay counts in the workspace report. Currently the trigger only fires at mutate-time (Round 266) — workspace-wide audit needs a separate command path.
+- remove_section is unconditional once --reason is present (no referential-integrity pre-check). If a removed section_id is still cited from cross_refs / impact_scope / impact_refs / source-code §X citations, those become orphans visible at validate-workspace. Deferred until empirical bite: a --force / --check-refs split if the no-check default proves footgun-prone.
+- Companion remove_changelog_entry primitive NOT added — changelog entries are append-only audit history (frozen ledger). Removal would violate the frozen-ledger invariant. If a changelog entry was authored in error, the correct path is a superseding entry that documents the correction.
+- ChangelogEntry-level mutate API still missing: set_decision_summary / append-only changes_bullets edits / etc. for in-progress entries (pre-freeze). Out of scope for the code-citation-defense arc; surface separately if authoring loop friction emerges.
+
+
+

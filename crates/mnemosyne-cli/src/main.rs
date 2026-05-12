@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|append-changelog-entry-v2|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -163,6 +163,8 @@ fn run(args: &[String]) -> Result<()> {
  "set-section-decision-status-atomic" => {
  atomic_cli::cmd_set_section_decision_status_atomic(&repo_root()?, &args[2..])
  }
+ // Round 267 — section removal (closes Round 266 carry gap).
+ "remove-section" => atomic_cli::cmd_remove_section(&repo_root()?, &args[2..]),
  "append-changelog-entry-v2" => {
  atomic_cli::cmd_append_changelog_entry_v2(&repo_root()?, &args[2..])
  }
@@ -258,6 +260,13 @@ fn print_help(prog: &str) {
  );
  println!(
  "   Round 265 atomic decision_status setter (Stage B freshness substrate)"
+ );
+ println!(
+ " {} remove-section --section §<N> --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ "   Round 267 section removal (audit-safeguarded; closes Round 266 carry)"
  );
  println!(
  " {} append-changelog-entry-v2 --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",

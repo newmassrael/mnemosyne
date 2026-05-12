@@ -32,7 +32,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
  add_section_caveat, add_section_example, add_section_implementation,
  append_changelog_entry_v2, code_refs::scan_section_decay, discover_config,
- render_changelog_entry, set_section_alternatives,
+ remove_section, render_changelog_entry, set_section_alternatives,
  set_section_decision_status_atomic, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_outputs,
  set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
@@ -478,6 +478,49 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
  finalize_mutate(
  workspace_root,
  add_section_implementation(&mut store, &sidecar_path, &section, &file, symbol.as_deref()),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 267 — section removal CLI surface.
+///
+/// `--section §<id> --reason <text> [--sidecar <path>] [--json]`
+///
+/// Removes a section from the atomic store. Requires `--reason` (audit
+/// safeguard). Errors with NotFound when the section_id is absent — no
+/// silent no-op, the caller asked for a specific removal.
+pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ remove_section(&mut store, &sidecar_path, &section, &reason),
  sidecar.as_deref(),
  regenerate,
  json,

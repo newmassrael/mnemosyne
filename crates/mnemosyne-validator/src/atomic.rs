@@ -552,6 +552,48 @@ pub fn add_section_example(
 /// Existing entries are append-only — no remove/replace primitive
 /// exists in this round (frozen-ledger doctrine for
 /// atomic fields).
+/// Round 267 — atomic section removal primitive.
+///
+/// Removes a section entry from `AtomicStore.sections` entirely. Closes the
+/// gap exposed by Round 266 cleanup (CLAUDE.md override grant path) where
+/// authoring loops touching wrong section_ids had no clean self-cleanup
+/// route short of direct JSON edit.
+///
+/// `reason` is mandatory and recorded as the receipt's primitive payload —
+/// the audit safeguard for an otherwise-destructive operation. The atomic
+/// store is the audit trail; git history of the sidecar JSON preserves the
+/// prior state regardless, but the receipt makes the *intent* explicit.
+///
+/// Returns `NotFound` when the section_id is absent (no silent no-op — the
+/// caller asked to remove something specific). No referential-integrity
+/// check (cross_refs / impact_scope pointing at the removed id) — that's
+/// validate-workspace's job, not the atomic primitive's.
+pub fn remove_section(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if reason.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "remove_section: --reason mandatory (audit-trail safeguard)".to_string(),
+ ));
+ }
+ if store.sections.remove(section_id).is_none() {
+ return Err(AtomicMutateError::NotFound(format!(
+ "section_id `{}` not present in atomic store",
+ section_id
+ )));
+ }
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "remove_section",
+ "section",
+ section_id,
+ )
+}
+
 /// Round 265 — atomic decision_status setter (Stage B freshness substrate).
 ///
 /// Sets `AtomicSection.decision_status` to `Some(new_status)`. Idempotent
@@ -951,6 +993,43 @@ mod tests {
  add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(sym)).unwrap();
  }
  assert_eq!(store.section("39").unwrap().implementations.len(), 6);
+ }
+
+ #[test]
+ fn remove_section_drops_entry_and_persists() {
+ // Round 267 — remove_section deletes the section_id entry from the
+ // store and persists the change. Subsequent section() returns None.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_intent(&mut store, &path, "doomed", "to be removed").unwrap();
+ assert!(store.section("doomed").is_some());
+ remove_section(&mut store, &path, "doomed", "smoke-test cleanup").unwrap();
+ assert!(store.section("doomed").is_none());
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert!(reloaded.section("doomed").is_none());
+ }
+
+ #[test]
+ fn remove_section_rejects_empty_reason() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_intent(&mut store, &path, "1", "x").unwrap();
+ let err = remove_section(&mut store, &path, "1", "   ").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ // Section unchanged after rejected mutate.
+ assert!(store.section("1").is_some());
+ }
+
+ #[test]
+ fn remove_section_returns_not_found_for_missing_id() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err =
+ remove_section(&mut store, &path, "ghost", "no such section").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
  }
 
  #[test]
