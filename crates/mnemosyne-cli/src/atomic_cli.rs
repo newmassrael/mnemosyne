@@ -31,7 +31,8 @@
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
  add_section_caveat, add_section_example, add_section_implementation,
- append_changelog_entry_v2, render_changelog_entry, set_section_alternatives,
+ append_changelog_entry_v2, code_refs::scan_section_decay, discover_config,
+ render_changelog_entry, set_section_alternatives,
  set_section_decision_status_atomic, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_outputs,
  set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
@@ -530,13 +531,80 @@ pub fn cmd_set_section_decision_status_atomic(
  };
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let mutate_result =
+ set_section_decision_status_atomic(&mut store, &sidecar_path, &section, new_status);
+
+ // Round 266 — auto-cascade trigger (Stage B freshness). When the new
+ // status is Superseded or Removed, run a targeted §<id> decay scan
+ // against [code_refs].paths and surface citing locations to stderr.
+ // Informational only — never alters the mutate's success/failure.
+ // No-op when [code_refs] is unconfigured (5-min setup promise carry).
+ if mutate_result.is_ok()
+ && matches!(
+ new_status,
+ DecisionStatus::Superseded | DecisionStatus::Removed
+ )
+ {
+ print_section_decay_trigger(workspace_root, &section, new_status);
+ }
+
  finalize_mutate(
  workspace_root,
- set_section_decision_status_atomic(&mut store, &sidecar_path, &section, new_status),
+ mutate_result,
  sidecar.as_deref(),
  regenerate,
  json,
  )
+}
+
+/// Round 266 — mutate-time auto-cascade trigger.
+///
+/// Runs a §<section_id> decay scan over `[code_refs].paths` and prints a
+/// short report to stderr. Silent no-op when `[code_refs]` is unconfigured.
+/// Errors during config load or scan are logged but never propagated — the
+/// mutate's success boundary stays clean.
+fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_status: DecisionStatus) {
+ let loaded = match discover_config(workspace_root) {
+ Ok(Some(cfg)) => cfg,
+ Ok(None) => return,
+ Err(e) => {
+ eprintln!(
+ "[cascade] decay-trigger skipped (config load failed: {})",
+ e
+ );
+ return;
+ }
+ };
+ let code_refs_cfg = match loaded.config.code_refs.as_ref() {
+ Some(c) if !c.paths.is_empty() => c,
+ _ => return,
+ };
+ let hits = match scan_section_decay(
+ workspace_root,
+ &code_refs_cfg.paths,
+ section_id,
+ code_refs_cfg.comment_only,
+ ) {
+ Ok(h) => h,
+ Err(e) => {
+ eprintln!("[cascade] decay-trigger scan io error: {}", e);
+ return;
+ }
+ };
+ let status_label = match new_status {
+ DecisionStatus::Active => "active",
+ DecisionStatus::Superseded => "superseded",
+ DecisionStatus::Removed => "removed",
+ };
+ eprintln!(
+ "[cascade] §{} → {} — {} citing location(s) in [code_refs].paths",
+ section_id,
+ status_label,
+ hits.len()
+ );
+ for c in &hits {
+ eprintln!(" {}:{} §{}", c.file.display(), c.line, section_id);
+ }
 }
 
 /// Render the atomic store at `sidecar_path` to a deterministic markdown

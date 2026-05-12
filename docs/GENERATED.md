@@ -455,3 +455,34 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 266 — auto-cascade trigger wired (Stage B freshness) — set-section-decision-status-atomic to Superseded/Removed runs scan_section_decay over [code_refs].paths and prints citing locations to stderr; informational only, never alters mutate success; silent no-op when [code_refs] unconfigured
+
+**Changes**:
+- code_refs::scan_section_decay function added — targeted §<id> scan returning Vec<Citation> for one section, comment_only honored, walk_paths reused. Public surface for cascade-trigger callers without going through the full bidirectional scanner.
+- atomic_cli::print_section_decay_trigger wired into cmd_set_section_decision_status_atomic — fires when new status is Superseded or Removed; loads [code_refs] config via discover_config; runs scan_section_decay; prints "[cascade] §X → status — N citing location(s)" + per-line file:line to stderr. Informational only — never alters mutate success.
+- Silent no-op when [code_refs] is unconfigured or paths empty (5-min setup promise carry); config-load errors logged to stderr but not propagated; scan io errors logged but not propagated.
+- 3 new code_refs unit tests: target-section-only filter, empty-result path, comment_only flag honored. End-to-end smoke verified: §nonexistent-test-section status=superseded surfaces "0 citing locations" trigger output through actual CLI invocation.
+
+
+
+**Verification**:
+- cargo test --release -p mnemosyne-validator --lib PASS — 212 tests (was 209 after Round 265, +3 scan_section_decay).
+- cargo build --release --workspace PASS — clean compile across 7 crates.
+- End-to-end smoke: set-section-decision-status-atomic --section §nonexistent-test-section --status superseded surfaced "[cascade] §nonexistent-test-section → superseded — 0 citing location(s) in [code_refs].paths" on stderr, mutate succeeded on stdout.
+- Smoke-test pollution (single empty atomic-only section) cleaned via direct JSON edit under explicit user override grant; generate-docs regenerated GENERATED.md (sections 6 → 5); validate-workspace PASS post-cleanup with entries=14, sections=5, GENERATED.md=sync, T1 orphan=0.
+- validate-code-refs PASS under reject mode after this round's src/ comment additions (Round 265 entry presence keeps the citation hygiene loop closed).
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- Round 267+ — remove-section mutate primitive: smoke test exposed the missing inverse of section_mut. Currently set_section_decision_status_atomic (and any other atomic setter) implicitly creates an empty section if the id is absent, with no clean removal path short of direct JSON edit. Authoring loops that touch wrong section_ids cannot self-clean.
+- Round 267+ — validate-workspace integration: extend the workspace gate so every atomic Superseded/Removed section auto-runs the decay scan, surfacing decay counts in the workspace report (currently the trigger only fires at mutate time, so a workspace-wide audit needs a separate command).
+- Trigger over-fires on idempotent same-status set (Superseded → Superseded re-runs the scan). Acceptable in v1 (informational only, low cost); revisit if operator complaints surface.
+- Trigger does not consult §X.implementations binding — purely citation-side. Spec-side ImplementationUnbacked surfacing on transition is a separate concern (likely fits in the validate-workspace integration above).
+- Cleanup pollution required CLAUDE.md override grant; remove-section primitive (Round 267+) closes that gap and removes the override exception path for self-introduced test artifacts.
+
+
+

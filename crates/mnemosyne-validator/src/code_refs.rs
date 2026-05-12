@@ -831,6 +831,56 @@ pub fn scan_paths_bidirectional(
  Ok(violations)
 }
 
+/// Round 266 — auto-cascade trigger primitive (Stage B freshness).
+///
+/// Targeted decay scan for §<section_id> citations of *one* section,
+/// returned as a flat list of [`Citation`]. Used by the mutate-time hook
+/// in `set-section-decision-status-atomic` CLI: when a section transitions
+/// to Superseded/Removed, this surfaces the source-side citations that
+/// will need authoring follow-up (no rejection — informational only).
+///
+/// Skips file-read failures silently (consistent with the bidirectional
+/// scanner's behavior). Honors `comment_only` via `strip_to_comments` so
+/// fixture string literals don't generate noise.
+///
+/// `paths` is workspace-relative; symbol-side bindings are not consulted
+/// (decay is about cite locations, not implementation universe).
+pub fn scan_section_decay(
+ workspace_root: &Path,
+ paths: &[String],
+ section_id: &str,
+ comment_only: bool,
+) -> std::io::Result<Vec<Citation>> {
+ let files = walk_paths(workspace_root, paths)?;
+ let mut hits = Vec::new();
+ for abs in files {
+ let raw = match std::fs::read_to_string(&abs) {
+ Ok(c) => c,
+ Err(_) => continue,
+ };
+ let content = if comment_only {
+ strip_to_comments(&raw, comment_syntax_for(&abs))
+ } else {
+ raw
+ };
+ let rel = abs
+ .strip_prefix(workspace_root)
+ .map(|p| p.to_path_buf())
+ .unwrap_or(abs.clone());
+ for (line, sid) in extract_section_citations(&content) {
+ if sid == section_id {
+ hits.push(Citation {
+  file: rel.clone(),
+  line,
+  entry_id: format!("§{}", sid),
+ });
+ }
+ }
+ }
+ hits.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+ Ok(hits)
+}
+
 /// Deterministic ordering — Citation variants sort by (file, line, entry_id);
 /// ImplementationUnbacked variants sort by (file, section_id, symbol) and
 /// come after Citation variants for predictable reporting.
@@ -1251,6 +1301,61 @@ mod tests {
  }
  other => panic!("unexpected variant: {:?}", other),
  }
+ }
+
+ // ============ Round 266 scan_section_decay tests ============
+
+ #[test]
+ fn scan_section_decay_surfaces_only_target_section() {
+ // Round 266 — targeted §<id> decay scan returns only citations of
+ // the requested section_id; other sections in the same file ignored.
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ std::fs::write(
+ src.join("a.rs"),
+ "// §39 here\n// §61 here\n// §39 again\n// §99 elsewhere\n",
+ )
+ .unwrap();
+ let hits =
+ scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+ assert_eq!(hits.len(), 2);
+ assert_eq!(hits[0].entry_id, "§39");
+ assert_eq!(hits[0].line, 1);
+ assert_eq!(hits[1].line, 3);
+ }
+
+ #[test]
+ fn scan_section_decay_empty_when_no_citations() {
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ std::fs::write(src.join("clean.rs"), "fn main() {}\n").unwrap();
+ let hits =
+ scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+ assert!(hits.is_empty());
+ }
+
+ #[test]
+ fn scan_section_decay_respects_comment_only_flag() {
+ // String-literal §X tokens must be excluded under comment_only=true
+ // (consistent with the bidirectional scanner's behavior). When false,
+ // the whole-text scan picks them up.
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ std::fs::write(
+ src.join("fixture.rs"),
+ "let s = \"§39 in string\";\n// §39 in comment\n",
+ )
+ .unwrap();
+ let comment_hits =
+ scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+ assert_eq!(comment_hits.len(), 1, "comment_only excludes string literal");
+ assert_eq!(comment_hits[0].line, 2);
+ let raw_hits =
+ scan_section_decay(tmp.path(), &["src/".to_string()], "39", false).unwrap();
+ assert_eq!(raw_hits.len(), 2, "comment_only=false picks up both");
  }
 
  // ============ Legacy /258 thin-wrapper tests ============
