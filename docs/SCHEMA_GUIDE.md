@@ -2,8 +2,10 @@
 
 Mnemosyne ships with a **fixed primitives** schema (Section / CrossRef /
 ChangelogEntry / FrozenList) and a **markdown pattern → entity** mapping
-that is fully config-driven via `mnemosyne.toml`. This guide shows the
-knobs available and the three reference presets.
+that is fully config-driven via `mnemosyne.toml`. The atomic store
+(`docs/.atomic/workspace.atomic.json`) is the single source of truth for
+typed facts; `docs/GENERATED.md` is the deterministic human-readable
+view. This guide shows the knobs available and the reference presets.
 
 ## Schema schema
 
@@ -31,6 +33,19 @@ max_section_body_length = 5000
 [terminology.glossary] # optional — defaults to Mnemosyne preset
 "Salsa" = ["salsa"]
 "bi-temporal" = ["bitemporal"]
+
+[code_refs]   # optional — opt into code-citation defense
+paths = ["src/"]
+severity_missing = "warn"  # | "reject"
+severity_binding = "warn"  # | "reject"
+comment_only = true
+
+[[orphan_ledger]]  # optional — register legacy cross-ref carries
+doc = "docs/legacy.md"
+from = "12"
+to = "99"
+kind = "markdown_ref"   # | "atomic_entry_ref" | "atomic_section_ref"
+reason = "carried from pre-migration state, see Round 80"
 ```
 
 Omit any optional table to inherit the Mnemosyne preset.
@@ -76,6 +91,30 @@ when the project never numbers its history rows.
 - **`terminology.glossary`** — canonical → variants map. The
  `terminology_consistency` rule rejects (T3) when a non-canonical
  variant appears in any doc body.
+- **`[code_refs].paths`** — production source paths to scan for spec
+ citations (`Round NNN`, `§<id>`). Test paths intentionally excluded —
+ traceability anchors in tests carry a different policy contract than
+ rationale in production source. Typically `["src/"]` or
+ per-crate `["crates/foo/src/", "crates/bar/src/"]`.
+- **`[code_refs].severity_missing`** — `warn` or `reject`. Fires when a
+ citation's target id is absent from the atomic store (hallucination).
+ Start at `warn` to surface the baseline, promote to `reject` once
+ clean.
+- **`[code_refs].severity_binding`** — `warn` or `reject`. Fires when a
+ citation appears in a file that the section's
+ `implementations` (Path B Spec ↔ Code binding) does *not* list as a
+ backing implementation, *or* when an Active section has zero
+ implementations recorded. Bidirectional binding integrity.
+- **`[code_refs].comment_only`** — `true` strips string literals before
+ scanning so only comment citations count. Default `true`; flip only if
+ your project deliberately puts §id references in user-visible strings.
+- **`[[orphan_ledger]]`** — register legitimate cross-ref carries
+ (e.g. references to legacy docs you preserved by design). Each entry
+ names `doc` / `from` / `to` / `kind` / `reason`. The validator's
+ `T1 orphan total` line reports `ledger=N, new=+X, resolved=-Y`:
+ ledgered orphans are silent, new orphans bail, and resolved-but-still-
+ ledgered entries bail too (forcing you to drop the now-stale ledger
+ row).
 
 ## Common authoring patterns
 
@@ -124,6 +163,29 @@ medium_name = "adr"
 The `terminology_consistency` rule rejects (T3, blocks commit via
 pre-commit hook) when any variant appears anywhere a doc body — the
 canonical form is the only valid spelling.
+
+### Code-citation defense (multi-crate workspace)
+
+```toml
+[code_refs]
+paths = [
+ "crates/foo/src/",
+ "crates/bar/src/",
+]
+severity_missing = "reject"
+severity_binding = "reject"
+comment_only = true
+```
+
+Run `mnemosyne-cli validate-code-refs` to scan; wire into pre-commit
+via `scripts/install-hooks.sh`. Promote `severity_*` from `warn` to
+`reject` once the baseline is clean. To bind a section to its
+implementation file (so the binding axis recognizes it as backed), use:
+
+```bash
+mnemosyne-cli add-section-implementation \
+ --section §3 --file crates/foo/src/auth.rs --symbol Session::validate
+```
 
 ## What stays fixed
 

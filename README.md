@@ -1,26 +1,105 @@
 # Mnemosyne
 
-> Design-doc lifecycle infrastructure for LLM-driven projects.
+> Integrity infrastructure for AI-mutated markdown — spec, code citations, and (eventually) narrative.
 > [한국어 README](README.ko.md)
 
-Markdown design docs become unsafe when an AI agent edits them
-directly: a regex collapses bullet structure, a heading rename silently
-breaks 200 cross-refs, an "improvement" rewrites a frozen ledger entry
-and history is lost.
+When an AI agent edits markdown directly, three failure modes appear
+that no compiler catches:
 
-Mnemosyne replaces that fragile surface with **atomic-store + GENERATED.md**:
+- A regex meant to fix `§3` matches inside a code fence and corrupts an
+  unrelated example.
+- A heading rename silently breaks 200 cross-refs scattered across
+  other docs.
+- An "improvement" rewrites a frozen ledger entry — the decision history
+  that explained *why* the system is shaped this way is gone.
 
-- The atomic store (`docs/.atomic/workspace.atomic.json`) is the source
-  of truth — typed records (Section / ChangelogEntry / FrozenList /
-  CrossRef) with append-only audit semantics.
-- `docs/GENERATED.md` is the sole human-readable artifact, deterministically
-  rendered from the store.
+These hazards extend *outward* the moment your codebase starts citing
+the spec. A comment that reads `// see Round 254 for the rationale` is
+load-bearing documentation; once `Round 254` is renamed, deleted, or
+superseded, that comment lies — and `git blame` will chase the wrong
+rationale forever. The same applies to narrative documents: a character
+bible whose eye-color note in chapter 2 contradicts chapter 15 is the
+same class of integrity break, just in a different medium.
+
+**Mnemosyne replaces these fragile surfaces with a typed, bi-directional integrity stack.**
+
+- The **atomic store** (`docs/.atomic/workspace.atomic.json`) is the
+  single source of truth — typed records (Section / ChangelogEntry /
+  FrozenList / CrossRef) with append-only audit semantics.
+- `docs/GENERATED.md` is the sole human-readable artifact,
+  deterministically rendered from the store. Humans read; AI writes
+  through typed primitives.
 - Every mutation routes through a typed primitive that runs T1
   (cross-ref orphan reject) and T2 (frozen-ledger jaccard) before
   persisting.
+- **Code citations** of spec ids (`§3`, `Round 254`) are scanned at
+  commit time; hallucinated or superseded references are rejected
+  before they reach git history.
+- **Section ↔ Implementation bindings** record which source files own
+  each decision. When a spec section is renamed or superseded, the
+  citing code locations surface automatically.
 
-**Status:** Phase 0 production stack (6 crates). 59 test suites green.
-1 commit on `main` — squashed history is intentional during Phase 0.
+**Status:** Phase 0 hardening (7 crates). 500+ tests green. Mnemosyne
+dogfoods itself — its own design history lives in the atomic store at
+`docs/.atomic/workspace.atomic.json`, with `docs/GENERATED.md` as the
+human-readable view.
+
+## What Mnemosyne actually protects
+
+Mnemosyne enforces **three integrity boundaries**. Each one corresponds
+to a class of bug that AI-mediated authoring creates and that
+hand-written review usually misses.
+
+### 1. Document ↔ document (T1 cross-ref orphan reject)
+
+Cross-references between sections never dangle. If `§3` in
+`docs/SPEC.md` references `§42`, but `§42` doesn't exist — neither
+intra-doc, nor in the default cross-doc target, nor in the atomic store
+— the mutation that introduced that reference is rejected at write
+time. Renaming `§3` automatically updates every cross_ref pointing to
+it, atomically.
+
+**What this catches:** "I told the AI to rename §3 → §4, it did a regex
+replace, and now eight unrelated docs have broken refs."
+
+### 2. Document ↔ history (T2 frozen-ledger jaccard)
+
+Once a `ChangelogEntry` is committed, its `sub_bullets` are append-only.
+A subsequent mutation that *removes* a bullet from a frozen entry fails
+the jaccard-inclusion check (current ⊇ previous). The audit trail
+becomes provably immutable without relying on git history (which file
+renames, squash-merges, and cherry-picks routinely break for
+decision-tracking purposes).
+
+**What this catches:** "The AI 'improved' the changelog wording and now
+I don't know what we actually decided in Round 17."
+
+### 3. Document ↔ code (Path B bidirectional binding + code-citation defense)
+
+Every spec `Section` can record `implementations = [(file, symbol), ...]`
+— the source code that *owns* that decision. The
+`validate-code-refs` pass then walks the configured production source
+paths and extracts `§<id>` / `Round NNN` citations from comments. Three
+classes of defect are rejected:
+
+- **`Missing`** — citation references a section/entry id that doesn't
+  exist in the atomic store (hallucination).
+- **`CitationUnbound`** — citation appears in a file that the
+  referenced section's `implementations` list does *not* claim as a
+  binding. Either the section's binding list is stale, or the citing
+  comment is misplaced — both are real defects, surfaced
+  symmetrically.
+- **`ImplementationMissing`** — an Active section has zero
+  `implementations` recorded. "Active" means "this decision is backed
+  by code"; a section with no recorded backing breaks that contract.
+
+Pre-commit hooks wire all three into a reject gate. Renaming or
+superseding a spec section runs a cascade scan that prints every citing
+code location to stderr — stale citations surface immediately.
+
+**What this catches:** "The agent left a `// see Round 254` comment in
+auth.rs after we renamed Round 254 to Round 256 last month, and
+nothing flagged it for six weeks."
 
 ## Components
 
@@ -56,17 +135,27 @@ entry_id_prefix = "Round "
 
 [style]
 locale = "en"
+
+# Optional — opt into the code-citation defense (rejects hallucinated
+# §id / Round-N references in your source comments).
+[code_refs]
+paths = ["src/"]
+severity_missing = "warn"   # promote to "reject" once your baseline is clean
+severity_binding = "warn"
+comment_only = true
 ```
 
 Then:
 
 ```bash
-mnemosyne-cli validate-workspace
+mnemosyne-cli validate-workspace   # T1 + round-trip + atomic ledger
+mnemosyne-cli validate-code-refs   # citation defense (if [code_refs] configured)
 ```
 
 This surfaces your baseline: T1 orphan total, round-trip mandatory
-status, T3/T4 style violations. From that baseline, mutations are
-evaluated incrementally.
+status, T3/T4 style violations, atomic ledger sync, plus any spec-id
+citations in source that no longer resolve. From that baseline,
+mutations are evaluated incrementally.
 
 See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) and
 [docs/SCHEMA_GUIDE.md](docs/SCHEMA_GUIDE.md) for the full walkthrough.
@@ -77,9 +166,9 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) and
 (Claude Code, Cursor, Cline, Continue, Copilot Chat, …) connect over
 stdio and gain:
 
-- **15 typed tools** — validate / query / 9 atomic mutate primitives.
-  Each tool's args are JSONSchema-validated before reaching the
-  validator.
+- **16 typed tools** — validate / query / 12 atomic mutate primitives
+  (Section + ChangelogEntry typed-field setters). Each tool's args are
+  JSONSchema-validated before reaching the validator.
 - **7 concept resources** under `mnemosyne://concepts/*` — overview,
   atomic-store, frozen-ledger, tier-rules, anti-patterns,
   schema-guide, workflow. AI clients auto-load these so the agent
@@ -165,7 +254,13 @@ jobs:
       - run: cargo install --git https://github.com/newmassrael/mnemosyne mnemosyne-cli
       - run: mnemosyne-cli validate-workspace
       - run: mnemosyne-cli verify-generated
+      - run: mnemosyne-cli validate-code-refs   # optional, requires [code_refs] in mnemosyne.toml
 ```
+
+The same three commands are wired into `scripts/install-hooks.sh` as a
+pre-commit gate. Once the citation-defense baseline is clean, promote
+`severity_*` from `warn` to `reject` in `mnemosyne.toml` and the hook
+will block any commit that introduces a hallucinated spec citation.
 
 ## Design Considerations
 
@@ -318,23 +413,94 @@ order is:
 
 ## Roadmap
 
-Mnemosyne is in Phase 0 — design-doc lifecycle. The longer arc extends
-the same atomic-store + frozen-ledger guarantees to other
-markdown-shaped media:
+Mnemosyne's core abstraction — *AI-mutated markdown documents need typed
+invariants to stay safe* — generalizes well beyond design docs. The
+roadmap follows that generalization outward: same primitives (Section /
+CrossRef / ChangelogEntry / FrozenList), same integrity guarantees
+(T1 / T2 / Path B), different schemas on top.
 
-- **Phase 1 (deferred): narrative medium adapter.** A fictional /
-  creative-writing extension — game scripts, character bibles,
-  worldbuilding logs — under the same AI-mutation safety contract.
-  The priority audit ranked this as the first Phase 1 entry.
-  Currently deferred behind completion of the legacy markdown
-  migration carry.
-- **Phase 1.5: cascade-gate full-scale measurement.** Validation that
-  the per-record Salsa cascade pattern scales to the §11 50K-asset
-  workload at the published p95 budget.
+### Phase 0 — Design-doc lifecycle (current)
 
-These items are *registered carries*, not commitments. Phase 0 stack
-stability is the gating criterion; the codebase is honest about what
-works today versus what is named in the audit ledger.
+Production dogfood. Mnemosyne's own design history runs through the
+atomic store; the hardening arc spanning Round 252-272 closed the core
+integrity gaps:
+
+- T1 cross-doc orphan reject with `[[orphan_ledger]]` opt-in carries
+  for legitimate legacy references.
+- Atomic-axis `decision_status` field with author-time + validate-time
+  guards (T1 rule 4 across both axes).
+- Code-citation defense reject mode (`severity_missing` /
+  `severity_binding` = `reject`) gating pre-commit on hallucinated
+  spec references.
+- Bidirectional Spec ↔ Code binding via `Section.implementations` and
+  three-edged set-equality detection
+  (`CitationUnbound` + `ImplementationUnbacked` + `ImplementationMissing`).
+- Atomic ChangelogEntry mutate API with auto-cascade regeneration of
+  `GENERATED.md` on every successful write.
+
+### Phase 1 — Narrative medium adapter
+
+The next adoption surface: long-form fiction, game scripts, TRPG
+campaign notes, worldbuilding wikis, character bibles. These media
+share the same AI-mutation hazard pattern that motivated Phase 0 —
+LLM-driven editing breaks invariants that no compiler enforces — but
+the schema and the primitives change.
+
+Concrete target genres and what Mnemosyne would guard:
+
+- **Long-form fiction draft management.** A character's
+  established eye color in chapter 2 must match chapter 15. A renamed
+  faction shouldn't leave 40 orphan references in unrelated scenes.
+  The atomic-store + T1 invariants lift directly — what changes is
+  the entity schema (Character / Location / Faction / Scene) and the
+  mutate primitives (`set_character_eye_color`,
+  `rename_faction_with_cascade`).
+- **Game scripts (interactive fiction, dialog trees, branching
+  narrative).** Branch targets must resolve. Character dialog schemas
+  must stay consistent across scenes. Conditional flag references
+  (`if metPirateKing`) cannot dangle. Same T1 cross-ref orphan reject,
+  applied to scene graphs instead of section graphs.
+- **TRPG campaign notes.** NPC stat blocks, location backstory, plot
+  beat audit trail. The GM's "what did I rule three sessions ago"
+  problem is exactly the frozen-ledger problem: git history doesn't
+  carry decision provenance, but a ChangelogEntry stream sorted by
+  session number does.
+- **Worldbuilding wikis.** Faction relations, timeline consistency,
+  magic-system constraints. References between articles need orphan
+  reject; "law of magic" changes need frozen-ledger semantics so
+  retroactive edits don't quietly contradict ten earlier chapters.
+- **Character bibles.** Name spelling normalization, age/timeline
+  arithmetic, relationship graph consistency. Identical hazards to a
+  design doc, different fields on the underlying schema.
+
+The Phase 1 priority audit (Round 172) ranked fictional adapter as the
+first Phase 1 entry by a 6.00 / 3.00× margin over alternatives —
+chosen because (a) the AI-mediated authoring workflow already exists
+in this space, (b) the per-asset count fits the workspace-scope JSON
+store without database migration, and (c) the integrity-break failure
+modes are visible to end users (a reader notices when a character's
+eye color contradicts the bible) which keeps the validator's reject
+mode well-calibrated.
+
+Phase 1 is currently *deferred* behind Phase 0 stack stabilization —
+not abandoned. The roadmap is honest about the boundary.
+
+### Phase 1.5 — Cascade-gate full-scale measurement
+
+Validation that the per-record Salsa cascade pattern (currently used
+at workspace scope) scales to the 50K-asset workload at the published
+p95 budget. Substrate carried from the Phase -1A measurement spike
+(under `bench/`, retained as historical baseline). This is the
+infrastructure prerequisite for any narrative-medium adapter that
+manages a novel-scale (~50K facts) workspace efficiently.
+
+### What's not on the roadmap
+
+These items are *registered carries* in the audit ledger, not
+commitments. Phase 0 stack stability is the gating criterion. The
+codebase deliberately separates "what works today and is dogfooded"
+from "what is named in the priority audit" — there is no implication
+that a registered carry will ship on any particular timeline.
 
 ## License
 

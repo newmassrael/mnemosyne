@@ -43,7 +43,7 @@ in. `default_doc` is the cross-doc reference target — when one doc
 mentions `§3` and `§3` doesn't exist locally, the parser looks it up
 under `default_doc` and reclassifies the reference as cross-doc.
 
-Two optional sections customize behavior. Skip them on first run; defaults
+Optional sections customize behavior. Skip them on first run; defaults
 work for design-doc / spec / RFC / ADR style markdown:
 
 ```toml
@@ -59,6 +59,13 @@ max_sentence_length = 250
 [terminology.glossary]
 "JWT" = ["jwt", "Jwt"]
 "OAuth" = ["oauth", "Oauth"]
+
+# Opt into the code-citation defense — see §7 below.
+[code_refs]
+paths = ["src/"]
+severity_missing = "warn"
+severity_binding = "warn"
+comment_only = true
 ```
 
 ## 3. Run `validate-workspace`
@@ -99,26 +106,47 @@ and JSON envelope output suitable for piping into an agent context.
 
 ## 5. Mutate a section through the API
 
-When the AI agent (or you) wants to add a section, append a changelog
-entry, or rewrite a body, use the mutate primitives — they enforce
-atomic round-trip, frozen-ledger jaccard checks, and audit append:
+When the AI agent (or you) wants to set a field on a section, append a
+changelog entry, or record a code binding, use the **atomic mutate
+primitives** — they write to the atomic store and run T1+T2 + the
+author-time guards (e.g. T1 rule 4: a section marked Superseded must
+name its successor) before persisting:
 
 ```bash
-cargo run -p mnemosyne-cli -- append-changelog-entry \
- --doc docs/SPEC.md --entry-id "v1.1" \
- --title "RELEASE-NOTES" --body-file ./entry.md
+# Set a typed Section field (intent / rationale / inputs / outputs / etc.)
+cargo run -p mnemosyne-cli -- set-section-intent \
+ --section §3 --intent "Authentication boundary for browser clients."
 
-cargo run -p mnemosyne-cli -- set-section-body \
- --doc docs/SPEC.md --section "3" --body-file ./section3.md
+cargo run -p mnemosyne-cli -- set-section-rationale \
+ --section §3 --bullet "Cookie-based session preferred over JWT for SSR." \
+ --bullet "Refresh-token rotation handled server-side."
 
-cargo run -p mnemosyne-cli -- add-section \
- --doc docs/SPEC.md --title "New decision" --numbered-id "12" \
- --body-file ./body.md
+# Bind §3 to an implementation file (code-citation defense Path B).
+cargo run -p mnemosyne-cli -- add-section-implementation \
+ --section §3 --file src/auth/session.rs --symbol Session::validate
+
+# Mark a section Superseded — `--superseding` is mandatory (T1 rule 4).
+cargo run -p mnemosyne-cli -- set-section-decision-status-atomic \
+ --section §3 --status superseded --superseding §12
+
+# Append a structured changelog entry (atomic, audit-trail).
+cargo run -p mnemosyne-cli -- append-changelog-entry-v2 \
+ --entry-id "Round 8" --decision "Adopt Argon2id over bcrypt" \
+ --changes-file ./round8-changes.txt \
+ --verification-file ./round8-verification.txt \
+ --impact §3,§7 --carry-file ./round8-carry.txt
 ```
 
-Every mutate command emits a `MutateReceipt` with affected docs,
-validator-path invocations, and round-trip diff count (must be `0`).
-Failures roll back automatically — your file is never left half-written.
+Every mutate command emits a `MutateReceipt` with the primitive name,
+target id, sidecar path, and written bytes. After a successful write,
+the cascade auto-update re-renders `docs/GENERATED.md` so the
+human-readable view stays in sync. Failures roll back atomically — the
+sidecar JSON is never left half-written.
+
+The legacy markdown-surgical primitives (`append-changelog-entry`,
+`set-section-body`, `add-section`) still exist for ad-hoc edits on
+non-atomic workspaces, but new authoring should route through the
+atomic primitives above.
 
 ## 6. Install pre-commit hook (optional)
 
@@ -141,34 +169,52 @@ do not exist, or that point to a Superseded decision — are silent
 corruption of the audit trail. No compiler catches it; `git blame`
 chases the wrong rationale.
 
-The MCP server already exposes the verification primitives:
+Mnemosyne ships a **three-stage defense**, all active by default once
+`[code_refs]` is configured in `mnemosyne.toml`:
+
+**Stage 1 — agent-side verification at write time** (MCP):
 
 - `list_sections` returns every section_id, including changelog entry
- ids like `round-254--<slug>`. Have the agent call this once at
+ ids like `round-254--<slug>`. The agent should call this once at
  session start and cache the set, then prefix-match `round-NNN--`
  before writing any `Round NNN` citation.
 - `query_section(section_id)` returns the SectionView with
  `decision_status`. Use this to distinguish Active from Superseded
- entries; only Active entries should be cited without explicit
- historical-reference framing.
+ entries.
+
+**Stage 2 — `validate-code-refs` reject gate**:
+
+```bash
+cargo run -p mnemosyne-cli -- validate-code-refs
+```
+
+Scans the paths listed in `[code_refs].paths`, extracts `Round NNN` /
+`§N` tokens from comments (`comment_only = true`), and rejects any
+citation whose target is missing from the atomic store. Wired into the
+pre-commit hook via `scripts/install-hooks.sh`. Promote `severity_*`
+from `warn` to `reject` once your baseline is clean.
+
+**Stage 3 — cascade decay scan**:
+
+When a section transitions to `Superseded` or `Removed` via
+`set-section-decision-status-atomic`, the cascade trigger runs a
+`§<id>` scan over `[code_refs].paths` and prints citing locations
+to stderr. `validate-workspace` reports the workspace-wide decay
+surface as an informational line. Stale citations surface immediately;
+the agent's next session can refresh them.
 
 Add a one-line rule to your project's `CLAUDE.md` (or equivalent agent
 instruction file) telling the agent to verify before citing. Mnemosyne's
 own project `CLAUDE.md` carries the example pattern under the *Citation
 hygiene* section.
 
-This is **Stage 1** of a three-stage defense. Stage 2 (pre-commit gate
-that rejects missing or superseded citations) and Stage 3 (cascade
-decay scan when an entry transitions to Superseded) ship in subsequent
-rounds; until then, agent-side verification at write time is the
-primary protection.
-
 ## What's next
 
-- **Schema customization**: see [SCHEMA_GUIDE.md](SCHEMA_GUIDE.md).
-- **Architecture**: see [DESIGN.md](DESIGN.md) §15 (runtime SDK), §39
- (graph schema), §66 (self-application).
-- **Roadmap**: see [ROADMAP.md](ROADMAP.md) — Phase 0e generic library
- extraction (Round 141-151) is the closure round; Phase 1+ adds branch /
- bi-temporal / cascade / saga + the narrative product surface (Novel /
- TRPG / Wiki / Game adapters).
+- **Schema customization**: see [SCHEMA_GUIDE.md](SCHEMA_GUIDE.md) — every
+ `mnemosyne.toml` field, with presets.
+- **Design history**: see [docs/GENERATED.md](GENERATED.md) — the atomic
+ store's rendered view of Mnemosyne's own design decisions
+ (`Round 252-272` is the most recent Phase 0 hardening arc).
+- **Roadmap**: tracked in the atomic store changelog. Phase 1 (narrative
+ medium adapter) is registered as a deferred carry behind Phase 0
+ stabilization.
