@@ -255,11 +255,11 @@ fn print_help(prog: &str) {
  "   Round 259 Path B substrate (Spec ↔ Code binding); validator cross-check is Round 260+"
  );
  println!(
- " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--sidecar <path>] [--json]",
+ " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
  prog
  );
  println!(
- "   Round 265 atomic decision_status setter (Stage B freshness substrate)"
+ "   atomic decision_status setter (Stage B freshness substrate); --superseding required for --status superseded (T1 rule 4 atomic axis)"
  );
  println!(
  " {} remove-section --section §<N> --reason <text> [--sidecar <path>] [--json]",
@@ -1367,7 +1367,40 @@ fn cmd_validate_workspace() -> Result<()> {
  );
  }
 
- // Round 268 — workspace-wide cascade decay surface.
+ // T1 rule 4 (atomic axis) state gate. Walks the atomic store for sections
+ // where decision_status=Some(Superseded) and verifies a superseding cross-
+ // ref exists from that section in any parsed doc. State-based, post-
+ // condition — complements the parser-pair transition check by catching
+ // atomic-only overrides that no markdown prev/curr snapshot would expose.
+ // Some(Removed) is tombstone-exempt (asserts finality, not replacement).
+ let parsed_docs_refs: Vec<&mnemosyne_validator::ParsedDoc> =
+ parsed_docs.iter().map(|(_, doc)| doc).collect();
+ let atomic_supersede_errors = mnemosyne_validator::atomic_section_supersede_state_reject(
+ &validate_workspace_atomic,
+ &parsed_docs_refs,
+ );
+ if !atomic_supersede_errors.is_empty() {
+ for err in &atomic_supersede_errors {
+ if let mnemosyne_validator::ValidationError::SupersedeMissingRef {
+ section_id, ..
+ } = err
+ {
+ eprintln!(
+  "T1 rule 4 (atomic axis): §{} decision_status=Superseded but no \
+   superseding cross-ref (Decision|Impl) found from this section",
+  section_id
+ );
+ }
+ }
+ bail!(
+ "T1 rule 4 (atomic axis): {} section(s) marked Superseded without \
+  superseding cross-ref — add-cross-ref from each, or revert to \
+  Active|Removed",
+ atomic_supersede_errors.len()
+ );
+ }
+
+ // workspace-wide cascade decay surface.
  //
  // Iterates atomic_store.sections for decision_status=Some(Superseded|Removed)
  // and runs scan_section_decay per section. Sums citing locations across

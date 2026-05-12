@@ -594,22 +594,37 @@ pub fn remove_section(
  )
 }
 
-/// Round 265 — atomic decision_status setter (Stage B freshness substrate).
+/// Atomic decision_status setter (Stage B freshness substrate).
 ///
 /// Sets `AtomicSection.decision_status` to `Some(new_status)`. Idempotent
 /// at the value level (re-setting the same status is a no-op write); always
 /// persists to keep mutate semantics uniform with the other primitives.
 ///
-/// Cross-doc T1 rule 4 (active → superseded requires superseding cross-ref)
-/// is enforced at `validate-workspace` time on the markdown-derived
-/// snapshot pair, not at this atomic write — the atomic store is the
-/// authoring surface, validate-workspace is the gate.
+/// T1 rule 4 author-time guard: when `new_status == Superseded`, the
+/// `superseding` argument is mandatory — Superseded by definition forward-
+/// points to a replacement decision, and accepting `None` would permit a
+/// semantically-incoherent state (replaced, but no replacement recorded).
+/// Symmetric with the markdown-axis guard at
+/// `mutate::set_section_decision_status`. `Removed` is tombstone-exempt
+/// (asserts finality, not replacement).
+///
+/// This guard does not validate that the named superseding section_id
+/// exists in the atomic store — cross-ref orphan checking is T1 rule 1's
+/// territory, picked up by `validate-workspace`. This primitive only
+/// enforces presence of the *intent to forward*, mirroring the markdown
+/// axis which also defers existence checking to the validator pass.
 pub fn set_section_decision_status_atomic(
  store: &mut AtomicStore,
  sidecar_path: &Path,
  section_id: &str,
  new_status: DecisionStatus,
+ superseding: Option<&str>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if new_status == DecisionStatus::Superseded && superseding.is_none() {
+ return Err(AtomicMutateError::Validation(
+ "(T1 rule 4, atomic axis): superseding section_id mandatory for active → superseded transition".to_string(),
+ ));
+ }
  store.section_mut(section_id).decision_status = Some(new_status);
  save_with_receipt(
  store,
@@ -1040,7 +1055,13 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- set_section_decision_status_atomic(&mut store, &path, "39", DecisionStatus::Superseded)
+ set_section_decision_status_atomic(
+ &mut store,
+ &path,
+ "39",
+ DecisionStatus::Superseded,
+ Some("40"),
+ )
  .unwrap();
  let raw = std::fs::read_to_string(&path).unwrap();
  assert!(raw.contains("\"decision_status\": \"superseded\""));
@@ -1059,12 +1080,101 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active).unwrap();
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active).unwrap();
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Superseded)
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ .unwrap();
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ .unwrap();
+ set_section_decision_status_atomic(
+ &mut store,
+ &path,
+ "1",
+ DecisionStatus::Superseded,
+ Some("2"),
+ )
  .unwrap();
  assert_eq!(
  store.section("1").unwrap().decision_status,
+ Some(DecisionStatus::Superseded)
+ );
+ }
+
+ #[test]
+ fn set_section_decision_status_atomic_superseded_without_superseding_rejects() {
+ // T1 rule 4 (atomic axis) author-time guard: Superseded transition
+ // without a superseding section_id is a semantically-incoherent state
+ // ("replaced, but no replacement recorded") and must reject at the
+ // mutate boundary. Symmetric with the markdown-axis guard.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_section_decision_status_atomic(
+ &mut store,
+ &path,
+ "39",
+ DecisionStatus::Superseded,
+ None,
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+ assert!(
+  msg.contains("T1 rule 4"),
+  "expected T1 rule 4 attribution in error message, got: {}",
+  msg
+ );
+ assert!(
+  msg.contains("atomic axis"),
+  "expected atomic axis attribution in error message, got: {}",
+  msg
+ );
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ // Atomic store must remain unchanged (no partial write).
+ assert!(store.section("39").is_none() || store.section("39").unwrap().decision_status.is_none());
+ }
+
+ #[test]
+ fn set_section_decision_status_atomic_active_no_superseding_required() {
+ // Active and Removed targets do not require a superseding ref — only
+ // Superseded does. Removed is tombstone-exempt (asserts finality, not
+ // replacement); Active is the default starting state.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ .unwrap();
+ set_section_decision_status_atomic(&mut store, &path, "2", DecisionStatus::Removed, None)
+ .unwrap();
+ assert_eq!(
+ store.section("1").unwrap().decision_status,
+ Some(DecisionStatus::Active)
+ );
+ assert_eq!(
+ store.section("2").unwrap().decision_status,
+ Some(DecisionStatus::Removed)
+ );
+ }
+
+ #[test]
+ fn set_section_decision_status_atomic_superseded_with_superseding_writes() {
+ // Author-time guard accepts any non-None superseding string; existence
+ // checking is rule 1's territory (validate-workspace), not rule 4's.
+ // Symmetric with the markdown-axis guard which also defers existence
+ // checking.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ set_section_decision_status_atomic(
+ &mut store,
+ &path,
+ "39",
+ DecisionStatus::Superseded,
+ Some("40"),
+ )
+ .unwrap();
+ assert_eq!(
+ store.section("39").unwrap().decision_status,
  Some(DecisionStatus::Superseded)
  );
  }

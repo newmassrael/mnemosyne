@@ -263,6 +263,59 @@ pub fn section_decision_status_transition(
  errors
 }
 
+// ============================================================================
+// Rule 4 — atomic-axis state gate (post-condition).
+// ============================================================================
+
+/// Atomic-axis T1 rule 4 state gate.
+///
+/// Walks the atomic store for sections where
+/// `decision_status == Some(Superseded)` and verifies a superseding cross-ref
+/// (`RefKind::Decision` or `RefKind::Impl`) exists from that section in any
+/// parsed doc in the workspace. State-based, not transition-based — the
+/// transition counterpart `section_decision_status_transition` requires a
+/// parser-snapshot pair (prev + curr), which `validate-workspace` does not
+/// have. This state gate catches:
+///
+/// 1. Violations that bypassed the author-time guard at
+///    `atomic::set_section_decision_status_atomic` (e.g. atomic store writes
+///    that predate the guard's introduction).
+/// 2. Atomic-only overrides whose corresponding markdown section never
+///    carried a Superseded marker in any prev snapshot — invisible to the
+///    parser-pair rule 4 walk.
+///
+/// `Some(Removed)` is tombstone-exempt: Removed asserts finality, not
+/// replacement, so demanding a forward-pointer would be a category error.
+/// Symmetric with the markdown-axis rule 4 which only fires on
+/// `Active → Superseded`. The synthesized `prev_status: Active` is the only
+/// legal predecessor under the rule; reusing `SupersedeMissingRef` keeps
+/// downstream consumers schema-stable.
+pub fn atomic_section_supersede_state_reject(
+ store: &crate::atomic::AtomicStore,
+ parsed_docs: &[&ParsedDoc],
+) -> Vec<ValidationError> {
+ let mut errors = Vec::new();
+ for (section_id, atomic_section) in &store.sections {
+ if atomic_section.decision_status != Some(DecisionStatus::Superseded) {
+ continue;
+ }
+ let has_superseding_ref = parsed_docs.iter().any(|doc| {
+ doc.cross_refs.iter().any(|cr| {
+  cr.from_section == *section_id
+  && (cr.ref_kind == RefKind::Decision || cr.ref_kind == RefKind::Impl)
+ })
+ });
+ if !has_superseding_ref {
+ errors.push(ValidationError::SupersedeMissingRef {
+  section_id: section_id.clone(),
+  prev_status: DecisionStatus::Active,
+  curr_status: DecisionStatus::Superseded,
+ });
+ }
+ }
+ errors
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
@@ -678,6 +731,74 @@ mod tests {
  vec![],
  );
  let errors = section_decision_status_transition(&prev, &curr);
+ assert!(errors.is_empty());
+ }
+
+ // ── Atomic-axis rule 4 state gate ───────────────────────────────────
+
+ #[test]
+ fn atomic_rule4_state_gate_superseded_without_ref_rejects() {
+ // Section with atomic decision_status=Some(Superseded) but no
+ // superseding cross-ref in any parsed doc → SupersedeMissingRef.
+ // This is the validate-workspace counterpart to the author-time
+ // guard at atomic::set_section_decision_status_atomic: catches
+ // historical writes that predate the guard and atomic-only
+ // overrides invisible to the parser-pair transition check.
+ let mut store = crate::atomic::AtomicStore::new();
+ store.section_mut("39").decision_status = Some(DecisionStatus::Superseded);
+ let doc = make_doc(vec![], vec![], vec![], vec![]);
+ let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+ assert_eq!(errors.len(), 1);
+ match &errors[0] {
+ ValidationError::SupersedeMissingRef { section_id, .. } => {
+ assert_eq!(section_id, "39");
+ }
+ other => panic!("expected SupersedeMissingRef, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn atomic_rule4_state_gate_superseded_with_ref_passes() {
+ // Superseding cross-ref present in a parsed doc → clean.
+ let mut store = crate::atomic::AtomicStore::new();
+ store.section_mut("39").decision_status = Some(DecisionStatus::Superseded);
+ let doc = make_doc(
+ vec![],
+ vec![],
+ vec![],
+ vec![CrossRef {
+  from_section: "39".to_string(),
+  to_target: "40".to_string(),
+  ref_kind: RefKind::Decision,
+  created_at_changelog_entry: None,
+ }],
+ );
+ let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+ assert!(errors.is_empty());
+ }
+
+ #[test]
+ fn atomic_rule4_state_gate_removed_is_tombstone_exempt() {
+ // Removed asserts finality, not replacement → no superseding ref
+ // required. Symmetric with markdown-axis rule 4 which fires only
+ // on Active → Superseded.
+ let mut store = crate::atomic::AtomicStore::new();
+ store.section_mut("39").decision_status = Some(DecisionStatus::Removed);
+ let doc = make_doc(vec![], vec![], vec![], vec![]);
+ let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+ assert!(errors.is_empty());
+ }
+
+ #[test]
+ fn atomic_rule4_state_gate_active_and_none_skip() {
+ // Some(Active) and default None (no atomic override) are not
+ // rule-4 violations regardless of cross-ref shape.
+ let mut store = crate::atomic::AtomicStore::new();
+ store.section_mut("1").decision_status = Some(DecisionStatus::Active);
+ // section "2" left at default None (no atomic override).
+ store.section_mut("2");
+ let doc = make_doc(vec![], vec![], vec![], vec![]);
+ let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
  assert!(errors.is_empty());
  }
 }

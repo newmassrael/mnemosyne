@@ -45,8 +45,8 @@ pub use schema::{
 pub use parser::{parse_markdown, parse_markdown_with_schema};
 pub use emitter::{compare_typed_facts, emit_markdown, to_github_anchor, RoundTripDiff};
 pub use validator::{
- changelog_entry_append_only, cross_ref_orphan_reject, frozen_list_membership_delta,
- section_decision_status_transition, ValidationError,
+ atomic_section_supersede_state_reject, changelog_entry_append_only, cross_ref_orphan_reject,
+ frozen_list_membership_delta, section_decision_status_transition, ValidationError,
 };
 pub use workspace::Workspace;
 pub use config::{

@@ -540,6 +540,7 @@ pub fn cmd_set_section_decision_status_atomic(
 ) -> Result<()> {
  let mut section: Option<String> = None;
  let mut status_str: Option<String> = None;
+ let mut superseding: Option<String> = None;
  let mut sidecar: Option<String> = None;
  let mut json = false;
  let mut regenerate = true;
@@ -551,6 +552,10 @@ pub fn cmd_set_section_decision_status_atomic(
  }
  "--status" => {
   status_str = Some(iter.next().ok_or_else(|| anyhow!("--status missing"))?.clone())
+ }
+ "--superseding" => {
+  superseding =
+  Some(iter.next().ok_or_else(|| anyhow!("--superseding missing"))?.clone())
  }
  "--sidecar" => {
   sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
@@ -572,10 +577,28 @@ pub fn cmd_set_section_decision_status_atomic(
  other
  ),
  };
+ // T1 rule 4 (atomic axis): --superseding is mandatory for `--status
+ // superseded` and rejected for active|removed (forward-pointer is only
+ // meaningful when the section asserts replacement). Symmetric with the
+ // markdown-axis CLI at `cmd_set_section_decision_status`.
+ if new_status != DecisionStatus::Superseded && superseding.is_some() {
+ bail!(
+ "--superseding is only valid with `--status superseded` (got `--status {}`)",
+ status_raw
+ );
+ }
+ let superseding_strip = superseding
+ .as_deref()
+ .map(|s| strip_section_prefix(s));
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
- let mutate_result =
- set_section_decision_status_atomic(&mut store, &sidecar_path, &section, new_status);
+ let mutate_result = set_section_decision_status_atomic(
+ &mut store,
+ &sidecar_path,
+ &section,
+ new_status,
+ superseding_strip.as_deref(),
+ );
 
  // Round 266 — auto-cascade trigger (Stage B freshness). When the new
  // status is Superseded or Removed, run a targeted §<id> decay scan
