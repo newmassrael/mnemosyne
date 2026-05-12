@@ -63,14 +63,30 @@ max_section_body_length = 5000
 "bi-temporal" = ["bitemporal"]
 
 # Round 263 — code citation defense full reject. Path scope = production
-# `src/` only (tests/ excluded — Round 264 carry, tests carry intentional
-# Round NNN fixture data that needs different handling). Both severities
-# promoted to "reject" after Round 263 cleanup brought src/ surface to 0:
+# `src/` only. Both severities at "reject" after Round 263 cleanup brought
+# src/ surface to 0:
 # - 8 ImplementationUnbacked → §slug binding markers added
 # - 192 src/ hallucination violations → comment-only sed transforms
 #   (Round NNN + legacy §digit tokens dropped, design rationale prose
 #   preserved) plus extractor improvements (placeholder + backtick skip).
 # `comment_only = true` keeps the Round 262 precision layer.
+#
+# Round 264 — tests/ permanent exclusion (policy decision, not deferral).
+# tests/ doc-comments and src/ comments are different assets:
+# - src/ comments = future-change rationale; hallucinated round refs cause
+#   silent corruption (a future reader edits code on bogus authority).
+# - tests/ comments = traceability anchors ("this assertion was added in
+#   Round N to guard regression X"); legitimate round-citation density is
+#   higher and the corruption risk is lower (tests verify behavior, they
+#   don't carry decision authority forward).
+# Empirical Option D dry-run (Round 264) measured 373 violations across 35
+# test files — all real comment citations (comment_only correctly excluded
+# fixture string literals). Forcing the same automation onto tests/ would
+# either bloat orphan_ledger by ~100-373 rows (diluting the ledger's "real
+# exception" semantics) or strip prose-meaningful traceability anchors.
+# tests/ stays out of [code_refs].paths; review-time human judgment carries
+# the residual policing duty. Cross-asset symmetry is sacrificed deliberately
+# in favor of single-responsibility per asset class.
 [code_refs]
 paths = [
  "crates/mnemosyne-cascade/src/",

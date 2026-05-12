@@ -390,3 +390,37 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 264 — code-citation defense closure — tests/ permanent exclusion (asset-class asymmetry: src/ rationale vs tests/ traceability) + legacy Round 1-251 stay in git log (Option α, time-integrity over external completeness); empirical Option D dry-run measured 373 tests/ violations confirming Option A would dilute orphan_ledger semantics; mnemosyne.toml header rewritten as positive policy, not deferral
+
+**Changes**:
+- tests/ scope = permanent exclusion (policy ratify, not deferral). [code_refs].paths stays at crates/*/src/ only; the asset-class asymmetry between src/ (rationale-bearing) and tests/ (traceability-bearing) makes one-size automation a worse outcome than per-asset judgment.
+- Empirical Option D dry-run measured the tests/ surface: 373 violations across 35 test files (248 [missing] Round NNN + 125 [section_missing] §X), all real comment citations under comment_only=true. Top concentration at style_re_audit_full_scale.rs (103) — doc-comment tables citing legacy Round 155-160 design-budget rationale.
+- Option A (paths += tests/, register all in orphan_ledger) was rejected because injecting ~100-373 rows into the ledger would dilute its "real exception" semantics — the ledger becomes a residue dump, future readers lose signal vs noise, and config audit value drops.
+- Legacy Round 1-251 retroactive-absorb (Track 2): Option α ratified — git log carries 1-251 honestly, atomic store starts at Round 252 (post-MD-DELETION re-anchor). The Round 252 boundary itself is audit information; β/γ would have been external completeness at the cost of time-integrity (post-hoc fabrication of decisions that did not happen at the timestamps they claim).
+- mnemosyne.toml [code_refs] header rewritten to document the Round 264 tests/ exclusion as positive policy (not "deferred" wording). The asset-class rationale now lives in the config comment so future auditors can reconstruct the decision.
+
+
+
+**Verification**:
+- Empirical measurement: tests/ added to [code_refs].paths under warn-mode; validate-code-refs surfaced 373 violations / 35 files. Distribution: top 10 files = 268/373 (72% concentration).
+- Sampling confirmed comment_only=true correctly excluded fixture string literals — every surfaced violation is a real comment citation, same nature as src/ pre-Round-263.
+- mnemosyne.toml restored to Round 263 baseline post-measurement; src/ surface remains 0 under reject mode.
+- cargo run --release -p mnemosyne-cli -- validate-code-refs PASS: total=0 missing=0 section_missing=0 citation_unbound=0 impl_unbacked=0 decay=0.
+- cargo run --release -p mnemosyne-cli -- validate-workspace PASS: docs=1/1, T1 orphan=0, round-trip mandatory=1/1, T3 reject=0.
+- cargo test --release --workspace PASS — no regression on the 478 baseline tests.
+
+
+
+**Impact**: §code-citation-defense
+
+
+**Carry forward**:
+- code-citation defense line closed at Round 264. Subsequent rounds (265+) move to schema/precision tracks: AtomicSection.decision_status atomic-field extension (Stage B freshness, blocks auto-cascade trigger), validator-time enforcement that every Active section has realistic coverage.
+- tests/ permanent exclusion is policy, not deferral; future re-evaluation only if asset class equivalence changes (e.g., test doc-comments start carrying production rationale).
+- Legacy Round 1-251 stay in git log only; atomic store starts at Round 252. Anyone needing pre-252 rationale grep git history. Do not re-open retroactive absorb without a concrete failure mode of the current α policy.
+- v1 comment-only stripper limitations carry — raw strings, triple-quoted, shell heredocs (deferred until empirical bite).
+- formatted-marker [code_refs] require_marker = true option deferred until empirical need surfaces.
+- Tree-sitter language-aware extraction, fuzzy file match ranking/dedup, verify_round_citation MCP tool — deferred (no friction observed in two-call dance).
+
+
+
