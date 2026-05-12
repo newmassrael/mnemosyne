@@ -475,7 +475,13 @@ fn is_external_section_cite(line_before_sigil: &str, prefixes: &[String]) -> boo
  .map(|i| i + 1)
  .unwrap_or(0);
  let prev_token = &before_last[prev_token_start..];
- prefixes.iter().any(|p| p == prev_token)
+ // Round 281 Bug #5A — strip leading non-alphanumeric punctuation
+ // (`(RFC`, `[RFC`, `"RFC`, …) before the verbatim compare. Comment
+ // prose commonly wraps the standard reference in parens/brackets/
+ // quotes — `(RFC 791 §3.1)` — and the prefix compare must still hit
+ // the bare `RFC` form registered in config.
+ let prev_clean = prev_token.trim_start_matches(|c: char| !c.is_alphanumeric());
+ prefixes.iter().any(|p| p == prev_clean)
 }
 
 fn is_section_id_char(c: char) -> bool {
@@ -2551,6 +2557,69 @@ mod tests {
  let prefixes = vec!["RFC".to_string()];
  let out = extract_section_citations_v2("// RFC2131\u{00a7}3 inline form\n", &prefixes);
  assert_eq!(out, vec![(1, "3".to_string())]);
+ }
+
+ // Round 281 Bug #5A — surrounding punctuation must not block the
+ // external-prefix verbatim match. Comment prose commonly wraps the
+ // standard reference in parens / brackets / quotes.
+
+ #[test]
+ fn extract_v2_skips_paren_prefixed_rfc() {
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2(
+ "// fragmentation fields (RFC 791 \u{00a7}3.1) per spec\n",
+ &prefixes,
+ );
+ assert!(
+ out.is_empty(),
+ "(RFC 791) form must be skipped; got: {:?}",
+ out
+ );
+ }
+
+ #[test]
+ fn extract_v2_skips_bracket_prefixed_rfc() {
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2(
+ "// see [RFC 793 \u{00a7}3.9] for retransmit semantics\n",
+ &prefixes,
+ );
+ assert!(out.is_empty(), "[RFC 793] form must be skipped; got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v2_skips_quote_prefixed_rfc() {
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2(
+ "// per \"RFC 2131 \u{00a7}3.4\" the client retransmits\n",
+ &prefixes,
+ );
+ assert!(out.is_empty(), "\"RFC 2131\" form must be skipped; got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v2_bare_rfc_form_still_skipped() {
+ // Regression for the original Round 277 form — punctuation strip must
+ // not regress the bare-token case.
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2(
+ "// RFC 2131 \u{00a7}3.5 client behavior\n",
+ &prefixes,
+ );
+ assert!(out.is_empty(), "bare RFC form must stay skipped; got: {:?}", out);
+ }
+
+ #[test]
+ fn is_external_section_cite_strips_leading_punctuation() {
+ let prefixes = vec!["RFC".to_string()];
+ // Unit-level coverage of the prev_token cleanse.
+ assert!(is_external_section_cite("(RFC 791 ", &prefixes));
+ assert!(is_external_section_cite("[RFC 793 ", &prefixes));
+ assert!(is_external_section_cite("\"RFC 2131 ", &prefixes));
+ assert!(is_external_section_cite("«RFC 826 ", &prefixes));
+ assert!(is_external_section_cite("RFC 3927 ", &prefixes));
+ // Negative: random suffix on the prefix word should still miss.
+ assert!(!is_external_section_cite("RFCs 791 ", &prefixes));
  }
 
  #[test]

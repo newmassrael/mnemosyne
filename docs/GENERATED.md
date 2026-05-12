@@ -915,3 +915,34 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 281 — Bug #5A fix — external prefix verbatim 비교 전 surrounding punctuation strip. (RFC 791 §3.1) / [RFC 793] / "RFC 2131" 모두 skip 통과. tc8-harness Phase E 의 275 RFC FP 잔여 중 5A subset 해소. 560 tests / 0 failure.
+
+**Changes**:
+- is_external_section_cite: prev_token 의 leading non-alphanumeric strip 후 prefixes 와 verbatim 비교
+- (RFC 791 §3.1) / [RFC 793 §3.9] / "RFC 2131 §3.4" / «RFC ...» 형태 모두 skip 통과
+- bare RFC NNN §X (R277 form) 회귀 영향 없음 — 같은 trim_start_matches 가 변경 없는 case 통과
+- 5B (multi-line continuation) / 5C (literal RFC 누락) 는 R281 미포함 — style guidance + Phase 1B carry
+
+
+
+**Verification**:
+- cargo test --workspace 560 passed / 0 failed (R280 555 + 5 신규)
+- code_refs::tests 신규: paren/bracket/quote prefixed + bare 회귀 + unit punctuation strip
+- self-application 영향 없음 — Mnemosyne 코멘트는 (RFC ...) form 없음, validate-workspace 동일
+- tc8-harness Phase E baseline 275 RFC FP 의 5A subset 해소 예상 — 잔여 5B/5C 는 별 트랙
+
+
+
+**Impact**: §code-citation-defense
+
+
+**Carry forward**:
+- Bug #5B (multi-line continuation) — README 의 style guidance 추가 권장 (canonical RFC NNN §X.Y inline)
+- Bug #5C (literal RFC 누락) — 5B 변종, code-style 문제, R281 미해소 carry
+- Multi-token external prefixes (TR_SOMEIP / AUTOSAR_SWS / ETSI TS) — Phase 1B carry
+- trailing punctuation handling (RFC 791) — leading strip 만 함, trailing 은 numeric 검사가 reject
+- tc8-harness Phase F (severity reject 승격) 진입 — R281 적용 후 baseline 재측정 권장
+- ScanOptions struct 리팩터 carry / Phase 0 carry (R271/R270+/R268/R267) 유지
+
+
+
