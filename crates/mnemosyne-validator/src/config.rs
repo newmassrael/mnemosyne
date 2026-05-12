@@ -280,6 +280,27 @@ pub struct CodeRefsSection {
  /// match.
  #[serde(default)]
  pub external_section_prefixes: Vec<String>,
+
+ /// Round 284 — External-standard *doc-name* prefixes (Phase 1A P1).
+ ///
+ /// Separate axis for standards identified by document *short name*
+ /// rather than numeric document number — AUTOSAR family
+ /// (`"TR_SOMEIP"`, `"SOMEIPSD"`, `"SWS_SD"`), 3GPP / ETSI doc-name
+ /// references, etc. Citation form is `<PREFIX> §<id>` (no numeric
+ /// between prefix and sigil): e.g., `// TR_SOMEIP §6.7.4.2.4`.
+ ///
+ /// Kept distinct from `external_section_prefixes` (numeric mode) so
+ /// users *explicitly opt into* the bare form per prefix — guards
+ /// against generic-sounding tokens (`"AUTOSAR"`) silently skipping
+ /// internal `§<id>` citations on prose lines that happen to mention
+ /// the standard name. Same prefix may be registered in both axes if
+ /// the standard supports both citation forms; matching tries both.
+ ///
+ /// Empty list = bare-prefix axis disabled. Existing
+ /// `external_section_prefixes` users (R277 / R281) are unaffected —
+ /// the numeric-mode key keeps its meaning.
+ #[serde(default)]
+ pub external_section_prefixes_bare: Vec<String>,
 }
 
 fn default_severity_reject() -> String {

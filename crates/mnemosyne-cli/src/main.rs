@@ -20,7 +20,7 @@ use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
  add_cross_ref, add_section, append_changelog_entry, check_style,
- code_refs::{scan_paths_bidirectional_v3, CodeRefViolation, ViolationKind},
+ code_refs::{scan_paths_bidirectional_v4, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
@@ -1991,7 +1991,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
- let violations = scan_paths_bidirectional_v3(
+ let violations = scan_paths_bidirectional_v4(
  &root,
  &cfg.paths,
  &prefix,
@@ -2001,8 +2001,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  cfg.comment_only,
  &cfg.inventory_prefixes,
  &cfg.external_section_prefixes,
+ &cfg.external_section_prefixes_bare,
  )
- .context("scan_paths_bidirectional_v3 failed")?;
+ .context("scan_paths_bidirectional_v4 failed")?;
 
  // missing / section_missing / citation_unbound / impl_unbacked / decay
  // / impl_missing / inventory_missing / inventory_deprecated
@@ -2074,6 +2075,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "valid_inventory_count": store.inventory_entries.len(),
  "inventory_prefixes": cfg.inventory_prefixes,
  "external_section_prefixes": cfg.external_section_prefixes,
+ "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
  "missing_count": missing_count,
  "section_missing_count": section_missing_count,
  "citation_unbound_count": citation_unbound_count,
@@ -2104,8 +2106,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  }
  if !cfg.external_section_prefixes.is_empty() {
  println!(
- "external_section_prefixes={:?} (Round 277 P1 skip)",
+ "external_section_prefixes={:?} (Round 277 numeric mode)",
  cfg.external_section_prefixes
+ );
+ }
+ if !cfg.external_section_prefixes_bare.is_empty() {
+ println!(
+ "external_section_prefixes_bare={:?} (Round 284 doc-name mode)",
+ cfg.external_section_prefixes_bare
  );
  }
  if let Some(ref fid) = filter_id {

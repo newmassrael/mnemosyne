@@ -317,28 +317,37 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// char outside the token shape.
 ///
 /// Pre-Round-277 caller convenience — delegates to
-/// [`extract_section_citations_v2`] with an empty `external_prefixes`
-/// slice (external-skip disabled, identical to the v1 behavior).
+/// [`extract_section_citations_v3`] with empty external-prefix slices
+/// (external-skip disabled, identical to the v1 behavior).
 pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
- extract_section_citations_v2(content, &[])
+ extract_section_citations_v3(content, &[], &[])
 }
 
-/// Round 277 — `§<id>` extractor with external-standard skip
-/// (Phase 1A P1).
-///
-/// Same surface as [`extract_section_citations`] plus an
-/// `external_prefixes` parameter. When the `§` sigil is preceded on the
-/// same line by `<prefix> <numeric>` + whitespace (where `prefix` ∈
-/// `external_prefixes` and `numeric` is digits+dots), the citation is
-/// treated as an external-standard reference (`RFC 2131 §3.5`,
-/// `IEEE 802.3 §2.4`, `ISO/IEC 14882 §1.5`) and skipped — the spec
-/// layer only validates internal `§<id>` citations against the
-/// atomic store.
-///
-/// Empty `external_prefixes` = external-skip disabled (back-compat).
+/// Round 277 — `§<id>` extractor with external-standard numeric-mode
+/// skip. Delegates to [`extract_section_citations_v3`] with empty
+/// `prefixes_bare` slice (numeric-mode only, identical to the R277/R281
+/// behavior).
 pub fn extract_section_citations_v2(
  content: &str,
  external_prefixes: &[String],
+) -> Vec<(usize, String)> {
+ extract_section_citations_v3(content, external_prefixes, &[])
+}
+
+/// Round 284 — `§<id>` extractor with two external-skip axes:
+/// *numeric* (RFC / IEEE / ISO/IEC, `<PREFIX> <NUMERIC> §<id>`) and
+/// *bare* (AUTOSAR family, `<PREFIX> §<id>` without numeric).
+///
+/// The two axes are independent — same prefix may appear in both if the
+/// standard supports both forms; matching tries the axis that applies
+/// based on the shape of the token preceding `§`.
+///
+/// Empty slices = the corresponding axis disabled. Both empty = no
+/// external skip, equivalent to [`extract_section_citations`].
+pub fn extract_section_citations_v3(
+ content: &str,
+ external_prefixes_numeric: &[String],
+ external_prefixes_bare: &[String],
 ) -> Vec<(usize, String)> {
  let mut out = Vec::new();
  for (line_idx, line) in content.lines().enumerate() {
@@ -361,10 +370,16 @@ pub fn extract_section_citations_v2(
  if c != '§' {
  continue;
  }
- // Round 277 — external-standard context check. Skip if the §
- // is preceded (same line) by `<prefix> <numeric>`.
- if !external_prefixes.is_empty()
- && is_external_section_cite(&line[..i], external_prefixes)
+ // Round 277/284 — external-standard context check. Skip if
+ // the § is preceded (same line) by either numeric-mode
+ // `<prefix> <numeric>` or bare-mode `<prefix>` (with leading
+ // punctuation strip from R281).
+ if (!external_prefixes_numeric.is_empty() || !external_prefixes_bare.is_empty())
+ && is_external_section_cite(
+ &line[..i],
+ external_prefixes_numeric,
+ external_prefixes_bare,
+ )
  {
  continue;
  }
@@ -431,41 +446,60 @@ pub fn extract_section_citations_v2(
  out
 }
 
-/// Round 277 — detect external-standard context preceding a `§` sigil.
+/// Round 277 + 284 — detect external-standard context preceding a `§`
+/// sigil.
 ///
-/// Returns `true` when `line_before_sigil` (the byte slice from line
-/// start up to but not including the `§` char) ends in
-/// `<prefix> <numeric>` form. `numeric` may be digits, dots, or a
-/// mix (`2131`, `802.3`, `14882`); the prefix is matched verbatim
-/// against `prefixes` (case-sensitive).
+/// Two recognized forms, mutually exclusive on the shape of the token
+/// immediately before the `§`:
 ///
-/// Limited to single-token prefixes in v1 — `"ETSI TS"` is *not*
-/// matched as a 2-token prefix. Users with rare multi-token prefixes
+/// - **Numeric mode** (R277): `<prefix> <numeric> §<id>` where
+/// `<numeric>` is digits + dots (`2131`, `802.3`, `14882`). Prefix
+/// matched verbatim against `prefixes_numeric` after punctuation
+/// strip (R281). Used by RFC / IEEE / ISO/IEC.
+/// - **Bare mode** (R284): `<prefix> §<id>` — no numeric between
+/// prefix and sigil. Prefix matched verbatim against
+/// `prefixes_bare` after punctuation strip. Used by AUTOSAR family
+/// (TR_SOMEIP, SOMEIPSD, SWS_SD) and other doc-name-only standards.
+///
+/// Mode selection is by *last token shape*: if the last token (closest
+/// to the sigil) is numeric, the numeric path runs; otherwise the bare
+/// path runs. The two axes are independent — same prefix may be
+/// registered in both if the standard supports both forms; matching
+/// tries the relevant axis.
+///
+/// Multi-token prefixes (e.g., `"ETSI TS"`) are not v1 — only the last
+/// non-whitespace token before the trigger is consulted. Workaround:
 /// register the trailing token (`"TS"`) as a slightly looser match.
-fn is_external_section_cite(line_before_sigil: &str, prefixes: &[String]) -> bool {
- // The contract is `<prefix><sp><numeric><sp>§`, so the slice before
- // the sigil must end in whitespace; otherwise this is an inline
- // reference like `RFC2131§3` which is not the recognized form.
+fn is_external_section_cite(
+ line_before_sigil: &str,
+ prefixes_numeric: &[String],
+ prefixes_bare: &[String],
+) -> bool {
+ // Both forms require whitespace between the trigger and the sigil;
+ // otherwise this is an inline reference (`RFC2131§3`) which is not
+ // the recognized form.
  let trimmed = line_before_sigil.trim_end();
  if trimmed.len() == line_before_sigil.len() {
  return false;
  }
- // Last token = the numeric. Must be all digits + dots and contain
- // at least one digit.
  let last_token_start = trimmed
  .rfind(char::is_whitespace)
  .map(|i| i + 1)
  .unwrap_or(0);
  let last_token = &trimmed[last_token_start..];
- if last_token.is_empty()
- || !last_token
- .chars()
- .all(|c| c.is_ascii_digit() || c == '.')
- || !last_token.chars().any(|c| c.is_ascii_digit())
- {
+ if last_token.is_empty() {
  return false;
  }
- // Previous token = the prefix word. Must match `prefixes` verbatim.
+ let last_is_numeric = last_token
+ .chars()
+ .all(|c| c.is_ascii_digit() || c == '.')
+ && last_token.chars().any(|c| c.is_ascii_digit());
+
+ if last_is_numeric {
+ // Numeric mode (R277). Prev token must match prefixes_numeric.
+ if prefixes_numeric.is_empty() {
+ return false;
+ }
  let before_last = trimmed[..last_token_start].trim_end();
  if before_last.is_empty() {
  return false;
@@ -475,13 +509,16 @@ fn is_external_section_cite(line_before_sigil: &str, prefixes: &[String]) -> boo
  .map(|i| i + 1)
  .unwrap_or(0);
  let prev_token = &before_last[prev_token_start..];
- // Round 281 Bug #5A — strip leading non-alphanumeric punctuation
- // (`(RFC`, `[RFC`, `"RFC`, …) before the verbatim compare. Comment
- // prose commonly wraps the standard reference in parens/brackets/
- // quotes — `(RFC 791 §3.1)` — and the prefix compare must still hit
- // the bare `RFC` form registered in config.
  let prev_clean = prev_token.trim_start_matches(|c: char| !c.is_alphanumeric());
- prefixes.iter().any(|p| p == prev_clean)
+ prefixes_numeric.iter().any(|p| p == prev_clean)
+ } else {
+ // Bare mode (R284). Last token itself must match prefixes_bare.
+ if prefixes_bare.is_empty() {
+ return false;
+ }
+ let last_clean = last_token.trim_start_matches(|c: char| !c.is_alphanumeric());
+ prefixes_bare.iter().any(|p| p == last_clean)
+ }
 }
 
 fn is_section_id_char(c: char) -> bool {
@@ -990,11 +1027,10 @@ pub fn scan_paths_bidirectional_v2(
 }
 
 /// Round 277 — Phase 1A scanner with inventory axis + external-standard
-/// `§<id>` skip. When `external_section_prefixes` is non-empty, `§<id>`
-/// citations preceded by `<prefix> <numeric>` (`RFC 2131 §3.5`,
-/// `IEEE 802.3 §2.4`, `ISO/IEC 14882 §1.5`) are suppressed before the
-/// `SectionMissing` / `CitationUnbound` checks fire. Empty slice
-/// reproduces v2 behavior verbatim.
+/// numeric-mode `§<id>` skip. Delegates to
+/// [`scan_paths_bidirectional_v4`] with an empty
+/// `external_section_prefixes_bare` slice — back-compat shim for
+/// callers from R277 / R281.
 pub fn scan_paths_bidirectional_v3(
  workspace_root: &Path,
  paths: &[String],
@@ -1005,6 +1041,36 @@ pub fn scan_paths_bidirectional_v3(
  comment_only: bool,
  inventory_prefixes: &[String],
  external_section_prefixes: &[String],
+) -> std::io::Result<Vec<CodeRefViolation>> {
+ scan_paths_bidirectional_v4(
+ workspace_root,
+ paths,
+ prefix,
+ store,
+ orphan_ledger,
+ filter_id,
+ comment_only,
+ inventory_prefixes,
+ external_section_prefixes,
+ &[],
+ )
+}
+
+/// Round 284 — scanner with two external-standard `§<id>` axes:
+/// *numeric* (R277 form, `<PREFIX> <NUMERIC> §<id>`) and *bare*
+/// (R284 form, `<PREFIX> §<id>` doc-name only). The two axes are
+/// independent; an empty slice disables the corresponding axis.
+pub fn scan_paths_bidirectional_v4(
+ workspace_root: &Path,
+ paths: &[String],
+ prefix: &str,
+ store: &AtomicStore,
+ orphan_ledger: &[OrphanLedgerEntry],
+ filter_id: Option<&str>,
+ comment_only: bool,
+ inventory_prefixes: &[String],
+ external_section_prefixes_numeric: &[String],
+ external_section_prefixes_bare: &[String],
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  let valid_entry_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
  let section_id_set = store.atomic_section_id_set();
@@ -1083,9 +1149,11 @@ pub fn scan_paths_bidirectional_v3(
  if filter_id.is_some() {
  continue;
  }
- for (line, section_id) in
- extract_section_citations_v2(&content, external_section_prefixes)
- {
+ for (line, section_id) in extract_section_citations_v3(
+ &content,
+ external_section_prefixes_numeric,
+ external_section_prefixes_bare,
+ ) {
  // Ledger suppression — if (file, id) is explicitly registered
  // as a known-stale code citation, treat as if the binding were
  // correct (record in `cited_by` so step 3 doesn't double-fire).
@@ -2612,14 +2680,139 @@ mod tests {
  #[test]
  fn is_external_section_cite_strips_leading_punctuation() {
  let prefixes = vec!["RFC".to_string()];
- // Unit-level coverage of the prev_token cleanse.
- assert!(is_external_section_cite("(RFC 791 ", &prefixes));
- assert!(is_external_section_cite("[RFC 793 ", &prefixes));
- assert!(is_external_section_cite("\"RFC 2131 ", &prefixes));
- assert!(is_external_section_cite("«RFC 826 ", &prefixes));
- assert!(is_external_section_cite("RFC 3927 ", &prefixes));
+ // Unit-level coverage of the prev_token cleanse (numeric mode).
+ assert!(is_external_section_cite("(RFC 791 ", &prefixes, &[]));
+ assert!(is_external_section_cite("[RFC 793 ", &prefixes, &[]));
+ assert!(is_external_section_cite("\"RFC 2131 ", &prefixes, &[]));
+ assert!(is_external_section_cite("«RFC 826 ", &prefixes, &[]));
+ assert!(is_external_section_cite("RFC 3927 ", &prefixes, &[]));
  // Negative: random suffix on the prefix word should still miss.
- assert!(!is_external_section_cite("RFCs 791 ", &prefixes));
+ assert!(!is_external_section_cite("RFCs 791 ", &prefixes, &[]));
+ }
+
+ // Round 284 — bare-prefix (doc-name) mode tests. AUTOSAR family
+ // (TR_SOMEIP / SOMEIPSD / SWS_SD) lacks a numeric document number,
+ // so the prefix sits directly before the sigil: `<PREFIX> §<id>`.
+
+ #[test]
+ fn extract_v3_skips_bare_tr_someip() {
+ let bare = vec!["TR_SOMEIP".to_string()];
+ let out = extract_section_citations_v3(
+ "// drives a Nack with TTL=0 (TR_SOMEIP \u{00a7}6.7.4.2.4).\n",
+ &[],
+ &bare,
+ );
+ assert!(out.is_empty(), "TR_SOMEIP bare form must skip; got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v3_skips_bare_someipsd() {
+ let bare = vec!["SOMEIPSD".to_string()];
+ let out = extract_section_citations_v3(
+ "// multicast reply per SOMEIPSD \u{00a7}6.7.5.2 path\n",
+ &[],
+ &bare,
+ );
+ assert!(out.is_empty(), "SOMEIPSD bare form must skip; got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v3_skips_paren_wrapped_bare_prefix() {
+ // R281 leading-punct strip applies in bare mode too.
+ let bare = vec!["AUTOSAR".to_string()];
+ let out = extract_section_citations_v3(
+ "// wire format (AUTOSAR \u{00a7}7.3) over UDP\n",
+ &[],
+ &bare,
+ );
+ assert!(
+ out.is_empty(),
+ "(AUTOSAR §X) form must skip in bare mode; got: {:?}",
+ out
+ );
+ }
+
+ #[test]
+ fn extract_v3_bare_mode_negative_unregistered_prefix() {
+ // Internal §X.Y must surface when the preceding word is not in
+ // the bare-prefix registry.
+ let bare = vec!["TR_SOMEIP".to_string()];
+ let out = extract_section_citations_v3(
+ "// see FOO \u{00a7}4.2.4 internal cite\n",
+ &[],
+ &bare,
+ );
+ assert_eq!(out, vec![(1, "4.2.4".to_string())]);
+ }
+
+ #[test]
+ fn extract_v3_numeric_and_bare_axes_independent() {
+ // `RFC 791 §3.1` (numeric) + `TR_SOMEIP §6.7.4.2.4` (bare) on the
+ // same line, both registered in their respective axes → both skip.
+ let numeric = vec!["RFC".to_string()];
+ let bare = vec!["TR_SOMEIP".to_string()];
+ let out = extract_section_citations_v3(
+ "// RFC 791 \u{00a7}3.1 and TR_SOMEIP \u{00a7}6.7.4.2.4 both\n",
+ &numeric,
+ &bare,
+ );
+ assert!(out.is_empty(), "both forms must skip; got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v3_numeric_mode_unaffected_by_bare_registration() {
+ // R277 / R281 regression: numeric path keeps working when only the
+ // numeric axis is registered; an empty bare slice must not change
+ // semantics for the numeric path.
+ let numeric = vec!["RFC".to_string()];
+ let out =
+ extract_section_citations_v3("// RFC 2131 \u{00a7}3.5 client\n", &numeric, &[]);
+ assert!(out.is_empty(), "numeric RFC path must keep working; got: {:?}", out);
+ }
+
+ #[test]
+ fn is_external_section_cite_bare_mode_strips_leading_punctuation() {
+ let bare = vec!["TR_SOMEIP".to_string()];
+ // Unit-level coverage of the bare-mode strip + verbatim match.
+ assert!(is_external_section_cite("// (TR_SOMEIP ", &[], &bare));
+ assert!(is_external_section_cite("// [TR_SOMEIP ", &[], &bare));
+ assert!(is_external_section_cite("per TR_SOMEIP ", &[], &bare));
+ // Negative: unregistered word.
+ assert!(!is_external_section_cite("// FOO ", &[], &bare));
+ // Negative: numeric mode trigger with empty numeric axis.
+ assert!(!is_external_section_cite("RFC 791 ", &[], &bare));
+ }
+
+ #[test]
+ fn scan_v4_bare_external_skips_section_missing() {
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// drives Nack (TR_SOMEIP \u{00a7}6.7.4.2.4) per spec\n",
+ )
+ .unwrap();
+ let store = AtomicStore::new();
+ let bare = vec!["TR_SOMEIP".to_string()];
+ let v = scan_paths_bidirectional_v4(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &[],
+ &[],
+ &bare,
+ )
+ .unwrap();
+ assert!(
+ v.is_empty(),
+ "bare-mode TR_SOMEIP cite must be skipped; got: {:?}",
+ v
+ );
  }
 
  #[test]

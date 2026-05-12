@@ -898,6 +898,37 @@
         "TC8 어댑션 측: R283 install 후 65 impl_unbacked 정리 가능 (typed primitive 경로 확보)",
         "Phase 0 carry held — R271/R270+/R268/R267 / multi-token external prefix / ScanOptions"
       ]
+    },
+    "Round 284": {
+      "decision_summary": "Bug #7 fix — external_section_prefixes_bare 신설 (옵션 D namespace 분리). AUTOSAR family (<PREFIX> §<id>) doc-name 모드. numeric/bare 두 axis 독립, opt-in 명시. extract_v3 + scan_v4 wrapper chain. 573 tests / 0 failure.",
+      "changes_bullets": [
+        "config.rs: [code_refs].external_section_prefixes_bare Vec<String> default empty",
+        "is_external_section_cite: mode 1 (numeric, R277) + mode 2 (bare, R284) mutually exclusive via last_token shape",
+        "mode 2: <PREFIX> §<id> form (TR_SOMEIP / SOMEIPSD / SWS_SD / AUTOSAR family)",
+        "R281 leading-punct strip 가 양 mode 모두 적용 — (TR_SOMEIP §X.Y) 자연 skip",
+        "extract_section_citations_v3 신설 + v2 가 v3(empty bare) 위임 (R281 caller 무영향)",
+        "scan_paths_bidirectional_v4 신설 + v3 가 v4(empty bare) 위임",
+        "main.rs: cmd_validate_code_refs 가 v4 호출 + JSON/text 출력 양 axis surface",
+        "SCHEMA_GUIDE: 새 섹션 \"External standard prefix kinds\" + AUTOSAR generic-token risk 경고"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 573 passed / 0 failed (R283 565 + 8 신규 R284)",
+        "code_refs::tests 신규: bare TR_SOMEIP / SOMEIPSD / paren-wrap / negative / numeric+bare 독립 / numeric 회귀 / unit punct strip / scan_v4 통합",
+        "CLI smoke: RFC numeric / TR_SOMEIP bare / SOMEIPSD bare → all skip; (AUTOSAR §) 미등록 정상 fire",
+        "self-application 영향 없음 — Mnemosyne 자체 mnemosyne.toml 변경 없음 (entries=30 동일)",
+        "API surface: v3 wrapper 보존 (R277/R281 callers 무영향), v4 = 본체"
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "TC8 어댑션 Phase E 의 38 AUTOSAR-family FP 예상 해소 (TR_SOMEIP / SOMEIPSD / SWS_SD bare 등록)",
+        "옵션 D 채택 정당화: namespace 분리로 generic-token risk 가시화, future-extensibility, axis 일관성",
+        "v1/v2/v3/v4 wrapper chain 길어짐 — Phase 1B ScanOptions struct refactor carry 강화",
+        "Multi-token prefix (ETSI TS, IETF draft-id) — namespace 추가 패턴 사용, empirical bite 후 carry",
+        "Phase F (severity_missing reject 승격) 진입 가능 — Bug #7 마지막 P1 closure",
+        "R284 jaccard: extract_section_citations_v3 + scan_paths_v4 두 신규 fn — symmetric chain"
+      ]
     }
   },
   "inventory_entries": {},

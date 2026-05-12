@@ -56,7 +56,8 @@ severity_binding = "warn"   # | "reject"
 severity_inventory = "warn"  # | "reject"  (Phase 1A)
 comment_only = true
 inventory_prefixes = ["ARP_", "TCP_"]   # multi-prefix for inventory cite axis
-external_section_prefixes = ["RFC", "IEEE"]  # `(RFC 791 §3.1)` etc. skipped
+external_section_prefixes = ["RFC", "IEEE"]  # `<PREFIX> <NUMERIC> §<id>` skip
+external_section_prefixes_bare = ["TR_SOMEIP", "SOMEIPSD"] # `<PREFIX> §<id>` skip (R284)
 
 [[orphan_ledger]]  # optional — register legacy cross-ref carries
 doc = "docs/legacy.md"
@@ -135,12 +136,22 @@ when the project never numbers its history rows.
  matching: when both `"SOMEIP_"` and `"SOMEIP_ETS_"` are registered,
  `SOMEIP_ETS_BASICS_01` reports once under the more specific prefix.
 - **`[code_refs].external_section_prefixes`** — single-token prefix
- list (`["RFC", "IEEE", "ISO/IEC"]`) for external-standard `§` skip
- (Round 277). When a `§<id>` citation is preceded on the same line by
- `<prefix> <numeric>` (with surrounding punctuation like `(RFC 791`
- stripped, Round 281), it's treated as an external reference and
- ignored by the spec layer. Multi-token prefixes (e.g., `"ETSI TS"`)
- are not v1 — register the trailing token as a looser workaround.
+ list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
+ of external-standard `§` skip (Round 277). Citation form:
+ `<prefix> <numeric> §<id>` — same line, with surrounding punctuation
+ like `(RFC 791` stripped (Round 281). For *doc-name* standards
+ without a numeric document number, see
+ `external_section_prefixes_bare` below. Multi-token prefixes
+ (e.g., `"ETSI TS"`) are not v1 — register the trailing token as a
+ looser workaround.
+- **`[code_refs].external_section_prefixes_bare`** — single-token
+ prefix list for the *doc-name* form of external-standard `§` skip
+ (Round 284). Citation form: `<prefix> §<id>` — prefix directly
+ before sigil, no numeric between them. Used by AUTOSAR family
+ (TR_SOMEIP, SOMEIPSD, SWS_SD) and other doc-name-only standards.
+ Kept distinct from `external_section_prefixes` so registration is
+ an *explicit opt-in* per prefix — see *External standard prefix
+ kinds* below for the FP risk on generic-sounding tokens.
 - **`[code_refs].severity_inventory`** — `warn` / `reject` / `info`.
  Fires when an inventory citation's id is absent from the atomic store
  (`InventoryMissing`) or its registered status is `Deprecated`
@@ -211,6 +222,37 @@ reason = "RFC 2131 §3.1 cited multi-line in DHCPv4 transition prose, retain"
 The validator surfaces it under `ledger=N` (silent unless the orphan
 later resolves), and the audit-trail records *why* the citation is
 unmatched rather than silencing it.
+
+## External standard prefix kinds
+
+External standards identify their documents in two ways, and the
+validator's `§<id>` skip layer treats them as **independent axes**
+(Round 284) so registration is an explicit opt-in per kind:
+
+| Kind | Citation form | Examples | Config key |
+|------|---------------|----------|------------|
+| Numeric document number | `<PREFIX> <NUMERIC> §<id>` | RFC 791, IEEE 802.3, ISO/IEC 14882 | `external_section_prefixes` |
+| Doc-name short identifier | `<PREFIX> §<id>` | TR_SOMEIP, SOMEIPSD, SWS_SD | `external_section_prefixes_bare` |
+
+Both forms are skipped when the prefix word is registered in the
+appropriate axis. Leading punctuation (`(`, `[`, `"`, `«`) is stripped
+in both modes (Round 281), so `(RFC 791 §3.1)` and `(TR_SOMEIP §X.Y)`
+both match.
+
+**Pick the right axis.** The two-axis design exists so generic-sounding
+tokens (e.g., `"AUTOSAR"`) don't silently skip *internal* `§<id>`
+citations on prose lines that happen to mention the standard name.
+Register the *most specific* form of the prefix you actually cite:
+
+- ✓ `external_section_prefixes_bare = ["TR_SOMEIP", "SOMEIPSD", "SWS_SD"]` — specific document short-names
+- ⚠️  `external_section_prefixes_bare = ["AUTOSAR"]` — generic; a prose
+ line like `// AUTOSAR cluster startup §2.1` will silently skip the
+ internal `§2.1` reference
+
+When a standard supports both citation forms (some IEEE specs are
+cited as both `IEEE 802.3 §...` and `IEEE_802_3 §...`), register the
+prefix in both axes. The two paths are independent and a citation
+matches whichever axis's shape applies.
 
 ## Common authoring patterns
 
