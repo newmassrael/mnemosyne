@@ -44,20 +44,31 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Resolve sidecar path: explicit `--sidecar` flag wins, else default
-/// `<workspace_root>/docs/.atomic/workspace.atomic.json`.
+/// Resolve sidecar path with the Round 279 precedence chain:
+/// 1. Explicit `--sidecar` CLI flag wins absolutely.
+/// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative
+/// or absolute) when discoverable.
+/// 3. Default `<workspace_root>/docs/.atomic/workspace.atomic.json`.
+///
+/// Closes the tc8-harness dogfood gap where the doc-comment claimed
+/// `[atomic] sidecar_path` was configurable but no code path parsed it.
 fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf {
- match sidecar {
- Some(p) => {
+ if let Some(p) = sidecar {
  let pb = PathBuf::from(p);
- if pb.is_absolute() {
-  pb
- } else {
-  workspace_root.join(pb)
+ return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
+ }
+ if let Ok(Some(loaded)) = discover_config(workspace_root) {
+ if let Some(cfg_path) = loaded
+ .config
+ .atomic
+ .as_ref()
+ .and_then(|a| a.sidecar_path.as_deref())
+ {
+ let pb = PathBuf::from(cfg_path);
+ return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
  }
  }
- None => AtomicStore::default_sidecar_path(workspace_root),
- }
+ AtomicStore::default_sidecar_path(workspace_root)
 }
 
 fn handle_result(
@@ -816,18 +827,34 @@ fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
  Ok(())
 }
 
+/// Resolve cascade output path with the Round 279 precedence chain:
+/// 1. Explicit `--output` CLI flag wins absolutely.
+/// 2. `[atomic] output_path` from `mnemosyne.toml`, if set.
+/// 3. Built-in default `<workspace_root>/docs/GENERATED.md`.
+///
+/// Closes the tc8-harness silent-drift dogfood gap by exposing an explicit
+/// `[atomic] output_path` knob. `[workspace] docs[0]` is *not* consulted —
+/// docs[0] is the parse target (markdown the validator reads), while this
+/// is the cascade write target (atomic store → md). Keeping them
+/// independent prevents a first mutate from clobbering hand-authored
+/// content in docs[0].
 fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
- match output {
- Some(p) => {
+ if let Some(p) = output {
  let pb = PathBuf::from(p);
- if pb.is_absolute() {
-  pb
- } else {
-  workspace_root.join(pb)
+ return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
+ }
+ if let Ok(Some(loaded)) = discover_config(workspace_root) {
+ if let Some(cfg_path) = loaded
+ .config
+ .atomic
+ .as_ref()
+ .and_then(|a| a.output_path.as_deref())
+ {
+ let pb = PathBuf::from(cfg_path);
+ return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
  }
  }
- None => workspace_root.join("docs/GENERATED.md"),
- }
+ workspace_root.join("docs/GENERATED.md")
 }
 
 /// `generate-docs` subcommand — render atomic store → GENERATED.md.
@@ -1361,4 +1388,134 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
  regenerate,
  json,
  )
+}
+
+#[cfg(test)]
+mod tests {
+ use super::*;
+ use tempfile::TempDir;
+
+ fn write_toml(root: &Path, body: &str) {
+ std::fs::write(root.join("mnemosyne.toml"), body).unwrap();
+ }
+
+ // Round 279 Bug #2 — atomic.sidecar_path resolution chain.
+
+ #[test]
+ fn resolve_sidecar_cli_flag_overrides_config() {
+ let tmp = TempDir::new().unwrap();
+ write_toml(
+ tmp.path(),
+ r#"
+[workspace]
+docs = ["docs/GENERATED.md"]
+default_doc = "docs/GENERATED.md"
+
+[atomic]
+sidecar_path = "from-config.json"
+"#,
+ );
+ let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json"));
+ assert_eq!(resolved, tmp.path().join("from-cli.json"));
+ }
+
+ #[test]
+ fn resolve_sidecar_config_used_when_cli_omitted() {
+ let tmp = TempDir::new().unwrap();
+ write_toml(
+ tmp.path(),
+ r#"
+[workspace]
+docs = ["docs/GENERATED.md"]
+default_doc = "docs/GENERATED.md"
+
+[atomic]
+sidecar_path = "altdir/custom.atomic.json"
+"#,
+ );
+ let resolved = resolve_sidecar(tmp.path(), None);
+ assert_eq!(resolved, tmp.path().join("altdir/custom.atomic.json"));
+ }
+
+ #[test]
+ fn resolve_sidecar_built_in_default_without_config() {
+ let tmp = TempDir::new().unwrap();
+ let resolved = resolve_sidecar(tmp.path(), None);
+ assert_eq!(
+ resolved,
+ tmp.path().join("docs/.atomic/workspace.atomic.json")
+ );
+ }
+
+ #[test]
+ fn resolve_sidecar_absolute_path_passthrough() {
+ let tmp = TempDir::new().unwrap();
+ let abs = tmp.path().join("absolute/here.json");
+ let resolved = resolve_sidecar(tmp.path(), Some(abs.to_str().unwrap()));
+ assert_eq!(resolved, abs);
+ }
+
+ // Round 279 Bug #3 — cascade output_path resolution chain.
+
+ #[test]
+ fn resolve_output_explicit_cli_flag_wins() {
+ let tmp = TempDir::new().unwrap();
+ write_toml(
+ tmp.path(),
+ r#"
+[workspace]
+docs = ["docs/coverage/X.md"]
+default_doc = "docs/coverage/X.md"
+
+[atomic]
+output_path = "ignored-by-cli.md"
+"#,
+ );
+ let resolved = resolve_output(tmp.path(), Some("manual/output.md"));
+ assert_eq!(resolved, tmp.path().join("manual/output.md"));
+ }
+
+ #[test]
+ fn resolve_output_atomic_output_path_used_when_cli_omitted() {
+ let tmp = TempDir::new().unwrap();
+ write_toml(
+ tmp.path(),
+ r#"
+[workspace]
+docs = ["docs/coverage/SPEC_COVERAGE.md"]
+default_doc = "docs/coverage/SPEC_COVERAGE.md"
+
+[atomic]
+output_path = "docs/coverage/SPEC_COVERAGE.md"
+"#,
+ );
+ let resolved = resolve_output(tmp.path(), None);
+ assert_eq!(resolved, tmp.path().join("docs/coverage/SPEC_COVERAGE.md"));
+ }
+
+ #[test]
+ fn resolve_output_ignores_workspace_docs_first() {
+ // Round 279 design — [workspace] docs[0] is the parse target, NOT
+ // the cascade write target. Setting docs[0] without [atomic]
+ // output_path must NOT redirect cascade output (would clobber
+ // hand-authored content).
+ let tmp = TempDir::new().unwrap();
+ write_toml(
+ tmp.path(),
+ r#"
+[workspace]
+docs = ["docs/HAND_AUTHORED.md"]
+default_doc = "docs/HAND_AUTHORED.md"
+"#,
+ );
+ let resolved = resolve_output(tmp.path(), None);
+ assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
+ }
+
+ #[test]
+ fn resolve_output_built_in_default_without_config() {
+ let tmp = TempDir::new().unwrap();
+ let resolved = resolve_output(tmp.path(), None);
+ assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
+ }
 }

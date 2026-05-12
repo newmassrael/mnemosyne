@@ -202,9 +202,9 @@ pub struct InventoryEntry {
 
 /// Workspace-wide atomic store. Keys = canonical `section_id` / `entry_id` /
 /// `inventory_id`. On-disk shape = single JSON file at
-/// `docs/.atomic/workspace.atomic.json` (path configurable via
-/// `[atomic] sidecar_path` in mnemosyne.toml — extend 162 carry, default
-/// if unset).
+/// `docs/.atomic/workspace.atomic.json` by default; Round 279 wires
+/// `[atomic] sidecar_path` in `mnemosyne.toml` to override (CLI
+/// `--sidecar` flag still wins over config when both are present).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicStore {
  #[serde(default)]

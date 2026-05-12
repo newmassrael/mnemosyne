@@ -840,3 +840,45 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 279 — TC8 dogfood bug fix bundle (4 bugs + regression tests). UTF-8 panic in inventory extractor (P0), [atomic] sidecar_path config wiring (P1), [atomic] output_path explicit knob (P1), CLI help field-cap surfacing (P2). 552 tests / 0 failure.
+
+**Changes**:
+- Bug #1 P0 fix: code_refs.rs extract_inventory_citations byte-loop → char_indices peekable
+- multi-byte char (em-dash / 한글 / CJK) 가 prefix 앞에 있어도 line[i..] panic 없음
+- Bug #2 P1 fix: config.rs AtomicConfigSection (sidecar_path + output_path) — 옵션 B 실제 구현
+- atomic_cli.rs resolve_sidecar 가 config 따름; precedence: CLI --sidecar > [atomic].sidecar_path > default
+- Bug #3 P1 fix: [atomic] output_path 명시적 knob 신설 — docs[0] 자동 derivation 폐기
+- 이유: docs[0] = parse target, output_path = cascade write — 자동 derivation 은 hand-authored content 덮어쓸 위험
+- atomic.rs doc-comment 갱신: sidecar_path / output_path 둘 다 config-aware 명시
+- Bug #4 P2 fix: CLI help text 에 intent ≤ 200 + bullets ≤ 100 chars cap surfacing
+
+
+
+**Verification**:
+- cargo test --workspace 552 passed / 0 failed (R278 540 + 12 신규)
+- Bug #1 regression: extract_inventory_citations_survives_non_ascii_comment_chars (em-dash + 한글 + CJK)
+- Bug #1 regression: scan_v3_survives_non_ascii_comment_chars (full scan + strip_to_comments)
+- Bug #2 regression: parse_atomic_sidecar_path / atomic_section_optional_when_absent (config.rs)
+- Bug #2 regression: atomic_cli resolve_sidecar 4 case (CLI wins / config / built-in / absolute)
+- Bug #3 regression: resolve_output 4 case (CLI wins / atomic.output_path / docs[0] no-derivation / default)
+- CLI smoke: tc8 repro panic 사라짐 + [atomic] sidecar + output_path 실 적용 확인
+- validate-workspace entries=25 sections=5 sync, self-application 동작 변화 없음
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- TC8 dogfood 차단 해제 — Bug #1 P0 해결, 다국어 코드베이스 첫 mutate 가능
+- TC8 측 mnemosyne.toml: [atomic] sidecar_path + output_path 명시 권장 (config-truth)
+- README/SCHEMA_GUIDE 에 Field length caps + [atomic] 섹션 문서 추가 — 별도 docs 라운드 carry
+- AtomicConfigSection 이름 결정 (vs atomic::AtomicSection 의 namespace 충돌 회피)
+- output_path docs[0] 자동 derivation 폐기 — Bug 리포트 옵션 A 보다 옵션 C 가 안전
+- validate_atomic_store 의 sidecar_path 도 resolve_sidecar 일관 사용 — 차후 검토 carry
+- TC8 측 643 entries seed 완료된 상태에서 Bug #1 unblock → Phase D 진입 가능
+- multi-token external prefix (ETSI TS) carry 유지 — Phase 1B
+- ScanOptions struct 리팩터 carry 유지 — v1/v2/v3 chain 누적
+
+
+

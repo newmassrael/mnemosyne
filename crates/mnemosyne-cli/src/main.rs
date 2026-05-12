@@ -251,11 +251,13 @@ fn print_help(prog: &str) {
  );
  println!();
  println!(" --- atomic mutate API (Round 162 production wire, Phase 0f) ---");
- println!(" {} set-section-intent --section §<N> --intent <text> [--sidecar <path>] [--json]", prog);
- println!(" {} set-section-rationale --section §<N> --bullets-file <path> [--sidecar <path>] [--json]", prog);
- println!(" {} set-section-inputs --section §<N> --bullets-file <path> [--sidecar <path>] [--json]", prog);
- println!(" {} set-section-outputs --section §<N> --bullets-file <path> [--sidecar <path>] [--json]", prog);
- println!(" {} add-section-caveat --section §<N> --bullet <text> [--sidecar <path>] [--json]", prog);
+ println!(" Field length caps (Round 161 §41 thresholds, surfaced for DX — Round 279 carry):");
+ println!("   intent: max 200 chars; each bullet (rationale/inputs/outputs/caveats): max 100 chars");
+ println!(" {} set-section-intent --section §<N> --intent <text (max 200 chars)> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-rationale --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-inputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-outputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
+ println!(" {} add-section-caveat --section §<N> --bullet <text (max 100 chars)> [--sidecar <path>] [--json]", prog);
  println!(
  " {} set-section-alternatives --section §<N> --alternatives-file <path> [--sidecar <path>] [--json]",
  prog

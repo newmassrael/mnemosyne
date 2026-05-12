@@ -520,15 +520,20 @@ pub fn extract_inventory_citations(
  for (line_idx, line) in content.lines().enumerate() {
  let mut in_backtick = false;
  let bytes = line.as_bytes();
- let mut i = 0usize;
- while i < bytes.len() {
- if bytes[i] == b'`' {
+ // Round 279 Bug #1 fix — drive the outer loop with `char_indices`
+ // instead of raw byte indexing. A non-ASCII char in the comment
+ // (em-dash `—`, Korean, CJK, …) previously left `i` mid-multibyte,
+ // and the next `line[i..].starts_with(prefix)` call panicked at
+ // a UTF-8 char-boundary check. `char_indices` yields only valid
+ // boundaries, so `line[i..]` is always safe; advancement after a
+ // match is done via `peek/next` until past the matched byte span.
+ let mut chars = line.char_indices().peekable();
+ while let Some((i, c)) = chars.next() {
+ if c == '`' {
  in_backtick = !in_backtick;
- i += 1;
  continue;
  }
  if in_backtick {
- i += 1;
  continue;
  }
  let mut matched_len: Option<usize> = None;
@@ -585,9 +590,18 @@ pub fn extract_inventory_citations(
  }
  if let (Some(consumed), Some(id)) = (matched_len, matched_id) {
  seen.insert((line_idx + 1, id));
- i += consumed;
+ // Advance past the consumed bytes — `peek/next` until we pass
+ // `i + consumed`. char_indices keeps the iterator on valid
+ // char boundaries even when prefix-length advance lands on
+ // an ASCII byte (TC ID tails are uppercase ASCII by design).
+ let target_byte = i + consumed;
+ while let Some(&(k, _)) = chars.peek() {
+ if k < target_byte {
+  chars.next();
  } else {
- i += 1;
+  break;
+ }
+ }
  }
  }
  }
@@ -2236,6 +2250,68 @@ mod tests {
  // ============================================================================
  // Round 275 — Inventory axis tests (Phase 1A).
  // ============================================================================
+
+ #[test]
+ fn extract_inventory_citations_survives_non_ascii_comment_chars() {
+ // Round 279 Bug #1 regression — the byte-index loop used to panic
+ // at the first `line[i..].starts_with(prefix)` call when a multi-
+ // byte char (em-dash `\u{2014}`, Korean, CJK) sat between earlier
+ // ASCII and the prefix. The fixture replays the original tc8-
+ // harness panic frame and exercises Korean + CJK as well.
+ let prefixes = vec!["FOO_".to_string()];
+ // Source uses \u{2014} so the test file itself stays ASCII-clean
+ // (the self-application scan must not see an em-dash literal).
+ let fixture = format!(
+ "// SERVICE-ID-2 (0xF4E8) is the natural target {} FOO_01 cite\n\
+  // \u{D55C}\u{AE00} \u{C8FC}\u{C11D} \u{C548} FOO_02\n\
+  // \u{4E2D}\u{6587}\u{6CE8}\u{91CA} FOO_03\n",
+ '\u{2014}'
+ );
+ let out = extract_inventory_citations(&prefixes, &fixture);
+ assert_eq!(
+ out,
+ vec![
+ (1, "FOO_01".to_string()),
+ (2, "FOO_02".to_string()),
+ (3, "FOO_03".to_string()),
+ ],
+ "all three cites must surface; no panic on multi-byte chars"
+ );
+ }
+
+ #[test]
+ fn scan_v3_survives_non_ascii_comment_chars() {
+ // Round 279 Bug #1 regression — full scan path (including
+ // strip_to_comments) must not panic when a workspace source file
+ // contains the original em-dash trigger from the tc8-harness
+ // bug report.
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let content = format!(
+ "// SERVICE-ID-2 (0xF4E8) target {} DUT offers FOO_01\n",
+ '\u{2014}'
+ );
+ std::fs::write(tmp.path().join("src/x.rs"), content).unwrap();
+ let store = AtomicStore::new();
+ let prefixes = vec!["FOO_".to_string()];
+ let v = scan_paths_bidirectional_v3(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &prefixes,
+ &[],
+ )
+ .expect("scan must not panic on multi-byte comment chars");
+ // FOO_01 is the only cite and it's not registered, so it surfaces
+ // as InventoryMissing. The point of the test is "no panic" plus
+ // correct extraction past the em-dash.
+ assert_eq!(v.len(), 1, "expected exactly the FOO_01 cite, got: {:?}", v);
+ }
 
  #[test]
  fn extract_inventory_citations_basic() {

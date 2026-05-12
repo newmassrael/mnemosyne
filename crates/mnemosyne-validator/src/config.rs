@@ -59,6 +59,46 @@ pub struct WorkspaceConfig {
  /// for external users who don't cite spec entries in code.
  #[serde(default)]
  pub code_refs: Option<CodeRefsSection>,
+ /// Round 279 — `[atomic]` table — atomic store sidecar path override.
+ ///
+ /// Closes the documentation-vs-implementation gap surfaced by the TC8
+ /// external dogfood: the docstring on `AtomicStore::default_sidecar_path`
+ /// claimed `[atomic] sidecar_path` was configurable, but no struct field
+ /// actually parsed it. External users adopting Mnemosyne next to an
+ /// existing `docs/` tree can now redirect the sidecar (e.g., to
+ /// `doc/.atomic/workspace.atomic.json`) to avoid directory collisions.
+ #[serde(default)]
+ pub atomic: Option<AtomicConfigSection>,
+}
+
+/// `[atomic]` table — atomic store path overrides (Round 279).
+///
+/// Overrides the default sidecar (`docs/.atomic/workspace.atomic.json`)
+/// and cascade output (`docs/GENERATED.md`) paths. Relative paths resolve
+/// against the workspace root; absolute paths are honored as-is. CLI flags
+/// (`--sidecar` / `--output`) win over this config when both are present.
+///
+/// `output_path` is *not* auto-derived from `[workspace] docs[0]` —
+/// `docs[0]` is the *parse target* (markdown the validator reads), while
+/// `output_path` is the *cascade write target* (atomic store → md). Auto-
+/// deriving one from the other risked overwriting hand-authored content in
+/// `docs[0]` the first time a user ran a mutate primitive. The fields are
+/// kept independent so cascade output is an explicit, opt-in choice.
+///
+/// Type name is `AtomicConfigSection` (not `AtomicSection`) to disambiguate
+/// from `atomic::AtomicSection`, which is the typed-fields-per-§ store.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct AtomicConfigSection {
+ /// Workspace-relative or absolute sidecar JSON path. `None` (or `[atomic]`
+ /// omitted entirely) falls back to the default `docs/.atomic/workspace.atomic.json`.
+ #[serde(default)]
+ pub sidecar_path: Option<String>,
+ /// Workspace-relative or absolute cascade output (atomic → md) path.
+ /// `None` falls back to the default `docs/GENERATED.md`. Keep this
+ /// distinct from `[workspace] docs[0]` (parse target) to avoid
+ /// overwriting hand-authored content on first mutate.
+ #[serde(default)]
+ pub output_path: Option<String>,
 }
 
 /// atomic-internal orphan ledger kind.
@@ -565,6 +605,40 @@ root = "."
  let content = "[workspace]\ndocs = []\n";
  let err = parse_config(content).unwrap_err();
  assert!(err.to_string().contains("workspace.docs"));
+ }
+
+ #[test]
+ fn parse_atomic_sidecar_path() {
+ // Round 279 Bug #2 regression — [atomic] sidecar_path must
+ // actually parse into the config struct (previously documented
+ // but silently ignored by serde).
+ let content = r#"
+[workspace]
+docs = ["docs/GENERATED.md"]
+default_doc = "docs/GENERATED.md"
+
+[atomic]
+sidecar_path = "doc/.atomic/workspace.atomic.json"
+"#;
+ let cfg = parse_config(content).unwrap();
+ let atomic_cfg = cfg.atomic.expect("[atomic] table missing");
+ assert_eq!(
+ atomic_cfg.sidecar_path.as_deref(),
+ Some("doc/.atomic/workspace.atomic.json")
+ );
+ }
+
+ #[test]
+ fn atomic_section_optional_when_absent() {
+ // Back-compat: omitting [atomic] entirely is fine — the field stays
+ // None and the default sidecar path applies.
+ let content = r#"
+[workspace]
+docs = ["docs/GENERATED.md"]
+default_doc = "docs/GENERATED.md"
+"#;
+ let cfg = parse_config(content).unwrap();
+ assert!(cfg.atomic.is_none());
  }
 
  #[test]
