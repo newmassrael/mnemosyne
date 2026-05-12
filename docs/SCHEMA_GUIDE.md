@@ -1,11 +1,22 @@
 # Schema Guide — customizing Mnemosyne for your codebase
 
 Mnemosyne ships with a **fixed primitives** schema (Section / CrossRef /
-ChangelogEntry / FrozenList) and a **markdown pattern → entity** mapping
-that is fully config-driven via `mnemosyne.toml`. The atomic store
-(`docs/.atomic/workspace.atomic.json`) is the single source of truth for
-typed facts; `docs/GENERATED.md` is the deterministic human-readable
-view. This guide shows the knobs available and the reference presets.
+ChangelogEntry / FrozenList / InventoryEntry — five closed-form entity
+types) and a **markdown pattern → entity** mapping that is fully
+config-driven via `mnemosyne.toml`. The atomic store
+(`docs/.atomic/workspace.atomic.json`, path overridable via
+`[atomic] sidecar_path`) is the single source of truth for typed facts;
+the cascade output (`docs/GENERATED.md`, path overridable via
+`[atomic] output_path`) is the deterministic human-readable view. This
+guide shows the knobs available and the reference presets.
+
+The fifth primitive — **InventoryEntry** — was added in Phase 1A
+(Round 273) for stable external IDs with a lifecycle vocabulary distinct
+from the audit-trail genre: test case ids (TC8 `ARP_07`,
+`TCP_RETRANSMISSION_TO_04`), requirement ids, regulation ids. Lifecycle
+states are `active` / `deprecated` / `reserved`; the validator's
+inventory citation axis rejects citations of `deprecated` ids and of
+unregistered ids.
 
 ## Schema schema
 
@@ -34,17 +45,24 @@ max_section_body_length = 5000
 "Salsa" = ["salsa"]
 "bi-temporal" = ["bitemporal"]
 
+[atomic]   # optional — override default store / cascade paths
+sidecar_path = "doc/.atomic/store.json"  # default: docs/.atomic/workspace.atomic.json
+output_path = "docs/coverage/SPEC.md"  # default: docs/GENERATED.md
+
 [code_refs]   # optional — opt into code-citation defense
 paths = ["src/"]
-severity_missing = "warn"  # | "reject"
-severity_binding = "warn"  # | "reject"
+severity_missing = "warn"   # | "reject"
+severity_binding = "warn"   # | "reject"
+severity_inventory = "warn"  # | "reject"  (Phase 1A)
 comment_only = true
+inventory_prefixes = ["ARP_", "TCP_"]   # multi-prefix for inventory cite axis
+external_section_prefixes = ["RFC", "IEEE"]  # `(RFC 791 §3.1)` etc. skipped
 
 [[orphan_ledger]]  # optional — register legacy cross-ref carries
 doc = "docs/legacy.md"
 from = "12"
 to = "99"
-kind = "markdown_ref"   # | "atomic_entry_ref" | "atomic_section_ref"
+kind = "markdown_ref"  # | "atomic_entry_ref" | "atomic_section_ref" | "code_citation"
 reason = "carried from pre-migration state, see Round 80"
 ```
 
@@ -108,13 +126,91 @@ when the project never numbers its history rows.
 - **`[code_refs].comment_only`** — `true` strips string literals before
  scanning so only comment citations count. Default `true`; flip only if
  your project deliberately puts §id references in user-visible strings.
+- **`[code_refs].inventory_prefixes`** — multi-prefix list for the
+ inventory citation axis (Phase 1A, Round 275). Each entry is an ASCII
+ word (`"ARP_"`, `"TCP_"`, `"SOMEIP_ETS_"`); the scanner walks
+ `<prefix>[A-Z0-9_]+` tokens whose tail ends in a digit (the
+ digit-terminus rule suppresses identifier-shaped false positives like
+ `TCP_BUFFER_SIZE`). Empty list = axis disabled. Longest-prefix-first
+ matching: when both `"SOMEIP_"` and `"SOMEIP_ETS_"` are registered,
+ `SOMEIP_ETS_BASICS_01` reports once under the more specific prefix.
+- **`[code_refs].external_section_prefixes`** — single-token prefix
+ list (`["RFC", "IEEE", "ISO/IEC"]`) for external-standard `§` skip
+ (Round 277). When a `§<id>` citation is preceded on the same line by
+ `<prefix> <numeric>` (with surrounding punctuation like `(RFC 791`
+ stripped, Round 281), it's treated as an external reference and
+ ignored by the spec layer. Multi-token prefixes (e.g., `"ETSI TS"`)
+ are not v1 — register the trailing token as a looser workaround.
+- **`[code_refs].severity_inventory`** — `warn` / `reject` / `info`.
+ Fires when an inventory citation's id is absent from the atomic store
+ (`InventoryMissing`) or its registered status is `Deprecated`
+ (`InventoryDeprecated`). `Active` / `Reserved` ids pass silently.
+- **`[atomic].sidecar_path`** — workspace-relative or absolute path
+ for the JSON store. Default `docs/.atomic/workspace.atomic.json`. Use
+ this to redirect the sidecar into an existing `doc/` tree without
+ colliding with `docs/`. CLI `--sidecar` flag wins over this config
+ when both are present.
+- **`[atomic].output_path`** — workspace-relative or absolute path for
+ the cascade write target. Default `docs/GENERATED.md`. This is *not*
+ auto-derived from `[workspace] docs[0]` — docs[0] is the parse target
+ (markdown the validator reads), while `output_path` is the cascade
+ write target (atomic store → md). Keep them independent so cascade
+ doesn't overwrite hand-authored content on first mutate.
 - **`[[orphan_ledger]]`** — register legitimate cross-ref carries
  (e.g. references to legacy docs you preserved by design). Each entry
  names `doc` / `from` / `to` / `kind` / `reason`. The validator's
  `T1 orphan total` line reports `ledger=N, new=+X, resolved=-Y`:
  ledgered orphans are silent, new orphans bail, and resolved-but-still-
  ledgered entries bail too (forcing you to drop the now-stale ledger
- row).
+ row). `kind = "code_citation"` covers code-side citation suppression
+ (Path B); see *Self-contained citation rule* below for when to use.
+
+## Field length caps (T3 threshold, surfaced for DX)
+
+The atomic mutate API enforces hard caps on text fields to keep the
+audit trail compact and prevent prose drift from creeping into structured
+data:
+
+- `intent`: 200 chars max
+- `rationale_bullets`, `inputs_bullets`, `outputs_bullets`,
+ `caveats_bullets`, `caveat`: 100 chars per bullet
+
+Exceeding the cap rejects the mutate with a clear error; split the text
+or move detail into a separate atomic field (`examples`, `rationale`).
+
+## Self-contained citation rule
+
+`validate-code-refs` matches citations on a **single line** with **one
+explicit prefix token** in scope. Citations must be self-contained at
+their use site:
+
+- ✓ `// RFC 2131 §3.5 client retransmits` — RFC token + section on the same line
+- ✓ `// (RFC 791 §3.1) — fragmentation fields` — surrounding `()` stripped (Round 281)
+- ✗ `// see RFC 3927 above\n// §2.2.1 says ...` — multi-line context;
+ the second line has no RFC token on it
+- ✗ `// 2131 §3.1 lease renew` — RFC numeric only, prefix word missing
+
+The two failing forms are *not* fixed by the scanner — broadening
+either pattern would push the layer into prose inference and create
+false-skips on internal citations (a `§4.2.4` adjacent to a stray
+numeric would silently bypass the spec-side reject gate). The
+architectural rule is: prefer rewriting the comment to canonical
+`RFC NNN §X.Y` form. When mass-rewriting isn't practical (legacy
+codebase carry), register the (file, §id) pair in
+`[[orphan_ledger]] kind = "code_citation"`:
+
+```toml
+[[orphan_ledger]]
+doc = "<code-citation>"
+from = "src/dhcpv4_client.cpp"
+to = "3.1"
+kind = "code_citation"
+reason = "RFC 2131 §3.1 cited multi-line in DHCPv4 transition prose, retain"
+```
+
+The validator surfaces it under `ledger=N` (silent unless the orphan
+later resolves), and the audit-trail records *why* the citation is
+unmatched rather than silencing it.
 
 ## Common authoring patterns
 
@@ -187,12 +283,67 @@ mnemosyne-cli add-section-implementation \
  --section §3 --file crates/foo/src/auth.rs --symbol Session::validate
 ```
 
+### Inventory citation defense (test cases / requirement ids, Phase 1A)
+
+For projects citing stable external ids in code — TC8 test cases, ISO
+test specs, IEEE conformance ids, internal requirement ids — declare
+the prefix family and let the inventory axis check existence + status
+at cite time:
+
+```toml
+[code_refs]
+paths = ["src/", "tests/"]
+inventory_prefixes = [
+ "ARP_", "TCP_", "UDP_", "IPV4_",
+ "ICMPV4_", "DHCPV4_", "SOMEIPSRV_", "SOMEIP_ETS_",
+]
+severity_inventory = "warn"  # promote to "reject" after baseline clean
+external_section_prefixes = ["RFC", "IEEE"]  # ignore `(RFC 791 §3.1)`
+```
+
+Register each id via the CLI (or sync from your upstream SSOT):
+
+```bash
+mnemosyne-cli add-inventory-entry \
+ --id ARP_07 --status active --section §4.2.4 \
+ --source "tc8_v3.pdf#row=12"
+
+mnemosyne-cli add-inventory-entry \
+ --id TCP_RETRANSMISSION_TO_04 --status deprecated \
+ --reason "superseded by TO_05 in TC8 v2.3"
+```
+
+`active` and `reserved` ids cite freely; `deprecated` ids reject at
+cite time (with an optional cascade scan surfacing existing cite-sites
+when a mutate flips status). Lookup via `query --list-inventory` or
+`query --inventory <id>`.
+
+### External adopter — redirect store/output to avoid `docs/` collision
+
+Projects with an existing `doc/` (or `documentation/`) tree that wants
+to add Mnemosyne without renaming directories:
+
+```toml
+[workspace]
+docs = ["docs/coverage/SPEC.md"]   # parse target
+default_doc = "docs/coverage/SPEC.md"
+
+[atomic]
+sidecar_path = "doc/.atomic/store.json"   # avoid docs/.atomic collision
+output_path = "docs/coverage/SPEC.md"   # cascade write — explicit
+```
+
+The mutate, read, validate, and cascade paths all honor both overrides
+(Round 280); there is no split-brain. CLI `--sidecar` / `--output`
+flags still win when supplied.
+
 ## What stays fixed
 
-The four entity types — Section / CrossRef / ChangelogEntry / FrozenList
-— are **not** configurable. They are the universal primitives the
-validator + mutate API + cascade engine all build on. What `[schema]`
-configures is *which markdown patterns* the parser maps onto these
-primitives. Adding a fifth entity type is a Phase 1+ narrative-product
-concern (medium-specific entities like `Character` / `Location` /
-`Faction` carry off the four primitives via custom relations).
+The five entity types — Section / CrossRef / ChangelogEntry / FrozenList
+/ InventoryEntry — are **not** configurable. They are the universal
+primitives the validator + mutate API + cascade engine all build on.
+What `[schema]` configures is *which markdown patterns* the parser maps
+onto Section / ChangelogEntry. The fifth, InventoryEntry, was added in
+Phase 1A (Round 273) for stable-id citation hygiene; further entity
+types (medium-specific `Character` / `Location` / `Faction` for
+narrative products) remain Phase 1+ scope.

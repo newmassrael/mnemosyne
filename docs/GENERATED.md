@@ -946,3 +946,35 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 282 — SCHEMA_GUIDE 갱신 — 5 primitives + R279/280/281 config knobs (atomic / inventory / external) + Bug #5B/#5C self-contained citation 가이드 + orphan_ledger kind=code_citation 사용 예시. docs-only round, 560 tests / 0 failure 유지.
+
+**Changes**:
+- SCHEMA_GUIDE top description: 4 → 5 primitives (InventoryEntry added Phase 1A)
+- Schema schema TOML example: [atomic] sidecar_path/output_path + inventory_prefixes + external_section_prefixes + severity_inventory + orphan_ledger kind=code_citation
+- 신규 섹션 — Field length caps (intent 200 / bullets 100 char) DX surface
+- 신규 섹션 — Self-contained citation rule: scanner 가 prose AI 아님, multi-line/literal-누락 은 carry, orphan_ledger kind=code_citation 사용 예시
+- Common authoring patterns 확장: Inventory citation defense (TC8 dogfood 예시) + External adopter directory-layout (R279/R280 fix 반영)
+- "What stays fixed" 갱신: 5 entities 확정, Phase 1A 진입 명시
+
+
+
+**Verification**:
+- cargo test --workspace 560 passed / 0 failed (validator/cli 변경 없음, docs-only round)
+- validate-workspace entries=28 sections=5 sync — SCHEMA_GUIDE 변경이 round-trip 영향 없음
+- validate-code-refs total=0 — SCHEMA_GUIDE 의 Round 280/281 인용이 R280/R281 entries 매칭
+- 외부 어댑터 가이드 cover: 5 primitives + 4 신규 config knobs + Bug #5B/#5C 흡수 메커니즘
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- GETTING_STARTED.md 갱신 — InventoryEntry 도입 mention + Phase 1A 진입 표시, 별도 docs round carry
+- README 의 surface 갱신 (5 primitives) 도 별도 docs carry
+- Bug #5B/#5C 의 self-contained citation 가이드가 SCHEMA_GUIDE 에 명시 — tc8-harness 측 잔여 cleanup 방향 결정 가능
+- Multi-token external prefixes (ETSI TS, TR_SOMEIP) Phase 1B carry — 가이드에 v1 한계 명시
+- ScanOptions struct 리팩터 carry / Phase 0 carry (R271/R270+/R268/R267) 유지
+
+
+
