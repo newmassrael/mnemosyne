@@ -130,6 +130,8 @@ impl CodeRefViolation {
  ViolationKind::Decay => "decay",
  ViolationKind::SectionMissing => "section_missing",
  ViolationKind::CitationUnbound => "citation_unbound",
+ ViolationKind::InventoryMissing => "inventory_missing",
+ ViolationKind::InventoryDeprecated => "inventory_deprecated",
  },
  CodeRefViolation::ImplementationUnbacked { .. } => "impl_unbacked",
  CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
@@ -151,6 +153,9 @@ impl CodeRefViolation {
  }
  ViolationKind::CitationUnbound => DefectClass::Binding,
  ViolationKind::Decay => DefectClass::Decay,
+ ViolationKind::InventoryMissing | ViolationKind::InventoryDeprecated => {
+ DefectClass::Inventory
+ }
  },
  CodeRefViolation::ImplementationUnbacked { .. } => DefectClass::Binding,
  CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
@@ -169,6 +174,12 @@ pub enum DefectClass {
  Binding,
  /// Cascade scan informational surface (Decay).
  Decay,
+ /// Round 275 — Inventory axis violations (InventoryMissing,
+ /// InventoryDeprecated). Distinct from Hallucination because the
+ /// inventory genre has a different lifecycle vocabulary (Active /
+ /// Deprecated / Reserved) and a separate severity knob
+ /// (`severity_inventory`) for per-project tuning.
+ Inventory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +201,16 @@ pub enum ViolationKind {
  /// `§<id>.implementations`. The code-side half of the bidirectional
  /// set-equality violation (spec disagrees with code).
  CitationUnbound,
+ /// Round 275 — Inventory ID citation where the cited id is not in
+ /// `AtomicStore.inventory_entries`. Hallucination-class on the
+ /// inventory axis (Phase 1A 5th entity).
+ InventoryMissing,
+ /// Round 275 — Inventory ID citation where the cited id exists but
+ /// `InventoryEntry.status == Deprecated`. Author should update or
+ /// remove the cite; the inventory entry is no longer in active use.
+ /// `Reserved` status does not trigger this — Reserved is "set aside,
+ /// cite permitted" by R275 design.
+ InventoryDeprecated,
 }
 
 /// Walk configured paths under `root`, collecting all readable files.
@@ -294,7 +315,31 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// `§` is itself a non-ASCII / non-identifier character, so prefix-side
 /// word-boundary is implicit. Tail-side boundary: id terminates on any
 /// char outside the token shape.
+///
+/// Pre-Round-277 caller convenience — delegates to
+/// [`extract_section_citations_v2`] with an empty `external_prefixes`
+/// slice (external-skip disabled, identical to the v1 behavior).
 pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
+ extract_section_citations_v2(content, &[])
+}
+
+/// Round 277 — `§<id>` extractor with external-standard skip
+/// (Phase 1A P1).
+///
+/// Same surface as [`extract_section_citations`] plus an
+/// `external_prefixes` parameter. When the `§` sigil is preceded on the
+/// same line by `<prefix> <numeric>` + whitespace (where `prefix` ∈
+/// `external_prefixes` and `numeric` is digits+dots), the citation is
+/// treated as an external-standard reference (`RFC 2131 §3.5`,
+/// `IEEE 802.3 §2.4`, `ISO/IEC 14882 §1.5`) and skipped — the spec
+/// layer only validates internal `§<id>` citations against the
+/// atomic store.
+///
+/// Empty `external_prefixes` = external-skip disabled (back-compat).
+pub fn extract_section_citations_v2(
+ content: &str,
+ external_prefixes: &[String],
+) -> Vec<(usize, String)> {
  let mut out = Vec::new();
  for (line_idx, line) in content.lines().enumerate() {
  // — single-line backtick state. `` inside a code-span
@@ -314,6 +359,13 @@ pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
  continue;
  }
  if c != '§' {
+ continue;
+ }
+ // Round 277 — external-standard context check. Skip if the §
+ // is preceded (same line) by `<prefix> <numeric>`.
+ if !external_prefixes.is_empty()
+ && is_external_section_cite(&line[..i], external_prefixes)
+ {
  continue;
  }
  // Tail: read [A-Za-z0-9._/-]+ starting at the byte after `§`.
@@ -379,8 +431,167 @@ pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
  out
 }
 
+/// Round 277 — detect external-standard context preceding a `§` sigil.
+///
+/// Returns `true` when `line_before_sigil` (the byte slice from line
+/// start up to but not including the `§` char) ends in
+/// `<prefix> <numeric>` form. `numeric` may be digits, dots, or a
+/// mix (`2131`, `802.3`, `14882`); the prefix is matched verbatim
+/// against `prefixes` (case-sensitive).
+///
+/// Limited to single-token prefixes in v1 — `"ETSI TS"` is *not*
+/// matched as a 2-token prefix. Users with rare multi-token prefixes
+/// register the trailing token (`"TS"`) as a slightly looser match.
+fn is_external_section_cite(line_before_sigil: &str, prefixes: &[String]) -> bool {
+ // The contract is `<prefix><sp><numeric><sp>§`, so the slice before
+ // the sigil must end in whitespace; otherwise this is an inline
+ // reference like `RFC2131§3` which is not the recognized form.
+ let trimmed = line_before_sigil.trim_end();
+ if trimmed.len() == line_before_sigil.len() {
+ return false;
+ }
+ // Last token = the numeric. Must be all digits + dots and contain
+ // at least one digit.
+ let last_token_start = trimmed
+ .rfind(char::is_whitespace)
+ .map(|i| i + 1)
+ .unwrap_or(0);
+ let last_token = &trimmed[last_token_start..];
+ if last_token.is_empty()
+ || !last_token
+ .chars()
+ .all(|c| c.is_ascii_digit() || c == '.')
+ || !last_token.chars().any(|c| c.is_ascii_digit())
+ {
+ return false;
+ }
+ // Previous token = the prefix word. Must match `prefixes` verbatim.
+ let before_last = trimmed[..last_token_start].trim_end();
+ if before_last.is_empty() {
+ return false;
+ }
+ let prev_token_start = before_last
+ .rfind(char::is_whitespace)
+ .map(|i| i + 1)
+ .unwrap_or(0);
+ let prev_token = &before_last[prev_token_start..];
+ prefixes.iter().any(|p| p == prev_token)
+}
+
 fn is_section_id_char(c: char) -> bool {
  c.is_ascii_alphanumeric() || c == '.' || c == '/' || c == '-' || c == '_'
+}
+
+/// Round 275 — Extract inventory ID citations from `content` (Phase 1A).
+///
+/// For each `prefix` in `prefixes`, scans `<prefix><tail>` tokens where
+/// `<tail>` matches `[A-Z0-9_]+` *and ends in a digit*. The digit-terminus
+/// rule distinguishes inventory IDs (e.g., `ARP_07`,
+/// `TCP_RETRANSMISSION_TO_04`) from coding-convention identifiers
+/// (`TCP_BUFFER_SIZE`, `ARP_PROTO_TYPE`) — the dominant false-positive
+/// surface when scanning C/Rust/Java codebases.
+///
+/// Word-boundary rules mirror `extract_citations`: the char before
+/// `<prefix>` must be non-alphanumeric/non-underscore, and the char after
+/// `<tail>` must be the same. Backtick code-span skipping mirrors
+/// `extract_section_citations` (the comment-only filter handles the
+/// dominant string-literal surface; this is the inline doc-example
+/// guard).
+///
+/// Output: `(line_idx_1_based, full_inventory_id)` pairs, deduped on
+/// `(line, id)` so that a single token matched by multiple registered
+/// prefixes (e.g., `SOMEIP_` and `SOMEIP_ETS_` both registered, token =
+/// `SOMEIP_ETS_BASICS_01`) surfaces once with the longest-prefix match
+/// recorded. Returns empty when `prefixes.is_empty()` (axis disabled).
+pub fn extract_inventory_citations(
+ prefixes: &[String],
+ content: &str,
+) -> Vec<(usize, String)> {
+ if prefixes.is_empty() {
+ return Vec::new();
+ }
+ // Longest-prefix-first ordering so that overlapping registrations
+ // (`SOMEIP_` and `SOMEIP_ETS_`) yield the longer match — the more
+ // specific ID is what the author intended.
+ let mut ordered: Vec<&String> = prefixes.iter().collect();
+ ordered.sort_by_key(|p| std::cmp::Reverse(p.len()));
+
+ let mut seen: BTreeSet<(usize, String)> = BTreeSet::new();
+ for (line_idx, line) in content.lines().enumerate() {
+ let mut in_backtick = false;
+ let bytes = line.as_bytes();
+ let mut i = 0usize;
+ while i < bytes.len() {
+ if bytes[i] == b'`' {
+ in_backtick = !in_backtick;
+ i += 1;
+ continue;
+ }
+ if in_backtick {
+ i += 1;
+ continue;
+ }
+ let mut matched_len: Option<usize> = None;
+ let mut matched_id: Option<String> = None;
+ for prefix in &ordered {
+ if !line[i..].starts_with(prefix.as_str()) {
+  continue;
+ }
+ // word boundary before the prefix
+ let prev_ok = i == 0
+  || !line[..i]
+  .chars()
+  .last()
+  .map(|c| c.is_alphanumeric() || c == '_')
+  .unwrap_or(false);
+ if !prev_ok {
+  continue;
+ }
+ let tail_start = i + prefix.len();
+ // tail = [A-Z0-9_]+ — uppercase-or-digit-or-underscore.
+ let tail_bytes = &bytes[tail_start..];
+ let mut t = 0usize;
+ while t < tail_bytes.len() {
+  let c = tail_bytes[t];
+  if c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_' {
+  t += 1;
+  } else {
+  break;
+  }
+ }
+ if t == 0 {
+  continue;
+ }
+ let tail_end = tail_start + t;
+ // word boundary after the tail
+ let next_ok = tail_end >= line.len()
+  || !line[tail_end..]
+  .chars()
+  .next()
+  .map(|c| c.is_alphanumeric() || c == '_')
+  .unwrap_or(false);
+ if !next_ok {
+  continue;
+ }
+ // tail must end in a digit — TC8 / ISO test-spec convention,
+ // suppresses identifier-shaped false positives.
+ if !tail_bytes[t - 1].is_ascii_digit() {
+  continue;
+ }
+ let id = format!("{}{}", prefix, &line[tail_start..tail_end]);
+ matched_len = Some(prefix.len() + t);
+ matched_id = Some(id);
+ break; // longest-first ordering — first match wins
+ }
+ if let (Some(consumed), Some(id)) = (matched_len, matched_id) {
+ seen.insert((line_idx + 1, id));
+ i += consumed;
+ } else {
+ i += 1;
+ }
+ }
+ }
+ seen.into_iter().collect()
 }
 
 // ============================================================================
@@ -706,6 +917,10 @@ pub fn scan_paths_filtered(
 /// (per-extension dispatch via [`comment_syntax_for`]) so the citation
 /// extractor only sees comment text. Unknown extensions fall through to
 /// whole-text scan regardless of the flag.
+/// Pre-Round-275 caller convenience — delegates to
+/// [`scan_paths_bidirectional_v2`] with an empty `inventory_prefixes`
+/// slice (inventory axis disabled). Existing tests + cascade callers
+/// keep their 7-arg shape; the Phase 1A wire-up calls v2 directly.
 pub fn scan_paths_bidirectional(
  workspace_root: &Path,
  paths: &[String],
@@ -714,6 +929,62 @@ pub fn scan_paths_bidirectional(
  orphan_ledger: &[OrphanLedgerEntry],
  filter_id: Option<&str>,
  comment_only: bool,
+) -> std::io::Result<Vec<CodeRefViolation>> {
+ scan_paths_bidirectional_v2(
+ workspace_root,
+ paths,
+ prefix,
+ store,
+ orphan_ledger,
+ filter_id,
+ comment_only,
+ &[],
+ )
+}
+
+/// Round 275 — Phase 1A scanner with inventory axis. Pre-Round-277
+/// caller convenience — delegates to [`scan_paths_bidirectional_v3`]
+/// with an empty `external_section_prefixes` slice (external skip
+/// disabled, identical to the v2 behavior).
+pub fn scan_paths_bidirectional_v2(
+ workspace_root: &Path,
+ paths: &[String],
+ prefix: &str,
+ store: &AtomicStore,
+ orphan_ledger: &[OrphanLedgerEntry],
+ filter_id: Option<&str>,
+ comment_only: bool,
+ inventory_prefixes: &[String],
+) -> std::io::Result<Vec<CodeRefViolation>> {
+ scan_paths_bidirectional_v3(
+ workspace_root,
+ paths,
+ prefix,
+ store,
+ orphan_ledger,
+ filter_id,
+ comment_only,
+ inventory_prefixes,
+ &[],
+ )
+}
+
+/// Round 277 — Phase 1A scanner with inventory axis + external-standard
+/// `§<id>` skip. When `external_section_prefixes` is non-empty, `§<id>`
+/// citations preceded by `<prefix> <numeric>` (`RFC 2131 §3.5`,
+/// `IEEE 802.3 §2.4`, `ISO/IEC 14882 §1.5`) are suppressed before the
+/// `SectionMissing` / `CitationUnbound` checks fire. Empty slice
+/// reproduces v2 behavior verbatim.
+pub fn scan_paths_bidirectional_v3(
+ workspace_root: &Path,
+ paths: &[String],
+ prefix: &str,
+ store: &AtomicStore,
+ orphan_ledger: &[OrphanLedgerEntry],
+ filter_id: Option<&str>,
+ comment_only: bool,
+ inventory_prefixes: &[String],
+ external_section_prefixes: &[String],
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  let valid_entry_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
  let section_id_set = store.atomic_section_id_set();
@@ -792,7 +1063,9 @@ pub fn scan_paths_bidirectional(
  if filter_id.is_some() {
  continue;
  }
- for (line, section_id) in extract_section_citations(&content) {
+ for (line, section_id) in
+ extract_section_citations_v2(&content, external_section_prefixes)
+ {
  // Ledger suppression — if (file, id) is explicitly registered
  // as a known-stale code citation, treat as if the binding were
  // correct (record in `cited_by` so step 3 doesn't double-fire).
@@ -832,6 +1105,33 @@ pub fn scan_paths_bidirectional(
   entry_id: format!("§{}", section_id),
  },
  kind: ViolationKind::CitationUnbound,
+ });
+ }
+ }
+
+ // ---- Round 275 — Inventory ID axis (Phase 1A) ----
+ // `inventory_prefixes` empty = axis disabled (5-min setup carry).
+ // Active / Reserved status pass silently; Deprecated triggers
+ // `InventoryDeprecated`; missing IDs trigger `InventoryMissing`.
+ // Per-file decoration happens inside this loop; ledger suppression
+ // is a future carry (see Round 275 changelog).
+ for (line, inventory_id) in extract_inventory_citations(inventory_prefixes, &content) {
+ let kind = match store.inventory(&inventory_id).map(|e| e.status) {
+ None => Some(ViolationKind::InventoryMissing),
+ Some(crate::atomic::InventoryStatus::Deprecated) => {
+ Some(ViolationKind::InventoryDeprecated)
+ }
+ // Active / Reserved — cite-permitted.
+ Some(_) => None,
+ };
+ if let Some(k) = kind {
+ violations.push(CodeRefViolation::Citation {
+ citation: Citation {
+  file: rel.clone(),
+  line,
+  entry_id: inventory_id,
+ },
+ kind: k,
  });
  }
  }
@@ -933,6 +1233,61 @@ pub fn scan_section_decay(
   file: rel.clone(),
   line,
   entry_id: format!("§{}", sid),
+ });
+ }
+ }
+ }
+ hits.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+ Ok(hits)
+}
+
+/// Round 276 — Inventory axis cascade trigger primitive (Phase 1A).
+///
+/// Targeted decay scan for a single inventory ID's citations across
+/// `paths`. Mirrors [`scan_section_decay`] on the §<id> axis. Used by
+/// the mutate-time hook in the `add-inventory-entry` (registered
+/// Deprecated), `set-inventory-status` (transition to Deprecated), and
+/// `remove-inventory-entry` CLI surfaces — the cascade surfaces author-
+/// follow-up sites without rejecting the mutate.
+///
+/// `inventory_prefixes` are required for the extractor lookup; an empty
+/// slice yields no hits regardless of input. `comment_only` toggles the
+/// shared filter so fixture string literals don't generate noise.
+///
+/// Skips file-read failures silently (consistent with the bidirectional
+/// scanner). Returns hits sorted by `(file, line)`.
+pub fn scan_inventory_decay(
+ workspace_root: &Path,
+ paths: &[String],
+ inventory_id: &str,
+ inventory_prefixes: &[String],
+ comment_only: bool,
+) -> std::io::Result<Vec<Citation>> {
+ if inventory_prefixes.is_empty() {
+ return Ok(Vec::new());
+ }
+ let files = walk_paths(workspace_root, paths)?;
+ let mut hits = Vec::new();
+ for abs in files {
+ let raw = match std::fs::read_to_string(&abs) {
+ Ok(c) => c,
+ Err(_) => continue,
+ };
+ let content = if comment_only {
+ strip_to_comments(&raw, comment_syntax_for(&abs))
+ } else {
+ raw
+ };
+ let rel = abs
+ .strip_prefix(workspace_root)
+ .map(|p| p.to_path_buf())
+ .unwrap_or(abs.clone());
+ for (line, id) in extract_inventory_citations(inventory_prefixes, &content) {
+ if id == inventory_id {
+ hits.push(Citation {
+  file: rel.clone(),
+  line,
+  entry_id: id,
  });
  }
  }
@@ -1876,5 +2231,420 @@ mod tests {
  )
  .unwrap();
  assert!(v.is_empty(), "filter_id should silence coverage axiom, got: {:?}", v);
+ }
+
+ // ============================================================================
+ // Round 275 — Inventory axis tests (Phase 1A).
+ // ============================================================================
+
+ #[test]
+ fn extract_inventory_citations_basic() {
+ let prefixes = vec!["ARP_".to_string()];
+ let out = extract_inventory_citations(&prefixes, "// ARP_07 cite\nfn x() {}\n");
+ assert_eq!(out, vec![(1, "ARP_07".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_citations_multi_prefix() {
+ let prefixes = vec!["ARP_".to_string(), "TCP_".to_string()];
+ let out = extract_inventory_citations(
+ &prefixes,
+ "// ARP_07 and TCP_RETRANSMISSION_TO_04\n",
+ );
+ assert_eq!(
+ out,
+ vec![
+  (1, "ARP_07".to_string()),
+  (1, "TCP_RETRANSMISSION_TO_04".to_string()),
+ ]
+ );
+ }
+
+ #[test]
+ fn extract_inventory_citations_tail_must_end_in_digit() {
+ // Coding-convention identifiers (TCP_BUFFER_SIZE) are NOT inventory IDs.
+ // Only tokens ending in a digit are treated as cites.
+ let prefixes = vec!["TCP_".to_string()];
+ let out = extract_inventory_citations(
+ &prefixes,
+ "// TCP_BUFFER_SIZE constant ; TCP_BUFFER_03 cite\n",
+ );
+ assert_eq!(out, vec![(1, "TCP_BUFFER_03".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_citations_longest_prefix_wins() {
+ // When SOMEIP_ and SOMEIP_ETS_ are both registered, SOMEIP_ETS_BASICS_01
+ // is reported once under the longer (more specific) prefix.
+ let prefixes = vec!["SOMEIP_".to_string(), "SOMEIP_ETS_".to_string()];
+ let out = extract_inventory_citations(&prefixes, "// SOMEIP_ETS_BASICS_01\n");
+ assert_eq!(out, vec![(1, "SOMEIP_ETS_BASICS_01".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_citations_word_boundary_rejects_alphanumeric_prev() {
+ // `MY_ARP_07` should NOT match ARP_ prefix — the prefix is not on a
+ // word boundary.
+ let prefixes = vec!["ARP_".to_string()];
+ let out = extract_inventory_citations(&prefixes, "// MY_ARP_07 internal\n");
+ assert!(out.is_empty(), "expected no match, got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_inventory_citations_empty_prefixes_disables_axis() {
+ let out = extract_inventory_citations(&[], "// ARP_07 cite\n");
+ assert!(out.is_empty());
+ }
+
+ #[test]
+ fn extract_inventory_citations_skips_backtick_codespan() {
+ let prefixes = vec!["ARP_".to_string()];
+ let out = extract_inventory_citations(&prefixes, "// example: `ARP_07` literal\n");
+ assert!(out.is_empty(), "backtick span should suppress, got: {:?}", out);
+ }
+
+ #[test]
+ fn scan_v2_inventory_missing_reject() {
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 not in store\n").unwrap();
+ let store = AtomicStore::new();
+ let prefixes = vec!["ARP_".to_string()];
+ let v = scan_paths_bidirectional_v2(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &prefixes,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, citation } => {
+  assert!(matches!(kind, ViolationKind::InventoryMissing));
+  assert_eq!(citation.entry_id, "ARP_07");
+ }
+ other => panic!("expected Citation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn scan_v2_inventory_deprecated_reject() {
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "ARP_07".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Deprecated,
+  section_ref: None,
+  source: None,
+  reason: Some("superseded".to_string()),
+ },
+ );
+ let prefixes = vec!["ARP_".to_string()];
+ let v = scan_paths_bidirectional_v2(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &prefixes,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, .. } => {
+  assert!(matches!(kind, ViolationKind::InventoryDeprecated));
+ }
+ other => panic!("expected Citation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn scan_v2_inventory_active_and_reserved_silent() {
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// ARP_07 active\n// ARP_08 reserved\n",
+ )
+ .unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "ARP_07".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Active,
+  ..Default::default()
+ },
+ );
+ store.inventory_entries.insert(
+ "ARP_08".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Reserved,
+  ..Default::default()
+ },
+ );
+ let prefixes = vec!["ARP_".to_string()];
+ let v = scan_paths_bidirectional_v2(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &prefixes,
+ )
+ .unwrap();
+ assert!(
+ v.is_empty(),
+ "Active and Reserved must be cite-permitted, got: {:?}",
+ v
+ );
+ }
+
+ // ============================================================================
+ // Round 277 — External-standard §<id> skip tests (Phase 1A P1).
+ // ============================================================================
+
+ #[test]
+ fn extract_v2_skips_rfc_external_cite() {
+ let prefixes = vec!["RFC".to_string()];
+ let out =
+ extract_section_citations_v2("// RFC 2131 §3.5 is external\n", &prefixes);
+ assert!(
+ out.is_empty(),
+ "RFC <num> §<id> must be skipped, got: {:?}",
+ out
+ );
+ }
+
+ #[test]
+ fn extract_v2_skips_ieee_external_cite() {
+ let prefixes = vec!["IEEE".to_string()];
+ let out =
+ extract_section_citations_v2("// IEEE 802.3 §2.4 frame format\n", &prefixes);
+ assert!(out.is_empty(), "IEEE skip failed, got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v2_skips_iso_iec_external_cite() {
+ // ISO/IEC contains `/` and is itself a single non-whitespace token
+ // — the v1 single-token rule handles it natively.
+ let prefixes = vec!["ISO/IEC".to_string()];
+ let out =
+ extract_section_citations_v2("// ISO/IEC 14882 §1.5\n", &prefixes);
+ assert!(out.is_empty(), "ISO/IEC skip failed, got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_v2_keeps_internal_when_no_external_context() {
+ let prefixes = vec!["RFC".to_string(), "IEEE".to_string()];
+ let out = extract_section_citations_v2("// §4.2.4 internal cite\n", &prefixes);
+ assert_eq!(out, vec![(1, "4.2.4".to_string())]);
+ }
+
+ #[test]
+ fn extract_v2_empty_prefixes_matches_v1_behavior() {
+ // v1 wrapper delegates with empty prefixes; the two paths must
+ // yield identical output for the same input.
+ let v1 = extract_section_citations("// RFC 2131 §3.5 and §4.2.4 mixed\n");
+ let v2 = extract_section_citations_v2("// RFC 2131 §3.5 and §4.2.4 mixed\n", &[]);
+ assert_eq!(v1, v2);
+ // Both retain the (incorrect-from-v2-perspective) RFC §.
+ assert!(v1.iter().any(|(_, id)| id == "3.5"));
+ assert!(v1.iter().any(|(_, id)| id == "4.2.4"));
+ }
+
+ #[test]
+ fn extract_v2_requires_whitespace_between_numeric_and_sigil() {
+ // `RFC2131§3` (no whitespace) is NOT the recognized form — falls
+ // through to the regular extractor. Source uses `\u{00a7}` so the
+ // fixture string itself doesn't show up as a `§3` citation when
+ // the self-application scan walks `code_refs.rs`.
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2("// RFC2131\u{00a7}3 inline form\n", &prefixes);
+ assert_eq!(out, vec![(1, "3".to_string())]);
+ }
+
+ #[test]
+ fn extract_v2_mixed_internal_and_external_on_same_line() {
+ let prefixes = vec!["RFC".to_string()];
+ let out = extract_section_citations_v2(
+ "// see RFC 2131 §3.5 and §4.2.4 here\n",
+ &prefixes,
+ );
+ assert_eq!(out, vec![(1, "4.2.4".to_string())]);
+ }
+
+ #[test]
+ fn scan_v3_external_rfc_cite_does_not_trigger_section_missing() {
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// RFC 2131 §3.5 external — should NOT fire SectionMissing\n",
+ )
+ .unwrap();
+ let store = AtomicStore::new();
+ let externals = vec!["RFC".to_string()];
+ let v = scan_paths_bidirectional_v3(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &[],
+ &externals,
+ )
+ .unwrap();
+ assert!(
+ v.is_empty(),
+ "RFC external cite must be skipped, got: {:?}",
+ v
+ );
+ }
+
+ #[test]
+ fn scan_v3_internal_cite_still_fires_after_external_skip() {
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ // `\u{00a7}` avoids the literal sigil in this source file (self-
+ // scan would otherwise see the fixture as an unrelated cite).
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// RFC 2131 \u{00a7}3.5 ok; \u{00a7}99 missing\n",
+ )
+ .unwrap();
+ let store = AtomicStore::new();
+ let externals = vec!["RFC".to_string()];
+ let v = scan_paths_bidirectional_v3(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &[],
+ &externals,
+ )
+ .unwrap();
+ // Only the internal `\u{00a7}99` should surface.
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, citation } => {
+  assert!(matches!(kind, ViolationKind::SectionMissing));
+  assert!(citation.entry_id.contains("99"));
+ }
+ other => panic!("expected Citation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn scan_inventory_decay_surfaces_only_target_id() {
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/a.rs"),
+ "// ARP_07 target\n// ARP_08 other\n",
+ )
+ .unwrap();
+ let prefixes = vec!["ARP_".to_string()];
+ let hits = scan_inventory_decay(
+ tmp.path(),
+ &["src/".to_string()],
+ "ARP_07",
+ &prefixes,
+ true,
+ )
+ .unwrap();
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].entry_id, "ARP_07");
+ assert_eq!(hits[0].line, 1);
+ }
+
+ #[test]
+ fn scan_inventory_decay_empty_prefixes_yields_no_hits() {
+ // Axis-disabled (empty prefixes) is a no-op regardless of file content.
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/a.rs"), "// ARP_07 cite\n").unwrap();
+ let hits = scan_inventory_decay(
+ tmp.path(),
+ &["src/".to_string()],
+ "ARP_07",
+ &[],
+ true,
+ )
+ .unwrap();
+ assert!(hits.is_empty());
+ }
+
+ #[test]
+ fn scan_inventory_decay_respects_comment_only_flag() {
+ // String literal cite must be suppressed under comment_only=true.
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/a.rs"),
+ "let s = \"ARP_07 inside string\";\n// ARP_07 in comment\n",
+ )
+ .unwrap();
+ let prefixes = vec!["ARP_".to_string()];
+ let hits = scan_inventory_decay(
+ tmp.path(),
+ &["src/".to_string()],
+ "ARP_07",
+ &prefixes,
+ true,
+ )
+ .unwrap();
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].line, 2);
+ }
+
+ #[test]
+ fn scan_v1_wrapper_disables_inventory_axis() {
+ // The pre-Round-275 7-arg shape calls into v2 with an empty
+ // inventory_prefixes slice. Even when the store has Deprecated
+ // entries, no violation surfaces — back-compat guarantee.
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "ARP_07".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Deprecated,
+  ..Default::default()
+ },
+ );
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "v1 wrapper must not scan inventory, got: {:?}", v);
  }
 }

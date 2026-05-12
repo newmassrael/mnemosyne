@@ -20,7 +20,7 @@ use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
  add_cross_ref, add_section, append_changelog_entry, check_style,
- code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
+ code_refs::{scan_paths_bidirectional_v3, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -168,6 +168,19 @@ fn run(args: &[String]) -> Result<()> {
  "append-changelog-entry-v2" => {
  atomic_cli::cmd_append_changelog_entry_v2(&repo_root()?, &args[2..])
  }
+ // Round 274 — Phase 1A inventory mutate primitives.
+ "add-inventory-entry" => {
+ atomic_cli::cmd_add_inventory_entry(&repo_root()?, &args[2..])
+ }
+ "set-inventory-status" => {
+ atomic_cli::cmd_set_inventory_status(&repo_root()?, &args[2..])
+ }
+ "set-inventory-section-ref" => {
+ atomic_cli::cmd_set_inventory_section_ref(&repo_root()?, &args[2..])
+ }
+ "remove-inventory-entry" => {
+ atomic_cli::cmd_remove_inventory_entry(&repo_root()?, &args[2..])
+ }
  "generate-docs" => atomic_cli::cmd_generate_docs(&repo_root()?, &args[2..]),
  "verify-generated" => atomic_cli::cmd_verify_generated(&repo_root()?, &args[2..]),
  // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
@@ -209,6 +222,14 @@ fn print_help(prog: &str) {
  );
  println!(
  " {} query --list-sections workspace full section_id set print",
+ prog
+ );
+ println!(
+ " {} query --list-inventory [--json] Phase 1A inventory entries (Round 278)",
+ prog
+ );
+ println!(
+ " {} query --inventory <ID> [--json] single inventory entry lookup",
  prog
  );
  println!(
@@ -271,6 +292,27 @@ fn print_help(prog: &str) {
  println!(
  " {} append-changelog-entry-v2 --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",
  prog
+ );
+ println!();
+ println!(" --- Phase 1A inventory mutate API (Round 274) ---");
+ println!(
+ " {} add-inventory-entry --id <ID> --status active|deprecated|reserved [--section §<N>] [--source <text>] [--reason <text>] [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ " {} set-inventory-status --id <ID> --status active|deprecated|reserved [--reason <text>] [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ " {} set-inventory-section-ref --id <ID> (--section §<N> | --clear) [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ " {} remove-inventory-entry --id <ID> --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ "   Round 273 InventoryEntry 5번째 closed-form 엔티티 substrate; cite-time reject (R275) + cascade (R276) carry"
  );
  println!(" {} generate-docs [--sidecar <path>] [--output <path>]", prog);
  println!(
@@ -424,16 +466,28 @@ struct QueryArgs {
  include_changelog: bool,
  json: bool,
  list_sections: bool,
+ // Round 278 — Phase 1A inventory query surface.
+ list_inventory: bool,
+ inventory_id: Option<String>,
 }
 
 fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
  let mut out = QueryArgs::default();
- for arg in args {
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
  match arg.as_str() {
  "--include-related" => out.include_related = true,
  "--include-changelog" => out.include_changelog = true,
  "--json" => out.json = true,
  "--list-sections" => out.list_sections = true,
+ "--list-inventory" => out.list_inventory = true,
+ "--inventory" => {
+ out.inventory_id = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--inventory missing value"))?
+  .clone(),
+ );
+ }
  other if other.starts_with("--") => bail!("unknown flag `{}`", other),
  other => {
   if out.section_id.is_some() {
@@ -466,6 +520,78 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  println!("{}", id);
  }
  eprintln!("# total {} section(s)", set.len());
+ return Ok(());
+ }
+
+ // Round 278 — Phase 1A inventory query surface.
+ if qargs.list_inventory {
+ if qargs.json {
+ let view: Vec<_> = atomic_store
+ .inventory_entries
+ .iter()
+ .map(|(id, e)| {
+  serde_json::json!({
+  "id": id,
+  "status": e.status,
+  "section_ref": e.section_ref,
+  "source": e.source,
+  "reason": e.reason,
+  })
+ })
+ .collect();
+ println!("{}", serde_json::to_string_pretty(&view)?);
+ } else {
+ for (id, entry) in &atomic_store.inventory_entries {
+ let status_label = match entry.status {
+  mnemosyne_validator::InventoryStatus::Active => "active",
+  mnemosyne_validator::InventoryStatus::Deprecated => "deprecated",
+  mnemosyne_validator::InventoryStatus::Reserved => "reserved",
+ };
+ let section_part = entry
+  .section_ref
+  .as_deref()
+  .map(|s| format!(" §{}", s))
+  .unwrap_or_default();
+ println!("{}\t{}{}", id, status_label, section_part);
+ }
+ eprintln!(
+ "# total {} inventory entry(ies)",
+ atomic_store.inventory_entries.len()
+ );
+ }
+ return Ok(());
+ }
+ if let Some(inv_id) = qargs.inventory_id {
+ let entry = atomic_store.inventory(&inv_id).ok_or_else(|| {
+ anyhow!("inventory_id `{}` not present in atomic store", inv_id)
+ })?;
+ if qargs.json {
+ let view = serde_json::json!({
+ "id": inv_id,
+ "status": entry.status,
+ "section_ref": entry.section_ref,
+ "source": entry.source,
+ "reason": entry.reason,
+ });
+ println!("{}", serde_json::to_string_pretty(&view)?);
+ } else {
+ let status_label = match entry.status {
+ mnemosyne_validator::InventoryStatus::Active => "active",
+ mnemosyne_validator::InventoryStatus::Deprecated => "deprecated",
+ mnemosyne_validator::InventoryStatus::Reserved => "reserved",
+ };
+ println!("inventory_id: {}", inv_id);
+ println!("status: {}", status_label);
+ if let Some(s) = entry.section_ref.as_deref() {
+ println!("section_ref: §{}", s);
+ }
+ if let Some(s) = entry.source.as_deref() {
+ println!("source: {}", s);
+ }
+ if let Some(s) = entry.reason.as_deref() {
+ println!("reason: {}", s);
+ }
+ }
  return Ok(());
  }
 
@@ -1749,6 +1875,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let mut json = false;
  let mut severity_missing_override: Option<String> = None;
  let mut severity_binding_override: Option<String> = None;
+ let mut severity_inventory_override: Option<String> = None;
  // explicit decay filter (cascade caller restricts the scan
  // to citations of one entry_id, e.g. an entry that just transitioned
  // Active → Superseded).
@@ -1768,6 +1895,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  severity_binding_override = Some(
  iter.next()
  .ok_or_else(|| anyhow!("--severity-binding missing value"))?
+ .clone(),
+ );
+ }
+ "--severity-inventory" => {
+ severity_inventory_override = Some(
+ iter.next()
+ .ok_or_else(|| anyhow!("--severity-inventory missing value"))?
  .clone(),
  );
  }
@@ -1826,6 +1960,16 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  severity_binding
  );
  }
+ let severity_inventory = severity_inventory_override
+ .as_deref()
+ .unwrap_or(&cfg.severity_inventory)
+ .to_string();
+ if !matches!(severity_inventory.as_str(), "reject" | "warn" | "info") {
+ bail!(
+ "invalid --severity-inventory `{}` — expected one of: reject | warn | info",
+ severity_inventory
+ );
+ }
 
  let prefix = cli_schema()?.entry_id_prefix.clone();
  let root = loaded.workspace_root.clone();
@@ -1834,7 +1978,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
- let violations = scan_paths_bidirectional(
+ let violations = scan_paths_bidirectional_v3(
  &root,
  &cfg.paths,
  &prefix,
@@ -1842,10 +1986,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  &loaded.config.orphan_ledger,
  filter_id.as_deref(),
  cfg.comment_only,
+ &cfg.inventory_prefixes,
+ &cfg.external_section_prefixes,
  )
- .context("scan_paths_bidirectional failed")?;
+ .context("scan_paths_bidirectional_v3 failed")?;
 
- let mut counts = [0usize; 6]; // missing / section_missing / citation_unbound / impl_unbacked / decay / impl_missing
+ // missing / section_missing / citation_unbound / impl_unbacked / decay
+ // / impl_missing / inventory_missing / inventory_deprecated
+ let mut counts = [0usize; 8];
  for v in &violations {
  match v {
  CodeRefViolation::Citation { kind, .. } => match kind {
@@ -1853,13 +2001,16 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  ViolationKind::SectionMissing => counts[1] += 1,
  ViolationKind::CitationUnbound => counts[2] += 1,
  ViolationKind::Decay => counts[4] += 1,
+ ViolationKind::InventoryMissing => counts[6] += 1,
+ ViolationKind::InventoryDeprecated => counts[7] += 1,
  },
  CodeRefViolation::ImplementationUnbacked { .. } => counts[3] += 1,
  CodeRefViolation::ImplementationMissing { .. } => counts[5] += 1,
  }
  }
- let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count] =
+ let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count, inventory_missing_count, inventory_deprecated_count] =
  counts;
+ let inventory_count = inventory_missing_count + inventory_deprecated_count;
  let hallucination_count = missing_count + section_missing_count;
  // Round 269 — impl_missing bucketed into severity_binding (defect_class
  // = Binding for all three Path B edges). Separate severity flag was
@@ -1907,14 +2058,20 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "scanned_paths": cfg.paths,
  "valid_entry_count": valid_entry_count,
  "valid_section_count": store.sections.len(),
+ "valid_inventory_count": store.inventory_entries.len(),
+ "inventory_prefixes": cfg.inventory_prefixes,
+ "external_section_prefixes": cfg.external_section_prefixes,
  "missing_count": missing_count,
  "section_missing_count": section_missing_count,
  "citation_unbound_count": citation_unbound_count,
  "impl_unbacked_count": impl_unbacked_count,
  "impl_missing_count": impl_missing_count,
  "decay_count": decay_count,
+ "inventory_missing_count": inventory_missing_count,
+ "inventory_deprecated_count": inventory_deprecated_count,
  "severity_missing": severity_missing,
  "severity_binding": severity_binding,
+ "severity_inventory": severity_inventory,
  "filter_id": filter_id,
  "violations": view,
  })
@@ -1922,19 +2079,30 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  } else {
  println!("=== mnemosyne-cli validate-code-refs ===");
  println!(
- "prefix={:?} valid_entries={} valid_sections={} scanned_paths={:?}",
+ "prefix={:?} valid_entries={} valid_sections={} valid_inventory={} scanned_paths={:?}",
  prefix,
  store.changelog_entries.len(),
  store.sections.len(),
+ store.inventory_entries.len(),
  cfg.paths
  );
+ if !cfg.inventory_prefixes.is_empty() {
+ println!("inventory_prefixes={:?} (Round 275 axis)", cfg.inventory_prefixes);
+ }
+ if !cfg.external_section_prefixes.is_empty() {
+ println!(
+ "external_section_prefixes={:?} (Round 277 P1 skip)",
+ cfg.external_section_prefixes
+ );
+ }
  if let Some(ref fid) = filter_id {
  println!("filter_id={:?} (Round 258 decay scan mode)", fid);
  }
  println!(
  "violations: total={} missing={} section_missing={} \
  citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
- (severity_missing={} severity_binding={})",
+ inv_missing={} inv_deprecated={} \
+ (severity_missing={} severity_binding={} severity_inventory={})",
  violations.len(),
  missing_count,
  section_missing_count,
@@ -1942,8 +2110,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  impl_unbacked_count,
  impl_missing_count,
  decay_count,
+ inventory_missing_count,
+ inventory_deprecated_count,
  severity_missing,
  severity_binding,
+ severity_inventory,
  );
  for v in &violations {
  match v {
@@ -2002,6 +2173,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "{} binding-class violation(s) — CitationUnbound={} ImplementationUnbacked={} \
  ImplementationMissing={} (severity_binding=reject)",
  binding_count, citation_unbound_count, impl_unbacked_count, impl_missing_count,
+ ));
+ }
+ if inventory_count > 0 && severity_inventory == "reject" {
+ reject_msgs.push(format!(
+ "{} inventory-axis violation(s) — InventoryMissing={} InventoryDeprecated={} \
+ (severity_inventory=reject)",
+ inventory_count, inventory_missing_count, inventory_deprecated_count,
  ));
  }
  if !reject_msgs.is_empty() {

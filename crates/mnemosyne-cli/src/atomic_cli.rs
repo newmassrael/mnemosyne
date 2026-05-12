@@ -30,13 +30,15 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
- add_section_caveat, add_section_example, add_section_implementation,
- append_changelog_entry_v2, code_refs::scan_section_decay, discover_config,
- remove_section, render_changelog_entry, set_section_alternatives,
+ add_inventory_entry, add_section_caveat, add_section_example,
+ add_section_implementation, append_changelog_entry_v2,
+ code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
+ remove_inventory_entry, remove_section, render_changelog_entry,
+ set_inventory_section_ref, set_inventory_status, set_section_alternatives,
  set_section_decision_status_atomic, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_outputs,
  set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
- DecisionStatus, ExampleBlock, RejectedAlternative,
+ DecisionStatus, ExampleBlock, InventoryStatus, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;
@@ -673,6 +675,62 @@ fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_stat
  }
 }
 
+/// Round 276 — Inventory mutate-time auto-cascade trigger (Phase 1A).
+///
+/// Mirrors [`print_section_decay_trigger`] for the inventory axis. Runs a
+/// targeted decay scan for `inventory_id` over `[code_refs].paths` and
+/// prints a short stderr report. Silent no-op when `[code_refs]` is
+/// unconfigured or `inventory_prefixes` is empty (axis disabled).
+/// Errors during config load or scan are logged but never propagated —
+/// the mutate's success boundary stays clean.
+///
+/// `transition_label` is rendered into the cascade line so the operator
+/// sees what kind of transition prompted the cascade:
+/// `"deprecated"`, `"removed"`, or `"added(deprecated)"`.
+fn print_inventory_decay_trigger(
+ workspace_root: &Path,
+ inventory_id: &str,
+ transition_label: &str,
+) {
+ let loaded = match discover_config(workspace_root) {
+ Ok(Some(cfg)) => cfg,
+ Ok(None) => return,
+ Err(e) => {
+ eprintln!(
+ "[cascade] inventory-decay-trigger skipped (config load failed: {})",
+ e
+ );
+ return;
+ }
+ };
+ let code_refs_cfg = match loaded.config.code_refs.as_ref() {
+ Some(c) if !c.paths.is_empty() && !c.inventory_prefixes.is_empty() => c,
+ _ => return,
+ };
+ let hits = match scan_inventory_decay(
+ workspace_root,
+ &code_refs_cfg.paths,
+ inventory_id,
+ &code_refs_cfg.inventory_prefixes,
+ code_refs_cfg.comment_only,
+ ) {
+ Ok(h) => h,
+ Err(e) => {
+ eprintln!("[cascade] inventory-decay-trigger scan io error: {}", e);
+ return;
+ }
+ };
+ eprintln!(
+ "[cascade] {} → {} — {} citing location(s) in [code_refs].paths",
+ inventory_id,
+ transition_label,
+ hits.len()
+ );
+ for c in &hits {
+ eprintln!(" {}:{} {}", c.file.display(), c.line, c.entry_id);
+ }
+}
+
 /// Render the atomic store at `sidecar_path` to a deterministic markdown
 /// string. Side-effect free — this is the read-only render path used by
 /// both `generate-docs` (writes the bytes) and `verify-generated` (compares
@@ -1052,6 +1110,253 @@ pub fn cmd_append_changelog_entry_v2(workspace_root: &Path, args: &[String]) -> 
  &impact_refs,
  &carry_forward,
  ),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+// ============================================================================
+// Inventory mutate CLI handlers (Round 274, Phase 1A).
+// ============================================================================
+
+fn parse_inventory_status(raw: &str) -> Result<InventoryStatus> {
+ match raw.to_ascii_lowercase().as_str() {
+ "active" => Ok(InventoryStatus::Active),
+ "deprecated" => Ok(InventoryStatus::Deprecated),
+ "reserved" => Ok(InventoryStatus::Reserved),
+ other => bail!(
+ "--status `{}` invalid (expected active|deprecated|reserved)",
+ other
+ ),
+ }
+}
+
+/// `add-inventory-entry --id <ID> --status active|deprecated|reserved \
+///   [--section §<N>] [--source <text>] [--reason <text>] \
+///   [--sidecar <path>] [--json]`
+pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut inventory_id: Option<String> = None;
+ let mut status_str: Option<String> = None;
+ let mut section_ref: Option<String> = None;
+ let mut source: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--id" => {
+  inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+ }
+ "--status" => {
+  status_str = Some(iter.next().ok_or_else(|| anyhow!("--status missing"))?.clone())
+ }
+ "--section" => {
+  section_ref = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--source" => {
+  source = Some(iter.next().ok_or_else(|| anyhow!("--source missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+ let status = parse_inventory_status(
+ status_str
+ .as_deref()
+ .ok_or_else(|| anyhow!("--status arg required (active|deprecated|reserved)"))?,
+ )?;
+ let section_ref_clean = section_ref.as_deref().map(strip_section_prefix);
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let mutate_result = add_inventory_entry(
+ &mut store,
+ &sidecar_path,
+ &inventory_id,
+ status,
+ section_ref_clean.as_deref(),
+ source.as_deref(),
+ reason.as_deref(),
+ );
+
+ // Round 276 — cascade trigger when registering an already-Deprecated
+ // entry (typical when syncing from an external SSOT where the source
+ // row is already retired). Reserved / Active registrations do not
+ // trigger — there is nothing yet that could be a stale cite-site.
+ if mutate_result.is_ok() && status == InventoryStatus::Deprecated {
+ print_inventory_decay_trigger(workspace_root, &inventory_id, "added(deprecated)");
+ }
+
+ finalize_mutate(
+ workspace_root,
+ mutate_result,
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// `set-inventory-status --id <ID> --status active|deprecated|reserved \
+///   [--reason <text>] [--sidecar <path>] [--json]`
+///
+/// `--reason` semantics: omitted = preserve existing; supplied = overwrite
+/// (empty string clears).
+pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut inventory_id: Option<String> = None;
+ let mut status_str: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--id" => {
+  inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+ }
+ "--status" => {
+  status_str = Some(iter.next().ok_or_else(|| anyhow!("--status missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+ let status = parse_inventory_status(
+ status_str
+ .as_deref()
+ .ok_or_else(|| anyhow!("--status arg required (active|deprecated|reserved)"))?,
+ )?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let mutate_result = set_inventory_status(
+ &mut store,
+ &sidecar_path,
+ &inventory_id,
+ status,
+ reason.as_deref(),
+ );
+
+ // Round 276 — cascade trigger on Active/Reserved → Deprecated
+ // transition. Deprecated → Active (reactivation) and other
+ // non-Deprecated targets do not trigger; the cascade surfaces
+ // *stale-cite risk*, not lifecycle audits in general.
+ if mutate_result.is_ok() && status == InventoryStatus::Deprecated {
+ print_inventory_decay_trigger(workspace_root, &inventory_id, "deprecated");
+ }
+
+ finalize_mutate(
+ workspace_root,
+ mutate_result,
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// `set-inventory-section-ref --id <ID> (--section §<N> | --clear) \
+///   [--sidecar <path>] [--json]`
+///
+/// Exactly one of `--section` or `--clear` is required.
+pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut inventory_id: Option<String> = None;
+ let mut section_ref: Option<String> = None;
+ let mut clear = false;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--id" => {
+  inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+ }
+ "--section" => {
+  section_ref = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--clear" => clear = true,
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+ if section_ref.is_some() == clear {
+ bail!("exactly one of --section or --clear must be supplied");
+ }
+ let cleaned: Option<String> = section_ref.as_deref().map(strip_section_prefix);
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_inventory_section_ref(&mut store, &sidecar_path, &inventory_id, cleaned.as_deref()),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// `remove-inventory-entry --id <ID> --reason <text> [--sidecar <path>] [--json]`
+pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut inventory_id: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--id" => {
+  inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+ let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let mutate_result = remove_inventory_entry(&mut store, &sidecar_path, &inventory_id, &reason);
+
+ // Round 276 — cascade trigger on every successful remove. The entry
+ // ceasing to exist promotes any extant cite to InventoryMissing
+ // on the next validate-code-refs run; the cascade surfaces those
+ // cites mutate-time so the author can act before pre-commit gates.
+ if mutate_result.is_ok() {
+ print_inventory_decay_trigger(workspace_root, &inventory_id, "removed");
+ }
+
+ finalize_mutate(
+ workspace_root,
+ mutate_result,
  sidecar.as_deref(),
  regenerate,
  json,

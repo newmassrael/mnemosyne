@@ -197,6 +197,49 @@ pub struct CodeRefsSection {
  /// for users whose citation discipline relies on non-comment markers).
  #[serde(default = "default_comment_only")]
  pub comment_only: bool,
+
+ /// Round 275 — Inventory citation axis (Phase 1A).
+ ///
+ /// Each prefix opens an inventory ID citation match (e.g., `"ARP_"`,
+ /// `"TCP_"`); the scanner walks `<prefix>[A-Z0-9_]+` tokens and looks them
+ /// up in `AtomicStore.inventory_entries`. Multiple prefixes are scanned in
+ /// parallel — TC8 has 8 categories, ISO/ETSI test specs typically have
+ /// similar prefix families. Empty `Vec` = axis disabled (5-min setup
+ /// promise carry; users without inventory cites pay no cost).
+ ///
+ /// Citation existence is *required* — missing ID → `InventoryMissing`.
+ /// `Deprecated` status → `InventoryDeprecated`. `Active` / `Reserved`
+ /// statuses pass silently. The atomic store is the cite-time SSOT;
+ /// external PDF/JSON sources sync into it via the mutate API.
+ #[serde(default)]
+ pub inventory_prefixes: Vec<String>,
+
+ /// Severity for inventory-axis violations (`InventoryMissing` /
+ /// `InventoryDeprecated`). Recognized values: `"reject"` (default) /
+ /// `"warn"` / `"info"`. Mirrors `severity_missing` / `severity_binding`
+ /// — the cite-time gate's strictness is a per-project knob.
+ #[serde(default = "default_severity_reject")]
+ pub severity_inventory: String,
+
+ /// Round 277 — External-standard section-citation prefixes (Phase 1A P1).
+ ///
+ /// Each entry is a single-token prefix word (no whitespace) — e.g.,
+ /// `"RFC"`, `"IEEE"`, `"ISO/IEC"`. When a `§<id>` citation is preceded
+ /// (on the same line) by `<prefix> <digits>(.<digits>)*` + whitespace,
+ /// the citation is treated as an *external standard reference*
+ /// (`RFC 2131 §3.5`, `IEEE 802.3 §2.4`, `ISO/IEC 14882 §1.5`) and
+ /// skipped — neither `SectionMissing` nor `CitationUnbound` fires.
+ ///
+ /// Empty `Vec` = external-skip disabled (back-compat default; the
+ /// existing single-prefix `§<id>` extractor is preserved verbatim).
+ ///
+ /// Multi-token prefixes (e.g., `"ETSI TS"`) are not v1 — only the last
+ /// non-whitespace token before the numeric is consulted. Workaround for
+ /// rare ETSI/3GPP citations: register the *trailing* token of the prefix
+ /// (e.g., `"TS"` for `"ETSI TS 102 ..."`), accepting a slightly looser
+ /// match.
+ #[serde(default)]
+ pub external_section_prefixes: Vec<String>,
 }
 
 fn default_severity_reject() -> String {

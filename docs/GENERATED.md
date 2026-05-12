@@ -617,3 +617,226 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 273 — Phase 1A 진입 — InventoryEntry 5번째 closed-form 엔티티 schema 추가 (AtomicStore.inventory_entries + schema_v2 back-compat). TC8 외부 dogfood 채택 P0 substrate.
+
+**Changes**:
+- InventoryStatus enum (Active/Deprecated/Reserved, Default=Active, serde snake_case rename)
+- InventoryEntry struct (status/section_ref/source/reason — body 없음, T2 frozen-ledger 부재)
+- AtomicStore.inventory_entries: BTreeMap<String, InventoryEntry> (#[serde(default)] back-compat)
+- inventory(id) read-only 헬퍼 + atomic_inventory_id_set() (R275 cite 검증 substrate)
+- CURRENT_SCHEMA_VERSION 1→2 bump (v1 store 자동 upgrade on save)
+- _mut 헬퍼 의도적 부재 — cite lookup side-effect auto-register 차단
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (atomic::tests 46 통과, 신규 4 포함)
+- schema_version_1_store_loads_with_empty_inventory: v1 JSON load → save → schema_v2 round-trip
+- inventory_entry_round_trip: ARP_07 Active + TCP_RETRANSMISSION_TO_04 Deprecated shape 보존
+- atomic_inventory_id_set: ARP_07/TCP_FLAGS_INVALID_02/SOMEIP_ETS_BASICS_01 평행 검증
+- validate-workspace 통과 — entries=19 sections=5 T1 orphan=0 round-trip 1/1
+
+
+
+**Impact**: §atomic-store-mutate-api, §code-citation-defense
+
+
+**Carry forward**:
+- R274 — mutate primitives 4종 (add/set_status/set_section_ref/remove) for InventoryEntry
+- R275 — validator T1 inventory-axis: cite 시 ID 존재 검증 + status=Deprecated reject
+- R276 — cascade gate: status 전이 (Active→Deprecated) cite-site scan_inventory_decay 트리거
+- R277 — P0: entry_id_prefixes Vec<String> + tail_pattern Numeric/AlphanumericUpper
+- R278 — P1: external-standard prefix context (§ 앞 RFC \d+ / IEEE \d+ skip)
+- R279 — CLI query --list-inventory + MCP tools + TC8 dogfood baseline self-application
+- GENERATED.md round-trip 정책: inventory_entries atomic-only (R273 ratify, GENERATED 비대상)
+- R271 carry held — Section.implementations append-only state-entry guard (Phase 1A 와 독립)
+- R270+ carry held — severity_binding to severity_coverage split (Phase 1A 비영향)
+- R268 carry held — print_atomic_decay_surface unification (third caller 대기 YAGNI)
+- R267 carry held — ChangelogEntry-level mutate API for in-progress entries
+
+
+
+### Round 274 — InventoryEntry 4 mutate primitives (add/set_status/set_section_ref/remove) + CLI handlers + workspace 517/0 통과. R275 validator inventory-axis substrate.
+
+**Changes**:
+- atomic.rs: add_inventory_entry/set_inventory_status/set_inventory_section_ref/remove_inventory_entry
+- validate_inventory_id 헬퍼 (non-empty + no whitespace edges + no internal whitespace)
+- add: duplicate reject (set semantics), section_ref pre-stripped 강제 (§ 시작 reject)
+- set_inventory_status reason: None=preserve, Some("")=clear, Some(non_empty)=overwrite
+- remove_inventory_entry: --reason 필수 (remove_section R267 audit-safeguard mirror)
+- atomic_cli.rs: 4 CLI handlers (--id/--status/--section/--source/--reason/--clear)
+- main.rs: usage line + dispatch arms + help text (Phase 1A inventory mutate API)
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (517 통과, 신규 inventory mutate 13개 포함)
+- atomic::tests: add_basic/duplicate/invalid_id/sigil_reject + set_status 4종 + section_ref + remove 3종
+- CLI smoke: SMOKE_TEST_01 add → deprecated → clear/set ref → duplicate reject → remove cycle
+- validate-workspace entries=20 sections=5 GENERATED.md=sync, smoke cleanup 후 git diff 정확
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- R275 — validator T1 inventory-axis: ID cite 존재 검증 + Deprecated cite-time reject
+- R276 — cascade gate: set_inventory_status Deprecated 전이 시 scan_inventory_decay 트리거
+- R277 — P0: entry_id_prefixes Vec<String> + tail_pattern Numeric/AlphanumericUpper
+- R278 — P1: external-standard prefix context (§ 앞 RFC \d+ / IEEE \d+ skip)
+- R279 — CLI query --list-inventory + MCP tools + TC8 dogfood baseline
+- set_inventory_status 단일 setter: status+reason 묶음, 분리 (set_inventory_reason) 는 friction 측정 carry
+- validate_inventory_id 길이/문자클래스 제한 미도입 — empirical bite 까지 자유 형식 carry
+- set_inventory_section_ref: API Option None=unset 의미 (superseding의 None 과 다른 결)
+- R271 carry held — Section.implementations append-only state-entry guard (Phase 1A 와 독립)
+- R270+/R268/R267 carry held — Phase 0 hardening carry, Phase 1A 비영향
+
+
+
+### Round 275 — Inventory cite-axis + P0 multi-prefix extractor 통합 (원래 R275+R277). scan_paths_bidirectional_v2 + ViolationKind 2 신규 + DefectClass::Inventory. Active/Reserved silent, Deprecated/Missing reject. 528 tests / 0 failure.
+
+**Changes**:
+- config.rs: [code_refs].inventory_prefixes Vec<String> + severity_inventory (default reject)
+- code_refs.rs: ViolationKind::InventoryMissing / InventoryDeprecated + DefectClass::Inventory
+- code_refs.rs: extract_inventory_citations (multi-prefix, longest-prefix-first, alphanumeric tail)
+- tail digit-terminus 규칙 — TCP_BUFFER_SIZE 등 코딩 상수 false-positive 차단
+- code_refs.rs: scan_paths_bidirectional_v2 신설 + v1 wrapper 가 back-compat 위임
+- scan_v2 inventory axis: Missing/Deprecated reject, Active/Reserved silent (Reserved 도 cite-허용)
+- main.rs: --severity-inventory flag + validate-code-refs JSON/text 출력 + reject gate
+- Round 275 (R275) 합침: 원래 7라운드의 R275(inventory-axis) + R277(P0 multi-prefix) 통합
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (528 통과, 신규 R275 inventory 10 + R273/R274 carry)
+- code_refs::tests 신규: extract basic/multi-prefix/digit-terminus/longest-prefix/word-boundary/backtick/empty
+- scan v2: inventory_missing_reject/deprecated_reject/active+reserved_silent/v1_wrapper_disables_axis
+- Mnemosyne self mnemosyne.toml inventory_prefixes 미설정 → axis silent, validate-workspace 변화 없음
+- validate-code-refs 자체 회귀: Round 275 cite 15 + § 4.2.4 backtick 보강 후 통과 (post-changelog)
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- 원래 R277 P0 (multi-prefix) — R275 에 흡수 완료, R277 슬롯 폐기
+- R276 — cascade gate: set_inventory_status Deprecated 전이 시 scan_inventory_decay 트리거 (R266 패턴)
+- R277 (구 R278) — P1: external-standard prefix context (§ 앞 RFC \d+ / IEEE \d+ 컨텍스트 보존, skip)
+- R278 (구 R279) — CLI query --list-inventory + MCP tools + TC8 dogfood baseline self-application
+- validate-workspace summary 에 inventory violation count surface — R277 이후 carry (atomic_cli.rs 변경 별 동선)
+- inventory orphan_ledger suppression — CodeCitation 와 같은 패턴 가능, empirical bite 까지 carry
+- tail digit-terminus 규칙 외 prefix 패턴 확장 (lowercase, mixed-case) — empirical bite 까지 미도입
+- R271/R270+/R268/R267 carry held — Phase 0 hardening 독립 트랙
+
+
+
+### Round 276 — Inventory mutate-time cascade gate. scan_inventory_decay + print_inventory_decay_trigger + 3 CLI handlers wired (add deprecated / set deprecated / remove). 531 tests / 0 failure. R266 패턴 mirror.
+
+**Changes**:
+- code_refs.rs: scan_inventory_decay 함수 — extract_inventory_citations 위 target-id filter
+- atomic_cli.rs: print_inventory_decay_trigger 헬퍼 — R266 print_section_decay_trigger 패턴 mirror
+- cmd_add_inventory_entry: status=Deprecated 등록 시 cascade ("added(deprecated)" label)
+- cmd_set_inventory_status: Deprecated 전이 시 cascade ("deprecated" label); 다른 status 는 silent
+- cmd_remove_inventory_entry: 항상 cascade ("removed" label) — entry 가 사라져 모든 cite 가 Missing 됨
+- cascade silent 조건: [code_refs] 미설정 OR inventory_prefixes 비어있음 (R275 5-min-setup 일관)
+- mutate 성공/실패에 cascade 가 영향 없음 — informational only (R266 패턴 일관)
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (531 통과, 신규 scan_inventory_decay 3 + R275 carry)
+- code_refs::tests: scan_inventory_decay_surfaces_only_target_id / empty_prefixes / comment_only
+- CLI smoke: add R276_SMOKE deprecated + remove → mnemosyne inventory_prefixes 비어 silent (no false output)
+- validate-workspace entries=22 sections=5 GENERATED.md=sync (post-smoke cleanup git diff 정확)
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- R277 (구 R278) — P1: external-standard prefix context (§ 앞 RFC \d+ / IEEE \d+ 컨텍스트 보존)
+- R278 (구 R279) — CLI query --list-inventory + MCP tools + TC8 dogfood baseline self-application
+- cascade DecisionStatus reactivation 미트리거 일관: Section R266 도 Active 로 복귀 시 cascade 안 함
+- inventory orphan_ledger suppression — CodeCitation 와 평행, empirical bite 까지 carry
+- validate-workspace summary 에 inventory violation count surface — R277 또는 R278 라인 carry
+- scan_inventory_decay 의 paths arg: code_refs.paths 만, tests/ asymmetry R263 carry 일관
+- R271/R270+/R268/R267 carry held — Phase 0 hardening 독립 트랙
+
+
+
+### Round 277 — External-standard § skip (P1). extract_section_citations_v2 + scan_paths_bidirectional_v3. RFC/IEEE/ISO/IEC prefix + numeric + § → skip SectionMissing/CitationUnbound. TC8 854 RFC false-positive 제거 substrate. 540 tests / 0 failure.
+
+**Changes**:
+- config.rs: [code_refs].external_section_prefixes Vec<String> (default empty = skip 비활성)
+- code_refs.rs: extract_section_citations_v2(content, external_prefixes) — § 앞 token 검사
+- is_external_section_cite 헬퍼: prefix + space + numeric + space + § 패턴 매칭
+- v1 extract_section_citations 가 v2(empty) 위임 — back-compat 보존
+- scan_paths_bidirectional_v3 (9 args) + v2 wrapper 가 v3(empty external) 위임
+- main.rs: scan_paths_bidirectional_v3 호출 + JSON/text 에 external_section_prefixes 표시
+- single-token prefix 만 v1: ETSI TS 같은 multi-token 은 trailing-token workaround carry
+- doc 코멘트의 RFC/IEEE/ISO example backtick 으로 감싸기 (self-scan false-positive 차단)
+- test fixture 의 § 를 \u{00a7} escape — source byte 에 § literal 없음
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (540 통과, 신규 R277 9 + R276 carry)
+- code_refs::tests: extract_v2 skip RFC/IEEE/ISO/IEC, keep internal, empty=v1, whitespace req, mixed
+- scan_v3: external RFC skip → no SectionMissing, internal §99 still fires after skip
+- self-application: section_missing=0 (이전 false-positive 11 → 0), 남은 6 missing 모두 forward-cite "Round 277"
+
+
+
+**Impact**: §code-citation-defense
+
+
+**Carry forward**:
+- R278 (구 R279) — CLI query --list-inventory + MCP tools + TC8 dogfood baseline self-application
+- multi-token external prefixes (ETSI TS) — trailing-token workaround carry (v2 carry 까지)
+- strip_to_comments 의 string literal 안 `//` 처리 — R263 carry, R277 fixture 회피로 임시 해결
+- inventory orphan_ledger suppression — CodeCitation 평행, empirical bite 까지 carry
+- validate-workspace summary 에 inventory + external violation count surface — R278 carry
+- external prefix 매칭 case-sensitive — case-insensitive 옵션은 friction 측정 후 carry
+- R271/R270+/R268/R267 carry held — Phase 0 hardening 독립 트랙
+
+
+
+### Round 278 — Phase 1A 클로저 — CLI query --list-inventory + --inventory <id> + MCP 6 tools (list/query + add/set_status/set_section_ref/remove). TC8 외부 dogfood baseline READY: P0+P1+5th entity+cite-axis+cascade+query 완. 540 tests/0 failure.
+
+**Changes**:
+- CLI QueryArgs: list_inventory + inventory_id 필드 + flag/value parsing
+- cmd_query: --list-inventory (BTreeMap order, JSON/text) + --inventory <id> (single lookup) branches
+- main.rs help text: query --list-inventory / --inventory <ID> 노출
+- MCP arg structs: InventoryIdArgs/AddInventoryEntryArgs/SetInventoryStatusArgs/SetSectionRef/Remove
+- MCP tools 6 신규: list_inventory/query_inventory/add/set_status/set_section_ref/remove
+- MCP description: cite-time reject/cascade 동작 명시 — agent 가 author-time 검증 가이드
+
+
+
+**Verification**:
+- cargo test --workspace 0 failure (540 통과, R278 = CLI/MCP wire 만, validator 변경 없음)
+- CLI smoke: add R278_SMOKE active + §atomic-store-mutate-api → list (1 entry) → query --inventory → remove
+- MCP cargo build pass — 6 신규 tool macro expansion clean
+- self mnemosyne inventory_prefixes 미설정 → list-inventory total=0, query --inventory NOTEXIST NotFound
+
+
+
+**Impact**: §atomic-store-mutate-api, §code-citation-defense
+
+
+**Carry forward**:
+- TC8 dogfood READY — Mnemosyne 측 P0+P1+5th entity+cite-axis+cascade+query/MCP 완 (R273-278 6 라운드)
+- TC8 측: mnemosyne.toml 작성 (inventory_prefixes=8개 + external_section_prefixes=[RFC,IEEE])
+- TC8 측: PDF→case_inventory.json→add-inventory-entry sync script (543 active + 13 deprecated)
+- TC8 측: severity_inventory=warn 시작 → baseline 청소 → reject 승격 (R262→R263 패턴)
+- Phase 1A 종료 ratify — 5번째 closed-form 엔티티 schema + cite-axis 완전 통합
+- multi-token external prefix (ETSI TS) — trailing-token workaround stable, full 처리 carry
+- v1/v2/v3 wrapper chain 누적 — 다음 axis 추가 시 ScanOptions 리팩터로 통합 carry
+- validate-workspace summary 에 inventory + external count surface — Phase 1B 입구 carry
+- R271/R270+/R268/R267 carry held — Phase 0 hardening 독립 트랙 stable
+
+
+

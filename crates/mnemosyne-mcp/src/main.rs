@@ -118,6 +118,62 @@ pub struct AddSectionImplementationArgs {
     pub symbol: Option<String>,
 }
 
+// Round 278 — Phase 1A inventory MCP arg structs.
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct InventoryIdArgs {
+ /// Inventory id (e.g. `"ARP_07"`, `"TCP_RETRANSMISSION_TO_04"`).
+    pub inventory_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddInventoryEntryArgs {
+ /// Stable inventory id. Must be non-empty, no whitespace.
+    pub inventory_id: String,
+ /// Lifecycle status: `"active"` / `"deprecated"` / `"reserved"`.
+    pub status: String,
+ /// Optional section binding without leading `§` (e.g. `"4.2.4"`).
+    #[serde(default)]
+    pub section_ref: Option<String>,
+ /// Optional traceability pointer (PDF page ref, JSON row id, etc.).
+    #[serde(default)]
+    pub source: Option<String>,
+ /// Optional rationale (typically used when status starts as
+ /// `"deprecated"` — explains the deprecation cause).
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetInventoryStatusArgs {
+    pub inventory_id: String,
+ /// New status: `"active"` / `"deprecated"` / `"reserved"`.
+    pub status: String,
+ /// Optional reason. Omit to preserve existing; empty string clears.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetInventorySectionRefArgs {
+    pub inventory_id: String,
+ /// New section_ref without `§`. Omit (or pass `null`) AND set
+ /// `clear: true` to unset the binding.
+    #[serde(default)]
+    pub section_ref: Option<String>,
+ /// Set to `true` to explicitly unset the section_ref. Exactly one
+ /// of `section_ref` or `clear` must be present.
+    #[serde(default)]
+    pub clear: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveInventoryEntryArgs {
+    pub inventory_id: String,
+ /// Mandatory rationale recorded in the receipt (audit safeguard).
+    pub reason: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppendChangelogEntryArgs {
  /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
@@ -467,6 +523,125 @@ impl MnemosyneServer {
 
         self.run_cli_with_files(argv, vec![changes_path, verify_path, carry_path])
             .await
+    }
+
+    // Round 278 — Phase 1A inventory tool surface.
+
+    #[tool(
+        description = "List every inventory entry in the atomic store (id, status, section_ref). Phase 1A 5th-entity surface (Round 273). Returns one entry per line by default — pass nothing, the CLI walks AtomicStore.inventory_entries in BTreeMap order."
+    )]
+    async fn list_inventory(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_cli(&["query", "--list-inventory", "--json"]).await
+    }
+
+    #[tool(
+        description = "Look up a single inventory entry (status / section_ref / source / reason). Phase 1A 5th-entity (Round 273). Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite; cite-time reject is the validator's job, but author-time check is cheap)."
+    )]
+    async fn query_inventory(
+        &self,
+        args: Parameters<InventoryIdArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_cli(&["query", "--inventory", &args.0.inventory_id, "--json"])
+            .await
+    }
+
+    #[tool(
+        description = "Register a new inventory entry (Phase 1A, Round 274). Duplicate inventory_id rejects. status = active|deprecated|reserved. Pass status=deprecated to register an already-retired upstream id; the mutate-time cascade (Round 276) then surfaces any pre-existing cite-sites. section_ref omits the leading §."
+    )]
+    async fn add_inventory_entry(
+        &self,
+        args: Parameters<AddInventoryEntryArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "add-inventory-entry".to_string(),
+            "--id".to_string(),
+            args.0.inventory_id.clone(),
+            "--status".to_string(),
+            args.0.status.clone(),
+        ];
+        if let Some(s) = &args.0.section_ref {
+            argv.push("--section".to_string());
+            argv.push(format!("§{}", s));
+        }
+        if let Some(s) = &args.0.source {
+            argv.push("--source".to_string());
+            argv.push(s.clone());
+        }
+        if let Some(s) = &args.0.reason {
+            argv.push("--reason".to_string());
+            argv.push(s.clone());
+        }
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Update an inventory entry's status (Round 274). Returns NotFound if the id is not registered. reason: omit to preserve existing; pass empty string to clear; pass non-empty to overwrite. Active→Deprecated transitions invoke the cascade scan (Round 276)."
+    )]
+    async fn set_inventory_status(
+        &self,
+        args: Parameters<SetInventoryStatusArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "set-inventory-status".to_string(),
+            "--id".to_string(),
+            args.0.inventory_id.clone(),
+            "--status".to_string(),
+            args.0.status.clone(),
+        ];
+        if let Some(s) = &args.0.reason {
+            argv.push("--reason".to_string());
+            argv.push(s.clone());
+        }
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Update an inventory entry's section_ref binding (Round 274). Exactly one of section_ref or clear must be supplied. section_ref omits the leading §. NotFound on unregistered ids."
+    )]
+    async fn set_inventory_section_ref(
+        &self,
+        args: Parameters<SetInventorySectionRefArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "set-inventory-section-ref".to_string(),
+            "--id".to_string(),
+            args.0.inventory_id.clone(),
+        ];
+        match (&args.0.section_ref, args.0.clear) {
+            (Some(s), false) => {
+                argv.push("--section".to_string());
+                argv.push(format!("§{}", s));
+            }
+            (None, true) => {
+                argv.push("--clear".to_string());
+            }
+            _ => {
+                return Self::tool_error(
+                    "exactly one of section_ref or clear must be supplied".to_string(),
+                );
+            }
+        }
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Remove an inventory entry (Round 274). reason is mandatory (audit safeguard recorded in the receipt). Triggers the cascade scan (Round 276) so any pre-existing cite-sites surface mutate-time as `removed` cascade lines."
+    )]
+    async fn remove_inventory_entry(
+        &self,
+        args: Parameters<RemoveInventoryEntryArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let argv = vec![
+            "remove-inventory-entry".to_string(),
+            "--id".to_string(),
+            args.0.inventory_id.clone(),
+            "--reason".to_string(),
+            args.0.reason.clone(),
+        ];
+        self.run_cli_with_files(argv, vec![]).await
     }
 }
 

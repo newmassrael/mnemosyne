@@ -141,16 +141,81 @@ pub struct AtomicChangelogEntry {
  pub carry_forward_bullets: Vec<String>,
 }
 
-/// Workspace-wide atomic store. Keys = canonical `section_id` / `entry_id`.
-/// On-disk shape = single JSON file at `docs/.atomic/workspace.atomic.json`
-/// (path configurable via `[atomic] sidecar_path` in mnemosyne.toml — extend
-/// 162 carry, default if unset).
+/// Inventory entry lifecycle status (Round 273, Phase 1A).
+///
+/// Distinguished from `DecisionStatus` (audit-trail genre — `Active` /
+/// `Superseded` / `Removed` over Section / ChangelogEntry decisions) because
+/// inventory entries belong to a different genre: stable external IDs (test
+/// cases, requirement IDs, regulation IDs) whose lifecycle vocabulary is
+/// "in use" / "no longer cited" / "set aside but reserved". Cite-time
+/// reject semantics in later rounds key off `Deprecated`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InventoryStatus {
+ Active,
+ Deprecated,
+ Reserved,
+}
+
+impl Default for InventoryStatus {
+ fn default() -> Self {
+ InventoryStatus::Active
+ }
+}
+
+/// Atomic inventory entry — Phase 1A 5th closed-form entity (Round 273).
+///
+/// Schema rationale: external-dogfood projects (TC8 harness as the seeding
+/// case) cite stable IDs in code (`ARP_07`, `TCP_RETRANSMISSION_TO_04`) whose
+/// lifecycle (`Active` / `Deprecated` / `Reserved`) and section binding
+/// (`§4.2.4`) must be validated cite-time. `ChangelogEntry` does not fit —
+/// audit-trail genre with body and `frozen_ledger_jaccard` T2 protection —
+/// while inventory entries have no body (often license-blocked from import)
+/// and demand a different reject vocabulary.
+///
+/// Field shape kept minimal; mutate primitives (`add_inventory_entry`,
+/// `set_inventory_status`, etc.) land in Round 274. Validator cite-time
+/// axis (T1 inventory existence + Deprecated reject) lands in Round 275.
+///
+/// Key (in `AtomicStore.inventory_entries`) = the inventory ID itself
+/// (e.g., `"ARP_07"`); not duplicated in the struct, mirroring the
+/// `AtomicSection` / `AtomicChangelogEntry` convention.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InventoryEntry {
+ /// Lifecycle status. Default = Active.
+ #[serde(default)]
+ pub status: InventoryStatus,
+ /// Optional Section binding (section_id without leading `§`).
+ /// `None` = orphan inventory entry (later rounds may surface as T4 info).
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub section_ref: Option<String>,
+ /// Optional traceability pointer to the upstream SSOT row (PDF page ref,
+ /// `case_inventory.json` row id, requirements DB key). Opaque string —
+ /// no shape validation; supports humans tracing back to the source.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub source: Option<String>,
+ /// Optional deprecation rationale. Surfaced in cite-time reject messages
+ /// when `status = Deprecated` (Round 275 wiring).
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub reason: Option<String>,
+}
+
+/// Workspace-wide atomic store. Keys = canonical `section_id` / `entry_id` /
+/// `inventory_id`. On-disk shape = single JSON file at
+/// `docs/.atomic/workspace.atomic.json` (path configurable via
+/// `[atomic] sidecar_path` in mnemosyne.toml — extend 162 carry, default
+/// if unset).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicStore {
  #[serde(default)]
  pub sections: BTreeMap<String, AtomicSection>,
  #[serde(default)]
  pub changelog_entries: BTreeMap<String, AtomicChangelogEntry>,
+ /// Phase 1A 5th entity — inventory entries (Round 273). Keyed by the
+ /// inventory ID (e.g., `"ARP_07"`); empty on schema-version-1 stores
+ /// via `#[serde(default)]`.
+ #[serde(default)]
+ pub inventory_entries: BTreeMap<String, InventoryEntry>,
  /// Schema version — bump on breaking shape change.
  #[serde(default = "default_schema_version")]
  pub schema_version: u32,
@@ -170,7 +235,10 @@ pub enum AtomicStoreError {
  SchemaVersionMismatch { store: u32, expected: u32 },
 }
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+// Schema version 2 (Round 273): Phase 1A entry — adds AtomicStore.inventory_entries.
+// Load is back-compat: version-1 stores deserialize with inventory_entries default
+// (empty BTreeMap via #[serde(default)]); the next save rewrites schema_version to 2.
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -269,6 +337,29 @@ impl AtomicStore {
  }
  }
  set
+ }
+
+ /// Read-only inventory entry lookup (Round 273, Phase 1A).
+ ///
+ /// Returns `Some(&InventoryEntry)` when the inventory ID is registered,
+ /// `None` otherwise. Mutate access (registration / status transition /
+ /// removal) lands as named primitives in Round 274 — there is
+ /// deliberately no `inventory_mut` / `inventory_entry_mut` helper here,
+ /// so cite-time existence checks cannot accidentally auto-register an
+ /// ID by lookup side-effect.
+ pub fn inventory(&self, inventory_id: &str) -> Option<&InventoryEntry> {
+ self.inventory_entries.get(inventory_id)
+ }
+
+ /// Inventory ID set for cite-time existence checks (Round 273, Phase 1A).
+ ///
+ /// Parallel to [`Self::atomic_section_id_set`]. Inventory IDs are flat
+ /// strings (no `/` parent-prefix derivation) because the genre is stable
+ /// external IDs without parent-child hierarchy. The validator's inventory
+ /// citation axis (Round 275) consults this set in O(log n) membership
+ /// checks per scanned cite token.
+ pub fn atomic_inventory_id_set(&self) -> std::collections::BTreeSet<String> {
+ self.inventory_entries.keys().cloned().collect()
  }
 }
 
@@ -795,6 +886,237 @@ pub fn append_changelog_entry_v2(
  )
 }
 
+// ============================================================================
+// Inventory atomic mutate primitives (Round 274, Phase 1A).
+// ============================================================================
+
+/// Validate an inventory ID against the trust-boundary shape rules:
+/// non-empty after trim, no surrounding whitespace, no internal whitespace,
+/// no embedded newlines. Returns the (already-known-canonical) input on
+/// success — callers should pass the trimmed form they intend to store.
+fn validate_inventory_id(raw: &str) -> Result<&str, AtomicMutateError> {
+ if raw.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "inventory_id: must be non-empty".to_string(),
+ ));
+ }
+ if raw.trim() != raw {
+ return Err(AtomicMutateError::Validation(format!(
+ "inventory_id: leading or trailing whitespace not allowed (`{}`)",
+ raw
+ )));
+ }
+ if raw.chars().any(char::is_whitespace) {
+ return Err(AtomicMutateError::Validation(format!(
+ "inventory_id: internal whitespace not allowed (`{}`)",
+ raw
+ )));
+ }
+ Ok(raw)
+}
+
+/// Validate a `section_ref` value: strip nothing (callers pass canonical
+/// form already — no leading `§`, no whitespace edges). The CLI surface
+/// performs the `§` strip before reaching this layer.
+fn validate_section_ref_input(raw: &str) -> Result<&str, AtomicMutateError> {
+ if raw.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "section_ref: must be non-empty (pass None to unset)".to_string(),
+ ));
+ }
+ if raw.trim() != raw {
+ return Err(AtomicMutateError::Validation(format!(
+ "section_ref: leading or trailing whitespace not allowed (`{}`)",
+ raw
+ )));
+ }
+ if raw.starts_with('§') {
+ return Err(AtomicMutateError::Validation(format!(
+ "section_ref: drop leading `§` for canonical form (`{}`)",
+ raw
+ )));
+ }
+ Ok(raw)
+}
+
+/// Register a new inventory entry (Round 274).
+///
+/// `inventory_id` must be unique within `AtomicStore.inventory_entries` —
+/// duplicate registration returns `Validation` error (fail-loud; explicit
+/// register-then-update is cleaner than implicit upsert when the genre is
+/// stable external IDs). To change an existing entry, use the dedicated
+/// `set_inventory_*` primitives.
+///
+/// `section_ref` / `source` / `reason` are all optional and pass through
+/// after a trust-boundary shape check (no whitespace edges, no embedded
+/// leading `§` in `section_ref`). Empty strings reject — callers should
+/// pass `None` to indicate "no value".
+pub fn add_inventory_entry(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ inventory_id: &str,
+ status: InventoryStatus,
+ section_ref: Option<&str>,
+ source: Option<&str>,
+ reason: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ validate_inventory_id(inventory_id)?;
+ if store.inventory_entries.contains_key(inventory_id) {
+ return Err(AtomicMutateError::Validation(format!(
+ "inventory_id `{}` already registered (use set_inventory_status / set_inventory_section_ref / remove_inventory_entry to mutate)",
+ inventory_id
+ )));
+ }
+ let section_ref_clean = match section_ref {
+ Some(s) => Some(validate_section_ref_input(s)?.to_string()),
+ None => None,
+ };
+ let source_clean = match source {
+ Some(s) if !s.trim().is_empty() => Some(s.to_string()),
+ _ => None,
+ };
+ let reason_clean = match reason {
+ Some(s) if !s.trim().is_empty() => Some(s.to_string()),
+ _ => None,
+ };
+ let entry = InventoryEntry {
+ status,
+ section_ref: section_ref_clean,
+ source: source_clean,
+ reason: reason_clean,
+ };
+ store
+ .inventory_entries
+ .insert(inventory_id.to_string(), entry);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "add_inventory_entry",
+ "inventory_entry",
+ inventory_id,
+ )
+}
+
+/// Update an inventory entry's `status` (Round 274).
+///
+/// Returns `NotFound` when the ID is not registered (no silent create —
+/// status mutation on a non-existent entry is a caller mistake worth
+/// surfacing). `reason` is `Option<&str>`: `None` leaves the existing
+/// reason untouched, `Some("")` clears it, `Some(non_empty)` overwrites.
+///
+/// All transitions accepted at this layer (Active ↔ Deprecated ↔ Reserved).
+/// Cite-time reject semantics (Deprecated triggers reject) is the validator
+/// inventory axis's responsibility (Round 275 carry). Cascade-on-status-
+/// transition is Round 276 carry.
+pub fn set_inventory_status(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ inventory_id: &str,
+ new_status: InventoryStatus,
+ reason: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ validate_inventory_id(inventory_id)?;
+ let entry = store
+ .inventory_entries
+ .get_mut(inventory_id)
+ .ok_or_else(|| {
+ AtomicMutateError::NotFound(format!(
+ "inventory_id `{}` not present in atomic store",
+ inventory_id
+ ))
+ })?;
+ entry.status = new_status;
+ if let Some(r) = reason {
+ entry.reason = if r.trim().is_empty() {
+ None
+ } else {
+ Some(r.to_string())
+ };
+ }
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_inventory_status",
+ "inventory_entry",
+ inventory_id,
+ )
+}
+
+/// Update an inventory entry's `section_ref` (Round 274).
+///
+/// Returns `NotFound` when the ID is not registered. `section_ref` is
+/// `Option<&str>`: `None` unsets the binding, `Some(non_empty)` overwrites
+/// after a shape check (leading `§` rejected — callers strip before this
+/// layer, matching the existing CLI convention).
+///
+/// No referential-integrity check (`section_ref` points at a section_id
+/// that actually exists) — that's `validate-workspace`'s job, not the
+/// atomic primitive's. Mirrors the `set_section_decision_status_atomic`
+/// stance on `superseding` (no cross-store existence enforcement here).
+pub fn set_inventory_section_ref(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ inventory_id: &str,
+ section_ref: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ validate_inventory_id(inventory_id)?;
+ let cleaned = match section_ref {
+ Some(s) => Some(validate_section_ref_input(s)?.to_string()),
+ None => None,
+ };
+ let entry = store
+ .inventory_entries
+ .get_mut(inventory_id)
+ .ok_or_else(|| {
+ AtomicMutateError::NotFound(format!(
+ "inventory_id `{}` not present in atomic store",
+ inventory_id
+ ))
+ })?;
+ entry.section_ref = cleaned;
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_inventory_section_ref",
+ "inventory_entry",
+ inventory_id,
+ )
+}
+
+/// Remove an inventory entry (Round 274).
+///
+/// `reason` mandatory — audit-trail safeguard mirroring `remove_section`
+/// (Round 267). Returns `NotFound` when the ID is absent. The receipt
+/// records the primitive name and target_id; the reason itself lands in
+/// the git history of the sidecar JSON (the atomic store *is* the audit
+/// trail, so the diff carries the human-readable explanation).
+pub fn remove_inventory_entry(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ inventory_id: &str,
+ reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ validate_inventory_id(inventory_id)?;
+ if reason.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "remove_inventory_entry: --reason mandatory (audit-trail safeguard)".to_string(),
+ ));
+ }
+ if store.inventory_entries.remove(inventory_id).is_none() {
+ return Err(AtomicMutateError::NotFound(format!(
+ "inventory_id `{}` not present in atomic store",
+ inventory_id
+ )));
+ }
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "remove_inventory_entry",
+ "inventory_entry",
+ inventory_id,
+ )
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;
@@ -876,6 +1198,307 @@ mod tests {
  let store = AtomicStore::load(&path).unwrap();
  assert!(store.sections.is_empty());
  assert!(store.changelog_entries.is_empty());
+ assert!(store.inventory_entries.is_empty());
+ }
+
+ #[test]
+ fn schema_version_1_store_loads_with_empty_inventory() {
+ // Back-compat: a store written under schema-version 1 (pre-Round 273)
+ // has no inventory_entries field. Load must succeed; the field defaults
+ // to empty via #[serde(default)]; subsequent save rewrites to v2.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+ let legacy_json = r#"{
+ "sections": {},
+ "changelog_entries": {},
+ "schema_version": 1
+ }"#;
+ std::fs::write(&path, legacy_json).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ assert!(loaded.inventory_entries.is_empty());
+ assert_eq!(loaded.schema_version, 1);
+ loaded.save(&path).unwrap();
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.schema_version, 2);
+ }
+
+ #[test]
+ fn inventory_entry_round_trip() {
+ // Direct insertion round-trips through save/load preserving status,
+ // section_ref, source, reason. Mutate primitives land in Round 274; this
+ // test exercises the schema shape, not authoring ergonomics.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "ARP_07".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Active,
+  section_ref: Some("4.2.4".to_string()),
+  source: Some("tc8_p041-p060.pdf#row=12".to_string()),
+  reason: None,
+ },
+ );
+ store.inventory_entries.insert(
+ "TCP_RETRANSMISSION_TO_04".to_string(),
+ InventoryEntry {
+  status: InventoryStatus::Deprecated,
+  section_ref: Some("4.8.6.11".to_string()),
+  source: None,
+  reason: Some("superseded by RETRANSMISSION_TO_05 in TC8 v2.3".to_string()),
+ },
+ );
+ store.save(&path).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let arp = loaded.inventory("ARP_07").expect("ARP_07 not found");
+ assert_eq!(arp.status, InventoryStatus::Active);
+ assert_eq!(arp.section_ref.as_deref(), Some("4.2.4"));
+ let tcp = loaded.inventory("TCP_RETRANSMISSION_TO_04").unwrap();
+ assert_eq!(tcp.status, InventoryStatus::Deprecated);
+ assert!(tcp.reason.as_ref().unwrap().contains("v2.3"));
+ assert!(loaded.inventory("ARP_99").is_none());
+ }
+
+ #[test]
+ fn add_inventory_entry_basic_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(
+ &mut store,
+ &path,
+ "ARP_07",
+ InventoryStatus::Active,
+ Some("4.2.4"),
+ Some("tc8_p041-p060.pdf#row=12"),
+ None,
+ )
+ .unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let e = loaded.inventory("ARP_07").unwrap();
+ assert_eq!(e.status, InventoryStatus::Active);
+ assert_eq!(e.section_ref.as_deref(), Some("4.2.4"));
+ assert_eq!(e.source.as_deref(), Some("tc8_p041-p060.pdf#row=12"));
+ assert!(e.reason.is_none());
+ }
+
+ #[test]
+ fn add_inventory_entry_rejects_duplicate() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(&mut store, &path, "ARP_07", InventoryStatus::Active, None, None, None).unwrap();
+ let err = add_inventory_entry(
+ &mut store,
+ &path,
+ "ARP_07",
+ InventoryStatus::Deprecated,
+ None,
+ None,
+ None,
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+ assert!(msg.contains("already registered"), "got: {}", msg)
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn add_inventory_entry_rejects_invalid_id() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ // empty
+ assert!(matches!(
+ add_inventory_entry(&mut store, &path, "", InventoryStatus::Active, None, None, None),
+ Err(AtomicMutateError::Validation(_))
+ ));
+ // whitespace edges
+ assert!(matches!(
+ add_inventory_entry(&mut store, &path, " ARP_07", InventoryStatus::Active, None, None, None),
+ Err(AtomicMutateError::Validation(_))
+ ));
+ // internal whitespace
+ assert!(matches!(
+ add_inventory_entry(&mut store, &path, "ARP 07", InventoryStatus::Active, None, None, None),
+ Err(AtomicMutateError::Validation(_))
+ ));
+ }
+
+ #[test]
+ fn add_inventory_entry_rejects_section_ref_with_section_sigil() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ // CLI strips `§`; the mutate API must reject pre-stripped form to fail
+ // loud on a caller bypassing the CLI layer.
+ let err = add_inventory_entry(
+ &mut store,
+ &path,
+ "ARP_07",
+ InventoryStatus::Active,
+ Some("§4.2.4"),
+ None,
+ None,
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => assert!(msg.contains("drop leading `§`"), "got: {}", msg),
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn set_inventory_status_active_to_deprecated_with_reason() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(&mut store, &path, "TCP_X", InventoryStatus::Active, None, None, None).unwrap();
+ set_inventory_status(
+ &mut store,
+ &path,
+ "TCP_X",
+ InventoryStatus::Deprecated,
+ Some("superseded by TCP_Y in TC8 v2.3"),
+ )
+ .unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let e = loaded.inventory("TCP_X").unwrap();
+ assert_eq!(e.status, InventoryStatus::Deprecated);
+ assert!(e.reason.as_ref().unwrap().contains("v2.3"));
+ }
+
+ #[test]
+ fn set_inventory_status_reason_none_preserves_existing() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(
+ &mut store,
+ &path,
+ "TCP_X",
+ InventoryStatus::Deprecated,
+ None,
+ None,
+ Some("initial reason"),
+ )
+ .unwrap();
+ set_inventory_status(&mut store, &path, "TCP_X", InventoryStatus::Active, None).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let e = loaded.inventory("TCP_X").unwrap();
+ assert_eq!(e.status, InventoryStatus::Active);
+ assert_eq!(e.reason.as_deref(), Some("initial reason"));
+ }
+
+ #[test]
+ fn set_inventory_status_reason_empty_string_clears() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(
+ &mut store,
+ &path,
+ "TCP_X",
+ InventoryStatus::Deprecated,
+ None,
+ None,
+ Some("initial reason"),
+ )
+ .unwrap();
+ set_inventory_status(&mut store, &path, "TCP_X", InventoryStatus::Reserved, Some("")).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let e = loaded.inventory("TCP_X").unwrap();
+ assert!(e.reason.is_none());
+ }
+
+ #[test]
+ fn set_inventory_status_not_found_returns_not_found() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_inventory_status(&mut store, &path, "ARP_99", InventoryStatus::Active, None)
+ .unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn set_inventory_section_ref_basic_and_clear() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(&mut store, &path, "ARP_07", InventoryStatus::Active, None, None, None).unwrap();
+ set_inventory_section_ref(&mut store, &path, "ARP_07", Some("4.2.4")).unwrap();
+ assert_eq!(
+ AtomicStore::load(&path).unwrap().inventory("ARP_07").unwrap().section_ref.as_deref(),
+ Some("4.2.4")
+ );
+ set_inventory_section_ref(&mut store, &path, "ARP_07", None).unwrap();
+ assert!(AtomicStore::load(&path).unwrap().inventory("ARP_07").unwrap().section_ref.is_none());
+ }
+
+ #[test]
+ fn set_inventory_section_ref_not_found_returns_not_found() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_inventory_section_ref(&mut store, &path, "ARP_99", Some("4.2.4")).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn remove_inventory_entry_basic() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(&mut store, &path, "ARP_07", InventoryStatus::Active, None, None, None).unwrap();
+ remove_inventory_entry(&mut store, &path, "ARP_07", "deprecated upstream in TC8 v2.4").unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ assert!(loaded.inventory("ARP_07").is_none());
+ }
+
+ #[test]
+ fn remove_inventory_entry_rejects_empty_reason() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_inventory_entry(&mut store, &path, "ARP_07", InventoryStatus::Active, None, None, None).unwrap();
+ let err = remove_inventory_entry(&mut store, &path, "ARP_07", "  ").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ }
+
+ #[test]
+ fn remove_inventory_entry_not_found() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = remove_inventory_entry(&mut store, &path, "ARP_99", "any reason").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn atomic_inventory_id_set_returns_inventory_keys() {
+ // Parallel to atomic_section_id_set_returns_section_keys: cite-time
+ // existence check substrate (Round 275 lookup foundation).
+ let mut store = AtomicStore::new();
+ store
+ .inventory_entries
+ .insert("ARP_07".to_string(), InventoryEntry::default());
+ store
+ .inventory_entries
+ .insert("TCP_FLAGS_INVALID_02".to_string(), InventoryEntry::default());
+ store
+ .inventory_entries
+ .insert("SOMEIP_ETS_BASICS_01".to_string(), InventoryEntry::default());
+ let id_set = store.atomic_inventory_id_set();
+ assert_eq!(id_set.len(), 3);
+ assert!(id_set.contains("ARP_07"));
+ assert!(id_set.contains("TCP_FLAGS_INVALID_02"));
+ assert!(id_set.contains("SOMEIP_ETS_BASICS_01"));
+ assert!(!id_set.contains("ARP_99"));
  }
 
  #[test]
