@@ -516,3 +516,32 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 268 — validate-workspace decay surface integration (Round 266 carry item 2 closed) — print_atomic_decay_surface walks Superseded/Removed atomic sections and runs scan_section_decay against [code_refs].paths; informational only, never affects exit code; smoke loop validated remove-section closure (Round 267) replacing CLAUDE.md override-grant for self-introduced cleanup
+
+**Changes**:
+- main.rs::print_atomic_decay_surface added — workspace-wide companion to the Round 266 mutate-time trigger. Reads atomic store, walks sections with decision_status=Some(Superseded|Removed), runs scan_section_decay against [code_refs].paths, prints "atomic decay surface: N citation(s) across M superseded/removed section(s)" + per-section break-down lines (only sections with non-zero hits listed in the break-down).
+- Wired into cmd_validate_workspace right before the final OK return; informational only, never affects exit code (matches Round 266 mutate-time trigger semantics). Silent no-op when [code_refs] unconfigured or no Superseded/Removed sections exist.
+- End-to-end smoke loop validated through remove_section closure: created §round268-smoke via mutate API, set status Superseded (mutate-time trigger fired with 0 citations), validate-workspace surfaced "atomic decay surface: 0 citation(s) across 1 superseded/removed section(s)", remove-section cleaned up — no CLAUDE.md override grant needed (Round 267 closure proven).
+
+
+
+**Verification**:
+- cargo build --release --workspace PASS — clean compile.
+- cargo test --release --workspace PASS — 488 tests, 0 failures (no new tests this round; behavior is exercised end-to-end via the validate-workspace smoke loop).
+- validate-workspace baseline (no Superseded/Removed sections): output unchanged, no decay-surface line emitted.
+- validate-workspace with §round268-smoke at status=superseded: emitted "atomic decay surface: 0 citation(s) across 1 superseded/removed section(s)" — gate stayed PASS, exit code 0 (informational semantics confirmed).
+- validate-code-refs caught 2 self-introduced Round 268 src/ citations under reject; entry registration cleared both.
+- Round 267 remove-section primitive used to clean smoke section without override grant — first end-to-end validation that the new mutate API replaces the JSON-direct-edit exception path for self-introduced authoring artifacts.
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- Round 269+ — code-citation-defense arc closure: with Round 264 (defense closure) + Round 265 (atomic decision_status field) + Round 266 (mutate-time trigger) + Round 267 (remove-section primitive) + Round 268 (validate-workspace decay surface) all landed, the Stage A reject + Stage B freshness substrate is feature-complete for code-side. Subsequent rounds move to spec-side concerns (validator-time enforcement that every Active section has realistic implementation coverage; T1 rule 4 atomic-side cross-check) or to schema/precision tracks (v2 symbol-level matching, raw-string stripper, Tree-sitter language-aware extraction).
+- Decay surface count = 0 baseline carries through current self-application (no Superseded/Removed sections exist). First non-zero surface will appear when the spec authoring workflow exercises status transitions in earnest — at that point operator feedback will inform whether the informational-only semantic is sufficient or whether a --reject-on-decay flag is warranted.
+- print_atomic_decay_surface is duplicated across mutate-time (atomic_cli) and workspace-time (main.rs) call sites with similar but not identical shapes (mutate-time prints to stderr per-line, workspace-time prints to stdout summary+breakdown). Acceptable v1 — refactor only if a third caller site emerges.
+
+
+

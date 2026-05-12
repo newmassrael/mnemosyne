@@ -1366,6 +1366,77 @@ fn cmd_validate_workspace() -> Result<()> {
   (Round 168 cascade auto-update gate carry, Round 169 validate-workspace scope)"
  );
  }
+
+ // Round 268 — workspace-wide cascade decay surface.
+ //
+ // Iterates atomic_store.sections for decision_status=Some(Superseded|Removed)
+ // and runs scan_section_decay per section. Sums citing locations across
+ // [code_refs].paths and prints one informational line. Never fails the
+ // gate — matches the Round 266 mutate-time trigger's informational-only
+ // semantics. Silent when [code_refs] is unconfigured.
+ print_atomic_decay_surface(&root)?;
+
+ Ok(())
+}
+
+/// Round 268 — workspace decay surface report.
+///
+/// Reads the atomic store, walks all sections with
+/// `decision_status = Some(Superseded | Removed)`, and runs
+/// `scan_section_decay` against the configured `[code_refs].paths`. Prints
+/// a one-line summary plus a per-section break-down when any decay surfaces.
+/// Pure informational — does not affect the validate-workspace exit code.
+fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
+ let cfg = match workspace_config() {
+ Ok(c) => c,
+ Err(_) => return Ok(()),
+ };
+ let code_refs_cfg = match cfg.config.code_refs.as_ref() {
+ Some(c) if !c.paths.is_empty() => c,
+ _ => return Ok(()),
+ };
+ let store = match mnemosyne_validator::AtomicStore::load(
+ &mnemosyne_validator::AtomicStore::default_sidecar_path(root),
+ ) {
+ Ok(s) => s,
+ Err(_) => return Ok(()),
+ };
+ let mut targets: Vec<&str> = Vec::new();
+ for (section_id, section) in &store.sections {
+ if matches!(
+ section.decision_status,
+ Some(mnemosyne_validator::DecisionStatus::Superseded)
+ | Some(mnemosyne_validator::DecisionStatus::Removed)
+ ) {
+ targets.push(section_id.as_str());
+ }
+ }
+ if targets.is_empty() {
+ return Ok(());
+ }
+ let mut total = 0usize;
+ let mut per_section: Vec<(&str, usize)> = Vec::new();
+ for sid in &targets {
+ let hits = mnemosyne_validator::code_refs::scan_section_decay(
+ root,
+ &code_refs_cfg.paths,
+ sid,
+ code_refs_cfg.comment_only,
+ )
+ .unwrap_or_default();
+ if !hits.is_empty() {
+ per_section.push((sid, hits.len()));
+ }
+ total += hits.len();
+ }
+ println!(
+ "atomic decay surface: {} citation(s) across {} superseded/removed section(s)",
+ total,
+ targets.len()
+ );
+ for (sid, n) in &per_section {
+ println!(" §{}: {} citation(s)", sid, n);
+ }
  Ok(())
 }
 
