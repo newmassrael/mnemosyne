@@ -1048,3 +1048,36 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 285 — Bug #8 fix — inventory-axis orphan_ledger suppression. OrphanKind::InventoryCitation variant 추가 + scan_v4 inventory loop suppression branch. §-axis CodeCitation 와 axis-isolated, suppression-only (set-equality drift detection R286+ carry, axis 대칭). R275 carry closure. 577 tests / 0 failure.
+
+**Changes**:
+- config.rs: OrphanKind::InventoryCitation variant 추가 (5번째, snake_case "inventory_citation")
+- code_refs.rs: inventory_ledger_index 별도 빌드 — CodeCitation/InventoryCitation axis-isolated
+- scan_paths_bidirectional_v4 inventory loop: InventoryDeprecated + InventoryMissing 둘 다 suppress
+- v4 시그니처 변경 없음 — ledger 인자 안에서 kind filter 만 분리 (v5 wrapper 도입 불필요)
+- main.rs validate_atomic_store match arm: InventoryCitation 도 suppression-only (§-axis 와 일관)
+- doc convention sentinel: "<inventory-citation>" (CodeCitation의 "<code-citation>" mirror)
+- SCHEMA_GUIDE: orphan_ledger field 설명 + Self-contained citation rule 섹션 inventory example 추가
+
+
+
+**Verification**:
+- cargo test --workspace 577 passed / 0 failed (R284 573 + 4 신규)
+- code_refs::tests 신규 4: deprecated_suppress / missing_suppress / unregistered_fires / axis_filter
+- axis_filter test: CodeCitation row 가 inventory cite suppress 안 함 (axis 독립 검증)
+- self-application 영향 없음 — Mnemosyne 자체 inventory_prefixes 미설정, validate-workspace entries=31 동일
+
+
+
+**Impact**: §code-citation-defense
+
+
+**Carry forward**:
+- TC8 어댑션 잔여 2 inventory_deprecated (IPv4_OPTIONS_01) — 본 라운드로 typed surface 확보, ledger 등록 가능
+- TC8 expected post-fix: baseline 0 (2877→0, 100% closure), Phase F (severity_inventory=reject) 진입 가능
+- R286+ carry: §-axis CodeCitation + inventory-axis InventoryCitation 양 axis 같이 set-equality drift detection 도입 — empirical bite (ledger row 의 referent 해소 후 row 남는 케이스) 발생 시
+- R260 부터 §-axis suppression-only 가 ~25 rounds 동안 drift bite 미발생 → low-priority gap, YAGNI carry
+- Multi-token external prefix (ETSI TS) / ScanOptions struct refactor / Phase 0 carry 유지
+
+
+

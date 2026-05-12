@@ -1418,6 +1418,7 @@ fn cmd_validate_workspace() -> Result<()> {
  }
  OrphanKind::MarkdownRef => {} // already composed into known_orphan_keys
  OrphanKind::CodeCitation => {} // Round 260 — code-axis ledger handled by validate-code-refs, not validate-workspace
+ OrphanKind::InventoryCitation => {} // Round 285 — inventory-axis ledger handled by validate-code-refs (axis-symmetric with CodeCitation; set-equality drift detection for both is R286+ carry)
  }
  }
  let new_atomic_entries: Vec<&(String, String)> = atomic_entry_actual

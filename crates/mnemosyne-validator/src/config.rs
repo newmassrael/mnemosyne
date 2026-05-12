@@ -141,6 +141,17 @@ pub enum OrphanKind {
  /// `SectionMissing` / `CitationUnbound` / `ImplementationUnbacked`
  /// when the (from, to) pair matches.
  CodeCitation,
+ /// Round 285 — code-side inventory-citation suppression.
+ /// Mirrors `CodeCitation` for the Phase 1A inventory axis. `from` =
+ /// workspace-relative file path containing the cite; `to` = inventory
+ /// id (e.g., `"IPv4_OPTIONS_01"`); `doc` = `"<inventory-citation>"`
+ /// by convention. Suppresses `InventoryMissing` /
+ /// `InventoryDeprecated` for the (from, to) pair so adopters can
+ /// document intentional historical references to deleted-or-
+ /// deprecated test-case ids without flipping the cite-time gate off.
+ /// `reason` field is the audit-trail record of *why* the suppression
+ /// is acceptable.
+ InventoryCitation,
 }
 
 fn default_orphan_kind() -> OrphanKind {

@@ -1092,10 +1092,19 @@ pub fn scan_paths_bidirectional_v4(
  .collect();
 
  // Orphan ledger lookup: (file, id) pairs explicitly registered as
- // known-stale code citations.
+ // known-stale code citations on the `§`-axis.
  let ledger_index: BTreeSet<(&str, &str)> = orphan_ledger
  .iter()
  .filter(|e| e.kind == OrphanKind::CodeCitation)
+ .map(|e| (e.from.as_str(), e.to.as_str()))
+ .collect();
+
+ // Round 285 — same shape for the inventory axis. Independent index
+ // so `CodeCitation` rows don't suppress inventory violations and
+ // `InventoryCitation` rows don't suppress `§`-axis violations.
+ let inventory_ledger_index: BTreeSet<(&str, &str)> = orphan_ledger
+ .iter()
+ .filter(|e| e.kind == OrphanKind::InventoryCitation)
  .map(|e| (e.from.as_str(), e.to.as_str()))
  .collect();
 
@@ -1201,8 +1210,11 @@ pub fn scan_paths_bidirectional_v4(
  // `inventory_prefixes` empty = axis disabled (5-min setup carry).
  // Active / Reserved status pass silently; Deprecated triggers
  // `InventoryDeprecated`; missing IDs trigger `InventoryMissing`.
- // Per-file decoration happens inside this loop; ledger suppression
- // is a future carry (see Round 275 changelog).
+ // Round 285 — `[[orphan_ledger]] kind = InventoryCitation` rows
+ // suppress both Deprecated and Missing for the (file, id) pair so
+ // adopters can document intentional historical references (e.g.,
+ // "deleted in V2 → V3") via the audit-trail-preserving ledger
+ // instead of silencing them outright.
  for (line, inventory_id) in extract_inventory_citations(inventory_prefixes, &content) {
  let kind = match store.inventory(&inventory_id).map(|e| e.status) {
  None => Some(ViolationKind::InventoryMissing),
@@ -1213,6 +1225,16 @@ pub fn scan_paths_bidirectional_v4(
  Some(_) => None,
  };
  if let Some(k) = kind {
+ // Ledger suppression — if (file, id) is explicitly registered
+ // as a known-stale inventory citation, skip the violation.
+ // Reason field on the ledger row is the author's audit-trail
+ // record; typo'd ids stay author-review territory (same
+ // policy as the `§`-axis CodeCitation ledger).
+ if inventory_ledger_index
+ .contains(&(rel_str.as_str(), inventory_id.as_str()))
+ {
+ continue;
+ }
  violations.push(CodeRefViolation::Citation {
  citation: Citation {
   file: rel.clone(),
@@ -2984,5 +3006,176 @@ mod tests {
  )
  .unwrap();
  assert!(v.is_empty(), "v1 wrapper must not scan inventory, got: {:?}", v);
+ }
+
+ // ============================================================================
+ // Round 285 — inventory-axis orphan_ledger suppression tests.
+ // ============================================================================
+
+ #[test]
+ fn inventory_orphan_ledger_suppresses_inventory_deprecated() {
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 hist\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "IPv4_OPTIONS_01".to_string(),
+ InventoryEntry {
+ status: InventoryStatus::Deprecated,
+ ..Default::default()
+ },
+ );
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::InventoryCitation,
+ doc: "<inventory-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "IPv4_OPTIONS_01".to_string(),
+ reason: "Historical: V2->V3 deleted, dissector skips IP options".to_string(),
+ since: "Round 285".to_string(),
+ }];
+ let prefixes = vec!["IPv4_".to_string()];
+ let v = scan_paths_bidirectional_v4(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ true,
+ &prefixes,
+ &[],
+ &[],
+ )
+ .unwrap();
+ assert!(v.is_empty(), "ledger must suppress Deprecated cite; got: {:?}", v);
+ }
+
+ #[test]
+ fn inventory_orphan_ledger_suppresses_inventory_missing() {
+ // Deleted-from-store case: id not registered at all, ledger still
+ // suppresses (author's intentional historical reference).
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 hist\n").unwrap();
+ let store = AtomicStore::new();
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::InventoryCitation,
+ doc: "<inventory-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "IPv4_OPTIONS_01".to_string(),
+ reason: "Historical: id removed from inventory, comment retained".to_string(),
+ since: "Round 285".to_string(),
+ }];
+ let prefixes = vec!["IPv4_".to_string()];
+ let v = scan_paths_bidirectional_v4(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ true,
+ &prefixes,
+ &[],
+ &[],
+ )
+ .unwrap();
+ assert!(v.is_empty(), "ledger must suppress Missing cite; got: {:?}", v);
+ }
+
+ #[test]
+ fn inventory_orphan_ledger_unregistered_fires() {
+ // (file, id) not in ledger → violation fires normally.
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_02 cite\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "IPv4_OPTIONS_02".to_string(),
+ InventoryEntry {
+ status: InventoryStatus::Deprecated,
+ ..Default::default()
+ },
+ );
+ // Ledger only covers _01, not _02.
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::InventoryCitation,
+ doc: "<inventory-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "IPv4_OPTIONS_01".to_string(),
+ reason: "Historical _01 only".to_string(),
+ since: "Round 285".to_string(),
+ }];
+ let prefixes = vec!["IPv4_".to_string()];
+ let v = scan_paths_bidirectional_v4(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ true,
+ &prefixes,
+ &[],
+ &[],
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "_02 must fire (not in ledger); got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, .. } => {
+ assert!(matches!(kind, ViolationKind::InventoryDeprecated));
+ }
+ other => panic!("expected Citation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn inventory_orphan_ledger_axis_filter_isolates_kinds() {
+ // CodeCitation ledger rows must NOT suppress inventory violations,
+ // and vice-versa. Axes are independent.
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 cite\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "IPv4_OPTIONS_01".to_string(),
+ InventoryEntry {
+ status: InventoryStatus::Deprecated,
+ ..Default::default()
+ },
+ );
+ // CodeCitation kind — should NOT suppress inventory cite.
+ let ledger = vec![OrphanLedgerEntry {
+ kind: OrphanKind::CodeCitation,
+ doc: "<code-citation>".to_string(),
+ from: "src/foo.rs".to_string(),
+ to: "IPv4_OPTIONS_01".to_string(),
+ reason: "wrong-axis row".to_string(),
+ since: "Round 285".to_string(),
+ }];
+ let prefixes = vec!["IPv4_".to_string()];
+ let v = scan_paths_bidirectional_v4(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &ledger,
+ None,
+ true,
+ &prefixes,
+ &[],
+ &[],
+ )
+ .unwrap();
+ assert_eq!(
+ v.len(),
+ 1,
+ "CodeCitation row must not suppress inventory cite; got: {:?}",
+ v
+ );
  }
 }

@@ -173,8 +173,11 @@ when the project never numbers its history rows.
  `T1 orphan total` line reports `ledger=N, new=+X, resolved=-Y`:
  ledgered orphans are silent, new orphans bail, and resolved-but-still-
  ledgered entries bail too (forcing you to drop the now-stale ledger
- row). `kind = "code_citation"` covers code-side citation suppression
- (Path B); see *Self-contained citation rule* below for when to use.
+ row). `kind = "code_citation"` covers code-side §-axis citation
+ suppression (Path B); `kind = "inventory_citation"` (Round 285)
+ covers code-side inventory-axis citation suppression (intentional
+ historical references to deprecated / deleted test-case ids).
+ See *Self-contained citation rule* below for when to use.
 
 ## Field length caps (T3 threshold, surfaced for DX)
 
@@ -219,9 +222,25 @@ kind = "code_citation"
 reason = "RFC 2131 §3.1 cited multi-line in DHCPv4 transition prose, retain"
 ```
 
-The validator surfaces it under `ledger=N` (silent unless the orphan
-later resolves), and the audit-trail records *why* the citation is
-unmatched rather than silencing it.
+The same shape applies to the inventory citation axis (Round 285) —
+register `kind = "inventory_citation"` when the code intentionally cites
+a deprecated or deleted test-case id (e.g., to document why a code path
+deliberately skips a removed scenario):
+
+```toml
+[[orphan_ledger]]
+doc = "<inventory-citation>"
+from = "src/dissect/packet_pipeline.cpp"
+to = "IPv4_OPTIONS_01"
+kind = "inventory_citation"
+reason = "Historical: IPv4_OPTIONS_01..14 deleted V2->V3, documents why dissector skips IP options"
+```
+
+Both axes are independent — a `code_citation` row does not suppress an
+`inventory_citation` violation, and vice versa. The validator surfaces
+the ledger entry under `ledger=N` (silent unless the orphan later
+resolves), and the audit-trail records *why* the citation is unmatched
+rather than silencing it.
 
 ## External standard prefix kinds
 
