@@ -785,6 +785,35 @@
         "multi-token external prefix (ETSI TS) carry 유지 — Phase 1B",
         "ScanOptions struct 리팩터 carry 유지 — v1/v2/v3 chain 누적"
       ]
+    },
+    "Round 280": {
+      "decision_summary": "Split-brain fix — read/validate 7 사이트가 resolve_sidecar 통과 (mutate 와 일관). validate-workspace / query / validate-code-refs 가 [atomic].sidecar_path 따른다. 555 tests / 0 failure.",
+      "changes_bullets": [
+        "atomic_cli.rs: resolve_sidecar + resolve_output 둘 다 pub 으로 노출",
+        "main.rs 7 사이트 모두 default_sidecar_path → resolve_sidecar(&root, None) 통일",
+        "cmd_validate / recurse_affected_docs / cmd_validate_workspace / cmd_query / cmd_append_changelog_entry / cmd_style_check / cmd_validate_code_refs",
+        "validate_atomic_store 본체도 resolve_sidecar — staleness 검사가 config-aware sidecar 본다",
+        "split-brain 해소: write 와 read/validate 가 같은 store 본다"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 555 passed / 0 failed (R279 552 + 3 신규)",
+        "신규 r280_atomic_path_config_smoke.rs: validate-workspace / query / validate-code-refs 모두 sidecar override 따름",
+        "reporter repro 통과: sidecar_path=doc/.atomic/store.json 설정 후 mutate → validate sections=1 sync (이전 0 stale)",
+        "self-application 회귀 영향 없음 — entries=26 sections=5 sync, default 경로 사용자는 fix 효과 보지 못함"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "TC8 외 일반 어댑터 split-brain blocker 해제 — [atomic] 두 knob 완전한 read/write 대칭",
+        "default_sidecar_path / default_output_path API 자체는 유지 — 단순 wrapper 로 backward compat",
+        "resolve_sidecar 가 discover_config 호출 — config 미존재시 default fall back, 영향 없음",
+        "atomic_cli::resolve_sidecar pub 노출 — paths.rs 별도 module 분리는 carry (현재 1 caller 만 사용)",
+        "README/SCHEMA_GUIDE 에 [atomic] 섹션 surface — 별도 docs round carry",
+        "multi-token external prefix (ETSI TS) / ScanOptions struct 리팩터 carry 유지",
+        "Phase 0 carry held — R271/R270+/R268/R267"
+      ]
     }
   },
   "inventory_entries": {},

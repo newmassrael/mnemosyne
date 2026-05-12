@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Closes the tc8-harness dogfood gap where the doc-comment claimed
 /// `[atomic] sidecar_path` was configurable but no code path parsed it.
-fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf {
+pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf {
  if let Some(p) = sidecar {
  let pb = PathBuf::from(p);
  return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
@@ -838,7 +838,7 @@ fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
 /// is the cascade write target (atomic store → md). Keeping them
 /// independent prevents a first mutate from clobbering hand-authored
 /// content in docs[0].
-fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
+pub fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
  if let Some(p) = output {
  let pb = PathBuf::from(p);
  return if pb.is_absolute() { pb } else { workspace_root.join(pb) };
@@ -964,7 +964,11 @@ pub fn validate_atomic_store(
  workspace_root: &Path,
  section_id_set: &std::collections::BTreeSet<String>,
 ) -> Result<AtomicValidationSummary> {
- let sidecar_path = AtomicStore::default_sidecar_path(workspace_root);
+ // Round 280 — honor `[atomic].sidecar_path` config so the read /
+ // validation path sees the same store the mutate path wrote to.
+ // Previously the default path was hardcoded, which created a split-
+ // brain when an external workspace redirected the sidecar.
+ let sidecar_path = resolve_sidecar(workspace_root, None);
  let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
 
  let mut orphan_entry_refs = Vec::new();
