@@ -1812,7 +1812,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  )
  .context("scan_paths_bidirectional failed")?;
 
- let mut counts = [0usize; 5]; // missing / section_missing / citation_unbound / impl_unbacked / decay
+ let mut counts = [0usize; 6]; // missing / section_missing / citation_unbound / impl_unbacked / decay / impl_missing
  for v in &violations {
  match v {
  CodeRefViolation::Citation { kind, .. } => match kind {
@@ -1822,12 +1822,19 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  ViolationKind::Decay => counts[4] += 1,
  },
  CodeRefViolation::ImplementationUnbacked { .. } => counts[3] += 1,
+ CodeRefViolation::ImplementationMissing { .. } => counts[5] += 1,
  }
  }
- let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count] =
+ let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count] =
  counts;
  let hallucination_count = missing_count + section_missing_count;
- let binding_count = citation_unbound_count + impl_unbacked_count;
+ // Round 269 — impl_missing bucketed into severity_binding (defect_class
+ // = Binding for all three Path B edges). Separate severity flag was
+ // considered (C2) but deferred — promotion to a dedicated bucket needs
+ // empirical evidence that ImplementationMissing and ImplementationUnbacked
+ // warrant independent policy, mirroring the Round 262 → 263 measure-then-
+ // promote pattern.
+ let binding_count = citation_unbound_count + impl_unbacked_count + impl_missing_count;
 
  if json {
  let view: Vec<_> = violations
@@ -1849,6 +1856,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "section_id": section_id,
  "symbol": symbol,
  }),
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => serde_json::json!({
+ "kind": v.kind_tag(),
+ "section_id": section_id,
+ "decision_status": decision_status,
+ }),
  })
  .collect();
  let valid_entry_count = store.changelog_entries.len();
@@ -1863,6 +1878,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "section_missing_count": section_missing_count,
  "citation_unbound_count": citation_unbound_count,
  "impl_unbacked_count": impl_unbacked_count,
+ "impl_missing_count": impl_missing_count,
  "decay_count": decay_count,
  "severity_missing": severity_missing,
  "severity_binding": severity_binding,
@@ -1884,13 +1900,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  }
  println!(
  "violations: total={} missing={} section_missing={} \
- citation_unbound={} impl_unbacked={} decay={} \
+ citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
  (severity_missing={} severity_binding={})",
  violations.len(),
  missing_count,
  section_missing_count,
  citation_unbound_count,
  impl_unbacked_count,
+ impl_missing_count,
  decay_count,
  severity_missing,
  severity_binding,
@@ -1918,6 +1935,21 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  .map(|s| format!(" ({})", s))
  .unwrap_or_default(),
  ),
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ let status_str = match decision_status {
+ Some(s) => format!("{:?}", s).to_lowercase(),
+ None => "none(default-active)".to_string(),
+ };
+ println!(
+ " [{}] §{} (status={})",
+ v.kind_tag(),
+ section_id,
+ status_str,
+ );
+ }
  }
  }
  }
@@ -1935,8 +1967,8 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  if binding_count > 0 && severity_binding == "reject" {
  reject_msgs.push(format!(
  "{} binding-class violation(s) — CitationUnbound={} ImplementationUnbacked={} \
- (severity_binding=reject)",
- binding_count, citation_unbound_count, impl_unbacked_count,
+ ImplementationMissing={} (severity_binding=reject)",
+ binding_count, citation_unbound_count, impl_unbacked_count, impl_missing_count,
  ));
  }
  if !reject_msgs.is_empty() {

@@ -486,6 +486,38 @@
         "Decay surface count = 0 baseline carries through current self-application (no Superseded/Removed sections exist). First non-zero surface will appear when the spec authoring workflow exercises status transitions in earnest — at that point operator feedback will inform whether the informational-only semantic is sufficient or whether a --reject-on-decay flag is warranted.",
         "print_atomic_decay_surface is duplicated across mutate-time (atomic_cli) and workspace-time (main.rs) call sites with similar but not identical shapes (mutate-time prints to stderr per-line, workspace-time prints to stdout summary+breakdown). Acceptable v1 — refactor only if a third caller site emerges."
       ]
+    },
+    "Round 269": {
+      "decision_summary": "ImplementationMissing variant added — spec-side coverage axiom (Active = backed by code). Third edge of Path B set-equality complementing CitationUnbound + ImplementationUnbacked. Detection-only this round: severity bucketed under existing severity_binding (C1, YAGNI), Round 270+ carries severity_coverage split decision pending empirical evidence. Option<DecisionStatus> stored raw (not pre-resolved to Active) so audit-trail consumers can distinguish parser-default from explicit override. Removed status tombstone-exempt; Superseded + Active + None all trigger.",
+      "changes_bullets": [
+        "CodeRefViolation enum gains 3rd variant `ImplementationMissing { section_id, decision_status: Option<DecisionStatus> }` — third edge of the Path B set-equality (CitationUnbound + ImplementationUnbacked + ImplementationMissing) representing the \"Active = backed by code\" axiom. kind_tag = \"impl_missing\", defect_class = DefectClass::Binding (joins existing two binding edges in the same severity bucket). Module header doc rewritten 2-variant → 3-variant rationale with explicit shape-asymmetry note (no file/line for section-level absences).",
+        "decision_status field stored as raw `Option<DecisionStatus>` rather than pre-resolved to Active — None → Active fallback is a Round 265 consumer-side convention, so resolving at emission time would discard authoring intent. Audit-trail consumers can distinguish \"no atomic override (parser default)\" from \"atomic override = Active\" downstream.",
+        "scan_paths_bidirectional gains step 4 (workspace-wide section enumeration): for each section where `decision_status.unwrap_or(Active) != Removed AND implementations.is_empty()`, emit ImplementationMissing. Skipped under filter_id (decay-scan mode) for surface-narrowing symmetry with steps 2-3. Removed is tombstone-exempt; Superseded triggers (audit gap \"marked dead but never recorded where it lived\"); Active and None both trigger.",
+        "sort_violations switched from pairwise match to rank-then-sort: Citation < ImplementationUnbacked < ImplementationMissing preserves diff stability for existing tests when the third edge surfaces. Sort key for the new variant is section_id only (no file/line/symbol).",
+        "CLI cmd_validate_code_refs grows impl_missing_count: counts[6], JSON impl_missing_count field, text \"violations:\" line + per-violation \"[impl_missing] §<id> (status=<status>)\" lines (status renders \"active\"/\"superseded\"/\"removed\" or \"none(default-active)\" for raw Option exposure). binding_count now sums citation_unbound + impl_unbacked + impl_missing (C1 placement: severity_binding bucket reused, no new severity_coverage flag — empirical evidence for separate policy not yet observed, mirroring Round 262 → 263 measure-then-promote pattern).",
+        "6 new unit tests in code_refs.rs::tests covering Active+empty (triggers), None+empty (triggers, raw None preserved), Superseded+empty (triggers, audit gap), Removed+empty (exempt, tombstone), non-empty impls (exempt across all statuses), filter_id silences coverage axis (decay-mode symmetry)."
+      ],
+      "verification_bullets": [
+        "cargo build --release --workspace PASS — clean compile, no new warnings.",
+        "cargo test --release --workspace PASS — 488 → 494 tests (+6 coverage_axiom unit tests), 0 failures, no regression.",
+        "validate-workspace PASS: entries 17 → 18, sections=5, orphan_refs=0+0, GENERATED.md=sync (auto-regenerate honored). Atomic decay surface stays at 0 (no Superseded/Removed sections in self-application).",
+        "validate-code-refs PASS under reject mode: impl_missing=0 baseline confirmed (Round 261 seeding gave all 5 self-app sections non-empty implementations; the new axiom adds 0 surface in self-application). Self-introduced Round 269 src/ citations (4 hits across cli main.rs + validator code_refs.rs comments/tests) cleared by entry registration in this round.",
+        "Pre-commit hook 3-gate PASS — gate 3 (validate-code-refs under reject) confirmed clean post-entry-append.",
+        "Citation hygiene (Round 255) honored: Round 269 added to atomic store BEFORE the source files referencing it can pass validate-code-refs reject; entry append re-validated post-write."
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "Round 270+ — severity_binding → severity_coverage split decision: this round bucketed ImplementationMissing under severity_binding (C1, YAGNI + Round 262→263 measure-then-promote pattern). Carry the question of whether the two binding edges (ImplementationUnbacked file-grained vs ImplementationMissing section-level) warrant independent policy until empirical evidence emerges (external workspace adoption surface, or self-application authoring friction). Do NOT split preemptively; setting kit are expensive (deprecation cost on external users) and the defect_class already groups them.",
+        "Round 270+ — pre-commit gate 4 / coverage-axiom-specific reject promotion: not needed in this round (severity_binding=reject already gates the surface). Add a dedicated gate only if step 4 surface diverges in behavior from steps 2-3 (e.g. coverage gaps that are intentionally tolerated transitionally during status transitions).",
+        "Round 271+ — Section.implementations append-only state-entry guard for Active transitions: today implementations is append-only at the schema level but no validator-time precondition exists requiring ≥1 impl before set-section-decision-status-atomic accepts an Active target. Currently moot (Active is the default and transitions are only Active → Superseded → Removed), but add the guard if a re-activation path is ever introduced.",
+        "Round 272+ — T1 rule 4 atomic-side cross-check: rule 4 currently sees parser snapshots only; cross-checking atomic decision_status Superseded transitions against superseding cross-ref presence requires the validator to read the atomic store during T1 evaluation. Substrate available post-Round 265; wiring deferred.",
+        "Round 268 carry held — print_atomic_decay_surface unification across mutate-time (atomic_cli) and workspace-time (main.rs) still waits for a third caller before refactor (YAGNI).",
+        "Round 267 carry held — ChangelogEntry-level mutate API for in-progress entries (set_decision_summary, etc.) — surface separately if authoring loop friction emerges.",
+        "Deferred until empirical bite: v2 symbol-level matching, raw-string stripper, Tree-sitter language-aware extraction, formatted-marker require_marker option, fuzzy file match ranking/dedup, verify_round_citation MCP tool."
+      ]
     }
   },
   "schema_version": 1

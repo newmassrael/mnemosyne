@@ -44,19 +44,27 @@
 //! - `ImplementationUnbacked` — (file F, sym?) in
 //! §<id>.`implementations` but F has no §<id> citation (spec-side;
 //! code doesn't agree)
+//! - `ImplementationMissing` — §<id> exists with non-`Removed`
+//! `decision_status` but `implementations` is empty (spec-side
+//! coverage axiom: "Active = backed by code"). Third edge of the
+//! Path B set-equality, complementing the two file-grained binding
+//! directions above.
 //!
-//! The first two binding directions are *asymmetric in shape*: code-side
-//! violations have a concrete (file, line, entry_id); spec-side
-//! violations have no line and carry the impl-entry symbol. This is
-//! modeled as a 2-variant `CodeRefViolation` enum rather than collapsing
-//! both directions into one struct with a `line: 0` sentinel — the
-//! shape difference is a domain fact, not an encoding accident.
+//! The binding directions are *asymmetric in shape*: code-side
+//! violations have a concrete (file, line, entry_id); the
+//! `ImplementationUnbacked` spec-side variant has no line and carries
+//! the impl-entry symbol; the `ImplementationMissing` spec-side variant
+//! has neither file nor symbol (it is a section-level absence). This is
+//! modeled as a 3-variant `CodeRefViolation` enum rather than collapsing
+//! the directions into one struct with sentinel fields — the shape
+//! differences are domain facts, not encoding accidents.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::atomic::AtomicStore;
 use crate::config::{OrphanKind, OrphanLedgerEntry};
+use crate::schema::DecisionStatus;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
 /// file. `entry_id` retains the cite shape verbatim (`""` or
@@ -71,10 +79,12 @@ pub struct Citation {
 
 /// One verification failure surfaced to the caller.
 ///
-/// Two variants — code-side citations (`Citation`) and spec-side claims
-/// (`ImplementationUnbacked`) have structurally different evidence
-/// (a concrete file:line vs an impl-entry without a code witness), so
-/// the enum splits at that natural boundary.
+/// Three variants — code-side citations (`Citation`), file-grained
+/// spec-side claims (`ImplementationUnbacked`), and section-level
+/// spec-side absences (`ImplementationMissing`) have structurally
+/// different evidence (a concrete file:line vs an impl-entry without a
+/// code witness vs a section with no impl entries at all), so the enum
+/// splits at those natural boundaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodeRefViolation {
  /// Citation-side violation — there is a concrete cite at file:line,
@@ -92,12 +102,27 @@ pub enum CodeRefViolation {
  file: PathBuf,
  symbol: Option<String>,
  },
+ /// Spec-side coverage axiom — `§section_id` exists in the atomic
+ /// store with a non-`Removed` `decision_status` but its
+ /// `implementations` list is empty: the section asserts a decision
+ /// without naming any code that realizes it.
+ ///
+ /// `decision_status` is kept as the raw `Option<DecisionStatus>`
+ /// (not pre-resolved to `Active`) so the audit-trail consumer can
+ /// distinguish "no atomic override, parser default applies" from
+ /// "atomic override = Active"; the None → Active fallback is a
+ /// consumer-side convention (Round 265) and resolving it at
+ /// emission time would discard authoring intent.
+ ImplementationMissing {
+ section_id: String,
+ decision_status: Option<DecisionStatus>,
+ },
 }
 
 impl CodeRefViolation {
  /// Stable kind tag for JSON output / CLI rendering. Citation
- /// violations carry their `ViolationKind` tag; `ImplementationUnbacked`
- /// is its own top-level kind.
+ /// violations carry their `ViolationKind` tag; the spec-side
+ /// variants each have their own top-level kind.
  pub fn kind_tag(&self) -> &'static str {
  match self {
  CodeRefViolation::Citation { kind, .. } => match kind {
@@ -107,14 +132,17 @@ impl CodeRefViolation {
  ViolationKind::CitationUnbound => "citation_unbound",
  },
  CodeRefViolation::ImplementationUnbacked { .. } => "impl_unbacked",
+ CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
  }
  }
 
  /// Defect class — drives `--severity-missing` vs
  /// `--severity-binding` bucketing. Hallucination-class = cited
  /// identifier doesn't exist (Missing, SectionMissing). Binding-class
- /// = set-equality violation (CitationUnbound, ImplementationUnbacked).
- /// Decay is its own informational class — never reject-bucketed.
+ /// = set-equality violation (CitationUnbound, ImplementationUnbacked,
+ /// ImplementationMissing — all three edges of the Path B
+ /// bidirectional binding). Decay is its own informational class —
+ /// never reject-bucketed.
  pub fn defect_class(&self) -> DefectClass {
  match self {
  CodeRefViolation::Citation { kind, .. } => match kind {
@@ -125,6 +153,7 @@ impl CodeRefViolation {
  ViolationKind::Decay => DefectClass::Decay,
  },
  CodeRefViolation::ImplementationUnbacked { .. } => DefectClass::Binding,
+ CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
  }
  }
 }
@@ -134,7 +163,9 @@ impl CodeRefViolation {
 pub enum DefectClass {
  /// Cited identifier doesn't exist (Missing, SectionMissing).
  Hallucination,
- /// Set-equality violation (CitationUnbound, ImplementationUnbacked).
+ /// Set-equality violation (CitationUnbound, ImplementationUnbacked,
+ /// ImplementationMissing — all three edges of the Path B
+ /// bidirectional binding).
  Binding,
  /// Cascade scan informational surface (Decay).
  Decay,
@@ -653,13 +684,17 @@ pub fn scan_paths_filtered(
 /// 3. After all files scanned, walk `store.sections`. For each §X, for
 /// each `Implementation { file, symbol }` in `§X.implementations`:
 /// if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
+/// 4. Same walk: for each §X with `decision_status != Removed` and
+/// empty `implementations` → `ImplementationMissing` (spec-side
+/// coverage axiom — Round 269).
 ///
 /// `filter_id` is the decay-scan toggle. When `Some`, only
 /// Round NNN citations matching the filter are surfaced (as `Decay`);
 /// all other Round NNN citations are suppressed, and the §<id> axis
 /// stays silent for symmetry (a Superseded-decision cascade caller is
 /// asking "where is this entry_id mentioned?", not "audit the whole
-/// store" — keep the surface narrow).
+/// store" — keep the surface narrow). Steps 3 and 4 are also skipped
+/// under decay-filter mode for the same surface-narrowing reason.
 ///
 /// `orphan_ledger` rows with `kind = CodeCitation` suppress any §<id>
 /// violation matching `(from = file, to = id)`. Other kinds are
@@ -827,6 +862,31 @@ pub fn scan_paths_bidirectional(
  }
  }
 
+ // ---- Step 4: spec-side coverage axiom (Round 269) ----
+ // Workspace-wide enumeration: a section with non-Removed decision_status
+ // and zero implementations is the "Active = backed by code" axiom
+ // violation. Removed is tombstone-exempt (legitimately carries no impls).
+ // None → Active fallback (Round 265 consumer-side convention) used only
+ // for the trigger comparison; the raw Option is preserved in the emitted
+ // variant so the audit-trail consumer keeps full information.
+ // Skip under decay-filter mode for surface-narrowing symmetry with
+ // Steps 2-3 (a Superseded-cascade caller's question is targeted).
+ if filter_id.is_none() {
+ for (section_id, section) in &store.sections {
+ if !section.implementations.is_empty() {
+ continue;
+ }
+ let resolved = section.decision_status.unwrap_or(DecisionStatus::Active);
+ if resolved == DecisionStatus::Removed {
+ continue;
+ }
+ violations.push(CodeRefViolation::ImplementationMissing {
+ section_id: section_id.clone(),
+ decision_status: section.decision_status,
+ });
+ }
+ }
+
  sort_violations(&mut violations);
  Ok(violations)
 }
@@ -882,19 +942,31 @@ pub fn scan_section_decay(
 }
 
 /// Deterministic ordering — Citation variants sort by (file, line, entry_id);
-/// ImplementationUnbacked variants sort by (file, section_id, symbol) and
-/// come after Citation variants for predictable reporting.
+/// ImplementationUnbacked variants sort by (file, section_id, symbol);
+/// ImplementationMissing variants sort by section_id. The variant order is
+/// Citation < ImplementationUnbacked < ImplementationMissing so existing
+/// reports keep their relative diff stability when the third edge surfaces.
 fn sort_violations(violations: &mut Vec<CodeRefViolation>) {
  violations.sort_by(|a, b| {
  use CodeRefViolation::*;
+ use std::cmp::Ordering;
+ fn rank(v: &CodeRefViolation) -> u8 {
+ match v {
+ Citation { .. } => 0,
+ ImplementationUnbacked { .. } => 1,
+ ImplementationMissing { .. } => 2,
+ }
+ }
+ let r = rank(a).cmp(&rank(b));
+ if r != Ordering::Equal {
+ return r;
+ }
  match (a, b) {
  (Citation { citation: c1, .. }, Citation { citation: c2, .. }) => c1
  .file
  .cmp(&c2.file)
  .then(c1.line.cmp(&c2.line))
  .then(c1.entry_id.cmp(&c2.entry_id)),
- (Citation { .. }, ImplementationUnbacked { .. }) => std::cmp::Ordering::Less,
- (ImplementationUnbacked { .. }, Citation { .. }) => std::cmp::Ordering::Greater,
  (
  ImplementationUnbacked {
  file: f1,
@@ -907,6 +979,12 @@ fn sort_violations(violations: &mut Vec<CodeRefViolation>) {
  symbol: y2,
  },
  ) => f1.cmp(f2).then(s1.cmp(s2)).then(y1.cmp(y2)),
+ (
+ ImplementationMissing { section_id: s1, .. },
+ ImplementationMissing { section_id: s2, .. },
+ ) => s1.cmp(s2),
+ // rank() already separated cross-variant pairs above.
+ _ => unreachable!("cross-variant ordering handled by rank()"),
  }
  });
 }
@@ -1624,5 +1702,179 @@ mod tests {
  .unwrap();
  // Unknown extension preserves /258 whole-text behavior.
  assert_eq!(v.len(), 1, "got: {:?}", v);
+ }
+
+ // ============ Round 269: ImplementationMissing (spec-side coverage axiom) ============
+
+ /// Builds an empty workspace dir + a store whose `section_id` exists
+ /// but has no implementations. `decision_status` lets the test pin
+ /// the atomic override; pass `None` to exercise the parser-default
+ /// fallback path.
+ fn build_store_with_empty_section(
+ section_id: &str,
+ decision_status: Option<DecisionStatus>,
+ ) -> AtomicStore {
+ let mut store = AtomicStore::new();
+ let section = store.section_mut(section_id);
+ section.decision_status = decision_status;
+ // implementations stays at Vec::default() = []
+ store
+ }
+
+ #[test]
+ fn coverage_axiom_active_empty_impls_triggers() {
+ let tmp = TempDir::new().unwrap();
+ let store = build_store_with_empty_section("39", Some(DecisionStatus::Active));
+ // No source files written — workspace is otherwise silent.
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ assert_eq!(section_id, "39");
+ assert_eq!(*decision_status, Some(DecisionStatus::Active));
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn coverage_axiom_none_status_falls_back_to_active_triggers() {
+ // Parser-default fallback (Round 265 convention) — None resolves
+ // to Active for the trigger check, but the emitted variant
+ // preserves the raw None so the audit-trail consumer can tell.
+ let tmp = TempDir::new().unwrap();
+ let store = build_store_with_empty_section("39", None);
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ assert_eq!(section_id, "39");
+ assert_eq!(*decision_status, None, "raw Option preserved, not resolved");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn coverage_axiom_superseded_empty_impls_also_triggers() {
+ // Superseded with empty impls = "marked dead but never recorded
+ // where it lived" — audit gap, surfaced.
+ let tmp = TempDir::new().unwrap();
+ let store = build_store_with_empty_section("39", Some(DecisionStatus::Superseded));
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ assert_eq!(section_id, "39");
+ assert_eq!(*decision_status, Some(DecisionStatus::Superseded));
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
+ }
+
+ #[test]
+ fn coverage_axiom_removed_empty_impls_does_not_trigger() {
+ // Removed = tombstone genre, legitimately carries no impls.
+ let tmp = TempDir::new().unwrap();
+ let store = build_store_with_empty_section("39", Some(DecisionStatus::Removed));
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "Removed must not trigger, got: {:?}", v);
+ }
+
+ #[test]
+ fn coverage_axiom_non_empty_impls_does_not_trigger() {
+ // Section with at least one implementation is exempt from the
+ // coverage axiom regardless of citation match status (which is
+ // the ImplementationUnbacked axis's job).
+ let tmp = TempDir::new().unwrap();
+ let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = build_store_with_impl(&store_path, "39", "src/foo.rs", None);
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// §39 cite\n").unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert!(
+ v.iter().all(|x| !matches!(x, CodeRefViolation::ImplementationMissing { .. })),
+ "no ImplementationMissing expected, got: {:?}",
+ v
+ );
+ }
+
+ #[test]
+ fn coverage_axiom_decay_filter_silences_surface() {
+ // Symmetry with Steps 2-3: a Superseded-cascade caller asks
+ // "where is THIS entry_id cited?", not "audit the whole store".
+ // Coverage axiom stays silent under filter_id.
+ let tmp = TempDir::new().unwrap();
+ let store = build_store_with_empty_section("39", Some(DecisionStatus::Active));
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ Some("Round 99"),
+ true,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "filter_id should silence coverage axiom, got: {:?}", v);
  }
 }
