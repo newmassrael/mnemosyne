@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -158,6 +158,10 @@ fn run(args: &[String]) -> Result<()> {
  // Path B (Spec ↔ Code bidirectional binding) substrate.
  "add-section-implementation" => {
  atomic_cli::cmd_add_section_implementation(&repo_root()?, &args[2..])
+ }
+ // Round 283 — Section.implementations remove primitive (set-element granularity).
+ "remove-section-implementation" => {
+ atomic_cli::cmd_remove_section_implementation(&repo_root()?, &args[2..])
  }
  // Round 265 — Stage B freshness substrate.
  "set-section-decision-status-atomic" => {
@@ -276,6 +280,13 @@ fn print_help(prog: &str) {
  );
  println!(
  "   Round 259 Path B substrate (Spec ↔ Code binding); validator cross-check is Round 260+"
+ );
+ println!(
+ " {} remove-section-implementation --section §<N> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ "   Round 283 Section.implementations remove primitive (exact (file, symbol) match; --reason mandatory)"
  );
  println!(
  " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",

@@ -765,6 +765,87 @@ pub fn add_section_implementation(
  )
 }
 
+/// Round 283 — remove one (file, symbol?) implementation binding from a
+/// Section.
+///
+/// Section.implementations carries current-truth semantics (R259
+/// bidirectional binding + R269 ImplementationMissing axiom), so stale
+/// rows from code refactor / citation cleanup must be removable. The
+/// long-term audit trail lives in (a) the `reason` recorded on the
+/// receipt, and (b) the sidecar JSON's git history — Mnemosyne's
+/// standard "atomic store = current state, git = history" stance.
+///
+/// Matching is exact on the `(file, symbol)` pair — set element
+/// identity. Pass `Some(symbol)` to remove a symbol-narrowed binding;
+/// pass `None` to remove a file-only binding. `file` 가 같아도
+/// `symbol` 변종이 다르면 별 row 이며 영향 없음.
+///
+/// Errors:
+/// - `Validation`: `file` shape violation, empty `reason`, or other
+/// input validation (mirrors `add_section_implementation`).
+/// - `NotFound`: `section_id` absent, or the `(file, symbol)` tuple
+/// is not registered on the section (no silent no-op — caller asked
+/// to remove a specific binding).
+///
+/// Symmetric with [`add_section_implementation`]; `--reason` mandatory
+/// mirrors [`remove_section`] (Round 267) and `remove_inventory_entry`
+/// (Round 274).
+pub fn remove_section_implementation(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ file: &str,
+ symbol: Option<&str>,
+ reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if reason.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "remove_section_implementation: --reason mandatory (audit-trail safeguard)".to_string(),
+ ));
+ }
+ let file_clean = validate_implementation_file(file)?;
+ let symbol_clean = match symbol {
+ Some(s) => Some(validate_implementation_symbol(s)?),
+ None => None,
+ };
+ let section = match store.sections.get_mut(section_id) {
+ Some(s) => s,
+ None => {
+ return Err(AtomicMutateError::NotFound(format!(
+ "section_id `{}` not present in atomic store",
+ section_id
+ )));
+ }
+ };
+ let target = Implementation {
+ file: file_clean,
+ symbol: symbol_clean,
+ };
+ let pos = match section.implementations.iter().position(|i| i == &target) {
+ Some(p) => p,
+ None => {
+ return Err(AtomicMutateError::NotFound(format!(
+ "implementation `{}{}` not registered on §{}",
+ target.file,
+ target
+ .symbol
+ .as_deref()
+ .map(|s| format!(":{}", s))
+ .unwrap_or_default(),
+ section_id
+ )));
+ }
+ };
+ section.implementations.remove(pos);
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "remove_section_implementation",
+ "section",
+ section_id,
+ )
+}
+
 fn validate_implementation_file(raw: &str) -> Result<String, AtomicMutateError> {
  let trimmed = raw.trim();
  if trimmed.is_empty() {
@@ -1631,6 +1712,81 @@ mod tests {
  add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(sym)).unwrap();
  }
  assert_eq!(store.section("39").unwrap().implementations.len(), 6);
+ }
+
+ // Round 283 — remove_section_implementation tests.
+
+ #[test]
+ fn remove_section_implementation_basic_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
+ assert_eq!(store.section("X").unwrap().implementations.len(), 1);
+ remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "code moved")
+ .unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(loaded.section("X").unwrap().implementations.len(), 0);
+ }
+
+ #[test]
+ fn remove_section_implementation_symbol_aware_match() {
+ // (file, None) vs (file, Some("sym")) are distinct set elements;
+ // removing the file-only row must NOT touch the symbol-narrowed row.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_a")).unwrap();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_b")).unwrap();
+ remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "cleanup")
+ .unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let impls = &loaded.section("X").unwrap().implementations;
+ assert_eq!(impls.len(), 2, "only the file-only row should be removed");
+ assert!(impls.iter().any(|i| i.symbol.as_deref() == Some("fn_a")));
+ assert!(impls.iter().any(|i| i.symbol.as_deref() == Some("fn_b")));
+ }
+
+ #[test]
+ fn remove_section_implementation_section_not_found() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = remove_section_implementation(&mut store, &path, "ghost", "src/foo.rs", None, "x")
+ .unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn remove_section_implementation_impl_not_found() {
+ // Section exists, but the (file, symbol) tuple does not — fail-loud
+ // (no silent no-op).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
+ let err = remove_section_implementation(
+ &mut store,
+ &path,
+ "X",
+ "src/other.rs",
+ None,
+ "wrong file",
+ )
+ .unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn remove_section_implementation_rejects_empty_reason() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
+ let err = remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "  ")
+ .unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
  }
 
  #[test]

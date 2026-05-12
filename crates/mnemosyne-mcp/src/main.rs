@@ -118,6 +118,20 @@ pub struct AddSectionImplementationArgs {
     pub symbol: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveSectionImplementationArgs {
+ /// Section ID without the `§` prefix.
+    pub section_id: String,
+ /// Workspace-relative POSIX file path to remove from the binding set.
+    pub file: String,
+ /// Optional symbol — must exact-match the row to remove. Omit to
+ /// target a file-only binding (a row with `symbol = None`).
+    #[serde(default)]
+    pub symbol: Option<String>,
+ /// Mandatory rationale recorded on the receipt (audit safeguard).
+    pub reason: String,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -463,6 +477,29 @@ impl MnemosyneServer {
             format!("§{}", args.0.section_id),
             "--file".to_string(),
             args.0.file.clone(),
+        ];
+        if let Some(symbol) = &args.0.symbol {
+            argv.push("--symbol".to_string());
+            argv.push(symbol.clone());
+        }
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Round 283 — remove one `(file, symbol?)` binding from `Section.implementations`. Exact set-element match: pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt for audit symmetry with remove-section / remove-inventory-entry. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as impl_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
+    )]
+    async fn remove_section_implementation(
+        &self,
+        args: Parameters<RemoveSectionImplementationArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "remove-section-implementation".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--file".to_string(),
+            args.0.file.clone(),
+            "--reason".to_string(),
+            args.0.reason.clone(),
         ];
         if let Some(symbol) = &args.0.symbol {
             argv.push("--symbol".to_string());

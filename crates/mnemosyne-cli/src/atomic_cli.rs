@@ -33,12 +33,13 @@ use mnemosyne_validator::{
  add_inventory_entry, add_section_caveat, add_section_example,
  add_section_implementation, append_changelog_entry_v2,
  code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
- remove_inventory_entry, remove_section, render_changelog_entry,
- set_inventory_section_ref, set_inventory_status, set_section_alternatives,
- set_section_decision_status_atomic, set_section_impact_scope,
- set_section_inputs, set_section_intent, set_section_outputs,
- set_section_rationale, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
- DecisionStatus, ExampleBlock, InventoryStatus, RejectedAlternative,
+ remove_inventory_entry, remove_section, remove_section_implementation,
+ render_changelog_entry, set_inventory_section_ref, set_inventory_status,
+ set_section_alternatives, set_section_decision_status_atomic,
+ set_section_impact_scope, set_section_inputs, set_section_intent,
+ set_section_outputs, set_section_rationale, AtomicMutateError,
+ AtomicMutateReceipt, AtomicStore, DecisionStatus, ExampleBlock,
+ InventoryStatus, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;
@@ -491,6 +492,71 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
  finalize_mutate(
  workspace_root,
  add_section_implementation(&mut store, &sidecar_path, &section, &file, symbol.as_deref()),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 283 — `remove-section-implementation` CLI surface.
+///
+/// `--section §<id> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]`
+///
+/// Removes one `(file, symbol?)` binding from `Section.implementations`.
+/// Errors with NotFound when the section or the specific binding is
+/// absent (exact set-element match; pass `--symbol` to target a
+/// symbol-narrowed row, omit it for a file-only row). `--reason`
+/// mandatory — recorded on the mutate receipt for audit symmetry with
+/// `remove-section` (R267) / `remove-inventory-entry` (R274).
+pub fn cmd_remove_section_implementation(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut file: Option<String> = None;
+ let mut symbol: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--file" => {
+  file = Some(iter.next().ok_or_else(|| anyhow!("--file missing"))?.clone())
+ }
+ "--symbol" => {
+  symbol = Some(iter.next().ok_or_else(|| anyhow!("--symbol missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let file = file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
+ let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ remove_section_implementation(
+ &mut store,
+ &sidecar_path,
+ &section,
+ &file,
+ symbol.as_deref(),
+ &reason,
+ ),
  sidecar.as_deref(),
  regenerate,
  json,

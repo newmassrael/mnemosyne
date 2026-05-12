@@ -978,3 +978,37 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 283 — remove_section_implementation primitive — Section.implementations set-element granular remove. R259 add-only 의 missing piece closure. NotFound + (file, symbol) exact + --reason 필수. CLI/MCP 동시 wire. 565 tests / 0 failure.
+
+**Changes**:
+- atomic.rs: remove_section_implementation primitive — exact (file, symbol) match, --reason 필수
+- NotFound on absent section_id 또는 absent (file, symbol) tuple — silent no-op 없음
+- Symbol-aware: (file, None) vs (file, Some("sym")) 별 row, 정확 매칭만 제거
+- lib.rs re-export + atomic_cli.rs cmd_remove_section_implementation handler
+- main.rs dispatch arm + usage line + help text (Round 283 표기)
+- mcp/main.rs: remove_section_implementation MCP tool + RemoveSectionImplementationArgs
+
+
+
+**Verification**:
+- cargo test --workspace 565 passed / 0 failed (R282 560 + 5 신규)
+- atomic::tests 신규 5: basic_round_trip / symbol_aware / section_not_found / impl_not_found / empty_reason
+- CLI smoke: add §X impl 2개 → remove (file,symbol) specific → remove ghost 정확 NotFound 에러 → final 1개 row
+- MCP build pass, RemoveSectionImplementationArgs schema 정상
+- self-application 영향 없음 — Mnemosyne 자체 binding 8개 변동 없음
+
+
+
+**Impact**: §atomic-store-mutate-api, §code-citation-defense
+
+
+**Carry forward**:
+- R284 carry: add + remove implementation 양쪽 cascade trigger (R266/R276 패턴) + R268 print_atomic_decay_surface unification 자연 closure
+- bulk-replace primitive (set_section_implementations) — script-friendly batch friction 측정 후 carry (Q3 결정)
+- atomic_cli.rs handler 14 → 15 → 향후 macro/builder 리팩터 carry
+- 어댑터 잔여 cleanup tooling: bulk-register-orphan-ledger CLI — empirical bite 후 carry
+- TC8 어댑션 측: R283 install 후 65 impl_unbacked 정리 가능 (typed primitive 경로 확보)
+- Phase 0 carry held — R271/R270+/R268/R267 / multi-token external prefix / ScanOptions
+
+
+
