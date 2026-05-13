@@ -957,6 +957,38 @@
         "R260 부터 §-axis suppression-only 가 ~25 rounds 동안 drift bite 미발생 → low-priority gap, YAGNI carry",
         "Multi-token external prefix (ETSI TS) / ScanOptions struct refactor / Phase 0 carry 유지"
       ]
+    },
+    "Round 286": {
+      "decision_summary": "Universal CLI --version / -V / version surface. build.rs git hash 임베드 (rustc/cargo format mirror). mnemosyne-cli + mnemosyne-mcp 양쪽. watching-zenoh 진단 시 발생한 mtime + strings|grep 우회 폐기. clap migration trigger-bound R287+ carry. 582 tests / 0 failure.",
+      "changes_bullets": [
+        "crates/mnemosyne-cli/build.rs 신설 — git describe --always --dirty --abbrev=8 호출, BUILD_GIT_HASH env 임베드",
+        "crates/mnemosyne-mcp/build.rs 신설 — 같은 패턴 mirror",
+        "mnemosyne-cli/src/main.rs: --version / -V / version arm + print_help 첫 줄 + meta 섹션 추가",
+        "mnemosyne-mcp/src/main.rs: parse_workspace_arg 에 --version / -V arm + --help 출력에 version 포함",
+        "출력 format: rustc/cargo 패턴 mirror — \"mnemosyne-cli 0.1.0 (a4f00a49-dirty)\"",
+        "fallback: git 미가용 시 \"unknown\" (tarball install / no .git 케이스)",
+        "5 integration tests (long flag / short flag / subcmd / help first line / 3 forms identical)"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 582 passed / 0 failed (R285 577 + 5 신규 R286)",
+        "./target/release/mnemosyne-cli --version → \"mnemosyne-cli 0.1.0 (a4f00a49-dirty)\" 정상",
+        "./target/release/mnemosyne-mcp --version → \"mnemosyne-mcp 0.1.0 (a4f00a49-dirty)\" 정상",
+        "--help 첫 줄에도 version 노출 (single call 로 binary 식별 가능)",
+        "dirty marker 동작 — uncommitted changes 있는 빌드 즉시 인식",
+        "self-application 영향 없음 — validate-workspace entries=32 동일"
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "R287+ clap migration trigger-bound carry: 다음 중 하나 발생 시 진입",
+        "(a) dispatch arm count > 15 (현재 14+ 임계 근접)",
+        "(b) arg-parsing helper 가 3 번째 caller 등장",
+        "(c) build.rs/main.rs boilerplate 가 두 crate 간 3 줄 이상 중복",
+        "YAGNI deferred 가 아닌 empirical-bite-bound carry — Mnemosyne 의 R268/R278 패턴 일관",
+        "외부 어댑터 (watching-zenoh / tc8-harness) 의 binary 식별 friction 해소 (mtime + strings|grep 우회 폐기)",
+        "다른 carry 유지: §-axis + inventory-axis set-equality drift detection / ScanOptions struct refactor / multi-token external prefix / Phase 0 carry (R271/R270+/R268/R267)"
+      ]
     }
   },
   "inventory_entries": {},

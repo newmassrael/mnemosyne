@@ -794,11 +794,23 @@ fn parse_workspace_arg() -> anyhow::Result<PathBuf> {
             }
             "--help" | "-h" => {
                 eprintln!(
-                    "mnemosyne-mcp — MCP server for Mnemosyne\n\n\
+                    "mnemosyne-mcp {} ({}) — MCP server for Mnemosyne\n\n\
                      usage: mnemosyne-mcp [--workspace <path>]\n\n\
                      Communicates over stdio. Set MNEMOSYNE_CLI to override the\n\
                      mnemosyne-cli binary path (default: looked up on PATH).\n\
-                     If --workspace is omitted, the current directory is used."
+                     If --workspace is omitted, the current directory is used.",
+                    env!("CARGO_PKG_VERSION"),
+                    env!("BUILD_GIT_HASH"),
+                );
+                std::process::exit(0);
+            }
+            "--version" | "-V" => {
+                // Round 286 — universal CLI surface. Mirror mnemosyne-cli
+                // format. stdout (not stderr) so wrapper scripts can pipe.
+                println!(
+                    "mnemosyne-mcp {} ({})",
+                    env!("CARGO_PKG_VERSION"),
+                    env!("BUILD_GIT_HASH")
                 );
                 std::process::exit(0);
             }

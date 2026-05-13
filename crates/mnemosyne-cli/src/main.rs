@@ -194,6 +194,14 @@ fn run(args: &[String]) -> Result<()> {
  print_help(prog);
  Ok(())
  }
+ "--version" | "-V" | "version" => {
+ println!(
+ "mnemosyne-cli {} ({})",
+ env!("CARGO_PKG_VERSION"),
+ env!("BUILD_GIT_HASH")
+ );
+ Ok(())
+ }
  other => bail!("unknown command: {} (run `{} --help`)", other, prog),
  }
 }
@@ -208,7 +216,11 @@ fn cmd_list_docs() -> Result<()> {
 }
 
 fn print_help(prog: &str) {
- println!("mnemosyne-cli — Phase 0 design_doc lifecycle (DESIGN §66)");
+ println!(
+ "mnemosyne-cli {} ({}) — Phase 0 design_doc lifecycle (DESIGN §66)",
+ env!("CARGO_PKG_VERSION"),
+ env!("BUILD_GIT_HASH")
+ );
  println!();
  println!("usage:");
  println!(" {} validate <file> single-doc T1 + round-trip", prog);
@@ -364,6 +376,10 @@ fn print_help(prog: &str) {
  println!(
  "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
  );
+ println!();
+ println!(" --- meta (Round 286) ---");
+ println!(" {} --version | -V | version  print binary version + build hash", prog);
+ println!(" {} --help | -h | help   print this help text", prog);
 }
 
 // ============================================================================
