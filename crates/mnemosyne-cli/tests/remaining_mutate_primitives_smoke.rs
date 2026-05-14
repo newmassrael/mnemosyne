@@ -1,19 +1,17 @@
-//! Round 125 — remaining 4 mutate primitive smoke test (Phase 0c entry #3).
+//! Round 125 — remaining mutate primitive smoke test (Phase 0c entry #3).
 //!
-//! This test exercises §15 *Spec mutate API surface*'s 4 mutate primitives (add_section /
-//! add_cross_ref / set_section_decision_status / set_section_body) — carry
-//! integration test (Round 125 ratify carry). Round 124 equivalent path —
-//! temporary directory in mock doc workspace + atomic round-trip enforced +
-//! T1/T2 path invocation validation.
+//! This test exercises §15 *Spec mutate API surface*'s legacy markdown-surgical
+//! mutate primitives that remain after Round 287 (add_section retired in
+//! Round 289 Phase H — atomic add_section is the new path; legacy
+//! markdown-surgical insert is gone).
 //!
-//! Test scope (per-primitive happy + reject path, 4 primitives):
-//! add_section:  positive append + duplicate id reject + missing parent reject
+//! Test scope (per-primitive happy + reject path):
 //! add_cross_ref:  positive intra-doc ref + orphan to_target reject
 //! set_section_decision_status: Phase 1+ stub validation (status change ValidatorReject)
 //! set_section_body:  positive replace + missing section reject
 
 use mnemosyne_validator::{
- add_cross_ref, add_section, parse_markdown,
+ add_cross_ref, parse_markdown,
  schema::{DecisionStatus, RefKind},
  set_section_body, set_section_decision_status, MutateErrorKind, Workspace,
 };
@@ -51,74 +49,9 @@ body 2
   - bullet a
 ";
 
-// ============================================================================
-// add_section
-// ============================================================================
-
-#[test]
-fn add_section_appends_top_level_numbered() {
- let dir = write_workspace(BASE_DOC);
- let ws = workspace_for(BASE_DOC);
-
- let receipt = add_section(
- &ws,
- "docs/TEST.md",
- None,
- "Third section",
- Some("3"),
- "body 3 content",
- dir.path(),
- )
- .expect("add top-level numbered section");
- assert_eq!(receipt.primitive, "add_section");
- assert!(receipt
- .affected_sections
- .iter()
- .any(|s| s == "3"));
-
- let after = fs::read_to_string(dir.path().join("docs/TEST.md")).unwrap();
- assert!(after.contains("## 3. Third section"));
- assert!(after.contains("body 3 content"));
-}
-
-#[test]
-fn add_section_rejects_duplicate_id() {
- let dir = write_workspace(BASE_DOC);
- let ws = workspace_for(BASE_DOC);
-
- let err = add_section(
- &ws,
- "docs/TEST.md",
- None,
- "Conflicting",
- Some("1"), // already exists
- "body",
- dir.path(),
- )
- .expect_err("duplicate id should reject");
- assert_eq!(err.kind, MutateErrorKind::AppendOnlyViolation);
-
- let after = fs::read_to_string(dir.path().join("docs/TEST.md")).unwrap();
- assert_eq!(after, BASE_DOC);
-}
-
-#[test]
-fn add_section_rejects_missing_parent() {
- let dir = write_workspace(BASE_DOC);
- let ws = workspace_for(BASE_DOC);
-
- let err = add_section(
- &ws,
- "docs/TEST.md",
- Some("999"),
- "Sub",
- Some("999.1"),
- "body",
- dir.path(),
- )
- .expect_err("missing parent should reject");
- assert_eq!(err.kind, MutateErrorKind::NotFound);
-}
+// Round 289 Phase H — legacy markdown-surgical add_section primitive retired.
+// Atomic add_section (atomic.rs) tests live in mnemosyne-validator's unit
+// suite (add_section_basic_creates_outline_and_persists + 7 siblings).
 
 // ============================================================================
 // add_cross_ref

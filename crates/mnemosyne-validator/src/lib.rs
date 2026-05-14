@@ -61,7 +61,7 @@ pub use query::{
 };
 pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
 pub use mutate::{
- add_cross_ref, add_section, append_changelog_entry, set_section_body,
+ add_cross_ref, append_changelog_entry, set_section_body,
  set_section_decision_status, MutateError, MutateErrorKind, MutateReceipt,
 };
 pub use style::{

@@ -19,7 +19,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
- add_cross_ref, add_section, append_changelog_entry, check_style,
+ add_cross_ref, append_changelog_entry, check_style,
  code_refs::{scan_paths_bidirectional_v4, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
@@ -136,7 +136,9 @@ fn run(args: &[String]) -> Result<()> {
  }
  "query" => cmd_query(prog, &args[2..]),
  "append-changelog-entry" => cmd_append_changelog_entry(prog, &args[2..]),
- "add-section" => cmd_add_section(prog, &args[2..]),
+ // Round 287/289 — atomic-aware add-section (Phase F).
+ // Legacy markdown-surgical add-section (mutate.rs) retired in Phase H.
+ "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
  "add-cross-ref" => cmd_add_cross_ref(prog, &args[2..]),
  "set-section-decision-status" => cmd_set_section_decision_status(prog, &args[2..]),
  "set-section-body" => cmd_set_section_body(prog, &args[2..]),
@@ -277,6 +279,8 @@ fn print_help(prog: &str) {
  println!(" --- atomic mutate API (Round 162 production wire, Phase 0f) ---");
  println!(" Field length caps (Round 161 §41 thresholds, surfaced for DX — Round 279 carry):");
  println!("   intent: max 200 chars; each bullet (rationale/inputs/outputs/caveats): max 100 chars");
+ println!(" {} add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]", prog);
+ println!("   pairs with remove-section (R267); content fields populate via set-section-* afterwards");
  println!(" {} set-section-intent --section §<N> --intent <text (max 200 chars)> [--sidecar <path>] [--json]", prog);
  println!(" {} set-section-rationale --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
  println!(" {} set-section-inputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
@@ -971,60 +975,6 @@ fn compute_post_mutate_style_summary(
  out.insert(doc_path.clone(), (warn, info));
  }
  out
-}
-
-// ---- add-section ----
-
-fn cmd_add_section(prog: &str, args: &[String]) -> Result<()> {
- let mut doc: Option<String> = None;
- let mut parent: Option<String> = None;
- let mut title: Option<String> = None;
- let mut numbered_id: Option<String> = None;
- let mut body_file: Option<String> = None;
- let mut json = false;
- let mut iter = args.iter();
- while let Some(arg) = iter.next() {
- match arg.as_str() {
- "--doc" => doc = Some(iter.next().ok_or_else(|| anyhow!("--doc missing"))?.clone()),
- "--parent" => parent = Some(iter.next().ok_or_else(|| anyhow!("--parent missing"))?.clone()),
- "--title" => title = Some(iter.next().ok_or_else(|| anyhow!("--title missing"))?.clone()),
- "--numbered-id" => {
-  numbered_id =
-  Some(iter.next().ok_or_else(|| anyhow!("--numbered-id missing"))?.clone())
- }
- "--body-file" => {
-  body_file = Some(iter.next().ok_or_else(|| anyhow!("--body-file missing"))?.clone())
- }
- "--json" => json = true,
- other => bail!("unknown flag `{}`", other),
- }
- }
- let doc =
- doc.ok_or_else(|| anyhow!("--doc arg required — e.g. {} add-section --doc docs/DESIGN.md", prog))?;
- let title = title.ok_or_else(|| anyhow!("--title arg required"))?;
- let body = match body_file {
- Some(p) => fs::read_to_string(&p).with_context(|| format!("body-file recovery failed: {}", p))?,
- None => String::new(),
- };
-
- let parent_strip = parent.as_deref().map(|s| s.strip_prefix('§').unwrap_or(s).to_string());
- let numbered_strip = numbered_id
- .as_deref()
- .map(|s| s.strip_prefix('§').unwrap_or(s).to_string());
-
- let root = repo_root()?;
- let (ws, _) = load_workspace(&root)?;
-
- let result = add_section(
- &ws,
- &doc,
- parent_strip.as_deref(),
- &title,
- numbered_strip.as_deref(),
- &body,
- &root,
- );
- handle_mutate_result(result, json)
 }
 
 // ---- add-cross-ref ----

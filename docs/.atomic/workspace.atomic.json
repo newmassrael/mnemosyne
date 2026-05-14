@@ -1060,6 +1060,34 @@
         "ATOMIC_ONLY_PARENT_DOC sentinel — changelog axis keep (entries not doc-bound); revisit if AtomicChangelogEntry gains parent_doc field",
         "render_section template — top-level §slug. Title format reads oddly for slug-id sections (numeric-id assumption); cosmetic polish carry"
       ]
+    },
+    "Round 289": {
+      "decision_summary": "Phase F+G+H — CLI add-section atomic surface + MCP outline tool registration + legacy mutate.rs::add_section retirement",
+      "changes_bullets": [
+        "CLI add-section dispatch routes through atomic add_section primitive (atomic.rs); legacy markdown-surgical add_section (mutate.rs:543-714) deleted",
+        "CLI add-section flag surface simplified: --section / --parent-doc / --title / --parent (legacy --doc / --numbered-id / --body-file retired — atomic mode has no monolithic body)",
+        "mutate.rs helpers deleted: section_depth + find_changelog_or_eof_position (only used by retired add_section); add_cross_ref / set_section_body keep find_section_end_position + find_section_body_range",
+        "lib.rs re-export cleaned: mutate::add_section removed (atomic::add_section is canonical via module path)",
+        "MCP tools registered (Phase G): add_section + set_section_title + set_section_parent_doc + set_section_parent_section — watching-zenoh outline carry now unblocked",
+        "Legacy tests deleted: 3 add_section_* cases in remaining_mutate_primitives_smoke.rs (atomic.rs unit suite has 8-test atomic add_section coverage)"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace: 598 passed / 0 failed (601 - 3 legacy add_section tests deleted = 598 expected)",
+        "validate-workspace baseline maintained: docs=1/1, T1 orphan=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync",
+        "mnemosyne-mcp builds clean with 4 new tools registered",
+        "Phase A-D + E+I + F+G+H all land — Round 287 outline-lift carry closure at 9/10 phases (Phase J = ongoing pre-commit verify-generated gate)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "Round 269 Option<DecisionStatus> tightening — deferred decision; revisit after Phase A-J observation period",
+        "ChangelogEntry axis ATOMIC_ONLY_PARENT_DOC sentinel — kept (entries not doc-bound); revisit if AtomicChangelogEntry gains parent_doc field",
+        "render_section §slug. Title format reads oddly for slug-id sections — cosmetic polish carry",
+        "mutate.rs add_cross_ref / set_section_body / set_section_decision_status — still markdown-surgical; atomic equivalents not yet designed",
+        "AtomicChangelogEntry outline lift (mirror to AtomicSection) — workspace-wide changelog semantics need separate decision before scoping"
+      ]
     }
   },
   "inventory_entries": {},

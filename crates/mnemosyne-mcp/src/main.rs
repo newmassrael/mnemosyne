@@ -118,6 +118,34 @@ pub struct AddSectionImplementationArgs {
     pub symbol: Option<String>,
 }
 
+// Round 287/289 — Section creation + outline setter MCP arg structs.
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddSectionArgs {
+ /// Section ID to create. No `§` prefix in the value; use the bare slug
+ /// or numbered id (e.g. `"39"`, `"39.1"`, `"my-section"`).
+    pub section_id: String,
+ /// Owning doc identifier (workspace-relative path or doc id).
+    pub parent_doc: String,
+ /// Heading title (non-empty).
+    pub title: String,
+ /// Optional parent section id. Omit for top-level; pass a bare id
+ /// (no `§`) to nest under an existing section. The parent must exist
+ /// in the atomic store at write time.
+    #[serde(default)]
+    pub parent_section: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionParentSectionArgs {
+ /// Section being re-parented.
+    pub section_id: String,
+ /// New parent. Pass `Some("<id>")` to nest under that section, or
+ /// `None` (omit) to promote to top-level. Self-loop rejected.
+    #[serde(default)]
+    pub parent_section: Option<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveSectionImplementationArgs {
  /// Section ID without the `§` prefix.
@@ -335,6 +363,85 @@ impl MnemosyneServer {
         }
         let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
         self.run_cli(&argv_ref).await
+    }
+
+    #[tool(
+        description = "Create a new Section in the atomic store (Round 287/289). Outline fields only — `section_id` (no `§` prefix), `parent_doc`, `title`, and optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`. Pairs with remove_section."
+    )]
+    async fn add_section(
+        &self,
+        args: Parameters<AddSectionArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "add-section".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--parent-doc".to_string(),
+            args.0.parent_doc.clone(),
+            "--title".to_string(),
+            args.0.title.clone(),
+        ];
+        if let Some(parent) = &args.0.parent_section {
+            argv.push("--parent".to_string());
+            argv.push(format!("§{}", parent));
+        }
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Set Section.title (heading text). Section must exist (use add_section to create first)."
+    )]
+    async fn set_section_title(
+        &self,
+        args: Parameters<SetSectionTextArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let argv = vec![
+            "set-section-title".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--title".to_string(),
+            args.0.text.clone(),
+        ];
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Set Section.parent_doc (re-bind section to a different owning doc). Section must exist."
+    )]
+    async fn set_section_parent_doc(
+        &self,
+        args: Parameters<SetSectionTextArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let argv = vec![
+            "set-section-parent-doc".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--parent-doc".to_string(),
+            args.0.text.clone(),
+        ];
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Set Section.parent_section (re-parent in hierarchy). Pass `parent_section: Some(\"<id>\")` to nest under another section, or omit / pass null to promote to top-level. Self-loop rejected; missing parent rejected."
+    )]
+    async fn set_section_parent_section(
+        &self,
+        args: Parameters<SetSectionParentSectionArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "set-section-parent-section".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+        ];
+        match &args.0.parent_section {
+            Some(p) => {
+                argv.push("--parent".to_string());
+                argv.push(format!("§{}", p));
+            }
+            None => argv.push("--no-parent".to_string()),
+        }
+        self.run_cli_with_files(argv, vec![]).await
     }
 
     #[tool(

@@ -212,6 +212,68 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
  )
 }
 
+/// Round 287 / 289 — atomic `add-section` CLI surface (Phase F).
+///
+/// Replaces the legacy markdown-surgical `add-section` (mutate.rs) with the
+/// atomic primitive. Closed-form Section creation: only outline fields
+/// (`section_id`, `parent_doc`, `title`, optional `parent_section`); content
+/// fields (intent / rationale / etc.) populate via subsequent `set-section-*`
+/// calls. The legacy `--body-file` and `--numbered-id` flags are retired —
+/// atomic mode has no monolithic body, and section_id is explicit.
+pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut parent_doc: Option<String> = None;
+ let mut title: Option<String> = None;
+ let mut parent: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--parent-doc" => {
+  parent_doc =
+  Some(iter.next().ok_or_else(|| anyhow!("--parent-doc missing"))?.clone())
+ }
+ "--title" => {
+  title = Some(iter.next().ok_or_else(|| anyhow!("--title missing"))?.clone())
+ }
+ "--parent" => {
+  parent = Some(iter.next().ok_or_else(|| anyhow!("--parent missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let parent_doc = parent_doc.ok_or_else(|| anyhow!("--parent-doc arg required"))?;
+ let title = title.ok_or_else(|| anyhow!("--title arg required"))?;
+ let parent_stripped = parent.as_deref().map(strip_section_prefix);
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ mnemosyne_validator::atomic::add_section(
+ &mut store,
+ &sidecar_path,
+ &section,
+ &parent_doc,
+ &title,
+ parent_stripped.as_deref(),
+ ),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<()> {
