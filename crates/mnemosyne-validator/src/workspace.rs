@@ -166,6 +166,7 @@ mod tests {
  parent_section: None,
  title: title.to_string(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: Some(id.to_string()),
  }
  }
 

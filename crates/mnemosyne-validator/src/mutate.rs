@@ -1411,6 +1411,7 @@ mod tests {
  parent_section: None,
  title: String::new(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: None,
  };
  let _ = ChangelogEntry {
  entry_id: String::new(),

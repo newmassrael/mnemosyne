@@ -155,6 +155,9 @@ pub fn section_by_id(
  parent_section: atomic.parent_section.clone(),
  title: atomic.title.clone(),
  decision_status: atomic.decision_status.unwrap_or(DecisionStatus::Active),
+ // Synthetic section is built directly from the atomic store, so
+ // the lookup key is the atomic id verbatim.
+ atomic_section_id: Some(section_id.to_string()),
  };
  let synthetic_doc = ParsedDoc::default();
  return Some(build_section_view(
@@ -173,9 +176,13 @@ fn build_section_view(
  doc: &ParsedDoc,
  atomic_store: &AtomicStore,
 ) -> SectionView {
- // atomic-first body source. atomic store in section is present
- // synthesize_section_body result, fallback = parsed.bodies (legacy markdown).
- let body = if let Some(atomic) = atomic_store.section(&section.section_id) {
+ // atomic-first body source. Lookup goes through `AtomicStore::resolve`,
+ // which honours the parser's `atomic_section_id` bridge (the bare
+ // heading `§<token>` slot) so nested `### §<id>` headings emitted
+ // under `## Sections` find their atomic counterpart instead of silently
+ // falling back to the raw markdown body.
+ let atomic = atomic_store.resolve(section);
+ let body = if let Some(atomic) = atomic {
  synthesize_section_body(atomic)
  } else {
  doc.bodies
@@ -191,8 +198,7 @@ fn build_section_view(
  // Round 265 — atomic decision_status overrides parser-derived default
  // when present. parser hardcodes Active workspace-wide; the atomic
  // override is the only path to surface Superseded / Removed.
- let resolved_status = atomic_store
- .section(&section.section_id)
+ let resolved_status = atomic
  .and_then(|a| a.decision_status)
  .unwrap_or(section.decision_status);
  SectionView {
@@ -629,6 +635,7 @@ mod tests {
  parent_section: None,
  title: "Test".to_string(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies
  .insert("999".to_string(), "legacy markdown body".to_string());
@@ -664,6 +671,7 @@ mod tests {
  parent_section: None,
  title: "Test".to_string(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies
  .insert("888".to_string(), "legacy body content".to_string());
@@ -718,6 +726,7 @@ mod tests {
  parent_section: None,
  title: "MD-backed".to_string(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: None,
  });
  ws.insert("docs/DESIGN.md", doc);
 
@@ -758,6 +767,7 @@ mod tests {
  parent_section: None,
  title: "no override".to_string(),
  decision_status: DecisionStatus::Active,
+ atomic_section_id: None,
  });
  ws3.insert("docs/DESIGN.md", doc3);
  let mut store3 = AtomicStore::default();

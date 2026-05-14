@@ -311,7 +311,7 @@ pub fn check_style(
   {
   continue;
   }
-  let body = resolve_section_body(parsed, atomic_store, &section.section_id);
+  let body = resolve_section_body(parsed, atomic_store, section);
   if let Some(body) = body {
   check_section_body_rule(
    doc_path,
@@ -336,7 +336,7 @@ pub fn check_style(
 
 /// Resolve the prose body for a section's style checks. atomic-first source
 ///: if the atomic store has an entry
-/// for `section_id`, synthesize a prose body via
+/// for this `section`, synthesize a prose body via
 /// [`crate::atomic::synthesize_section_prose_body`] (excludes mechanical
 /// citation blocks like `implementations` file paths — see that function's
 /// doc for the category rationale); otherwise fall back to the legacy
@@ -344,15 +344,23 @@ pub fn check_style(
 /// atomic-decomposed. Both branches return `None` when no source exists
 /// (decomposed-but-empty atomic section also yields a synthesized empty
 /// string `""`, which `check_section_body_rule` treats as a no-op).
+///
+/// Atomic lookup goes through [`AtomicStore::resolve`], which honours the
+/// parser's `atomic_section_id` bridge — the bare heading `§<token>` slot
+/// — instead of the parent-prefixed `section_id`. Without that bridge,
+/// nested `### §<id>` headings (the renderer's depth-3 layout under
+/// `## Sections`) miss the atomic store and silently fall back to the
+/// raw markdown body, defeating mechanical-citation exclusions like the
+/// `implementations` file-path filter.
 fn resolve_section_body(
  parsed: &ParsedDoc,
  atomic_store: &AtomicStore,
- section_id: &str,
+ section: &Section,
 ) -> Option<String> {
- if let Some(atomic) = atomic_store.section(section_id) {
+ if let Some(atomic) = atomic_store.resolve(section) {
  return Some(synthesize_atomic_body(atomic));
  }
- parsed.bodies.get(section_id).cloned()
+ parsed.bodies.get(&section.section_id).cloned()
 }
 
 // Style-check body synthesizer. Uses the prose-only variant so that
@@ -849,6 +857,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  let long = "-".repeat(1500);
  doc.bodies.insert("test/prose-section".into(), long);
@@ -866,6 +875,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  let long = "-".repeat(2000);
  doc.bodies.insert("43".into(), long);
@@ -916,6 +926,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  // 250-char sentence — under the new 300 cap, no violation (was over 200 cap pre-140).
  let body = format!("{}.", "-".repeat(250));
@@ -934,6 +945,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  let body2 = format!("{}.", "-".repeat(350));
  doc2.bodies.insert("test/prose-section".into(), body2);
@@ -953,6 +965,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies.insert("1".into(), "-".repeat(6000));
  let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
@@ -1010,6 +1023,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies
  .insert("1".into(), "uses salsa not Salsa".to_string());
@@ -1055,6 +1069,12 @@ mod tests {
  parent_section: None,
  title: "4.2".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ // Bare-key uniformity: this test pre-dates the atomic_section_id
+ // bridge and intentionally collapses parser-key and atomic-key onto
+ // the same string, so the atomic-store fallback path covers the
+ // lookup. The render→parse roundtrip test is the canonical
+ // reproduction of the production nested-key shape.
+ atomic_section_id: Some("tc8-harness/4.2".into()),
  });
  // prose uses canonical TC8 forms — no terminology violation expected.
  let mut store = AtomicStore::default();
@@ -1124,6 +1144,7 @@ mod tests {
  parent_section: None,
  title: "1".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: Some("p/1".into()),
  });
  let mut store = AtomicStore::default();
  let section = AtomicSection {
@@ -1142,6 +1163,117 @@ mod tests {
  && x.message.contains("`tc8`")));
  }
 
+ /// End-to-end roundtrip — render a section via `render_section`,
+ /// re-parse the resulting markdown via the real parser, then style-check.
+ ///
+ /// Reproduces the production GENERATED.md shape that the bare-key uses
+ /// in [`terminology_consistency_ignores_implementation_paths`] miss:
+ /// the renderer wraps section bodies under `## Sections` and demotes
+ /// their headings from `##` to `###`, so the parser builds nested
+ /// `section_id` like `<doc-slug>/sections/<atomic-id>` while the atomic
+ /// store is keyed by the bare `<atomic-id>`. Pre-bridge: lookup misses,
+ /// `parsed.bodies` fallback fires the rule on `**Implementations**:`
+ /// file paths. Post-bridge: parser captures the heading's `§<token>`
+ /// into `Section.atomic_section_id`, `AtomicStore::resolve` honours it,
+ /// and `synthesize_section_prose_body` correctly excludes the impl block.
+ #[test]
+ fn terminology_consistency_roundtrip_excludes_impl_paths_in_nested_layout() {
+ use crate::atomic::{AtomicSection, AtomicStore, Implementation};
+ use crate::parser::parse_markdown;
+ use crate::render::render_section;
+
+ // Glossary of the same shape as the production failure: lowercase
+ // path-shaped tokens that collide with canonical prose forms.
+ let mut glossary = BTreeMap::new();
+ for (canon, variants) in [
+ ("TC8", &["tc8"][..]),
+ ("DUT", &["dut"][..]),
+ ("SOME/IP", &["someip"][..]),
+ ("DHCPv4", &["dhcpv4"][..]),
+ ] {
+ let set: BTreeSet<String> = variants.iter().map(|s| s.to_string()).collect();
+ glossary.insert(canon.to_string(), set);
+ }
+ let rule = StyleRule {
+ rule_id: "terminology_consistency".into(),
+ tier: StyleTier::T3,
+ threshold: StyleThreshold::GlossaryLookup(glossary),
+ scope: StyleScope::FullDoc,
+ rationale: "test".into(),
+ };
+
+ // Atomic source: prose uses canonical forms, implementations[] holds
+ // lowercase filesystem paths that share substrings with the variants.
+ let atomic = AtomicSection {
+ title: "TC8 harness §4.2".into(),
+ parent_doc: "docs/GENERATED.md".into(),
+ parent_section: None,
+ intent: Some(
+ "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
+ ),
+ implementations: vec![
+ Implementation {
+ file: "dut/env/smoke-test.sh".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "include/tc8/bpf_group.h".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "src/sce_integration/cases/someip_ets_084.h".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "src/proto/dhcpv4_common.h".into(),
+ symbol: None,
+ },
+ ],
+ ..Default::default()
+ };
+
+ // Render the section, then wrap it in the production GENERATED.md
+ // outer shape: doc-root h1 + `## Sections` parent + the rendered
+ // section demoted from `##` to `###` (mirrors atomic_cli.rs's
+ // `replacen("## §", "### §", 1)` step in render_atomic_store_to_md).
+ let rendered = render_section("4.2", &atomic.title, "active", &atomic).unwrap();
+ let demoted = rendered.replacen("## §", "### §", 1);
+ let full_md = format!(
+ "# GENERATED.md — atomic store derived view\n\n## Sections\n\n{}",
+ demoted
+ );
+
+ // Real parse path. Parser produces nested section_id
+ // `<doc-slug>/sections/4.2`; the bridge field carries bare "4.2".
+ let parsed = parse_markdown(&full_md, "docs/GENERATED.md");
+ let leaf = parsed
+ .sections
+ .iter()
+ .find(|s| s.atomic_section_id.as_deref() == Some("4.2"))
+ .expect("parser must capture §4.2 from heading into atomic_section_id");
+ assert_ne!(
+ leaf.section_id, "4.2",
+ "parser-derived section_id is expected to be the nested form, \
+ demonstrating that the bridge is what makes the lookup work"
+ );
+
+ // Atomic store keyed by bare "4.2" — the production shape.
+ let mut store = AtomicStore::default();
+ store.sections.insert("4.2".into(), atomic);
+
+ let v = check_style("docs/GENERATED.md", &parsed, &store, &[rule]);
+ let term_hits: Vec<&StyleViolation> = v
+ .iter()
+ .filter(|x| x.rule_id == "terminology_consistency")
+ .collect();
+ assert!(
+ term_hits.is_empty(),
+ "nested-layout roundtrip must not fire terminology_consistency on \
+ implementations file paths; got: {:?}",
+ term_hits
+ );
+ }
+
  #[test]
  fn cross_doc_reference_implicit_detected() {
  let mut doc = ParsedDoc::default();
@@ -1151,6 +1283,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies
  .insert("1".into(), "see ARCHITECTURE.md for layer".into());
@@ -1167,6 +1300,7 @@ mod tests {
  parent_section: None,
  title: "Test".into(),
  decision_status: crate::schema::DecisionStatus::Active,
+ atomic_section_id: None,
  });
  doc.bodies
  .insert("1".into(), "see ARCHITECTURE.md#§3 for layer".into());

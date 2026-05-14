@@ -344,6 +344,7 @@ mod tests {
  parent_section: parent.map(String::from),
  title: title.to_string(),
  decision_status: status,
+ atomic_section_id: Some(id.to_string()),
  }
  }
 

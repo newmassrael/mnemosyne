@@ -20,6 +20,14 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
  /// Canonical key — §N format ("39", "61.1") or unnumbered slug ("changelog").
+ ///
+ /// For nested headings (depth ≥ 3 or unnumbered with a parent) the parser
+ /// produces a parent-prefixed form (`{parent}/{n}` or `{parent}/{slug}`)
+ /// to keep markdown headings disambiguable across docs. This means
+ /// `section_id` is *not* always a valid atomic-store key — see
+ /// [`Self::atomic_section_id`] for the parser's record of the
+ /// heading's own `§<token>` slot, which is the atomic-store lookup
+ /// candidate.
  pub section_id: String,
  /// Owning doc identifier (relative path or doc-id).
  pub parent_doc: String,
@@ -27,6 +35,18 @@ pub struct Section {
  pub parent_section: Option<String>,
  pub title: String,
  pub decision_status: DecisionStatus,
+ /// Atomic-store lookup candidate extracted from the heading's `§<token>`
+ /// slot, when present. `None` for structural headings without a
+ /// `§<token>` (e.g. `# GENERATED.md ...`, `## Sections`).
+ ///
+ /// Set by the parser at heading-emission time. This is the bridge
+ /// between markdown-derived `Section` and atomic-store `AtomicSection`:
+ /// `section_id` records the parser's tree position (always present, may
+ /// be parent-prefixed), while `atomic_section_id` records the original
+ /// heading slug (the form the renderer wrote, the form the atomic store
+ /// keys by). Lookup helpers (`resolve_atomic_section`) try this first
+ /// and fall back to `section_id` for legacy / pre-decompose docs.
+ pub atomic_section_id: Option<String>,
 }
 
 /// Section.decision_status enum — closed-form registered carry.
@@ -204,6 +224,7 @@ mod tests {
   parent_section: None,
   title: "Graph schema codegen".to_string(),
   decision_status: DecisionStatus::Active,
+  atomic_section_id: Some("39".to_string()),
  }],
  ..Default::default()
  };

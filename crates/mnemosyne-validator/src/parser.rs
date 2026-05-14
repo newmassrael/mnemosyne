@@ -270,6 +270,12 @@ struct ParsedHeading {
  depth: usize,
  title: String,
  section_number: Option<String>,
+ /// `§<token>` slot extracted from the heading line, when present.
+ /// Recognises both numeric (`§39`, `§39.1`) and slug (`§code-citation-defense`,
+ /// `§code-citation-defense/bidirectional-binding`) forms. `None` for
+ /// structural headings without a `§` (e.g. `# GENERATED.md ...`,
+ /// `## Sections`). Threads through to [`crate::schema::Section::atomic_section_id`].
+ atomic_section_id: Option<String>,
 }
 
 fn parse_heading(line: &str) -> Option<ParsedHeading> {
@@ -301,12 +307,50 @@ fn parse_heading(line: &str) -> Option<ParsedHeading> {
  if after_hashes.is_empty() {
  return None;
  }
+ let atomic_section_id = extract_atomic_section_id(after_hashes);
  let (section_number, title) = split_section_number(after_hashes);
  Some(ParsedHeading {
  depth,
  title: title.trim().to_string(),
  section_number,
+ atomic_section_id,
  })
+}
+
+/// Extract the `§<token>` slot from a heading body, if present.
+///
+/// Recognises the renderer's `§<atomic_section_id>. <title>` pattern (see
+/// `templates/section.md.tera`). The token may be:
+/// - numeric (`§39`, `§39.1.2`)
+/// - slug (`§code-citation-defense`)
+/// - nested slug (`§code-citation-defense/bidirectional-binding`)
+///
+/// Token chars: ASCII alphanumeric, `-`, `_`, `/`, `.` — i.e. the chars
+/// the atomic-store mutate API allows in `section_id`. Stops at the first
+/// other char (typically `. ` separator, then the title). Returns `None`
+/// when the heading has no `§` prefix (structural headings: `## Sections`,
+/// `# GENERATED.md ...`).
+///
+/// Trailing `.` is stripped so `§39.` (rare) yields `Some("39")`.
+fn extract_atomic_section_id(s: &str) -> Option<String> {
+ let after_marker = s.strip_prefix('§')?;
+ let token: String = after_marker
+ .chars()
+ .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '.'))
+ .collect();
+ if token.is_empty() {
+ return None;
+ }
+ // Trim a trailing `.` so `§39. title` → "39", not "39.".
+ // Note: the renderer always writes `§<id>. <title>`, so the period is
+ // a separator, not part of the id (atomic ids do contain interior `.`
+ // — `39.1.2` — but never trail with one).
+ let trimmed = token.trim_end_matches('.');
+ if trimmed.is_empty() {
+ None
+ } else {
+ Some(trimmed.to_string())
+ }
 }
 
 /// `39. Graph schema codegen` → (Some("39"), "Graph schema codegen").
@@ -396,6 +440,7 @@ fn apply_heading(state: &mut ParseState, out: &mut ParsedDoc, heading: ParsedHea
  parent_section,
  title: heading.title,
  decision_status: DecisionStatus::Active,
+ atomic_section_id: heading.atomic_section_id,
  });
 }
 
