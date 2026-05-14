@@ -19,6 +19,16 @@ fn atomic_section_round_trip_full_shape() {
  let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
 
+ // Round 287 fail-loud: explicit Section creation before content mutates.
+ mnemosyne_validator::atomic::add_section(
+ &mut store,
+ &sidecar,
+ "43",
+ "docs/GENERATED.md",
+ "cascade_query kind",
+ None,
+ )
+ .unwrap();
  set_section_intent(&mut store, &sidecar, "43", "test intent for §43").unwrap();
  set_section_rationale(
  &mut store,
@@ -133,6 +143,16 @@ fn atomic_section_render_deterministic_across_loads() {
  let sidecar = tmp.path().join("workspace.atomic.json");
  let mut store = AtomicStore::new();
 
+ // Round 287 fail-loud: explicit Section creation.
+ mnemosyne_validator::atomic::add_section(
+ &mut store,
+ &sidecar,
+ "43",
+ "docs/GENERATED.md",
+ "test",
+ None,
+ )
+ .unwrap();
  set_section_intent(&mut store, &sidecar, "43", "stable intent").unwrap();
  set_section_rationale(
  &mut store,
@@ -173,6 +193,16 @@ fn atomic_section_legacy_carry_unaffected() {
  let sidecar = tmp.path().join("workspace.atomic.json");
  let mut store = AtomicStore::new();
 
+ // Round 287 fail-loud: explicit Section creation.
+ mnemosyne_validator::atomic::add_section(
+ &mut store,
+ &sidecar,
+ "43",
+ "docs/GENERATED.md",
+ "test",
+ None,
+ )
+ .unwrap();
  set_section_intent(&mut store, &sidecar, "43", "atomic-only").unwrap();
 
  // Sidecar exists, no other files in tmp dir.

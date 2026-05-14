@@ -1118,3 +1118,38 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 287 — AtomicSection outline lift — schema-lift Phase A-D, Round 164+ title-from-workspace-pending carry closure, fail-loud section_mut() refactor with add_section as sole creation path
+
+**Changes**:
+- AtomicSection += title / parent_doc / parent_section (3 outline fields, serde-default for v2 back-compat, mirrors schema.rs::Section closed-form)
+- schema_version 2 → 3 bump + v2 → v3 load test (back-compat verified)
+- atomic add_section primitive (atomic.rs::add_section) pairs with remove_section (R267); section_id duplicate reject + parent_section existence check
+- set_section_title / set_section_parent_doc / set_section_parent_section outline setters; self-loop reject on parent_section
+- AtomicStore::section_mut() refactored to Option<&mut> (fail-loud); silent or_default() create-on-miss footgun closed
+- section_mut_strict helper (atomic.rs free fn); all set_section_* / add_section_* primitives require existing Section (NotFound on missing); add_section is sole creation path
+- Test fixtures explicit-seed: atomic.rs 16 tests + validator.rs rule4 4 tests + code_refs.rs 2 helpers + atomic_round_trip 3 integration + cascade_auto_update_smoke 1 + r280_atomic_path_config_smoke 2
+
+
+
+**Verification**:
+- cargo test --release --workspace: 601 passed / 0 failed (Phase A-D combined)
+- Round 269 Option<DecisionStatus> contract preserved — audit distinction explicit-override vs parser-default kept
+- schema_version_2_store_loads_with_empty_outline_fields test green (v2 → v3 back-compat)
+- Round 286 baseline maintained — docs/.atomic/workspace.atomic.json schema_version=2 stores load cleanly + rewrite to v3 on next save
+- Round 164+ atomic-only--title-from-workspace-pending sentinel sections inventoried (5 entries) for Phase I backfill scope
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- Phase E — query.rs ATOMIC_ONLY_PARENT_DOC sentinel + intent→title fallback 제거 (atomic outline 필드 직접 사용)
+- Phase F-G — CLI add-section 내부 atomic 교체 + MCP add_section tool 신규 등록 (watching-zenoh outline carry unblock 경로)
+- Phase H — legacy mutate.rs::add_section + find_section_end_position / find_changelog_or_eof_position markdown-surgical helpers 일괄 삭제
+- Phase I — 기존 atomic store 205 sections backfill migration (5 title-from-workspace-pending sentinel section 실제 outline 채우기)
+- Phase J — validate-workspace 전체 통과 + GENERATED.md round-trip (docs 11/11, T1 orphan=0, T3 reject=0 baseline)
+- Phase 287+ — AtomicSection.decision_status Option<DecisionStatus> → non-Option 검토 (Round 269 contract 재평가 후 별도 round 결정)
+
+
+

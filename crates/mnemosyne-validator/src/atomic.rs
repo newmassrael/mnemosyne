@@ -42,8 +42,30 @@ use thiserror::Error;
 ///
 /// Default = all empty / None. legacy `body` field (Section.body via parser
 /// `bodies` map carries stable — atomic fields are additive only.
+///
+/// Round 287 — outline lift (title-from-workspace-pending carry closure). `title` / `parent_doc` /
+/// `parent_section` 3 fields added so AtomicSection mirrors schema.rs::Section's
+/// closed-form 5-field shape (`section_id` is the AtomicStore.sections map key).
+/// Pre-Round 287 sections deserialize with empty `title` / `parent_doc` and
+/// `parent_section = None` via `#[serde(default)]`; Phase I backfill migration
+/// populates them from workspace markdown-derived Section data. Post-migration
+/// invariant: every AtomicSection has non-empty `title` + non-empty `parent_doc`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicSection {
+ /// Heading title. Mirrors schema.rs::Section.title. Default = "" during
+ /// Round 287 transitional state (pre-Phase-I backfill).
+ #[serde(default, skip_serializing_if = "String::is_empty")]
+ pub title: String,
+ /// Owning doc identifier (workspace-relative path or doc-id). Mirrors
+ /// schema.rs::Section.parent_doc. Default = "" during Round 287
+ /// transitional state. Replaces the legacy `ATOMIC_ONLY_PARENT_DOC`
+ /// sentinel surfaced via query.rs synthetic_section construction.
+ #[serde(default, skip_serializing_if = "String::is_empty")]
+ pub parent_doc: String,
+ /// Nullable parent section_id. `None` = top-level section in its doc.
+ /// Mirrors schema.rs::Section.parent_section.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub parent_section: Option<String>,
  /// 1-3 sentence summary. T3 style threshold: ≤ 200 char.
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub intent: Option<String>,
@@ -236,9 +258,15 @@ pub enum AtomicStoreError {
 }
 
 // Schema version 2 (Round 273): Phase 1A entry — adds AtomicStore.inventory_entries.
-// Load is back-compat: version-1 stores deserialize with inventory_entries default
-// (empty BTreeMap via #[serde(default)]); the next save rewrites schema_version to 2.
-const CURRENT_SCHEMA_VERSION: u32 = 2;
+// Schema version 3 (Round 287): outline lift — adds AtomicSection.title /
+// .parent_doc / .parent_section (title-from-workspace-pending carry closure). Pre-v3 sections
+// deserialize with empty title/parent_doc + parent_section=None via
+// #[serde(default)]; Phase I backfill migration populates them from
+// workspace markdown-derived Section data.
+// Load is back-compat across all versions ≤ CURRENT: version-N stores
+// deserialize with newer fields defaulted; the next save rewrites
+// schema_version to CURRENT.
+const CURRENT_SCHEMA_VERSION: u32 = 3;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -288,12 +316,21 @@ impl AtomicStore {
  Ok(())
  }
 
- /// Get / create-default section atomic entry.
- pub fn section_mut(&mut self, section_id: &str) -> &mut AtomicSection {
- self.sections.entry(section_id.to_string()).or_default()
+ /// Round 287 — fail-loud Section lookup.
+ ///
+ /// Returns `None` if `section_id` is absent. Replaces the pre-287
+ /// silent-create variant (`entry(...).or_default()`) which let any
+ /// caller materialize an outline-less Section by typo. Creation now
+ /// routes exclusively through [`add_section`].
+ pub fn section_mut(&mut self, section_id: &str) -> Option<&mut AtomicSection> {
+ self.sections.get_mut(section_id)
  }
 
  /// Get / create-default changelog atomic entry.
+ ///
+ /// ChangelogEntry creation path differs from Section: `append_changelog_entry_v2`
+ /// is the explicit primitive, and this getter remains create-on-miss until
+ /// a parallel fail-loud refactor (out of scope for Round 287's Section axis).
  pub fn entry_mut(&mut self, entry_id: &str) -> &mut AtomicChangelogEntry {
  self.changelog_entries
  .entry(entry_id.to_string())
@@ -491,6 +528,24 @@ fn save_with_receipt(
  })
 }
 
+/// Round 287 — fail-loud Section lookup for mutate primitives.
+///
+/// Returns `NotFound` when `section_id` is absent. Closes the `section_mut()`
+/// silent-create footgun: every set_section_* / add_section_* primitive now
+/// requires the Section to exist (created via `add_section`). Creation and
+/// population are explicitly separated — matches the rest of the atomic API.
+fn section_mut_strict<'a>(
+ store: &'a mut AtomicStore,
+ section_id: &str,
+) -> Result<&'a mut AtomicSection, AtomicMutateError> {
+ store.sections.get_mut(section_id).ok_or_else(|| {
+ AtomicMutateError::NotFound(format!(
+ "section_id `{}` not present in atomic store (use add_section to create it first)",
+ section_id
+ ))
+ })
+}
+
 pub fn set_section_intent(
  store: &mut AtomicStore,
  sidecar_path: &Path,
@@ -498,7 +553,7 @@ pub fn set_section_intent(
  intent: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
  check_intent_len(intent)?;
- store.section_mut(section_id).intent = Some(intent.to_string());
+ section_mut_strict(store, section_id)?.intent = Some(intent.to_string());
  save_with_receipt(store, sidecar_path, "set_section_intent", "section", section_id)
 }
 
@@ -511,7 +566,7 @@ pub fn set_section_rationale(
  for b in bullets {
  check_bullet_len(b, "rationale")?;
  }
- store.section_mut(section_id).rationale_bullets = bullets.to_vec();
+ section_mut_strict(store, section_id)?.rationale_bullets = bullets.to_vec();
  save_with_receipt(
  store,
  sidecar_path,
@@ -530,7 +585,7 @@ pub fn set_section_inputs(
  for b in bullets {
  check_bullet_len(b, "inputs")?;
  }
- store.section_mut(section_id).inputs_bullets = bullets.to_vec();
+ section_mut_strict(store, section_id)?.inputs_bullets = bullets.to_vec();
  save_with_receipt(
  store,
  sidecar_path,
@@ -549,7 +604,7 @@ pub fn set_section_outputs(
  for b in bullets {
  check_bullet_len(b, "outputs")?;
  }
- store.section_mut(section_id).outputs_bullets = bullets.to_vec();
+ section_mut_strict(store, section_id)?.outputs_bullets = bullets.to_vec();
  save_with_receipt(
  store,
  sidecar_path,
@@ -566,8 +621,7 @@ pub fn add_section_caveat(
  bullet: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
  check_bullet_len(bullet, "caveats")?;
- store
- .section_mut(section_id)
+ section_mut_strict(store, section_id)?
  .caveats_bullets
  .push(bullet.to_string());
  save_with_receipt(
@@ -585,7 +639,7 @@ pub fn set_section_alternatives(
  section_id: &str,
  alternatives: &[RejectedAlternative],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- store.section_mut(section_id).alternatives_rejected = alternatives.to_vec();
+ section_mut_strict(store, section_id)?.alternatives_rejected = alternatives.to_vec();
  save_with_receipt(
  store,
  sidecar_path,
@@ -601,7 +655,7 @@ pub fn set_section_impact_scope(
  section_id: &str,
  refs: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- store.section_mut(section_id).impact_scope = refs.to_vec();
+ section_mut_strict(store, section_id)?.impact_scope = refs.to_vec();
  save_with_receipt(
  store,
  sidecar_path,
@@ -617,7 +671,7 @@ pub fn add_section_example(
  section_id: &str,
  example: ExampleBlock,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- store.section_mut(section_id).examples.push(example);
+ section_mut_strict(store, section_id)?.examples.push(example);
  save_with_receipt(
  store,
  sidecar_path,
@@ -685,6 +739,219 @@ pub fn remove_section(
  )
 }
 
+/// Round 287 — atomic section creation primitive.
+///
+/// Pairs with `remove_section` (Round 267): symmetric add/remove on the atomic
+/// `sections` map. Closes the outline-lift carry — Sections created
+/// via this path carry their own `title` / `parent_doc` / `parent_section`,
+/// retiring the `ATOMIC_ONLY_PARENT_DOC` sentinel and the
+/// `intent → title` fallback that query.rs synthesized for atomic-only
+/// sections.
+///
+/// Single-responsibility: create the outline shell only. Content fields
+/// (`intent` / `rationale_bullets` / etc.) start at their `Default` values;
+/// subsequent `set_section_*` / `add_section_*` calls populate them. This
+/// matches the rest of the atomic API surface (one primitive, one mutation).
+///
+/// Validations (all `AtomicMutateError::Validation` except parent NotFound):
+/// - `section_id` non-empty after trim
+/// - `parent_doc` non-empty after trim
+/// - `title` non-empty after trim
+/// - `section_id` not already present in store (uniqueness — fail loud over
+///   silent overwrite; the `section_mut().or_default()` silent-create
+///   footgun is closed in a follow-on phase)
+/// - `parent_section`, when `Some(_)`, must be non-empty and exist in store
+///   (referential integrity at write time)
+///
+/// `decision_status` is initialized to `Some(Active)` — newly created sections
+/// are *explicitly* Active, distinct from Round 269's `None = parser default`
+/// case which only applies to pre-251 carry sections. Subsequent transitions
+/// route through `set_section_decision_status_atomic`.
+pub fn add_section(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ parent_doc: &str,
+ title: &str,
+ parent_section: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ let section_id_t = section_id.trim();
+ let parent_doc_t = parent_doc.trim();
+ let title_t = title.trim();
+
+ if section_id_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "add_section: section_id mandatory (non-empty after trim)".to_string(),
+ ));
+ }
+ if parent_doc_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "add_section: parent_doc mandatory (non-empty after trim)".to_string(),
+ ));
+ }
+ if title_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "add_section: title mandatory (non-empty after trim)".to_string(),
+ ));
+ }
+ if store.sections.contains_key(section_id_t) {
+ return Err(AtomicMutateError::Validation(format!(
+ "add_section: section_id `{}` already exists in atomic store (use set_section_* primitives to mutate)",
+ section_id_t
+ )));
+ }
+ let parent_section_norm = if let Some(parent) = parent_section {
+ let parent_t = parent.trim();
+ if parent_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+  "add_section: parent_section must be None or non-empty".to_string(),
+ ));
+ }
+ if !store.sections.contains_key(parent_t) {
+ return Err(AtomicMutateError::NotFound(format!(
+  "add_section: parent_section `{}` not present in atomic store",
+  parent_t
+ )));
+ }
+ Some(parent_t.to_string())
+ } else {
+ None
+ };
+
+ let section = AtomicSection {
+ title: title_t.to_string(),
+ parent_doc: parent_doc_t.to_string(),
+ parent_section: parent_section_norm,
+ decision_status: Some(DecisionStatus::Active),
+ ..Default::default()
+ };
+ store.sections.insert(section_id_t.to_string(), section);
+
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "add_section",
+ "section",
+ section_id_t,
+ )
+}
+
+/// Round 287 — Section.title setter (outline mutate axis).
+///
+/// In-place rename of an existing Section's heading title. Validates
+/// non-empty after trim. Section must exist (fail-loud — use `add_section`
+/// to create first).
+pub fn set_section_title(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ title: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ let title_t = title.trim();
+ if title_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "set_section_title: title mandatory (non-empty after trim)".to_string(),
+ ));
+ }
+ section_mut_strict(store, section_id)?.title = title_t.to_string();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_title",
+ "section",
+ section_id,
+ )
+}
+
+/// Round 287 — Section.parent_doc setter (outline mutate axis).
+///
+/// Re-binds an existing Section to a different owning doc. Validates
+/// non-empty after trim. Section must exist (fail-loud). Doc identifier
+/// shape (workspace.toml doc list membership) is NOT enforced here —
+/// validate-workspace's job, not the atomic primitive's.
+pub fn set_section_parent_doc(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ parent_doc: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ let pd_t = parent_doc.trim();
+ if pd_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "set_section_parent_doc: parent_doc mandatory (non-empty after trim)".to_string(),
+ ));
+ }
+ section_mut_strict(store, section_id)?.parent_doc = pd_t.to_string();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_parent_doc",
+ "section",
+ section_id,
+ )
+}
+
+/// Round 287 — Section.parent_section setter (outline mutate axis).
+///
+/// Re-parents a Section under a different hierarchy node (or promotes it to
+/// top-level by passing `None`). Validations:
+/// - Section being mutated must exist (fail-loud)
+/// - When `Some(parent)`, parent must be non-empty and exist in store
+///   (referential integrity at write time)
+/// - Cannot set parent_section == section_id (immediate self-loop)
+///
+/// Deep cycle detection (A → B → C → A) is NOT performed here — that's
+/// validate-workspace's territory (T1-class structural axis). This primitive
+/// rejects only the trivial self-loop; deeper inconsistencies surface at
+/// validation pass.
+pub fn set_section_parent_section(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ parent_section: Option<&str>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ // Validate target Section exists first (fail-loud).
+ if !store.sections.contains_key(section_id) {
+ return Err(AtomicMutateError::NotFound(format!(
+ "section_id `{}` not present in atomic store (use add_section to create it first)",
+ section_id
+ )));
+ }
+ let parent_norm = match parent_section {
+ Some(p) => {
+ let p_t = p.trim();
+ if p_t.is_empty() {
+ return Err(AtomicMutateError::Validation(
+  "set_section_parent_section: parent_section must be None or non-empty".to_string(),
+ ));
+ }
+ if p_t == section_id {
+ return Err(AtomicMutateError::Validation(format!(
+  "set_section_parent_section: parent_section `{}` cannot equal section_id (self-loop)",
+  p_t
+ )));
+ }
+ if !store.sections.contains_key(p_t) {
+ return Err(AtomicMutateError::NotFound(format!(
+  "set_section_parent_section: parent_section `{}` not present in atomic store",
+  p_t
+ )));
+ }
+ Some(p_t.to_string())
+ }
+ None => None,
+ };
+ // Unwrap is safe: contains_key confirmed above and no intervening mutation.
+ section_mut_strict(store, section_id)?.parent_section = parent_norm;
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_parent_section",
+ "section",
+ section_id,
+ )
+}
+
 /// Atomic decision_status setter (Stage B freshness substrate).
 ///
 /// Sets `AtomicSection.decision_status` to `Some(new_status)`. Idempotent
@@ -716,7 +983,7 @@ pub fn set_section_decision_status_atomic(
  "(T1 rule 4, atomic axis): superseding section_id mandatory for active → superseded transition".to_string(),
  ));
  }
- store.section_mut(section_id).decision_status = Some(new_status);
+ section_mut_strict(store, section_id)?.decision_status = Some(new_status);
  save_with_receipt(
  store,
  sidecar_path,
@@ -742,7 +1009,7 @@ pub fn add_section_implementation(
  file: file_clean,
  symbol: symbol_clean,
  };
- let section = store.section_mut(section_id);
+ let section = section_mut_strict(store, section_id)?;
  if section.implementations.contains(&candidate) {
  return Err(AtomicMutateError::Validation(format!(
  "implementation `{}{}` already present on §{} (set semantics — duplicates rejected at write time)",
@@ -1203,11 +1470,22 @@ mod tests {
  use super::*;
  use tempfile::TempDir;
 
+ /// Round 287 — test fixture helper. Direct sections.insert (bypasses
+ /// audit-receipt path) to seed a Section so content-axis primitives can
+ /// be exercised. Production code routes Section creation through
+ /// `add_section`; tests use this helper to keep setup boilerplate down.
+ fn seed_section(store: &mut AtomicStore, section_id: &str) {
+ store
+ .sections
+ .insert(section_id.to_string(), AtomicSection::default());
+ }
+
  #[test]
  fn save_load_round_trip() {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "43");
  set_section_intent(&mut store, &path, "43", "test intent").unwrap();
  let loaded = AtomicStore::load(&path).unwrap();
  assert_eq!(loaded.section("43").unwrap().intent.as_deref(), Some("test intent"));
@@ -1301,7 +1579,37 @@ mod tests {
  assert_eq!(loaded.schema_version, 1);
  loaded.save(&path).unwrap();
  let reloaded = AtomicStore::load(&path).unwrap();
- assert_eq!(reloaded.schema_version, 2);
+ assert_eq!(reloaded.schema_version, 3);
+ }
+
+ #[test]
+ fn schema_version_2_store_loads_with_empty_outline_fields() {
+ // Round 287 back-compat: a v2 store (pre-outline-lift) deserializes
+ // with empty AtomicSection.title / .parent_doc + parent_section = None.
+ // Next save rewrites to v3.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+ let legacy_v2_json = r#"{
+ "sections": {
+ "39": {
+ "intent": "old-shape section without outline"
+ }
+ },
+ "changelog_entries": {},
+ "inventory_entries": {},
+ "schema_version": 2
+ }"#;
+ std::fs::write(&path, legacy_v2_json).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let s = loaded.sections.get("39").expect("§39 present");
+ assert_eq!(s.title, "", "title defaults to empty pre-backfill");
+ assert_eq!(s.parent_doc, "", "parent_doc defaults to empty pre-backfill");
+ assert_eq!(s.parent_section, None, "parent_section defaults to None");
+ assert_eq!(s.intent.as_deref(), Some("old-shape section without outline"));
+ loaded.save(&path).unwrap();
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.schema_version, 3);
  }
 
  #[test]
@@ -1589,6 +1897,9 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
+ seed_section(&mut store, "41");
+ seed_section(&mut store, "66");
  set_section_intent(&mut store, &path, "39", "graph schema").unwrap();
  set_section_intent(&mut store, &path, "41", "datalog rule").unwrap();
  set_section_intent(&mut store, &path, "66", "self-application").unwrap();
@@ -1604,6 +1915,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
  add_section_implementation(
  &mut store,
  &path,
@@ -1634,6 +1946,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
  add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar")).unwrap();
  let err = add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar"))
  .unwrap_err();
@@ -1701,6 +2014,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
  for sym in [
  "foo",
  "module::path::foo",
@@ -1721,6 +2035,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "X");
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
  assert_eq!(store.section("X").unwrap().implementations.len(), 1);
  remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "code moved")
@@ -1736,6 +2051,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "X");
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_a")).unwrap();
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_b")).unwrap();
@@ -1765,6 +2081,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "X");
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
  let err = remove_section_implementation(
  &mut store,
@@ -1783,6 +2100,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "X");
  add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
  let err = remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "  ")
  .unwrap_err();
@@ -1796,6 +2114,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "doomed");
  set_section_intent(&mut store, &path, "doomed", "to be removed").unwrap();
  assert!(store.section("doomed").is_some());
  remove_section(&mut store, &path, "doomed", "smoke-test cleanup").unwrap();
@@ -1809,6 +2128,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "1");
  set_section_intent(&mut store, &path, "1", "x").unwrap();
  let err = remove_section(&mut store, &path, "1", "   ").unwrap_err();
  assert!(matches!(err, AtomicMutateError::Validation(_)));
@@ -1826,6 +2146,230 @@ mod tests {
  assert!(matches!(err, AtomicMutateError::NotFound(_)));
  }
 
+ // Round 287 — atomic add_section primitive tests. Pairs with remove_section
+ // tests above. Outline-lift carry closure (Phase C primitives).
+
+ #[test]
+ fn add_section_basic_creates_outline_and_persists() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let receipt =
+ add_section(&mut store, &path, "39", "docs/GENERATED.md", "Test Title", None)
+ .unwrap();
+ assert_eq!(receipt.primitive, "add_section");
+ assert_eq!(receipt.target_id, "39");
+ let s = store.section("39").expect("§39 created");
+ assert_eq!(s.title, "Test Title");
+ assert_eq!(s.parent_doc, "docs/GENERATED.md");
+ assert_eq!(s.parent_section, None);
+ assert_eq!(s.decision_status, Some(DecisionStatus::Active));
+ // Round-trip through sidecar.
+ let reloaded = AtomicStore::load(&path).unwrap();
+ let s2 = reloaded.section("39").unwrap();
+ assert_eq!(s2.title, "Test Title");
+ assert_eq!(s2.parent_doc, "docs/GENERATED.md");
+ }
+
+ #[test]
+ fn add_section_rejects_empty_section_id() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = add_section(&mut store, &path, "   ", "docs/X.md", "T", None).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ assert!(store.sections.is_empty(), "no section created on rejected mutate");
+ }
+
+ #[test]
+ fn add_section_rejects_empty_parent_doc() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = add_section(&mut store, &path, "39", "", "T", None).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ }
+
+ #[test]
+ fn add_section_rejects_empty_title() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = add_section(&mut store, &path, "39", "docs/X.md", "  ", None).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ }
+
+ #[test]
+ fn add_section_rejects_duplicate_section_id() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "First", None).unwrap();
+ let err =
+ add_section(&mut store, &path, "39", "docs/X.md", "Second", None).unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => assert!(msg.contains("already exists")),
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ // Original section unchanged.
+ assert_eq!(store.section("39").unwrap().title, "First");
+ }
+
+ #[test]
+ fn add_section_rejects_missing_parent_section() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err =
+ add_section(&mut store, &path, "39.1", "docs/X.md", "Child", Some("39")).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn add_section_with_existing_parent_succeeds() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "Parent", None).unwrap();
+ add_section(&mut store, &path, "39.1", "docs/X.md", "Child", Some("39")).unwrap();
+ let child = store.section("39.1").expect("§39.1 created");
+ assert_eq!(child.parent_section.as_deref(), Some("39"));
+ assert_eq!(child.title, "Child");
+ }
+
+ #[test]
+ fn add_section_remove_section_symmetric_round_trip() {
+ // add_section + remove_section pair: state returns to the empty baseline.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "100", "docs/X.md", "ephemeral", None).unwrap();
+ assert!(store.section("100").is_some());
+ remove_section(&mut store, &path, "100", "test cleanup").unwrap();
+ assert!(store.section("100").is_none());
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert!(reloaded.section("100").is_none());
+ }
+
+ // Round 287 — outline set_* primitive tests (Phase C).
+
+ #[test]
+ fn set_section_title_basic_and_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "old title", None).unwrap();
+ set_section_title(&mut store, &path, "39", "new title").unwrap();
+ assert_eq!(store.section("39").unwrap().title, "new title");
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.section("39").unwrap().title, "new title");
+ }
+
+ #[test]
+ fn set_section_title_rejects_empty() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "T", None).unwrap();
+ let err = set_section_title(&mut store, &path, "39", "   ").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ // Original title unchanged.
+ assert_eq!(store.section("39").unwrap().title, "T");
+ }
+
+ #[test]
+ fn set_section_title_not_found_on_missing_section() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_section_title(&mut store, &path, "ghost", "x").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn set_section_parent_doc_basic_and_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/OLD.md", "T", None).unwrap();
+ set_section_parent_doc(&mut store, &path, "39", "docs/NEW.md").unwrap();
+ assert_eq!(store.section("39").unwrap().parent_doc, "docs/NEW.md");
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.section("39").unwrap().parent_doc, "docs/NEW.md");
+ }
+
+ #[test]
+ fn set_section_parent_doc_rejects_empty() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "T", None).unwrap();
+ let err = set_section_parent_doc(&mut store, &path, "39", "").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::Validation(_)));
+ }
+
+ #[test]
+ fn set_section_parent_doc_not_found_on_missing_section() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_section_parent_doc(&mut store, &path, "ghost", "docs/X.md").unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
+ #[test]
+ fn set_section_parent_section_some_and_none_round_trip() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "Parent", None).unwrap();
+ add_section(&mut store, &path, "39.1", "docs/X.md", "Child", None).unwrap();
+ // Re-parent child under parent.
+ set_section_parent_section(&mut store, &path, "39.1", Some("39")).unwrap();
+ assert_eq!(
+ store.section("39.1").unwrap().parent_section.as_deref(),
+ Some("39")
+ );
+ // Promote back to top-level (None).
+ set_section_parent_section(&mut store, &path, "39.1", None).unwrap();
+ assert_eq!(store.section("39.1").unwrap().parent_section, None);
+ }
+
+ #[test]
+ fn set_section_parent_section_not_found_on_missing_parent() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39.1", "docs/X.md", "Child", None).unwrap();
+ let err = set_section_parent_section(&mut store, &path, "39.1", Some("ghost"))
+ .unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ // Child unchanged.
+ assert_eq!(store.section("39.1").unwrap().parent_section, None);
+ }
+
+ #[test]
+ fn set_section_parent_section_rejects_self_loop() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ add_section(&mut store, &path, "39", "docs/X.md", "T", None).unwrap();
+ let err = set_section_parent_section(&mut store, &path, "39", Some("39")).unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => assert!(msg.contains("self-loop")),
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn set_section_parent_section_not_found_on_missing_section() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_section_parent_section(&mut store, &path, "ghost", None).unwrap_err();
+ assert!(matches!(err, AtomicMutateError::NotFound(_)));
+ }
+
  #[test]
  fn set_section_decision_status_atomic_persists_and_round_trips() {
  // Round 265 — atomic decision_status field round-trips through
@@ -1834,6 +2378,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
  set_section_decision_status_atomic(
  &mut store,
  &path,
@@ -1859,6 +2404,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "1");
  set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
  .unwrap();
  set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
@@ -1921,6 +2467,8 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "1");
+ seed_section(&mut store, "2");
  set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
  .unwrap();
  set_section_decision_status_atomic(&mut store, &path, "2", DecisionStatus::Removed, None)
@@ -1944,6 +2492,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "39");
  set_section_decision_status_atomic(
  &mut store,
  &path,
@@ -1963,9 +2512,15 @@ mod tests {
  // Default = None (no atomic override). Mutate primitives that don't
  // touch decision_status leave the field at None — consumers fall back
  // to the parser-derived status.
+ //
+ // Round 287 — seed via direct insert (not add_section, which sets
+ // decision_status to Some(Active) by construction). This test
+ // specifically exercises the None-default code path that pre-Round 287
+ // sections carry.
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
+ seed_section(&mut store, "1");
  set_section_intent(&mut store, &path, "1", "test intent").unwrap();
  assert!(store.section("1").unwrap().decision_status.is_none());
  // serde skip_serializing_if confirms field is absent in JSON.

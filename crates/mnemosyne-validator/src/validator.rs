@@ -745,7 +745,15 @@ mod tests {
  // historical writes that predate the guard and atomic-only
  // overrides invisible to the parser-pair transition check.
  let mut store = crate::atomic::AtomicStore::new();
- store.section_mut("39").decision_status = Some(DecisionStatus::Superseded);
+ // Round 287 fail-loud: explicit Section creation. Direct sections.insert
+ // since this is a test fixture (no audit-receipt path needed).
+ store.sections.insert(
+ "39".to_string(),
+ crate::atomic::AtomicSection {
+ decision_status: Some(DecisionStatus::Superseded),
+ ..Default::default()
+ },
+ );
  let doc = make_doc(vec![], vec![], vec![], vec![]);
  let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
  assert_eq!(errors.len(), 1);
@@ -761,7 +769,13 @@ mod tests {
  fn atomic_rule4_state_gate_superseded_with_ref_passes() {
  // Superseding cross-ref present in a parsed doc → clean.
  let mut store = crate::atomic::AtomicStore::new();
- store.section_mut("39").decision_status = Some(DecisionStatus::Superseded);
+ store.sections.insert(
+ "39".to_string(),
+ crate::atomic::AtomicSection {
+ decision_status: Some(DecisionStatus::Superseded),
+ ..Default::default()
+ },
+ );
  let doc = make_doc(
  vec![],
  vec![],
@@ -783,7 +797,13 @@ mod tests {
  // required. Symmetric with markdown-axis rule 4 which fires only
  // on Active → Superseded.
  let mut store = crate::atomic::AtomicStore::new();
- store.section_mut("39").decision_status = Some(DecisionStatus::Removed);
+ store.sections.insert(
+ "39".to_string(),
+ crate::atomic::AtomicSection {
+ decision_status: Some(DecisionStatus::Removed),
+ ..Default::default()
+ },
+ );
  let doc = make_doc(vec![], vec![], vec![], vec![]);
  let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
  assert!(errors.is_empty());
@@ -794,9 +814,17 @@ mod tests {
  // Some(Active) and default None (no atomic override) are not
  // rule-4 violations regardless of cross-ref shape.
  let mut store = crate::atomic::AtomicStore::new();
- store.section_mut("1").decision_status = Some(DecisionStatus::Active);
+ store.sections.insert(
+ "1".to_string(),
+ crate::atomic::AtomicSection {
+ decision_status: Some(DecisionStatus::Active),
+ ..Default::default()
+ },
+ );
  // section "2" left at default None (no atomic override).
- store.section_mut("2");
+ store
+ .sections
+ .insert("2".to_string(), crate::atomic::AtomicSection::default());
  let doc = make_doc(vec![], vec![], vec![], vec![]);
  let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
  assert!(errors.is_empty());

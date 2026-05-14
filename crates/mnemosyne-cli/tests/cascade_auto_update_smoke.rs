@@ -120,8 +120,26 @@ fn set_section_intent_auto_regenerates_generated_md() {
  // Section atomic mutate also auto-regenerates (Round 164+ migration prep).
  // The section render path emits an atomic-only header until section
  // migration lands; this verifies the wire fires for section mutates too.
+ //
+ // Round 287 fail-loud: set_section_intent now requires the Section to
+ // exist in the atomic store first. Seed the sidecar JSON directly
+ // (test fixture path) so the smoke test exercises the cascade wire
+ // rather than the creation path.
  let tmp = TempDir::new().unwrap();
  write_min_workspace_config(tmp.path());
+
+ let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+ fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+ fs::write(
+ &sidecar,
+ r#"{
+  "sections": {"1": {"title": "Top", "parent_doc": "docs/STUB.md"}},
+  "changelog_entries": {},
+  "inventory_entries": {},
+  "schema_version": 3
+}"#,
+ )
+ .unwrap();
 
  let out = Command::new(cli_binary())
  .args([

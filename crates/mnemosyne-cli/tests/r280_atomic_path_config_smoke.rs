@@ -48,6 +48,20 @@ fn validate_workspace_honors_atomic_sidecar_override() {
  let tmp = TempDir::new().unwrap();
  write_redirected_workspace(tmp.path());
 
+ // Round 287 fail-loud: seed §sample at the redirected sidecar path
+ // (mutate path requires the Section to exist; the test fixture skips
+ // the audit-receipted creation path).
+ fs::write(
+ tmp.path().join("doc/.atomic/store.json"),
+ r#"{
+  "sections": {"sample": {"title": "Sample", "parent_doc": "docs/coverage/SPEC_COVERAGE.md"}},
+  "changelog_entries": {},
+  "inventory_entries": {},
+  "schema_version": 3
+}"#,
+ )
+ .unwrap();
+
  // Write a section via the mutate path (Round 279 already honored config here).
  let mutate = run_cli(
  tmp.path(),
@@ -84,6 +98,20 @@ fn validate_workspace_honors_atomic_sidecar_override() {
 fn query_list_sections_honors_atomic_sidecar_override() {
  let tmp = TempDir::new().unwrap();
  write_redirected_workspace(tmp.path());
+
+ // Round 287 fail-loud: seed §q-sample at the redirected sidecar path
+ // before the mutate. See validate_workspace_honors_atomic_sidecar_override
+ // for the same fixture pattern.
+ fs::write(
+ tmp.path().join("doc/.atomic/store.json"),
+ r#"{
+  "sections": {"q-sample": {"title": "Q-Sample", "parent_doc": "docs/coverage/SPEC_COVERAGE.md"}},
+  "changelog_entries": {},
+  "inventory_entries": {},
+  "schema_version": 3
+}"#,
+ )
+ .unwrap();
 
  // Mutate writes to the redirected sidecar.
  run_cli(

@@ -1613,6 +1613,12 @@ mod tests {
  symbol: Option<&str>,
  ) -> AtomicStore {
  let mut store = AtomicStore::new();
+ // Round 287 fail-loud: seed Section before add_section_implementation
+ // (test fixture path — direct insert bypasses audit-receipt overhead).
+ store.sections.insert(
+ section_id.to_string(),
+ crate::atomic::AtomicSection::default(),
+ );
  add_section_implementation(&mut store, path, section_id, impl_file, symbol).unwrap();
  store
  }
@@ -2180,8 +2186,15 @@ mod tests {
  decision_status: Option<DecisionStatus>,
  ) -> AtomicStore {
  let mut store = AtomicStore::new();
- let section = store.section_mut(section_id);
- section.decision_status = decision_status;
+ // Round 287 fail-loud: explicit Section creation via direct insert
+ // (test fixture path — no audit-receipt needed).
+ store.sections.insert(
+ section_id.to_string(),
+ crate::atomic::AtomicSection {
+ decision_status,
+ ..Default::default()
+ },
+ );
  // implementations stays at Vec::default() = []
  store
  }
