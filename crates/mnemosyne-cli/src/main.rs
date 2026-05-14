@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -147,6 +147,14 @@ fn run(args: &[String]) -> Result<()> {
  "set-section-rationale" => atomic_cli::cmd_set_section_rationale(&repo_root()?, &args[2..]),
  "set-section-inputs" => atomic_cli::cmd_set_section_inputs(&repo_root()?, &args[2..]),
  "set-section-outputs" => atomic_cli::cmd_set_section_outputs(&repo_root()?, &args[2..]),
+ // Round 287 — outline setter surface (Phase C).
+ "set-section-title" => atomic_cli::cmd_set_section_title(&repo_root()?, &args[2..]),
+ "set-section-parent-doc" => {
+ atomic_cli::cmd_set_section_parent_doc(&repo_root()?, &args[2..])
+ }
+ "set-section-parent-section" => {
+ atomic_cli::cmd_set_section_parent_section(&repo_root()?, &args[2..])
+ }
  "add-section-caveat" => atomic_cli::cmd_add_section_caveat(&repo_root()?, &args[2..]),
  "set-section-alternatives" => {
  atomic_cli::cmd_set_section_alternatives(&repo_root()?, &args[2..])
@@ -273,6 +281,9 @@ fn print_help(prog: &str) {
  println!(" {} set-section-rationale --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
  println!(" {} set-section-inputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
  println!(" {} set-section-outputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-title --section §<N> --title <heading text> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-parent-doc --section §<N> --parent-doc <doc-id> [--sidecar <path>] [--json]", prog);
+ println!(" {} set-section-parent-section --section §<N> (--parent §<P> | --no-parent) [--sidecar <path>] [--json]", prog);
  println!(" {} add-section-caveat --section §<N> --bullet <text (max 100 chars)> [--sidecar <path>] [--json]", prog);
  println!(
  " {} set-section-alternatives --section §<N> --alternatives-file <path> [--sidecar <path>] [--json]",

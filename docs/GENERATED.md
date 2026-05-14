@@ -8,15 +8,88 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 ## Sections
 
-### §atomic-store-mutate-api (atomic-only — title from workspace pending Round 164+)
+### §atomic-store-mutate-api. Atomic Store Mutate API
 
-### §code-citation-defense (atomic-only — title from workspace pending Round 164+)
 
-### §code-citation-defense/bidirectional-binding (atomic-only — title from workspace pending Round 164+)
 
-### §markdown-parser (atomic-only — title from workspace pending Round 164+)
 
-### §orphan-ledger (atomic-only — title from workspace pending Round 164+)
+
+
+
+
+
+
+**Implementations**:
+- crates/mnemosyne-validator/src/atomic.rs
+- crates/mnemosyne-cli/src/atomic_cli.rs
+
+
+
+### §code-citation-defense. Code Citation Defense
+
+
+
+
+
+
+
+
+
+
+**Implementations**:
+- crates/mnemosyne-validator/src/code_refs.rs
+- crates/mnemosyne-cli/src/main.rs
+
+
+
+### §code-citation-defense/bidirectional-binding. Bidirectional Binding
+
+
+
+
+
+
+
+
+
+
+**Implementations**:
+- crates/mnemosyne-validator/src/code_refs.rs
+- crates/mnemosyne-validator/src/atomic.rs
+
+
+
+### §markdown-parser. Markdown Parser
+
+
+
+
+
+
+
+
+
+
+**Implementations**:
+- crates/mnemosyne-validator/src/parser.rs
+
+
+
+### §orphan-ledger. Orphan Ledger
+
+
+
+
+
+
+
+
+
+
+**Implementations**:
+- crates/mnemosyne-validator/src/config.rs
+
+
 
 ## Changelog (atomic ledger)
 
@@ -1150,6 +1223,37 @@ Source: `docs/.atomic/workspace.atomic.json`
 - Phase I — 기존 atomic store 205 sections backfill migration (5 title-from-workspace-pending sentinel section 실제 outline 채우기)
 - Phase J — validate-workspace 전체 통과 + GENERATED.md round-trip (docs 11/11, T1 orphan=0, T3 reject=0 baseline)
 - Phase 287+ — AtomicSection.decision_status Option<DecisionStatus> → non-Option 검토 (Round 269 contract 재평가 후 별도 round 결정)
+
+
+
+### Round 288 — Phase E+I — Section-axis sentinel removal + 5 sentinel section outline backfill + outline setter CLI surface
+
+**Changes**:
+- query.rs synthetic_section uses atomic.title/parent_doc/parent_section directly (ATOMIC_ONLY_PARENT_DOC sentinel + intent→title fallback retired on Section axis)
+- generate-docs renders Sections via render_section with real title (placeholder header "atomic-only — title from workspace pending" retired); demoted ## → ### to fit under doc-level outline
+- CLI dispatch added: set-section-title / set-section-parent-doc / set-section-parent-section (Round 287 Phase C primitives now surfaced)
+- 5 sentinel section outline backfilled via mutate API: atomic-store-mutate-api / code-citation-defense / code-citation-defense/bidirectional-binding (parent=code-citation-defense) / markdown-parser / orphan-ledger — all bound to docs/GENERATED.md
+- ATOMIC_ONLY_PARENT_DOC constant retained — changelog axis still uses it (ChangelogEntries are workspace-level, not doc-bound; sentinel semantically correct there)
+
+
+
+**Verification**:
+- cargo test --release --workspace: all suites pass (312 validator + 22 CLI integration + others)
+- validate-workspace baseline maintained: docs=1/1, T1 orphan=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync
+- generate-docs output verified: 5 sections render with real titles (Atomic Store Mutate API / Code Citation Defense / Bidirectional Binding / Markdown Parser / Orphan Ledger)
+- section_by_id_atomic_only_section_surface test updated — asserts real outline values (no sentinel)
+
+
+
+**Impact**: §atomic-store-mutate-api, §code-citation-defense, §code-citation-defense/bidirectional-binding, §markdown-parser, §orphan-ledger
+
+
+**Carry forward**:
+- Phase F — legacy CLI add-section dispatch route through atomic add_section primitive (markdown-surgical insert retirement)
+- Phase G — MCP add_section + set_section_title / set_section_parent_doc / set_section_parent_section tools (watching-zenoh outline carry unblock)
+- Phase H — legacy mutate.rs::add_section + find_section_end_position / find_changelog_or_eof_position markdown-surgical helpers delete
+- ATOMIC_ONLY_PARENT_DOC sentinel — changelog axis keep (entries not doc-bound); revisit if AtomicChangelogEntry gains parent_doc field
+- render_section template — top-level §slug. Title format reads oddly for slug-id sections (numeric-id assumption); cosmetic polish carry
 
 
 

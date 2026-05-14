@@ -34,10 +34,11 @@ use mnemosyne_validator::{
  add_section_implementation, append_changelog_entry_v2,
  code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
  remove_inventory_entry, remove_section, remove_section_implementation,
- render_changelog_entry, set_inventory_section_ref, set_inventory_status,
+ render_changelog_entry, render_section, set_inventory_section_ref, set_inventory_status,
  set_section_alternatives, set_section_decision_status_atomic,
  set_section_impact_scope, set_section_inputs, set_section_intent,
- set_section_outputs, set_section_rationale, AtomicMutateError,
+ set_section_outputs, set_section_parent_doc, set_section_parent_section,
+ set_section_rationale, set_section_title, AtomicMutateError,
  AtomicMutateReceipt, AtomicStore, DecisionStatus, ExampleBlock,
  InventoryStatus, RejectedAlternative,
 };
@@ -205,6 +206,134 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
  finalize_mutate(
  workspace_root,
  set_section_intent(&mut store, &sidecar_path, &section, &intent),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 287 — outline setter CLI surface. set_section_title sets the
+/// heading text on an existing Section (Phase C primitive).
+pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut title: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--title" => {
+  title = Some(iter.next().ok_or_else(|| anyhow!("--title missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let title = title.ok_or_else(|| anyhow!("--title arg required"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_section_title(&mut store, &sidecar_path, &section, &title),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 287 — set Section.parent_doc (doc binding).
+pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut parent_doc: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--parent-doc" => {
+  parent_doc =
+  Some(iter.next().ok_or_else(|| anyhow!("--parent-doc missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let parent_doc = parent_doc.ok_or_else(|| anyhow!("--parent-doc arg required"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_section_parent_doc(&mut store, &sidecar_path, &section, &parent_doc),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// Round 287 — set Section.parent_section (hierarchy binding). Use `--parent
+/// <section_id>` to re-parent; use `--no-parent` to promote to top-level.
+/// The two flags are mutually exclusive; exactly one is required.
+pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut parent: Option<String> = None;
+ let mut clear_parent = false;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+  section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--parent" => {
+  parent = Some(iter.next().ok_or_else(|| anyhow!("--parent missing"))?.clone())
+ }
+ "--no-parent" => clear_parent = true,
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ if parent.is_some() && clear_parent {
+ bail!("--parent and --no-parent are mutually exclusive");
+ }
+ if parent.is_none() && !clear_parent {
+ bail!("exactly one of --parent <id> or --no-parent required");
+ }
+ let parent_stripped = parent.as_deref().map(strip_section_prefix);
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_section_parent_section(
+ &mut store,
+ &sidecar_path,
+ &section,
+ parent_stripped.as_deref(),
+ ),
  sidecar.as_deref(),
  regenerate,
  json,
@@ -839,21 +968,32 @@ fn render_atomic_store_to_md(
  out.push_str(&format!("Source: `{}`\n\n", source_rel));
  out.push_str("---\n\n");
 
- // Sections — migration scope. wire: render path is
- // present, but title / decision_status come from the parsed default_doc
- // workspace (cross-ref shift wire). Section atomic decomposition
- // migration populates this map; until then the loop is
- // empty and emits nothing.
+ // Sections — Round 287 outline lift retires the placeholder header.
+ // atomic.title / decision_status come from the atomic store directly;
+ // full body is synthesized via render_section (intent, rationale, etc.).
+ // Pre-backfill sections (empty title) fall back to the section_id as
+ // heading text so the surface stays human-parseable.
  if !store.sections.is_empty() {
  out.push_str("## Sections\n\n");
- for (section_id, _atomic) in &store.sections {
- // Atomic-only fallback header — title / decision_status fetch
- // from workspace lands with section migration so
- // the cross-ref shift wire is testable end-to-end at that point.
- out.push_str(&format!(
-  "### §{} (atomic-only — title from workspace pending Round 164+)\n\n",
-  section_id
- ));
+ for (section_id, atomic) in &store.sections {
+ let title = if atomic.title.is_empty() {
+  section_id.as_str()
+ } else {
+  atomic.title.as_str()
+ };
+ let status = match atomic.decision_status.unwrap_or(DecisionStatus::Active) {
+  DecisionStatus::Active => "active",
+  DecisionStatus::Superseded => "superseded",
+  DecisionStatus::Removed => "removed",
+ };
+ let rendered = render_section(section_id, title, status, atomic)
+  .map_err(|e| anyhow!("render section {}: {}", section_id, e))?;
+ // render_section emits `## §N. title` for top-level depth. The
+ // atomic-only sections live under the doc's `## Sections` heading,
+ // so demote one level (`##` → `###`) to keep the outline coherent.
+ let demoted = rendered.replacen("## §", "### §", 1);
+ out.push_str(&demoted);
+ out.push('\n');
  }
  }
 

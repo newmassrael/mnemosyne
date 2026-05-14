@@ -141,20 +141,24 @@ pub fn section_by_id(
  // atomic-only section surface (markdown missing + atomic_store
  // standalone registered scope, MD-DELETION-RATIFY thereafter sole iteration
  // source path).
+ //
+ // Round 287 — uses atomic outline fields directly (title / parent_doc /
+ // parent_section). The legacy `ATOMIC_ONLY_PARENT_DOC` sentinel and the
+ // intent→title fallback are retired now that the atomic store carries
+ // the closed-form Section shape. Outline fields default to empty strings
+ // for pre-backfill sections; callers see honest data rather than
+ // synthesized placeholders.
  if let Some(atomic) = atomic_store.section(section_id) {
  let synthetic_section = Section {
  section_id: section_id.to_string(),
- parent_doc: ATOMIC_ONLY_PARENT_DOC.to_string(),
- parent_section: None,
- title: atomic
-  .intent
-  .clone()
-  .unwrap_or_else(|| section_id.to_string()),
+ parent_doc: atomic.parent_doc.clone(),
+ parent_section: atomic.parent_section.clone(),
+ title: atomic.title.clone(),
  decision_status: atomic.decision_status.unwrap_or(DecisionStatus::Active),
  };
  let synthetic_doc = ParsedDoc::default();
  return Some(build_section_view(
- ATOMIC_ONLY_PARENT_DOC,
+ &atomic.parent_doc,
  &synthetic_section,
  &synthetic_doc,
  atomic_store,
@@ -674,18 +678,25 @@ mod tests {
  fn section_by_id_atomic_only_section_surface() {
  // markdown missing + atomic store standalone registered section carry.
  // MD-DELETION-RATIFY thereafter sole iteration source path.
+ //
+ // Round 287 — atomic-only surface now uses real outline fields
+ // (title / parent_doc / parent_section) instead of the legacy
+ // ATOMIC_ONLY_PARENT_DOC sentinel + intent→title fallback.
  use crate::atomic::AtomicSection;
  let ws = Workspace::mnemosyne();
  let mut store = AtomicStore::default();
  store.sections.insert(
  "777".to_string(),
  AtomicSection {
+  title: "Atomic-only Test".to_string(),
+  parent_doc: "docs/GENERATED.md".to_string(),
   intent: Some("atomic-only test".to_string()),
   ..Default::default()
  },
  );
  let view = section_by_id(&ws, &store, "777").expect("§777 atomic-only");
- assert_eq!(view.parent_doc, ATOMIC_ONLY_PARENT_DOC);
+ assert_eq!(view.parent_doc, "docs/GENERATED.md");
+ assert_eq!(view.title, "Atomic-only Test");
  assert!(view.body.contains("atomic-only test"));
  }
 

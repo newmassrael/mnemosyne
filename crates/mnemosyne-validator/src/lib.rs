@@ -76,9 +76,13 @@ pub use atomic::{
  set_inventory_status, set_section_alternatives,
  set_section_decision_status_atomic, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_outputs,
- set_section_rationale, AtomicChangelogEntry, AtomicMutateError,
+ set_section_parent_doc, set_section_parent_section, set_section_rationale,
+ set_section_title, AtomicChangelogEntry, AtomicMutateError,
  AtomicMutateReceipt, AtomicSection, AtomicStore, AtomicStoreError,
  ExampleBlock, Implementation, InventoryEntry, InventoryStatus,
  RejectedAlternative,
 };
+// Round 287 — atomic `add_section` lives at `atomic::add_section` to avoid
+// the legacy `mutate::add_section` name collision (Phase H will remove the
+// legacy variant; until then callers use the module-qualified path).
 pub use render::{render_changelog_entry, render_section, RenderError};
