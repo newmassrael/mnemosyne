@@ -403,12 +403,45 @@ impl AtomicStore {
 /// Render an [`AtomicSection`] into a paragraph-separated prose string
 ///.
 ///
-/// Used by `style.rs` body rules (run-on / sentence-length scan) and
-/// `query.rs::build_section_view` (atomic-first body source). Bullet blocks
-/// render with `- ` prefixes (so `is_only_code_or_table` filters them out
-/// of paragraph-length checks); examples render as fenced code blocks
-/// (skipped by detectors).
+/// Used by `query.rs::build_section_view` (atomic-first body source — the
+/// SectionView consumer wants the full body including mechanical citations
+/// rendered for human / agent inspection).
+///
+/// Style-check callers MUST use [`synthesize_section_prose_body`] instead,
+/// which omits mechanical citation blocks (file paths) that are not
+/// authored prose. See that function's doc for the category rationale.
+///
+/// Bullet blocks render with `- ` prefixes (so `is_only_code_or_table`
+/// filters them out of paragraph-length checks); examples render as fenced
+/// code blocks (skipped by detectors).
 pub fn synthesize_section_body(atomic: &AtomicSection) -> String {
+ synthesize_section_body_inner(atomic, true)
+}
+
+/// Style-check variant of [`synthesize_section_body`].
+///
+/// Identical to `synthesize_section_body` except that the `implementations`
+/// block (file paths emitted by the renderer for cross-citation) is
+/// excluded. Implementations entries are mechanical, filesystem-shaped
+/// identifiers — by Unix/C convention they are lowercase (`dut/`,
+/// `include/tc8/`, `someip_*.h`) regardless of the canonical prose form
+/// of the same concept (DUT / TC8 / SOME/IP). Running
+/// `terminology_consistency` (or any other prose-targeted rule) over them
+/// is a category error: the glossary expresses "when an author writes the
+/// dut received..., suggest the DUT received..." — it was never meant to
+/// police filesystem paths.
+///
+/// Used by `style.rs::resolve_section_body` for all section-body style
+/// rules. `impact_scope` (section-id cross-refs) is retained — those IDs
+/// are URL-slug shaped and may legitimately contain glossary variants
+/// authored as prose. `examples` (fenced code) is retained — code examples
+/// are illustrative spec content; if an example uses wrong terminology in
+/// a comment, the rule should still flag it.
+pub fn synthesize_section_prose_body(atomic: &AtomicSection) -> String {
+ synthesize_section_body_inner(atomic, false)
+}
+
+fn synthesize_section_body_inner(atomic: &AtomicSection, include_implementations: bool) -> String {
  let mut parts: Vec<String> = Vec::new();
  if let Some(intent) = atomic.intent.as_ref().filter(|s| !s.is_empty()) {
  parts.push(intent.clone());
@@ -440,7 +473,7 @@ pub fn synthesize_section_body(atomic: &AtomicSection) -> String {
  .collect();
  parts.push(block.join("\n"));
  }
- if !atomic.implementations.is_empty() {
+ if include_implementations && !atomic.implementations.is_empty() {
  let block: Vec<String> = atomic
  .implementations
  .iter()

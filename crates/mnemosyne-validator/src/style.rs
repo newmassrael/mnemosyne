@@ -336,11 +336,14 @@ pub fn check_style(
 
 /// Resolve the prose body for a section's style checks. atomic-first source
 ///: if the atomic store has an entry
-/// for `section_id`, synthesize a prose body from its 8 fields; otherwise
-/// fall back to the legacy `parsed.bodies` map for sections that have not
-/// yet been atomic-decomposed. Both branches return `None` when no source
-/// exists (decomposed-but-empty atomic section also yields a synthesized
-/// empty string `""`, which `check_section_body_rule` treats as a no-op).
+/// for `section_id`, synthesize a prose body via
+/// [`crate::atomic::synthesize_section_prose_body`] (excludes mechanical
+/// citation blocks like `implementations` file paths — see that function's
+/// doc for the category rationale); otherwise fall back to the legacy
+/// `parsed.bodies` map for sections that have not yet been
+/// atomic-decomposed. Both branches return `None` when no source exists
+/// (decomposed-but-empty atomic section also yields a synthesized empty
+/// string `""`, which `check_section_body_rule` treats as a no-op).
 fn resolve_section_body(
  parsed: &ParsedDoc,
  atomic_store: &AtomicStore,
@@ -352,13 +355,16 @@ fn resolve_section_body(
  parsed.bodies.get(section_id).cloned()
 }
 
-// `synthesize_atomic_body` moved to
-// [`crate::atomic::synthesize_section_body`] for shared use (query.rs
-// SectionView.body atomic-first source). this module-level wrapper
-// maintain in minimal carry — call site change no atomic-first surface scope
-// identical helper carry.
+// Style-check body synthesizer. Uses the prose-only variant so that
+// mechanical citation blocks (Section.implementations file paths) do not
+// participate in prose rules like `terminology_consistency`. Path-shaped
+// identifiers follow Unix/C filesystem conventions (lowercase) regardless
+// of the canonical prose form of the same concept (e.g. `dut/...` vs the
+// canonical `DUT` glossary form). query.rs continues to use
+// [`crate::atomic::synthesize_section_body`] (the full variant) for
+// SectionView.body, where downstream consumers want the rendered citations.
 fn synthesize_atomic_body(atomic: &AtomicSection) -> String {
- crate::atomic::synthesize_section_body(atomic)
+ crate::atomic::synthesize_section_prose_body(atomic)
 }
 
 fn check_section_body_rule(
@@ -1010,6 +1016,130 @@ mod tests {
  let v = check_style("TEST.md", &doc, &empty_store(), &[rule]);
  assert_eq!(v.len(), 1);
  assert_eq!(v[0].rule_id, "terminology_consistency");
+ }
+
+ /// Regression — `terminology_consistency` MUST NOT fire on file paths
+ /// in `Section.implementations`. Filesystem paths are mechanical
+ /// citations (lowercase by Unix/C convention), not authored prose.
+ ///
+ /// Scenario mirrors a TC8-style workspace: glossary lists lowercase
+ /// variants (`tc8` / `dut` / `someip` / `dhcpv4`); the section has
+ /// prose using the canonical forms and `implementations[]` populated
+ /// with lowercase filesystem paths. Pre-fix: 4 false positives. Post-
+ /// fix: 0.
+ #[test]
+ fn terminology_consistency_ignores_implementation_paths() {
+ use crate::atomic::{AtomicSection, Implementation};
+ let mut glossary = BTreeMap::new();
+ for (canon, variants) in [
+ ("TC8", &["tc8", "Tc8"][..]),
+ ("DUT", &["dut", "Dut"][..]),
+ ("SOME/IP", &["someip", "SomeIP"][..]),
+ ("DHCPv4", &["dhcpv4", "Dhcpv4"][..]),
+ ] {
+ let set: BTreeSet<String> = variants.iter().map(|s| s.to_string()).collect();
+ glossary.insert(canon.to_string(), set);
+ }
+ let rule = StyleRule {
+ rule_id: "terminology_consistency".into(),
+ tier: StyleTier::T3,
+ threshold: StyleThreshold::GlossaryLookup(glossary),
+ scope: StyleScope::FullDoc,
+ rationale: "test".into(),
+ };
+
+ let mut doc = ParsedDoc::default();
+ doc.sections.push(Section {
+ section_id: "tc8-harness/4.2".into(),
+ parent_doc: "GENERATED.md".into(),
+ parent_section: None,
+ title: "4.2".into(),
+ decision_status: crate::schema::DecisionStatus::Active,
+ });
+ // prose uses canonical TC8 forms — no terminology violation expected.
+ let mut store = AtomicStore::default();
+ let section = AtomicSection {
+ title: "4.2".into(),
+ parent_doc: "GENERATED.md".into(),
+ parent_section: None,
+ intent: Some(
+ "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
+ ),
+ implementations: vec![
+ Implementation {
+ file: "dut/env/smoke-test.sh".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "include/tc8/bpf_group.h".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "src/sce_integration/cases/someip_ets_084.h".into(),
+ symbol: None,
+ },
+ Implementation {
+ file: "src/proto/dhcpv4_common.h".into(),
+ symbol: None,
+ },
+ ],
+ ..Default::default()
+ };
+ store.sections.insert("tc8-harness/4.2".into(), section);
+
+ let v = check_style("docs/GENERATED.md", &doc, &store, &[rule]);
+ let term_hits: Vec<&StyleViolation> = v
+ .iter()
+ .filter(|x| x.rule_id == "terminology_consistency")
+ .collect();
+ assert!(
+ term_hits.is_empty(),
+ "implementations file paths must not trigger terminology_consistency; got: {:?}",
+ term_hits
+ );
+ }
+
+ /// Companion to [`terminology_consistency_ignores_implementation_paths`]:
+ /// the rule MUST still fire when a lowercase variant appears in genuine
+ /// authored prose (intent text).
+ #[test]
+ fn terminology_consistency_still_fires_on_prose_variants() {
+ use crate::atomic::AtomicSection;
+ let mut glossary = BTreeMap::new();
+ let mut variants = BTreeSet::new();
+ variants.insert("tc8".to_string());
+ glossary.insert("TC8".to_string(), variants);
+ let rule = StyleRule {
+ rule_id: "terminology_consistency".into(),
+ tier: StyleTier::T3,
+ threshold: StyleThreshold::GlossaryLookup(glossary),
+ scope: StyleScope::FullDoc,
+ rationale: "test".into(),
+ };
+
+ let mut doc = ParsedDoc::default();
+ doc.sections.push(Section {
+ section_id: "p/1".into(),
+ parent_doc: "GENERATED.md".into(),
+ parent_section: None,
+ title: "1".into(),
+ decision_status: crate::schema::DecisionStatus::Active,
+ });
+ let mut store = AtomicStore::default();
+ let section = AtomicSection {
+ title: "1".into(),
+ parent_doc: "GENERATED.md".into(),
+ parent_section: None,
+ intent: Some("the tc8 spec defines ...".into()),
+ ..Default::default()
+ };
+ store.sections.insert("p/1".into(), section);
+
+ let v = check_style("docs/GENERATED.md", &doc, &store, &[rule]);
+ assert!(v
+ .iter()
+ .any(|x| x.rule_id == "terminology_consistency"
+ && x.message.contains("`tc8`")));
  }
 
  #[test]

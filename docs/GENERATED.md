@@ -1289,3 +1289,34 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 290 — terminology_consistency mechanical-citation scope fix — Section.implementations file paths excluded from prose-rule body via synthesize_section_prose_body — synthesize_section_prose_body excludes Section.implementations file-path block from style-rule body; query.rs full-body path unchanged
+
+**Changes**:
+- atomic.rs: synthesize_section_prose_body added (skips Section.implementations file-path block)
+- atomic.rs: synthesize_section_body_inner DRY helper; public synthesize_section_body unchanged
+- style.rs: resolve_section_body switches to prose variant for terminology + length rules
+- query.rs unchanged: SectionView.body keeps full body including implementations for consumers
+- tests: terminology_ignores_implementation_paths + still_fires_on_prose_variants (regressions)
+
+
+
+**Verification**:
+- cargo test --workspace: all groups pass / 0 failed (validator lib +2 new terminology tests)
+- validate-workspace self-application: T3 reject=0, round-trip=1/1, atomic ledger sync
+- Bug repro: TC8/DUT/SOME-IP glossary + lowercase paths in implementations now yields 0 violations
+- Companion test: lowercase variant in intent prose still fires terminology_consistency (no over-fix)
+
+
+
+**Impact**: §code-citation-defense, §atomic-store-mutate-api
+
+
+**Carry forward**:
+- impact_scope §section-id block still in prose body; slug shape rarely substring-matches glossary
+- examples fenced-code block kept; comments inside code can legitimately need terminology flags
+- Legacy fallback parsed.bodies (non-atomic sections) — Implementations block lives in markdown body
+- Word-boundary tightening of terminology matcher — broader fix deferred; surgical exclusion suffices
+- mnemosyne.toml terminology.exempt_patterns config knob — not added; principle = exclude mechanical
+
+
+
