@@ -222,6 +222,64 @@ impl AtomicChangelogEntry {
  && self.publishable_impact_refs == self.impact_refs
  && self.publishable_carry_forward_bullets == self.carry_forward_bullets
  }
+
+ /// Round 296 — SHA256 of the publishable half, hex-encoded.
+ ///
+ /// Computes a deterministic content hash over the 5 publishable_*
+ /// fields by serializing them as JSON (BTreeMap-key ordering already
+ /// applies inside Vec<String>; serde_json preserves struct field order
+ /// from the explicit Serialize impl below). The hash is the anchor
+ /// stored in `[[publishable_override_ledger]].content_hash_after`;
+ /// validate-workspace recomputes it per entry and rejects any divergent
+ /// entry whose hash does not match a ledger row.
+ ///
+ /// Mutating publishable_* without re-anchoring the ledger row produces
+ /// a hash mismatch — the ledger is forge-resistant by construction.
+ pub fn publishable_hash_hex(&self) -> String {
+ use sha2::{Digest, Sha256};
+ // Inline shape (not the full struct, only the publishable half) so
+ // that adding new audit fields later does not silently invalidate
+ // every prior content_hash_after anchor.
+ let payload = serde_json::json!({
+ "publishable_decision_summary": self.publishable_decision_summary,
+ "publishable_changes_bullets": self.publishable_changes_bullets,
+ "publishable_verification_bullets": self.publishable_verification_bullets,
+ "publishable_impact_refs": self.publishable_impact_refs,
+ "publishable_carry_forward_bullets": self.publishable_carry_forward_bullets,
+ });
+ let mut hasher = Sha256::new();
+ hasher.update(serde_json::to_vec(&payload).unwrap_or_default());
+ let bytes = hasher.finalize();
+ let mut s = String::with_capacity(bytes.len() * 2);
+ for b in bytes {
+ use std::fmt::Write;
+ let _ = write!(&mut s, "{:02x}", b);
+ }
+ s
+ }
+
+ /// Round 296 — SHA256 of the audit half, hex-encoded. Optional
+ /// content_hash_before anchor in the ledger; informational since the
+ /// audit half is immutable post-append.
+ pub fn audit_hash_hex(&self) -> String {
+ use sha2::{Digest, Sha256};
+ let payload = serde_json::json!({
+ "decision_summary": self.decision_summary,
+ "changes_bullets": self.changes_bullets,
+ "verification_bullets": self.verification_bullets,
+ "impact_refs": self.impact_refs,
+ "carry_forward_bullets": self.carry_forward_bullets,
+ });
+ let mut hasher = Sha256::new();
+ hasher.update(serde_json::to_vec(&payload).unwrap_or_default());
+ let bytes = hasher.finalize();
+ let mut s = String::with_capacity(bytes.len() * 2);
+ for b in bytes {
+ use std::fmt::Write;
+ let _ = write!(&mut s, "{:02x}", b);
+ }
+ s
+ }
 }
 
 /// Inventory entry lifecycle status (Round 273, Phase 1A).
@@ -3102,5 +3160,63 @@ mod tests {
  AtomicMutateError::Validation(_) => {}
  other => panic!("expected Validation, got {:?}", other),
  }
+ }
+
+ // ============ Round 296 publishable hash anchoring ============
+
+ #[test]
+ fn publishable_hash_deterministic_and_stable() {
+ // Same content → same hash (deterministic). Different content →
+ // different hash (forge-resistance basis for the R296 ledger gate).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+
+ let entry = store.changelog_entries.get("Round 999").unwrap();
+ let hash_a = entry.publishable_hash_hex();
+ let hash_b = entry.publishable_hash_hex();
+ assert_eq!(hash_a, hash_b, "hash must be deterministic");
+ assert_eq!(hash_a.len(), 64, "SHA256 hex = 64 chars");
+
+ // Mutate publishable_* → hash changes.
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "different summary",
+ )
+ .unwrap();
+ let new_hash = store
+ .changelog_entries
+ .get("Round 999")
+ .unwrap()
+ .publishable_hash_hex();
+ assert_ne!(hash_a, new_hash, "mutation must change hash");
+ }
+
+ #[test]
+ fn publishable_hash_differs_from_audit_hash_when_diverged() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ // Pre-divergence: publishable_matches_audit, but the two hashes use
+ // different field names so the digests are not identical even when
+ // contents match. That's intentional — they are different bodies and
+ // must produce different anchors.
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "redacted",
+ )
+ .unwrap();
+ let entry = store.changelog_entries.get("Round 999").unwrap();
+ assert_ne!(
+ entry.publishable_hash_hex(),
+ entry.audit_hash_hex(),
+ "diverged publishable / audit must hash to different anchors"
+ );
  }
 }

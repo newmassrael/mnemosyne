@@ -52,8 +52,9 @@ pub use validator::{
 pub use workspace::Workspace;
 pub use config::{
  discover_config, load_config, parse_config, AtomicConfigSection, CodeRefsSection,
- LoadedConfig, OrphanKind, OrphanLedgerEntry, SchemaSection, StyleSection,
- TerminologySection, WorkspaceConfig, WorkspaceSection,
+ LoadedConfig, OrphanKind, OrphanLedgerEntry, PublishableOverrideLedgerEntry,
+ SchemaSection, StyleSection, TerminologySection, WorkspaceConfig,
+ WorkspaceSection,
 };
 pub use query::{
  build_envelope, changelog_entries_for_section, query_term, related_sections,

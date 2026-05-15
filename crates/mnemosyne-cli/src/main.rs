@@ -1645,6 +1645,20 @@ fn cmd_validate_workspace() -> Result<()> {
  // semantics. Silent when [code_refs] is unconfigured.
  print_atomic_decay_surface(&root)?;
 
+ // Round 296 — publishable / audit divergence ledger gate.
+ //
+ // Walks atomic.changelog_entries; for each entry where
+ // `publishable_matches_audit() == false`, requires a matching
+ // `[[publishable_override_ledger]]` row whose `target_id` equals the
+ // entry id and whose `content_hash_after` equals the current publishable
+ // hash. Missing or stale rows reject the workspace. The hash makes the
+ // ledger forge-resistant: editing publishable_* without re-anchoring the
+ // ledger row re-surfaces the rejection.
+ check_publishable_override_ledger(
+ &validate_workspace_atomic,
+ &validate_workspace_cfg_for_ledger.config.publishable_override_ledger,
+ )?;
+
  // Round 293 — commit↔ledger drift surface.
  //
  // Walks the last 200 git commit subjects, extracts "(R<N>)" / "(Round <N>)"
@@ -1655,6 +1669,85 @@ fn cmd_validate_workspace() -> Result<()> {
  // or when no labeled commits found in the scan window.
  print_commit_ledger_drift_surface(&root, &validate_workspace_atomic)?;
 
+ Ok(())
+}
+
+/// Round 296 — publishable / audit divergence ledger gate.
+///
+/// Walks `atomic.changelog_entries`. For each entry where
+/// `publishable_matches_audit() == false`, requires a matching
+/// `[[publishable_override_ledger]]` row whose `target_id` equals the entry
+/// id and whose `content_hash_after` equals the current publishable hash.
+/// Pure-ledger carry passes (rows whose target entry no longer diverges,
+/// e.g. because publishable_* was reverted to audit_*, are silently
+/// inert; that is the correct behavior — drift surfaces only on
+/// divergence, not on extra ledger rows).
+///
+/// Prints one informational line summarizing divergence count and
+/// ledger-row count regardless of pass/fail. Bails on first reject.
+fn check_publishable_override_ledger(
+ atomic: &mnemosyne_validator::AtomicStore,
+ ledger: &[mnemosyne_validator::PublishableOverrideLedgerEntry],
+) -> Result<()> {
+ let divergent_entries: Vec<(&String, &mnemosyne_validator::AtomicChangelogEntry)> = atomic
+ .changelog_entries
+ .iter()
+ .filter(|(_, e)| !e.publishable_matches_audit())
+ .collect();
+ println!(
+ "publishable / audit divergence: entries={} ledger_rows={}",
+ divergent_entries.len(),
+ ledger.len()
+ );
+ if divergent_entries.is_empty() {
+ // pure-ledger carry note (informational): rows for entries that no
+ // longer diverge are inert — surfaced once so authors can prune.
+ let inert: Vec<&str> = ledger
+ .iter()
+ .filter(|row| {
+ atomic
+ .changelog_entries
+ .get(&row.target_id)
+ .map(|e| e.publishable_matches_audit())
+ .unwrap_or(true)
+ })
+ .map(|row| row.target_id.as_str())
+ .collect();
+ if !inert.is_empty() {
+ println!(
+ " inert ledger rows ({}): {}",
+ inert.len(),
+ inert.join(", ")
+ );
+ }
+ return Ok(());
+ }
+ let mut errors: Vec<String> = Vec::new();
+ for (entry_id, entry) in &divergent_entries {
+ let current_hash = entry.publishable_hash_hex();
+ let matched = ledger.iter().any(|row| {
+ row.target_id == **entry_id && row.content_hash_after == current_hash
+ });
+ if !matched {
+ errors.push(format!(
+ "  diverged `{}` — current publishable_hash={} (no matching \
+  [[publishable_override_ledger]] row)",
+ entry_id, current_hash
+ ));
+ }
+ }
+ if !errors.is_empty() {
+ for e in &errors {
+ eprintln!("{}", e);
+ }
+ bail!(
+ "publishable / audit divergence on {} entry(ies) without matching \
+  [[publishable_override_ledger]] row — add a row with target_id, \
+  reason, applied_in, and content_hash_after = the printed publishable_hash, \
+  or revert publishable_* to audit_* (Round 296 body-split gate)",
+ errors.len()
+ );
+ }
  Ok(())
 }
 

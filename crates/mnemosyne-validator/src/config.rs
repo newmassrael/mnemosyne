@@ -52,6 +52,18 @@ pub struct WorkspaceConfig {
  /// preserved across both sources.
  #[serde(default, rename = "orphan_ledger")]
  pub orphan_ledger: Vec<OrphanLedgerEntry>,
+ /// Round 296 — publishable / audit divergence ledger.
+ ///
+ /// Pairs with the R294 schema split + R295 publishable setters. When an
+ /// `AtomicChangelogEntry`'s `publishable_*` half diverges from its
+ /// `audit_*` half (the permanent record), validate-workspace rejects the
+ /// store unless a matching `[[publishable_override_ledger]]` row
+ /// authorizes it with a written `reason` and a `content_hash_after`
+ /// anchor that equals the current publishable hash. This is the textbook
+ /// audit-trace pattern from R254 orphan_ledger applied to the body-split
+ /// axis: divergent state is allowed only when explicitly accounted for.
+ #[serde(default, rename = "publishable_override_ledger")]
+ pub publishable_override_ledger: Vec<PublishableOverrideLedgerEntry>,
  /// code citation verification config (Stage 2 of the
  /// 3-stage code-citation defense, carry). When `[code_refs]`
  /// is omitted, the `validate-code-refs` subcommand exits 0 with a
@@ -192,6 +204,53 @@ pub struct OrphanLedgerEntry {
  pub reason: String,
  /// When the entry was registered (free-form date or round id).
  pub since: String,
+}
+
+/// One row of `[[publishable_override_ledger]]` in `mnemosyne.toml` — an
+/// authorized divergence between the `publishable_*` half and the `audit_*`
+/// half of a single `AtomicChangelogEntry` (R294 body split).
+///
+/// Validate-workspace gate (R296) walks `changelog_entries`; for each entry
+/// where `publishable_matches_audit() == false`, requires at least one row
+/// here with matching `target_id` whose `content_hash_after` equals the
+/// current publishable hash. Missing or stale rows reject the workspace —
+/// mirroring the [`OrphanLedgerEntry`] pattern.
+///
+/// `kind` is free-form (e.g. `"redaction"`, `"typo"`, `"clarification"`)
+/// so workspace policy can categorize divergences without a closed-form
+/// enum that would block adoption-time vocabulary expansion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublishableOverrideLedgerEntry {
+ /// Free-form classification of the divergence. Common values:
+ /// `"redaction"` (RFC P1 privacy fix), `"typo"`, `"clarification"`.
+ pub kind: String,
+ /// `entry_id` (changelog entry key) whose publishable / audit halves
+ /// diverge — short form `Round <N>` or long form `Round <N> — title`.
+ pub target_id: String,
+ /// Field names that diverge (subset of: `publishable_decision_summary`,
+ /// `publishable_changes_bullets`, `publishable_verification_bullets`,
+ /// `publishable_impact_refs`, `publishable_carry_forward_bullets`).
+ /// Currently informational — v1 gate matches at entry granularity, not
+ /// per-field. Author-facing audit trace.
+ #[serde(default)]
+ pub fields: Vec<String>,
+ /// Why the divergence is authorized (privacy fix, typo correction, etc.).
+ /// Required field — frozen-by-rationale, not silently suppressed.
+ pub reason: String,
+ /// Round id (or commit hash) where the divergence was applied. Free-form
+ /// string for cross-referencing the originating changelog entry.
+ pub applied_in: String,
+ /// Optional SHA256 anchor of the audit-half hash at divergence time.
+ /// Informational trace; not validated (audit half is immutable so this
+ /// would only ever fail if the audit invariant itself was breached).
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub content_hash_before: Option<String>,
+ /// SHA256 anchor of the publishable-half hash after divergence.
+ /// Required: validate-workspace recomputes the current publishable hash
+ /// per entry and rejects if no ledger row's `content_hash_after` matches.
+ /// This is what makes the ledger forge-resistant — editing publishable_*
+ /// without re-anchoring here re-surfaces the rejection.
+ pub content_hash_after: String,
 }
 
 /// `[code_refs]` table — code citation verification config.

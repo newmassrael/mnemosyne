@@ -2402,6 +2402,66 @@
         "mutate API hardening carry (rolled forward from R293/R294): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass once R296 establishes the publishable / audit boundary at validate-workspace level",
         "Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review"
       ]
+    },
+    "Round 296 — [[publishable_override_ledger]] config + validate-workspace gate — divergent publishable_* requires SHA256-anchored ledger row (forge-resistant audit trace)": {
+      "decision_summary": "mnemosyne.toml gains [[publishable_override_ledger]] (kind, target_id, fields, reason, applied_in, content_hash_before optional, content_hash_after required) mirroring R254 [[orphan_ledger]]. AtomicChangelogEntry::publishable_hash_hex / audit_hash_hex compute deterministic SHA256 anchors. validate-workspace check_publishable_override_ledger walks changelog_entries; for each entry where publishable_matches_audit() == false, requires a ledger row whose target_id matches and whose content_hash_after equals the current publishable hash — bails on first un-anchored divergence. Editing publishable_* without re-anchoring the ledger row re-surfaces the rejection; pure-ledger carry passes (inert rows surface informationally so authors can prune). Closes RFC G2 (audit-trace structure for legitimate frozen overrides).",
+      "changes_bullets": [
+        "config.rs adds PublishableOverrideLedgerEntry { kind, target_id, fields, reason, applied_in, content_hash_before (optional), content_hash_after } and a publishable_override_ledger Vec on WorkspaceConfig — TOML schema mirrors [[orphan_ledger]] convention from R254",
+        "atomic.rs adds AtomicChangelogEntry::publishable_hash_hex() and audit_hash_hex() — SHA256 over a serde_json shape that names the fields explicitly so future audit-field additions cannot silently invalidate prior content_hash anchors",
+        "main.rs check_publishable_override_ledger walks changelog_entries, filters publishable_matches_audit() == false, and requires a ledger row whose target_id matches and whose content_hash_after equals the current publishable hash (forge-resistant by construction); inert ledger rows (target no longer divergent) are surfaced informationally so authors can prune",
+        "validate-workspace prints one line (\"publishable / audit divergence: entries=N ledger_rows=M\") regardless of pass/fail, then bails on the first un-anchored divergence with the exact field needed (`content_hash_after = the printed publishable_hash`)",
+        "gate wires after print_atomic_decay_surface and before the R293 commit↔ledger drift surface; pure-ledger carry passes (rows for entries that no longer diverge are inert, mirroring R254 orphan-axis semantics)",
+        "lib.rs re-exports PublishableOverrideLedgerEntry alongside OrphanLedgerEntry",
+        "2 new unit tests in atomic.rs::tests cover hash determinism + mutation sensitivity (forge-resistance basis), and the audit/publishable hash separation when the two halves diverge"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace: 635 passed / 0 failed / 47 ignored (R295 = 633; +2 from hash anchoring tests)",
+        "validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync, ledger=42; new informational line: \"publishable / audit divergence: entries=0 ledger_rows=0\"",
+        "publishable_hash_deterministic_and_stable test: same publishable_* → same SHA256 (deterministic), R295 setter → different SHA256 (mutation sensitivity)",
+        "publishable_hash_differs_from_audit_hash_when_diverged test: explicit divergence yields distinct anchors so the ledger row cannot accidentally match the audit half",
+        "gate path verified: with no divergence in production atomic store (40 entries all publishable_matches_audit() == true), gate returns Ok(()) and validate-workspace passes; once R295 setter diverges any entry, gate prints the entry id + current publishable_hash and bails until a [[publishable_override_ledger]] row is registered"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "orphan-ledger"
+      ],
+      "carry_forward_bullets": [
+        "R297 carry — redact_term convenience primitive (RFC P1 final piece): pattern + replacement + scope (publishable_decision_summary | publishable_changes_bullets | etc.) + dry_run + reason; routes through R295 setters + auto-emits a [[publishable_override_ledger]] draft row for the divergence so authors do not hand-author hashes; uses R292 query_term as preview substrate. Closes RFC G1 once paired with this round's audit-trace",
+        "Cascade auto-emit of [[publishable_override_ledger]] draft on each R295 setter call — ergonomic improvement that removes the manual SHA256 computation step. Defer until R297 lands the redact_term wrapper which already needs the same auto-emit path",
+        "Per-field gate granularity carry: v1 gate matches at entry granularity (all diverged fields pass or fail together via the single content_hash_after anchor); per-field hash anchors (e.g. content_hash_after_changes_bullets) would let authors register partial divergences. Defer until usage shows entry-level granularity is too coarse",
+        "mutate API hardening carry (rolled forward from R293/R294/R295): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass once R297 redact_term lands and the publishable boundary is exercised at scale",
+        "Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review",
+        "RFC G2 (audit-trace structure for legitimate frozen overrides) closed by this round paired with R294 schema split + R295 setters; G1 (cross-store term replacement primitive) closes when R297 wraps the same path as a single redact_term call"
+      ],
+      "publishable_decision_summary": "mnemosyne.toml gains [[publishable_override_ledger]] (kind, target_id, fields, reason, applied_in, content_hash_before optional, content_hash_after required) mirroring R254 [[orphan_ledger]]. AtomicChangelogEntry::publishable_hash_hex / audit_hash_hex compute deterministic SHA256 anchors. validate-workspace check_publishable_override_ledger walks changelog_entries; for each entry where publishable_matches_audit() == false, requires a ledger row whose target_id matches and whose content_hash_after equals the current publishable hash — bails on first un-anchored divergence. Editing publishable_* without re-anchoring the ledger row re-surfaces the rejection; pure-ledger carry passes (inert rows surface informationally so authors can prune). Closes RFC G2 (audit-trace structure for legitimate frozen overrides).",
+      "publishable_changes_bullets": [
+        "config.rs adds PublishableOverrideLedgerEntry { kind, target_id, fields, reason, applied_in, content_hash_before (optional), content_hash_after } and a publishable_override_ledger Vec on WorkspaceConfig — TOML schema mirrors [[orphan_ledger]] convention from R254",
+        "atomic.rs adds AtomicChangelogEntry::publishable_hash_hex() and audit_hash_hex() — SHA256 over a serde_json shape that names the fields explicitly so future audit-field additions cannot silently invalidate prior content_hash anchors",
+        "main.rs check_publishable_override_ledger walks changelog_entries, filters publishable_matches_audit() == false, and requires a ledger row whose target_id matches and whose content_hash_after equals the current publishable hash (forge-resistant by construction); inert ledger rows (target no longer divergent) are surfaced informationally so authors can prune",
+        "validate-workspace prints one line (\"publishable / audit divergence: entries=N ledger_rows=M\") regardless of pass/fail, then bails on the first un-anchored divergence with the exact field needed (`content_hash_after = the printed publishable_hash`)",
+        "gate wires after print_atomic_decay_surface and before the R293 commit↔ledger drift surface; pure-ledger carry passes (rows for entries that no longer diverge are inert, mirroring R254 orphan-axis semantics)",
+        "lib.rs re-exports PublishableOverrideLedgerEntry alongside OrphanLedgerEntry",
+        "2 new unit tests in atomic.rs::tests cover hash determinism + mutation sensitivity (forge-resistance basis), and the audit/publishable hash separation when the two halves diverge"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --release --workspace: 635 passed / 0 failed / 47 ignored (R295 = 633; +2 from hash anchoring tests)",
+        "validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync, ledger=42; new informational line: \"publishable / audit divergence: entries=0 ledger_rows=0\"",
+        "publishable_hash_deterministic_and_stable test: same publishable_* → same SHA256 (deterministic), R295 setter → different SHA256 (mutation sensitivity)",
+        "publishable_hash_differs_from_audit_hash_when_diverged test: explicit divergence yields distinct anchors so the ledger row cannot accidentally match the audit half",
+        "gate path verified: with no divergence in production atomic store (40 entries all publishable_matches_audit() == true), gate returns Ok(()) and validate-workspace passes; once R295 setter diverges any entry, gate prints the entry id + current publishable_hash and bails until a [[publishable_override_ledger]] row is registered"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api",
+        "orphan-ledger"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R297 carry — redact_term convenience primitive (RFC P1 final piece): pattern + replacement + scope (publishable_decision_summary | publishable_changes_bullets | etc.) + dry_run + reason; routes through R295 setters + auto-emits a [[publishable_override_ledger]] draft row for the divergence so authors do not hand-author hashes; uses R292 query_term as preview substrate. Closes RFC G1 once paired with this round's audit-trace",
+        "Cascade auto-emit of [[publishable_override_ledger]] draft on each R295 setter call — ergonomic improvement that removes the manual SHA256 computation step. Defer until R297 lands the redact_term wrapper which already needs the same auto-emit path",
+        "Per-field gate granularity carry: v1 gate matches at entry granularity (all diverged fields pass or fail together via the single content_hash_after anchor); per-field hash anchors (e.g. content_hash_after_changes_bullets) would let authors register partial divergences. Defer until usage shows entry-level granularity is too coarse",
+        "mutate API hardening carry (rolled forward from R293/R294/R295): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass once R297 redact_term lands and the publishable boundary is exercised at scale",
+        "Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review",
+        "RFC G2 (audit-trace structure for legitimate frozen overrides) closed by this round paired with R294 schema split + R295 setters; G1 (cross-store term replacement primitive) closes when R297 wraps the same path as a single redact_term call"
+      ]
     }
   },
   "inventory_entries": {},
