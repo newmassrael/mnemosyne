@@ -74,7 +74,12 @@ pub use style::{
 pub use atomic::{
  add_inventory_entry, add_section_caveat, add_section_example,
  add_section_implementation, append_changelog_entry_v2, remove_inventory_entry,
- remove_section, remove_section_implementation, set_inventory_section_ref,
+ remove_section, remove_section_implementation,
+ set_changelog_publishable_carry_forward_bullets,
+ set_changelog_publishable_changes_bullets,
+ set_changelog_publishable_decision_summary,
+ set_changelog_publishable_impact_refs,
+ set_changelog_publishable_verification_bullets, set_inventory_section_ref,
  set_inventory_status, set_section_alternatives,
  set_section_decision_status_atomic, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_outputs,

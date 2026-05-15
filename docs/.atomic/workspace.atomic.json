@@ -2344,6 +2344,64 @@
         "RFC G4 (body split) closed by R294 schema split — completes the structural prerequisite that RFC suggested deferring; R295/R296 wire the mutate-side and gate-side",
         "Drift gate severity promotion (R293 carry) — warn-only → reject decision still pending policy review"
       ]
+    },
+    "Round 295 — publishable-half setters for ChangelogEntry — 5 primitives + CLI subcommands; audit invariant enforced at primitive boundary": {
+      "decision_summary": "5 publishable setter primitives in atomic.rs (set_changelog_publishable_decision_summary + 4 bullet variants) modify only publishable_* fields and leave audit_* intact. entry_mut_strict helper enforces entry-must-exist (NotFound on miss); append_changelog_entry_v2 remains the sole audit-write path. CLI subcommands wired: set-changelog-publishable-{decision-summary,changes,verification,impact-refs,carry-forward}. Sets up R296 [[publishable_override_ledger]] gate (divergent publishable_* without ledger → reject) and R297 redact_term convenience primitive (P1 variant routing through publishable_* only).",
+      "changes_bullets": [
+        "5 publishable setter primitives in atomic.rs: set_changelog_publishable_decision_summary, set_changelog_publishable_changes_bullets, set_changelog_publishable_verification_bullets, set_changelog_publishable_impact_refs, set_changelog_publishable_carry_forward_bullets — each modifies publishable_* only and leaves the audit half intact (audit invariant enforced at primitive boundary)",
+        "entry_mut_strict helper introduced to mirror section_mut_strict (R287 pattern); publishable setters require the entry to exist first (NotFound on miss) because they cannot author the audit half — append_changelog_entry_v2 remains the sole audit-write path",
+        "5 CLI subcommands wired in atomic_cli.rs and main.rs dispatcher: set-changelog-publishable-{decision-summary,changes,verification,impact-refs,carry-forward}; --entry + (--value | --bullets-file) + standard --sidecar/--json/--no-regenerate; usage string in main.rs updated",
+        "2 generic CLI helpers added (cmd_set_changelog_publishable_string for decision_summary, cmd_set_changelog_publishable_bullets for the 4 vec fields) so subcommand handlers stay one-line wrappers — same shape as cmd_set_section_bullets pre-R295",
+        "4 new unit tests in atomic.rs::tests cover: all 5 setters touch publishable_* and leave audit_* unchanged; missing entry returns NotFound; save→load round-trip preserves divergence (v4 store, no migration overwrite); per-bullet length validation reuses check_bullet_len",
+        "lib.rs re-exports the 5 publishable setter symbols alongside the existing setter family"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace: 633 passed / 0 failed / 47 ignored (R294 = 629; +4 from publishable setter tests)",
+        "validator build clean (no warnings) on the new helpers + setters",
+        "CLI build clean after dispatcher + usage-string wire",
+        "publishable_setters_modify_publishable_only test: applies all 5 setters then asserts both halves explicitly — audit untouched, publishable diverged, publishable_matches_audit() = false",
+        "publishable_setter_rejects_missing_entry test: NotFound surfaces at the primitive boundary; entry_mut_strict cannot author entries",
+        "publishable_setter_round_trips_through_save_load test: save then AtomicStore::load preserves divergent publishable_* (v4 path, no clone overwrite)",
+        "publishable_setter_validates_bullet_length test: oversized bullet → AtomicMutateError::Validation, same shape as section setters"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R296 carry — [[publishable_override_ledger]] config + validate-workspace gate: divergent publishable_* without a ledger entry must reject. mnemosyne.toml schema mirroring [[orphan_ledger]] (kind, target_id, fields, reason, applied_in, content_hash_before, content_hash_after); cascade emits a ledger draft on each publishable mutate so authors fill in the reason",
+        "R297 carry — redact_term convenience primitive (RFC P1 variant): wraps the 5 R295 setters into a single pattern-and-replacement scan; routes only to publishable_*; uses R292 query_term as preview substrate; dry_run + scope filters",
+        "R295 deferred — MCP wiring for the 5 setters: low-friction add via the existing tool-registration pattern, but not required for R296 / R297 closure; defer until usage data shows MCP need",
+        "mutate API hardening carry (rolled forward from R293/R294): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass once R296 establishes the publishable / audit boundary at validate-workspace level",
+        "Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review"
+      ],
+      "publishable_decision_summary": "5 publishable setter primitives in atomic.rs (set_changelog_publishable_decision_summary + 4 bullet variants) modify only publishable_* fields and leave audit_* intact. entry_mut_strict helper enforces entry-must-exist (NotFound on miss); append_changelog_entry_v2 remains the sole audit-write path. CLI subcommands wired: set-changelog-publishable-{decision-summary,changes,verification,impact-refs,carry-forward}. Sets up R296 [[publishable_override_ledger]] gate (divergent publishable_* without ledger → reject) and R297 redact_term convenience primitive (P1 variant routing through publishable_* only).",
+      "publishable_changes_bullets": [
+        "5 publishable setter primitives in atomic.rs: set_changelog_publishable_decision_summary, set_changelog_publishable_changes_bullets, set_changelog_publishable_verification_bullets, set_changelog_publishable_impact_refs, set_changelog_publishable_carry_forward_bullets — each modifies publishable_* only and leaves the audit half intact (audit invariant enforced at primitive boundary)",
+        "entry_mut_strict helper introduced to mirror section_mut_strict (R287 pattern); publishable setters require the entry to exist first (NotFound on miss) because they cannot author the audit half — append_changelog_entry_v2 remains the sole audit-write path",
+        "5 CLI subcommands wired in atomic_cli.rs and main.rs dispatcher: set-changelog-publishable-{decision-summary,changes,verification,impact-refs,carry-forward}; --entry + (--value | --bullets-file) + standard --sidecar/--json/--no-regenerate; usage string in main.rs updated",
+        "2 generic CLI helpers added (cmd_set_changelog_publishable_string for decision_summary, cmd_set_changelog_publishable_bullets for the 4 vec fields) so subcommand handlers stay one-line wrappers — same shape as cmd_set_section_bullets pre-R295",
+        "4 new unit tests in atomic.rs::tests cover: all 5 setters touch publishable_* and leave audit_* unchanged; missing entry returns NotFound; save→load round-trip preserves divergence (v4 store, no migration overwrite); per-bullet length validation reuses check_bullet_len",
+        "lib.rs re-exports the 5 publishable setter symbols alongside the existing setter family"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --release --workspace: 633 passed / 0 failed / 47 ignored (R294 = 629; +4 from publishable setter tests)",
+        "validator build clean (no warnings) on the new helpers + setters",
+        "CLI build clean after dispatcher + usage-string wire",
+        "publishable_setters_modify_publishable_only test: applies all 5 setters then asserts both halves explicitly — audit untouched, publishable diverged, publishable_matches_audit() = false",
+        "publishable_setter_rejects_missing_entry test: NotFound surfaces at the primitive boundary; entry_mut_strict cannot author entries",
+        "publishable_setter_round_trips_through_save_load test: save then AtomicStore::load preserves divergent publishable_* (v4 path, no clone overwrite)",
+        "publishable_setter_validates_bullet_length test: oversized bullet → AtomicMutateError::Validation, same shape as section setters"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R296 carry — [[publishable_override_ledger]] config + validate-workspace gate: divergent publishable_* without a ledger entry must reject. mnemosyne.toml schema mirroring [[orphan_ledger]] (kind, target_id, fields, reason, applied_in, content_hash_before, content_hash_after); cascade emits a ledger draft on each publishable mutate so authors fill in the reason",
+        "R297 carry — redact_term convenience primitive (RFC P1 variant): wraps the 5 R295 setters into a single pattern-and-replacement scan; routes only to publishable_*; uses R292 query_term as preview substrate; dry_run + scope filters",
+        "R295 deferred — MCP wiring for the 5 setters: low-friction add via the existing tool-registration pattern, but not required for R296 / R297 closure; defer until usage data shows MCP need",
+        "mutate API hardening carry (rolled forward from R293/R294): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass once R296 establishes the publishable / audit boundary at validate-workspace level",
+        "Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review"
+      ]
     }
   },
   "inventory_entries": {},

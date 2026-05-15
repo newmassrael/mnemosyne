@@ -420,6 +420,183 @@ pub fn cmd_set_section_outputs(workspace_root: &Path, args: &[String]) -> Result
  })
 }
 
+// Round 295 — publishable-half setters for ChangelogEntry. Mutate only
+// publishable_*; audit_* is the permanent record and stays untouched.
+// `--entry` arg names the changelog entry (must already exist); the audit
+// half can only be authored by `append_changelog_entry_v2`.
+
+pub fn cmd_set_changelog_publishable_decision_summary(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ cmd_set_changelog_publishable_string(
+ workspace_root,
+ args,
+ "decision_summary",
+ |s, p, id, v| {
+ mnemosyne_validator::set_changelog_publishable_decision_summary(s, p, id, v)
+ },
+ )
+}
+
+pub fn cmd_set_changelog_publishable_changes(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ cmd_set_changelog_publishable_bullets(
+ workspace_root,
+ args,
+ "publishable_changes",
+ |s, p, id, b| {
+ mnemosyne_validator::set_changelog_publishable_changes_bullets(s, p, id, b)
+ },
+ )
+}
+
+pub fn cmd_set_changelog_publishable_verification(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ cmd_set_changelog_publishable_bullets(
+ workspace_root,
+ args,
+ "publishable_verification",
+ |s, p, id, b| {
+ mnemosyne_validator::set_changelog_publishable_verification_bullets(
+ s, p, id, b,
+ )
+ },
+ )
+}
+
+pub fn cmd_set_changelog_publishable_impact_refs(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ cmd_set_changelog_publishable_bullets(
+ workspace_root,
+ args,
+ "publishable_impact_refs",
+ |s, p, id, b| {
+ mnemosyne_validator::set_changelog_publishable_impact_refs(s, p, id, b)
+ },
+ )
+}
+
+pub fn cmd_set_changelog_publishable_carry_forward(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ cmd_set_changelog_publishable_bullets(
+ workspace_root,
+ args,
+ "publishable_carry_forward",
+ |s, p, id, b| {
+ mnemosyne_validator::set_changelog_publishable_carry_forward_bullets(
+ s, p, id, b,
+ )
+ },
+ )
+}
+
+fn cmd_set_changelog_publishable_string(
+ workspace_root: &Path,
+ args: &[String],
+ field: &str,
+ primitive: impl Fn(
+ &mut AtomicStore,
+ &Path,
+ &str,
+ &str,
+ ) -> Result<AtomicMutateReceipt, AtomicMutateError>,
+) -> Result<()> {
+ let mut entry: Option<String> = None;
+ let mut value: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--entry" => {
+  entry = Some(iter.next().ok_or_else(|| anyhow!("--entry missing"))?.clone())
+ }
+ "--value" => {
+  value = Some(iter.next().ok_or_else(|| anyhow!("--value missing"))?.clone())
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let entry = entry.ok_or_else(|| anyhow!("--entry arg required ({} scope)", field))?;
+ let value = value.ok_or_else(|| anyhow!("--value arg required ({} scope)", field))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ primitive(&mut store, &sidecar_path, &entry, &value),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+fn cmd_set_changelog_publishable_bullets(
+ workspace_root: &Path,
+ args: &[String],
+ field: &str,
+ primitive: impl Fn(
+ &mut AtomicStore,
+ &Path,
+ &str,
+ &[String],
+ ) -> Result<AtomicMutateReceipt, AtomicMutateError>,
+) -> Result<()> {
+ let mut entry: Option<String> = None;
+ let mut bullets_file: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--entry" => {
+  entry = Some(iter.next().ok_or_else(|| anyhow!("--entry missing"))?.clone())
+ }
+ "--bullets-file" => {
+  bullets_file = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--bullets-file missing"))?
+  .clone(),
+  )
+ }
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let entry = entry.ok_or_else(|| anyhow!("--entry arg required ({} scope)", field))?;
+ let bullets_path =
+ bullets_file.ok_or_else(|| anyhow!("--bullets-file arg required ({} scope)", field))?;
+ let bullets = parse_bullets_file(&bullets_path)?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ primitive(&mut store, &sidecar_path, &entry, &bullets),
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
 fn cmd_set_section_bullets(
  workspace_root: &Path,
  args: &[String],

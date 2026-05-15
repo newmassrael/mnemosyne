@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -181,6 +181,34 @@ fn run(args: &[String]) -> Result<()> {
  "remove-section" => atomic_cli::cmd_remove_section(&repo_root()?, &args[2..]),
  "append-changelog-entry-v2" => {
  atomic_cli::cmd_append_changelog_entry_v2(&repo_root()?, &args[2..])
+ }
+ // Round 295 — publishable-half setters (audit half stays frozen).
+ "set-changelog-publishable-decision-summary" => {
+ atomic_cli::cmd_set_changelog_publishable_decision_summary(
+ &repo_root()?,
+ &args[2..],
+ )
+ }
+ "set-changelog-publishable-changes" => {
+ atomic_cli::cmd_set_changelog_publishable_changes(&repo_root()?, &args[2..])
+ }
+ "set-changelog-publishable-verification" => {
+ atomic_cli::cmd_set_changelog_publishable_verification(
+ &repo_root()?,
+ &args[2..],
+ )
+ }
+ "set-changelog-publishable-impact-refs" => {
+ atomic_cli::cmd_set_changelog_publishable_impact_refs(
+ &repo_root()?,
+ &args[2..],
+ )
+ }
+ "set-changelog-publishable-carry-forward" => {
+ atomic_cli::cmd_set_changelog_publishable_carry_forward(
+ &repo_root()?,
+ &args[2..],
+ )
  }
  // Round 274 — Phase 1A inventory mutate primitives.
  "add-inventory-entry" => {

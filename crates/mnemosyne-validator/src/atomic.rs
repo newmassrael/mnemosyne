@@ -1372,6 +1372,134 @@ pub fn append_changelog_entry_v2(
 }
 
 // ============================================================================
+// ChangelogEntry publishable-half setters (Round 295).
+//
+// The 5 setters below mutate **only** the `publishable_*` half of an
+// `AtomicChangelogEntry`. The audit half (`decision_summary`,
+// `changes_bullets`, `verification_bullets`, `impact_refs`,
+// `carry_forward_bullets`) is untouched — that is the permanent record and
+// `append_changelog_entry_v2` is the only path that writes it (with frozen
+// ledger reject on second-attempt). After R296 wires
+// `[[publishable_override_ledger]]`, calling these setters without an
+// accompanying ledger entry will surface as a validate-workspace reject.
+//
+// `entry_mut_strict` is the strict variant of `AtomicStore::entry_mut`
+// (which create-on-miss for back-compat with the v1 path); the publishable
+// setters require the entry to exist first because they cannot author the
+// audit half.
+// ============================================================================
+
+fn entry_mut_strict<'a>(
+ store: &'a mut AtomicStore,
+ entry_id: &str,
+) -> Result<&'a mut AtomicChangelogEntry, AtomicMutateError> {
+ store.changelog_entries.get_mut(entry_id).ok_or_else(|| {
+ AtomicMutateError::NotFound(format!(
+ "entry_id `{}` not present in atomic store (use append_changelog_entry_v2 \
+  to create it first)",
+ entry_id
+ ))
+ })
+}
+
+pub fn set_changelog_publishable_decision_summary(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ summary: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ check_intent_len(summary)?;
+ entry_mut_strict(store, entry_id)?.publishable_decision_summary =
+ Some(summary.to_string());
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_changelog_publishable_decision_summary",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+pub fn set_changelog_publishable_changes_bullets(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "publishable_changes")?;
+ }
+ entry_mut_strict(store, entry_id)?.publishable_changes_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_changelog_publishable_changes_bullets",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+pub fn set_changelog_publishable_verification_bullets(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "publishable_verification")?;
+ }
+ entry_mut_strict(store, entry_id)?.publishable_verification_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_changelog_publishable_verification_bullets",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+pub fn set_changelog_publishable_impact_refs(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ refs: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ // impact_refs are bare section_id strings; reuse bullet-len bound which
+ // is already generous enough for any real section_id and catches truly
+ // pathological inputs.
+ for r in refs {
+ check_bullet_len(r, "publishable_impact_refs")?;
+ }
+ entry_mut_strict(store, entry_id)?.publishable_impact_refs = refs.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_changelog_publishable_impact_refs",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+pub fn set_changelog_publishable_carry_forward_bullets(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ entry_id: &str,
+ bullets: &[String],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ for b in bullets {
+ check_bullet_len(b, "publishable_carry_forward")?;
+ }
+ entry_mut_strict(store, entry_id)?.publishable_carry_forward_bullets = bullets.to_vec();
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_changelog_publishable_carry_forward_bullets",
+ "changelog_entry",
+ entry_id,
+ )
+}
+
+// ============================================================================
 // Inventory atomic mutate primitives (Round 274, Phase 1A).
 // ============================================================================
 
@@ -2817,5 +2945,162 @@ mod tests {
  .unwrap();
  let id_set = store.atomic_section_id_set();
  assert!(id_set.is_empty());
+ }
+
+ // ============ Round 295 publishable setters ============
+
+ fn seed_entry(store: &mut AtomicStore, path: &Path, entry_id: &str) {
+ append_changelog_entry_v2(
+ store,
+ path,
+ entry_id,
+ Some("audit summary"),
+ &["audit change".into()],
+ &["audit verify".into()],
+ &["43".into()],
+ &["audit carry".into()],
+ )
+ .unwrap();
+ }
+
+ #[test]
+ fn publishable_setters_modify_publishable_only() {
+ // Round 295 invariant: setters change publishable_* and leave audit_*
+ // intact. Audit half is the permanent record, immutable post-append.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "redacted summary",
+ )
+ .unwrap();
+ set_changelog_publishable_changes_bullets(
+ &mut store,
+ &path,
+ "Round 999",
+ &["redacted change".into()],
+ )
+ .unwrap();
+ set_changelog_publishable_verification_bullets(
+ &mut store,
+ &path,
+ "Round 999",
+ &["redacted verify".into()],
+ )
+ .unwrap();
+ set_changelog_publishable_impact_refs(
+ &mut store,
+ &path,
+ "Round 999",
+ &["61".into()],
+ )
+ .unwrap();
+ set_changelog_publishable_carry_forward_bullets(
+ &mut store,
+ &path,
+ "Round 999",
+ &["redacted carry".into()],
+ )
+ .unwrap();
+
+ let entry = store.changelog_entries.get("Round 999").unwrap();
+ // audit half intact
+ assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
+ assert_eq!(entry.changes_bullets, vec!["audit change".to_string()]);
+ assert_eq!(entry.verification_bullets, vec!["audit verify".to_string()]);
+ assert_eq!(entry.impact_refs, vec!["43".to_string()]);
+ assert_eq!(entry.carry_forward_bullets, vec!["audit carry".to_string()]);
+ // publishable half diverged
+ assert_eq!(
+ entry.publishable_decision_summary.as_deref(),
+ Some("redacted summary")
+ );
+ assert_eq!(
+ entry.publishable_changes_bullets,
+ vec!["redacted change".to_string()]
+ );
+ assert_eq!(
+ entry.publishable_verification_bullets,
+ vec!["redacted verify".to_string()]
+ );
+ assert_eq!(entry.publishable_impact_refs, vec!["61".to_string()]);
+ assert_eq!(
+ entry.publishable_carry_forward_bullets,
+ vec!["redacted carry".to_string()]
+ );
+ assert!(
+ !entry.publishable_matches_audit(),
+ "publishable / audit divergence is the whole point of these setters"
+ );
+ }
+
+ #[test]
+ fn publishable_setter_rejects_missing_entry() {
+ // entry_mut_strict refuses to author a new entry — the audit half can
+ // only come from append_changelog_entry_v2.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 404",
+ "anything",
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::NotFound(_) => {}
+ other => panic!("expected NotFound, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn publishable_setter_round_trips_through_save_load() {
+ // After setting, save then reload via AtomicStore::load: the divergent
+ // publishable_* persists (v4 store, no migration overwrite).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "redacted on disk",
+ )
+ .unwrap();
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.schema_version, 4);
+ let entry = reloaded.changelog_entries.get("Round 999").unwrap();
+ assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
+ assert_eq!(
+ entry.publishable_decision_summary.as_deref(),
+ Some("redacted on disk")
+ );
+ }
+
+ #[test]
+ fn publishable_setter_validates_bullet_length() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ let too_long = "x".repeat(10_000);
+ let err = set_changelog_publishable_changes_bullets(
+ &mut store,
+ &path,
+ "Round 999",
+ &[too_long],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(_) => {}
+ other => panic!("expected Validation, got {:?}", other),
+ }
  }
 }
