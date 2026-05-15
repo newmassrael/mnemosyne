@@ -2644,6 +2644,42 @@
         "E: per-field hash anchor not added; ledger gate still entry-level so partial-divergence registration remains unavailable",
         "F+: redact_term-style hits report (which entry/field/index) not exposed for bare setters; emit primitive returns the rendered block but no structured per-field hash anchor"
       ]
+    },
+    "Round 301": {
+      "decision_summary": "drift gate severity warn-only → hard reject: validate-workspace bails when any cited round has no atomic-store entry",
+      "changes_bullets": [
+        "mnemosyne-cli print_commit_ledger_drift_surface promotes missing > 0 from warn-only print to hard bail",
+        "diagnostic surface preserved: header line + per-round \"missing R<N>\" + backfill hint remain so the user sees what to fix before the gate exits non-zero",
+        "no exception list, no mnemosyne.toml drift_gate section: R293 audit-trail-hole motivation kept intact (silent accept = anti-pattern), the fix is to backfill the missing entry",
+        "doc comment updated; R293 footer \"Future round may promote ...\" is the R301 trigger condition that is now satisfied"
+      ],
+      "verification_bullets": [
+        "cargo build --release -p mnemosyne-cli finishes clean (5m 46s)",
+        "validate-workspace baseline post-promotion: missing=0 → exits 0, surface line \"commit↔ledger drift: cited=33 / ledger=47 / missing=0\" unchanged",
+        "R293 commit_ledger.rs unit tests (clean_when_cited_subset_of_ledger / missing_round_surfaces_when_cited_but_absent / missing_and_extra_sorted_ascending) still cover the diff math; severity is a CLI-layer concern, no validator-side rewrite"
+      ],
+      "carry_forward_bullets": [
+        "E: per-field hash anchor (entry-level → field-level) still carry; use-case-driven, hold for actual divergence pattern",
+        "B+: emit primitive returns rendered block but no structured hits report; raise when an RFC actually asks",
+        "F+: MCP→CLI subprocess still in place; in-process direct call is ergonomics-only carry"
+      ],
+      "publishable_decision_summary": "drift gate severity warn-only → hard reject: validate-workspace bails when any cited round has no atomic-store entry",
+      "publishable_changes_bullets": [
+        "mnemosyne-cli print_commit_ledger_drift_surface promotes missing > 0 from warn-only print to hard bail",
+        "diagnostic surface preserved: header line + per-round \"missing R<N>\" + backfill hint remain so the user sees what to fix before the gate exits non-zero",
+        "no exception list, no mnemosyne.toml drift_gate section: R293 audit-trail-hole motivation kept intact (silent accept = anti-pattern), the fix is to backfill the missing entry",
+        "doc comment updated; R293 footer \"Future round may promote ...\" is the R301 trigger condition that is now satisfied"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build --release -p mnemosyne-cli finishes clean (5m 46s)",
+        "validate-workspace baseline post-promotion: missing=0 → exits 0, surface line \"commit↔ledger drift: cited=33 / ledger=47 / missing=0\" unchanged",
+        "R293 commit_ledger.rs unit tests (clean_when_cited_subset_of_ledger / missing_round_surfaces_when_cited_but_absent / missing_and_extra_sorted_ascending) still cover the diff math; severity is a CLI-layer concern, no validator-side rewrite"
+      ],
+      "publishable_carry_forward_bullets": [
+        "E: per-field hash anchor (entry-level → field-level) still carry; use-case-driven, hold for actual divergence pattern",
+        "B+: emit primitive returns rendered block but no structured hits report; raise when an RFC actually asks",
+        "F+: MCP→CLI subprocess still in place; in-process direct call is ergonomics-only carry"
+      ]
     }
   },
   "inventory_entries": {},

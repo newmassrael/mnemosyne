@@ -1821,7 +1821,8 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  Ok(())
 }
 
-/// Round 293 — commit↔ledger drift surface.
+/// Round 293 — commit↔ledger drift surface. Round 301 — `missing > 0`
+/// promoted from warn-only to hard reject.
 ///
 /// Walks the last `MAX_COMMIT_SCAN` git commit subjects, extracts round
 /// labels via the project commit convention `(R<N>)` / `(Round <N>)`, and
@@ -1830,12 +1831,12 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
 ///
 /// `missing` (cited in commit but absent from ledger) is the audit-trail
 /// hole catch — R291 was the trigger (commit `76581f6` landed without an
-/// atomic-store entry between R290 and R292; backfilled in R293).
+/// atomic-store entry between R290 and R292; backfilled in R293). Under
+/// R301 the gate refuses to pass when any cited round has no atomic-store
+/// entry; the fix is to backfill the entry, not silence the gate.
 ///
-/// Informational only — never fails the gate. Silent when not in a git
-/// repo, when git is missing, or when no labeled commits exist in the scan
-/// window. Future round may promote `missing > 0` to a hard reject under
-/// a separate axis once the policy stabilizes.
+/// Silent when not in a git repo, when git is missing, or when no labeled
+/// commits exist in the scan window.
 const MAX_COMMIT_SCAN: usize = 200;
 
 fn print_commit_ledger_drift_surface(
@@ -1866,6 +1867,12 @@ fn print_commit_ledger_drift_surface(
  "  hint: backfill via `mnemosyne-cli append-changelog-entry-v2 --entry-id \"Round <N> — ...\" \
   --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B \
   --carry-file <path>` (Round 293 backfill flow)"
+ );
+ // Round 301 — hard reject. The line + per-round missing prints
+ // above remain so the diagnostic is preserved before the bail.
+ bail!(
+ "commit↔ledger drift gate: {} cited round(s) missing from atomic store (Round 301)",
+ report.missing.len()
  );
  }
  Ok(())
