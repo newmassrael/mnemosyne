@@ -55,9 +55,10 @@ pub use config::{
  TerminologySection, WorkspaceConfig, WorkspaceSection,
 };
 pub use query::{
- build_envelope, changelog_entries_for_section, related_sections,
+ build_envelope, changelog_entries_for_section, query_term, related_sections,
  related_sections_with_atomic, section_by_id, workspace_section_id_set,
- ChangelogEntryView, CrossRefView, QueryEnvelope, RelatedSections, SectionView,
+ ChangelogEntryView, CrossRefView, QueryEnvelope, QueryTermError, RelatedSections,
+ SectionView, TermHit, TermMode, TermQuery, TermScope, TermTargetKind,
 };
 pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
 pub use mutate::{

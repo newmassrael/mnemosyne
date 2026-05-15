@@ -38,6 +38,12 @@ tracing = "0.1"
 
 sha2 = "0.10"
 
+# Round 292 — regex backend for `query_term` read primitive
+# (literal+regex search over atomic-store fields, replacing external grep).
+# Used by mnemosyne-validator::query::query_term; not pulled into runtime
+# crates that don't enable it.
+regex = "1"
+
 byteorder = "1"
 rocksdb = "0.24"
 tempfile = "3"

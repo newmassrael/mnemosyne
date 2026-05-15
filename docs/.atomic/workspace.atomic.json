@@ -1115,6 +1115,36 @@
         "Word-boundary tightening of terminology matcher — broader fix deferred; surgical exclusion suffices",
         "mnemosyne.toml terminology.exempt_patterns config knob — not added; principle = exclude mechanical"
       ]
+    },
+    "Round 292": {
+      "decision_summary": "query_term read primitive — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; replaces external grep, P1 redact_term preview substrate.",
+      "changes_bullets": [
+        "query.rs adds query_term() + TermQuery/Mode/Scope/TargetKind/Hit + QueryTermError types",
+        "regex crate added to workspace deps; Literal + Regex modes with case_insensitive toggle on both",
+        "Section scan covers: title, intent, 5 bullet lists, alternatives, examples, implementations",
+        "ChangelogEntry scan: decision_summary + 4 bullet lists (changes/verification/impact_refs/carry)",
+        "Inventory scan: source + reason text fields (Phase 1A axis)",
+        "CLI: mnemosyne-cli query --term <pat> [--regex] [-i] [--scope ...] [--field ...] [--json]",
+        "MCP: query_term tool (read-only) registered; argv delegates to CLI subprocess pattern",
+        "16 unit tests in query.rs::tests cover literal/regex/case/scope/field/struct-subfield paths"
+      ],
+      "verification_bullets": [
+        "cargo test --release --workspace: 617 passed / 0 failed / 47 ignored (Round 289 = 598; +19)",
+        "validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync",
+        "CLI smoke: --term frozen --scope changelog returns 5 hits across 3 entries",
+        "CLI smoke: --term \"Round [0-9]{3}\" --regex matches decision_summary fields",
+        "MCP server: cargo build -p mnemosyne-mcp clean; query_term tool registered"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "P1 redact_term mutate primitive — paired with P2 frozen_override_ledger schema (next round)",
+        "P2 frozen_override_ledger config (kind enum + content_hash anchor + T2 ledger-skip integration) — next round",
+        "Legacy parser-side ChangelogEntry.sub_bullets scan deferred — v1 atomic-only scope",
+        "P4 ChangelogEntry body split deferred — re-evaluate after P1+P2 usage data collected",
+        "R291 (commit 76581f6 fix(validator): bridge parser↔atomic section_id key mismatch) atomic-store entry remains unappended — separate carry to close"
+      ]
     }
   },
   "inventory_entries": {},

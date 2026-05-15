@@ -25,8 +25,8 @@ use mnemosyne_validator::{
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
  query::{
- build_envelope, changelog_entries_for_section, related_sections_with_atomic,
- section_by_id, workspace_section_id_set,
+ build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
+ section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
  },
  schema::{DecisionStatus, RefKind},
  set_section_body, set_section_decision_status,
@@ -257,6 +257,13 @@ fn print_help(prog: &str) {
  println!(
  " {} query --inventory <ID> [--json] single inventory entry lookup",
  prog
+ );
+ println!(
+ " {} query --term <pattern> [--regex] [--case-insensitive|-i] [--scope all|sections|changelog|inventory] [--field name,name,...] [--json]",
+ prog
+ );
+ println!(
+ "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields (preview for redact_term carry)"
  );
  println!(
  " {} append-changelog-entry --doc <doc> --entry-id \"Round N\" --body-file <path> [--title <text>] [--json]",
@@ -513,6 +520,12 @@ struct QueryArgs {
  // Round 278 — Phase 1A inventory query surface.
  list_inventory: bool,
  inventory_id: Option<String>,
+ // Round 292 — query_term primitive (literal/regex search).
+ term_pattern: Option<String>,
+ term_regex: bool,
+ term_case_insensitive: bool,
+ term_scope: Option<String>,
+ term_fields: Vec<String>,
 }
 
 fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
@@ -531,6 +544,33 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
   .ok_or_else(|| anyhow!("--inventory missing value"))?
   .clone(),
  );
+ }
+ "--term" => {
+ out.term_pattern = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--term missing pattern"))?
+  .clone(),
+ );
+ }
+ "--regex" => out.term_regex = true,
+ "--case-insensitive" | "-i" => out.term_case_insensitive = true,
+ "--scope" => {
+ out.term_scope = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--scope missing value (all|sections|changelog|inventory)"))?
+  .clone(),
+ );
+ }
+ "--field" => {
+ let v = iter
+ .next()
+ .ok_or_else(|| anyhow!("--field missing value (comma-separated field names)"))?;
+ for name in v.split(',') {
+  let trimmed = name.trim();
+  if !trimmed.is_empty() {
+  out.term_fields.push(trimmed.to_string());
+  }
+ }
  }
  other if other.starts_with("--") => bail!("unknown flag `{}`", other),
  other => {
@@ -635,6 +675,57 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  if let Some(s) = entry.reason.as_deref() {
  println!("reason: {}", s);
  }
+ }
+ return Ok(());
+ }
+
+ // Round 292 — query_term primitive (literal/regex search across
+ // atomic Section + ChangelogEntry + Inventory fields).
+ if let Some(pattern) = qargs.term_pattern.as_deref() {
+ let scope = match qargs.term_scope.as_deref().unwrap_or("all") {
+ "all" => TermScope::All,
+ "sections" => TermScope::Sections,
+ "changelog" | "changelog-entries" => TermScope::ChangelogEntries,
+ "inventory" => TermScope::Inventory,
+ other => bail!(
+ "--scope must be one of all|sections|changelog|inventory (got `{}`)",
+ other
+ ),
+ };
+ let field_filter = if qargs.term_fields.is_empty() {
+ None
+ } else {
+ let set: BTreeSet<String> = qargs.term_fields.iter().cloned().collect();
+ Some(set)
+ };
+ let q = TermQuery {
+ pattern: pattern.to_string(),
+ mode: if qargs.term_regex {
+ TermMode::Regex
+ } else {
+ TermMode::Literal
+ },
+ case_insensitive: qargs.term_case_insensitive,
+ scope,
+ field_filter,
+ };
+ let hits = query_term(&atomic_store, &q)
+ .with_context(|| format!("query_term failed (pattern=`{}`)", pattern))?;
+ if qargs.json {
+ println!("{}", serde_json::to_string_pretty(&hits)?);
+ } else {
+ for hit in &hits {
+ let kind = match hit.target_kind {
+ mnemosyne_validator::query::TermTargetKind::Section => "section",
+ mnemosyne_validator::query::TermTargetKind::ChangelogEntry => "entry",
+ mnemosyne_validator::query::TermTargetKind::Inventory => "inventory",
+ };
+ println!(
+ "{}\t{}\t{}\t{}",
+ kind, hit.target_id, hit.field_path, hit.line_context
+ );
+ }
+ eprintln!("# {} hit(s)", hits.len());
  }
  return Ok(());
  }

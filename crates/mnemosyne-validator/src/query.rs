@@ -31,11 +31,14 @@
 //! - `mnemosyne-cli query [--include-related] [--include-changelog] [--json]`
 //! - `mnemosyne-cli query --list-sections`
 
-use crate::atomic::{synthesize_section_body, AtomicChangelogEntry, AtomicStore};
+use crate::atomic::{
+    synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
+};
 use crate::schema::{ChangelogEntry, CrossRef, DecisionStatus, ParsedDoc, RefKind, Section};
 use crate::workspace::Workspace;
 use serde::Serialize;
 use std::collections::BTreeSet;
+use thiserror::Error;
 
 // ============================================================================
 // Query result views — JSON envelope (Claude consumable shape).
@@ -508,6 +511,434 @@ pub fn build_envelope(
 }
 
 // ============================================================================
+// Round 292 — `query_term` read primitive (literal/regex search).
+//
+// Pure read over atomic store. Pattern matches against text-typed atomic
+// fields across Section (title, intent, bullets, struct sub-fields),
+// ChangelogEntry (decision_summary + 4 bullet lists), and Inventory (source,
+// reason). Replaces external `grep` over generated artifacts with a
+// store-aware search that knows field provenance — required substrate for
+// the deferred `redact_term` mutate primitive, also useful standalone.
+//
+// Out of scope (v1):
+//   - Legacy parser-side `sub_bullets` (handled by separate parser query).
+//   - Structural pointer fields (parent_doc, parent_section) — these are
+//     indexed elsewhere; scanning them as text would conflate identifiers
+//     with content.
+//   - Enum fields (decision_status, inventory status) — single-token,
+//     better surfaced via dedicated list queries.
+// ============================================================================
+
+/// Search mode for [`query_term`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TermMode {
+    /// Literal substring match; regex meta-characters not interpreted.
+    Literal,
+    /// Regex match (compiled via the `regex` crate).
+    Regex,
+}
+
+/// Which entity kinds [`query_term`] should scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TermScope {
+    All,
+    Sections,
+    ChangelogEntries,
+    Inventory,
+}
+
+/// Entity kind a [`TermHit`] originated from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TermTargetKind {
+    Section,
+    ChangelogEntry,
+    Inventory,
+}
+
+/// Read-time query for [`query_term`].
+#[derive(Debug, Clone)]
+pub struct TermQuery {
+    pub pattern: String,
+    pub mode: TermMode,
+    pub case_insensitive: bool,
+    pub scope: TermScope,
+    /// Restrict scan to a set of field names (e.g. `{"intent", "decision_summary"}`).
+    /// `None` = scan every text-typed field in scope.
+    /// Field names use the base name (no `[i]` index suffix); for struct
+    /// sub-fields, the *containing list* name applies (e.g. `"alternatives_rejected"`
+    /// covers both `.alternative` and `.reason` sub-paths).
+    pub field_filter: Option<BTreeSet<String>>,
+}
+
+/// One match returned by [`query_term`].
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TermHit {
+    pub target_kind: TermTargetKind,
+    pub target_id: String,
+    /// Field path inside the entity. Examples: `"intent"`,
+    /// `"rationale_bullets[2]"`, `"alternatives_rejected[0].reason"`,
+    /// `"examples[1].code"`, `"implementations[0].file"`.
+    pub field_path: String,
+    /// Full text of the matched field (or bullet / struct sub-field).
+    /// Not truncated — the caller decides how to display.
+    pub line_context: String,
+}
+
+/// Failure modes for [`query_term`]. Only one path can fail today (regex
+/// compile); kept as an enum for forward compatibility.
+#[derive(Debug, Error)]
+pub enum QueryTermError {
+    #[error("invalid regex pattern: {0}")]
+    InvalidRegex(#[from] regex::Error),
+}
+
+/// `query_term` — literal/regex scan over the atomic store.
+///
+/// Returns hits in deterministic order: target_kind variant order ×
+/// `BTreeMap` key order × field declaration order × bullet index order.
+/// Pure read — `store` is not modified.
+pub fn query_term(
+    store: &AtomicStore,
+    q: &TermQuery,
+) -> Result<Vec<TermHit>, QueryTermError> {
+    let matcher = Matcher::build(&q.pattern, q.mode, q.case_insensitive)?;
+    let mut hits = Vec::new();
+
+    if matches!(q.scope, TermScope::All | TermScope::Sections) {
+        for (id, section) in &store.sections {
+            scan_section(id, section, &matcher, q.field_filter.as_ref(), &mut hits);
+        }
+    }
+    if matches!(q.scope, TermScope::All | TermScope::ChangelogEntries) {
+        for (id, entry) in &store.changelog_entries {
+            scan_changelog_entry(id, entry, &matcher, q.field_filter.as_ref(), &mut hits);
+        }
+    }
+    if matches!(q.scope, TermScope::All | TermScope::Inventory) {
+        for (id, inv) in &store.inventory_entries {
+            scan_inventory_entry(id, inv, &matcher, q.field_filter.as_ref(), &mut hits);
+        }
+    }
+
+    Ok(hits)
+}
+
+enum Matcher {
+    Literal {
+        needle_lower: String,
+        case_insensitive: bool,
+        needle_raw: String,
+    },
+    Regex(regex::Regex),
+}
+
+impl Matcher {
+    fn build(
+        pattern: &str,
+        mode: TermMode,
+        case_insensitive: bool,
+    ) -> Result<Self, QueryTermError> {
+        match mode {
+            TermMode::Literal => Ok(Matcher::Literal {
+                needle_lower: pattern.to_lowercase(),
+                case_insensitive,
+                needle_raw: pattern.to_string(),
+            }),
+            TermMode::Regex => {
+                let re = regex::RegexBuilder::new(pattern)
+                    .case_insensitive(case_insensitive)
+                    .build()?;
+                Ok(Matcher::Regex(re))
+            }
+        }
+    }
+
+    fn is_match(&self, hay: &str) -> bool {
+        match self {
+            Matcher::Literal {
+                needle_lower,
+                case_insensitive,
+                needle_raw,
+            } => {
+                if *case_insensitive {
+                    hay.to_lowercase().contains(needle_lower.as_str())
+                } else {
+                    hay.contains(needle_raw.as_str())
+                }
+            }
+            Matcher::Regex(re) => re.is_match(hay),
+        }
+    }
+}
+
+fn field_allowed(filter: Option<&BTreeSet<String>>, field: &str) -> bool {
+    filter.map_or(true, |s| s.contains(field))
+}
+
+fn push_simple_hit(
+    target_kind: TermTargetKind,
+    target_id: &str,
+    field_path: String,
+    line_context: &str,
+    m: &Matcher,
+    out: &mut Vec<TermHit>,
+) {
+    if m.is_match(line_context) {
+        out.push(TermHit {
+            target_kind,
+            target_id: target_id.to_string(),
+            field_path,
+            line_context: line_context.to_string(),
+        });
+    }
+}
+
+fn push_bullets(
+    target_kind: TermTargetKind,
+    target_id: &str,
+    field: &'static str,
+    bullets: &[String],
+    m: &Matcher,
+    filter: Option<&BTreeSet<String>>,
+    out: &mut Vec<TermHit>,
+) {
+    if !field_allowed(filter, field) {
+        return;
+    }
+    for (i, b) in bullets.iter().enumerate() {
+        if m.is_match(b) {
+            out.push(TermHit {
+                target_kind,
+                target_id: target_id.to_string(),
+                field_path: format!("{}[{}]", field, i),
+                line_context: b.clone(),
+            });
+        }
+    }
+}
+
+fn scan_section(
+    section_id: &str,
+    s: &AtomicSection,
+    m: &Matcher,
+    filter: Option<&BTreeSet<String>>,
+    out: &mut Vec<TermHit>,
+) {
+    if field_allowed(filter, "title") && !s.title.is_empty() {
+        push_simple_hit(
+            TermTargetKind::Section,
+            section_id,
+            "title".to_string(),
+            &s.title,
+            m,
+            out,
+        );
+    }
+    if field_allowed(filter, "intent") {
+        if let Some(intent) = s.intent.as_deref() {
+            push_simple_hit(
+                TermTargetKind::Section,
+                section_id,
+                "intent".to_string(),
+                intent,
+                m,
+                out,
+            );
+        }
+    }
+    push_bullets(
+        TermTargetKind::Section,
+        section_id,
+        "rationale_bullets",
+        &s.rationale_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::Section,
+        section_id,
+        "inputs_bullets",
+        &s.inputs_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::Section,
+        section_id,
+        "outputs_bullets",
+        &s.outputs_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::Section,
+        section_id,
+        "caveats_bullets",
+        &s.caveats_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::Section,
+        section_id,
+        "impact_scope",
+        &s.impact_scope,
+        m,
+        filter,
+        out,
+    );
+    if field_allowed(filter, "alternatives_rejected") {
+        for (i, alt) in s.alternatives_rejected.iter().enumerate() {
+            if m.is_match(&alt.alternative) {
+                out.push(TermHit {
+                    target_kind: TermTargetKind::Section,
+                    target_id: section_id.to_string(),
+                    field_path: format!("alternatives_rejected[{}].alternative", i),
+                    line_context: alt.alternative.clone(),
+                });
+            }
+            if m.is_match(&alt.reason) {
+                out.push(TermHit {
+                    target_kind: TermTargetKind::Section,
+                    target_id: section_id.to_string(),
+                    field_path: format!("alternatives_rejected[{}].reason", i),
+                    line_context: alt.reason.clone(),
+                });
+            }
+        }
+    }
+    if field_allowed(filter, "examples") {
+        for (i, ex) in s.examples.iter().enumerate() {
+            if m.is_match(&ex.code) {
+                out.push(TermHit {
+                    target_kind: TermTargetKind::Section,
+                    target_id: section_id.to_string(),
+                    field_path: format!("examples[{}].code", i),
+                    line_context: ex.code.clone(),
+                });
+            }
+        }
+    }
+    if field_allowed(filter, "implementations") {
+        for (i, im) in s.implementations.iter().enumerate() {
+            if m.is_match(&im.file) {
+                out.push(TermHit {
+                    target_kind: TermTargetKind::Section,
+                    target_id: section_id.to_string(),
+                    field_path: format!("implementations[{}].file", i),
+                    line_context: im.file.clone(),
+                });
+            }
+            if let Some(sym) = im.symbol.as_deref() {
+                if m.is_match(sym) {
+                    out.push(TermHit {
+                        target_kind: TermTargetKind::Section,
+                        target_id: section_id.to_string(),
+                        field_path: format!("implementations[{}].symbol", i),
+                        line_context: sym.to_string(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn scan_changelog_entry(
+    entry_id: &str,
+    e: &AtomicChangelogEntry,
+    m: &Matcher,
+    filter: Option<&BTreeSet<String>>,
+    out: &mut Vec<TermHit>,
+) {
+    if field_allowed(filter, "decision_summary") {
+        if let Some(s) = e.decision_summary.as_deref() {
+            push_simple_hit(
+                TermTargetKind::ChangelogEntry,
+                entry_id,
+                "decision_summary".to_string(),
+                s,
+                m,
+                out,
+            );
+        }
+    }
+    push_bullets(
+        TermTargetKind::ChangelogEntry,
+        entry_id,
+        "changes_bullets",
+        &e.changes_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::ChangelogEntry,
+        entry_id,
+        "verification_bullets",
+        &e.verification_bullets,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::ChangelogEntry,
+        entry_id,
+        "impact_refs",
+        &e.impact_refs,
+        m,
+        filter,
+        out,
+    );
+    push_bullets(
+        TermTargetKind::ChangelogEntry,
+        entry_id,
+        "carry_forward_bullets",
+        &e.carry_forward_bullets,
+        m,
+        filter,
+        out,
+    );
+}
+
+fn scan_inventory_entry(
+    inv_id: &str,
+    inv: &InventoryEntry,
+    m: &Matcher,
+    filter: Option<&BTreeSet<String>>,
+    out: &mut Vec<TermHit>,
+) {
+    if field_allowed(filter, "source") {
+        if let Some(s) = inv.source.as_deref() {
+            push_simple_hit(
+                TermTargetKind::Inventory,
+                inv_id,
+                "source".to_string(),
+                s,
+                m,
+                out,
+            );
+        }
+    }
+    if field_allowed(filter, "reason") {
+        if let Some(r) = inv.reason.as_deref() {
+            push_simple_hit(
+                TermTargetKind::Inventory,
+                inv_id,
+                "reason".to_string(),
+                r,
+                m,
+                out,
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Tests — small fixture (bench prototype equivalent test set).
 // ============================================================================
 
@@ -901,5 +1332,305 @@ mod tests {
  };
  assert!(cross_ref_targets_section(&cr, "39"));
  assert!(!cross_ref_targets_section(&cr, "41"));
+ }
+
+ // ========================================================================
+ // Round 292 — query_term test suite.
+ // ========================================================================
+
+ use crate::atomic::{
+ AtomicChangelogEntry, AtomicSection, ExampleBlock, Implementation,
+ InventoryEntry, InventoryStatus, RejectedAlternative,
+ };
+
+ fn store_with_one_section(id: &str, s: AtomicSection) -> AtomicStore {
+ let mut store = AtomicStore::default();
+ store.sections.insert(id.to_string(), s);
+ store
+ }
+
+ fn store_with_one_entry(id: &str, e: AtomicChangelogEntry) -> AtomicStore {
+ let mut store = AtomicStore::default();
+ store.changelog_entries.insert(id.to_string(), e);
+ store
+ }
+
+ fn literal_q(pattern: &str) -> TermQuery {
+ TermQuery {
+ pattern: pattern.to_string(),
+ mode: TermMode::Literal,
+ case_insensitive: false,
+ scope: TermScope::All,
+ field_filter: None,
+ }
+ }
+
+ #[test]
+ fn query_term_literal_matches_section_intent() {
+ let section = AtomicSection {
+ intent: Some("Tracks the foo subsystem".to_string()),
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("foo")).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].target_kind, TermTargetKind::Section);
+ assert_eq!(hits[0].target_id, "42");
+ assert_eq!(hits[0].field_path, "intent");
+ }
+
+ #[test]
+ fn query_term_literal_is_case_sensitive_by_default() {
+ let section = AtomicSection {
+ intent: Some("Tracks the Foo subsystem".to_string()),
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("foo")).expect("ok");
+ assert!(hits.is_empty(), "Foo != foo without case_insensitive");
+ }
+
+ #[test]
+ fn query_term_case_insensitive_toggle() {
+ let section = AtomicSection {
+ intent: Some("Tracks the Foo subsystem".to_string()),
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let q = TermQuery {
+ case_insensitive: true,
+ ..literal_q("foo")
+ };
+ let hits = query_term(&store, &q).expect("ok");
+ assert_eq!(hits.len(), 1);
+ }
+
+ #[test]
+ fn query_term_regex_compiles_and_matches() {
+ let section = AtomicSection {
+ intent: Some("token abc123 leaked".to_string()),
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let q = TermQuery {
+ pattern: r"abc\d+".to_string(),
+ mode: TermMode::Regex,
+ case_insensitive: false,
+ scope: TermScope::All,
+ field_filter: None,
+ };
+ let hits = query_term(&store, &q).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].field_path, "intent");
+ }
+
+ #[test]
+ fn query_term_invalid_regex_surfaces_error() {
+ let store = AtomicStore::default();
+ let q = TermQuery {
+ pattern: "[unterminated".to_string(),
+ mode: TermMode::Regex,
+ case_insensitive: false,
+ scope: TermScope::All,
+ field_filter: None,
+ };
+ assert!(matches!(
+ query_term(&store, &q),
+ Err(QueryTermError::InvalidRegex(_))
+ ));
+ }
+
+ #[test]
+ fn query_term_indexes_bullets() {
+ let section = AtomicSection {
+ rationale_bullets: vec![
+ "first bullet".to_string(),
+ "second bullet contains secret".to_string(),
+ "third bullet".to_string(),
+ ],
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("secret")).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].field_path, "rationale_bullets[1]");
+ }
+
+ #[test]
+ fn query_term_scans_alternatives_sub_fields() {
+ let section = AtomicSection {
+ alternatives_rejected: vec![RejectedAlternative {
+ alternative: "use mock DB".to_string(),
+ reason: "secret would still leak via tests".to_string(),
+ }],
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("secret")).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].field_path, "alternatives_rejected[0].reason");
+ }
+
+ #[test]
+ fn query_term_scans_examples_code() {
+ let section = AtomicSection {
+ examples: vec![ExampleBlock {
+ language: "rust".to_string(),
+ code: "let api_key = \"secret-xyz\";".to_string(),
+ }],
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("api_key")).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].field_path, "examples[0].code");
+ }
+
+ #[test]
+ fn query_term_scans_implementations() {
+ let section = AtomicSection {
+ implementations: vec![Implementation {
+ file: "src/secret/handler.rs".to_string(),
+ symbol: Some("fn redact_secret".to_string()),
+ }],
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("secret")).expect("ok");
+ assert_eq!(hits.len(), 2);
+ assert_eq!(hits[0].field_path, "implementations[0].file");
+ assert_eq!(hits[1].field_path, "implementations[0].symbol");
+ }
+
+ #[test]
+ fn query_term_scans_changelog_entry_summary_and_bullets() {
+ let entry = AtomicChangelogEntry {
+ decision_summary: Some("redact secret tokens from logs".to_string()),
+ changes_bullets: vec!["scrub secret env vars".to_string()],
+ verification_bullets: vec!["no secret in audit output".to_string()],
+ impact_refs: vec!["secret-handling".to_string()],
+ carry_forward_bullets: vec!["nothing".to_string()],
+ };
+ let store = store_with_one_entry("Round 99", entry);
+ let hits = query_term(&store, &literal_q("secret")).expect("ok");
+ assert_eq!(hits.len(), 4);
+ let paths: Vec<&str> = hits.iter().map(|h| h.field_path.as_str()).collect();
+ assert!(paths.contains(&"decision_summary"));
+ assert!(paths.contains(&"changes_bullets[0]"));
+ assert!(paths.contains(&"verification_bullets[0]"));
+ assert!(paths.contains(&"impact_refs[0]"));
+ }
+
+ #[test]
+ fn query_term_scope_filter_excludes_other_kinds() {
+ let mut store = AtomicStore::default();
+ store.sections.insert(
+ "42".to_string(),
+ AtomicSection {
+ intent: Some("secret intent".to_string()),
+ ..Default::default()
+ },
+ );
+ store.changelog_entries.insert(
+ "Round 1".to_string(),
+ AtomicChangelogEntry {
+ decision_summary: Some("secret summary".to_string()),
+ ..Default::default()
+ },
+ );
+ let q = TermQuery {
+ scope: TermScope::ChangelogEntries,
+ ..literal_q("secret")
+ };
+ let hits = query_term(&store, &q).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].target_kind, TermTargetKind::ChangelogEntry);
+ }
+
+ #[test]
+ fn query_term_field_filter_restricts_to_named_fields() {
+ let section = AtomicSection {
+ intent: Some("the secret".to_string()),
+ rationale_bullets: vec!["another secret".to_string()],
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let mut filter = BTreeSet::new();
+ filter.insert("intent".to_string());
+ let q = TermQuery {
+ field_filter: Some(filter),
+ ..literal_q("secret")
+ };
+ let hits = query_term(&store, &q).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].field_path, "intent");
+ }
+
+ #[test]
+ fn query_term_scans_inventory_text_fields() {
+ let mut store = AtomicStore::default();
+ store.inventory_entries.insert(
+ "ARP_07".to_string(),
+ InventoryEntry {
+ status: InventoryStatus::Active,
+ section_ref: None,
+ source: Some("PDF p.42 internal-doc XYZ".to_string()),
+ reason: None,
+ },
+ );
+ let hits = query_term(&store, &literal_q("XYZ")).expect("ok");
+ assert_eq!(hits.len(), 1);
+ assert_eq!(hits[0].target_kind, TermTargetKind::Inventory);
+ assert_eq!(hits[0].field_path, "source");
+ }
+
+ #[test]
+ fn query_term_empty_store_returns_empty_hits() {
+ let store = AtomicStore::default();
+ let hits = query_term(&store, &literal_q("anything")).expect("ok");
+ assert!(hits.is_empty());
+ }
+
+ #[test]
+ fn query_term_no_match_returns_empty() {
+ let section = AtomicSection {
+ intent: Some("clean text".to_string()),
+ ..Default::default()
+ };
+ let store = store_with_one_section("42", section);
+ let hits = query_term(&store, &literal_q("absent")).expect("ok");
+ assert!(hits.is_empty());
+ }
+
+ #[test]
+ fn query_term_deterministic_ordering_across_kinds() {
+ // Round 292 contract: section_id BTreeMap order × kind-variant order.
+ let mut store = AtomicStore::default();
+ store.sections.insert(
+ "b-section".to_string(),
+ AtomicSection {
+ intent: Some("X".to_string()),
+ ..Default::default()
+ },
+ );
+ store.sections.insert(
+ "a-section".to_string(),
+ AtomicSection {
+ intent: Some("X".to_string()),
+ ..Default::default()
+ },
+ );
+ store.changelog_entries.insert(
+ "Round 2".to_string(),
+ AtomicChangelogEntry {
+ decision_summary: Some("X".to_string()),
+ ..Default::default()
+ },
+ );
+ let hits = query_term(&store, &literal_q("X")).expect("ok");
+ assert_eq!(hits.len(), 3);
+ assert_eq!(hits[0].target_id, "a-section");
+ assert_eq!(hits[1].target_id, "b-section");
+ assert_eq!(hits[2].target_id, "Round 2");
  }
 }

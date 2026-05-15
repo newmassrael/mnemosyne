@@ -54,6 +54,34 @@ pub struct QuerySectionArgs {
     pub include_changelog: bool,
 }
 
+// Round 292 — query_term read primitive (literal/regex search across the
+// atomic store). Pure read; preview substrate for the deferred redact_term
+// mutate primitive but useful standalone for verifying a term's footprint
+// before mutating.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct QueryTermArgs {
+ /// Pattern to search. Literal by default; set `regex = true` to
+ /// interpret as a regex (`regex` crate syntax).
+    pub pattern: String,
+ /// Interpret `pattern` as a regex. Default = literal substring.
+    #[serde(default)]
+    pub regex: bool,
+ /// Case-insensitive match. Default = case-sensitive.
+    #[serde(default)]
+    pub case_insensitive: bool,
+ /// Scope. One of `"all"` (default), `"sections"`, `"changelog"`,
+ /// `"inventory"`.
+    #[serde(default)]
+    pub scope: Option<String>,
+ /// Optional field-name whitelist. When non-empty, only hits in the
+ /// listed fields are returned. Use base field names: `"intent"`,
+ /// `"rationale_bullets"`, `"decision_summary"`,
+ /// `"changes_bullets"`, `"alternatives_rejected"`, `"examples"`,
+ /// `"implementations"`, `"source"`, `"reason"`, etc.
+    #[serde(default)]
+    pub fields: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StyleCheckArgs {
  /// Optional doc path relative to workspace root. Omit to check
@@ -320,6 +348,37 @@ impl MnemosyneServer {
         }
         if args.0.include_changelog {
             argv.push("--include-changelog".to_string());
+        }
+        let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
+        self.run_cli(&argv_ref).await
+    }
+
+    #[tool(
+        description = "Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`, `alternatives_rejected[0].reason`), line_context (full field/bullet text). Pure read. Use this before redact_term (deferred) or before mutating prose, to know which entries cite a term."
+    )]
+    async fn query_term(
+        &self,
+        args: Parameters<QueryTermArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "query".to_string(),
+            "--term".to_string(),
+            args.0.pattern.clone(),
+            "--json".to_string(),
+        ];
+        if args.0.regex {
+            argv.push("--regex".to_string());
+        }
+        if args.0.case_insensitive {
+            argv.push("--case-insensitive".to_string());
+        }
+        if let Some(scope) = &args.0.scope {
+            argv.push("--scope".to_string());
+            argv.push(scope.clone());
+        }
+        if !args.0.fields.is_empty() {
+            argv.push("--field".to_string());
+            argv.push(args.0.fields.join(","));
         }
         let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
         self.run_cli(&argv_ref).await
