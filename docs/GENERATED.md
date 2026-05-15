@@ -1598,3 +1598,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 299 — MCP wire for publishable setters + redact_term: 6 new MCP tool methods so Claude can author publishable-half overrides without CLI subprocess
+
+**Changes**:
+- mnemosyne-mcp gains 6 tool methods: set_changelog_publishable_decision_summary / changes / verification / impact_refs / carry_forward, plus redact_term
+- 3 new args structs (SetChangelogPublishableStringArgs, SetChangelogPublishableBulletsArgs, RedactTermArgs) with JsonSchema derives so the tools self-describe in MCP listings
+- run_publishable_bullets helper added beside set_section_bullets to factor the temp-bullet-file wiring shared by 4 of the setters
+- redact_term forwards --regex / --case-insensitive / --scope / --dry-run / --kind plus the mandatory --reason and --applied-in, with --json always set so the caller receives structured hits + ledger_drafts
+- audit-half write-once invariant preserved: every new tool routes through the existing CLI subcommand layer so AtomicMutateError::FrozenLedger and the R296 ledger gate keep their teeth
+
+
+
+**Verification**:
+- cargo build --release -p mnemosyne-mcp finishes clean (3m 12s, exit 0, no error or unused-import warning)
+- validate-workspace baseline unchanged: ledger=45 / T1=0 / T3 reject=0 / round-trip=1/1 / GENERATED.md=sync / divergence=0 / drift=0
+- publishable setter and redact_term primitives unchanged on the validator side; MCP wire is a thin CLI-subprocess shim so R295 / R296 / R297 unit and integration coverage transfers verbatim
+
+
+
+
+**Carry forward**:
+- B: bare setter ergonomics — MCP tool is now wired but still requires manual [[publishable_override_ledger]] block authoring (redact_term auto-emits drafts; bare setters do not). Carry until usage shows real friction
+- D: drift gate severity warn-only; promotion blocked on exception catalog
+- E: per-field hash anchor not added; ledger gate remains entry-level
+
+
+

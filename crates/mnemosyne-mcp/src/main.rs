@@ -244,6 +244,61 @@ pub struct RemoveInventoryEntryArgs {
     pub reason: String,
 }
 
+// Round 295 — publishable-half setters. Round 299 — MCP wire so the
+// publishable side can be authored without a CLI subprocess. The audit half
+// stays write-once via append_changelog_entry_v2; these tools only mutate
+// the publishable_* mirror and must be paired with a
+// [[publishable_override_ledger]] row (R296 gate, automated by redact_term).
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetChangelogPublishableStringArgs {
+ /// Existing entry_id whose publishable_decision_summary will be updated.
+ /// NotFound if the entry has not been appended yet.
+    pub entry_id: String,
+ /// Replacement decision_summary text. The audit half is untouched.
+    pub value: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetChangelogPublishableBulletsArgs {
+ /// Existing entry_id whose publishable bullet list will be replaced.
+    pub entry_id: String,
+ /// Replacement bullets in order. Empty vec clears the publishable list
+ /// (audit half untouched).
+    pub bullets: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RedactTermArgs {
+ /// Pattern to search across the publishable half. Literal by default;
+ /// set `regex = true` for `regex` crate syntax.
+    pub pattern: String,
+ /// Replacement string. Substituted verbatim per match.
+    pub replacement: String,
+ /// Treat `pattern` as a regex. Default = literal substring.
+    #[serde(default)]
+    pub regex: bool,
+ /// Case-insensitive match. Default = case-sensitive.
+    #[serde(default)]
+    pub case_insensitive: bool,
+ /// Field scope. One of `"all"` (default), `"decision_summary"`,
+ /// `"changes_bullets"`, `"verification_bullets"`, `"impact_refs"`,
+ /// `"carry_forward_bullets"`.
+    #[serde(default)]
+    pub scope: Option<String>,
+ /// Dry-run mode: returns hits + ledger drafts without mutating the
+ /// store. Default = false.
+    #[serde(default)]
+    pub dry_run: bool,
+ /// Audit reason recorded in every emitted ledger draft. Mandatory.
+    pub reason: String,
+ /// `applied_in` field for the ledger draft (commit ref, PR id, etc.).
+    pub applied_in: String,
+ /// Override kind label for ledger drafts. Defaults to `"redaction"`.
+    #[serde(default)]
+    pub kind: Option<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppendChangelogEntryArgs {
  /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
@@ -728,6 +783,113 @@ impl MnemosyneServer {
             .await
     }
 
+    // Round 299 — publishable-half setters + redact_term MCP wire. The
+    // audit half stays write-once via append_changelog_entry_v2; every tool
+    // below only mutates publishable_* and must be paired with a
+    // [[publishable_override_ledger]] row (R296 gate). redact_term emits
+    // the ledger drafts inline; the four bare setters require the caller
+    // to author the row separately.
+
+    #[tool(
+        description = "Replace the publishable_decision_summary of an existing entry (R295). Mutates the publishable half only — audit_decision_summary stays frozen. Pair with a [[publishable_override_ledger]] row (R296 gate) or use redact_term for an automated ledger draft. NotFound if entry_id has not been appended."
+    )]
+    async fn set_changelog_publishable_decision_summary(
+        &self,
+        args: Parameters<SetChangelogPublishableStringArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let argv = vec![
+            "set-changelog-publishable-decision-summary".to_string(),
+            "--entry".to_string(),
+            args.0.entry_id.clone(),
+            "--value".to_string(),
+            args.0.value.clone(),
+        ];
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+    )]
+    async fn set_changelog_publishable_changes(
+        &self,
+        args: Parameters<SetChangelogPublishableBulletsArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_publishable_bullets("set-changelog-publishable-changes", &args.0)
+            .await
+    }
+
+    #[tool(
+        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+    )]
+    async fn set_changelog_publishable_verification(
+        &self,
+        args: Parameters<SetChangelogPublishableBulletsArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_publishable_bullets("set-changelog-publishable-verification", &args.0)
+            .await
+    }
+
+    #[tool(
+        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+    )]
+    async fn set_changelog_publishable_impact_refs(
+        &self,
+        args: Parameters<SetChangelogPublishableBulletsArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_publishable_bullets("set-changelog-publishable-impact-refs", &args.0)
+            .await
+    }
+
+    #[tool(
+        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+    )]
+    async fn set_changelog_publishable_carry_forward(
+        &self,
+        args: Parameters<SetChangelogPublishableBulletsArgs>,
+    ) -> rmcp::model::CallToolResult {
+        self.run_publishable_bullets("set-changelog-publishable-carry-forward", &args.0)
+            .await
+    }
+
+    #[tool(
+        description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the R296 publishable_override_ledger gate accepts the result (R297, RFC P1). Audit half is never read or written. mode = literal (default) or regex (`regex` crate); set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in are required for audit; kind defaults to \"redaction\". The returned ledger drafts paste directly into mnemosyne.toml `[[publishable_override_ledger]]`."
+    )]
+    async fn redact_term(
+        &self,
+        args: Parameters<RedactTermArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "redact-term".to_string(),
+            "--pattern".to_string(),
+            args.0.pattern.clone(),
+            "--replacement".to_string(),
+            args.0.replacement.clone(),
+            "--reason".to_string(),
+            args.0.reason.clone(),
+            "--applied-in".to_string(),
+            args.0.applied_in.clone(),
+        ];
+        if args.0.regex {
+            argv.push("--regex".to_string());
+        }
+        if args.0.case_insensitive {
+            argv.push("--case-insensitive".to_string());
+        }
+        if let Some(s) = &args.0.scope {
+            argv.push("--scope".to_string());
+            argv.push(s.clone());
+        }
+        if args.0.dry_run {
+            argv.push("--dry-run".to_string());
+        }
+        if let Some(k) = &args.0.kind {
+            argv.push("--kind".to_string());
+            argv.push(k.clone());
+        }
+        argv.push("--json".to_string());
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
     // Round 278 — Phase 1A inventory tool surface.
 
     #[tool(
@@ -863,6 +1025,26 @@ impl MnemosyneServer {
             cmd.to_string(),
             "--section".to_string(),
             format!("§{}", args.section_id),
+            "--bullets-file".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        self.run_cli_with_files(argv, vec![path]).await
+    }
+
+    async fn run_publishable_bullets(
+        &self,
+        cmd: &str,
+        args: &SetChangelogPublishableBulletsArgs,
+    ) -> rmcp::model::CallToolResult {
+        let payload = args.bullets.join("\n");
+        let path = match cli::write_temp(&self.workspace, cmd, &payload) {
+            Ok(p) => p,
+            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
+        };
+        let argv = vec![
+            cmd.to_string(),
+            "--entry".to_string(),
+            args.entry_id.clone(),
             "--bullets-file".to_string(),
             path.to_string_lossy().into_owned(),
         ];
