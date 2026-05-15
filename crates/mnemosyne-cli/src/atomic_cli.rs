@@ -499,6 +499,83 @@ pub fn cmd_set_changelog_publishable_carry_forward(
  )
 }
 
+/// Round 300 — emit a `[[publishable_override_ledger]]` block for an
+/// entry whose publishable half currently diverges from the audit half.
+/// Read-only: never writes the sidecar. Pairs with the R295 bare setters
+/// so callers who did not use `redact-term` can still obtain a draft to
+/// paste into `mnemosyne.toml`.
+pub fn cmd_emit_publishable_override_ledger_draft(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ let mut entry: Option<String> = None;
+ let mut reason: Option<String> = None;
+ let mut applied_in: Option<String> = None;
+ let mut kind = "redaction".to_string();
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut iter = args.iter();
+ while let Some(a) = iter.next() {
+ match a.as_str() {
+ "--entry" => {
+  entry = Some(iter.next().ok_or_else(|| anyhow!("--entry missing"))?.clone())
+ }
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--applied-in" => {
+  applied_in = Some(
+  iter.next()
+   .ok_or_else(|| anyhow!("--applied-in missing"))?
+   .clone(),
+  )
+ }
+ "--kind" => kind = iter.next().ok_or_else(|| anyhow!("--kind missing"))?.clone(),
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let entry = entry.ok_or_else(|| anyhow!("--entry arg required"))?;
+ let reason = reason.ok_or_else(|| anyhow!("--reason arg required"))?;
+ let applied_in = applied_in.ok_or_else(|| anyhow!("--applied-in arg required"))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let draft = mnemosyne_validator::emit_publishable_override_ledger_draft(
+ &store,
+ &entry,
+ &reason,
+ &applied_in,
+ &kind,
+ )
+ .map_err(|e| anyhow!("{}", e))?;
+ if json {
+ let payload = serde_json::json!({
+ "primitive": "emit_publishable_override_ledger_draft",
+ "entry_id": entry,
+ "in_sync": draft.is_none(),
+ "ledger_draft": draft,
+ });
+ println!("{}", payload);
+ } else {
+ println!("=== mnemosyne-cli emit_publishable_override_ledger_draft ===");
+ match draft {
+ Some(ref s) => {
+  println!("entry: {}", entry);
+  println!("status: divergent (paste the block below into mnemosyne.toml)\n");
+  print!("{}", s);
+ }
+ None => {
+  println!("entry: {}", entry);
+  println!("status: in sync — no ledger row required");
+ }
+ }
+ }
+ Ok(())
+}
+
 fn cmd_set_changelog_publishable_string(
  workspace_root: &Path,
  args: &[String],

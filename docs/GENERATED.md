@@ -1624,3 +1624,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 300 — emit_publishable_override_ledger_draft primitive: bare R295 setter callers now obtain a ready-to-paste ledger block without manual SHA256 work
+
+**Changes**:
+- atomicemit_publishable_override_ledger_draft primitive added: read-only render of a [[publishable_override_ledger]] block for a single entry whose publishable half diverges from audit
+- AtomicChangelogEntrydivergent_publishable_fields enumerates the 5 publishable_* fields and returns only those that differ from their audit counterpart, in format_ledger_row order
+- redactformat_ledger_row promoted from private to pubcrate so atomic.rs can reuse the exact ledger row shape produced by R297 redact_term
+- mnemosyne-cli emit-publishable-override-ledger-draft subcommand wired plus matching MCP tool method with EmitPublishableOverrideLedgerDraftArgs schema
+- 4 r300_ unit tests cover returns-None when in-sync, NotFound on missing entry_id, fields-list shows only divergent fields, and content_hash_after equals the live publishable_hash_hex
+
+
+
+**Verification**:
+- cargo test --release -p mnemosyne-validator --lib r300_ passes 4 of 4 with no FAILED or panicked
+- cargo build --release -p mnemosyne-mcp -p mnemosyne-cli finishes clean
+- smoke test  mnemosyne-cli emit-publishable-override-ledger-draft --entry Round 298 prints status: in sync — no ledger row required (the in-sync path is correctly inert)
+
+
+
+
+**Carry forward**:
+- D: drift gate severity still warn-only; exception catalog pre-req carry
+- E: per-field hash anchor not added; ledger gate still entry-level so partial-divergence registration remains unavailable
+- F+: redact_term-style hits report (which entry/field/index) not exposed for bare setters; emit primitive returns the rendered block but no structured per-field hash anchor
+
+
+

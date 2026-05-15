@@ -223,6 +223,29 @@ impl AtomicChangelogEntry {
  && self.publishable_carry_forward_bullets == self.carry_forward_bullets
  }
 
+ /// Round 300 — enumerate publishable_* fields that diverge from their
+ /// audit_* counterpart, in `format_ledger_row` order so emitted ledger
+ /// drafts read deterministically. Returns empty Vec when in sync.
+ pub fn divergent_publishable_fields(&self) -> Vec<&'static str> {
+ let mut out = Vec::with_capacity(5);
+ if self.publishable_decision_summary != self.decision_summary {
+ out.push("publishable_decision_summary");
+ }
+ if self.publishable_changes_bullets != self.changes_bullets {
+ out.push("publishable_changes_bullets");
+ }
+ if self.publishable_verification_bullets != self.verification_bullets {
+ out.push("publishable_verification_bullets");
+ }
+ if self.publishable_impact_refs != self.impact_refs {
+ out.push("publishable_impact_refs");
+ }
+ if self.publishable_carry_forward_bullets != self.carry_forward_bullets {
+ out.push("publishable_carry_forward_bullets");
+ }
+ out
+ }
+
  /// Round 296 — SHA256 of the publishable half, hex-encoded.
  ///
  /// Computes a deterministic content hash over the 5 publishable_*
@@ -1621,6 +1644,51 @@ pub fn set_changelog_publishable_carry_forward_bullets(
  "changelog_entry",
  entry_id,
  )
+}
+
+/// Round 300 — emit a `[[publishable_override_ledger]]` block for a single
+/// entry whose publishable half currently diverges from the audit half.
+/// Read-only: never mutates the store. Returns `Ok(None)` when the entry
+/// is in sync (nothing to anchor).
+///
+/// Mirrors the inline ledger-draft block that `redact_term` produces, but
+/// for callers that authored their divergence via the bare R295
+/// publishable setters and now need a draft to paste into
+/// `mnemosyne.toml`. The hash matches what `validate-workspace` will
+/// compute against the post-mutation publishable half, so the resulting
+/// ledger row clears the R296 gate without manual SHA256 work.
+pub fn emit_publishable_override_ledger_draft(
+ store: &AtomicStore,
+ entry_id: &str,
+ reason: &str,
+ applied_in: &str,
+ kind: &str,
+) -> Result<Option<String>, AtomicMutateError> {
+ let entry = store.changelog_entries.get(entry_id).ok_or_else(|| {
+ AtomicMutateError::NotFound(format!(
+ "entry_id `{}` not present in atomic store",
+ entry_id
+ ))
+ })?;
+ if entry.publishable_matches_audit() {
+ return Ok(None);
+ }
+ let fields: Vec<String> = entry
+ .divergent_publishable_fields()
+ .into_iter()
+ .map(|f| f.to_string())
+ .collect();
+ let before = entry.audit_hash_hex();
+ let after = entry.publishable_hash_hex();
+ Ok(Some(crate::redact::format_ledger_row(
+ kind,
+ entry_id,
+ &fields,
+ reason,
+ applied_in,
+ &before,
+ &after,
+ )))
 }
 
 // ============================================================================
@@ -3428,6 +3496,105 @@ mod tests {
  entry.publishable_hash_hex(),
  entry.audit_hash_hex(),
  "diverged publishable / audit must hash to different anchors"
+ );
+ }
+
+ // ============ Round 300 emit_publishable_override_ledger_draft ============
+
+ #[test]
+ fn r300_emit_draft_returns_none_when_in_sync() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ // No publishable divergence yet — primitive must return None.
+ let result =
+ emit_publishable_override_ledger_draft(&store, "Round 999", "r", "a", "redaction")
+ .unwrap();
+ assert!(result.is_none(), "in-sync entry must yield no draft");
+ }
+
+ #[test]
+ fn r300_emit_draft_unknown_entry_id_returns_not_found() {
+ let tmp = TempDir::new().unwrap();
+ let _path = tmp.path().join(".atomic/workspace.atomic.json");
+ let store = AtomicStore::new();
+ let err = emit_publishable_override_ledger_draft(
+ &store, "Round 999", "r", "a", "redaction",
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::NotFound(msg) => {
+  assert!(msg.contains("Round 999"), "msg={}", msg);
+ }
+ other => panic!("expected NotFound, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r300_emit_draft_lists_only_divergent_fields() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "redacted summary",
+ )
+ .unwrap();
+ let draft = emit_publishable_override_ledger_draft(
+ &store, "Round 999", "audit reason", "Round T", "redaction",
+ )
+ .unwrap()
+ .expect("divergent entry must emit a draft");
+ assert!(draft.contains("[[publishable_override_ledger]]"));
+ assert!(draft.contains("kind = \"redaction\""));
+ assert!(draft.contains("target_id = \"Round 999\""));
+ assert!(
+ draft.contains("fields = [\"publishable_decision_summary\"]"),
+ "only the touched field must appear; draft:\n{}",
+ draft
+ );
+ assert!(draft.contains("reason = \"audit reason\""));
+ assert!(draft.contains("applied_in = \"Round T\""));
+ }
+
+ #[test]
+ fn r300_emit_draft_hash_matches_validate_workspace_expectation() {
+ // The hash anchor in the emitted draft must match the post-mutation
+ // publishable_hash_hex(): validate-workspace recomputes this on every
+ // run; mismatch ⇒ R296 gate rejects. R300 must compute against the
+ // current entry state, not a pre-mutation snapshot.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_entry(&mut store, &path, "Round 999");
+ set_changelog_publishable_decision_summary(
+ &mut store,
+ &path,
+ "Round 999",
+ "redacted",
+ )
+ .unwrap();
+ let entry = store.changelog_entries.get("Round 999").unwrap();
+ let expected_after = entry.publishable_hash_hex();
+ let expected_before = entry.audit_hash_hex();
+ let draft = emit_publishable_override_ledger_draft(
+ &store, "Round 999", "r", "a", "redaction",
+ )
+ .unwrap()
+ .unwrap();
+ assert!(
+ draft.contains(&format!("content_hash_after = \"{}\"", expected_after)),
+ "draft must anchor to current publishable hash; draft:\n{}",
+ draft
+ );
+ assert!(
+ draft.contains(&format!("content_hash_before = \"{}\"", expected_before)),
+ "draft must record audit hash as before; draft:\n{}",
+ draft
  );
  }
 }

@@ -75,7 +75,8 @@ pub use style::{
 };
 pub use atomic::{
  add_inventory_entry, add_section_caveat, add_section_example,
- add_section_implementation, append_changelog_entry_v2, remove_inventory_entry,
+ add_section_implementation, append_changelog_entry_v2,
+ emit_publishable_override_ledger_draft, remove_inventory_entry,
  remove_section, remove_section_implementation,
  set_changelog_publishable_carry_forward_bullets,
  set_changelog_publishable_changes_bullets,

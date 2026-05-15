@@ -269,6 +269,22 @@ pub struct SetChangelogPublishableBulletsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EmitPublishableOverrideLedgerDraftArgs {
+ /// Entry whose current publishable-vs-audit divergence is rendered as
+ /// a `[[publishable_override_ledger]]` block. NotFound if entry_id is
+ /// absent; returns `in_sync: true` and `ledger_draft: null` when the
+ /// publishable half still matches the audit half (nothing to anchor).
+    pub entry_id: String,
+ /// Audit reason recorded in the draft. Mandatory.
+    pub reason: String,
+ /// `applied_in` field for the draft (commit ref, PR id, etc.). Mandatory.
+    pub applied_in: String,
+ /// Override kind label. Defaults to `"redaction"`.
+    #[serde(default)]
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RedactTermArgs {
  /// Pattern to search across the publishable half. Literal by default;
  /// set `regex = true` for `regex` crate syntax.
@@ -882,6 +898,30 @@ impl MnemosyneServer {
         if args.0.dry_run {
             argv.push("--dry-run".to_string());
         }
+        if let Some(k) = &args.0.kind {
+            argv.push("--kind".to_string());
+            argv.push(k.clone());
+        }
+        argv.push("--json".to_string());
+        self.run_cli_with_files(argv, vec![]).await
+    }
+
+    #[tool(
+        description = "Read-only companion to the R295 bare publishable setters (R300). Renders a `[[publishable_override_ledger]]` block for an entry whose publishable half currently diverges from the audit half, computing the SHA256 anchor against the current publishable state so the resulting row clears the R296 gate. Returns `in_sync: true` with `ledger_draft: null` when nothing has diverged. NotFound if entry_id is absent. Pair with redact_term when authoring redactions; this tool is for callers who already mutated via the bare setters and need a draft to paste."
+    )]
+    async fn emit_publishable_override_ledger_draft(
+        &self,
+        args: Parameters<EmitPublishableOverrideLedgerDraftArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let mut argv = vec![
+            "emit-publishable-override-ledger-draft".to_string(),
+            "--entry".to_string(),
+            args.0.entry_id.clone(),
+            "--reason".to_string(),
+            args.0.reason.clone(),
+            "--applied-in".to_string(),
+            args.0.applied_in.clone(),
+        ];
         if let Some(k) = &args.0.kind {
             argv.push("--kind".to_string());
             argv.push(k.clone());

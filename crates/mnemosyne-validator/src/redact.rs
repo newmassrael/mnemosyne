@@ -443,7 +443,7 @@ fn apply_planned_to_entry(
     }
 }
 
-fn format_ledger_row(
+pub(crate) fn format_ledger_row(
     kind: &str,
     target_id: &str,
     fields: &[String],
