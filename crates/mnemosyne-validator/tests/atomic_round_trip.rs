@@ -230,7 +230,7 @@ fn atomic_changelog_v2_frozen_after_append() {
  "Round 162",
  Some("first"),
  &["change A".into()],
- &[],
+ &["verify A".into()],
  &[],
  &[],
  )

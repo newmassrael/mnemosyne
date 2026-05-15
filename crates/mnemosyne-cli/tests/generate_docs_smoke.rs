@@ -112,6 +112,8 @@ fn append_changelog_entry_v2_rejects_duplicate() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // First append succeeds.
  let out = Command::new(cli_binary())
@@ -123,6 +125,8 @@ fn append_changelog_entry_v2_rejects_duplicate() {
  "first",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  ])
  .current_dir(tmp.path())
  .output()
@@ -139,6 +143,8 @@ fn append_changelog_entry_v2_rejects_duplicate() {
  "second",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  ])
  .current_dir(tmp.path())
  .output()

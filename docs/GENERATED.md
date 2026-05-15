@@ -1571,3 +1571,30 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 298 — append_changelog_entry_v2 silent-accept gate: entry-id alone with empty body now rejected at primitive boundary
+
+**Changes**:
+- atomicrs check_changelog_entry_v2_required gate added: decision_summary required + non-blank, changes_bullets >=1 non-blank, verification_bullets >=1 non-blank, impact_refs and carry_forward_bullets optional vec but elements non-blank
+- entry_id blank reject added ahead of frozen-ledger check so empty key cannot land
+- FrozenLedger reject ordering preserved (existing changelog_entry_v2_frozen_after_append test exercises second append with empty body; check sequence unchanged)
+- 6 r298_ unit tests in atomic.rs cover blank entry_id, missing decision_summary, empty changes, empty verification, blank bullet element, blank optional element
+- 4 integration tests across atomic_first_validate_smoke / generate_docs_smoke / cascade_auto_update_smoke / atomic_round_trip backfilled with --verification-file or verify_bullets so they remain valid bodies
+
+
+
+**Verification**:
+- cargo test --release --workspace exits 0 with no FAILED or panicked emissions; R298 unit tests 6/6 pass
+- validate-workspace baseline unchanged: ledger=44 / T1=0 / T3 reject=0 / round-trip=1/1 / GENERATED.md=sync / divergence=0 / drift=0
+- silent-accept hole gated at primitive boundary so CLI append-changelog-entry-v2 with --entry-id alone now exits non-zero with Validation diagnostic
+
+
+
+
+**Carry forward**:
+- B: bare set_changelog_publishable_* setters still require manual ledger anchor (only redact_term auto-emits drafts) — carry until usage shows real friction
+- E: per-field hash anchor not added; ledger gate remains entry-level. Partial divergence still not registerable
+- F: MCP wire for publishable setters and redact_term still CLI-subprocess only
+- D: drift gate severity warn-only; exception catalog pre-req before promotion
+
+
+

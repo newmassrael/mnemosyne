@@ -34,6 +34,8 @@ fn append_v2_auto_regenerates_generated_md() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "first change\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Pre-condition: GENERATED.md does not exist yet.
  assert!(
@@ -51,6 +53,8 @@ fn append_v2_auto_regenerates_generated_md() {
  "auto-regen smoke",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  ])
  .current_dir(tmp.path())
  .output()
@@ -83,6 +87,8 @@ fn append_v2_no_regenerate_skips_generated_md() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  let out = Command::new(cli_binary())
  .args([
@@ -93,6 +99,8 @@ fn append_v2_no_regenerate_skips_generated_md() {
  "no-regen smoke",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--no-regenerate",
  ])
  .current_dir(tmp.path())
@@ -184,6 +192,8 @@ fn verify_generated_reports_sync_when_in_sync() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Mutate (auto-regenerates GENERATED.md).
  Command::new(cli_binary())
@@ -195,6 +205,8 @@ fn verify_generated_reports_sync_when_in_sync() {
  "verify-sync test",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  ])
  .current_dir(tmp.path())
  .output()
@@ -227,6 +239,8 @@ fn verify_generated_reports_stale_after_no_regenerate_mutate() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Initial mutate (auto-regen).
  Command::new(cli_binary())
@@ -238,6 +252,8 @@ fn verify_generated_reports_stale_after_no_regenerate_mutate() {
  "first",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  ])
  .current_dir(tmp.path())
  .output()
@@ -254,6 +270,8 @@ fn verify_generated_reports_stale_after_no_regenerate_mutate() {
  "second-no-regen",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--no-regenerate",
  ])
  .current_dir(tmp.path())

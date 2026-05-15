@@ -699,6 +699,56 @@ fn check_bullet_len(text: &str, field: &str) -> Result<(), AtomicMutateError> {
  Ok(())
 }
 
+// Round 298 — close the silent-accept hole on `append_changelog_entry_v2`:
+// previously entry-id alone with no decision/changes/verification body could
+// land a record-less row into the frozen ledger. The primitive now refuses
+// at the boundary, which covers CLI and MCP wires equally.
+fn check_changelog_entry_v2_required(
+ decision_summary: Option<&str>,
+ changes_bullets: &[String],
+ verification_bullets: &[String],
+ impact_refs: &[String],
+ carry_forward_bullets: &[String],
+) -> Result<(), AtomicMutateError> {
+ let summary = decision_summary.ok_or_else(|| {
+ AtomicMutateError::Validation(
+ "decision_summary required (Round 298 silent-accept gate)".to_string(),
+ )
+ })?;
+ if summary.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "decision_summary blank (Round 298 silent-accept gate)".to_string(),
+ ));
+ }
+ check_required_bullets("changes_bullets", changes_bullets)?;
+ check_required_bullets("verification_bullets", verification_bullets)?;
+ check_optional_bullets("impact_refs", impact_refs)?;
+ check_optional_bullets("carry_forward_bullets", carry_forward_bullets)?;
+ Ok(())
+}
+
+fn check_required_bullets(field: &str, bullets: &[String]) -> Result<(), AtomicMutateError> {
+ if bullets.is_empty() {
+ return Err(AtomicMutateError::Validation(format!(
+ "{} requires at least one non-blank bullet (Round 298 silent-accept gate)",
+ field
+ )));
+ }
+ check_optional_bullets(field, bullets)
+}
+
+fn check_optional_bullets(field: &str, bullets: &[String]) -> Result<(), AtomicMutateError> {
+ for (i, b) in bullets.iter().enumerate() {
+ if b.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(format!(
+ "{}[{}] is blank (Round 298 silent-accept gate)",
+ field, i
+ )));
+ }
+ }
+ Ok(())
+}
+
 fn save_with_receipt(
  store: &AtomicStore,
  sidecar_path: &Path,
@@ -1397,6 +1447,11 @@ pub fn append_changelog_entry_v2(
  impact_refs: &[String],
  carry_forward_bullets: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if entry_id.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "entry_id blank (Round 298 silent-accept gate)".to_string(),
+ ));
+ }
  if store.changelog_entries.contains_key(entry_id) {
  return Err(AtomicMutateError::FrozenLedger(format!(
  "entry_id `{}` already exists in atomic store; mutations to existing \
@@ -1404,6 +1459,17 @@ pub fn append_changelog_entry_v2(
  entry_id
  )));
  }
+ // Round 298 — required-field gate at the primitive boundary so CLI / MCC
+ // / future wires share the same enforcement surface. Frozen-ledger reject
+ // wins over field validation (existing FrozenLedger test passes empty
+ // body intentionally).
+ check_changelog_entry_v2_required(
+ decision_summary,
+ changes_bullets,
+ verification_bullets,
+ impact_refs,
+ carry_forward_bullets,
+ )?;
  // Round 294 — initialize publishable_* = audit_* clone. The two halves
  // diverge later via R295 publishable setters (paired with the R296
  // [[publishable_override_ledger]] gate). Default-equal at append time so
@@ -2065,6 +2131,151 @@ mod tests {
  entry.publishable_decision_summary.as_deref(),
  Some("appended summary")
  );
+ }
+
+ // ============ Round 298 silent-accept gate ============
+ //
+ // The 6 tests below pin the primitive-boundary guard added in R298:
+ // entry-id alone with an all-empty body must be rejected so neither CLI
+ // (`mnemosyne-cli append-changelog-entry-v2 --entry-id X` with no other
+ // flags) nor a future MCP wire can land a record-less ChangelogEntry into
+ // the frozen ledger. FrozenLedger still wins over Validation (existing
+ // frozen-after-append test calls with all-empty body intentionally).
+
+ fn append_with_empty_body(
+ store: &mut AtomicStore,
+ path: &Path,
+ entry_id: &str,
+ ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ append_changelog_entry_v2(store, path, entry_id, None, &[], &[], &[], &[])
+ }
+
+ #[test]
+ fn r298_blank_entry_id_rejected() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_with_empty_body(&mut store, &path, "   ").unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("entry_id"), "msg={}", msg);
+  assert!(msg.contains("Round 298"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r298_missing_decision_summary_rejected() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_with_empty_body(&mut store, &path, "Round 999").unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("decision_summary"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r298_empty_changes_bullets_rejected() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 999",
+ Some("decision"),
+ &[],
+ &["verify".into()],
+ &[],
+ &[],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("changes_bullets"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r298_empty_verification_bullets_rejected() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 999",
+ Some("decision"),
+ &["change".into()],
+ &[],
+ &[],
+ &[],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("verification_bullets"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r298_blank_change_bullet_element_rejected() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 999",
+ Some("decision"),
+ &["valid".into(), "   ".into()],
+ &["verify".into()],
+ &[],
+ &[],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("changes_bullets[1]"), "msg={}", msg);
+  assert!(msg.contains("blank"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn r298_blank_optional_element_rejected() {
+ // impact_refs and carry_forward_bullets are optional as a vec (empty
+ // OK) but a present blank element is still a hygiene reject.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ let err = append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 999",
+ Some("decision"),
+ &["change".into()],
+ &["verify".into()],
+ &["".into()],
+ &[],
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+  assert!(msg.contains("impact_refs[0]"), "msg={}", msg);
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
  }
 
  #[test]

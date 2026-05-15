@@ -61,6 +61,8 @@ fn validate_workspace_passes_when_atomic_in_sync() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Append entry (auto-regenerates GENERATED.md per Round 168 wire).
  Command::new(cli_binary())
@@ -72,6 +74,8 @@ fn validate_workspace_passes_when_atomic_in_sync() {
  "atomic-first sync test",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--impact",
  "1",
  ])
@@ -104,6 +108,8 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Append entry with impact_ref to a non-existent section §99.
  Command::new(cli_binary())
@@ -115,6 +121,8 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
  "orphan ref test",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--impact",
  "99",
  ])
@@ -154,6 +162,8 @@ fn validate_workspace_rejects_stale_generated_md() {
 
  let changes_path = tmp.path().join("changes.txt");
  fs::write(&changes_path, "x\n").unwrap();
+ let verify_path = tmp.path().join("verify.txt");
+ fs::write(&verify_path, "v\n").unwrap();
 
  // Initial mutate (auto-regen).
  Command::new(cli_binary())
@@ -165,6 +175,8 @@ fn validate_workspace_rejects_stale_generated_md() {
  "first",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--impact",
  "1",
  ])
@@ -183,6 +195,8 @@ fn validate_workspace_rejects_stale_generated_md() {
  "second-no-regen",
  "--changes-file",
  changes_path.to_str().unwrap(),
+ "--verification-file",
+ verify_path.to_str().unwrap(),
  "--impact",
  "1",
  "--no-regenerate",
