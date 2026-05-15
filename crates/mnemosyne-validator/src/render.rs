@@ -105,6 +105,14 @@ pub fn render_section(
 }
 
 /// Render a ChangelogEntry's atomic fields to markdown.
+///
+/// Round 294 — reads the `publishable_*` half (mutable view layer). The
+/// `audit_*` half is the permanent record kept inside the atomic store and
+/// is never rendered directly. At append time `publishable_* == audit_*`
+/// (see `append_changelog_entry_v2`), so this is byte-identical to pre-R294
+/// rendering for entries that have not yet diverged. After R295 setters
+/// (paired with the R296 `[[publishable_override_ledger]]` gate) the two
+/// halves can diverge; the published view still routes through here.
 pub fn render_changelog_entry(
  entry_id: &str,
  atomic: &AtomicChangelogEntry,
@@ -113,19 +121,25 @@ pub fn render_changelog_entry(
  ctx.insert("entry_id", entry_id);
  ctx.insert(
  "decision_summary",
- atomic.decision_summary.as_deref().unwrap_or(""),
+ atomic.publishable_decision_summary.as_deref().unwrap_or(""),
  );
- if !atomic.changes_bullets.is_empty() {
- ctx.insert("changes_bullets", &atomic.changes_bullets);
+ if !atomic.publishable_changes_bullets.is_empty() {
+ ctx.insert("changes_bullets", &atomic.publishable_changes_bullets);
  }
- if !atomic.verification_bullets.is_empty() {
- ctx.insert("verification_bullets", &atomic.verification_bullets);
+ if !atomic.publishable_verification_bullets.is_empty() {
+ ctx.insert(
+ "verification_bullets",
+ &atomic.publishable_verification_bullets,
+ );
  }
- if !atomic.impact_refs.is_empty() {
- ctx.insert("impact_refs", &atomic.impact_refs);
+ if !atomic.publishable_impact_refs.is_empty() {
+ ctx.insert("impact_refs", &atomic.publishable_impact_refs);
  }
- if !atomic.carry_forward_bullets.is_empty() {
- ctx.insert("carry_forward_bullets", &atomic.carry_forward_bullets);
+ if !atomic.publishable_carry_forward_bullets.is_empty() {
+ ctx.insert(
+ "carry_forward_bullets",
+ &atomic.publishable_carry_forward_bullets,
+ );
  }
  Ok(engine().render(CHANGELOG_ENTRY_TPL_NAME, &ctx)?)
 }
@@ -213,13 +227,18 @@ mod tests {
 
  #[test]
  fn render_changelog_entry_full_shape() {
- let atomic = AtomicChangelogEntry {
+ // Round 294 — render reads publishable_*; production path
+ // (`append_changelog_entry_v2`) clones audit_* into publishable_* at
+ // append time, so the fixture mirrors that path explicitly.
+ let mut atomic = AtomicChangelogEntry {
  decision_summary: Some("test decision summary".into()),
  changes_bullets: vec!["change A".into(), "change B".into()],
  verification_bullets: vec!["verify A".into()],
  impact_refs: vec!["43".into(), "61".into()],
  carry_forward_bullets: vec!["carry A".into()],
+ ..Default::default()
  };
+ atomic.clone_audit_into_publishable();
  let out = render_changelog_entry("Round 162", &atomic).unwrap();
  assert!(out.contains("### Round 162 — test decision summary"));
  assert!(out.contains("- change A"));
@@ -227,6 +246,37 @@ mod tests {
  assert!(out.contains("- verify A"));
  assert!(out.contains("**Impact**: §43, §61"));
  assert!(out.contains("- carry A"));
+ }
+
+ #[test]
+ fn render_changelog_entry_publishable_diverges_from_audit() {
+ // Round 294 — schema split invariant: when publishable_* is
+ // explicitly set to differ from audit_*, render emits the
+ // publishable view (the audit half stays out of GENERATED.md).
+ let atomic = AtomicChangelogEntry {
+ decision_summary: Some("audit summary, never rendered".into()),
+ changes_bullets: vec!["audit change A".into()],
+ verification_bullets: vec!["audit verify A".into()],
+ impact_refs: vec!["43".into()],
+ carry_forward_bullets: vec!["audit carry A".into()],
+ publishable_decision_summary: Some("redacted summary".into()),
+ publishable_changes_bullets: vec!["redacted change A".into()],
+ publishable_verification_bullets: vec!["redacted verify A".into()],
+ publishable_impact_refs: vec!["43".into()],
+ publishable_carry_forward_bullets: vec!["redacted carry A".into()],
+ };
+ let out = render_changelog_entry("Round 162", &atomic).unwrap();
+ assert!(out.contains("redacted summary"), "out: {}", out);
+ assert!(out.contains("- redacted change A"));
+ assert!(out.contains("- redacted verify A"));
+ assert!(out.contains("- redacted carry A"));
+ assert!(
+ !out.contains("audit summary"),
+ "audit half must not leak into render"
+ );
+ assert!(!out.contains("audit change A"));
+ assert!(!out.contains("audit verify A"));
+ assert!(!out.contains("audit carry A"));
  }
 
  #[test]

@@ -143,24 +143,85 @@ pub struct Implementation {
 
 /// ChangelogEntry atomic typed fields.
 ///
-/// Default = all empty. The legacy `sub_bullets` field carries stable — atomic
-/// fields = additive only. T2 frozen_ledger_jaccard rule extends to atomic
-/// fields: once committed, atomic fields are frozen
-/// (deletion = T2 violation, addition = OK).
+/// Round 294 — schema_version 4 splits the body into two parallel layers:
+///
+/// - **audit_*** fields: frozen after first commit (T2 jaccard scope). The
+///   permanent record. Mutate API never modifies these post-append; the
+///   primitive boundary rejects any attempt.
+/// - **publishable_*** fields: mutable view layer. Default = audit clone at
+///   append time. R295 introduces publishable setters; R296 introduces
+///   `[[publishable_override_ledger]]` so that publishable_* != audit_*
+///   transitions require an explicit reason and content_hash anchor.
+///   `generate_docs` renders publishable_*. CQRS / read-write split pattern.
+///
+/// Migration: v3 → v4 loader (`AtomicStore::load`) clones audit_* into
+/// publishable_* per entry; v4 stores keep them independent (intended
+/// divergence for redaction / typo fix without losing the audit record).
+///
+/// Backward compat: `decision_summary` / `changes_bullets` /
+/// `verification_bullets` / `impact_refs` / `carry_forward_bullets` are kept
+/// as the **audit** half (no rename → existing JSON loads unchanged); the
+/// publishable half is opt-in via the new `publishable_*` keys.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicChangelogEntry {
- /// 1 sentence headline.
+ /// Audit half — 1 sentence headline. Frozen after first commit (T2 scope).
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub decision_summary: Option<String>,
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub changes_bullets: Vec<String>,
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub verification_bullets: Vec<String>,
- /// cross-ref list (target section_id without `§` prefix).
+ /// cross-ref list (target section_id without `§` prefix). Audit half.
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub impact_refs: Vec<String>,
  #[serde(default, skip_serializing_if = "Vec::is_empty")]
  pub carry_forward_bullets: Vec<String>,
+
+ /// Round 294 — publishable half. Mutable view layer; default = audit
+ /// clone at append time. T2 jaccard does NOT compare these. R295
+ /// introduces publishable setters; R296 wires
+ /// `[[publishable_override_ledger]]` so divergence from the audit half
+ /// requires an explicit reason and content_hash anchor.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub publishable_decision_summary: Option<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub publishable_changes_bullets: Vec<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub publishable_verification_bullets: Vec<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub publishable_impact_refs: Vec<String>,
+ #[serde(default, skip_serializing_if = "Vec::is_empty")]
+ pub publishable_carry_forward_bullets: Vec<String>,
+}
+
+impl AtomicChangelogEntry {
+ /// Round 294 — clone the audit half into the publishable half. Used by
+ /// the v3→v4 loader migration (so existing entries get default-equal
+ /// publishable views) and by `append_changelog_entry_v2` (so newly
+ /// authored entries default to audit-equal publishable shape).
+ ///
+ /// Idempotent: calling twice produces the same result. Safe to call when
+ /// publishable fields are already non-empty — the audit half always
+ /// wins (audit is the source of truth at append time; later setters
+ /// diverge the publishable half deliberately).
+ pub fn clone_audit_into_publishable(&mut self) {
+ self.publishable_decision_summary = self.decision_summary.clone();
+ self.publishable_changes_bullets = self.changes_bullets.clone();
+ self.publishable_verification_bullets = self.verification_bullets.clone();
+ self.publishable_impact_refs = self.impact_refs.clone();
+ self.publishable_carry_forward_bullets = self.carry_forward_bullets.clone();
+ }
+
+ /// Round 294 — true when publishable_* matches audit_* across all 5
+ /// fields. Used by validate-workspace (R296) to detect intentional
+ /// divergences and require a `[[publishable_override_ledger]]` entry.
+ pub fn publishable_matches_audit(&self) -> bool {
+ self.publishable_decision_summary == self.decision_summary
+ && self.publishable_changes_bullets == self.changes_bullets
+ && self.publishable_verification_bullets == self.verification_bullets
+ && self.publishable_impact_refs == self.impact_refs
+ && self.publishable_carry_forward_bullets == self.carry_forward_bullets
+ }
 }
 
 /// Inventory entry lifecycle status (Round 273, Phase 1A).
@@ -263,10 +324,15 @@ pub enum AtomicStoreError {
 // deserialize with empty title/parent_doc + parent_section=None via
 // #[serde(default)]; Phase I backfill migration populates them from
 // workspace markdown-derived Section data.
+// Schema version 4 (Round 294): publishable / audit body split on
+// AtomicChangelogEntry. Pre-v4 entries deserialize with empty publishable_*
+// fields via #[serde(default)]; the v3→v4 migration in `AtomicStore::load`
+// clones audit_* into publishable_* per entry so the default render shape
+// stays byte-identical until R295 setters explicitly diverge them.
 // Load is back-compat across all versions ≤ CURRENT: version-N stores
 // deserialize with newer fields defaulted; the next save rewrites
 // schema_version to CURRENT.
-const CURRENT_SCHEMA_VERSION: u32 = 3;
+const CURRENT_SCHEMA_VERSION: u32 = 4;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -280,17 +346,28 @@ impl AtomicStore {
  }
 
  /// Load from sidecar JSON. Returns empty store if file missing.
+ ///
+ /// Round 294 — v3→v4 migration: stores written under schema_version ≤ 3
+ /// have no `publishable_*` fields. Clone audit_* into publishable_* per
+ /// entry so the render shape stays byte-identical until R295 setters
+ /// explicitly diverge them. v4+ stores keep the two halves independent
+ /// (intended divergence after redaction / typo fix).
  pub fn load(path: &Path) -> Result<Self, AtomicStoreError> {
  if !path.exists() {
  return Ok(Self::new());
  }
  let bytes = fs::read(path)?;
- let store: AtomicStore = serde_json::from_slice(&bytes)?;
+ let mut store: AtomicStore = serde_json::from_slice(&bytes)?;
  if store.schema_version > CURRENT_SCHEMA_VERSION {
  return Err(AtomicStoreError::SchemaVersionMismatch {
   store: store.schema_version,
   expected: CURRENT_SCHEMA_VERSION,
  });
+ }
+ if store.schema_version < 4 {
+ for entry in store.changelog_entries.values_mut() {
+ entry.clone_audit_into_publishable();
+ }
  }
  Ok(store)
  }
@@ -1269,13 +1346,19 @@ pub fn append_changelog_entry_v2(
  entry_id
  )));
  }
- let entry = AtomicChangelogEntry {
+ // Round 294 — initialize publishable_* = audit_* clone. The two halves
+ // diverge later via R295 publishable setters (paired with the R296
+ // [[publishable_override_ledger]] gate). Default-equal at append time so
+ // generate_docs render shape is byte-identical to pre-R294.
+ let mut entry = AtomicChangelogEntry {
  decision_summary: decision_summary.map(str::to_string),
  changes_bullets: changes_bullets.to_vec(),
  verification_bullets: verification_bullets.to_vec(),
  impact_refs: impact_refs.to_vec(),
  carry_forward_bullets: carry_forward_bullets.to_vec(),
+ ..Default::default()
  };
+ entry.clone_audit_into_publishable();
  store
  .changelog_entries
  .insert(entry_id.to_string(), entry);
@@ -1633,7 +1716,7 @@ mod tests {
  assert_eq!(loaded.schema_version, 1);
  loaded.save(&path).unwrap();
  let reloaded = AtomicStore::load(&path).unwrap();
- assert_eq!(reloaded.schema_version, 3);
+ assert_eq!(reloaded.schema_version, 4);
  }
 
  #[test]
@@ -1663,7 +1746,139 @@ mod tests {
  assert_eq!(s.intent.as_deref(), Some("old-shape section without outline"));
  loaded.save(&path).unwrap();
  let reloaded = AtomicStore::load(&path).unwrap();
- assert_eq!(reloaded.schema_version, 3);
+ assert_eq!(reloaded.schema_version, 4);
+ }
+
+ #[test]
+ fn schema_version_3_clones_audit_into_publishable_on_load() {
+ // Round 294 v3→v4 migration: a v3 store has audit_* fields populated
+ // but no publishable_* fields. Loading must clone audit_* into
+ // publishable_* per entry so the render shape stays byte-identical.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+ let legacy_v3_json = r#"{
+ "sections": {},
+ "changelog_entries": {
+ "Round 200": {
+ "decision_summary": "v3 entry summary",
+ "changes_bullets": ["v3 change A", "v3 change B"],
+ "verification_bullets": ["v3 verify A"],
+ "impact_refs": ["43"],
+ "carry_forward_bullets": ["v3 carry A"]
+ }
+ },
+ "inventory_entries": {},
+ "schema_version": 3
+}"#;
+ std::fs::write(&path, legacy_v3_json).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let entry = loaded
+ .changelog_entries
+ .get("Round 200")
+ .expect("Round 200 entry present");
+ assert_eq!(
+ entry.publishable_decision_summary.as_deref(),
+ Some("v3 entry summary"),
+ "publishable_decision_summary must clone from audit on v3 load"
+ );
+ assert_eq!(
+ entry.publishable_changes_bullets,
+ vec!["v3 change A".to_string(), "v3 change B".to_string()]
+ );
+ assert_eq!(
+ entry.publishable_verification_bullets,
+ vec!["v3 verify A".to_string()]
+ );
+ assert_eq!(entry.publishable_impact_refs, vec!["43".to_string()]);
+ assert_eq!(
+ entry.publishable_carry_forward_bullets,
+ vec!["v3 carry A".to_string()]
+ );
+ assert!(
+ entry.publishable_matches_audit(),
+ "post-migration default: publishable matches audit"
+ );
+ // Save then reload: publishable_* now persisted, schema bumps to 4.
+ loaded.save(&path).unwrap();
+ let reloaded = AtomicStore::load(&path).unwrap();
+ assert_eq!(reloaded.schema_version, 4);
+ let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
+ assert!(reloaded_entry.publishable_matches_audit());
+ }
+
+ #[test]
+ fn schema_version_4_preserves_publishable_divergence_on_load() {
+ // Round 294 invariant: a v4 store with publishable_* explicitly
+ // diverged from audit_* must NOT be clone-overwritten on load. The
+ // split exists precisely so redaction / typo fix can persist a
+ // divergent published view (audit half stays as the permanent record).
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+ let v4_json = r#"{
+ "sections": {},
+ "changelog_entries": {
+ "Round 200": {
+ "decision_summary": "audit secret token XYZ123",
+ "changes_bullets": ["audit references XYZ123 verbatim"],
+ "verification_bullets": ["audit verify"],
+ "impact_refs": ["43"],
+ "carry_forward_bullets": ["audit carry"],
+ "publishable_decision_summary": "redacted summary",
+ "publishable_changes_bullets": ["redacted change A"],
+ "publishable_verification_bullets": ["audit verify"],
+ "publishable_impact_refs": ["43"],
+ "publishable_carry_forward_bullets": ["audit carry"]
+ }
+ },
+ "inventory_entries": {},
+ "schema_version": 4
+}"#;
+ std::fs::write(&path, v4_json).unwrap();
+ let loaded = AtomicStore::load(&path).unwrap();
+ let entry = loaded.changelog_entries.get("Round 200").unwrap();
+ assert_eq!(
+ entry.decision_summary.as_deref(),
+ Some("audit secret token XYZ123"),
+ "audit half preserved verbatim"
+ );
+ assert_eq!(
+ entry.publishable_decision_summary.as_deref(),
+ Some("redacted summary"),
+ "publishable divergence preserved across load"
+ );
+ assert!(
+ !entry.publishable_matches_audit(),
+ "intentional divergence retained, not overwritten"
+ );
+ }
+
+ #[test]
+ fn append_changelog_entry_v2_clones_audit_into_publishable() {
+ // Round 294 default: append_changelog_entry_v2 initializes
+ // publishable_* = audit_* clone so newly authored entries render
+ // byte-identical to pre-R294 baseline until R295 setters diverge them.
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ append_changelog_entry_v2(
+ &mut store,
+ &path,
+ "Round 999",
+ Some("appended summary"),
+ &["appended change".into()],
+ &["appended verify".into()],
+ &["43".into()],
+ &["appended carry".into()],
+ )
+ .unwrap();
+ let entry = store.changelog_entries.get("Round 999").unwrap();
+ assert!(entry.publishable_matches_audit());
+ assert_eq!(
+ entry.publishable_decision_summary.as_deref(),
+ Some("appended summary")
+ );
  }
 
  #[test]

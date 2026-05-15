@@ -1029,6 +1029,7 @@ mod tests {
  verification_bullets: vec!["§43 in verify".to_string()],
  impact_refs: vec![],
  carry_forward_bullets: vec!["§43 in carry".to_string()],
+ ..Default::default()
  };
  assert_eq!(count_citations(&entry, Some(&atomic), "§43", "43"), 4);
  }
@@ -1048,6 +1049,7 @@ mod tests {
  verification_bullets: vec![],
  impact_refs: vec!["43".to_string(), "61".to_string()],
  carry_forward_bullets: vec![],
+ ..Default::default()
  };
  assert_eq!(count_citations(&entry, Some(&atomic), "§43", "43"), 1);
  assert_eq!(count_citations(&entry, Some(&atomic), "§99", "99"), 0);
@@ -1231,6 +1233,7 @@ mod tests {
   verification_bullets: vec![],
   impact_refs: vec!["39".to_string()],
   carry_forward_bullets: vec![],
+  ..Default::default()
  },
  );
  let entries = changelog_entries_for_section(&ws, &store, "39");
@@ -1262,6 +1265,7 @@ mod tests {
   verification_bullets: vec![],
   impact_refs: vec!["39".to_string()],
   carry_forward_bullets: vec![],
+  ..Default::default()
  },
  );
  let entries = changelog_entries_for_section(&ws, &store, "39");
@@ -1291,6 +1295,7 @@ mod tests {
   verification_bullets: vec!["v1".to_string()],
   impact_refs: vec!["39".to_string()],
   carry_forward_bullets: vec!["carry".to_string()],
+  ..Default::default()
  },
  );
  let entries = changelog_entries_for_section(&ws, &store, "39");
@@ -1510,6 +1515,7 @@ mod tests {
  verification_bullets: vec!["no secret in audit output".to_string()],
  impact_refs: vec!["secret-handling".to_string()],
  carry_forward_bullets: vec!["nothing".to_string()],
+ ..Default::default()
  };
  let store = store_with_one_entry("Round 99", entry);
  let hits = query_term(&store, &literal_q("secret")).expect("ok");

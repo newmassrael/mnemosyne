@@ -1420,3 +1420,46 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 294 — AtomicChangelogEntry schema split (publishable vs audit body) — schema_version 4 + v3→v4 loader migration + render switch to publishable view + T2 audit-only scope made explicit; R293 catch-up folded as carry — AtomicChangelogEntry gains 5 publishable_* fields paralleling the audit fields (decision_summary, changes_bullets, verification_bullets, impact_refs, carry_forward_bullets); CURRENT_SCHEMA_VERSION bumped 3→4 with a v3→v4 loader migration that clones audit_* into publishable_* per entry. append_changelog_entry_v2 default = audit clone (signature unchanged) so newly authored entries are publishable_matches_audit() == true at append time. render_changelog_entry switches to read publishable_* — generate_docs is now the publishable view layer; the audit half stays as the permanent record inside the atomic store. T2 jaccard scope made explicit (audit-only) via comment. Establishes the structural prerequisite for R295 publishable setters and R296 [[publishable_override_ledger]]; closes RFC G4 (body split) ahead of RFC's defer recommendation because schema-evolve-once is cheaper than schema-evolve-twice.
+
+**Changes**:
+- AtomicChangelogEntry schema split — 5 publishable_* fields paralleling audit fields (publishable_decision_summary + publishable_changes_bullets + publishable_verification_bullets + publishable_impact_refs + publishable_carry_forward_bullets); audit fields keep names unchanged so existing v3 JSON loads with serde defaults
+- clone_audit_into_publishable() and publishable_matches_audit() helper methods on AtomicChangelogEntry — production migration path and R296 ledger-gate substrate
+- CURRENT_SCHEMA_VERSION bumped to 4; AtomicStore::load runs v3→v4 migration by cloning audit_* into publishable_* per entry when schema_version < 4 (byte-identical render preserved); v4 stores keep the two halves independent so intentional divergence (redaction, typo fix) survives reload
+- append_changelog_entry_v2 default = audit clone (signature unchanged so all existing callers stay correct); newly authored entries are publishable_matches_audit() == true at append time
+- render_changelog_entry switched to read publishable_* fields — generate_docs surface is the publishable view layer; audit_* half stays as the permanent record inside the atomic store
+- T2 jaccard (frozen_ledger_atomic + check_atomic_entry) audit-only scope made explicit via comment — publishable_* changes deliberately bypass T2 (will gain their own gate via [[publishable_override_ledger]] in R296)
+- 9 struct-literal fixture sites in query.rs / t2.rs updated with ..Default::default() spread so they continue to compile after schema additions
+- 4 new unit tests in atomic.rs::tests cover v3→v4 migration cloning, v4 divergence preservation, append_changelog_entry_v2 audit-clone default, and clone_audit_into_publishable idempotency
+- 2 new unit tests in render.rs::tests cover publishable-render path and publishable / audit divergence (audit half does not leak into rendered output)
+- R293 catch-up: R293 entry body recorded 622 tests (pre-prefix-normalize fix snapshot); current baseline = 629 tests (R293 = 625 + 4 R294 schema-split tests). Frozen-ledger constraint prevented in-place R293 entry update; R294 carry surfaces this as a pattern to revisit when [[publishable_override_ledger]] (R296) lets retroactive publishable updates land without breaking the audit invariant
+
+
+
+**Verification**:
+- cargo test --release --workspace: 629 passed / 0 failed / 47 ignored (R293 = 625; +4 from atomic schema-split tests + 2 from render publishable-path tests, partially offset by 2 migration test version-bump edits = net +4)
+- validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync, atomic ledger entries=40
+- generate-docs round-trip: written_bytes=106551 byte-identical to pre-R294 baseline — confirms publishable_* defaults clone audit_* preserves render shape
+- git diff docs/: empty after generate-docs — no GENERATED.md drift on the v3→v4 migration path
+- commit↔ledger drift gate: cited=27 / ledger=40 / missing=0 — R293 drift surface still green
+- schema_version_3_clones_audit_into_publishable_on_load test: v3 JSON loads, publishable_* matches audit_* per entry, save bumps to v4
+- schema_version_4_preserves_publishable_divergence_on_load test: v4 JSON with intentionally diverged publishable_* round-trips without overwrite — invariant for R295 setters and R296 ledger-gate
+- render_changelog_entry_publishable_diverges_from_audit test: when publishable_* != audit_*, render emits publishable view; audit half does not leak into GENERATED.md
+
+
+
+**Impact**: §atomic-store-mutate-api, §markdown-parser
+
+
+**Carry forward**:
+- R295 carry — publishable mutate primitives: set_changelog_publishable_decision_summary + 4 setters paralleling the publishable_* fields; atomic transaction; pre-write check rejects audit_* mutation attempts (audit invariant enforcement at primitive boundary)
+- R296 carry — [[publishable_override_ledger]] config: mnemosyne.toml schema mirroring [[orphan_ledger]] (kind, target_id, fields, reason, applied_in, content_hash_before, content_hash_after); validate-workspace gate that rejects publishable_* != audit_* divergences without a matching ledger entry; cascade emits ledger draft on publishable mutate
+- R297 carry — redact_term convenience primitive (RFC P1 variant): pattern + replacement + scope + dry_run + reason; routes only to publishable_* (audit_* is system-immutable after R295 setters land); preview substrate via R292 query_term
+- R293 entry body shift carry-over: R293 entry recorded 622 / drift gate v1 only; R294 lands the prefix-normalize aftermath as part of test-count delta; full frozen-ledger-aware retroactive update path waits on R296 [[publishable_override_ledger]]
+- mutate API hardening carry (rolled forward from R293): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass needed once R295 publishable setters establish the field-required vocabulary at the primitive boundary
+- RFC G3 (no internal workspace search) closed by R292 query_term — no further carry on this axis
+- RFC G4 (body split) closed by R294 schema split — completes the structural prerequisite that RFC suggested deferring; R295/R296 wire the mutate-side and gate-side
+- Drift gate severity promotion (R293 carry) — warn-only → reject decision still pending policy review
+
+
+

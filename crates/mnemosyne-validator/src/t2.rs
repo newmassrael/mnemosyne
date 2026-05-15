@@ -242,6 +242,13 @@ fn check_atomic_section(
  push_examples_diff(section_id, &prev.examples, &curr.examples, errors);
 }
 
+// Round 294 — audit-only scope: this function compares the audit half of
+// `AtomicChangelogEntry` (decision_summary, changes_bullets,
+// verification_bullets, impact_refs, carry_forward_bullets). The
+// publishable_* half is intentionally OUT of T2 scope; it is the mutable
+// view layer (R295 setters) gated by `[[publishable_override_ledger]]`
+// (R296). Adding a publishable_* compare here would re-couple the layers
+// and defeat the body-split invariant.
 fn check_atomic_entry(
  entry_id: &str,
  prev: &AtomicChangelogEntry,
