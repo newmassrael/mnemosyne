@@ -39,6 +39,7 @@ pub mod atomic;
 pub mod render;
 pub mod code_refs;
 pub mod commit_ledger;
+pub mod redact;
 
 pub use schema::{
  ChangelogEntry, CrossRef, DecisionStatus, FrozenList, LockKind, ParsedDoc, RefKind, Section,
@@ -95,3 +96,7 @@ pub use atomic::{
 // legacy variant; until then callers use the module-qualified path).
 pub use render::{render_changelog_entry, render_section, RenderError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
+pub use redact::{
+ redact_term, RedactError, RedactMode, RedactRequest, RedactScope, RedactionHit,
+ RedactionReport,
+};

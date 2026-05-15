@@ -1839,6 +1839,153 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
  )
 }
 
+/// Round 297 — `redact-term` CLI subcommand (RFC P1).
+///
+/// Wraps `mnemosyne_validator::redact_term`. By default `--dry-run`
+/// is **off** — explicit safety contract: a redaction without `--dry-run`
+/// mutates publishable_* in place. The output prints both the per-hit
+/// summary and the ready-to-paste `[[publishable_override_ledger]]` draft
+/// blocks so authors do not hand-author SHA256 anchors.
+pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
+ let mut pattern: Option<String> = None;
+ let mut replacement: Option<String> = None;
+ let mut mode = mnemosyne_validator::RedactMode::Literal;
+ let mut case_insensitive = false;
+ let mut scope = mnemosyne_validator::RedactScope::All;
+ let mut dry_run = false;
+ let mut reason: Option<String> = None;
+ let mut applied_in: Option<String> = None;
+ let mut kind = "redaction".to_string();
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut iter = args.iter();
+ while let Some(a) = iter.next() {
+ match a.as_str() {
+ "--pattern" => {
+  pattern = Some(iter.next().ok_or_else(|| anyhow!("--pattern missing"))?.clone())
+ }
+ "--replacement" => {
+  replacement = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--replacement missing"))?
+  .clone(),
+  )
+ }
+ "--regex" => mode = mnemosyne_validator::RedactMode::Regex,
+ "-i" | "--case-insensitive" => case_insensitive = true,
+ "--scope" => {
+  let raw = iter
+  .next()
+  .ok_or_else(|| anyhow!("--scope missing value"))?
+  .clone();
+  scope = match raw.as_str() {
+  "all" => mnemosyne_validator::RedactScope::All,
+  "decision_summary" | "publishable_decision_summary" => {
+  mnemosyne_validator::RedactScope::DecisionSummary
+  }
+  "changes_bullets" | "publishable_changes_bullets" => {
+  mnemosyne_validator::RedactScope::ChangesBullets
+  }
+  "verification_bullets" | "publishable_verification_bullets" => {
+  mnemosyne_validator::RedactScope::VerificationBullets
+  }
+  "impact_refs" | "publishable_impact_refs" => {
+  mnemosyne_validator::RedactScope::ImpactRefs
+  }
+  "carry_forward_bullets" | "publishable_carry_forward_bullets" => {
+  mnemosyne_validator::RedactScope::CarryForwardBullets
+  }
+  other => bail!(
+  "unknown --scope `{}` — expected: all | decision_summary | changes_bullets \
+   | verification_bullets | impact_refs | carry_forward_bullets",
+  other
+  ),
+  };
+ }
+ "--dry-run" => dry_run = true,
+ "--reason" => {
+  reason = Some(iter.next().ok_or_else(|| anyhow!("--reason missing"))?.clone())
+ }
+ "--applied-in" => {
+  applied_in = Some(
+  iter.next()
+  .ok_or_else(|| anyhow!("--applied-in missing"))?
+  .clone(),
+  )
+ }
+ "--kind" => kind = iter.next().ok_or_else(|| anyhow!("--kind missing"))?.clone(),
+ "--sidecar" => {
+  sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let req = mnemosyne_validator::RedactRequest {
+ pattern: pattern.ok_or_else(|| anyhow!("--pattern arg required"))?,
+ replacement: replacement.ok_or_else(|| anyhow!("--replacement arg required"))?,
+ mode,
+ case_insensitive,
+ scope,
+ dry_run,
+ reason: reason.ok_or_else(|| anyhow!("--reason arg required"))?,
+ applied_in: applied_in.ok_or_else(|| anyhow!("--applied-in arg required"))?,
+ kind,
+ };
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ let report =
+ mnemosyne_validator::redact_term(&mut store, &sidecar_path, &req).map_err(|e| anyhow!("{}", e))?;
+ if json {
+ let payload = serde_json::json!({
+ "primitive": "redact_term",
+ "dry_run": report.dry_run,
+ "hits": report
+ .hits
+ .iter()
+ .map(|h| {
+  serde_json::json!({
+  "entry_id": h.entry_id,
+  "field": h.field,
+  "index": h.index,
+  "original": h.original,
+  "redacted": h.redacted,
+  })
+ })
+ .collect::<Vec<_>>(),
+ "ledger_drafts": report.ledger_drafts,
+ });
+ println!("{}", payload);
+ } else {
+ println!(
+ "=== mnemosyne-cli redact_term ({}) ===",
+ if report.dry_run { "dry-run" } else { "applied" }
+ );
+ println!(
+ "hits: {} across {} entry(ies)",
+ report.hits.len(),
+ report.touched_entries().len()
+ );
+ for h in &report.hits {
+ let loc = match h.index {
+ Some(i) => format!("{}[{}]", h.field, i),
+ None => h.field.to_string(),
+ };
+ println!("  {} {}: `{}` -> `{}`", h.entry_id, loc, h.original, h.redacted);
+ }
+ if !report.ledger_drafts.is_empty() {
+ println!();
+ println!(
+ "--- [[publishable_override_ledger]] drafts (paste into mnemosyne.toml) ---"
+ );
+ for draft in &report.ledger_drafts {
+ println!("{}", draft);
+ }
+ }
+ }
+ Ok(())
+}
+
 #[cfg(test)]
 mod tests {
  use super::*;

@@ -1533,3 +1533,41 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 297 — redact_term convenience primitive (RFC P1) — pattern + replacement over publishable_* with auto-emitted [[publishable_override_ledger]] draft (forge-resistant, audit-half immutable) — redact_term wraps the R295 publishable setters into a single pattern-and-replacement scan over the publishable half of AtomicChangelogEntry — never reads or writes the audit half. Modes: literal / regex / case_insensitive. Scope: All / per-publishable-field. dry_run returns hits + ledger drafts without mutating; non-dry-run applies through R295 setters (validation + invariant preserved) and emits ready-to-paste [[publishable_override_ledger]] blocks whose content_hash_after equals the entry's post-apply publishable_hash_hex (R296 gate accepts as-is). Required reason + applied_in fields make every redaction auditable. CLI subcommand redact-term wired. Closes RFC G1 (no atomic primitive for cross-store term replacement); together with R292 query_term (G3), R294 schema split (G4), R296 ledger gate (G2), the full RFC P1+P2+P3+P4 surface is shipped.
+
+**Changes**:
+- crates/mnemosyne-validator/src/redact.rs new module: redact_term(store, sidecar_path, RedactRequest) -> RedactionReport. Walks changelog_entries, scans publishable_* per scope (All / DecisionSummary / ChangesBullets / VerificationBullets / ImpactRefs / CarryForwardBullets), applies literal or regex replace_all (case_insensitive optional), emits hits + auto-generated [[publishable_override_ledger]] draft text per touched entry with the post-mutation publishable hash so authors do not hand-author SHA256 anchors
+- RedactError variants: EmptyPattern, InvalidRegex, MissingReason, MissingAppliedIn, Mutate { entry_id, source } — fail-fast on every authoring hole the audit trail needs
+- dry_run mode returns the full hits list + ledger drafts without mutating the store; non-dry-run applies field-by-field through the R295 setters so per-bullet length validation and audit-invariant enforcement still apply
+- audit half is never read for replacement and never written by this primitive — RFC G1 closure preserves the R294 immutability invariant
+- CLI redact-term subcommand wired in atomic_cli.rs + main.rs dispatcher: --pattern + --replacement + (optional --regex / -i / --scope <s> / --dry-run / --kind / --sidecar / --json) + required --reason + --applied-in. Stdout prints per-hit diff + ready-to-paste ledger draft blocks for each touched entry
+- 8 unit tests in redact.rs::tests cover dry_run no-mutation guarantee, apply-mutates-publishable-only invariant, scope filter narrowing, regex + case_insensitive composition, idempotency on repeat invocation, EmptyPattern / MissingReason / MissingAppliedIn / InvalidRegex error surfaces, and the contract that the ledger draft's content_hash_after equals the entry's post-apply publishable_hash_hex (R296 gate compatibility)
+- lib.rs re-exports the redact module's public surface alongside the existing primitives
+
+
+
+**Verification**:
+- cargo test --release --workspace: 643 passed / 0 failed / 47 ignored (R296 = 635; +8 from redact tests)
+- validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync, ledger=43, publishable / audit divergence: entries=0 ledger_rows=0
+- redact_term_dry_run_does_not_mutate test: dry_run returns full hit list + ledger drafts but the store stays byte-identical (audit invariant + publishable invariant under preview)
+- redact_term_apply_mutates_publishable_only test: explicitly asserts both halves — publishable_* takes the redacted value, audit_* keeps the original; publishable_matches_audit() = false post-apply
+- redact_term_ledger_draft_hash_matches_post_apply_hash test: the printed content_hash_after equals the entry's publishable_hash_hex() — R296 gate accepts the draft as-is
+- redact_term_idempotent_after_apply test: re-running the same redact yields zero hits (publishable_* no longer contains the pattern); safe to re-run as part of CI
+- redact_term_regex_mode_with_case_insensitive: regex + -i compose correctly (email-shaped fixture)
+- RFC P1 acceptance criteria walked: dry_run returns full hit list ✅; non-dry_run applies single sweep then reports drafts ✅ (mutate path goes through R295 setters); validate-workspace shows publishable / audit divergence + ledger gate from R296 ✅; generate_docs renders publishable view (R294) ✅; idempotent (re-run = no-op) ✅; removing a [[publishable_override_ledger]] row re-surfaces the rejection ✅ (R296 contract)
+
+
+
+**Impact**: §atomic-store-mutate-api, §markdown-parser
+
+
+**Carry forward**:
+- RFC closure recap (taken across R292 + R294 + R295 + R296 + R297): G1 cross-store term replacement primitive ✅ R297 redact_term; G2 audit-trace structure for legitimate frozen overrides ✅ R296 [[publishable_override_ledger]]; G3 internal workspace search ✅ R292 query_term; G4 ChangelogEntry body split ✅ R294 schema split. RFC P1 + P2 + P3 + P4 all landed ahead of RFC's defer-P4 recommendation since schema-evolve-once was cheaper than schema-evolve-twice
+- Cascade auto-emit of [[publishable_override_ledger]] draft on each R295 setter call (R296 carry) — narrowed: redact_term auto-emits the draft, but a bare set-changelog-publishable-* CLI invocation still requires the author to compute the hash. Defer until usage shows the bare-setter path is exercised at scale outside redact_term
+- Per-field gate granularity carry (R296) — entry-level granularity remains; per-field hashes deferred until usage shows it matters
+- mutate API hardening carry (rolled forward from R293/R294/R295/R296): append_changelog_entry_v2 silently accepts entry-id-only invocations with empty body — separate harden-pass; the boundary is exercised more under redact_term + R295 setters now
+- Drift gate severity promotion carry (R293) — warn-only → reject decision still pending policy review
+- MCP wire for the publishable setters + redact_term carry (R295/R297) — mechanical add via the existing tool-registration pattern; defer until usage data shows MCP need over CLI subprocess
+
+
+
