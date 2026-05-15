@@ -1089,6 +1089,7 @@ dependencies = [
  "mnemosyne-server",
  "mnemosyne-store",
  "mnemosyne-validator",
+ "regex",
  "serde_json",
  "sha2",
  "tempfile",

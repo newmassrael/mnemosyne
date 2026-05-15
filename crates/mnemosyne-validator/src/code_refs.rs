@@ -1072,7 +1072,23 @@ pub fn scan_paths_bidirectional_v4(
  external_section_prefixes_numeric: &[String],
  external_section_prefixes_bare: &[String],
 ) -> std::io::Result<Vec<CodeRefViolation>> {
- let valid_entry_ids: BTreeSet<String> = store.changelog_entries.keys().cloned().collect();
+ // Round 293 — valid_entry_ids must match the shape produced by
+ // `extract_citations`, which returns `<prefix><number>` (e.g. "Round 293").
+ // Some atomic ledger keys are short-form ("Round 292") and match
+ // directly; others are long-form ("Round 293 — <title>"). Normalize both
+ // to the `<prefix><number>` form by stripping the prefix and re-running
+ // `scan_round_number` on the rest, so a code citation of "Round 293"
+ // resolves either way. Keys without the prefix are skipped (they cannot
+ // collide with the cited shape).
+ let valid_entry_ids: BTreeSet<String> = store
+ .changelog_entries
+ .keys()
+ .filter_map(|k| {
+ let rest = k.strip_prefix(prefix)?;
+ let num = scan_round_number(rest)?;
+ Some(format!("{}{}", prefix, num))
+ })
+ .collect();
  let section_id_set = store.atomic_section_id_set();
 
  // Pre-index §X.implementations by section_id (so we can membership-check
@@ -3190,5 +3206,110 @@ mod tests {
  "CodeCitation row must not suppress inventory cite; got: {:?}",
  v
  );
+ }
+
+ // ============ Round 293 entry-id prefix-normalize ============
+
+ #[test]
+ fn long_form_entry_id_matches_short_form_citation() {
+ // R293 trigger: entry-id stored as "Round 293 — <title>" must match
+ // a code citation of the form "Round 293". Without the normalize step
+ // the citation would be flagged Missing even though the round exists.
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ std::fs::write(src.join("a.rs"), "// Round 293 carry\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.changelog_entries.insert(
+ "Round 293 — R291 backfill entry append + commit↔ledger drift gate".to_string(),
+ crate::atomic::AtomicChangelogEntry::default(),
+ );
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert!(
+ v.is_empty(),
+ "long-form entry-id must match Round 293 cite; got: {:?}",
+ v
+ );
+ }
+
+ #[test]
+ fn short_form_entry_id_still_matches_after_normalize() {
+ // Regression guard: most ledger entries are short-form ("Round 292").
+ // The normalize step must not break direct equality matches.
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ std::fs::write(src.join("a.rs"), "// Round 292 cite\n").unwrap();
+ let mut store = AtomicStore::new();
+ store.changelog_entries.insert(
+ "Round 292".to_string(),
+ crate::atomic::AtomicChangelogEntry::default(),
+ );
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert!(
+ v.is_empty(),
+ "short-form entry-id must continue to match; got: {:?}",
+ v
+ );
+ }
+
+ #[test]
+ fn unknown_round_still_flags_missing_after_normalize() {
+ // Regression guard: normalize must not silence genuinely missing
+ // citations. Cite a hallucinated round → Missing. The fixture content
+ // is built via format!() rather than a string literal so the
+ // production validate-code-refs scan over this very source file does
+ // not pick up the synthetic round number as a real citation.
+ let tmp = TempDir::new().unwrap();
+ let src = tmp.path().join("src");
+ std::fs::create_dir_all(&src).unwrap();
+ let cite = format!("// {} 9{} hallucinated\n", "Round", "99");
+ std::fs::write(src.join("a.rs"), cite).unwrap();
+ let mut store = AtomicStore::new();
+ store.changelog_entries.insert(
+ "Round 292".to_string(),
+ crate::atomic::AtomicChangelogEntry::default(),
+ );
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ )
+ .unwrap();
+ assert_eq!(
+ v.len(),
+ 1,
+ "hallucinated round must still flag Missing; got: {:?}",
+ v
+ );
+ match &v[0] {
+ CodeRefViolation::Citation { citation, kind } => {
+ assert_eq!(*kind, ViolationKind::Missing);
+ assert_eq!(citation.entry_id, "Round 999");
+ }
+ other => panic!("unexpected variant: {:?}", other),
+ }
  }
 }

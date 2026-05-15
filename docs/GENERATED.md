@@ -1320,6 +1320,35 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 291 — Section.atomic_section_id field + AtomicStore::resolve(&Section) bridge — nested ### §<id> headings find atomic counterpart instead of falling back to raw markdown — closes R290 terminology_consistency false-negative + recovers SectionView body / decision_status override — backfill entry appended retroactively in R293 — Section.atomic_section_id captures heading §<token> verbatim and AtomicStore::resolve(&Section) prefers it over the parser-derived slug, so nested ### §<id> headings under ## Sections find their atomic counterpart. Closes R290 terminology_consistency false-negative on impl paths; recovers SectionView body and decision_status overrides that were silently falling back to raw markdown. (R291 commit 76581f6 — backfill entry appended retroactively in R293.)
+
+**Changes**:
+- schema.rs Section adds atomic_section_id: Option<String> populated from heading §<token> verbatim, separate from parser-derived section_id slug
+- parser.rs heading parser captures § token before slug derivation so nested ### §<id> headings under ## Sections retain the atomic key shape
+- atomic.rs AtomicStore::resolve(&Section) prefers atomic_section_id when present, falls back to parser slug for legacy headings without § token
+- query.rs / style.rs / validator.rs / mutate.rs / workspace.rs threaded through the new resolve() path so SectionView body and decision_status overrides land instead of silently bypassing the atomic side
+- render → real-parse → atomic-lookup roundtrip regression test added in style.rs covering production GENERATED.md heading shape
+- existing R290 same-key bypass test annotated to mark the lookup miss it had been masking before this fix
+
+
+
+**Verification**:
+- cargo test --release --workspace at commit 76581f6: green (598-tier baseline pre-R292)
+- validate-workspace at commit 76581f6: docs=1/1, T1=0, round-trip=1/1, T3 reject=0
+- R290 false-negative case (terminology_consistency on Section.implementations path lines) re-exercised: now reads impl-path-stripped body via fixed resolve() path
+- new regression test render → real-parse → atomic-lookup roundtrip passes; nested § header round-trip lookup hits atomic store instead of falling back to raw markdown
+
+
+
+**Impact**: §atomic-store-mutate-api, §markdown-parser
+
+
+**Carry forward**:
+- This entry appended retroactively in Round 293 (atomic-store key gap closed); original commit 76581f6 was authored Fri 2026-05-15 between R290 (72332cc) and R292 (50f5f2f) without an atomic-store ledger entry, leaving an audit-trail hole until R293 backfill
+- Mutate API hardening carry: append-changelog-entry-v2 silently accepted an empty entry body during R293 backfill exploration (entry-id only, no decision/changes/verification/carry args) — separate harden-pass needed to reject null fields at primitive boundary
+
+
+
 ### Round 292 — query_term read primitive — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; replaces external grep, P1 redact_term preview substrate.
 
 **Changes**:
@@ -1352,6 +1381,42 @@ Source: `docs/.atomic/workspace.atomic.json`
 - Legacy parser-side ChangelogEntry.sub_bullets scan deferred — v1 atomic-only scope
 - P4 ChangelogEntry body split deferred — re-evaluate after P1+P2 usage data collected
 - R291 (commit 76581f6 fix(validator): bridge parser↔atomic section_id key mismatch) atomic-store entry remains unappended — separate carry to close
+
+
+
+### Round 293 — R291 backfill entry append + commit↔ledger drift gate (validate-workspace) — audit-trail hole between R290 and R292 closed; warn-only drift surface line wired — R291 atomic-store entry retroactively appended (commit 76581f6 — parser↔atomic section_id key mismatch fix), closing the audit-trail hole between R290 and R292. validator/commit_ledger.rs new module provides a pure BTreeSet<u32> diff (cited / ledger / missing / extra) with no IO or git dep. validate-workspace now prints a commit↔ledger drift surface line at end of run by walking the last 200 git commit subjects, extracting (R<N>) / (Round <N>) project-convention labels, and diffing against ledger entry-id round_numbers. v1 = warn-only (informational, never bails); promotion to hard reject deferred until policy stabilizes.
+
+**Changes**:
+- Round 291 atomic-store entry retroactively appended (commit 76581f6 closure — parser↔atomic section_id key mismatch fix); audit-trail hole between R290 and R292 closed
+- crates/mnemosyne-validator/src/commit_ledger.rs new module — pure BTreeSet<u32> diff returning CommitLedgerDriftReport { cited_count, ledger_count, missing, extra } with no IO or git dep
+- CLI validate-workspace gains commit↔ledger drift surface line at end of run — git log --max-count=200 --pretty=%s subjects parsed for "(R<N>)" / "(Round <N>)" project commit-convention labels and diffed against atomic ledger entry-id round_numbers
+- mnemosyne-cli adds regex.workspace = true (workspace dep already present from R292) for the small fixed pattern set covering both label forms
+- validator::commit_ledger_diff and CommitLedgerDriftReport exported via lib.rs re-export so future axes (CI, pre-commit, alternative VCS frontends) can reuse the pure diff
+- 5 unit tests in commit_ledger.rs::tests cover clean / R291-hole simulation / empty inputs / count fields / ascending sort of missing+extra
+
+
+
+**Verification**:
+- cargo test --release --workspace: 622 passed / 0 failed / 47 ignored (R292 = 617; +5 from commit_ledger tests)
+- validate-workspace baseline: docs=1/1, T1=0, round-trip=1/1, T3 reject=0, GENERATED.md=sync, atomic ledger entries=39 (was 38; R291 backfill +1)
+- drift gate live output line: "commit↔ledger drift: cited=26 / ledger=39 / missing=0 (last 200 commits scanned)" — confirms R291 backfill closes the hole
+- unit test missing_round_surfaces_when_cited_but_absent reproduces the R291 hole shape and confirms missing list contains the absent round
+- existing R292 query_term smoke checks remain green (no regression on read-primitive surface)
+
+
+
+**Impact**: §atomic-store-mutate-api, §markdown-parser
+
+
+**Carry forward**:
+- Drift gate severity in v1 = warn-only (informational line, never bails) — promote missing > 0 to a hard reject under a separate axis after policy stabilizes and any legitimate exception classes (e.g. squash-merge artifacts, retroactive backfills) are catalogued
+- Cited-pattern set (R<N> / Round <N> in parens) covers project commit convention only — broader free-form mentions in commit body, PR titles, or other surfaces remain out of scope (subject-line scan only); widen if a real false-negative emerges
+- Scan window fixed at 200 commits — sufficient for active-window drift catch on the current cadence, but does not retroactively scan deep history; long-tail backfills (commit-only round labels older than the window) need a one-off audit pass before any future window-shrink
+- Mutate API hardening carry: append-changelog-entry-v2 silently accepts entry-id-only invocations with empty body (decision/changes/verification/carry args missing) — surfaced during R293 backfill exploration; separate harden-pass needed to reject null fields at the primitive boundary
+- P2 frozen_override_ledger config + T2 ledger-skip integration (carry from R292) — next-round substrate for P1
+- P1 redact_term mutate primitive (carry from R292) — paired with P2 schema
+- Legacy parser-side ChangelogEntry.sub_bullets scan deferred (carry from R292) — v1 atomic-only scope
+- P4 ChangelogEntry body split deferred (carry from R292) — re-evaluate after P1+P2 usage data collected
 
 
 

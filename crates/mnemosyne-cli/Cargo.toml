@@ -23,6 +23,9 @@ sha2.workspace = true
 # Round 120 — query subcommand JSON envelope output in serde_json (Claude
 # consumable shape, Round 117 §15 body registered carry).
 serde_json.workspace = true
+# Round 293 — commit↔ledger drift gate parses commit subjects ("(R<N>)" /
+# "(Round <N>)") and atomic ledger entry-id keys via a small fixed pattern set.
+regex.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }

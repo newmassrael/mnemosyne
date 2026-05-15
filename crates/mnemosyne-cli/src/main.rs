@@ -1617,6 +1617,16 @@ fn cmd_validate_workspace() -> Result<()> {
  // semantics. Silent when [code_refs] is unconfigured.
  print_atomic_decay_surface(&root)?;
 
+ // Round 293 — commit↔ledger drift surface.
+ //
+ // Walks the last 200 git commit subjects, extracts "(R<N>)" / "(Round <N>)"
+ // round labels, diffs against round_numbers parsed from atomic ledger
+ // entry-id keys ("Round NNN — ..."). missing = cited in commit but absent
+ // from ledger (audit-trail hole — R291 was the trigger). Prints one
+ // informational line; never fails the gate. Silent when not in a git repo
+ // or when no labeled commits found in the scan window.
+ print_commit_ledger_drift_surface(&root, &validate_workspace_atomic)?;
+
  Ok(())
 }
 
@@ -1679,6 +1689,107 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  println!(" §{}: {} citation(s)", sid, n);
  }
  Ok(())
+}
+
+/// Round 293 — commit↔ledger drift surface.
+///
+/// Walks the last `MAX_COMMIT_SCAN` git commit subjects, extracts round
+/// labels via the project commit convention `(R<N>)` / `(Round <N>)`, and
+/// diffs against round_numbers parsed from atomic ledger entry-id keys
+/// (`Round NNN — ...`).
+///
+/// `missing` (cited in commit but absent from ledger) is the audit-trail
+/// hole catch — R291 was the trigger (commit `76581f6` landed without an
+/// atomic-store entry between R290 and R292; backfilled in R293).
+///
+/// Informational only — never fails the gate. Silent when not in a git
+/// repo, when git is missing, or when no labeled commits exist in the scan
+/// window. Future round may promote `missing > 0` to a hard reject under
+/// a separate axis once the policy stabilizes.
+const MAX_COMMIT_SCAN: usize = 200;
+
+fn print_commit_ledger_drift_surface(
+ root: &std::path::Path,
+ atomic: &mnemosyne_validator::AtomicStore,
+) -> Result<()> {
+ let cited = collect_recent_commit_round_labels(root, MAX_COMMIT_SCAN);
+ if cited.is_empty() {
+ return Ok(());
+ }
+ let ledger = collect_ledger_round_numbers(atomic);
+ let report = mnemosyne_validator::commit_ledger_diff(&cited, &ledger);
+ println!(
+ "commit↔ledger drift: cited={} / ledger={} / missing={} (last {} commits scanned)",
+ report.cited_count,
+ report.ledger_count,
+ report.missing.len(),
+ MAX_COMMIT_SCAN,
+ );
+ if !report.missing.is_empty() {
+ for n in &report.missing {
+ println!(
+ "  missing R{} — commit subject cites this round but no atomic-store entry exists",
+ n
+ );
+ }
+ println!(
+ "  hint: backfill via `mnemosyne-cli append-changelog-entry-v2 --entry-id \"Round <N> — ...\" \
+  --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B \
+  --carry-file <path>` (Round 293 backfill flow)"
+ );
+ }
+ Ok(())
+}
+
+fn collect_recent_commit_round_labels(
+ root: &std::path::Path,
+ max_commits: usize,
+) -> BTreeSet<u32> {
+ let output = std::process::Command::new("git")
+ .args([
+ "log",
+ &format!("--max-count={}", max_commits),
+ "--pretty=%s",
+ ])
+ .current_dir(root)
+ .output();
+ let output = match output {
+ Ok(o) if o.status.success() => o,
+ _ => return BTreeSet::new(),
+ };
+ let text = String::from_utf8_lossy(&output.stdout);
+ // matches "(R293)" and "(Round 288)" — both forms appear in project history.
+ let re = match regex::Regex::new(r"\((?:R|Round )(\d+)\)") {
+ Ok(r) => r,
+ Err(_) => return BTreeSet::new(),
+ };
+ let mut set: BTreeSet<u32> = BTreeSet::new();
+ for line in text.lines() {
+ for cap in re.captures_iter(line) {
+ if let Ok(n) = cap[1].parse::<u32>() {
+ set.insert(n);
+ }
+ }
+ }
+ set
+}
+
+fn collect_ledger_round_numbers(
+ atomic: &mnemosyne_validator::AtomicStore,
+) -> BTreeSet<u32> {
+ let re = match regex::Regex::new(r"^Round (\d+)") {
+ Ok(r) => r,
+ Err(_) => return BTreeSet::new(),
+ };
+ let mut set: BTreeSet<u32> = BTreeSet::new();
+ for key in atomic.changelog_entries.keys() {
+ if let Some(cap) = re.captures(key) {
+ if let Ok(n) = cap[1].parse::<u32>() {
+ set.insert(n);
+ }
+ }
+ }
+ set
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

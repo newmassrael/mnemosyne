@@ -38,6 +38,7 @@ pub mod style;
 pub mod atomic;
 pub mod render;
 pub mod code_refs;
+pub mod commit_ledger;
 
 pub use schema::{
  ChangelogEntry, CrossRef, DecisionStatus, FrozenList, LockKind, ParsedDoc, RefKind, Section,
@@ -87,3 +88,4 @@ pub use atomic::{
 // the legacy `mutate::add_section` name collision (Phase H will remove the
 // legacy variant; until then callers use the module-qualified path).
 pub use render::{render_changelog_entry, render_section, RenderError};
+pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
