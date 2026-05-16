@@ -807,7 +807,7 @@ impl MnemosyneServer {
     // to author the row separately.
 
     #[tool(
-        description = "Replace the publishable_decision_summary of an existing entry (R295). Mutates the publishable half only — audit_decision_summary stays frozen. Pair with a [[publishable_override_ledger]] row (R296 gate) or use redact_term for an automated ledger draft. NotFound if entry_id has not been appended."
+        description = "Replace the publishable_decision_summary of an existing entry (R295). Mutates the publishable half only — audit_decision_summary stays frozen and cannot be damaged by this primitive. Use cases: typo fix, prefix-format correction, header-style normalization, redaction. Pair with a [[publishable_override_ledger]] row (R296 gate) or use redact_term for an automated ledger draft. NotFound if entry_id has not been appended."
     )]
     async fn set_changelog_publishable_decision_summary(
         &self,
@@ -824,7 +824,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_changes(
         &self,
@@ -835,7 +835,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_verification(
         &self,
@@ -846,7 +846,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: scope refinement, cross-ref correction, post-hoc impact rescoping. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_impact_refs(
         &self,
@@ -857,7 +857,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Pair with [[publishable_override_ledger]] (R296) or use redact_term."
+        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_carry_forward(
         &self,
