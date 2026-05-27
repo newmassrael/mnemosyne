@@ -62,8 +62,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::atomic::AtomicStore;
-use crate::config::{OrphanKind, OrphanLedgerEntry};
+use crate::config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
 use crate::schema::DecisionStatus;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
@@ -930,79 +929,6 @@ fn scan_round_number(s: &str) -> Option<String> {
  Some(buf)
 }
 
-/// entry_id-only scan (legacy thin wrapper, retained for
-/// backward compatibility with callers that don't carry the full atomic
-/// store). New callers should use [`scan_paths_bidirectional`].
-///
-/// defaults `comment_only=false` to preserve the Round
-/// 256/258 whole-text scan semantics for any external caller still bound
-/// to this entrypoint.
-pub fn scan_paths(
- workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- valid_entry_ids: &BTreeSet<String>,
-) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_filtered(workspace_root, paths, prefix, valid_entry_ids, None, false)
-}
-
-/// entry_id-only scan with optional decay filter (legacy
-/// thin wrapper). New callers should use [`scan_paths_bidirectional`]
-/// which also covers the §<id> axis and the Path B bidirectional check.
-///
-/// `comment_only` toggles the comment-only filtering layer.
-/// When `true`, each file's content is passed through [`strip_to_comments`]
-/// (with [`comment_syntax_for`] picking the per-extension mode) before
-/// citation extraction; when `false`, the whole file is scanned (Round
-/// 256/258 semantics).
-pub fn scan_paths_filtered(
- workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- valid_entry_ids: &BTreeSet<String>,
- filter_id: Option<&str>,
- comment_only: bool,
-) -> std::io::Result<Vec<CodeRefViolation>> {
- let files = walk_paths(workspace_root, paths)?;
- let mut violations = Vec::new();
- for abs in files {
- let raw = match std::fs::read_to_string(&abs) {
- Ok(c) => c,
- Err(_) => continue,
- };
- let content = if comment_only {
- strip_to_comments(&raw, comment_syntax_for(&abs))
- } else {
- raw
- };
- let rel = abs
- .strip_prefix(workspace_root)
- .map(|p| p.to_path_buf())
- .unwrap_or(abs.clone());
- for (line, entry_id) in extract_citations(prefix, &content) {
- let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
- let is_missing = !valid_entry_ids.contains(&entry_id);
- let kind = if matches_filter {
- ViolationKind::Decay
- } else if filter_id.is_none() && is_missing {
- ViolationKind::Missing
- } else {
- continue;
- };
- violations.push(CodeRefViolation::Citation {
- citation: Citation {
-  file: rel.clone(),
-  line,
-  entry_id,
- },
- kind,
- });
- }
- }
- sort_violations(&mut violations);
- Ok(violations)
-}
-
 /// full Path B scan: Round NNN axis + §<id> axis +
 /// bidirectional set-equality check + orphan ledger suppression for
 /// `OrphanKind::CodeCitation` rows.
@@ -1078,43 +1004,90 @@ fn lang_for_file(path: &Path) -> Option<&'static str> {
  }
 }
 
-pub fn scan_paths_bidirectional(
+/// First-class Validator plugin embodying the set-equality citation
+/// audit. Routes through `PluginRegistry` so the validator-class trait
+/// surface is reached from production code (`cmd_validate_code_refs`
+/// constructs, registers, and dispatches), closing R306 carry item #1.
+///
+/// Field rationale:
+/// - `config` — paths / severity / comment_only / inventory + external
+///   prefix axes (in-place from `SetEqualityValidatorConfig`).
+/// - `entry_id_prefix` — schema-driven (`<entry_id_prefix><number>`
+///   cite shape). Cached at construction so `Validator::validate` does
+///   not re-discover from `ValidationContext`.
+/// - `orphan_ledger` — workspace-config-driven `[[orphan_ledger]]` rows.
+/// - `symbol_resolvers` — BindingClass plugin map keyed by language ID
+///   (`rust`/`python`/`go`). Owned (not registry-borrowed) so
+///   `Validator::validate` is self-contained — no registry parameter on
+///   `ValidationContext`. Empty map = symbol axis disabled.
+/// - `filter_id` — decay-cascade caller's per-instance toggle. `None`
+///   for normal runs; `Some(<entry_id>)` for cascade-mode callers
+///   narrowing to one entry's decay scan.
+pub struct SetEqualityValidator {
+ pub config: SetEqualityValidatorConfig,
+ pub entry_id_prefix: String,
+ pub orphan_ledger: Vec<OrphanLedgerEntry>,
+ pub symbol_resolvers:
+ BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>>,
+ pub filter_id: Option<String>,
+}
+
+impl SetEqualityValidator {
+ /// Rich scan returning `CodeRefViolation`. The plugin trait method
+ /// `validate(ctx)` calls into this and maps each variant to a
+ /// `ValidationFinding` for cross-plugin dispatch; direct callers
+ /// (the decay-cascade trigger after a Superseded transition) keep
+ /// the structured shape.
+ ///
+ /// Algorithm: Round NNN axis + §<id> axis with two external-skip
+ /// modes + Inventory axis with two tail shapes + bidirectional
+ /// set-equality (Path B) + spec-side coverage axiom. See
+ /// [`CodeRefViolation`] doc for per-variant evidence.
+ pub fn scan(
+ &self,
  workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- store: &AtomicStore,
- orphan_ledger: &[OrphanLedgerEntry],
- filter_id: Option<&str>,
- comment_only: bool,
- inventory_prefixes: &[String],
- external_section_prefixes_numeric: &[String],
- external_section_prefixes_bare: &[String],
- inventory_path_prefixes: &[String],
- symbol_resolvers: Option<&BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>>>,
-) -> std::io::Result<Vec<CodeRefViolation>> {
- // Round 293 — valid_entry_ids must match the shape produced by
- // `extract_citations`, which returns `<prefix><number>` (e.g. "Round 293").
- // Some atomic ledger keys are short-form ("Round 292") and match
- // directly; others are long-form ("Round 293 — <title>"). Normalize both
- // to the `<prefix><number>` form by stripping the prefix and re-running
- // `scan_round_number` on the rest, so a code citation of "Round 293"
- // resolves either way. Keys without the prefix are skipped (they cannot
- // collide with the cited shape).
- let valid_entry_ids: BTreeSet<String> = store
- .changelog_entries
- .keys()
+ snapshot: &mnemosyne_plugin::AtomicSnapshot,
+ ) -> std::io::Result<Vec<CodeRefViolation>> {
+ let prefix = self.entry_id_prefix.as_str();
+ let filter_id = self.filter_id.as_deref();
+ let comment_only = self.config.comment_only;
+ let inventory_prefixes = self.config.inventory_prefixes.as_slice();
+ let external_section_prefixes_numeric =
+ self.config.external_section_prefixes.as_slice();
+ let external_section_prefixes_bare =
+ self.config.external_section_prefixes_bare.as_slice();
+ let inventory_path_prefixes = self.config.inventory_path_prefixes.as_slice();
+ // Empty resolver map = symbol axis silently skipped; identical
+ // semantic to the pre-R307 `Option<&BTreeMap>` shape where None
+ // bypassed lookup entirely.
+ let symbol_resolvers_opt = if self.symbol_resolvers.is_empty() {
+ None
+ } else {
+ Some(&self.symbol_resolvers)
+ };
+ let paths = self.config.paths.as_slice();
+ let orphan_ledger = self.orphan_ledger.as_slice();
+
+ // valid_entry_ids must match the shape produced by `extract_citations`,
+ // which returns `<prefix><number>` (e.g. "Round 293"). Atomic ledger
+ // keys are either short-form ("Round 292") or long-form
+ // ("Round 293 — <title>"); both get normalized to `<prefix><number>`
+ // by stripping prefix + re-running `scan_round_number`. Keys without
+ // the prefix cannot collide with the cited shape and are skipped.
+ let valid_entry_ids: BTreeSet<String> = snapshot
+ .changelog_entry_ids
+ .iter()
  .filter_map(|k| {
  let rest = k.strip_prefix(prefix)?;
  let num = scan_round_number(rest)?;
  Some(format!("{}{}", prefix, num))
  })
  .collect();
- let section_id_set = store.atomic_section_id_set();
+ let section_id_set = &snapshot.section_ids_with_implied_parents;
 
- // Pre-index §X.implementations by section_id (so we can membership-check
- // (file in §X.implementations files) in O(log n) per cite, and so we
- // know the full impls universe for step 3).
- let impl_files_by_section: BTreeMap<&str, BTreeSet<&str>> = store
+ // Pre-index §X.implementations by section_id for O(log n) per-cite
+ // membership check + step 3 universe enumeration.
+ let impl_files_by_section: BTreeMap<&str, BTreeSet<&str>> = snapshot
  .sections
  .iter()
  .map(|(sid, sec)| {
@@ -1127,12 +1100,11 @@ pub fn scan_paths_bidirectional(
  })
  .collect();
 
- // Round 306 — RFC-002 FR-3 symbol-level enforcement index.
- // section_id → file → symbol (when Implementation.symbol is Some).
- // Drives SymbolMismatch checks at each CitationUnbound boundary
- // where the file IS bound — the bidirectional set-equality passes
- // file granularity (R260) but the symbol axis may disagree.
- let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, &str>> = store
+ // RFC-002 FR-3 symbol-level enforcement index — section_id → file →
+ // symbol (when Implementation.symbol is Some). Drives SymbolMismatch
+ // checks at each cite where the file IS bound — file-granularity
+ // (R260) passes but symbol granularity may disagree.
+ let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, &str>> = snapshot
  .sections
  .iter()
  .map(|(sid, sec)| {
@@ -1146,16 +1118,14 @@ pub fn scan_paths_bidirectional(
  .collect();
 
  // Orphan ledger lookup: (file, id) pairs explicitly registered as
- // known-stale code citations on the `§`-axis.
+ // known-stale code citations on the `§`-axis vs the inventory axis.
+ // Independent indices so `CodeCitation` rows don't suppress inventory
+ // violations and `InventoryCitation` rows don't suppress `§`-axis.
  let ledger_index: BTreeSet<(&str, &str)> = orphan_ledger
  .iter()
  .filter(|e| e.kind == OrphanKind::CodeCitation)
  .map(|e| (e.from.as_str(), e.to.as_str()))
  .collect();
-
- // Round 285 — same shape for the inventory axis. Independent index
- // so `CodeCitation` rows don't suppress inventory violations and
- // `InventoryCitation` rows don't suppress `§`-axis violations.
  let inventory_ledger_index: BTreeSet<(&str, &str)> = orphan_ledger
  .iter()
  .filter(|e| e.kind == OrphanKind::InventoryCitation)
@@ -1190,11 +1160,11 @@ pub fn scan_paths_bidirectional(
  let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
  let is_missing = !valid_entry_ids.contains(&entry_id);
  let kind = if matches_filter {
- ViolationKind::Decay
+  ViolationKind::Decay
  } else if filter_id.is_none() && is_missing {
- ViolationKind::Missing
+  ViolationKind::Missing
  } else {
- continue;
+  continue;
  };
  violations.push(CodeRefViolation::Citation {
  citation: Citation {
@@ -1217,95 +1187,84 @@ pub fn scan_paths_bidirectional(
  external_section_prefixes_numeric,
  external_section_prefixes_bare,
  ) {
- // Ledger suppression — if (file, id) is explicitly registered
- // as a known-stale code citation, treat as if the binding were
- // correct (record in `cited_by` so step 3 doesn't double-fire).
- let suppressed = ledger_index.contains(&(rel_str.as_str(), section_id.as_str()));
+ // Ledger suppression — if (file, id) is explicitly registered as a
+ // known-stale code citation, treat as if the binding were correct
+ // (record in `cited_by` so step 3 doesn't double-fire).
+ let suppressed =
+  ledger_index.contains(&(rel_str.as_str(), section_id.as_str()));
  cited_by
  .entry(rel_str.clone())
  .or_default()
  .insert(section_id.clone());
  if suppressed {
- continue;
+  continue;
  }
  if !section_id_set.contains(&section_id) {
  violations.push(CodeRefViolation::Citation {
- citation: Citation {
+  citation: Citation {
   file: rel.clone(),
   line,
   entry_id: format!("§{}", section_id),
- },
- kind: ViolationKind::SectionMissing,
+  },
+  kind: ViolationKind::SectionMissing,
  });
  continue;
  }
  // Section exists — check spec-side membership of (file in
- // §<id>.implementations files). Note: matching is by `file`
- // string only (symbol is opaque metadata, not part of the
- // bidirectional set-equality in v1 — same fact treated
- // consistently from both directions).
+ // §<id>.implementations files). Matching is by `file` string only;
+ // symbol is opaque metadata not in the v1 bidirectional set-equality.
  let bound = impl_files_by_section
  .get(section_id.as_str())
  .map(|files| files.contains(rel_str.as_str()))
  .unwrap_or(false);
  if !bound {
  violations.push(CodeRefViolation::Citation {
- citation: Citation {
+  citation: Citation {
   file: rel.clone(),
   line,
   entry_id: format!("§{}", section_id),
- },
- kind: ViolationKind::CitationUnbound,
+  },
+  kind: ViolationKind::CitationUnbound,
  });
- } else if let Some(resolvers) = symbol_resolvers {
- // Round 306 — RFC-002 FR-3 symbol-level enforcement.
- // File-level binding passed; if the cited section's impl
- // entry for this file carries a `symbol`, the resolver for
- // the file's language is consulted. Mismatch surfaces as
- // SymbolMismatch (Binding-class severity bucket). Resolver
- // returning None/Err is silent — author may need to update
- // either the cite line or the Implementation.symbol value,
- // but the substrate doesn't presume which is wrong.
+ } else if let Some(resolvers) = symbol_resolvers_opt {
+ // RFC-002 FR-3 symbol-level enforcement. File-level binding
+ // passed; if the cited section's impl entry for this file carries
+ // a `symbol`, the resolver for the file's language is consulted.
+ // Mismatch surfaces as SymbolMismatch (Binding-class). Resolver
+ // returning None/Err is silent.
  if let Some(expected_sym) = impl_symbols_by_section_file
  .get(section_id.as_str())
  .and_then(|m| m.get(rel_str.as_str()))
  {
- if let Some(lang) = lang_for_file(&rel) {
- if let Some(resolver) = resolvers.get(lang) {
-  let abs_for_resolve = workspace_root.join(&rel);
-  if let Ok(Some(resolved)) =
-  resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
-  {
-  if resolved.as_str() != *expected_sym {
-  violations.push(CodeRefViolation::Citation {
-  citation: Citation {
-   file: rel.clone(),
-   line,
-   entry_id: format!("§{}", section_id),
-  },
-  kind: ViolationKind::SymbolMismatch,
-  });
+  if let Some(lang) = lang_for_file(&rel) {
+  if let Some(resolver) = resolvers.get(lang) {
+   let abs_for_resolve = workspace_root.join(&rel);
+   if let Ok(Some(resolved)) =
+   resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
+   {
+   if resolved.as_str() != *expected_sym {
+   violations.push(CodeRefViolation::Citation {
+   citation: Citation {
+    file: rel.clone(),
+    line,
+    entry_id: format!("§{}", section_id),
+   },
+   kind: ViolationKind::SymbolMismatch,
+   });
+   }
+   }
   }
   }
- }
- }
  }
  }
  }
 
- // ---- Round 275 — Inventory ID axis (Phase 1A) ----
- // `inventory_prefixes` empty = axis disabled (5-min setup carry).
- // Active / Reserved status pass silently; Deprecated triggers
- // `InventoryDeprecated`; missing IDs trigger `InventoryMissing`.
- // Round 285 — `[[orphan_ledger]] kind = InventoryCitation` rows
- // suppress both Deprecated and Missing for the (file, id) pair so
- // adopters can document intentional historical references (e.g.,
- // "deleted in V2 → V3") via the audit-trail-preserving ledger
- // instead of silencing them outright.
- //
- // Chain the section-path inventory axis (`inventory_path_prefixes`).
- // Both axes resolve against the same `InventoryEntry` store; dedup
- // on (line, id) so a prefix registered in both axes surfaces once.
+ // ---- Inventory ID axis (Phase 1A) ----
+ // Active / Reserved → silent; Deprecated → InventoryDeprecated;
+ // missing IDs → InventoryMissing. `[[orphan_ledger]] kind =
+ // InventoryCitation` suppresses both. Chain section-path
+ // inventory axis (`inventory_path_prefixes`); dedup on (line, id)
+ // so a prefix registered in both axes surfaces once.
  let mut inventory_cites = extract_inventory_citations(inventory_prefixes, &content);
  inventory_cites.extend(extract_inventory_path_citations(
  inventory_path_prefixes,
@@ -1314,33 +1273,28 @@ pub fn scan_paths_bidirectional(
  inventory_cites.sort();
  inventory_cites.dedup();
  for (line, inventory_id) in inventory_cites {
- let kind = match store.inventory(&inventory_id).map(|e| e.status) {
- None => Some(ViolationKind::InventoryMissing),
- Some(crate::atomic::InventoryStatus::Deprecated) => {
- Some(ViolationKind::InventoryDeprecated)
- }
- // Active / Reserved — cite-permitted.
- Some(_) => None,
+ let kind = match snapshot.inventory.get(&inventory_id).copied() {
+  None => Some(ViolationKind::InventoryMissing),
+  Some(mnemosyne_plugin::InventoryStatusView::Deprecated) => {
+  Some(ViolationKind::InventoryDeprecated)
+  }
+  // Active / Reserved — cite-permitted.
+  Some(_) => None,
  };
  if let Some(k) = kind {
- // Ledger suppression — if (file, id) is explicitly registered
- // as a known-stale inventory citation, skip the violation.
- // Reason field on the ledger row is the author's audit-trail
- // record; typo'd ids stay author-review territory (same
- // policy as the `§`-axis CodeCitation ledger).
- if inventory_ledger_index
- .contains(&(rel_str.as_str(), inventory_id.as_str()))
- {
- continue;
- }
- violations.push(CodeRefViolation::Citation {
- citation: Citation {
+  if inventory_ledger_index
+  .contains(&(rel_str.as_str(), inventory_id.as_str()))
+  {
+  continue;
+  }
+  violations.push(CodeRefViolation::Citation {
+  citation: Citation {
   file: rel.clone(),
   line,
   entry_id: inventory_id,
- },
- kind: k,
- });
+  },
+  kind: k,
+  });
  }
  }
  }
@@ -1348,55 +1302,165 @@ pub fn scan_paths_bidirectional(
  // ---- Step 3: spec-side bidirectional half ----
  // Skip under decay-filter mode.
  if filter_id.is_none() {
- for (section_id, section) in &store.sections {
+ for (section_id, section) in &snapshot.sections {
  for impl_entry in &section.implementations {
  let suppressed =
- ledger_index.contains(&(impl_entry.file.as_str(), section_id.as_str()));
+  ledger_index.contains(&(impl_entry.file.as_str(), section_id.as_str()));
  if suppressed {
- continue;
+  continue;
  }
  let cited = cited_by
- .get(&impl_entry.file)
- .map(|set| set.contains(section_id))
- .unwrap_or(false);
+  .get(&impl_entry.file)
+  .map(|set| set.contains(section_id))
+  .unwrap_or(false);
  if !cited {
- violations.push(CodeRefViolation::ImplementationUnbacked {
- section_id: section_id.clone(),
- file: PathBuf::from(&impl_entry.file),
- symbol: impl_entry.symbol.clone(),
- });
+  violations.push(CodeRefViolation::ImplementationUnbacked {
+  section_id: section_id.clone(),
+  file: PathBuf::from(&impl_entry.file),
+  symbol: impl_entry.symbol.clone(),
+  });
  }
  }
  }
  }
 
- // ---- Step 4: spec-side coverage axiom (Round 269) ----
- // Workspace-wide enumeration: a section with non-Removed decision_status
- // and zero implementations is the "Active = backed by code" axiom
- // violation. Removed is tombstone-exempt (legitimately carries no impls).
- // None → Active fallback (Round 265 consumer-side convention) used only
- // for the trigger comparison; the raw Option is preserved in the emitted
- // variant so the audit-trail consumer keeps full information.
- // Skip under decay-filter mode for surface-narrowing symmetry with
- // Steps 2-3 (a Superseded-cascade caller's question is targeted).
+ // ---- Step 4: spec-side coverage axiom ----
+ // Workspace-wide: a section with non-Removed decision_status and
+ // zero implementations is the "Active = backed by code" axiom
+ // violation. Removed is tombstone-exempt. None → Active fallback
+ // used for the trigger only; the raw Option is preserved on the
+ // emitted variant (carried as schema DecisionStatus for back-compat
+ // with `CodeRefViolation::ImplementationMissing`'s shape).
  if filter_id.is_none() {
- for (section_id, section) in &store.sections {
+ for (section_id, section) in &snapshot.sections {
  if !section.implementations.is_empty() {
  continue;
  }
- let resolved = section.decision_status.unwrap_or(DecisionStatus::Active);
- if resolved == DecisionStatus::Removed {
+ let resolved_view = section
+ .decision_status
+ .unwrap_or(mnemosyne_plugin::DecisionStatusView::Active);
+ if resolved_view == mnemosyne_plugin::DecisionStatusView::Removed {
  continue;
  }
+ let schema_status = section.decision_status.map(view_to_schema_decision_status);
  violations.push(CodeRefViolation::ImplementationMissing {
  section_id: section_id.clone(),
- decision_status: section.decision_status,
+ decision_status: schema_status,
  });
  }
  }
 
  sort_violations(&mut violations);
  Ok(violations)
+ }
+}
+
+/// Map plugin-substrate `DecisionStatusView` back onto the validator's
+/// schema `DecisionStatus`. Used at the `Vec<CodeRefViolation>` boundary
+/// where `ImplementationMissing` carries `Option<DecisionStatus>` for
+/// JSON / TTY back-compat.
+fn view_to_schema_decision_status(
+ v: mnemosyne_plugin::DecisionStatusView,
+) -> DecisionStatus {
+ match v {
+ mnemosyne_plugin::DecisionStatusView::Active => DecisionStatus::Active,
+ mnemosyne_plugin::DecisionStatusView::Superseded => DecisionStatus::Superseded,
+ mnemosyne_plugin::DecisionStatusView::Removed => DecisionStatus::Removed,
+ }
+}
+
+impl mnemosyne_plugin::Validator for SetEqualityValidator {
+ fn version_surface(&self) -> mnemosyne_plugin::VersionSurface {
+ mnemosyne_plugin::VersionSurface {
+ plugin_name: "mnemosyne-validator::SetEqualityValidator".into(),
+ plugin_version: env!("CARGO_PKG_VERSION").into(),
+ schema_min: 4,
+ schema_max: 4,
+ }
+ }
+
+ fn validate(
+ &self,
+ ctx: &mnemosyne_plugin::ValidationContext<'_>,
+ ) -> Result<Vec<mnemosyne_plugin::ValidationFinding>, mnemosyne_plugin::ValidatorError>
+ {
+ let snapshot = ctx.store.snapshot();
+ let violations = self
+ .scan(ctx.workspace_root, &snapshot)
+ .map_err(|e| mnemosyne_plugin::ValidatorError::Internal(e.to_string()))?;
+ Ok(violations.into_iter().map(violation_to_finding).collect())
+ }
+}
+
+/// `CodeRefViolation` → `ValidationFinding` adapter — preserves the
+/// rich kind / file / line / entry_id / symbol / decision_status payload
+/// across the plugin trait boundary via `kind` + `extras`. Severity is a
+/// structural default (`Reject` for non-Decay, `Info` for `Decay`); the
+/// consumer applies per-class severity overrides (`severity_missing` /
+/// `severity_binding` / `severity_inventory`) off the finding's `kind`
+/// string.
+fn violation_to_finding(v: CodeRefViolation) -> mnemosyne_plugin::ValidationFinding {
+ use serde_json::Value;
+ let kind_tag = v.kind_tag().to_string();
+ let severity = match v.defect_class() {
+ DefectClass::Decay => mnemosyne_plugin::Severity::Info,
+ _ => mnemosyne_plugin::Severity::Reject,
+ };
+ let mut extras: BTreeMap<String, Value> = BTreeMap::new();
+ let (section_id, file, line, message) = match v {
+ CodeRefViolation::Citation { citation, .. } => {
+ extras.insert("entry_id".into(), Value::String(citation.entry_id.clone()));
+ let msg = format!(
+ "[{}] {}:{} {}",
+ kind_tag,
+ citation.file.to_string_lossy(),
+ citation.line,
+ citation.entry_id
+ );
+ (None, Some(citation.file), Some(citation.line as u32), msg)
+ }
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => {
+ if let Some(s) = &symbol {
+ extras.insert("symbol".into(), Value::String(s.clone()));
+ }
+ let msg = format!(
+ "[{}] {}:<no-cite> §{}{}",
+ kind_tag,
+ file.to_string_lossy(),
+ section_id,
+ symbol
+  .as_deref()
+  .map(|s| format!(" ({})", s))
+  .unwrap_or_default()
+ );
+ (Some(section_id), Some(file), None, msg)
+ }
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ let status_str = match decision_status {
+ Some(s) => format!("{:?}", s).to_lowercase(),
+ None => "none(default-active)".to_string(),
+ };
+ extras.insert("decision_status".into(), Value::String(status_str.clone()));
+ let msg = format!("[{}] §{} (status={})", kind_tag, section_id, status_str);
+ (Some(section_id), None, None, msg)
+ }
+ };
+ mnemosyne_plugin::ValidationFinding {
+ severity,
+ kind: Some(kind_tag),
+ section_id,
+ file,
+ line,
+ message,
+ extras,
+ }
 }
 
 /// Round 266 — auto-cascade trigger primitive (Stage B freshness).
@@ -1575,10 +1639,11 @@ mod tests {
  use crate::atomic::{add_section_implementation, AtomicStore};
  use tempfile::TempDir;
 
- /// Test-only wrapper that drives `scan_paths_bidirectional` with no
+ /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
  /// SymbolResolver registry — i.e., pre-R306 set-equality-only mode.
- /// Tests that specifically exercise the R306 symbol-axis enforcement
- /// call `scan_paths_bidirectional` directly with a populated map.
+ /// Tests that specifically exercise R306 symbol-axis enforcement
+ /// construct a `SetEqualityValidator` directly with a populated
+ /// `symbol_resolvers` map.
  #[allow(clippy::too_many_arguments)]
  fn scan_paths_no_resolvers(
  workspace_root: &Path,
@@ -1593,20 +1658,26 @@ mod tests {
  external_section_prefixes_bare: &[String],
  inventory_path_prefixes: &[String],
  ) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_bidirectional(
- workspace_root,
- paths,
- prefix,
- store,
- orphan_ledger,
- filter_id,
+ use mnemosyne_plugin::AtomicStoreView;
+ let validator = SetEqualityValidator {
+ config: SetEqualityValidatorConfig {
+ paths: paths.to_vec(),
+ severity_missing: "reject".into(),
+ severity_binding: "reject".into(),
+ severity_inventory: "reject".into(),
  comment_only,
- inventory_prefixes,
- external_section_prefixes_numeric,
- external_section_prefixes_bare,
- inventory_path_prefixes,
- None,
- )
+ inventory_prefixes: inventory_prefixes.to_vec(),
+ external_section_prefixes: external_section_prefixes_numeric.to_vec(),
+ external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
+ inventory_path_prefixes: inventory_path_prefixes.to_vec(),
+ },
+ entry_id_prefix: prefix.to_string(),
+ orphan_ledger: orphan_ledger.to_vec(),
+ symbol_resolvers: BTreeMap::new(),
+ filter_id: filter_id.map(String::from),
+ };
+ let snapshot = store.snapshot();
+ validator.scan(workspace_root, &snapshot)
  }
 
  #[test]
@@ -2082,69 +2153,6 @@ mod tests {
  let raw_hits =
  scan_section_decay(tmp.path(), &["src/".to_string()], "39", false).unwrap();
  assert_eq!(raw_hits.len(), 2, "comment_only=false picks up both");
- }
-
- // ============ Legacy /258 thin-wrapper tests ============
-
- #[test]
- fn scan_paths_filtered_decay_surfaces_filter_id_match() {
- let tmp = tempfile::tempdir().unwrap();
- let src = tmp.path().join("src");
- std::fs::create_dir_all(&src).unwrap();
- std::fs::write(
- src.join("a.rs"),
- "// Round 1 here\n// Round 5 here\n// Round 1 again\n",
- )
- .unwrap();
- let mut valid = BTreeSet::new();
- valid.insert("Round 1".to_string());
- valid.insert("Round 5".to_string());
- let v = scan_paths_filtered(
- tmp.path(),
- &["src/".to_string()],
- "Round ",
- &valid,
- Some("Round 1"),
- true,
- )
- .unwrap();
- assert_eq!(v.len(), 2);
- for x in &v {
- match x {
- CodeRefViolation::Citation { kind, citation } => {
- assert_eq!(*kind, ViolationKind::Decay);
- assert_eq!(citation.entry_id, "Round 1");
- }
- other => panic!("unexpected variant: {:?}", other),
- }
- }
- }
-
- #[test]
- fn scan_paths_filter_none_reports_only_missing() {
- let tmp = tempfile::tempdir().unwrap();
- let src = tmp.path().join("src");
- std::fs::create_dir_all(&src).unwrap();
- std::fs::write(src.join("a.rs"), "// Round 1\n// Round 999\n").unwrap();
- let mut valid = BTreeSet::new();
- valid.insert("Round 1".to_string());
- let v = scan_paths_filtered(
- tmp.path(),
- &["src/".to_string()],
- "Round ",
- &valid,
- None,
- true,
- )
- .unwrap();
- assert_eq!(v.len(), 1);
- match &v[0] {
- CodeRefViolation::Citation { kind, citation } => {
- assert_eq!(*kind, ViolationKind::Missing);
- assert_eq!(citation.entry_id, "Round 999");
- }
- other => panic!("unexpected variant: {:?}", other),
- }
  }
 
  // ============ comment-only filtering tests ============

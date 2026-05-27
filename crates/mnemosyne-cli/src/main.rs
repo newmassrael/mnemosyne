@@ -20,7 +20,7 @@ use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
  check_style,
- code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
+ code_refs::SetEqualityValidator,
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
@@ -1978,89 +1978,98 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
- // Round 306 — build SymbolResolver registry from
- // [plugins.symbol_resolver.<lang>]. Only InProcess transport is wired
- // in this round; Mcp/Cli surface ResolverError::NotImplemented at
- // call time. Unknown backend names log a warning and are skipped.
+ // Build the SymbolResolver registry from
+ // [plugins.symbol_resolver.<lang>]. Only InProcess transport returns
+ // real answers; Mcp/Cli surface ResolverError::NotImplemented at
+ // call time until R308+ wires real backends. Unknown in-process
+ // backend names log a warning and are skipped.
  let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
 
- let violations = scan_paths_bidirectional(
- &root,
- &cfg.paths,
- &prefix,
- &store,
- &loaded.config.orphan_ledger,
- filter_id.as_deref(),
- cfg.comment_only,
- &cfg.inventory_prefixes,
- &cfg.external_section_prefixes,
- &cfg.external_section_prefixes_bare,
- &cfg.inventory_path_prefixes,
- if symbol_resolvers.is_empty() { None } else { Some(&symbol_resolvers) },
- )
- .context("scan_paths_bidirectional failed")?;
+ // Dispatch through PluginRegistry — closes the R306 carry item #1
+ // (validator-class trait surface reached from production, not just
+ // type-level). The SetEqualityValidator owns its config + resolver
+ // map + orphan ledger + filter_id, so `Validator::validate(ctx)` is
+ // self-contained and ValidationContext stays minimal.
+ let validator = SetEqualityValidator {
+ config: cfg.clone(),
+ entry_id_prefix: prefix.clone(),
+ orphan_ledger: loaded.config.orphan_ledger.clone(),
+ symbol_resolvers,
+ filter_id: filter_id.clone(),
+ };
+ let mut registry = mnemosyne_plugin::PluginRegistry::new();
+ registry.register_validator("set_equality_validator", Box::new(validator));
+ let dispatched = registry
+ .validator("set_equality_validator")
+ .expect("just registered");
+ let store_view: &dyn mnemosyne_plugin::AtomicStoreView = &store;
+ let ctx = mnemosyne_plugin::ValidationContext {
+ workspace_root: &root,
+ atomic_sidecar: &atomic_path,
+ store: store_view,
+ };
+ let findings = dispatched
+ .validate(&ctx)
+ .map_err(|e| anyhow!("SetEqualityValidator dispatch failed: {}", e))?;
 
- // missing / section_missing / citation_unbound / impl_unbacked / decay
- // / impl_missing / inventory_missing / inventory_deprecated / symbol_mismatch
- let mut counts = [0usize; 9];
- for v in &violations {
- match v {
- CodeRefViolation::Citation { kind, .. } => match kind {
- ViolationKind::Missing => counts[0] += 1,
- ViolationKind::SectionMissing => counts[1] += 1,
- ViolationKind::CitationUnbound => counts[2] += 1,
- ViolationKind::Decay => counts[4] += 1,
- ViolationKind::InventoryMissing => counts[6] += 1,
- ViolationKind::InventoryDeprecated => counts[7] += 1,
- ViolationKind::SymbolMismatch => counts[8] += 1,
- },
- CodeRefViolation::ImplementationUnbacked { .. } => counts[3] += 1,
- CodeRefViolation::ImplementationMissing { .. } => counts[5] += 1,
+ // Per-class counting reads `ValidationFinding.kind` (the validator's
+ // sub-kind tag). The kind→count routing matches the
+ // pre-dispatch CodeRefViolation arms 1-to-1 — same defect-class
+ // bucketing for `severity_missing` / `severity_binding` /
+ // `severity_inventory`.
+ let mut counts = std::collections::BTreeMap::<&str, usize>::new();
+ for f in &findings {
+ if let Some(k) = f.kind.as_deref() {
+ *counts.entry(k).or_insert(0) += 1;
  }
  }
- let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count, inventory_missing_count, inventory_deprecated_count, symbol_mismatch_count] =
- counts;
+ let get = |k: &str| counts.get(k).copied().unwrap_or(0);
+ let missing_count = get("missing");
+ let section_missing_count = get("section_missing");
+ let citation_unbound_count = get("citation_unbound");
+ let impl_unbacked_count = get("impl_unbacked");
+ let decay_count = get("decay");
+ let impl_missing_count = get("impl_missing");
+ let inventory_missing_count = get("inventory_missing");
+ let inventory_deprecated_count = get("inventory_deprecated");
+ let symbol_mismatch_count = get("symbol_mismatch");
  let inventory_count = inventory_missing_count + inventory_deprecated_count;
  let hallucination_count = missing_count + section_missing_count;
- // Round 269 — impl_missing bucketed into severity_binding (defect_class
- // = Binding for all three Path B edges). Separate severity flag was
- // considered (C2) but deferred — promotion to a dedicated bucket needs
- // empirical evidence that ImplementationMissing and ImplementationUnbacked
- // warrant independent policy, mirroring the Round 262 → 263 measure-then-
- // promote pattern. Round 306 — RFC-002 FR-3 SymbolMismatch joins the
- // binding bucket (defect_class = Binding) so the existing severity flag
- // governs symbol-axis policy without a new knob.
+ // impl_missing bucketed into severity_binding (defect_class = Binding
+ // for all three Path B edges). RFC-002 FR-3 SymbolMismatch joins the
+ // binding bucket so the existing severity flag governs symbol-axis
+ // policy without a new knob.
  let binding_count = citation_unbound_count + impl_unbacked_count + impl_missing_count
  + symbol_mismatch_count;
 
  if json {
- let view: Vec<_> = violations
+ // Reconstruct the pre-R307 JSON shape from ValidationFinding's
+ // universal fields + plugin-specific `extras` (entry_id / symbol /
+ // decision_status). External consumers see a byte-identical
+ // structure modulo extras ordering.
+ let view: Vec<serde_json::Value> = findings
  .iter()
- .map(|v| match v {
- CodeRefViolation::Citation { citation, .. } => serde_json::json!({
- "kind": v.kind_tag(),
- "file": citation.file.to_string_lossy(),
- "line": citation.line,
- "entry_id": citation.entry_id,
- }),
- CodeRefViolation::ImplementationUnbacked {
- section_id,
- file,
- symbol,
- } => serde_json::json!({
- "kind": v.kind_tag(),
- "file": file.to_string_lossy(),
- "section_id": section_id,
- "symbol": symbol,
- }),
- CodeRefViolation::ImplementationMissing {
- section_id,
- decision_status,
- } => serde_json::json!({
- "kind": v.kind_tag(),
- "section_id": section_id,
- "decision_status": decision_status,
- }),
+ .map(|f| {
+ let mut obj = serde_json::Map::new();
+ if let Some(k) = &f.kind {
+ obj.insert("kind".into(), serde_json::Value::String(k.clone()));
+ }
+ if let Some(file) = &f.file {
+ obj.insert(
+  "file".into(),
+  serde_json::Value::String(file.to_string_lossy().into_owned()),
+ );
+ }
+ if let Some(line) = f.line {
+ obj.insert("line".into(), serde_json::Value::Number(line.into()));
+ }
+ if let Some(sid) = &f.section_id {
+ obj.insert("section_id".into(), serde_json::Value::String(sid.clone()));
+ }
+ for (k, v) in &f.extras {
+ obj.insert(k.clone(), v.clone());
+ }
+ serde_json::Value::Object(obj)
  })
  .collect();
  let valid_entry_count = store.changelog_entries.len();
@@ -2130,7 +2139,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
  inv_missing={} inv_deprecated={} \
  (severity_missing={} severity_binding={} severity_inventory={})",
- violations.len(),
+ findings.len(),
  missing_count,
  section_missing_count,
  citation_unbound_count,
@@ -2143,45 +2152,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  severity_binding,
  severity_inventory,
  );
- for v in &violations {
- match v {
- CodeRefViolation::Citation { citation, .. } => println!(
- " [{}] {}:{} {}",
- v.kind_tag(),
- citation.file.to_string_lossy(),
- citation.line,
- citation.entry_id,
- ),
- CodeRefViolation::ImplementationUnbacked {
- section_id,
- file,
- symbol,
- } => println!(
- " [{}] {}:<no-cite> §{}{}",
- v.kind_tag(),
- file.to_string_lossy(),
- section_id,
- symbol
- .as_deref()
- .map(|s| format!(" ({})", s))
- .unwrap_or_default(),
- ),
- CodeRefViolation::ImplementationMissing {
- section_id,
- decision_status,
- } => {
- let status_str = match decision_status {
- Some(s) => format!("{:?}", s).to_lowercase(),
- None => "none(default-active)".to_string(),
- };
- println!(
- " [{}] §{} (status={})",
- v.kind_tag(),
- section_id,
- status_str,
- );
- }
- }
+ // ValidationFinding.message is pre-formatted by
+ // `violation_to_finding` to mirror the pre-R307 TTY shape — render
+ // each finding's message line as-is.
+ for f in &findings {
+ println!(" {}", f.message);
  }
  }
 

@@ -20,7 +20,7 @@
 //! backend lands. The variant set is stable so future transport land does
 //! not change call sites.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +45,68 @@ pub trait Validator: Send + Sync {
     ) -> Result<Vec<ValidationFinding>, ValidatorError>;
 }
 
+/// Read-only view of the atomic store as seen by `Validator` plugins.
+///
+/// The trait lives in `mnemosyne-plugin` (not `mnemosyne-validator`) so the
+/// trust boundary is the Cargo edge: external Validator authors import
+/// only `mnemosyne-plugin` and consume the store via this trait — no
+/// reverse edge back into the validator crate is required.
+///
+/// `snapshot()` is the single read primitive: producers materialize every
+/// field the current plugin contract needs upfront, callers index into
+/// the returned `AtomicSnapshot`. Eager-snapshot shape (vs lazy
+/// iterators) keeps the type object-safe, makes the surface
+/// JSON-serializable end-to-end (R308 MCP-transport prerequisite), and
+/// gives external plugin authors a single shape to reason about.
+pub trait AtomicStoreView: Send + Sync {
+    fn snapshot(&self) -> AtomicSnapshot;
+}
+
+/// Snapshot of every atomic-store surface a `Validator` plugin reads.
+///
+/// Closed-form by construction — extending the surface requires growing
+/// this struct, which the substrate then ratifies. Producers (the
+/// canonical impl in `mnemosyne-validator::atomic::AtomicStore`) fill
+/// every field; consumers (SetEqualityValidator and future plugins) read
+/// the indices they need.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AtomicSnapshot {
+    pub changelog_entry_ids: BTreeSet<String>,
+    /// Section-id set including implied parent prefixes derived from
+    /// `/` path components (mirror of `AtomicStore::atomic_section_id_set`).
+    pub section_ids_with_implied_parents: BTreeSet<String>,
+    pub sections: BTreeMap<String, SectionView>,
+    pub inventory: BTreeMap<String, InventoryStatusView>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SectionView {
+    pub implementations: Vec<ImplementationRef>,
+    pub decision_status: Option<DecisionStatusView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImplementationRef {
+    pub file: String,
+    pub symbol: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DecisionStatusView {
+    Active,
+    Superseded,
+    Removed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InventoryStatusView {
+    Active,
+    Reserved,
+    Deprecated,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionSurface {
     pub plugin_name: String,
@@ -53,19 +115,31 @@ pub struct VersionSurface {
     pub schema_max: u32,
 }
 
-#[derive(Debug)]
 pub struct ValidationContext<'a> {
     pub workspace_root: &'a Path,
     pub atomic_sidecar: &'a Path,
+    pub store: &'a dyn AtomicStoreView,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationFinding {
     pub severity: Severity,
+    /// Validator-defined sub-kind tag (e.g., `"missing"`,
+    /// `"section_missing"`, `"impl_unbacked"`). External consumers route
+    /// per-class severity / counting off this string. None = the
+    /// validator does not subdivide its findings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     pub section_id: Option<String>,
     pub file: Option<PathBuf>,
     pub line: Option<u32>,
     pub message: String,
+    /// Validator-specific structured payload — preserves rich detail
+    /// that doesn't fit the universal axes (e.g. `entry_id`, `symbol`,
+    /// `decision_status`). JSON-compatible by construction so dispatch
+    /// over MCP / CLI transports is lossless.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extras: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

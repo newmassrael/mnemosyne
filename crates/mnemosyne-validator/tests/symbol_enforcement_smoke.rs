@@ -1,7 +1,7 @@
-//! Round 306 — RFC-002 FR-3 symbol-level enforcement smoke tests.
+//! RFC-002 FR-3 symbol-level enforcement smoke tests.
 //!
-//! Verifies the three end-to-end paths of `scan_paths_bidirectional` with
-//! a `SymbolResolver` registry attached:
+//! Verifies the three end-to-end paths of `SetEqualityValidator::scan`
+//! with a `SymbolResolver` registry attached:
 //! 1. **Happy path** — `Implementation.symbol` matches the resolver's
 //!    `resolve_symbol_at(file, citation_line)` answer; 0 SymbolMismatch.
 //! 2. **Mismatch path** — resolver returns a different symbol from the
@@ -19,11 +19,12 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_plugin::SymbolResolver;
+use mnemosyne_plugin::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
 use mnemosyne_validator::{
     atomic::{add_section, add_section_implementation, AtomicStore},
-    code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
+    code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind},
+    SetEqualityValidatorConfig,
 };
 use tempfile::TempDir;
 
@@ -35,8 +36,8 @@ fn rust_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {
 
 /// Stand up a minimal workspace with one Section that declares an
 /// implementation at `src/foo.rs` and an optional `Implementation.symbol`.
-/// Writes `src/foo.rs` carrying a `§<section_id>` citation at line 1 that
-/// sits over a top-level `fn` named `expected_symbol_at_line_1`.
+/// Writes `src/foo.rs` carrying a `§<section_id>` citation at line 2
+/// that sits inside a top-level `fn body_symbol_name() { ... }`.
 fn stand_up(
     expected_symbol_in_spec: Option<&str>,
     body_symbol_name: &str,
@@ -67,7 +68,6 @@ fn stand_up(
     // line 1: fn definition (so the symbol enclosing the cite resolves).
     // line 2: cite inside the body — `resolve_symbol_at(file, 2)` returns
     //         the enclosing fn's name.
-    // line 3: body filler. line 4: close brace.
     let src = format!(
         "fn {}() {{\n    // see §sec1\n    let _ = 1;\n}}\n",
         body_symbol_name
@@ -76,25 +76,38 @@ fn stand_up(
     (tmp, store)
 }
 
+/// Builds a `SetEqualityValidator` matching the pre-R307
+/// `scan_paths_bidirectional` invocation shape used by these smoke
+/// tests — paths = `src/`, comment_only = true, no orphan ledger / no
+/// inventory / no external prefix axes, no filter.
+fn build_validator(
+    symbol_resolvers: BTreeMap<String, Box<dyn SymbolResolver>>,
+) -> SetEqualityValidator {
+    SetEqualityValidator {
+        config: SetEqualityValidatorConfig {
+            paths: vec!["src/".to_string()],
+            severity_missing: "reject".into(),
+            severity_binding: "reject".into(),
+            severity_inventory: "reject".into(),
+            comment_only: true,
+            inventory_prefixes: vec![],
+            external_section_prefixes: vec![],
+            external_section_prefixes_bare: vec![],
+            inventory_path_prefixes: vec![],
+        },
+        entry_id_prefix: "Round ".to_string(),
+        orphan_ledger: vec![],
+        symbol_resolvers,
+        filter_id: None,
+    }
+}
+
 #[test]
 fn happy_path_symbol_matches_no_mismatch_violation() {
     let (tmp, store) = stand_up(Some("alpha"), "alpha");
-    let resolvers = rust_resolver_map();
-    let v = scan_paths_bidirectional(
-        tmp.path(),
-        &["src/".to_string()],
-        "Round ",
-        &store,
-        &[],
-        None,
-        true,
-        &[],
-        &[],
-        &[],
-        &[],
-        Some(&resolvers),
-    )
-    .unwrap();
+    let validator = build_validator(rust_resolver_map());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -118,22 +131,9 @@ fn happy_path_symbol_matches_no_mismatch_violation() {
 fn mismatch_path_surfaces_symbol_mismatch_violation() {
     // Spec says `alpha`, body actually defines `beta` at the cited line.
     let (tmp, store) = stand_up(Some("alpha"), "beta");
-    let resolvers = rust_resolver_map();
-    let v = scan_paths_bidirectional(
-        tmp.path(),
-        &["src/".to_string()],
-        "Round ",
-        &store,
-        &[],
-        None,
-        true,
-        &[],
-        &[],
-        &[],
-        &[],
-        Some(&resolvers),
-    )
-    .unwrap();
+    let validator = build_validator(rust_resolver_map());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -166,21 +166,9 @@ fn opt_out_path_no_resolver_passes_file_only_setequality() {
     // file-level binding passes (impl.file = src/foo.rs registered), and
     // without a resolver the symbol axis is silent. 0 SymbolMismatch.
     let (tmp, store) = stand_up(Some("alpha"), "beta");
-    let v = scan_paths_bidirectional(
-        tmp.path(),
-        &["src/".to_string()],
-        "Round ",
-        &store,
-        &[],
-        None,
-        true,
-        &[],
-        &[],
-        &[],
-        &[],
-        None,
-    )
-    .unwrap();
+    let validator = build_validator(BTreeMap::new());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -206,22 +194,9 @@ fn no_symbol_in_impl_skips_axis_even_with_resolver() {
     // Resolver registered, but axis is opt-in per (file, symbol) pair —
     // missing symbol = file-only enforcement = 0 SymbolMismatch.
     let (tmp, store) = stand_up(None, "anything");
-    let resolvers = rust_resolver_map();
-    let v = scan_paths_bidirectional(
-        tmp.path(),
-        &["src/".to_string()],
-        "Round ",
-        &store,
-        &[],
-        None,
-        true,
-        &[],
-        &[],
-        &[],
-        &[],
-        Some(&resolvers),
-    )
-    .unwrap();
+    let validator = build_validator(rust_resolver_map());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
     assert!(v.iter().all(|x| !matches!(
         x,
         CodeRefViolation::Citation {

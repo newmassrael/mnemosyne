@@ -628,6 +628,70 @@ impl AtomicStore {
  }
 }
 
+/// AtomicStoreView impl — substrate read surface used by Validator
+/// plugins. Lives on `AtomicStore` so any caller that already holds a
+/// store can pass `&store as &dyn AtomicStoreView` into a
+/// ValidationContext.
+impl mnemosyne_plugin::AtomicStoreView for AtomicStore {
+ fn snapshot(&self) -> mnemosyne_plugin::AtomicSnapshot {
+ let changelog_entry_ids: std::collections::BTreeSet<String> =
+ self.changelog_entries.keys().cloned().collect();
+
+ let section_ids_with_implied_parents = self.atomic_section_id_set();
+
+ let sections: BTreeMap<String, mnemosyne_plugin::SectionView> = self
+ .sections
+ .iter()
+ .map(|(sid, sec)| {
+ let implementations = sec
+ .implementations
+ .iter()
+ .map(|i| mnemosyne_plugin::ImplementationRef {
+  file: i.file.clone(),
+  symbol: i.symbol.clone(),
+ })
+ .collect();
+ let decision_status = sec.decision_status.map(|s| match s {
+ DecisionStatus::Active => mnemosyne_plugin::DecisionStatusView::Active,
+ DecisionStatus::Superseded => {
+  mnemosyne_plugin::DecisionStatusView::Superseded
+ }
+ DecisionStatus::Removed => mnemosyne_plugin::DecisionStatusView::Removed,
+ });
+ (
+ sid.clone(),
+ mnemosyne_plugin::SectionView {
+  implementations,
+  decision_status,
+ },
+ )
+ })
+ .collect();
+
+ let inventory: BTreeMap<String, mnemosyne_plugin::InventoryStatusView> = self
+ .inventory_entries
+ .iter()
+ .map(|(id, e)| {
+ let status = match e.status {
+ InventoryStatus::Active => mnemosyne_plugin::InventoryStatusView::Active,
+ InventoryStatus::Reserved => mnemosyne_plugin::InventoryStatusView::Reserved,
+ InventoryStatus::Deprecated => {
+  mnemosyne_plugin::InventoryStatusView::Deprecated
+ }
+ };
+ (id.clone(), status)
+ })
+ .collect();
+
+ mnemosyne_plugin::AtomicSnapshot {
+ changelog_entry_ids,
+ section_ids_with_implied_parents,
+ sections,
+ inventory,
+ }
+ }
+}
+
 /// Render an [`AtomicSection`] into a paragraph-separated prose string
 ///.
 ///

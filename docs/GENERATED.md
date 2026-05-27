@@ -1839,3 +1839,36 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 307 — RFC-003 D1+D2 closure — Validator trait dispatch via PluginRegistry production-wires SetEqualityValidator + AtomicStoreView trait lifts atomic-store reads onto a JSON-serializable snapshot for R308 transport prep
+
+**Changes**:
+- mnemosyne-plugin grows AtomicStoreView trait + AtomicSnapshot (with SectionView ImplementationRef DecisionStatusView InventoryStatusView closed-form JSON-serializable types) so Validator plugins read the atomic store across the Cargo trust boundary without a reverse edge into mnemosyne-validator
+- mnemosyne-plugin ValidationContext gains store reference; ValidationFinding extended with kind Option String + extras BTreeMap String Value for rich payload preservation across trait dispatch
+- mnemosyne-validator impl AtomicStoreView for AtomicStore materializes the eager snapshot — changelog ids + section ids with implied parents + per-section impls + inventory status
+- mnemosyne-validator SetEqualityValidator struct owns config + entry_id_prefix + orphan_ledger + symbol_resolvers + filter_id; scan_paths_bidirectional free function absorbed into SetEqualityValidator scan method driven from AtomicSnapshot
+- mnemosyne-validator impl Validator for SetEqualityValidator + violation_to_finding adapter maps CodeRefViolation kinds across the plugin boundary (kind tag preserved + extras carry entry_id symbol decision_status)
+- mnemosyne-cli cmd_validate_code_refs constructs SetEqualityValidator and dispatches via PluginRegistry validator lookup + Validator validate ctx; JSON and TTY output reconstructed from ValidationFinding fields and extras
+- Legacy carry retired — scan_paths + scan_paths_filtered + their two dedicated tests removed per no-legacy-carry rule; pre-R260 entry-id-only path superseded by SetEqualityValidator scan
+
+
+
+**Verification**:
+- cargo build --release green across all 9 workspace crates
+- cargo test --release green — validator_trait_dispatch + atomic_store_view_parity new suites pass; symbol_enforcement_smoke migrated to SetEqualityValidator scan with no behavior change
+- cargo run mnemosyne-cli validate-workspace baseline clean — T3 reject=0 / T1 orphan=0 / round-trip 1/1 / atomic ledger 53 entries / commit↔ledger drift=0
+- cargo run mnemosyne-cli validate-code-refs runs through PluginRegistry dispatch path (zero violations on the workspace)
+- validator_trait_dispatch test asserts ValidationFinding kind tag round-trip across missing impl_missing decay axes + extras carry entry_id symbol decision_status
+- atomic_store_view_parity test asserts snapshot fields match raw AtomicStore field access (changelog ids section ids with implied parents implementations decision_status inventory status)
+
+
+
+
+**Carry forward**:
+- R308 D3 transport abstraction proof — MCP self-ref dogfood (mnemosyne-mcp exposes SymbolResolver tool + McpResolver real client wire + transport_parity asserts InProcess vs MCP equality on same file line)
+- R309 D4+D5 medium adapter substrate — MediumAdapter trait lands in mnemosyne-core + DesignDocAdapter refactor (behavior-preserving) + mnemosyne-core owning surface declared
+- R310+ D6 external plugin extension — dlopen libloading or external-binary orchestrator path so external users add backends without forking mnemosyne (RFC-003 risk register #5 closure)
+- D7 severity_symbol promote — Mnemosyne dogfood activates plugins symbol_resolver rust block + N round measurement evidence before promotion
+- D8 Round 172 priority audit re-validation — at Phase 1 entry trigger re-measure value × measurability over risk × unmet_deps; confirm fictional adapter is still #1 or accept drift
+
+
+
