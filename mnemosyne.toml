@@ -100,3 +100,93 @@ paths = [
 severity_missing = "reject"
 severity_binding = "reject"
 comment_only = true
+
+# ============================================================================
+# Round 305 — publishable_override_ledger
+# 9 entries whose publishable_* half was redacted via mnemosyne-cli redact-term
+# to mirror the R302 (append_changelog_entry_v2 → append_changelog_entry) and
+# R304 (set_section_decision_status_atomic → set_section_decision_status,
+# function + CLI) renames. The audit half is frozen per R161 §41; this ledger
+# anchors the publishable divergence via SHA256 (R296 gate).
+# ============================================================================
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 265"
+fields = ["publishable_decision_summary", "publishable_changes_bullets", "publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R304 function + CLI rename mirrored"
+applied_in = "Round 305"
+content_hash_before = "387e88c58f0f805061d7bd3d5b4ec18e24c9b53702f86c4c0b1a29f93e6f0a0a"
+content_hash_after = "b4db406958ea91ffc780500eae6c9b5df481f35ec94b37da7bd117e9bc512b9f"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 266"
+fields = ["publishable_decision_summary", "publishable_changes_bullets", "publishable_verification_bullets", "publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R304 function + CLI rename mirrored"
+applied_in = "Round 305"
+content_hash_before = "e375f21d21359e03712b1c4ea178339e4a11057cf29c7c8dc4dbf0556844c4bd"
+content_hash_after = "27871ccb59b67d08e016ae2713c637881316ce072f71802bac6ea4452551fc74"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 269"
+fields = ["publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R304 CLI rename mirrored"
+applied_in = "Round 305"
+content_hash_before = "ce50b59ed85fe1389a63295eaa2822e221989d30cfc5b8d9f873bbc196b8c6af"
+content_hash_after = "d871d30b34da84121b6998268a944145baab7fefbcfe22c3446a3de0bd1502fa"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 272"
+fields = ["publishable_decision_summary", "publishable_changes_bullets"]
+reason = "R305 forward-coherence pass: R304 function + CLI rename mirrored"
+applied_in = "Round 305"
+content_hash_before = "4b746a0ff5ee3cdf16878e585c6d31f8a6698e6bbc4db52ca564192acd263fd6"
+content_hash_after = "07701f32914c297dfe5cfe483e775f38d342b27c5682b8f423d891202322d867"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 294 — AtomicChangelogEntry schema split (publishable vs audit body) — schema_version 4 + v3→v4 loader migration + render switch to publishable view + T2 audit-only scope made explicit; R293 catch-up folded as carry"
+fields = ["publishable_decision_summary", "publishable_changes_bullets", "publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' publishable view"
+applied_in = "Round 305"
+content_hash_before = "41bb81430355d5019cdbffe5ea54e81f837ec69e9a9072cb0eb99eb49b0216cc"
+content_hash_after = "b4f3e209da21a50ade71f12e58e44b67cf3741a9169b68347d7efcc88affacb6"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 295 — publishable-half setters for ChangelogEntry — 5 primitives + CLI subcommands; audit invariant enforced at primitive boundary"
+fields = ["publishable_decision_summary", "publishable_changes_bullets", "publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' publishable view"
+applied_in = "Round 305"
+content_hash_before = "c179739205f221af5b0b68d145041bda2cca93649da0ca3544d426810f58ce99"
+content_hash_after = "ac0872ac5b91c6ec619db33166edd5e86f30f0724f0de80d20769092e3ef51be"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 296 — [[publishable_override_ledger]] config + validate-workspace gate — divergent publishable_* requires SHA256-anchored ledger row (forge-resistant audit trace)"
+fields = ["publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' publishable view"
+applied_in = "Round 305"
+content_hash_before = "214911722aed20f050ad8cf89c9102c05c289c1e30bf5cda3f3ea941673f4630"
+content_hash_after = "4f41a21916b736340cf0473e035e04326e315e4231a01527661520cb187f0779"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 297 — redact_term convenience primitive (RFC P1) — pattern + replacement over publishable_* with auto-emitted [[publishable_override_ledger]] draft (forge-resistant, audit-half immutable)"
+fields = ["publishable_carry_forward_bullets"]
+reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' publishable view"
+applied_in = "Round 305"
+content_hash_before = "17eb4595650a9f8cca3d712d816b56503b958929d90b96983a8c382769fe4c8c"
+content_hash_after = "1ccc0b6ef5ef12962f8054e29cfb6feb85d7be02889bf4ae415e5a20ac7399e1"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 298"
+fields = ["publishable_decision_summary"]
+reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' publishable view"
+applied_in = "Round 305"
+content_hash_before = "032dd010bd28c95c77f3ceec80c1a3bfe8fbf90dead1995bcf0a3be7436edbe9"
+content_hash_after = "9eaad476dbeb97154ee2c4df4354a1fd6b0c3da0513e24bb7dd92728d862064a"

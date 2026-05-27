@@ -1674,7 +1674,6 @@ pub fn set_changelog_publishable_decision_summary(
  entry_id: &str,
  summary: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- check_intent_len(summary)?;
  entry_mut_strict(store, entry_id)?.publishable_decision_summary =
  Some(summary.to_string());
  save_with_receipt(
@@ -1692,9 +1691,6 @@ pub fn set_changelog_publishable_changes_bullets(
  entry_id: &str,
  bullets: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- for b in bullets {
- check_bullet_len(b, "publishable_changes")?;
- }
  entry_mut_strict(store, entry_id)?.publishable_changes_bullets = bullets.to_vec();
  save_with_receipt(
  store,
@@ -1711,9 +1707,6 @@ pub fn set_changelog_publishable_verification_bullets(
  entry_id: &str,
  bullets: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- for b in bullets {
- check_bullet_len(b, "publishable_verification")?;
- }
  entry_mut_strict(store, entry_id)?.publishable_verification_bullets = bullets.to_vec();
  save_with_receipt(
  store,
@@ -1730,12 +1723,6 @@ pub fn set_changelog_publishable_impact_refs(
  entry_id: &str,
  refs: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- // impact_refs are bare section_id strings; reuse bullet-len bound which
- // is already generous enough for any real section_id and catches truly
- // pathological inputs.
- for r in refs {
- check_bullet_len(r, "publishable_impact_refs")?;
- }
  entry_mut_strict(store, entry_id)?.publishable_impact_refs = refs.to_vec();
  save_with_receipt(
  store,
@@ -1752,9 +1739,6 @@ pub fn set_changelog_publishable_carry_forward_bullets(
  entry_id: &str,
  bullets: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- for b in bullets {
- check_bullet_len(b, "publishable_carry_forward")?;
- }
  entry_mut_strict(store, entry_id)?.publishable_carry_forward_bullets = bullets.to_vec();
  save_with_receipt(
  store,
@@ -3540,24 +3524,96 @@ mod tests {
  );
  }
 
+ // ============ R305 field-invariant parity ============
+ //
+ // For each AtomicChangelogEntry field that has multiple write paths
+ // (the audit half via `append_changelog_entry` + the publishable mirror
+ // via `set_changelog_publishable_*`), the publishable setter must never
+ // be *stricter* than the audit append. Anything append accepts, the
+ // matching setter must also accept — otherwise an entry written via the
+ // audit clone can become un-editable via its own publishable path.
+ //
+ // Background: R294 entry was authored with a 906-char
+ // publishable_decision_summary (via the audit clone — append has no
+ // length cap). R295 then introduced the 5 publishable setters and paste-
+ // copied the section-side `check_intent_len` (cap 200) / `check_bullet_len`
+ // from the facts-as-one-liner section policy. The R294 entry was authored
+ // through the cap-0 audit path but could not be edited through the
+ // cap-200 setter path — paste-error. The tests below pin the post-R305
+ // parity so any future setter that copies a tighter invariant breaks CI.
+
  #[test]
- fn publishable_setter_validates_bullet_length() {
- let tmp = TempDir::new().unwrap();
- let path = tmp.path().join(".atomic/workspace.atomic.json");
- let mut store = AtomicStore::new();
- seed_entry(&mut store, &path, "Round 999");
- let too_long = "x".repeat(10_000);
- let err = set_changelog_publishable_changes_bullets(
- &mut store,
- &path,
- "Round 999",
- &[too_long],
+ fn field_parity_decision_summary_accepts_uncapped_input() {
+ // 2 KiB ≫ legacy 200-char cap; well past any plausible "real" entry.
+ let long_summary = "x".repeat(2_000);
+
+ // audit path accepts.
+ let tmp_a = TempDir::new().unwrap();
+ let path_a = tmp_a.path().join(".atomic/workspace.atomic.json");
+ let mut store_a = AtomicStore::new();
+ append_changelog_entry(
+ &mut store_a,
+ &path_a,
+ "Round PA",
+ Some(&long_summary),
+ &["c".into()],
+ &["v".into()],
+ &["1".into()],
+ &["cf".into()],
  )
- .unwrap_err();
- match err {
- AtomicMutateError::Validation(_) => {}
- other => panic!("expected Validation, got {:?}", other),
+ .expect("append must accept arbitrary-length decision_summary");
+
+ // publishable setter path accepts the same input on a pre-existing entry.
+ let tmp_b = TempDir::new().unwrap();
+ let path_b = tmp_b.path().join(".atomic/workspace.atomic.json");
+ let mut store_b = AtomicStore::new();
+ seed_entry(&mut store_b, &path_b, "Round PA");
+ set_changelog_publishable_decision_summary(
+ &mut store_b,
+ &path_b,
+ "Round PA",
+ &long_summary,
+ )
+ .expect("publishable setter must mirror append's cap-0 invariant");
  }
+
+ #[test]
+ fn field_parity_bullet_fields_accept_uncapped_elements() {
+ // 10 KiB per element. Each bullet-family field — changes,
+ // verification, impact_refs, carry_forward — must accept what append
+ // would have accepted at clone time.
+ let long_bullet = "x".repeat(10_000);
+ let bullets = vec![long_bullet.clone()];
+
+ // audit path: append accepts long bullets across all four bullet-family fields.
+ let tmp_a = TempDir::new().unwrap();
+ let path_a = tmp_a.path().join(".atomic/workspace.atomic.json");
+ let mut store_a = AtomicStore::new();
+ append_changelog_entry(
+ &mut store_a,
+ &path_a,
+ "Round PB",
+ Some("audit summary"),
+ &bullets,
+ &bullets,
+ &bullets,
+ &bullets,
+ )
+ .expect("append must accept long bullets across all bullet-family fields");
+
+ // publishable setter path: each of the 4 setters accepts the same input.
+ let tmp_b = TempDir::new().unwrap();
+ let path_b = tmp_b.path().join(".atomic/workspace.atomic.json");
+ let mut store_b = AtomicStore::new();
+ seed_entry(&mut store_b, &path_b, "Round PB");
+ set_changelog_publishable_changes_bullets(&mut store_b, &path_b, "Round PB", &bullets)
+ .expect("publishable changes setter must mirror append's cap-0 invariant");
+ set_changelog_publishable_verification_bullets(&mut store_b, &path_b, "Round PB", &bullets)
+ .expect("publishable verification setter must mirror append's cap-0 invariant");
+ set_changelog_publishable_impact_refs(&mut store_b, &path_b, "Round PB", &bullets)
+ .expect("publishable impact_refs setter must mirror append's cap-0 invariant");
+ set_changelog_publishable_carry_forward_bullets(&mut store_b, &path_b, "Round PB", &bullets)
+ .expect("publishable carry_forward setter must mirror append's cap-0 invariant");
  }
 
  // ============ Round 296 publishable hash anchoring ============

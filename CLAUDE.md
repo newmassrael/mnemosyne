@@ -90,6 +90,25 @@ recommendation.
  carry now*, not to preserve it. Audit history lives in the atomic
  store changelog; code lives in code.
 
+### ❌ "field 에 두 개의 write path 두면서 invariant 만 다르게"
+- 같은 atomic field 에 작성 권한 있는 primitive 가 둘 이상이면, *모두*
+ 같은 invariant set 을 강제해야 한다. 더 엄격하게 만들고 싶으면 둘 다
+ tighten, 더 느슨하게 두고 싶으면 둘 다 loosen. **half-enforced
+ invariant = no invariant + silent broken state** — 한쪽 path 로 들어온
+ 데이터가 다른 쪽 path 의 invariant 를 어기는 순간 시스템 전체가 invariant
+ 없이 동작하는 것과 같다.
+- R295 가 publishable setter 신규 시 section setter (R161 §41 facts-as-
+ one-liner policy) 의 `check_intent_len` / `check_bullet_len` 를 paste
+ 했다 — `append_changelog_entry` 측 cap 0 인데 setter 만 cap 200. R294
+ 가 906-char publishable_decision_summary 로 append 됐고 (cap 0 통과)
+ R305 redact 시도가 setter cap 200 으로 reject 당하면서 발견. paste-
+ error 가 이 anti-pattern 의 canonical case.
+- 신규 setter 추가 시 *field-invariant parity test* (multi-write-path
+ field 마다 같은 edge-case input 으로 양쪽 호출해 양쪽 다 accept 또는
+ 양쪽 다 reject 인지 assert) 를 같이 land. R305 가 atomic.rs 에 추가한
+ parity test 가 substrate — 새 setter 가 paste-error 를 가져오면 CI 가
+ catch.
+
 ## ✅ Correct patterns — recommend path
 
 - Improve AI query efficiency (e.g. indexed cache, faster lookup, multi-hop graph)
