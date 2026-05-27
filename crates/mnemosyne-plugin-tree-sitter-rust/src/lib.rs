@@ -13,7 +13,7 @@
 use std::fs;
 use std::path::Path;
 
-use mnemosyne_plugin::{
+use mnemosyne_core::{
     PluginRegistry, ResolverError, SymbolResolver, VersionSurface,
 };
 use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};

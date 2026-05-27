@@ -12,7 +12,7 @@
 //! `to_target` / `ref_kind` enum (decision / impl / cross_doc) /
 //! `created_at_changelog_entry` ref.
 
-use mnemosyne_plugin::DecisionStatus;
+use mnemosyne_core::DecisionStatus;
 use std::collections::BTreeMap;
 
 /// Section entity — closed-form 5 field full shape.

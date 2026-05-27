@@ -31,7 +31,7 @@ otlp = [
 
 [dependencies]
 mnemosyne-store = { path = "../mnemosyne-store" }
-mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-facts = { path = "../mnemosyne-facts" }
 mnemosyne-cascade = { path = "../mnemosyne-cascade" }
 mnemosyne-validator = { path = "../mnemosyne-validator" }
 

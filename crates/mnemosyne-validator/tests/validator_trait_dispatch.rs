@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_plugin::{
+use mnemosyne_core::{
     AtomicStoreView, PluginRegistry, Severity, ValidationContext,
 };
 use mnemosyne_validator::atomic::{

@@ -1,7 +1,7 @@
 //! Integration test — `TypedFactStore` against actual `mnemosyne-store` RocksDB,
 //! Cross-language emit Jaccard — deterministic composite-key encoding.
 
-use mnemosyne_core::{
+use mnemosyne_facts::{
  canonical_identifier_set, design_doc_schema_fixture, emit_all_languages, jaccard_inclusion,
  sha256_hex, ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact, TypedFactStore,
 };

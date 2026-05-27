@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 mnemosyne-cascade = { path = "../../../crates/mnemosyne-cascade" }
-mnemosyne-core = { path = "../../../crates/mnemosyne-core" }
+mnemosyne-facts = { path = "../../../crates/mnemosyne-facts" }
 
 salsa.workspace = true
 

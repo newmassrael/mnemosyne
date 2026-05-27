@@ -3,12 +3,12 @@ resolver = "2"
 members = [
  "crates/mnemosyne-validator",
  "crates/mnemosyne-store",
- "crates/mnemosyne-core",
+ "crates/mnemosyne-facts",
  "crates/mnemosyne-cascade",
  "crates/mnemosyne-server",
  "crates/mnemosyne-cli",
  "crates/mnemosyne-mcp",
- "crates/mnemosyne-plugin",
+ "crates/mnemosyne-core",
  "crates/mnemosyne-plugin-tree-sitter-rust",
 ]
 

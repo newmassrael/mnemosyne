@@ -91,9 +91,9 @@ max_section_body_length = 5000
 paths = [
  "crates/mnemosyne-cascade/src/",
  "crates/mnemosyne-cli/src/",
- "crates/mnemosyne-core/src/",
+ "crates/mnemosyne-facts/src/",
  "crates/mnemosyne-mcp/src/",
- "crates/mnemosyne-plugin/src/",
+ "crates/mnemosyne-core/src/",
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-validator/src/",

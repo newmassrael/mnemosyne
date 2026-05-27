@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 mnemosyne-store = { path = "../mnemosyne-store" }
-mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-facts = { path = "../mnemosyne-facts" }
 
 salsa.workspace = true
 

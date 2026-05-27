@@ -11,7 +11,7 @@ name = "mnemosyne_plugin_tree_sitter_rust"
 path = "src/lib.rs"
 
 [dependencies]
-mnemosyne-plugin = { path = "../mnemosyne-plugin" }
+mnemosyne-core = { path = "../mnemosyne-core" }
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 

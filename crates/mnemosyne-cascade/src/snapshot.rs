@@ -2,12 +2,12 @@
 //!
 //! this module cascade_query's actual body invariant validation in use-
 //! Per-branch typed-fact snapshot wire format + load helper. round
-//! Actual body carry — `mnemosyne-store` raw bytes → `mnemosyne-core` typed
+//! Actual body carry — `mnemosyne-store` raw bytes → `mnemosyne-facts` typed
 //! facts → this snapshot's read path.
 //!
 //! ## Wire format
 //!
-//! `serde_json` serialize (mnemosyne-core/cascade are both workspace deps, already registered).
+//! `serde_json` serialize (mnemosyne-facts/cascade are both workspace deps, already registered).
 //! Deterministic encoding — BTreeMap sort order preserved as the Salsa input's cache key.
 //! `Vec<u8>` byte-equal match guarantees a memoize hit.
 //!
@@ -19,7 +19,7 @@
 //! any entity_id is recognized regardless of fact kind). Phase 1.5+ entity_id namespace allocation
 //! the policy explicitly enables an auto-dispatch entry path.
 
-use mnemosyne_core::{
+use mnemosyne_facts::{
  ChangelogEntryFact, CrossRefFact, FrozenListFact, PersistError, SectionFact, TypedFactStore,
 };
 use mnemosyne_store::MnemosyneStore;
@@ -123,7 +123,7 @@ impl BranchSnapshotData {
 #[cfg(test)]
 mod tests {
  use super::*;
- use mnemosyne_core::{
+ use mnemosyne_facts::{
  ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact, TypedFactStore,
  };
  use tempfile::TempDir;

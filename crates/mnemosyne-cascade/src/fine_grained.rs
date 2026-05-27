@@ -47,7 +47,7 @@
 //! through Changelog entries only.
 
 use crate::ValidationResult;
-use mnemosyne_core::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -543,7 +543,7 @@ pub fn build_branch_index(
 #[cfg(test)]
 mod tests {
  use super::*;
- use mnemosyne_core::SectionFact;
+ use mnemosyne_facts::SectionFact;
 
  fn make_section(branch: u64, entity: u64, status: &str) -> SectionFact {
  SectionFact {

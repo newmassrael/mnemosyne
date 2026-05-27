@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use mnemosyne_plugin::{CliResolver, McpResolver, ResolverError, SymbolResolver};
+use mnemosyne_core::{CliResolver, McpResolver, ResolverError, SymbolResolver};
 
 #[test]
 fn mcp_transport_surfaces_not_implemented_until_r307() {

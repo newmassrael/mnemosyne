@@ -31,7 +31,7 @@
 //! extension and section seeding are deferred to later rounds.
 
 use crate::schema::Section;
-use mnemosyne_plugin::{DecisionStatus, InventoryStatus};
+use mnemosyne_core::{DecisionStatus, InventoryStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -611,31 +611,31 @@ impl AtomicStore {
 /// plugins. Lives on `AtomicStore` so any caller that already holds a
 /// store can pass `&store as &dyn AtomicStoreView` into a
 /// ValidationContext.
-impl mnemosyne_plugin::AtomicStoreView for AtomicStore {
- fn snapshot(&self) -> mnemosyne_plugin::AtomicSnapshot {
+impl mnemosyne_core::AtomicStoreView for AtomicStore {
+ fn snapshot(&self) -> mnemosyne_core::AtomicSnapshot {
  let changelog_entry_ids: std::collections::BTreeSet<String> =
  self.changelog_entries.keys().cloned().collect();
 
  let section_ids_with_implied_parents = self.atomic_section_id_set();
 
  // R309 textbook unification: SectionView.decision_status now carries
- // the canonical DecisionStatus (lifted to mnemosyne-plugin); no
+ // the canonical DecisionStatus (lifted to mnemosyne-core); no
  // adapter layer between schema and view types.
- let sections: BTreeMap<String, mnemosyne_plugin::SectionView> = self
+ let sections: BTreeMap<String, mnemosyne_core::SectionView> = self
  .sections
  .iter()
  .map(|(sid, sec)| {
  let implementations = sec
  .implementations
  .iter()
- .map(|i| mnemosyne_plugin::ImplementationRef {
+ .map(|i| mnemosyne_core::ImplementationRef {
   file: i.file.clone(),
   symbol: i.symbol.clone(),
  })
  .collect();
  (
  sid.clone(),
- mnemosyne_plugin::SectionView {
+ mnemosyne_core::SectionView {
   implementations,
   decision_status: sec.decision_status,
  },
@@ -649,7 +649,7 @@ impl mnemosyne_plugin::AtomicStoreView for AtomicStore {
  .map(|(id, e)| (id.clone(), e.status))
  .collect();
 
- mnemosyne_plugin::AtomicSnapshot {
+ mnemosyne_core::AtomicSnapshot {
  changelog_entry_ids,
  section_ids_with_implied_parents,
  sections,

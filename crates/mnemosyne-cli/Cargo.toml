@@ -17,7 +17,7 @@ path = "src/main.rs"
 mnemosyne-validator = { path = "../mnemosyne-validator" }
 mnemosyne-server = { path = "../mnemosyne-server" }
 mnemosyne-store = { path = "../mnemosyne-store" }
-mnemosyne-plugin = { path = "../mnemosyne-plugin" }
+mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
 
 anyhow.workspace = true

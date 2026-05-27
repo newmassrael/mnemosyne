@@ -11,7 +11,7 @@
 //! reclassify-possibility fallback check. If both are missing, step (3) rejects as orphan.
 
 use crate::schema::{ChangelogEntry, FrozenList, ParsedDoc, RefKind, Section};
-use mnemosyne_plugin::DecisionStatus;
+use mnemosyne_core::DecisionStatus;
 use crate::workspace::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 

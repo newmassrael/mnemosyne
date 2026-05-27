@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_plugin::{AtomicStoreView, SymbolResolver};
+use mnemosyne_core::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
 use mnemosyne_validator::{
     atomic::{add_section, add_section_implementation, AtomicStore},

@@ -25,7 +25,7 @@ use mnemosyne_cascade::{
  frozen_list_membership, section_decision_status, BranchSnapshotData, CascadeBranch,
  MnemosyneCascadeDb, ValidationResult,
 };
-use mnemosyne_core::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 
 const SECTIONS_PER_BRANCH: usize = 50;
 const CHANGELOG_PER_BRANCH: usize = 50;

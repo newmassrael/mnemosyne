@@ -63,7 +63,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
-use mnemosyne_plugin::DecisionStatus;
+use mnemosyne_core::DecisionStatus;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
 /// file. `entry_id` retains the cite shape verbatim (`""` or
@@ -1028,7 +1028,7 @@ pub struct SetEqualityValidator {
  pub entry_id_prefix: String,
  pub orphan_ledger: Vec<OrphanLedgerEntry>,
  pub symbol_resolvers:
- BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>>,
+ BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>,
  pub filter_id: Option<String>,
 }
 
@@ -1046,7 +1046,7 @@ impl SetEqualityValidator {
  pub fn scan(
  &self,
  workspace_root: &Path,
- snapshot: &mnemosyne_plugin::AtomicSnapshot,
+ snapshot: &mnemosyne_core::AtomicSnapshot,
  ) -> std::io::Result<Vec<CodeRefViolation>> {
  let prefix = self.entry_id_prefix.as_str();
  let filter_id = self.filter_id.as_deref();
@@ -1275,7 +1275,7 @@ impl SetEqualityValidator {
  for (line, inventory_id) in inventory_cites {
  let kind = match snapshot.inventory.get(&inventory_id).copied() {
   None => Some(ViolationKind::InventoryMissing),
-  Some(mnemosyne_plugin::InventoryStatus::Deprecated) => {
+  Some(mnemosyne_core::InventoryStatus::Deprecated) => {
   Some(ViolationKind::InventoryDeprecated)
   }
   // Active / Reserved — cite-permitted.
@@ -1337,7 +1337,7 @@ impl SetEqualityValidator {
  continue;
  }
  // R309 textbook unification: SectionView.decision_status now IS
- // DecisionStatus (canonical, lifted to mnemosyne-plugin). Step 4
+ // DecisionStatus (canonical, lifted to mnemosyne-core). Step 4
  // axiom + emitted ImplementationMissing variant share the same enum
  // — no adapter layer.
  let resolved = section
@@ -1358,9 +1358,9 @@ impl SetEqualityValidator {
  }
 }
 
-impl mnemosyne_plugin::Validator for SetEqualityValidator {
- fn version_surface(&self) -> mnemosyne_plugin::VersionSurface {
- mnemosyne_plugin::VersionSurface {
+impl mnemosyne_core::Validator for SetEqualityValidator {
+ fn version_surface(&self) -> mnemosyne_core::VersionSurface {
+ mnemosyne_core::VersionSurface {
  plugin_name: "mnemosyne-validator::SetEqualityValidator".into(),
  plugin_version: env!("CARGO_PKG_VERSION").into(),
  schema_min: 4,
@@ -1370,13 +1370,13 @@ impl mnemosyne_plugin::Validator for SetEqualityValidator {
 
  fn validate(
  &self,
- ctx: &mnemosyne_plugin::ValidationContext<'_>,
- ) -> Result<Vec<mnemosyne_plugin::ValidationFinding>, mnemosyne_plugin::ValidatorError>
+ ctx: &mnemosyne_core::ValidationContext<'_>,
+ ) -> Result<Vec<mnemosyne_core::ValidationFinding>, mnemosyne_core::ValidatorError>
  {
  let snapshot = ctx.store.snapshot();
  let violations = self
  .scan(ctx.workspace_root, &snapshot)
- .map_err(|e| mnemosyne_plugin::ValidatorError::Internal(e.to_string()))?;
+ .map_err(|e| mnemosyne_core::ValidatorError::Internal(e.to_string()))?;
  Ok(violations.into_iter().map(violation_to_finding).collect())
  }
 }
@@ -1388,12 +1388,12 @@ impl mnemosyne_plugin::Validator for SetEqualityValidator {
 /// consumer applies per-class severity overrides (`severity_missing` /
 /// `severity_binding` / `severity_inventory`) off the finding's `kind`
 /// string.
-fn violation_to_finding(v: CodeRefViolation) -> mnemosyne_plugin::ValidationFinding {
+fn violation_to_finding(v: CodeRefViolation) -> mnemosyne_core::ValidationFinding {
  use serde_json::Value;
  let kind_tag = v.kind_tag().to_string();
  let severity = match v.defect_class() {
- DefectClass::Decay => mnemosyne_plugin::Severity::Info,
- _ => mnemosyne_plugin::Severity::Reject,
+ DefectClass::Decay => mnemosyne_core::Severity::Info,
+ _ => mnemosyne_core::Severity::Reject,
  };
  let mut extras: BTreeMap<String, Value> = BTreeMap::new();
  let (section_id, file, line, message) = match v {
@@ -1441,7 +1441,7 @@ fn violation_to_finding(v: CodeRefViolation) -> mnemosyne_plugin::ValidationFind
  (Some(section_id), None, None, msg)
  }
  };
- mnemosyne_plugin::ValidationFinding {
+ mnemosyne_core::ValidationFinding {
  severity,
  kind: Some(kind_tag),
  section_id,
@@ -1647,7 +1647,7 @@ mod tests {
  external_section_prefixes_bare: &[String],
  inventory_path_prefixes: &[String],
  ) -> std::io::Result<Vec<CodeRefViolation>> {
- use mnemosyne_plugin::AtomicStoreView;
+ use mnemosyne_core::AtomicStoreView;
  let validator = SetEqualityValidator {
  config: SetEqualityValidatorConfig {
  paths: paths.to_vec(),
@@ -2851,7 +2851,7 @@ mod tests {
  // Registered InventoryEntry with Active status — cite passes
  // silently on the section-path axis axis, same policy as R275.
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -2956,7 +2956,7 @@ mod tests {
  #[test]
  fn scan_v2_inventory_deprecated_reject() {
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
@@ -2997,7 +2997,7 @@ mod tests {
  #[test]
  fn scan_v2_inventory_active_and_reserved_silent() {
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -3455,7 +3455,7 @@ mod tests {
  // inventory_prefixes slice. Even when the store has Deprecated
  // entries, no violation surfaces — back-compat guarantee.
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
@@ -3491,7 +3491,7 @@ mod tests {
  #[test]
  fn inventory_orphan_ledger_suppresses_inventory_deprecated() {
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 hist\n").unwrap();
@@ -3566,7 +3566,7 @@ mod tests {
  fn inventory_orphan_ledger_unregistered_fires() {
  // (file, id) not in ledger → violation fires normally.
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_02 cite\n").unwrap();
@@ -3615,7 +3615,7 @@ mod tests {
  // CodeCitation ledger rows must NOT suppress inventory violations,
  // and vice-versa. Axes are independent.
  use crate::atomic::{AtomicStore, InventoryEntry};
- use mnemosyne_plugin::InventoryStatus;
+ use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 cite\n").unwrap();

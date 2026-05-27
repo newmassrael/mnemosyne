@@ -8,7 +8,7 @@
 //! round trip (atomic store fields → snapshot → indices the validator
 //! consumes).
 
-use mnemosyne_plugin::{AtomicStoreView, DecisionStatus, InventoryStatus};
+use mnemosyne_core::{AtomicStoreView, DecisionStatus, InventoryStatus};
 use mnemosyne_validator::atomic::{
     AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry,
 };

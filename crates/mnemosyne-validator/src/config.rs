@@ -282,7 +282,7 @@ pub struct PluginsSection {
 
 /// Per-language symbol resolver config under
 /// `[plugins.symbol_resolver.<lang>]`. Transport-tagged enum mirrors
-/// `mnemosyne_plugin::Transport` so config parse failures surface the same
+/// `mnemosyne_core::Transport` so config parse failures surface the same
 /// variant set as the runtime trait.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "transport", rename_all = "kebab-case")]

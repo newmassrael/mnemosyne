@@ -197,7 +197,7 @@ impl CascadeDb for MnemosyneCascadeDb {
 mod tests {
  use super::*;
  use crate::snapshot::BranchSnapshotData;
- use mnemosyne_core::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+ use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 
  fn make_branch(db: &MnemosyneCascadeDb, branch_id: u64, snap: &BranchSnapshotData) -> CascadeBranch {
  let payload = snap.encode().expect("encode");

@@ -38,7 +38,7 @@ impl MnemosyneStore {
  }
 
  /// Direct access to the underlying DB — used by typed wrapper layers
- /// (mnemosyne-core / mnemosyne-cascade) that share key encoding rules.
+ /// (mnemosyne-facts / mnemosyne-cascade) that share key encoding rules.
  pub fn db(&self) -> &Arc<DB> {
  &self.db
  }

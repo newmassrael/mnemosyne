@@ -4,7 +4,7 @@
 //! markdown parser path — guards against drift between style.rs and the
 //! Section.body / ChangelogEntry.sub_bullets surface.
 
-use mnemosyne_plugin::DecisionStatus;
+use mnemosyne_core::DecisionStatus;
 use mnemosyne_validator::{
  check_style, default_ruleset, parse_markdown, AtomicStore, StyleSeverity,
 };

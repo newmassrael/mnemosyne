@@ -86,9 +86,9 @@ fn cli_schema() -> Result<&'static SchemaSection> {
 /// blocked).
 fn build_symbol_resolver_map(
  cfg: &WorkspaceConfig,
-) -> std::collections::BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>> {
+) -> std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> {
  use mnemosyne_validator::SymbolResolverConfig;
- let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>> =
+ let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
  std::collections::BTreeMap::new();
  let Some(plugins) = cfg.plugins.as_ref() else {
  return out;
@@ -114,7 +114,7 @@ fn build_symbol_resolver_map(
  // ResolverError::NotImplemented until R307+ wires real MCP transport.
  out.insert(
   lang.clone(),
-  Box::new(mnemosyne_plugin::McpResolver {
+  Box::new(mnemosyne_core::McpResolver {
   command: command.clone(),
   }),
  );
@@ -127,7 +127,7 @@ fn build_symbol_resolver_map(
  // until R307+ wires shell-out + output_parser.
  out.insert(
   lang.clone(),
-  Box::new(mnemosyne_plugin::CliResolver {
+  Box::new(mnemosyne_core::CliResolver {
   command: command.clone(),
   output_parser: output_parser.clone(),
   }),
@@ -722,9 +722,9 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  } else {
  for (id, entry) in &atomic_store.inventory_entries {
  let status_label = match entry.status {
-  mnemosyne_plugin::InventoryStatus::Active => "active",
-  mnemosyne_plugin::InventoryStatus::Deprecated => "deprecated",
-  mnemosyne_plugin::InventoryStatus::Reserved => "reserved",
+  mnemosyne_core::InventoryStatus::Active => "active",
+  mnemosyne_core::InventoryStatus::Deprecated => "deprecated",
+  mnemosyne_core::InventoryStatus::Reserved => "reserved",
  };
  let section_part = entry
   .section_ref
@@ -755,9 +755,9 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  println!("{}", serde_json::to_string_pretty(&view)?);
  } else {
  let status_label = match entry.status {
- mnemosyne_plugin::InventoryStatus::Active => "active",
- mnemosyne_plugin::InventoryStatus::Deprecated => "deprecated",
- mnemosyne_plugin::InventoryStatus::Reserved => "reserved",
+ mnemosyne_core::InventoryStatus::Active => "active",
+ mnemosyne_core::InventoryStatus::Deprecated => "deprecated",
+ mnemosyne_core::InventoryStatus::Reserved => "reserved",
  };
  println!("inventory_id: {}", inv_id);
  println!("status: {}", status_label);
@@ -1451,8 +1451,8 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  for (section_id, section) in &store.sections {
  if matches!(
  section.decision_status,
- Some(mnemosyne_plugin::DecisionStatus::Superseded)
- | Some(mnemosyne_plugin::DecisionStatus::Removed)
+ Some(mnemosyne_core::DecisionStatus::Superseded)
+ | Some(mnemosyne_core::DecisionStatus::Removed)
  ) {
  targets.push(section_id.as_str());
  }
@@ -1997,13 +1997,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  symbol_resolvers,
  filter_id: filter_id.clone(),
  };
- let mut registry = mnemosyne_plugin::PluginRegistry::new();
+ let mut registry = mnemosyne_core::PluginRegistry::new();
  registry.register_validator("set_equality_validator", Box::new(validator));
  let dispatched = registry
  .validator("set_equality_validator")
  .expect("just registered");
- let store_view: &dyn mnemosyne_plugin::AtomicStoreView = &store;
- let ctx = mnemosyne_plugin::ValidationContext {
+ let store_view: &dyn mnemosyne_core::AtomicStoreView = &store;
+ let ctx = mnemosyne_core::ValidationContext {
  workspace_root: &root,
  atomic_sidecar: &atomic_path,
  store: store_view,

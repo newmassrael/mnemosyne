@@ -1,4 +1,4 @@
-//! `TypedFactStore` — typed put/get bridge between `mnemosyne-core` typed facts
+//! `TypedFactStore` — typed put/get bridge between `mnemosyne-facts` typed facts
 //! and `mnemosyne-store` raw RocksDB. Each entity kind maps to one CF:
 //!
 //! - `SectionFact` → `entities`

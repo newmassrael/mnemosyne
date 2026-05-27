@@ -29,7 +29,7 @@
 //! sub_bullets field preserved).
 
 use anyhow::{anyhow, bail, Context, Result};
-use mnemosyne_plugin::{DecisionStatus, InventoryStatus};
+use mnemosyne_core::{DecisionStatus, InventoryStatus};
 use mnemosyne_validator::{
  add_inventory_entry, add_section_caveat, add_section_example,
  add_section_implementation, append_changelog_entry,

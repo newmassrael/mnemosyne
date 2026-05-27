@@ -1071,7 +1071,7 @@ name = "mnemosyne-cascade"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mnemosyne-core",
+ "mnemosyne-facts",
  "mnemosyne-store",
  "salsa",
  "serde",
@@ -1086,7 +1086,7 @@ name = "mnemosyne-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mnemosyne-plugin",
+ "mnemosyne-core",
  "mnemosyne-plugin-tree-sitter-rust",
  "mnemosyne-server",
  "mnemosyne-store",
@@ -1099,6 +1099,16 @@ dependencies = [
 
 [[package]]
 name = "mnemosyne-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "toml",
+]
+
+[[package]]
+name = "mnemosyne-facts"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1128,20 +1138,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "mnemosyne-plugin"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "toml",
-]
-
-[[package]]
 name = "mnemosyne-plugin-tree-sitter-rust"
 version = "0.1.0"
 dependencies = [
- "mnemosyne-plugin",
+ "mnemosyne-core",
  "tempfile",
  "tree-sitter",
  "tree-sitter-rust",
@@ -1154,7 +1154,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "mnemosyne-cascade",
- "mnemosyne-core",
+ "mnemosyne-facts",
  "mnemosyne-store",
  "mnemosyne-validator",
  "opentelemetry",
@@ -1203,7 +1203,7 @@ name = "mnemosyne-validator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mnemosyne-plugin",
+ "mnemosyne-core",
  "mnemosyne-plugin-tree-sitter-rust",
  "regex",
  "serde",

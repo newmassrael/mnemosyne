@@ -8,7 +8,7 @@ pub enum ServerError {
  Store(#[from] mnemosyne_store::StoreError),
 
  #[error(transparent)]
- Core(#[from] mnemosyne_core::PersistError),
+ Core(#[from] mnemosyne_facts::PersistError),
 
  #[error("validator rejection: {0}")]
  ValidatorReject(String),
