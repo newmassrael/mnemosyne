@@ -84,15 +84,16 @@ max_section_body_length = 5000
 # fixture string literals). Forcing the same automation onto tests/ would
 # either bloat orphan_ledger by ~100-373 rows (diluting the ledger's "real
 # exception" semantics) or strip prose-meaningful traceability anchors.
-# tests/ stays out of [code_refs].paths; review-time human judgment carries
+# tests/ stays out of [plugins.set_equality_validator].paths; review-time human judgment carries
 # the residual policing duty. Cross-asset symmetry is sacrificed deliberately
 # in favor of single-responsibility per asset class.
-[code_refs]
+[plugins.set_equality_validator]
 paths = [
  "crates/mnemosyne-cascade/src/",
  "crates/mnemosyne-cli/src/",
  "crates/mnemosyne-core/src/",
  "crates/mnemosyne-mcp/src/",
+ "crates/mnemosyne-plugin/src/",
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-validator/src/",

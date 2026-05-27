@@ -51,9 +51,10 @@ pub use validator::{
 };
 pub use workspace::Workspace;
 pub use config::{
- discover_config, load_config, parse_config, AtomicConfigSection, CodeRefsSection,
- LoadedConfig, OrphanKind, OrphanLedgerEntry, PublishableOverrideLedgerEntry,
- SchemaSection, StyleSection, TerminologySection, WorkspaceConfig,
+ discover_config, load_config, parse_config, AtomicConfigSection,
+ LoadedConfig, OrphanKind, OrphanLedgerEntry, PluginsSection,
+ PublishableOverrideLedgerEntry, SchemaSection, SetEqualityValidatorConfig,
+ StyleSection, SymbolResolverConfig, TerminologySection, WorkspaceConfig,
  WorkspaceSection,
 };
 pub use query::{

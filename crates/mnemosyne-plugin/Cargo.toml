@@ -1,0 +1,18 @@
+[package]
+name = "mnemosyne-plugin"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+name = "mnemosyne_plugin"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+toml.workspace = true

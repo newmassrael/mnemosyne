@@ -1125,9 +1125,9 @@ pub fn cmd_set_section_decision_status(
 
  // Round 266 — auto-cascade trigger (Stage B freshness). When the new
  // status is Superseded or Removed, run a targeted §<id> decay scan
- // against [code_refs].paths and surface citing locations to stderr.
+ // against [plugins.set_equality_validator].paths and surface citing locations to stderr.
  // Informational only — never alters the mutate's success/failure.
- // No-op when [code_refs] is unconfigured (5-min setup promise carry).
+ // No-op when [plugins.set_equality_validator] is unconfigured (5-min setup promise carry).
  if mutate_result.is_ok()
  && matches!(
  new_status,
@@ -1229,8 +1229,8 @@ pub fn cmd_set_section_normative_excerpt(
 
 /// Round 266 — mutate-time auto-cascade trigger.
 ///
-/// Runs a §<section_id> decay scan over `[code_refs].paths` and prints a
-/// short report to stderr. Silent no-op when `[code_refs]` is unconfigured.
+/// Runs a §<section_id> decay scan over `[plugins.set_equality_validator].paths` and prints a
+/// short report to stderr. Silent no-op when `[plugins.set_equality_validator]` is unconfigured.
 /// Errors during config load or scan are logged but never propagated — the
 /// mutate's success boundary stays clean.
 fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_status: DecisionStatus) {
@@ -1245,7 +1245,12 @@ fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_stat
  return;
  }
  };
- let code_refs_cfg = match loaded.config.code_refs.as_ref() {
+ let code_refs_cfg = match loaded
+ .config
+ .plugins
+ .as_ref()
+ .and_then(|p| p.set_equality_validator.as_ref())
+ {
  Some(c) if !c.paths.is_empty() => c,
  _ => return,
  };
@@ -1267,7 +1272,7 @@ fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_stat
  DecisionStatus::Removed => "removed",
  };
  eprintln!(
- "[cascade] §{} → {} — {} citing location(s) in [code_refs].paths",
+ "[cascade] §{} → {} — {} citing location(s) in [plugins.set_equality_validator].paths",
  section_id,
  status_label,
  hits.len()
@@ -1280,8 +1285,8 @@ fn print_section_decay_trigger(workspace_root: &Path, section_id: &str, new_stat
 /// Round 276 — Inventory mutate-time auto-cascade trigger (Phase 1A).
 ///
 /// Mirrors [`print_section_decay_trigger`] for the inventory axis. Runs a
-/// targeted decay scan for `inventory_id` over `[code_refs].paths` and
-/// prints a short stderr report. Silent no-op when `[code_refs]` is
+/// targeted decay scan for `inventory_id` over `[plugins.set_equality_validator].paths` and
+/// prints a short stderr report. Silent no-op when `[plugins.set_equality_validator]` is
 /// unconfigured or `inventory_prefixes` is empty (axis disabled).
 /// Errors during config load or scan are logged but never propagated —
 /// the mutate's success boundary stays clean.
@@ -1305,7 +1310,12 @@ fn print_inventory_decay_trigger(
  return;
  }
  };
- let code_refs_cfg = match loaded.config.code_refs.as_ref() {
+ let code_refs_cfg = match loaded
+ .config
+ .plugins
+ .as_ref()
+ .and_then(|p| p.set_equality_validator.as_ref())
+ {
  Some(c)
  if !c.paths.is_empty()
  && (!c.inventory_prefixes.is_empty() || !c.inventory_path_prefixes.is_empty()) =>
@@ -1329,7 +1339,7 @@ fn print_inventory_decay_trigger(
  }
  };
  eprintln!(
- "[cascade] {} → {} — {} citing location(s) in [code_refs].paths",
+ "[cascade] {} → {} — {} citing location(s) in [plugins.set_equality_validator].paths",
  inventory_id,
  transition_label,
  hits.len()

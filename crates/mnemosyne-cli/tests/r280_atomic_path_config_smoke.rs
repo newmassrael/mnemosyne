@@ -137,7 +137,8 @@ fn validate_code_refs_honors_atomic_sidecar_override() {
  // Add a code_refs scan target with one inventory citation.
  fs::create_dir_all(tmp.path().join("src")).unwrap();
  fs::write(tmp.path().join("src/x.rs"), "// FOO_07 cite\n").unwrap();
- // Update mnemosyne.toml: append [code_refs] with the FOO_ prefix.
+ // Update mnemosyne.toml: append [plugins.set_equality_validator] with
+ // the FOO_ inventory prefix.
  let cfg = r#"
 [workspace]
 docs = ["docs/coverage/SPEC_COVERAGE.md"]
@@ -147,7 +148,7 @@ default_doc = "docs/coverage/SPEC_COVERAGE.md"
 sidecar_path = "doc/.atomic/store.json"
 output_path = "docs/coverage/SPEC_COVERAGE.md"
 
-[code_refs]
+[plugins.set_equality_validator]
 paths = ["src/"]
 inventory_prefixes = ["FOO_"]
 severity_inventory = "warn"

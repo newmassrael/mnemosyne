@@ -1,0 +1,19 @@
+[package]
+name = "mnemosyne-plugin-tree-sitter-rust"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+name = "mnemosyne_plugin_tree_sitter_rust"
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-plugin = { path = "../mnemosyne-plugin" }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -132,6 +132,7 @@ impl CodeRefViolation {
  ViolationKind::CitationUnbound => "citation_unbound",
  ViolationKind::InventoryMissing => "inventory_missing",
  ViolationKind::InventoryDeprecated => "inventory_deprecated",
+ ViolationKind::SymbolMismatch => "symbol_mismatch",
  },
  CodeRefViolation::ImplementationUnbacked { .. } => "impl_unbacked",
  CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
@@ -151,7 +152,9 @@ impl CodeRefViolation {
  ViolationKind::Missing | ViolationKind::SectionMissing => {
  DefectClass::Hallucination
  }
- ViolationKind::CitationUnbound => DefectClass::Binding,
+ ViolationKind::CitationUnbound | ViolationKind::SymbolMismatch => {
+ DefectClass::Binding
+ }
  ViolationKind::Decay => DefectClass::Decay,
  ViolationKind::InventoryMissing | ViolationKind::InventoryDeprecated => {
  DefectClass::Inventory
@@ -211,6 +214,16 @@ pub enum ViolationKind {
  /// `Reserved` status does not trigger this — Reserved is "set aside,
  /// cite permitted" by R275 design.
  InventoryDeprecated,
+ /// Round 306 — RFC-002 FR-3 symbol-level enforcement.
+ ///
+ /// At a `§<id>` citation site (`file`:`line` carrying the cite), the
+ /// `SymbolResolver` plugin's `resolve_symbol_at(file, line)` returns a
+ /// name that does NOT match the `Implementation.symbol` recorded for
+ /// the cited section's implementation entry whose `file` matches the
+ /// citing file. The binding exists at file granularity (R260) but the
+ /// symbol granularity disagrees — code drifted under the spec's claim,
+ /// or the symbol field is stale.
+ SymbolMismatch,
 }
 
 /// Walk configured paths under `root`, collecting all readable files.
@@ -720,7 +733,7 @@ fn extract_inventory_citations_with_tail(
 // - shell heredocs not recognized;
 // - escape rules simplified (`\X` skips one char inside strings).
 // These miss cases are deliberately deferred — when they bite, opt-out via
-// `[code_refs] comment_only = false` restores the whole-text scan.
+// `[plugins.set_equality_validator] comment_only = false` restores the whole-text scan.
 // ============================================================================
 
 /// Per-language comment recognition mode. The dispatcher in
@@ -1052,6 +1065,19 @@ pub fn scan_paths_filtered(
 /// Pass an empty slice on any axis to disable it. `filter_id` is the
 /// decay-scan toggle (Steps 3-4 stay silent under decay mode for
 /// surface-narrowing).
+/// Map a file path to the language ID used as the
+/// `[plugins.symbol_resolver.<lang>]` key. Round 306 — wires
+/// `SymbolResolver` plugins per file extension. Unknown extensions
+/// return `None`; the symbol axis is silently skipped for that file.
+fn lang_for_file(path: &Path) -> Option<&'static str> {
+ match path.extension().and_then(|e| e.to_str()) {
+ Some("rs") => Some("rust"),
+ Some("py") => Some("python"),
+ Some("go") => Some("go"),
+ _ => None,
+ }
+}
+
 pub fn scan_paths_bidirectional(
  workspace_root: &Path,
  paths: &[String],
@@ -1064,6 +1090,7 @@ pub fn scan_paths_bidirectional(
  external_section_prefixes_numeric: &[String],
  external_section_prefixes_bare: &[String],
  inventory_path_prefixes: &[String],
+ symbol_resolvers: Option<&BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>>>,
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  // Round 293 — valid_entry_ids must match the shape produced by
  // `extract_citations`, which returns `<prefix><number>` (e.g. "Round 293").
@@ -1097,6 +1124,24 @@ pub fn scan_paths_bidirectional(
  .map(|i| i.file.as_str())
  .collect();
  (sid.as_str(), files)
+ })
+ .collect();
+
+ // Round 306 — RFC-002 FR-3 symbol-level enforcement index.
+ // section_id → file → symbol (when Implementation.symbol is Some).
+ // Drives SymbolMismatch checks at each CitationUnbound boundary
+ // where the file IS bound — the bidirectional set-equality passes
+ // file granularity (R260) but the symbol axis may disagree.
+ let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, &str>> = store
+ .sections
+ .iter()
+ .map(|(sid, sec)| {
+ let m: BTreeMap<&str, &str> = sec
+ .implementations
+ .iter()
+ .filter_map(|i| i.symbol.as_deref().map(|s| (i.file.as_str(), s)))
+ .collect();
+ (sid.as_str(), m)
  })
  .collect();
 
@@ -1212,6 +1257,39 @@ pub fn scan_paths_bidirectional(
  },
  kind: ViolationKind::CitationUnbound,
  });
+ } else if let Some(resolvers) = symbol_resolvers {
+ // Round 306 — RFC-002 FR-3 symbol-level enforcement.
+ // File-level binding passed; if the cited section's impl
+ // entry for this file carries a `symbol`, the resolver for
+ // the file's language is consulted. Mismatch surfaces as
+ // SymbolMismatch (Binding-class severity bucket). Resolver
+ // returning None/Err is silent — author may need to update
+ // either the cite line or the Implementation.symbol value,
+ // but the substrate doesn't presume which is wrong.
+ if let Some(expected_sym) = impl_symbols_by_section_file
+ .get(section_id.as_str())
+ .and_then(|m| m.get(rel_str.as_str()))
+ {
+ if let Some(lang) = lang_for_file(&rel) {
+ if let Some(resolver) = resolvers.get(lang) {
+  let abs_for_resolve = workspace_root.join(&rel);
+  if let Ok(Some(resolved)) =
+  resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
+  {
+  if resolved.as_str() != *expected_sym {
+  violations.push(CodeRefViolation::Citation {
+  citation: Citation {
+   file: rel.clone(),
+   line,
+   entry_id: format!("§{}", section_id),
+  },
+  kind: ViolationKind::SymbolMismatch,
+  });
+  }
+  }
+ }
+ }
+ }
  }
  }
 
@@ -1497,6 +1575,40 @@ mod tests {
  use crate::atomic::{add_section_implementation, AtomicStore};
  use tempfile::TempDir;
 
+ /// Test-only wrapper that drives `scan_paths_bidirectional` with no
+ /// SymbolResolver registry — i.e., pre-R306 set-equality-only mode.
+ /// Tests that specifically exercise the R306 symbol-axis enforcement
+ /// call `scan_paths_bidirectional` directly with a populated map.
+ #[allow(clippy::too_many_arguments)]
+ fn scan_paths_no_resolvers(
+ workspace_root: &Path,
+ paths: &[String],
+ prefix: &str,
+ store: &AtomicStore,
+ orphan_ledger: &[OrphanLedgerEntry],
+ filter_id: Option<&str>,
+ comment_only: bool,
+ inventory_prefixes: &[String],
+ external_section_prefixes_numeric: &[String],
+ external_section_prefixes_bare: &[String],
+ inventory_path_prefixes: &[String],
+ ) -> std::io::Result<Vec<CodeRefViolation>> {
+ scan_paths_bidirectional(
+ workspace_root,
+ paths,
+ prefix,
+ store,
+ orphan_ledger,
+ filter_id,
+ comment_only,
+ inventory_prefixes,
+ external_section_prefixes_numeric,
+ external_section_prefixes_bare,
+ inventory_path_prefixes,
+ None,
+ )
+ }
+
  #[test]
  fn scan_round_number_plain() {
  assert_eq!(scan_round_number("254 rest"), Some("254".to_string()));
@@ -1672,7 +1784,7 @@ mod tests {
  "// §39 — Foo binds here\nfn main() {}\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1700,7 +1812,7 @@ mod tests {
  "// see §999 hallucinated\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1737,7 +1849,7 @@ mod tests {
  )
  .unwrap();
  std::fs::write(tmp.path().join("src/bar.rs"), "// §39 — authoritative\n").unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1775,7 +1887,7 @@ mod tests {
  "// no spec citation at all\nfn foo() {}\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1823,7 +1935,7 @@ mod tests {
  reason: "legacy carry".to_string(),
  since: "Round 260".to_string(),
  }];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1857,7 +1969,7 @@ mod tests {
  reason: "legacy carry".to_string(),
  since: "Round 260".to_string(),
  }];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -1893,7 +2005,7 @@ mod tests {
  "Round 1".to_string(),
  crate::atomic::AtomicChangelogEntry::default(),
  );
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2157,7 +2269,7 @@ mod tests {
  "let fixture = \"Round 999 is fixture data\";\n// Round 999 real cite\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2197,7 +2309,7 @@ mod tests {
  "let fixture = \"Round 999 fixture\";\n// Round 999 cite\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2234,7 +2346,7 @@ mod tests {
  "raw text Round 999 anywhere\n",
  )
  .unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2282,7 +2394,7 @@ mod tests {
  let store = build_store_with_empty_section("39", Some(DecisionStatus::Active));
  // No source files written — workspace is otherwise silent.
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2317,7 +2429,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let store = build_store_with_empty_section("39", None);
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2351,7 +2463,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let store = build_store_with_empty_section("39", Some(DecisionStatus::Superseded));
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2384,7 +2496,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let store = build_store_with_empty_section("39", Some(DecisionStatus::Removed));
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2411,7 +2523,7 @@ mod tests {
  let store = build_store_with_impl(&store_path, "39", "src/foo.rs", None);
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// §39 cite\n").unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2440,7 +2552,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let store = build_store_with_empty_section("39", Some(DecisionStatus::Active));
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2505,7 +2617,7 @@ mod tests {
  std::fs::write(tmp.path().join("src/x.rs"), content).unwrap();
  let store = AtomicStore::new();
  let prefixes = vec!["FOO_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2713,7 +2825,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let path_prefixes = vec!["W3C SCXML ".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2760,7 +2872,7 @@ mod tests {
  },
  );
  let path_prefixes = vec!["W3C SCXML ".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2789,7 +2901,7 @@ mod tests {
  let store = AtomicStore::new();
  let opaque = vec!["ARP_".to_string()];
  let path = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2819,7 +2931,7 @@ mod tests {
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 not in store\n").unwrap();
  let store = AtomicStore::new();
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2860,7 +2972,7 @@ mod tests {
  },
  );
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2909,7 +3021,7 @@ mod tests {
  },
  );
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3168,7 +3280,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let bare = vec!["TR_SOMEIP".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3211,7 +3323,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let externals = vec!["RFC".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3246,7 +3358,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let externals = vec!["RFC".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3354,7 +3466,7 @@ mod tests {
   ..Default::default()
  },
  );
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3398,7 +3510,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3432,7 +3544,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3473,7 +3585,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3521,7 +3633,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3558,7 +3670,7 @@ mod tests {
  "Round 293 — R291 backfill entry append + commit↔ledger drift gate".to_string(),
  crate::atomic::AtomicChangelogEntry::default(),
  );
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3592,7 +3704,7 @@ mod tests {
  "Round 292".to_string(),
  crate::atomic::AtomicChangelogEntry::default(),
  );
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3630,7 +3742,7 @@ mod tests {
  "Round 292".to_string(),
  crate::atomic::AtomicChangelogEntry::default(),
  );
- let v = scan_paths_bidirectional(
+ let v = scan_paths_no_resolvers(
  tmp.path(),
  &["src/".to_string()],
  "Round ",

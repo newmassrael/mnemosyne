@@ -500,3 +500,48 @@ namespace via multi-디렉토리) 는 변경 없음 — 그대로 권장.
 **FR-3 carry**: `Implementation.symbol` 기록은 여전히 가능하나 mnemosyne
 측 enforcement 는 file-level only. SCE 측 도구가 symbol 필드 query 하는
 패턴 carry.
+
+### Round 306 — FR-3 land (plugin substrate proof-first)
+
+본 disposition §2 의 **FR-3 (symbol-level binding enforcement)** 가 Round
+306 에서 plugin substrate (RFC-003 FR-1/FR-2) 위에서 first-class land:
+
+- **SymbolResolver trait** — `mnemosyne-plugin` crate 의 capability trait,
+ `(file, line) -> Option<symbol_name>` 시그니처. `tree-sitter-rust`
+ in-process backend (`mnemosyne-plugin-tree-sitter-rust` crate) 가 첫
+ production 구현 — Rust 코드의 fn / struct / enum / trait / impl / mod /
+ const / static / type / union / macro_definition 노드에서 enclosing
+ declaration 의 name 을 반환.
+- **scan_paths_bidirectional 확장** — `symbol_resolvers: Option<&BTreeMap>`
+ 인자 추가. CitationUnbound 가 통과한 (file 매치 OK) citation 마다, cited
+ section 의 implementations 에서 (file=cited_file) entry 의 `symbol` 필드
+ 와 resolver 응답을 비교. 불일치 시 `ViolationKind::SymbolMismatch` (R260
+ 의 set-equality 위반과 같은 Binding-class severity bucket — `severity_binding`
+ knob 으로 공동 governance).
+- **opt-in 메커니즘** — `mnemosyne.toml [plugins.symbol_resolver.rust]
+ transport = "in-process" backend = "tree-sitter-rust"` 명시 시만 활성화.
+ 미명시 → file-only set-equality 유지 (R260, 기존 behavior). 5-min setup
+ promise carry.
+- **Severity governance** — symbol-axis mismatch 는 binding-class 로
+ bucket 됨, R269 의 "set-equality 위반 셋이 하나의 severity 로 묶임"
+ 패턴 유지. 별도 `severity_symbol` knob 도입은 측정 evidence 발현 시
+ R307+ (R262 → R263 measure-then-promote precedent).
+
+본 disposition §2 의 FR-3 "Phase 1+ deferred — paradigm shift framing"
+라벨은 *substrate 측 paradigm shift* (plugin trait + capability registry +
+language-specific backend) 가 Phase 0.5 안에서 land 됨에 따라 정정됨.
+R303 의 reasoning 과 동일 패턴 — "defer 라벨이 trigger timing 명시 부족,
+실제 비용은 plugin substrate 와 동시 land 시 합리". RFC-003 §"Round 306"
+addendum 이 substrate-side 정정 기록.
+
+**SCE 측 영향**:
+- `Implementation.symbol` 필드 가 *informational* → *enforced* 로
+ promote. SCE 가 W3C SCXML / IETF RFC / ETSI/3GPP 등 spec 의 symbol-
+ grained binding (e.g., `scxml-3.13 → src/scxml/state.rs:42 fn
+ process_initial`) 을 atomic store 에 등록하면 mnemosyne 가 매 commit /
+ validate-workspace 마다 검증.
+- non-Rust 언어 (Python / Go / 등) 는 R307+ 의 backend 추가 후 활성화.
+ 미설치 backend = file-only set-equality 유지 (5-min setup 보장).
+- Sidecar JSON carry path 는 §6.B 의 *전환 옵션* 으로 격하된 상태 그대로
+ — first-class field + symbol enforcement 가 모두 wired 되었으므로
+ sidecar 유지 cost 가 unique advantage 없음.

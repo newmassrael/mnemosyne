@@ -1,7 +1,7 @@
 //! Round 256-260 — `validate-code-refs` subcommand smoke tests.
 //!
 //! Test scope:
-//! (i) `[code_refs]` omission → skip mode (exit 0 with explicit log line)
+//! (i) `[plugins.set_equality_validator]` omission → skip mode (exit 0 with explicit log line)
 //! (ii) clean codebase (citation present in atomic store) → no violations
 //! (iii) hallucinated citation → reject (exit 1) under default severity
 //! (iv) hallucinated citation → warn (exit 0) under `--severity-missing warn`
@@ -24,7 +24,7 @@ fn cli_binary() -> &'static str {
 }
 
 /// Set up a minimal workspace with one ChangelogEntry (`Round 1`) and
-/// optionally a `[code_refs]` table pointing at `src/`.
+/// optionally a `[plugins.set_equality_validator]` table pointing at `src/`.
 fn write_workspace(workspace: &Path, with_code_refs: bool) {
  fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
  fs::create_dir_all(workspace.join("src")).unwrap();
@@ -33,7 +33,7 @@ fn write_workspace(workspace: &Path, with_code_refs: bool) {
  [schema]\nentry_id_prefix = \"Round \"\n",
  );
  if with_code_refs {
- cfg.push_str("[code_refs]\npaths = [\"src/\"]\n");
+ cfg.push_str("[plugins.set_equality_validator]\npaths = [\"src/\"]\n");
  }
  fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
 
@@ -74,7 +74,7 @@ fn case_i_skip_mode_when_code_refs_unconfigured() {
  assert!(out.status.success(), "exit code: {:?}", out.status.code());
  let stdout = String::from_utf8_lossy(&out.stdout);
  assert!(
- stdout.contains("skipped") && stdout.contains("[code_refs]"),
+ stdout.contains("skipped") && stdout.contains("[plugins.set_equality_validator]"),
  "stdout: {}",
  stdout
  );
@@ -246,7 +246,7 @@ fn case_vi_json_output_shape() {
 
 /// Write a minimal workspace whose atomic store includes one §<id>
 /// section with optional `implementations` entries. `with_code_refs` adds
-/// `[code_refs] paths = ["src/"]`.
+/// `[plugins.set_equality_validator] paths = ["src/"]`.
 fn write_workspace_with_section(
  workspace: &Path,
  with_code_refs: bool,
@@ -260,7 +260,7 @@ fn write_workspace_with_section(
  [schema]\nentry_id_prefix = \"Round \"\n",
  );
  if with_code_refs {
- cfg.push_str("[code_refs]\npaths = [\"src/\"]\n");
+ cfg.push_str("[plugins.set_equality_validator]\npaths = [\"src/\"]\n");
  }
  fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
  let impls_json: Vec<_> = impls

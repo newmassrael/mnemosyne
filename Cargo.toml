@@ -8,6 +8,8 @@ members = [
  "crates/mnemosyne-server",
  "crates/mnemosyne-cli",
  "crates/mnemosyne-mcp",
+ "crates/mnemosyne-plugin",
+ "crates/mnemosyne-plugin-tree-sitter-rust",
 ]
 
 [workspace.package]

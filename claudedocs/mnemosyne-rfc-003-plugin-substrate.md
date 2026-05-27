@@ -534,3 +534,133 @@ one instead of being a one-off carve-out).
 **Next action**: file as `claudedocs/mnemosyne-rfc-003-plugin-substrate.md`.
 Implementation begins per individual FR triggers above; no code
 lands from this RFC directly.
+
+---
+
+## Addendum — Round 306: FR-1 / FR-2 land + FR-3 absorbed first proof
+
+본 RFC §6 의 disposition 에서 **FR-1 (transport abstraction) / FR-2
+(validator + binding plugin categories)** 는 *Phase 0.5 defer + "Phase 0
+closure sustained" trigger* 로 라벨링됐다. Round 306 에서 두 FR 가 land
+되고, RFC-002 FR-3 (symbol-level enforcement) 가 substrate 위 *first
+proof* 로 통합 wire.
+
+### Trigger 재평가 (R303 패턴 적용)
+
+RFC-002 의 R303 disposition 정정과 동일 reasoning:
+- "Phase 0.5 defer" 라벨이 결정 의도였다기보다 trigger timing 명시 부족
+- R252-R305 = 53 rounds Phase 0 hardening sustained (R304 mutate.rs 청산
+ + R305 publishable setter parity 가 정합성 anchor)
+- R265/R275/R287/R294/R303 precedent — Phase 0 안에서 schema 확장 / API
+ surface 추가가 이미 다수 land
+- Substrate 의 schema invasion 0 (config 확장 + Rust trait 만, atomic
+ store JSON schema 무변경)
+
+→ Phase 0.5 promote 정합 + "proof-first" 변형 선택. Substrate-first 의
+trait shape 위험 (첫 plugin wire 시 변경 필요) 보다 proof-first 의 trait
+shape 검증 자체가 substrate 의 의의를 land 와 동시 검증.
+
+### Land 된 구조
+
+**1. 새 crate `mnemosyne-plugin`** (workspace 의 8th crate, no atomic
+store dependency — trust boundary 가 Cargo edge):
+- `SymbolResolver` trait — binding-class capability (R260 set-equality
+ 의 symbol axis 확장)
+- `Validator` trait — validator-class capability (R307+ 의 multi-
+ validator slot 위해 정의, R306 본문 wire 는 placeholder 차원)
+- `PluginCategory { Validator, Binding }` enum
+- `Transport { InProcess, Mcp, Cli }` enum — 3 variant 모두 surface,
+ InProcess production wire, Mcp/Cli placeholder (R307+ sample backend
+ land 시 production wire)
+- `PluginRegistry` — explicit-init pattern (글로벌 state 0, inventory
+ crate 의존성 0, dlopen 0; 모든 backend 가 Cargo edge 통해 register
+ 호출)
+
+**2. 새 crate `mnemosyne-plugin-tree-sitter-rust`** (9th crate):
+- `TreesitterRustResolver: SymbolResolver` — `tree-sitter` v0.26 +
+ `tree-sitter-rust` v0.24 위에서 `(file, line) -> Option<symbol_name>`
+ best-effort 해소. fn / struct / enum / trait / impl / mod / const /
+ static / type / union / macro_definition 노드 query.
+- `register(&mut PluginRegistry)` entry point — mnemosyne-cli /
+ mnemosyne-mcp 가 startup 시 호출.
+
+**3. `mnemosyne.toml` 의 `[plugins.*]` table**:
+- `[plugins.symbol_resolver.<lang>]` — 언어별 transport + backend
+ 선택. `transport = "in-process"` → R306 production. `transport = "mcp"
+ | "cli"` → placeholder (R307+ wire).
+- `[plugins.set_equality_validator]` — pre-R306 `[code_refs]` 의
+ in-place rename. paths / severity / comment_only / inventory_prefixes
+ / external_section_prefixes / inventory_path_prefixes 동일 schema —
+ namespace 만 plugin substrate 위로 이동. backward compat 0 (pre-release
+ no-compat).
+
+**4. `scan_paths_bidirectional` 확장**:
+- `symbol_resolvers: Option<&BTreeMap<String, Box<dyn SymbolResolver>>>`
+ 인자 추가
+- CitationUnbound 통과 (file 매치) citation 마다, cited section 의
+ `Implementation { file, symbol }` 에서 symbol 이 `Some(_)` 인 entry 에
+ 대해 resolver invocation. mismatch → `ViolationKind::SymbolMismatch`
+ (binding-class severity bucket).
+
+**5. CLI / MCP / 부채 동시 상환**:
+- `mnemosyne-cli` 가 `mnemosyne-plugin` + `mnemosyne-plugin-tree-sitter-rust`
+ 의존성 추가, startup 에서 `[plugins.symbol_resolver.*]` 읽고 resolver
+ 등록 → `build_symbol_resolver_map`. Mcp/Cli 변형은 placeholder resolver
+ 등록 → 호출 시 `ResolverError::NotImplemented`.
+- `[code_refs]` → `[plugins.set_equality_validator]` in-place rename
+ 동반. `CodeRefsSection` struct → `SetEqualityValidatorConfig` rename,
+ 모든 doc comment + help text + test fixture 일괄 변경. 부채 즉시 상환.
+
+### FR breakdown 정정 (post-R306)
+
+| FR | Title | Status (R306 후) | Trigger |
+|---|---|---|---|
+| FR-1 | Transport abstraction | **Substrate landed** (InProcess production; Mcp/Cli placeholder) | MCP/CLI sample backend 확정 시 R307+ |
+| FR-2 | Validator + binding plugin categories | **Substrate landed** (SymbolResolver = binding-class first proof) | Validator trait 의 production dispatch = R307+ multi-plugin scenario |
+| FR-3 | External spec federation | DEFER to Phase 1+ (unchanged) | first cross-repo dogfood |
+| FR-4 | External MCP tool integration | DEFER to Phase 1+ (unchanged) | user-explicit request |
+| FR-5 | Medium adapter pattern | DEFER to Phase 1A (unchanged) | Round 172 narrative priority audit + Phase 0 closure sustained + FR-1/FR-2 land (=R306 done) |
+| FR-5.1 / 5.2 / 5.3 | Narrative-scope additions | DEFER to Phase 1A (unchanged) | FR-5 prerequisite |
+
+**RFC-002 FR-3 (symbol-level binding enforcement)** → RFC-002 §"Round
+306" addendum 으로 정정 기록 — Phase 1+ → Phase 0.5 의 plugin substrate
+위 first proof 로 promote, status = **Landed**.
+
+### Carry forward (R307+)
+
+1. **SetEqualityValidator struct extraction** — R306 의 `scan_paths_
+ bidirectional` signature 확장 path 가 minimum proof. 진정 plugin
+ architecture 정합화 = `SetEqualityValidator: Validator` struct 가
+ config + symbol resolvers 를 carry, cmd_validate_code_refs 가 registry
+ 에서 dispatch. R307+ 의 cohesive scope.
+2. **`AtomicStoreView` trait** — `ValidationContext` 가 store reference
+ carry 못함 (mnemosyne-plugin → mnemosyne-validator cycle 방지). R307+
+ 에 minimum view trait 도입으로 `ValidationContext` 가 store 접근
+ 가능, validator-class plugin 의 진정한 trait dispatch land.
+3. **MCP transport production wire** — McpResolver 의 NotImplemented
+ placeholder 를 real MCP client wire 로 교체. Sample backend 후보:
+ (a) Python LSP wrapper (b) mnemosyne-mcp 자체가 SymbolResolver tool
+ 노출 → 다른 mnemosyne-mcp instance 가 호출하는 self-referential dogfood.
+4. **CLI transport production wire** — CliResolver 의 NotImplemented
+ placeholder 를 real shell-out + output parser wire 로 교체. Sample
+ backend 후보: gopls (시스템 설치 후), clangd, pyright stdio.
+5. **Non-Rust SymbolResolver backends** — Python (tree-sitter-python +
+ 별도 crate), Go (tree-sitter-go), TypeScript / JavaScript / 등. 각각
+ R307+ 의 separate round (한 라운드 = 한 plugin backend = explicit Cargo
+ edge).
+6. **Severity governance** — `SymbolMismatch` 가 현재 binding-class 의
+ `severity_binding` bucket 공유. 별도 `severity_symbol` knob 도입은
+ measurement 후 R307+ promote (R262 → R263 measure-then-promote
+ precedent).
+7. **`[plugins.set_equality_validator]` 내부의 sub-axis split** —
+ inventory / external_ref_skipper 가 별도 plugin 으로 분리 가능
+ (R275 inventory + R277 external_section_prefixes 가 set-equality 와
+ 다른 lifecycle). R307+ 의 plugin substrate 확장 시 분리.
+
+### Schema invasion 정리 (post-R306)
+
+- `AtomicStore.*` — 변경 0 (audit-trail frozen ledger 유지)
+- `mnemosyne.toml` — `[plugins.*]` table 신규 추가. `[code_refs]`
+ → `[plugins.set_equality_validator]` in-place rename. backward compat
+ 0 (pre-release no-compat).
+- Cargo workspace — 9 members (pre-R306 7 + plugin + plugin-tree-sitter-rust).

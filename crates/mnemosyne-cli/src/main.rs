@@ -31,7 +31,7 @@ use mnemosyne_validator::{
  style::{StyleSeverity, StyleViolation},
  validator::cross_ref_orphan_reject_with_workspace,
  AtomicStore, LoadedConfig, OrphanKind, ParsedDoc, SchemaSection, ValidationError,
- Workspace,
+ Workspace, WorkspaceConfig,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -72,6 +72,70 @@ fn cli_schema() -> Result<&'static SchemaSection> {
  .unwrap_or_else(SchemaSection::mnemosyne_preset);
  let _ = CACHE.set(schema);
  Ok(CACHE.get().expect("just set"))
+}
+
+/// Round 306 — build the SymbolResolver registry from
+/// `[plugins.symbol_resolver.<lang>]` config entries.
+///
+/// Only `transport = "in-process"` entries land production backends in
+/// R306. `transport = "mcp"` / `"cli"` parse cleanly (the config enum
+/// has those variants per RFC-003 transport-abstraction section) but their backends are not yet
+/// wired — callers reaching those variants surface `NotImplemented` at
+/// resolve time. Unknown in-process backend names log a stderr warning
+/// and are skipped (no plugin = file-only set-equality, no language
+/// blocked).
+fn build_symbol_resolver_map(
+ cfg: &WorkspaceConfig,
+) -> std::collections::BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>> {
+ use mnemosyne_validator::SymbolResolverConfig;
+ let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_plugin::SymbolResolver>> =
+ std::collections::BTreeMap::new();
+ let Some(plugins) = cfg.plugins.as_ref() else {
+ return out;
+ };
+ for (lang, resolver_cfg) in &plugins.symbol_resolver {
+ match resolver_cfg {
+ SymbolResolverConfig::InProcess { backend } => {
+ if backend == mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY {
+ out.insert(
+  lang.clone(),
+  Box::new(mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver),
+ );
+ } else {
+ eprintln!(
+  "[plugins.symbol_resolver.{}] unknown in-process backend `{}` — skipped",
+  lang, backend
+ );
+ }
+ }
+ SymbolResolverConfig::Mcp { command } => {
+ // Placeholder McpResolver — registered into the type surface so
+ // enforcement passes the call through; resolve_symbol_at returns
+ // ResolverError::NotImplemented until R307+ wires real MCP transport.
+ out.insert(
+  lang.clone(),
+  Box::new(mnemosyne_plugin::McpResolver {
+  command: command.clone(),
+  }),
+ );
+ }
+ SymbolResolverConfig::Cli {
+ command,
+ output_parser,
+ } => {
+ // Placeholder CliResolver — same NotImplemented behavior as McpResolver
+ // until R307+ wires shell-out + output_parser.
+ out.insert(
+  lang.clone(),
+  Box::new(mnemosyne_plugin::CliResolver {
+  command: command.clone(),
+  output_parser: output_parser.clone(),
+  }),
+ );
+ }
+ }
+ }
+ out
 }
 
 /// Known-stale orphan ledger — type-system escape hatch pattern (TypeScript
@@ -412,7 +476,7 @@ fn print_help(prog: &str) {
  prog
  );
  println!(
- "   Round 256: scan [code_refs].paths for <entry_id_prefix><digits> citations,"
+ "   Round 256: scan [plugins.set_equality_validator].paths for <entry_id_prefix><digits> citations,"
  );
  println!(
  "   reject those whose entry_id is missing from atomic store changelog_entries"
@@ -1245,9 +1309,9 @@ fn cmd_validate_workspace() -> Result<()> {
  //
  // Iterates atomic_store.sections for decision_status=Some(Superseded|Removed)
  // and runs scan_section_decay per section. Sums citing locations across
- // [code_refs].paths and prints one informational line. Never fails the
+ // [plugins.set_equality_validator].paths and prints one informational line. Never fails the
  // gate — matches the Round 266 mutate-time trigger's informational-only
- // semantics. Silent when [code_refs] is unconfigured.
+ // semantics. Silent when [plugins.set_equality_validator] is unconfigured.
  print_atomic_decay_surface(&root)?;
 
  // Round 296 — publishable / audit divergence ledger gate.
@@ -1360,7 +1424,7 @@ fn check_publishable_override_ledger(
 ///
 /// Reads the atomic store, walks all sections with
 /// `decision_status = Some(Superseded | Removed)`, and runs
-/// `scan_section_decay` against the configured `[code_refs].paths`. Prints
+/// `scan_section_decay` against the configured `[plugins.set_equality_validator].paths`. Prints
 /// a one-line summary plus a per-section break-down when any decay surfaces.
 /// Pure informational — does not affect the validate-workspace exit code.
 fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
@@ -1368,7 +1432,12 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  Ok(c) => c,
  Err(_) => return Ok(()),
  };
- let code_refs_cfg = match cfg.config.code_refs.as_ref() {
+ let code_refs_cfg = match cfg
+ .config
+ .plugins
+ .as_ref()
+ .and_then(|p| p.set_equality_validator.as_ref())
+ {
  Some(c) if !c.paths.is_empty() => c,
  _ => return Ok(()),
  };
@@ -1795,7 +1864,7 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 /// into the pre-commit hook; wires the supersede cascade
 /// trigger.
 ///
-/// `[code_refs]` omission ⇒ skip (exit 0 with log line) — 5-min setup
+/// `[plugins.set_equality_validator]` omission ⇒ skip (exit 0 with log line) — 5-min setup
 /// promise carry for external users who don't cite spec entries in code.
 fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let mut json = false;
@@ -1843,7 +1912,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  }
 
  let loaded = workspace_config()?;
- let cfg = match &loaded.config.code_refs {
+ let cfg = match loaded
+ .config
+ .plugins
+ .as_ref()
+ .and_then(|p| p.set_equality_validator.as_ref())
+ {
  Some(c) => c,
  None => {
  if json {
@@ -1852,13 +1926,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  serde_json::json!({
  "primitive": "validate-code-refs",
  "status": "skipped",
- "reason": "[code_refs] not configured in mnemosyne.toml",
+ "reason": "[plugins.set_equality_validator] not configured in mnemosyne.toml",
  })
  );
  } else {
  println!("=== mnemosyne-cli validate-code-refs ===");
  println!(
- "skipped — [code_refs] not configured in mnemosyne.toml \
+ "skipped — [plugins.set_equality_validator] not configured in mnemosyne.toml \
  (5-min setup promise carry — Round 256)"
  );
  }
@@ -1904,6 +1978,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
+ // Round 306 — build SymbolResolver registry from
+ // [plugins.symbol_resolver.<lang>]. Only InProcess transport is wired
+ // in this round; Mcp/Cli surface ResolverError::NotImplemented at
+ // call time. Unknown backend names log a warning and are skipped.
+ let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
+
  let violations = scan_paths_bidirectional(
  &root,
  &cfg.paths,
@@ -1916,12 +1996,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  &cfg.external_section_prefixes,
  &cfg.external_section_prefixes_bare,
  &cfg.inventory_path_prefixes,
+ if symbol_resolvers.is_empty() { None } else { Some(&symbol_resolvers) },
  )
  .context("scan_paths_bidirectional failed")?;
 
  // missing / section_missing / citation_unbound / impl_unbacked / decay
- // / impl_missing / inventory_missing / inventory_deprecated
- let mut counts = [0usize; 8];
+ // / impl_missing / inventory_missing / inventory_deprecated / symbol_mismatch
+ let mut counts = [0usize; 9];
  for v in &violations {
  match v {
  CodeRefViolation::Citation { kind, .. } => match kind {
@@ -1931,12 +2012,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  ViolationKind::Decay => counts[4] += 1,
  ViolationKind::InventoryMissing => counts[6] += 1,
  ViolationKind::InventoryDeprecated => counts[7] += 1,
+ ViolationKind::SymbolMismatch => counts[8] += 1,
  },
  CodeRefViolation::ImplementationUnbacked { .. } => counts[3] += 1,
  CodeRefViolation::ImplementationMissing { .. } => counts[5] += 1,
  }
  }
- let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count, inventory_missing_count, inventory_deprecated_count] =
+ let [missing_count, section_missing_count, citation_unbound_count, impl_unbacked_count, decay_count, impl_missing_count, inventory_missing_count, inventory_deprecated_count, symbol_mismatch_count] =
  counts;
  let inventory_count = inventory_missing_count + inventory_deprecated_count;
  let hallucination_count = missing_count + section_missing_count;
@@ -1945,8 +2027,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  // considered (C2) but deferred — promotion to a dedicated bucket needs
  // empirical evidence that ImplementationMissing and ImplementationUnbacked
  // warrant independent policy, mirroring the Round 262 → 263 measure-then-
- // promote pattern.
- let binding_count = citation_unbound_count + impl_unbacked_count + impl_missing_count;
+ // promote pattern. Round 306 — RFC-002 FR-3 SymbolMismatch joins the
+ // binding bucket (defect_class = Binding) so the existing severity flag
+ // governs symbol-axis policy without a new knob.
+ let binding_count = citation_unbound_count + impl_unbacked_count + impl_missing_count
+ + symbol_mismatch_count;
 
  if json {
  let view: Vec<_> = violations

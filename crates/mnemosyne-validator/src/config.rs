@@ -64,13 +64,18 @@ pub struct WorkspaceConfig {
  /// axis: divergent state is allowed only when explicitly accounted for.
  #[serde(default, rename = "publishable_override_ledger")]
  pub publishable_override_ledger: Vec<PublishableOverrideLedgerEntry>,
- /// code citation verification config (Stage 2 of the
- /// 3-stage code-citation defense, carry). When `[code_refs]`
- /// is omitted, the `validate-code-refs` subcommand exits 0 with a
- /// "skipped, no config" log line — preserving the 5-min setup promise
- /// for external users who don't cite spec entries in code.
+ /// `[plugins.*]` table — plugin substrate config (RFC-003 FR-1/FR-2
+ /// landed in R306). Two plugin categories live here:
+ /// - `[plugins.set_equality_validator]` — the validator that drives
+ ///   code citation refs (set-equality + inventory + external-prefix
+ ///   axes). When omitted, the `validate-code-refs` subcommand exits 0
+ ///   with a "skipped, no config" log line — 5-min setup promise carry.
+ /// - `[plugins.symbol_resolver.<lang>]` — per-language symbol
+ ///   resolvers used by RFC-002 FR-3 symbol-level enforcement. When a
+ ///   language has no resolver configured, file-only set-equality
+ ///   continues to apply for that language (no language is blocked).
  #[serde(default)]
- pub code_refs: Option<CodeRefsSection>,
+ pub plugins: Option<PluginsSection>,
  /// Round 279 — `[atomic]` table — atomic store sidecar path override.
  ///
  /// Closes the documentation-vs-implementation gap surfaced by the TC8
@@ -253,26 +258,53 @@ pub struct PublishableOverrideLedgerEntry {
  pub content_hash_after: String,
 }
 
-/// `[code_refs]` table — code citation verification config.
+/// `[plugins.*]` table root — plugin substrate config (RFC-003 FR-1/FR-2
+/// land in R306).
 ///
-/// Stage 2 of the 3-stage code-citation defense. introduced the
-/// agent-time CLAUDE.md rule directing LLM agents to verify before citing;
-/// wires the validator-time CLI subcommand `validate-code-refs`
-/// that scans configured paths for `<entry_id_prefix><digits>` patterns
-/// (e.g. ``, `ADR-0042`) and rejects citations whose target id
-/// is missing from the atomic store `changelog_entries` map.
-///
-/// The pattern is derived from `[schema].entry_id_prefix` — no separate
-/// regex configuration. Default Mnemosyne preset = `Round ` ⇒ matches
-/// `\bRound (\d+(?:\.\d+)?)\b`. External users override via
-/// `[schema].entry_id_prefix` and the same derivation applies to both
-/// the parser and the code-ref scanner.
-///
-/// Section omission disables the subcommand entirely (`exit 0` with a
-/// "skipped, no config" log line) — 5-min setup promise carry for users
-/// who don't cite spec entries in code.
+/// Two plugin categories live here today:
+/// - `set_equality_validator` — `ValidatorClass` plugin that drives the
+///   code citation refs subcommand. Owns paths + severity + comment_only
+///   + inventory + external-prefix axes. Sub-axis splits (separate
+///   inventory_validator / external_ref_skipper plugins) are R307+
+///   refinements — set_equality_validator is the current monolithic carrier.
+/// - `symbol_resolver` — `BindingClass` plugin map keyed by language ID
+///   (`rust`, `python`, `go`, …). Per-language transport selection per
+///   the RFC-003 transport-abstraction section: `in-process` (Rust trait impl), `mcp` (MCP client),
+///   or `cli` (shell-out). Missing language falls through to file-only
+///   set-equality — no language is blocked.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PluginsSection {
+    #[serde(default)]
+    pub set_equality_validator: Option<SetEqualityValidatorConfig>,
+    #[serde(default)]
+    pub symbol_resolver: std::collections::BTreeMap<String, SymbolResolverConfig>,
+}
+
+/// Per-language symbol resolver config under
+/// `[plugins.symbol_resolver.<lang>]`. Transport-tagged enum mirrors
+/// `mnemosyne_plugin::Transport` so config parse failures surface the same
+/// variant set as the runtime trait.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CodeRefsSection {
+#[serde(tag = "transport", rename_all = "kebab-case")]
+pub enum SymbolResolverConfig {
+    InProcess {
+        backend: String,
+    },
+    Mcp {
+        command: Vec<String>,
+    },
+    Cli {
+        command: Vec<String>,
+        #[serde(default)]
+        output_parser: Option<String>,
+    },
+}
+
+/// `[plugins.set_equality_validator]` — the citation-refs validator plugin
+/// config (in-place rename from the pre-R306 `[code_refs]` table; no semantic
+/// change, only namespace shift onto the RFC-003 plugin substrate).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SetEqualityValidatorConfig {
  /// Workspace-relative paths to scan recursively. Each entry may be a
  /// file or directory. Hidden directories (`.git/`, `.mnemosyne/`),
  /// `target/`, and `node_modules/` are always skipped (build artifacts
