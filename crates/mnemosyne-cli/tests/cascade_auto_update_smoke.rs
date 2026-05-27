@@ -43,10 +43,10 @@ fn append_v2_auto_regenerates_generated_md() {
  "GENERATED.md must not exist before mutate"
  );
 
- // append-changelog-entry-v2 without --no-regenerate flag.
+ // append-changelog-entry without --no-regenerate flag.
  let out = Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -58,7 +58,7 @@ fn append_v2_auto_regenerates_generated_md() {
  ])
  .current_dir(tmp.path())
  .output()
- .expect("run append-changelog-entry-v2");
+ .expect("run append-changelog-entry");
  assert!(
  out.status.success(),
  "append failed: stdout={}, stderr={}",
@@ -92,7 +92,7 @@ fn append_v2_no_regenerate_skips_generated_md() {
 
  let out = Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -105,7 +105,7 @@ fn append_v2_no_regenerate_skips_generated_md() {
  ])
  .current_dir(tmp.path())
  .output()
- .expect("run append-changelog-entry-v2 --no-regenerate");
+ .expect("run append-changelog-entry --no-regenerate");
  assert!(
  out.status.success(),
  "append failed: stdout={}, stderr={}",
@@ -198,7 +198,7 @@ fn verify_generated_reports_sync_when_in_sync() {
  // Mutate (auto-regenerates GENERATED.md).
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -245,7 +245,7 @@ fn verify_generated_reports_stale_after_no_regenerate_mutate() {
  // Initial mutate (auto-regen).
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 998",
  "--decision",
@@ -263,7 +263,7 @@ fn verify_generated_reports_stale_after_no_regenerate_mutate() {
  fs::write(&changes_path, "y\n").unwrap();
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",

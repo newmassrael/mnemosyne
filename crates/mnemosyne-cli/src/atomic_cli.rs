@@ -14,7 +14,7 @@
 //! - `add-section-example` — append to Section.examples (code block)
 //! - `add-section-implementation` — append to Section.implementations
 //!
-//! - `append-changelog-entry-v2` — atomic-aware changelog append
+//! - `append-changelog-entry` — atomic-aware changelog append
 //! (decision_summary + changes + verification + impact + carry_forward)
 //!
 //! Each subcommand:
@@ -31,7 +31,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_validator::{
  add_inventory_entry, add_section_caveat, add_section_example,
- add_section_implementation, append_changelog_entry_v2,
+ add_section_implementation, append_changelog_entry,
  code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
  remove_inventory_entry, remove_section, remove_section_implementation,
  render_changelog_entry, render_section, set_inventory_section_ref, set_inventory_status,
@@ -423,7 +423,7 @@ pub fn cmd_set_section_outputs(workspace_root: &Path, args: &[String]) -> Result
 // Round 295 — publishable-half setters for ChangelogEntry. Mutate only
 // publishable_*; audit_* is the permanent record and stays untouched.
 // `--entry` arg names the changelog entry (must already exist); the audit
-// half can only be authored by `append_changelog_entry_v2`.
+// half can only be authored by `append_changelog_entry`.
 
 pub fn cmd_set_changelog_publishable_decision_summary(
  workspace_root: &Path,
@@ -1279,7 +1279,7 @@ fn render_atomic_store_to_md(
  out.push_str(
  "this file `mnemosyne-cli generate-docs` output — direct no edit. \
   atomic store (`docs/.atomic/workspace.atomic.json`) in mutate \
-  primitive (`set-section-*` / `append-changelog-entry-v2`) pass and then \
+  primitive (`set-section-*` / `append-changelog-entry`) pass and then \
   re-generate.\n\n",
  );
  let workspace_prefix = format!("{}/", workspace_root.display());
@@ -1567,7 +1567,7 @@ fn finalize_mutate(
  Ok(())
 }
 
-pub fn cmd_append_changelog_entry_v2(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
  let mut entry_id: Option<String> = None;
  let mut decision_summary: Option<String> = None;
  let mut changes_file: Option<String> = None;
@@ -1659,7 +1659,7 @@ pub fn cmd_append_changelog_entry_v2(workspace_root: &Path, args: &[String]) -> 
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
  finalize_mutate(
  workspace_root,
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &sidecar_path,
  &entry_id,

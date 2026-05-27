@@ -59,7 +59,7 @@ The parser auto-classifies these into `RefKind::Decision`, `Impl`, or
    - `verification_bullets` — how the change was validated
    - `impact_refs` — `§A,§B` of affected sections
    - `carry_forward_bullets` — anything pending for next round
-3. Call `append_changelog_entry_v2`.
+3. Call `append_changelog_entry`.
 4. Run `validate_workspace`.
 
 ## When validate_workspace fails

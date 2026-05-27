@@ -69,4 +69,4 @@ The rationale: tier mobility would invalidate cross-round comparisons.
 | `validate_workspace` | T1 + T2 (round-trip) |
 | `style_check` | T3 + T4 only |
 | `set_section_*` mutate | T1 + T2 pre-write |
-| `append_changelog_entry_v2` | T1 + T2 pre-write |
+| `append_changelog_entry` | T1 + T2 pre-write |

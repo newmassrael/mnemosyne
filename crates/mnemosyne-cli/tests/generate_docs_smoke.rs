@@ -1,7 +1,7 @@
 //! Smoke test for `generate-docs` CLI subcommand (Round 163 ratify, Phase 0f
 //! forward-wire).
 //!
-//! End-to-end: append-changelog-entry-v2 → atomic store sidecar JSON →
+//! End-to-end: append-changelog-entry → atomic store sidecar JSON →
 //! generate-docs → GENERATED.md output. Runs against an isolated workspace
 //! fixture (NOT the real workspace) to avoid mutating committed state.
 
@@ -60,10 +60,10 @@ fn generate_docs_emits_changelog_entry_after_append_v2() {
  let verify_path = tmp.path().join("verify.txt");
  fs::write(&verify_path, "verified\n").unwrap();
 
- // append-changelog-entry-v2.
+ // append-changelog-entry.
  let out = Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -77,7 +77,7 @@ fn generate_docs_emits_changelog_entry_after_append_v2() {
  ])
  .current_dir(tmp.path())
  .output()
- .expect("run append-changelog-entry-v2");
+ .expect("run append-changelog-entry");
  assert!(
  out.status.success(),
  "append failed: stdout={}, stderr={}",
@@ -106,7 +106,7 @@ fn generate_docs_emits_changelog_entry_after_append_v2() {
 }
 
 #[test]
-fn append_changelog_entry_v2_rejects_duplicate() {
+fn append_changelog_entry_rejects_duplicate() {
  let tmp = TempDir::new().unwrap();
  write_min_workspace_config(tmp.path());
 
@@ -118,7 +118,7 @@ fn append_changelog_entry_v2_rejects_duplicate() {
  // First append succeeds.
  let out = Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -136,7 +136,7 @@ fn append_changelog_entry_v2_rejects_duplicate() {
  // Second append to same id must fail (T2 frozen ledger semantics).
  let out = Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",

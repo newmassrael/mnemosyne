@@ -171,7 +171,7 @@ entry_id_prefix = "Round "
 locale = "en"
 ```
 
-Build content by calling `set_section_*` and `append_changelog_entry_v2`
+Build content by calling `set_section_*` and `append_changelog_entry`
 tools — never by hand-editing the JSON or GENERATED.md.
 
 ## Heading convention

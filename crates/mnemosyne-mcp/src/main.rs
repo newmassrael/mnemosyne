@@ -246,7 +246,7 @@ pub struct RemoveInventoryEntryArgs {
 
 // Round 295 — publishable-half setters. Round 299 — MCP wire so the
 // publishable side can be authored without a CLI subprocess. The audit half
-// stays write-once via append_changelog_entry_v2; these tools only mutate
+// stays write-once via append_changelog_entry; these tools only mutate
 // the publishable_* mirror and must be paired with a
 // [[publishable_override_ledger]] row (R296 gate, automated by redact_term).
 
@@ -748,7 +748,7 @@ impl MnemosyneServer {
     #[tool(
         description = "Append a new ChangelogEntry to the atomic store. entry_id must be strictly monotonic (greater than the last entry's id under the configured schema.entry_id_prefix). All five atomic fields are required for proper audit shape."
     )]
-    async fn append_changelog_entry_v2(
+    async fn append_changelog_entry(
         &self,
         args: Parameters<AppendChangelogEntryArgs>,
     ) -> rmcp::model::CallToolResult {
@@ -778,7 +778,7 @@ impl MnemosyneServer {
             .join(",");
 
         let mut argv = vec![
-            "append-changelog-entry-v2".to_string(),
+            "append-changelog-entry".to_string(),
             "--entry-id".to_string(),
             args.0.entry_id.clone(),
             "--decision".to_string(),
@@ -800,7 +800,7 @@ impl MnemosyneServer {
     }
 
     // Round 299 — publishable-half setters + redact_term MCP wire. The
-    // audit half stays write-once via append_changelog_entry_v2; every tool
+    // audit half stays write-once via append_changelog_entry; every tool
     // below only mutates publishable_* and must be paired with a
     // [[publishable_override_ledger]] row (R296 gate). redact_term emits
     // the ledger drafts inline; the four bare setters require the caller

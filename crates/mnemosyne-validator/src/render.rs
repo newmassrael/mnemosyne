@@ -109,7 +109,7 @@ pub fn render_section(
 /// Round 294 — reads the `publishable_*` half (mutable view layer). The
 /// `audit_*` half is the permanent record kept inside the atomic store and
 /// is never rendered directly. At append time `publishable_* == audit_*`
-/// (see `append_changelog_entry_v2`), so this is byte-identical to pre-R294
+/// (see `append_changelog_entry`), so this is byte-identical to pre-R294
 /// rendering for entries that have not yet diverged. After R295 setters
 /// (paired with the R296 `[[publishable_override_ledger]]` gate) the two
 /// halves can diverge; the published view still routes through here.
@@ -228,7 +228,7 @@ mod tests {
  #[test]
  fn render_changelog_entry_full_shape() {
  // Round 294 — render reads publishable_*; production path
- // (`append_changelog_entry_v2`) clones audit_* into publishable_* at
+ // (`append_changelog_entry`) clones audit_* into publishable_* at
  // append time, so the fixture mirrors that path explicitly.
  let mut atomic = AtomicChangelogEntry {
  decision_summary: Some("test decision summary".into()),

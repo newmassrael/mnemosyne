@@ -65,8 +65,8 @@ pub use query::{
 };
 pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
 pub use mutate::{
- add_cross_ref, append_changelog_entry, set_section_body,
- set_section_decision_status, MutateError, MutateErrorKind, MutateReceipt,
+ add_cross_ref, set_section_body, set_section_decision_status, MutateError,
+ MutateErrorKind, MutateReceipt,
 };
 pub use style::{
  check_style, default_ruleset, default_ruleset_with_config, glossary_from_config, StyleRule,
@@ -75,7 +75,7 @@ pub use style::{
 };
 pub use atomic::{
  add_inventory_entry, add_section_caveat, add_section_example,
- add_section_implementation, append_changelog_entry_v2,
+ add_section_implementation, append_changelog_entry,
  emit_publishable_override_ledger_draft, remove_inventory_entry,
  remove_section, remove_section_implementation,
  set_changelog_publishable_carry_forward_bullets,

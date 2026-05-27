@@ -1,6 +1,6 @@
 # GENERATED.md — atomic store derived view
 
-this file `mnemosyne-cli generate-docs` output — direct no edit. atomic store (`docs/.atomic/workspace.atomic.json`) in mutate primitive (`set-section-*` / `append-changelog-entry-v2`) pass and then re-generate.
+this file `mnemosyne-cli generate-docs` output — direct no edit. atomic store (`docs/.atomic/workspace.atomic.json`) in mutate primitive (`set-section-*` / `append-changelog-entry`) pass and then re-generate.
 
 Source: `docs/.atomic/workspace.atomic.json`
 
@@ -1672,6 +1672,34 @@ Source: `docs/.atomic/workspace.atomic.json`
 - E: per-field hash anchor (entry-level → field-level) still carry; use-case-driven, hold for actual divergence pattern
 - B+: emit primitive returns rendered block but no structured hits report; raise when an RFC actually asks
 - F+: MCP→CLI subprocess still in place; in-process direct call is ergonomics-only carry
+
+
+
+### Round 302 — append_changelog_entry_v2 rename + legacy v1 CLI dispatch removal — API postfix versioning rule (user feedback): atomic::append_changelog_entry_v2 renamed to atomic::append_changelog_entry across function, MCP tool name, and CLI subcommand. Legacy v1 markdown surgical CLI dispatch removed (R251 left it dead); mutate::append_changelog_entry retained module-qualified for smoke test.
+
+**Changes**:
+- atomic::append_changelog_entry_v2 → atomic::append_changelog_entry (function, cmd_*, MCP tool name `append_changelog_entry`, CLI subcommand `append-changelog-entry`)
+- removed legacy v1 CLI dispatch `append-changelog-entry` (cmd_append_changelog_entry markdown surgical path); mutate::append_changelog_entry function retained module-qualified for smoke test
+- lib.rs top-level re-export: dropped mutate::append_changelog_entry, promoted atomic::append_changelog_entry to the unqualified name
+- 17 files updated (validator src + cli src + mcp src + 4 mcp resources + 5 tests); MCP wire name change = breaking for external consumers per pre-release no-compat
+- carries the no-`_vN`-postfix rule pinned in CLAUDE.md anti-patterns + global memory feedback-no-postfix-versioning
+
+
+
+**Verification**:
+- cargo test workspace: 62 test suites 0 fail
+- validate-workspace: T1 orphan=0, round-trip 1/1, GENERATED.md sync, publishable/audit divergence=0
+- validate-code-refs: 0 violations across 7 crates (severity_missing=reject, severity_binding=reject, severity_inventory=reject)
+- pre-commit gate sequence intact (R301 commit↔ledger drift hard reject remains operational)
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- redact_term --scope publishable replays this rename across past entries' publishable views so GENERATED.md renders the unpostfixed name in historical sections; audit half stays frozen with `_v2` references intact
+- mnemosyne.toml gains `[[publishable_override_ledger]]` rows (auto-drafted by redact_term) anchoring each transformed entry by content_hash
 
 
 

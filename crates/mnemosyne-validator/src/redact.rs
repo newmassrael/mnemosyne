@@ -473,7 +473,7 @@ pub(crate) fn format_ledger_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::atomic::{append_changelog_entry_v2, AtomicStore};
+    use crate::atomic::{append_changelog_entry, AtomicStore};
     use tempfile::TempDir;
 
     fn req_literal(pattern: &str, replacement: &str) -> RedactRequest {
@@ -491,7 +491,7 @@ mod tests {
     }
 
     fn seed(store: &mut AtomicStore, path: &Path, entry_id: &str) {
-        append_changelog_entry_v2(
+        append_changelog_entry(
             store,
             path,
             entry_id,
@@ -588,7 +588,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        append_changelog_entry_v2(
+        append_changelog_entry(
             &mut store,
             &path,
             "Round 999",

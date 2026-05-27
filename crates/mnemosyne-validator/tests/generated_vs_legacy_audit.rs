@@ -23,7 +23,7 @@
 //! permission boundary: audit only — atomic store / workspace docs scope mutation 0.
 
 use mnemosyne_validator::{
- append_changelog_entry_v2, check_style, default_ruleset_with_config,
+ append_changelog_entry, check_style, default_ruleset_with_config,
  discover_config, parse_markdown_with_schema, render_changelog_entry,
  workspace_section_id_set, AtomicStore, SchemaSection, StyleSeverity,
  Workspace,
@@ -277,7 +277,7 @@ fn audit_c_duplicate_entry_id_rejected() {
 
  // Replay every live entry into a tmp store via the public mutate API.
  for (entry_id, entry) in &live.changelog_entries {
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &sidecar,
  entry_id,
@@ -292,7 +292,7 @@ fn audit_c_duplicate_entry_id_rejected() {
 
  // Now attempt to re-append every entry — each must fail with FrozenLedger.
  for (entry_id, _) in &live.changelog_entries {
- let result = append_changelog_entry_v2(
+ let result = append_changelog_entry(
  &mut store,
  &sidecar,
  entry_id,
@@ -362,7 +362,7 @@ fn audit_d_generated_md_style_baseline() {
  );
 
  // Soft baseline tightened to a per-entry rate (Round 168+ cascade more
- // entries land via append-changelog-entry-v2). Budget = max(5, n*3) where
+ // entries land via append-changelog-entry). Budget = max(5, n*3) where
  // n = changelog entry count. Round-4 anchor (1 entry → 5) preserved.
  let entry_count = load_live_atomic_store().changelog_entries.len();
  let budget = std::cmp::max(5, entry_count * 3);

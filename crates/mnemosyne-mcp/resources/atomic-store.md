@@ -73,7 +73,7 @@ Always through typed primitives. Each tool corresponds to one atomic field:
 | Section.alternatives_rejected | `set_section_alternatives` |
 | Section.impact_scope | `set_section_impact_scope` |
 | Section.examples (append) | `add_section_example` |
-| ChangelogEntry (new) | `append_changelog_entry_v2` |
+| ChangelogEntry (new) | `append_changelog_entry` |
 
 ## Direct JSON edits
 

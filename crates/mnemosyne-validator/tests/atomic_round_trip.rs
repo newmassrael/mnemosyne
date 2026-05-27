@@ -6,7 +6,7 @@
 
 use mnemosyne_validator::{
  add_section_caveat, add_section_example, add_section_implementation,
- append_changelog_entry_v2, render_changelog_entry, render_section,
+ append_changelog_entry, render_changelog_entry, render_section,
  set_section_alternatives, set_section_impact_scope, set_section_inputs,
  set_section_intent, set_section_outputs, set_section_rationale,
  AtomicStore, ExampleBlock, RejectedAlternative,
@@ -106,7 +106,7 @@ fn atomic_changelog_entry_round_trip() {
  let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
 
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &sidecar,
  "Round 162",
@@ -224,7 +224,7 @@ fn atomic_changelog_v2_frozen_after_append() {
  let sidecar = tmp.path().join("workspace.atomic.json");
  let mut store = AtomicStore::new();
 
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &sidecar,
  "Round 162",
@@ -236,7 +236,7 @@ fn atomic_changelog_v2_frozen_after_append() {
  )
  .unwrap();
 
- let result = append_changelog_entry_v2(
+ let result = append_changelog_entry(
  &mut store,
  &sidecar,
  "Round 162",

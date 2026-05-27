@@ -67,7 +67,7 @@ fn validate_workspace_passes_when_atomic_in_sync() {
  // Append entry (auto-regenerates GENERATED.md per Round 168 wire).
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -114,7 +114,7 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
  // Append entry with impact_ref to a non-existent section §99.
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",
@@ -168,7 +168,7 @@ fn validate_workspace_rejects_stale_generated_md() {
  // Initial mutate (auto-regen).
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 998",
  "--decision",
@@ -188,7 +188,7 @@ fn validate_workspace_rejects_stale_generated_md() {
  fs::write(&changes_path, "y\n").unwrap();
  Command::new(cli_binary())
  .args([
- "append-changelog-entry-v2",
+ "append-changelog-entry",
  "--entry-id",
  "Round 999",
  "--decision",

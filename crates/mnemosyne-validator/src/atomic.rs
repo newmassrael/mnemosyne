@@ -20,7 +20,7 @@
 //! `set_section_inputs` / `set_section_outputs` / `add_section_caveat` /
 //! `set_section_alternatives` / `set_section_impact_scope` /
 //! `add_section_example` / `add_section_implementation`
-//! - ChangelogEntry atomic: `append_changelog_entry_v2`
+//! - ChangelogEntry atomic: `append_changelog_entry`
 //!
 //! `Section.implementations` lands as the substrate for Path B
 //! of the code-citation defense (Spec ↔ Code bidirectional binding). The
@@ -197,7 +197,7 @@ pub struct AtomicChangelogEntry {
 impl AtomicChangelogEntry {
  /// Round 294 — clone the audit half into the publishable half. Used by
  /// the v3→v4 loader migration (so existing entries get default-equal
- /// publishable views) and by `append_changelog_entry_v2` (so newly
+ /// publishable views) and by `append_changelog_entry` (so newly
  /// authored entries default to audit-equal publishable shape).
  ///
  /// Idempotent: calling twice produces the same result. Safe to call when
@@ -486,7 +486,7 @@ impl AtomicStore {
 
  /// Get / create-default changelog atomic entry.
  ///
- /// ChangelogEntry creation path differs from Section: `append_changelog_entry_v2`
+ /// ChangelogEntry creation path differs from Section: `append_changelog_entry`
  /// is the explicit primitive, and this getter remains create-on-miss until
  /// a parallel fail-loud refactor (out of scope for Round 287's Section axis).
  pub fn entry_mut(&mut self, entry_id: &str) -> &mut AtomicChangelogEntry {
@@ -722,7 +722,7 @@ fn check_bullet_len(text: &str, field: &str) -> Result<(), AtomicMutateError> {
  Ok(())
 }
 
-// Round 298 — close the silent-accept hole on `append_changelog_entry_v2`:
+// Round 298 — close the silent-accept hole on `append_changelog_entry`:
 // previously entry-id alone with no decision/changes/verification body could
 // land a record-less row into the frozen ledger. The primitive now refuses
 // at the boundary, which covers CLI and MCP wires equally.
@@ -1455,12 +1455,12 @@ fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError
 // ChangelogEntry atomic mutate primitive.
 // ============================================================================
 
-/// `append_changelog_entry_v2` primitive — atomic-aware changelog append.
+/// `append_changelog_entry` primitive — atomic-aware changelog append.
 ///
 /// Frozen ledger semantics: once committed,
 /// existing fields cannot be modified or removed (T2 jaccard); subsequent
 /// mutations to the same `entry_id` are rejected via FrozenLedger error.
-pub fn append_changelog_entry_v2(
+pub fn append_changelog_entry(
  store: &mut AtomicStore,
  sidecar_path: &Path,
  entry_id: &str,
@@ -1512,7 +1512,7 @@ pub fn append_changelog_entry_v2(
  save_with_receipt(
  store,
  sidecar_path,
- "append_changelog_entry_v2",
+ "append_changelog_entry",
  "changelog_entry",
  entry_id,
  )
@@ -1525,7 +1525,7 @@ pub fn append_changelog_entry_v2(
 // `AtomicChangelogEntry`. The audit half (`decision_summary`,
 // `changes_bullets`, `verification_bullets`, `impact_refs`,
 // `carry_forward_bullets`) is untouched — that is the permanent record and
-// `append_changelog_entry_v2` is the only path that writes it (with frozen
+// `append_changelog_entry` is the only path that writes it (with frozen
 // ledger reject on second-attempt). After R296 wires
 // `[[publishable_override_ledger]]`, calling these setters without an
 // accompanying ledger entry will surface as a validate-workspace reject.
@@ -1542,7 +1542,7 @@ fn entry_mut_strict<'a>(
 ) -> Result<&'a mut AtomicChangelogEntry, AtomicMutateError> {
  store.changelog_entries.get_mut(entry_id).ok_or_else(|| {
  AtomicMutateError::NotFound(format!(
- "entry_id `{}` not present in atomic store (use append_changelog_entry_v2 \
+ "entry_id `{}` not present in atomic store (use append_changelog_entry \
   to create it first)",
  entry_id
  ))
@@ -1979,7 +1979,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &path,
  "Round 162",
@@ -1990,7 +1990,7 @@ mod tests {
  &["carry 1".into()],
  )
  .unwrap();
- let err = append_changelog_entry_v2(
+ let err = append_changelog_entry(
  &mut store,
  &path,
  "Round 162",
@@ -2175,14 +2175,14 @@ mod tests {
  }
 
  #[test]
- fn append_changelog_entry_v2_clones_audit_into_publishable() {
- // Round 294 default: append_changelog_entry_v2 initializes
+ fn append_changelog_entry_clones_audit_into_publishable() {
+ // Round 294 default: append_changelog_entry initializes
  // publishable_* = audit_* clone so newly authored entries render
  // byte-identical to pre-R294 baseline until R295 setters diverge them.
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &path,
  "Round 999",
@@ -2205,7 +2205,7 @@ mod tests {
  //
  // The 6 tests below pin the primitive-boundary guard added in R298:
  // entry-id alone with an all-empty body must be rejected so neither CLI
- // (`mnemosyne-cli append-changelog-entry-v2 --entry-id X` with no other
+ // (`mnemosyne-cli append-changelog-entry --entry-id X` with no other
  // flags) nor a future MCP wire can land a record-less ChangelogEntry into
  // the frozen ledger. FrozenLedger still wins over Validation (existing
  // frozen-after-append test calls with all-empty body intentionally).
@@ -2215,7 +2215,7 @@ mod tests {
  path: &Path,
  entry_id: &str,
  ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- append_changelog_entry_v2(store, path, entry_id, None, &[], &[], &[], &[])
+ append_changelog_entry(store, path, entry_id, None, &[], &[], &[], &[])
  }
 
  #[test]
@@ -2252,7 +2252,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- let err = append_changelog_entry_v2(
+ let err = append_changelog_entry(
  &mut store,
  &path,
  "Round 999",
@@ -2276,7 +2276,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- let err = append_changelog_entry_v2(
+ let err = append_changelog_entry(
  &mut store,
  &path,
  "Round 999",
@@ -2300,7 +2300,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- let err = append_changelog_entry_v2(
+ let err = append_changelog_entry(
  &mut store,
  &path,
  "Round 999",
@@ -2327,7 +2327,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- let err = append_changelog_entry_v2(
+ let err = append_changelog_entry(
  &mut store,
  &path,
  "Round 999",
@@ -3269,7 +3269,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- append_changelog_entry_v2(
+ append_changelog_entry(
  &mut store,
  &path,
  "Round 243",
@@ -3287,7 +3287,7 @@ mod tests {
  // ============ Round 295 publishable setters ============
 
  fn seed_entry(store: &mut AtomicStore, path: &Path, entry_id: &str) {
- append_changelog_entry_v2(
+ append_changelog_entry(
  store,
  path,
  entry_id,
@@ -3379,7 +3379,7 @@ mod tests {
  #[test]
  fn publishable_setter_rejects_missing_entry() {
  // entry_mut_strict refuses to author a new entry — the audit half can
- // only come from append_changelog_entry_v2.
+ // only come from append_changelog_entry.
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();

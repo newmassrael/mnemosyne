@@ -19,7 +19,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
- add_cross_ref, append_changelog_entry, check_style,
+ add_cross_ref, check_style,
  code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|append-changelog-entry|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry-v2|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -135,7 +135,6 @@ fn run(args: &[String]) -> Result<()> {
  cmd_commit(file)
  }
  "query" => cmd_query(prog, &args[2..]),
- "append-changelog-entry" => cmd_append_changelog_entry(prog, &args[2..]),
  // Round 287/289 — atomic-aware add-section (Phase F).
  // Legacy markdown-surgical add-section (mutate.rs) retired in Phase H.
  "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
@@ -179,8 +178,8 @@ fn run(args: &[String]) -> Result<()> {
  }
  // Round 267 — section removal (closes Round 266 carry gap).
  "remove-section" => atomic_cli::cmd_remove_section(&repo_root()?, &args[2..]),
- "append-changelog-entry-v2" => {
- atomic_cli::cmd_append_changelog_entry_v2(&repo_root()?, &args[2..])
+ "append-changelog-entry" => {
+ atomic_cli::cmd_append_changelog_entry(&repo_root()?, &args[2..])
  }
  // Round 295 — publishable-half setters (audit half stays frozen).
  "set-changelog-publishable-decision-summary" => {
@@ -303,16 +302,6 @@ fn print_help(prog: &str) {
  "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields (preview for redact_term carry)"
  );
  println!(
- " {} append-changelog-entry --doc <doc> --entry-id \"Round N\" --body-file <path> [--title <text>] [--json]",
- prog
- );
- println!(
- "   §15 mutate primitive v1 — *legacy markdown surgical insert* (Round 246 cascade C)"
- );
- println!(
- "   production = `append-changelog-entry-v2` (atomic store, Round 162)"
- );
- println!(
  " {} style-check [--doc <path>] [--severity t3|t4|all] [--json]",
  prog
  );
@@ -374,7 +363,7 @@ fn print_help(prog: &str) {
  "   Round 267 section removal (audit-safeguarded; closes Round 266 carry)"
  );
  println!(
- " {} append-changelog-entry-v2 --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",
+ " {} append-changelog-entry --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",
  prog
  );
  println!();
@@ -841,166 +830,6 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  }
 
  Ok(())
-}
-
-// ============================================================================
-// append-changelog-entry mutate API surface.
-// ============================================================================
-
-#[derive(Debug, Default)]
-struct AppendChangelogArgs {
- doc: Option<String>,
- entry_id: Option<String>,
- title: Option<String>,
- body_file: Option<String>,
- json: bool,
- transaction_time: Option<i64>,
-}
-
-fn parse_append_changelog_args(args: &[String]) -> Result<AppendChangelogArgs> {
- let mut out = AppendChangelogArgs::default();
- let mut iter = args.iter();
- while let Some(arg) = iter.next() {
- match arg.as_str() {
- "--doc" => {
-  out.doc = Some(
-  iter.next()
-  .ok_or_else(|| anyhow!("--doc argument missing"))?
-  .clone(),
-  );
- }
- "--entry-id" => {
-  out.entry_id = Some(
-  iter.next()
-  .ok_or_else(|| anyhow!("--entry-id argument missing"))?
-  .clone(),
-  );
- }
- "--title" => {
-  out.title = Some(
-  iter.next()
-  .ok_or_else(|| anyhow!("--title argument missing"))?
-  .clone(),
-  );
- }
- "--body-file" => {
-  out.body_file = Some(
-  iter.next()
-  .ok_or_else(|| anyhow!("--body-file argument missing"))?
-  .clone(),
-  );
- }
- "--transaction-time" => {
-  let v = iter
-  .next()
-  .ok_or_else(|| anyhow!("--transaction-time argument missing"))?;
-  out.transaction_time = Some(v.parse::<i64>().context("--transaction-time integer parse failure")?);
- }
- "--json" => out.json = true,
- other => bail!("unknown flag `{}`", other),
- }
- }
- Ok(out)
-}
-
-/// Body-file format: each line starting with `- ` begins a new sub_bullet.
-/// subsequent line (until next `- ` or EOF) appended to current bullet (joined with single space).
-fn parse_body_file(content: &str) -> Result<Vec<String>> {
- let mut bullets: Vec<String> = Vec::new();
- let mut current: Option<String> = None;
- for line in content.lines() {
- let trimmed = line.trim_end();
- if let Some(rest) = trimmed.strip_prefix("- ") {
- if let Some(prev) = current.take() {
-  bullets.push(prev);
- }
- current = Some(rest.to_string());
- } else if trimmed.is_empty() {
- // Blank line — preserve as continuation only if a bullet is in progress.
- if let Some(prev) = current.take() {
-  bullets.push(prev);
- }
- current = None;
- } else if let Some(c) = current.as_mut() {
- // Continuation — append to current bullet with a space.
- if !c.is_empty() {
-  c.push(' ');
- }
- c.push_str(trimmed.trim_start());
- } else {
- bail!(
-  "body-file in first non-blank line `- ` prefix enforced — got `{}`",
-  line
- );
- }
- }
- if let Some(prev) = current.take() {
- bullets.push(prev);
- }
- if bullets.is_empty() {
- bail!("body-file from sub_bullet missing (file empty or `- ` prefix missing)");
- }
- Ok(bullets)
-}
-
-/// *legacy v1 markdown-mutate path* (sub_bullets cascade C
-/// marker). Production = [`cmd_append_changelog_entry_v2`] via
-/// [`crate::atomic::append_changelog_entry_v2`]. This entry point handles the -162
-/// Surgical insert is a dedicated legacy-markdown carry; new entries should use v2.
-fn cmd_append_changelog_entry(prog: &str, args: &[String]) -> Result<()> {
- let cargs = parse_append_changelog_args(args)?;
- let doc = cargs.doc.ok_or_else(|| {
- anyhow!(
- "--doc arg required — e.g. {} append-changelog-entry --doc docs/DESIGN.md ...",
- prog
- )
- })?;
- let entry_id = cargs
- .entry_id
- .ok_or_else(|| anyhow!("--entry-id arg required — e.g. --entry-id \"Round 124\""))?;
- let body_file_path = cargs
- .body_file
- .ok_or_else(|| anyhow!("--body-file arg required"))?;
-
- let root = repo_root()?;
- let body_abs = if Path::new(&body_file_path).is_absolute() {
- PathBuf::from(&body_file_path)
- } else {
- env::current_dir()?.join(&body_file_path)
- };
- let body_content = fs::read_to_string(&body_abs)
- .with_context(|| format!("body-file recovery failed: {}", body_abs.display()))?;
- let sub_bullets = parse_body_file(&body_content)?;
-
- let (ws, _parsed_docs) = load_workspace(&root)?;
-
- // Default transaction_time = current Unix seconds (monotonic in practice).
- let txn_time = cargs
- .transaction_time
- .unwrap_or_else(|| current_unix_seconds() as i64);
-
- let receipt_result = append_changelog_entry(
- &ws,
- &doc,
- &entry_id,
- cargs.title.as_deref(),
- &sub_bullets,
- txn_time,
- &root,
- );
-
- match receipt_result {
- Ok(receipt) => {
- print_mutate_receipt(&receipt, cargs.json);
- Ok(())
- }
- Err(err) => {
- // Emit error in structured form for AI agent observability.
- print_mutate_error(&err, cargs.json);
- // Convert to anyhow::Error for non-zero exit.
- Err(anyhow!("{}", err))
- }
- }
 }
 
 fn print_mutate_error(err: &MutateError, json: bool) {
@@ -1864,7 +1693,7 @@ fn print_commit_ledger_drift_surface(
  );
  }
  println!(
- "  hint: backfill via `mnemosyne-cli append-changelog-entry-v2 --entry-id \"Round <N> — ...\" \
+ "  hint: backfill via `mnemosyne-cli append-changelog-entry --entry-id \"Round <N> — ...\" \
   --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B \
   --carry-file <path>` (Round 293 backfill flow)"
  );

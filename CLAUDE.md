@@ -68,8 +68,27 @@ recommendation.
  are *audit-trail anchors*, not version postfixes — those are
  acceptable when the annotation cites an actual atomic-store entry.
  Inventing a fresh "Round NNN" label for the current change is *not*:
- the round entry must already exist (via `append_changelog_entry_v2`)
+ the round entry must already exist (via `append_changelog_entry`)
  before the citation lands, per the citation hygiene rule.
+
+### ❌ "keep the legacy path alive as a carry"
+- When a primitive / module / config knob is superseded, *remove it
+ in the same change* — function definition, tests, helpers, CLI
+ dispatch, lib.rs re-exports, MCP resources. Pre-release no-compat
+ means there is no external API to preserve; half-cleanup leaves
+ dead code that future agents will be tempted to reanimate.
+- Specific carries that **were** removed under this rule (do not
+ recreate): the markdown surgical-insert `mutate::append_changelog_entry`
+ (pre-Round 162 path, superseded by atomic-store
+ `atomic::append_changelog_entry`), its CLI subcommand, its
+ `tests/append_changelog_entry_smoke.rs` smoke test, and the
+ `parse_append_changelog_args` / `parse_body_file` / `AppendChangelogArgs`
+ helpers that supported it.
+- If a "legacy carry" justification appears in a comment (`legacy v1
+ path`, `pre-R162 carry`, `kept for backward compat`, `superseded but
+ retained`, …), that comment is itself an instruction to *delete the
+ carry now*, not to preserve it. Audit history lives in the atomic
+ store changelog; code lives in code.
 
 ## ✅ Correct patterns — recommend path
 
