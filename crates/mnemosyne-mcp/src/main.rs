@@ -721,7 +721,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` (set-section-decision-status-atomic) and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
+        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` (set-section-decision-status) and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
     )]
     async fn set_section_normative_excerpt(
         &self,

@@ -1325,7 +1325,7 @@ pub fn scan_paths_bidirectional(
 ///
 /// Targeted decay scan for §<section_id> citations of *one* section,
 /// returned as a flat list of [`Citation`]. Used by the mutate-time hook
-/// in `set-section-decision-status-atomic` CLI: when a section transitions
+/// in `set-section-decision-status` CLI: when a section transitions
 /// to Superseded/Removed, this surfaces the source-side citations that
 /// will need authoring follow-up (no rejection — informational only).
 ///

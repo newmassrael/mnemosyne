@@ -486,7 +486,7 @@ mnemosyne-cli set-section-normative-excerpt \
 The field is **frozen** after first set — once a normative_excerpt is
 anchored, the mutate primitive rejects overwrite. To model spec
 revision drift, supersede the existing Section
-(`set-section-decision-status-atomic --status superseded --superseding
+(`set-section-decision-status --status superseded --superseding
 §<new>`) and create a new Section carrying the updated excerpt. The
 audit trail preserves both revisions in parallel; partially-migrated
 workspaces stay coherent because each Section's `source_revision`

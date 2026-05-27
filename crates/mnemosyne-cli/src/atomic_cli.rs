@@ -35,7 +35,7 @@ use mnemosyne_validator::{
  code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
  remove_inventory_entry, remove_section, remove_section_implementation,
  render_changelog_entry, render_section, set_inventory_section_ref, set_inventory_status,
- set_section_alternatives, set_section_decision_status_atomic,
+ set_section_alternatives, set_section_decision_status,
  set_section_impact_scope, set_section_inputs, set_section_intent,
  set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
  set_section_parent_section, set_section_rationale, set_section_title,
@@ -1058,7 +1058,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
 /// Sets `AtomicSection.decision_status` on the atomic store. Stage B
 /// freshness substrate — once the atomic store carries non-Active status,
 /// downstream tooling (auto-cascade trigger, decay scan) becomes wireable.
-pub fn cmd_set_section_decision_status_atomic(
+pub fn cmd_set_section_decision_status(
  workspace_root: &Path,
  args: &[String],
 ) -> Result<()> {
@@ -1101,10 +1101,9 @@ pub fn cmd_set_section_decision_status_atomic(
  other
  ),
  };
- // T1 rule 4 (atomic axis): --superseding is mandatory for `--status
- // superseded` and rejected for active|removed (forward-pointer is only
- // meaningful when the section asserts replacement). Symmetric with the
- // markdown-axis CLI at `cmd_set_section_decision_status`.
+ // T1 rule 4: --superseding is mandatory for `--status superseded`
+ // and rejected for active|removed (forward-pointer is only meaningful
+ // when the section asserts replacement).
  if new_status != DecisionStatus::Superseded && superseding.is_some() {
  bail!(
  "--superseding is only valid with `--status superseded` (got `--status {}`)",
@@ -1116,7 +1115,7 @@ pub fn cmd_set_section_decision_status_atomic(
  .map(|s| strip_section_prefix(s));
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
- let mutate_result = set_section_decision_status_atomic(
+ let mutate_result = set_section_decision_status(
  &mut store,
  &sidecar_path,
  &section,

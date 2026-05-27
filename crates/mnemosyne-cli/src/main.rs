@@ -19,7 +19,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
- add_cross_ref, check_style,
+ check_style,
  code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
@@ -28,11 +28,9 @@ use mnemosyne_validator::{
  build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
  section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
  },
- schema::{DecisionStatus, RefKind},
- set_section_body, set_section_decision_status,
  style::{StyleSeverity, StyleViolation},
  validator::cross_ref_orphan_reject_with_workspace,
- AtomicStore, LoadedConfig, MutateError, OrphanKind, ParsedDoc, SchemaSection, ValidationError,
+ AtomicStore, LoadedConfig, OrphanKind, ParsedDoc, SchemaSection, ValidationError,
  Workspace,
 };
 use sha2::{Digest, Sha256};
@@ -115,7 +113,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|add-section|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -135,12 +133,7 @@ fn run(args: &[String]) -> Result<()> {
  cmd_commit(file)
  }
  "query" => cmd_query(prog, &args[2..]),
- // Round 287/289 — atomic-aware add-section (Phase F).
- // Legacy markdown-surgical add-section (mutate.rs) retired in Phase H.
  "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
- "add-cross-ref" => cmd_add_cross_ref(prog, &args[2..]),
- "set-section-decision-status" => cmd_set_section_decision_status(prog, &args[2..]),
- "set-section-body" => cmd_set_section_body(prog, &args[2..]),
  "style-check" => cmd_style_check(prog, &args[2..]),
  "list-docs" => cmd_list_docs(),
  // atomic mutate API surface.
@@ -172,9 +165,11 @@ fn run(args: &[String]) -> Result<()> {
  "remove-section-implementation" => {
  atomic_cli::cmd_remove_section_implementation(&repo_root()?, &args[2..])
  }
- // Round 265 — Stage B freshness substrate.
- "set-section-decision-status-atomic" => {
- atomic_cli::cmd_set_section_decision_status_atomic(&repo_root()?, &args[2..])
+ // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
+ // dropped; legacy markdown-surgical variant retired with the rest of
+ // `mutate.rs`.)
+ "set-section-decision-status" => {
+ atomic_cli::cmd_set_section_decision_status(&repo_root()?, &args[2..])
  }
  "set-section-normative-excerpt" => {
  atomic_cli::cmd_set_section_normative_excerpt(&repo_root()?, &args[2..])
@@ -359,7 +354,7 @@ fn print_help(prog: &str) {
  "   external-spec mirror anchor — vendored quote + URL + rev; frozen after first set (model spec rev drift by superseding the Section)"
  );
  println!(
- " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
+ " {} set-section-decision-status --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
  prog
  );
  println!(
@@ -842,254 +837,6 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  Ok(())
 }
 
-fn print_mutate_error(err: &MutateError, json: bool) {
- if json {
- let val = serde_json::json!({
- "primitive": err.primitive,
- "kind": format!("{:?}", err.kind),
- "detail": err.detail,
- });
- eprintln!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
- } else {
- eprintln!("=== mnemosyne-cli {} FAILED ===", err.primitive);
- eprintln!("primitive: {}", err.primitive);
- eprintln!("kind: {:?}", err.kind);
- eprintln!("detail: {}", err.detail);
- }
-}
-
-fn print_mutate_receipt(receipt: &mnemosyne_validator::MutateReceipt, json: bool) {
- let style_summary = compute_post_mutate_style_summary(&receipt.affected_docs);
- if json {
- let mut value = serde_json::to_value(receipt).unwrap_or(serde_json::Value::Null);
- if let serde_json::Value::Object(ref mut map) = value {
- map.insert(
-  "post_mutate_style_summary".into(),
-  serde_json::to_value(&style_summary).unwrap_or(serde_json::Value::Null),
- );
- }
- if let Ok(s) = serde_json::to_string_pretty(&value) {
- println!("{}", s);
- }
- } else {
- println!("=== mnemosyne-cli {} ===", receipt.primitive);
- println!("primitive: {}", receipt.primitive);
- println!("affected_docs: {:?}", receipt.affected_docs);
- println!("affected_sections: {:?}", receipt.affected_sections);
- for (d, b) in &receipt.written_bytes_per_doc {
- println!("written_bytes[{}]: {}", d, b);
- }
- println!("round_trip_diff_count: {}", receipt.round_trip_diff_count);
- println!("validator_path_invocations:");
- for v in &receipt.validator_path_invocations {
- println!(" - {}", v);
- }
- println!(
- "applied_at_transaction_time: {}",
- receipt.applied_at_transaction_time
- );
- if !style_summary.is_empty() {
- println!("post_mutate_style_summary (warn-only, Round 138 reject activate carry):");
- for (doc, (warn, info)) in &style_summary {
-  println!(" {}: T3 warn={} / T4 info={}", doc, warn, info);
- }
- }
- }
-}
-
-/// Re-parse the affected docs and run the default style ruleset, returning
-/// per-doc (warn_count, info_count). Pure side-effect-free read pass — used
-/// to attach a style summary to mutate receipts.
-fn compute_post_mutate_style_summary(
- affected_docs: &[String],
-) -> std::collections::BTreeMap<String, (usize, usize)> {
- use mnemosyne_validator::check_style;
- let mut out: std::collections::BTreeMap<String, (usize, usize)> = Default::default();
- let root = match repo_root() {
- Ok(p) => p,
- Err(_) => return out,
- };
- let cfg = match workspace_config() {
- Ok(c) => c,
- Err(_) => return out,
- };
- let ruleset = default_ruleset_with_config(
- cfg.config.style.as_ref(),
- cfg.config.terminology.as_ref(),
- );
- let schema = match cli_schema() {
- Ok(s) => s,
- Err(_) => return out,
- };
- let atomic_store =
- AtomicStore::load(&atomic_cli::resolve_sidecar(&root, None)).unwrap_or_default();
- for doc_path in affected_docs {
- let abs = root.join(doc_path);
- let content = match fs::read_to_string(&abs) {
- Ok(s) => s,
- Err(_) => continue,
- };
- let parsed = parse_markdown_with_schema(&content, doc_path, schema);
- let v = check_style(doc_path, &parsed, &atomic_store, &ruleset);
- let warn = v
- .iter()
- .filter(|x| x.severity == StyleSeverity::Warn)
- .count();
- let info = v
- .iter()
- .filter(|x| x.severity == StyleSeverity::Info)
- .count();
- out.insert(doc_path.clone(), (warn, info));
- }
- out
-}
-
-// ---- add-cross-ref ----
-
-fn cmd_add_cross_ref(prog: &str, args: &[String]) -> Result<()> {
- let mut doc: Option<String> = None;
- let mut from_section: Option<String> = None;
- let mut to_target: Option<String> = None;
- let mut kind_str: Option<String> = None;
- let mut json = false;
- let mut iter = args.iter();
- while let Some(arg) = iter.next() {
- match arg.as_str() {
- "--doc" => doc = Some(iter.next().ok_or_else(|| anyhow!("--doc missing"))?.clone()),
- "--from" => {
-  from_section = Some(iter.next().ok_or_else(|| anyhow!("--from missing"))?.clone())
- }
- "--to" => to_target = Some(iter.next().ok_or_else(|| anyhow!("--to missing"))?.clone()),
- "--kind" => kind_str = Some(iter.next().ok_or_else(|| anyhow!("--kind missing"))?.clone()),
- "--json" => json = true,
- other => bail!("unknown flag `{}`", other),
- }
- }
- let doc = doc.ok_or_else(|| anyhow!("--doc arg required"))?;
- let from_section = from_section.ok_or_else(|| anyhow!("--from arg required"))?;
- let to_target = to_target.ok_or_else(|| anyhow!("--to arg required"))?;
- let kind_str = kind_str.unwrap_or_else(|| "decision".to_string());
-
- let kind = match kind_str.as_str() {
- "decision" => RefKind::Decision,
- "impl" => RefKind::Impl,
- "cross_doc" => RefKind::CrossDoc,
- other => bail!(
- "--kind must be `decision` | `impl` | `cross_doc` (got `{}`); usage example: {} add-cross-ref --kind decision",
- other,
- prog
- ),
- };
-
- let from = from_section.strip_prefix('§').unwrap_or(&from_section).to_string();
- let to = to_target.strip_prefix('§').unwrap_or(&to_target).to_string();
-
- let root = repo_root()?;
- let (ws, _) = load_workspace(&root)?;
-
- let result = add_cross_ref(&ws, &doc, &from, &to, kind, &root);
- handle_mutate_result(result, json)
-}
-
-// ---- set-section-decision-status ----
-
-fn cmd_set_section_decision_status(_prog: &str, args: &[String]) -> Result<()> {
- let mut doc: Option<String> = None;
- let mut section: Option<String> = None;
- let mut status: Option<String> = None;
- let mut superseding: Option<String> = None;
- let mut json = false;
- let mut iter = args.iter();
- while let Some(arg) = iter.next() {
- match arg.as_str() {
- "--doc" => doc = Some(iter.next().ok_or_else(|| anyhow!("--doc missing"))?.clone()),
- "--section" => section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone()),
- "--status" => status = Some(iter.next().ok_or_else(|| anyhow!("--status missing"))?.clone()),
- "--superseding" => {
-  superseding = Some(iter.next().ok_or_else(|| anyhow!("--superseding missing"))?.clone())
- }
- "--json" => json = true,
- other => bail!("unknown flag `{}`", other),
- }
- }
- let doc = doc.ok_or_else(|| anyhow!("--doc arg required"))?;
- let section = section.ok_or_else(|| anyhow!("--section arg required"))?;
- let status = status.ok_or_else(|| anyhow!("--status arg required"))?;
-
- let new_status = match status.as_str() {
- "active" => DecisionStatus::Active,
- "superseded" => DecisionStatus::Superseded,
- "removed" => DecisionStatus::Removed,
- other => bail!("--status must be `active` | `superseded` | `removed` (got `{}`)", other),
- };
-
- let section_strip = section.strip_prefix('§').unwrap_or(&section).to_string();
- let superseding_strip = superseding
- .as_deref()
- .map(|s| s.strip_prefix('§').unwrap_or(s).to_string());
-
- let root = repo_root()?;
- let (ws, _) = load_workspace(&root)?;
-
- let result = set_section_decision_status(
- &ws,
- &doc,
- &section_strip,
- new_status,
- superseding_strip.as_deref(),
- &root,
- );
- handle_mutate_result(result, json)
-}
-
-// ---- set-section-body ----
-
-fn cmd_set_section_body(_prog: &str, args: &[String]) -> Result<()> {
- let mut doc: Option<String> = None;
- let mut section: Option<String> = None;
- let mut body_file: Option<String> = None;
- let mut json = false;
- let mut iter = args.iter();
- while let Some(arg) = iter.next() {
- match arg.as_str() {
- "--doc" => doc = Some(iter.next().ok_or_else(|| anyhow!("--doc missing"))?.clone()),
- "--section" => section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone()),
- "--body-file" => {
-  body_file = Some(iter.next().ok_or_else(|| anyhow!("--body-file missing"))?.clone())
- }
- "--json" => json = true,
- other => bail!("unknown flag `{}`", other),
- }
- }
- let doc = doc.ok_or_else(|| anyhow!("--doc arg required"))?;
- let section = section.ok_or_else(|| anyhow!("--section arg required"))?;
- let body_file = body_file.ok_or_else(|| anyhow!("--body-file arg required"))?;
- let new_body = fs::read_to_string(&body_file).with_context(|| format!("body-file recovery failed: {}", body_file))?;
-
- let section_strip = section.strip_prefix('§').unwrap_or(&section).to_string();
-
- let root = repo_root()?;
- let (ws, _) = load_workspace(&root)?;
-
- let result = set_section_body(&ws, &doc, &section_strip, &new_body, &root);
- handle_mutate_result(result, json)
-}
-
-fn handle_mutate_result(
- result: Result<mnemosyne_validator::MutateReceipt, MutateError>,
- json: bool,
-) -> Result<()> {
- match result {
- Ok(receipt) => {
- print_mutate_receipt(&receipt, json);
- Ok(())
- }
- Err(err) => {
- print_mutate_error(&err, json);
- Err(anyhow!("{}", err))
- }
- }
-}
 
 // ============================================================================
 // validate-workspace — 7 doc full validation.
@@ -1487,8 +1234,9 @@ fn cmd_validate_workspace() -> Result<()> {
  }
  bail!(
  "T1 rule 4 (atomic axis): {} section(s) marked Superseded without \
-  superseding cross-ref — add-cross-ref from each, or revert to \
-  Active|Removed",
+  superseding cross-ref — embed §<superseding-id> in the section's \
+  intent/rationale/impact_scope via the matching atomic setter, or \
+  revert to Active|Removed",
  atomic_supersede_errors.len()
  );
  }

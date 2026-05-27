@@ -150,7 +150,8 @@ fn is_strong_carry_kind(k: SectionKind) -> bool {
 /// → HARD_CASE — body edits risk frozen-ledger semantic drift.
 /// - `max_paragraph_length` / `max_sentence_length` on numeric_subsection /
 /// prose_named → SUBSTANTIVELY_DIRTY — non-frozen prose, cleanable via
-/// `set_section_body` without Round 121 jaccard violation.
+/// the atomic body-field setters (set-section-intent / -rationale / etc.)
+/// without Round 121 jaccard violation.
 fn classify_violation(v: &StyleViolation) -> AuditCategory {
  let skind = classify_section(&v.section_id);
  match v.rule_id.as_str() {

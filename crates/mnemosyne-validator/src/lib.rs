@@ -33,7 +33,6 @@ pub mod workspace;
 pub mod config;
 pub mod query;
 pub mod t2;
-pub mod mutate;
 pub mod style;
 pub mod atomic;
 pub mod render;
@@ -64,10 +63,6 @@ pub use query::{
  SectionView, TermHit, TermMode, TermQuery, TermScope, TermTargetKind,
 };
 pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
-pub use mutate::{
- add_cross_ref, set_section_body, set_section_decision_status, MutateError,
- MutateErrorKind, MutateReceipt,
-};
 pub use style::{
  check_style, default_ruleset, default_ruleset_with_config, glossary_from_config, StyleRule,
  StyleScope, StyleSeverity, StyleThreshold, StyleTier,
@@ -84,7 +79,7 @@ pub use atomic::{
  set_changelog_publishable_impact_refs,
  set_changelog_publishable_verification_bullets, set_inventory_section_ref,
  set_inventory_status, set_section_alternatives,
- set_section_decision_status_atomic, set_section_impact_scope,
+ set_section_decision_status, set_section_impact_scope,
  set_section_inputs, set_section_intent, set_section_normative_excerpt,
  set_section_outputs, set_section_parent_doc, set_section_parent_section,
  set_section_rationale, set_section_title, AtomicChangelogEntry,
@@ -92,9 +87,6 @@ pub use atomic::{
  AtomicStoreError, ExampleBlock, Implementation, InventoryEntry,
  InventoryStatus, NormativeExcerpt, RejectedAlternative,
 };
-// Round 287 — atomic `add_section` lives at `atomic::add_section` to avoid
-// the legacy `mutate::add_section` name collision (Phase H will remove the
-// legacy variant; until then callers use the module-qualified path).
 pub use render::{render_changelog_entry, render_section, RenderError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
 pub use redact::{

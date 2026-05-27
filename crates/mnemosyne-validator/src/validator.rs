@@ -278,7 +278,7 @@ pub fn section_decision_status_transition(
 /// have. This state gate catches:
 ///
 /// 1. Violations that bypassed the author-time guard at
-///    `atomic::set_section_decision_status_atomic` (e.g. atomic store writes
+///    `atomic::set_section_decision_status` (e.g. atomic store writes
 ///    that predate the guard's introduction).
 /// 2. Atomic-only overrides whose corresponding markdown section never
 ///    carried a Superseded marker in any prev snapshot — invisible to the
@@ -742,7 +742,7 @@ mod tests {
  // Section with atomic decision_status=Some(Superseded) but no
  // superseding cross-ref in any parsed doc → SupersedeMissingRef.
  // This is the validate-workspace counterpart to the author-time
- // guard at atomic::set_section_decision_status_atomic: catches
+ // guard at atomic::set_section_decision_status: catches
  // historical writes that predate the guard and atomic-only
  // overrides invisible to the parser-pair transition check.
  let mut store = crate::atomic::AtomicStore::new();

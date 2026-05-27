@@ -126,7 +126,7 @@ cargo run -p mnemosyne-cli -- add-section-implementation \
  --section §3 --file src/auth/session.rs --symbol Session::validate
 
 # Mark a section Superseded — `--superseding` is mandatory (T1 rule 4).
-cargo run -p mnemosyne-cli -- set-section-decision-status-atomic \
+cargo run -p mnemosyne-cli -- set-section-decision-status \
  --section §3 --status superseded --superseding §12
 
 # Append a structured changelog entry (atomic, audit-trail).
@@ -142,11 +142,6 @@ target id, sidecar path, and written bytes. After a successful write,
 the cascade auto-update re-renders `docs/GENERATED.md` so the
 human-readable view stays in sync. Failures roll back atomically — the
 sidecar JSON is never left half-written.
-
-The legacy markdown-surgical primitives (`append-changelog-entry`,
-`set-section-body`, `add-section`) still exist for ad-hoc edits on
-non-atomic workspaces, but new authoring should route through the
-atomic primitives above.
 
 ## 6. Install pre-commit hook (optional)
 
@@ -197,7 +192,7 @@ from `warn` to `reject` once your baseline is clean.
 **Stage 3 — cascade decay scan**:
 
 When a section transitions to `Superseded` or `Removed` via
-`set-section-decision-status-atomic`, the cascade trigger runs a
+`set-section-decision-status`, the cascade trigger runs a
 `§<id>` scan over `[code_refs].paths` and prints citing locations
 to stderr. `validate-workspace` reports the workspace-wide decay
 surface as an informational line. Stale citations surface immediately;

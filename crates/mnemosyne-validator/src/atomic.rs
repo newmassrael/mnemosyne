@@ -1077,7 +1077,7 @@ pub fn remove_section(
 /// `decision_status` is initialized to `Some(Active)` — newly created sections
 /// are *explicitly* Active, distinct from Round 269's `None = parser default`
 /// case which only applies to pre-251 carry sections. Subsequent transitions
-/// route through `set_section_decision_status_atomic`.
+/// route through `set_section_decision_status`.
 pub fn add_section(
  store: &mut AtomicStore,
  sidecar_path: &Path,
@@ -1273,16 +1273,14 @@ pub fn set_section_parent_section(
 /// `superseding` argument is mandatory — Superseded by definition forward-
 /// points to a replacement decision, and accepting `None` would permit a
 /// semantically-incoherent state (replaced, but no replacement recorded).
-/// Symmetric with the markdown-axis guard at
-/// `mutate::set_section_decision_status`. `Removed` is tombstone-exempt
-/// (asserts finality, not replacement).
+/// `Removed` is tombstone-exempt (asserts finality, not replacement).
 ///
 /// This guard does not validate that the named superseding section_id
 /// exists in the atomic store — cross-ref orphan checking is T1 rule 1's
 /// territory, picked up by `validate-workspace`. This primitive only
-/// enforces presence of the *intent to forward*, mirroring the markdown
-/// axis which also defers existence checking to the validator pass.
-pub fn set_section_decision_status_atomic(
+/// enforces presence of the *intent to forward*; existence is checked
+/// by the validator pass.
+pub fn set_section_decision_status(
  store: &mut AtomicStore,
  sidecar_path: &Path,
  section_id: &str,
@@ -1298,7 +1296,7 @@ pub fn set_section_decision_status_atomic(
  save_with_receipt(
  store,
  sidecar_path,
- "set_section_decision_status_atomic",
+ "set_section_decision_status",
  "section",
  section_id,
  )
@@ -1977,7 +1975,7 @@ pub fn set_inventory_status(
 ///
 /// No referential-integrity check (`section_ref` points at a section_id
 /// that actually exists) — that's `validate-workspace`'s job, not the
-/// atomic primitive's. Mirrors the `set_section_decision_status_atomic`
+/// atomic primitive's. Mirrors the `set_section_decision_status`
 /// stance on `superseding` (no cross-store existence enforcement here).
 pub fn set_inventory_section_ref(
  store: &mut AtomicStore,
@@ -3226,7 +3224,7 @@ mod tests {
  }
 
  #[test]
- fn set_section_decision_status_atomic_persists_and_round_trips() {
+ fn set_section_decision_status_persists_and_round_trips() {
  // Round 265 — atomic decision_status field round-trips through
  // sidecar JSON. Default = None (skip_serializing_if), Some(_) appears
  // as lowercase string in JSON, deserializes back to enum.
@@ -3234,7 +3232,7 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  seed_section(&mut store, "39");
- set_section_decision_status_atomic(
+ set_section_decision_status(
  &mut store,
  &path,
  "39",
@@ -3252,7 +3250,7 @@ mod tests {
  }
 
  #[test]
- fn set_section_decision_status_atomic_overwrite_is_idempotent() {
+ fn set_section_decision_status_overwrite_is_idempotent() {
  // Re-setting the same status does not error, and overwriting with a
  // different status replaces the previous value (no append-only semantics
  // — this is a single-field setter).
@@ -3260,11 +3258,11 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  seed_section(&mut store, "1");
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None)
  .unwrap();
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None)
  .unwrap();
- set_section_decision_status_atomic(
+ set_section_decision_status(
  &mut store,
  &path,
  "1",
@@ -3279,7 +3277,7 @@ mod tests {
  }
 
  #[test]
- fn set_section_decision_status_atomic_superseded_without_superseding_rejects() {
+ fn set_section_decision_status_superseded_without_superseding_rejects() {
  // T1 rule 4 (atomic axis) author-time guard: Superseded transition
  // without a superseding section_id is a semantically-incoherent state
  // ("replaced, but no replacement recorded") and must reject at the
@@ -3287,7 +3285,7 @@ mod tests {
  let tmp = TempDir::new().unwrap();
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
- let err = set_section_decision_status_atomic(
+ let err = set_section_decision_status(
  &mut store,
  &path,
  "39",
@@ -3315,7 +3313,7 @@ mod tests {
  }
 
  #[test]
- fn set_section_decision_status_atomic_active_no_superseding_required() {
+ fn set_section_decision_status_active_no_superseding_required() {
  // Active and Removed targets do not require a superseding ref — only
  // Superseded does. Removed is tombstone-exempt (asserts finality, not
  // replacement); Active is the default starting state.
@@ -3324,9 +3322,9 @@ mod tests {
  let mut store = AtomicStore::new();
  seed_section(&mut store, "1");
  seed_section(&mut store, "2");
- set_section_decision_status_atomic(&mut store, &path, "1", DecisionStatus::Active, None)
+ set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None)
  .unwrap();
- set_section_decision_status_atomic(&mut store, &path, "2", DecisionStatus::Removed, None)
+ set_section_decision_status(&mut store, &path, "2", DecisionStatus::Removed, None)
  .unwrap();
  assert_eq!(
  store.section("1").unwrap().decision_status,
@@ -3339,7 +3337,7 @@ mod tests {
  }
 
  #[test]
- fn set_section_decision_status_atomic_superseded_with_superseding_writes() {
+ fn set_section_decision_status_superseded_with_superseding_writes() {
  // Author-time guard accepts any non-None superseding string; existence
  // checking is rule 1's territory (validate-workspace), not rule 4's.
  // Symmetric with the markdown-axis guard which also defers existence
@@ -3348,7 +3346,7 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  seed_section(&mut store, "39");
- set_section_decision_status_atomic(
+ set_section_decision_status(
  &mut store,
  &path,
  "39",
