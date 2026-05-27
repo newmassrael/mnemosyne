@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Mnemosyne self-application pre-commit gate — runs on every `git commit`.
+#
+# Mnemosyne dogfoods its own validator against the repo's atomic store +
+# GENERATED.md round-trip + code citation defense before every commit.
+# Plus a clippy gate when `.rs` files are staged (workspace lint baseline).
+#
+# Gates:
+#
+#   1. Atomic sidecar gate — `mnemosyne-cli verify-generated` when
+#      `docs/.atomic/workspace.atomic.json` is staged. Rejects if
+#      GENERATED.md is stale (R168 cascade auto-update gate).
+#
+#   2. Code citation defense — `mnemosyne-cli validate-code-refs`
+#      always runs; subcommand silently skips when
+#      `[plugins.set_equality_validator]` is unconfigured (5-min setup
+#      promise). Otherwise scans `paths` for `<entry_id_prefix><digits>`
+#      and `§<id>` citations and rejects on hallucination / unbound /
+#      decay / inventory / symbol-mismatch violations (severity per config).
+#
+#   3. Workspace gate — `mnemosyne-cli validate-workspace` when any
+#      tracked doc (per `mnemosyne-cli list-docs`) is staged. T1 orphan
+#      delta, T2 frozen-ledger, round-trip mandatory, divergence /
+#      ledger match, commit↔ledger drift.
+#
+#   4. Clippy gate — `cargo clippy --workspace --all-targets` when any
+#      `.rs` file is staged. Default warn-only (no `-D warnings`); compile
+#      errors trip the exit code, drift toward `pedantic = deny` is a
+#      separate carry round (R307+ debt D9).
+#
+# Install (one-time per clone):
+#   git config core.hooksPath .githooks
+#
+# Bypass: `--no-verify` (discouraged; the project policy treats audit
+# gates as load-bearing, not nudges).
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+ATOMIC_SIDECAR="docs/.atomic/workspace.atomic.json"
+
+# Prefer the release binary if it exists (much faster than `cargo run`).
+# Falls back to `cargo run -q -p mnemosyne-cli --` so the hook still works
+# pre-first-build (e.g., a fresh clone running its first commit).
+if [[ -x "target/release/mnemosyne-cli" ]]; then
+    cli=(target/release/mnemosyne-cli)
+elif command -v mnemosyne-cli >/dev/null 2>&1; then
+    cli=(mnemosyne-cli)
+else
+    cli=(cargo run -q -p mnemosyne-cli --)
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
+
+# Gate 1 — atomic sidecar staged → GENERATED.md must be in sync.
+if printf '%s\n' "$staged" | grep -qx -- "$ATOMIC_SIDECAR"; then
+    echo "[mnemosyne pre-commit] atomic sidecar staged — verify-generated" >&2
+    if ! "${cli[@]}" verify-generated; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — GENERATED.md stale"
+            echo "  fix: ${cli[*]} generate-docs && git add docs/GENERATED.md"
+        } >&2
+        exit 1
+    fi
+fi
+
+# Gate 2 — code citation defense (R257+). Internally skips when
+# [plugins.set_equality_validator] is unconfigured.
+echo "[mnemosyne pre-commit] code citation defense — validate-code-refs" >&2
+if ! "${cli[@]}" validate-code-refs; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — code citation violations"
+        echo "  fix: verify each cited entry_id / §<id> / inventory id exists,"
+        echo "       or register stale citations in mnemosyne.toml [[orphan_ledger]]"
+    } >&2
+    exit 1
+fi
+
+# Gate 3 — workspace validate when any configured doc is staged.
+needs_validate=0
+if doc_list=$("${cli[@]}" list-docs 2>/dev/null); then
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        if printf '%s\n' "$staged" | grep -qx -- "$p"; then
+            needs_validate=1
+            break
+        fi
+    done <<< "$doc_list"
+fi
+
+if [[ "$needs_validate" == "1" ]]; then
+    echo "[mnemosyne pre-commit] doc staged — validate-workspace" >&2
+    "${cli[@]}" validate-workspace
+fi
+
+# Gate 4 — clippy on .rs changes. Default warn-only; compile errors and
+# any future `-D warnings` lift would gate here. R307+ debt D9 (workspace
+# .lints pedantic deny) tightens this to deny.
+if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --all-targets" >&2
+    cargo clippy --workspace --all-targets
+fi

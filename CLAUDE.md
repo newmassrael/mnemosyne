@@ -217,3 +217,29 @@ moment* is dramatically cheaper than catching it later (pre-commit / CI
  T3/T4 heuristic territory, not v1
 - Dedicated `verify_round_citation(n)` MCP tool — add only if the
  two-call dance shows real friction in practice
+
+## Git hook installation (R306+ — tracked `.githooks/`)
+
+This repo ships its git hooks under `.githooks/` (tracked, source of
+truth). The directory contains three hooks:
+
+- `pre-commit` — atomic-sidecar gate, code-citation defense,
+ workspace validate (when a doc is staged), clippy (when `.rs` is
+ staged).
+- `commit-msg` — enforces `COMMIT_FORMAT.md`: subject ≤ 72 bytes,
+ body line ≤ 72 bytes, 1–3 bullets, no continuation lines, English
+ + typographic whitelist (`§ – — • … →`).
+- `pre-push` — re-runs `validate-workspace` + clippy before
+ publishing.
+
+Install (one-time per clone):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The legacy `scripts/install-hooks.sh` + `scripts/hooks/` copy-based
+flow was retired in R306+ (no more sync step; `.githooks/` is the
+direct hook directory). Any local `.git/hooks/pre-commit` /
+`commit-msg` left over from the copy era is automatically ignored
+once `core.hooksPath` is set, and can be deleted.

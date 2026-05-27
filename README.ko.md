@@ -128,8 +128,9 @@ entry_id_prefix = "Round "
 locale = "en"
 
 # 선택 사항 — code-citation defense 활성화. 소스 주석의 §id / Round-N
-# 참조가 hallucination 일 때 reject 한다.
-[code_refs]
+# 참조가 hallucination 일 때 reject 한다. R306 에서 plugin substrate
+# 네임스페이스로 rename — 동작은 변경 없음.
+[plugins.set_equality_validator]
 paths = ["src/"]
 severity_missing = "warn"   # baseline 깨끗해지면 "reject" 로 승격
 severity_binding = "warn"
@@ -140,7 +141,7 @@ comment_only = true
 
 ```bash
 mnemosyne-cli validate-workspace   # T1 + round-trip + atomic ledger
-mnemosyne-cli validate-code-refs   # citation defense ([code_refs] 설정 시)
+mnemosyne-cli validate-code-refs   # citation defense ([plugins.set_equality_validator] 설정 시)
 ```
 
 이 명령들이 baseline을 뽑는다 — T1 orphan 총합, round-trip mandatory
@@ -239,12 +240,27 @@ jobs:
       - run: cargo install --git https://github.com/newmassrael/mnemosyne mnemosyne-cli
       - run: mnemosyne-cli validate-workspace
       - run: mnemosyne-cli verify-generated
-      - run: mnemosyne-cli validate-code-refs   # 선택 사항, mnemosyne.toml 에 [code_refs] 가 있을 때
+      - run: mnemosyne-cli validate-code-refs   # 선택 사항, mnemosyne.toml 에 [plugins.set_equality_validator] 가 있을 때
 ```
 
-동일한 세 명령이 `scripts/install-hooks.sh` 를 통해 pre-commit gate
-로 연결된다. Citation defense baseline 이 깨끗해지면 `mnemosyne.toml`
-에서 `severity_*` 를 `warn` → `reject` 로 승격하면, 이후 새 hallucinated
+동일한 세 명령 + `cargo clippy --workspace --all-targets` gate 가
+tracked 된 `.githooks/` 디렉토리에 wired. clone 마다 한 번 설치:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+3 개의 hook 가 자동 실행된다:
+- `pre-commit` — atomic-sidecar / GENERATED.md sync, code-citation
+  defense, workspace validate (tracked doc 가 staged 일 때), clippy
+  (`.rs` 가 staged 일 때).
+- `commit-msg` — `COMMIT_FORMAT.md` 강제 (subject ≤ 72 bytes, body
+  ≤ 72 bytes / line, 1–3 bullets, English + 타이포그래픽 화이트리스트).
+- `pre-push` — push 직전 `validate-workspace` + clippy 재실행, 마지막
+  `pre-commit` 이후의 state drift 캐치.
+
+Citation defense baseline 이 깨끗해지면 `mnemosyne.toml` 에서
+`severity_*` 를 `warn` → `reject` 로 승격하면, 이후 새 hallucinated
 인용을 도입하는 모든 커밋이 hook 단에서 차단된다.
 
 ## 설계 고찰

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# pre-push hook — re-run integrity + lint gates before publishing
+# commits to a remote.
+#
+# Push is the natural integrity-gate point: this is where the project's
+# audit-traced state becomes shared. Catches state changes since last
+# commit (manual atomic.json edits, amends, rebases, `--no-verify`
+# bypasses) that pre-commit may have missed.
+#
+# Checks:
+#
+#   1. `mnemosyne-cli validate-workspace`
+#      - T1 cross-ref orphan delta
+#      - T2 frozen-ledger violations
+#      - Round-trip mandatory dimension N/N
+#      - Atomic ledger consistency (entries / sections / GENERATED.md sync)
+#      - Publishable / audit divergence ↔ override ledger match (R296)
+#      - Commit ↔ ledger drift (cited vs entries scan)
+#
+#   2. `cargo clippy --workspace --all-targets`
+#      - Default lint level; compile errors fail. R307+ debt D9 promotes
+#        `workspace.lints` to `clippy::pedantic = deny` (pinion parity).
+#      - Unconditional (push validates publishable state, so the clippy
+#        budget is paid once per push regardless of which files changed).
+#
+# Install (one-time per clone):
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Prefer the release binary if it exists (much faster than `cargo run`).
+if [[ -x "target/release/mnemosyne-cli" ]]; then
+    cli=(target/release/mnemosyne-cli)
+elif command -v mnemosyne-cli >/dev/null 2>&1; then
+    cli=(mnemosyne-cli)
+else
+    cli=(cargo run -q -p mnemosyne-cli --)
+fi
+
+echo "pre-push: ${cli[*]} validate-workspace ..." >&2
+if ! "${cli[@]}" validate-workspace; then
+    echo "pre-push: validate-workspace failed — fix violations before push" >&2
+    exit 1
+fi
+
+echo "pre-push: cargo clippy --workspace --all-targets ..." >&2
+if ! cargo clippy --workspace --all-targets; then
+    echo "pre-push: clippy failed — fix violations before push" >&2
+    exit 1
+fi
+
+exit 0

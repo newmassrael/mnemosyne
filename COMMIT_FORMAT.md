@@ -39,8 +39,12 @@ Build / infra:
 
 ### 3. Body
 - One blank line after subject
-- Bullet points (`-` prefix) only
+- Bullet points (`- ` prefix) only
 - **1–3 items** — focus on key changes (fewer is better)
+- **One bullet = one line, max 72 bytes total (incl. `- ` prefix)**
+  - No continuation / indented wrap lines. If a bullet does not fit in
+    72 bytes, rewrite it tighter or split into a separate bullet.
+  - Verify with: `git log -1 --format=%B | awk '{print length, $0}'`
 - Be specific and reference spec anchors
 
 Reference conventions:
@@ -51,13 +55,29 @@ Reference conventions:
 - Decision source slug: `phase-0-cell-1-analysis`
 
 ### 4. Style
-- **English only** — subject and body must be in English. Spec section anchors (`§39`, `§44`), measurement units, and code identifiers are kept verbatim. Per Round 251 the atomic store ledger uses English; commit messages stay English-first.
-- **No emojis**
+- **English only** — subject and body must be written in English so the
+  log stays accessible to every collaborator. ASCII printable (U+0020
+  to U+007E) plus the whitelist of typographic symbols below are the
+  only permitted code points; any character outside this set (Hangul,
+  Kana, CJK ideographs, Cyrillic, Greek, etc.) is rejected by the
+  commit-msg hook.
+  - Typographic whitelist: `§` (U+00A7), `–` (en-dash U+2013), `—`
+    (em-dash U+2014), `•` (bullet U+2022), `…` (ellipsis U+2026), `→`
+    (rightwards arrow U+2192). These are the only non-ASCII code
+    points the hook lets through.
+  - Round summaries / progress notes that need Korean phrasing belong
+    in `claudedocs/`, auto-memory under `memory/`, or atomic-store
+    publishable fields, never in the commit message.
+  - Per Round 251 the atomic store ledger uses English; commit
+    messages stay English-first by the same rationale.
+- **No emojis** (Unicode pictograph ranges U+1F300-U+1FAFF and
+  U+1F1E6-U+1F1FF are rejected; the typographic symbols above are
+  explicitly allowed)
 - **No "Generated with Claude Code"**
 - **No "Co-Authored-By" tags**
 - Professional and technical tone
 - Focus on "what" and "why", not "how"
-- Quantify progress when possible (e.g., "6/6 cells decided", "12 fixtures added")
+- Quantify progress when possible (e.g., `entries 52 → 53`, `T3 warn 2 → 3`)
 
 ## Type Guidelines
 

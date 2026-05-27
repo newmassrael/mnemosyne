@@ -137,8 +137,9 @@ entry_id_prefix = "Round "
 locale = "en"
 
 # Optional — opt into the code-citation defense (rejects hallucinated
-# §id / Round-N references in your source comments).
-[code_refs]
+# §id / Round-N references in your source comments). R306 renamed this
+# table to the plugin substrate namespace; behavior is unchanged.
+[plugins.set_equality_validator]
 paths = ["src/"]
 severity_missing = "warn"   # promote to "reject" once your baseline is clean
 severity_binding = "warn"
@@ -149,7 +150,7 @@ Then:
 
 ```bash
 mnemosyne-cli validate-workspace   # T1 + round-trip + atomic ledger
-mnemosyne-cli validate-code-refs   # citation defense (if [code_refs] configured)
+mnemosyne-cli validate-code-refs   # citation defense (if [plugins.set_equality_validator] configured)
 ```
 
 This surfaces your baseline: T1 orphan total, round-trip mandatory
@@ -254,13 +255,30 @@ jobs:
       - run: cargo install --git https://github.com/newmassrael/mnemosyne mnemosyne-cli
       - run: mnemosyne-cli validate-workspace
       - run: mnemosyne-cli verify-generated
-      - run: mnemosyne-cli validate-code-refs   # optional, requires [code_refs] in mnemosyne.toml
+      - run: mnemosyne-cli validate-code-refs   # optional, requires [plugins.set_equality_validator] in mnemosyne.toml
 ```
 
-The same three commands are wired into `scripts/install-hooks.sh` as a
-pre-commit gate. Once the citation-defense baseline is clean, promote
-`severity_*` from `warn` to `reject` in `mnemosyne.toml` and the hook
-will block any commit that introduces a hallucinated spec citation.
+The same three commands plus a `cargo clippy --workspace --all-targets`
+gate are wired into the tracked `.githooks/` directory. Install per
+clone with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Three hooks then run automatically:
+- `pre-commit` — atomic-sidecar / GENERATED.md sync, code-citation
+  defense, workspace validate (when a tracked doc is staged), and
+  clippy (when `.rs` is staged).
+- `commit-msg` — enforces `COMMIT_FORMAT.md` (subject ≤ 72 bytes,
+  body ≤ 72 bytes per line, 1–3 bullets, English + typographic
+  whitelist).
+- `pre-push` — re-runs `validate-workspace` + clippy before
+  publishing, catching state drift since the last `pre-commit`.
+
+Once the citation-defense baseline is clean, promote `severity_*`
+from `warn` to `reject` in `mnemosyne.toml` and the hook will block
+any commit that introduces a hallucinated spec citation.
 
 ## Design Considerations
 
