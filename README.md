@@ -485,6 +485,60 @@ mode well-calibrated.
 Phase 1 is currently *deferred* behind Phase 0 stack stabilization —
 not abandoned. The roadmap is honest about the boundary.
 
+### Phase 1 — External-spec compliance adapter (parallel candidate)
+
+A second Phase 1 adoption surface, registered after a 2026-05 RFC from
+a statechart-compiler project tracking the W3C SCXML Recommendation +
+IRP test catalog. The schema differs from the narrative-medium adapter,
+but the substrate is identical: atomic store + T1 cross-ref reject +
+Path B bidirectional binding + code-citation defense lift directly.
+
+Concrete target surfaces and what Mnemosyne would guard:
+
+- **External standards conformance tracking.** W3C / IETF RFC / IEEE /
+  ISO/IEC / AUTOSAR specs vendored as a workspace mirror, with code
+  citations checked against the canonical section graph. Section text
+  is mutable (reflects current spec revision); the audit trail of
+  revision bumps lives in ChangelogEntry stream.
+- **Test catalog hygiene.** W3C SCXML IRP, IETF interop test suites,
+  internal conformance test rosters — each test id as a Section with
+  status (`active` / `deprecated` / `reserved`) and lifecycle audit,
+  reusing the InventoryEntry primitive (Phase 1A) where the test id
+  shape fits.
+- **Normative excerpt embedding.** The vendored spec quote anchored to
+  the section, so reviewers verify citations against the exact text
+  the compiler was built against — independent of upstream HTML rot.
+- **Spec revision drift detection.** Fetch → hash diff → impact report
+  for code citations affected by an upstream rev bump.
+
+Schema requirements identified by the RFC:
+
+- New `AtomicSection.normative_excerpt` field (vendored spec quote with
+  anchor URL + source revision pin).
+- Workspace-level `spec_source` metadata (origin URL, fetched revision,
+  fetched_sha256, fetched_at).
+- Symbol-level binding enforcement (`Implementation.symbol` participates
+  in set-equality, gated by an opt-in flag — requires language-aware
+  citation extraction beyond the current regex/comment-only pipeline).
+
+These are *not* Phase 0 features (closed-form schema policy below).
+They land as part of the Phase 1.5 schema-decomposition spec round,
+where they share design pressure with the narrative adapter's entity
+extensions (Character / Location / Faction / Scene). Two parallel
+adoption axes hitting the same decomposition mechanism is the
+calibration signal — if the mechanism stays generic under both, it is
+not over-fit to either.
+
+The narrative adapter remains the *first* Phase 1 entry by the Round
+172 priority audit (6.00 / 3.00× margin). The external-spec adapter
+lands second, *on top of* the schema-decomposition mechanism the
+narrative adapter introduces.
+
+Until Phase 1.5 ships, external-spec adopters can carry ~80% of the
+target functionality via sidecar JSON (normative excerpts + spec
+provenance) alongside a vanilla atomic store. The full disposition is
+in `claudedocs/mnemosyne-rfc-002-sce-response.md`.
+
 ### Phase 1.5 — Cascade-gate full-scale measurement
 
 Validation that the per-record Salsa cascade pattern (currently used
