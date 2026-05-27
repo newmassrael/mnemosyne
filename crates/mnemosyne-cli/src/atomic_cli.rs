@@ -1112,7 +1112,7 @@ pub fn cmd_set_section_decision_status(
  }
  let superseding_strip = superseding
  .as_deref()
- .map(|s| strip_section_prefix(s));
+ .map(strip_section_prefix);
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
  let mutate_result = set_section_decision_status(

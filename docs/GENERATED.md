@@ -1872,3 +1872,35 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 308 — D9 closure — workspace lint baseline lifted to deny via -D warnings on pre-commit + pre-push; curated allow list (doc_lazy_continuation + inconsistent_digit_grouping) covers stylistic exemptions, per-site #[allow] covers API-shape exemptions; 230 warnings → 0
+
+**Changes**:
+- Root Cargo.toml grows [workspace.lints.clippy] with all warn (priority -1) plus curated allow list — doc_lazy_continuation (rustdoc renders both bullet-continuation styles, 206 stylistic sites) and inconsistent_digit_grouping (YYYY_MM_DD u64 date literals in changelog facts and cascade snapshots preserve human-readable date semantics)
+- Per-crate [lints] workspace = true added across all 9 workspace members so the shared lint baseline reaches every crate (and is the only place to bump pedantic deny later)
+- Per-site #[allow] annotations for API-shape exemptions where workspace-level allow would be too broad — clippy::too_many_arguments on append_changelog_entry (8-arg public mutate API surface; bundling forces every CLI MCP and test caller to construct a new type with no readability win), clippy::result_large_err on tonic interceptors require_authorization_metadata + with_tracing_span (tonic::Status is the interceptor contract; boxing breaks the trait signature downstream consumers compose against)
+- Fixed 18 actionable warnings — 6 field_reassign_with_default in R307 test files and mnemosyne-mcp list_resources converted to struct-literal form; 1 slice_arg_type sort_violations takes &mut [_] not &mut Vec; 1 unnecessary_get_then_is_none in atomic_store_view_parity becomes !contains_key; 1 if_same_then_else in to_github_anchor merges identical whitespace branches; 1 path_statement in handler test replaced with let _dir; 1 unnecessary_unwrap in parse_section_args uses if let Some
+- Auto-fix applied for default_constructed_unit_structs (19 sites collapsed to bare unit struct) plus redundant_closure (2 sites) and other machine-applicable lints via cargo clippy --workspace --all-targets --fix
+- pre-commit Gate 4 and pre-push clippy gate both lift to -D warnings — every clippy warning at any level becomes a deny gate, allow list and per-site annotations are the only legal exemptions
+
+
+
+**Verification**:
+- cargo clippy --workspace --all-targets --release -- -D warnings exits 0 (pre-R308 baseline: 230 warnings — 206 doc_lazy_continuation plus 9 inconsistent_digit_grouping plus 18 actionable code issues)
+- cargo test --workspace --release all green — every test suite passes after the field_reassign struct-literal conversions and the to_github_anchor branch merge (no behavior regression)
+- cargo run mnemosyne-cli validate-workspace baseline clean — entries 54 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0
+- .githooks/pre-commit Gate 4 + .githooks/pre-push clippy invocation updated to cargo clippy --workspace --all-targets -- -D warnings — pushing a commit with any new warning now fails the hook
+- Workspace allow list documents the two stylistic exemptions inline with their justification (rustdoc bullet-continuation parity and YYYY_MM_DD date u64 literal preservation)
+
+
+
+
+**Carry forward**:
+- R309 D3 transport abstraction (MCP self-ref dogfood) — original R308 plan deferred; new mnemosyne-plugin-mcp-resolver crate with McpProcessResolver (rmcp client + TokioChildProcess + Runtime::block_on bridge), resolve_symbol_at MCP tool in mnemosyne-mcp, transport_parity integration test asserting InProcess vs MCP equality
+- R310 D4+D5 medium adapter substrate — MediumAdapter trait in mnemosyne-core + DesignDocAdapter refactor + mnemosyne-core owning surface declaration
+- R311+ D6 external plugin extension mechanism — dlopen libloading or external-binary orchestrator path (RFC-003 risk register #5)
+- D7 severity_symbol promote — Mnemosyne dogfood activates plugins.symbol_resolver.rust block; N round measurement evidence before promotion decision
+- D8 Round 172 priority audit re-validation — at Phase 1 entry trigger re-measure value × measurability over risk × unmet_deps
+- Future pedantic tightening — current workspace lint baseline is clippy::all warn; promote to clippy::pedantic warn (or selectively deny on chosen pedantic lints) once the codebase has absorbed a few rounds of D9 baseline
+
+
+

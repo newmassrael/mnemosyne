@@ -671,7 +671,7 @@ fn detect_legacy_line_ref(line: &str, line_no: usize) -> Option<String> {
  let needle = "(line ";
  if let Some(start) = line.find(needle) {
  let after = &line[start + needle.len()..];
- if after.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+ if after.chars().next().is_some_and(|c| c.is_ascii_digit()) {
  return Some(format!(
   "line {}: legacy `(line N)` ref detected — NOT captured (DESIGN §61 carry, line ref derived on export pass)",
   line_no

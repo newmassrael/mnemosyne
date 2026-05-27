@@ -43,7 +43,7 @@ impl MnemosyneStore {
  &self.db
  }
 
- fn cf<'a>(&'a self, id: CfId) -> Result<&'a rocksdb::ColumnFamily> {
+ fn cf(&self, id: CfId) -> Result<&rocksdb::ColumnFamily> {
  self.db
  .cf_handle(id.name())
  .ok_or(StoreError::MissingCf(id.name()))

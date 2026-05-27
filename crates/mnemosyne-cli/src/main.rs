@@ -669,8 +669,8 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
  }
  other if other.starts_with("--") => bail!("unknown flag `{}`", other),
  other => {
-  if out.section_id.is_some() {
-  bail!("section_id argument duplicate (already `{}`)", out.section_id.unwrap());
+  if let Some(existing) = &out.section_id {
+  bail!("section_id argument duplicate (already `{}`)", existing);
   }
   let stripped = other.strip_prefix('§').unwrap_or(other).to_string();
   out.section_id = Some(stripped);

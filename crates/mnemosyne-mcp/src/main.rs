@@ -1169,9 +1169,10 @@ impl ServerHandler for MnemosyneServer {
                 Annotated::new(raw, None)
             })
             .collect();
-        let mut result = ListResourcesResult::default();
-        result.resources = resources;
-        Ok(result)
+        Ok(ListResourcesResult {
+            resources,
+            ..Default::default()
+        })
     }
 
     async fn read_resource(

@@ -31,9 +31,9 @@ impl ProposalHandler {
  Self {
  store,
  audit,
- tier1: Box::new(DefaultTier1::default()),
- tier2: Box::new(DefaultTier2::default()),
- tier3: Box::new(DefaultTier3::default()),
+ tier1: Box::new(DefaultTier1),
+ tier2: Box::new(DefaultTier2),
+ tier3: Box::new(DefaultTier3),
  }
  }
 
@@ -46,9 +46,9 @@ impl ProposalHandler {
  Self {
  store,
  audit,
- tier1: Box::new(DefaultTier1::default()),
- tier2: Box::new(DefaultTier2::default()),
- tier3: Box::new(DefaultTier3::default()),
+ tier1: Box::new(DefaultTier1),
+ tier2: Box::new(DefaultTier2),
+ tier3: Box::new(DefaultTier3),
  }
  }
 
@@ -69,9 +69,9 @@ impl ProposalHandler {
  Self {
  store,
  audit,
- tier1: Box::new(DefaultTier1::default()),
- tier2: Box::new(DefaultTier2::default()),
- tier3: Box::new(DefaultTier3::default()),
+ tier1: Box::new(DefaultTier1),
+ tier2: Box::new(DefaultTier2),
+ tier3: Box::new(DefaultTier3),
  }
  }
 
@@ -523,8 +523,7 @@ mod tests {
 
  #[test]
  fn always_reject_tier1_short_circuits_pipeline() {
- let (_dir, store_dir) = (TempDir::new().unwrap(), ());
- let _ = store_dir;
+ let _dir = TempDir::new().unwrap();
  let store = Arc::new(MnemosyneStore::open(_dir.path()).unwrap());
  let handler = ProposalHandler::new(Arc::clone(&store)).with_tier1(Box::new(
  AlwaysRejectTier1 {

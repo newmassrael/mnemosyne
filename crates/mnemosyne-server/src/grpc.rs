@@ -172,7 +172,7 @@ impl Mnemosyne for MnemosyneGrpcService {
 
  let wire = request.into_inner();
  let proposal = decode_proposal(wire)
- .map_err(|reason| Status::invalid_argument(reason))?;
+ .map_err(Status::invalid_argument)?;
  let handler = Arc::clone(&self.handler);
  // capture the entry-level RPC span and re-enter it inside
  // the blocking task so the gate.evaluate / audit.append child spans
@@ -587,6 +587,11 @@ pub fn balanced_channel(
 /// or the lower-level `tonic::service::interceptor`. The interceptor does
 /// not validate the *value* of the header — Phase 0+ token-verification
 /// (JWT signature, mTLS subject DN binding) layers on top.
+//
+// `clippy::result_large_err` allowed: `tonic::Status` is the tonic
+// interceptor contract; boxing the Err breaks the trait signature
+// downstream consumers compose against.
+#[allow(clippy::result_large_err)]
 pub fn require_authorization_metadata(req: Request<()>) -> Result<Request<()>, Status> {
  if req.metadata().get("authorization").is_none() {
  return Err(Status::unauthenticated(
@@ -604,6 +609,10 @@ pub fn require_authorization_metadata(req: Request<()>) -> Result<Request<()>, S
 /// wiring a server. The Mnemosyne `submit_proposal` body also annotates the
 /// span explicitly — this interceptor is the generic catch-all path for
 /// future RPC additions.
+//
+// `clippy::result_large_err` allowed: same rationale as
+// `require_authorization_metadata` — tonic interceptor signature.
+#[allow(clippy::result_large_err)]
 pub fn with_tracing_span(req: Request<()>) -> Result<Request<()>, Status> {
  if let Some(path) = req.metadata().get("grpc-method") {
  if let Ok(value) = path.to_str() {

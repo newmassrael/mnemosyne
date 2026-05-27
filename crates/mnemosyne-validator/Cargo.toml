@@ -27,3 +27,6 @@ mnemosyne-plugin = { path = "../mnemosyne-plugin" }
 [dev-dependencies]
 tempfile = { workspace = true }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
+
+[lints]
+workspace = true

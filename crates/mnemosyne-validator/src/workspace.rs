@@ -96,7 +96,7 @@ impl Workspace {
  s.section_id == section_id
  || s.section_id
   .rsplit_once('/')
-  .map_or(false, |(_, last)| last == section_id)
+  .is_some_and(|(_, last)| last == section_id)
  })
  }
 

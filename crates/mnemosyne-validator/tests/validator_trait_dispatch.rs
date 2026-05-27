@@ -58,17 +58,21 @@ fn registry_dispatch_yields_findings_with_kind_and_extras() {
     // back → ImplementationUnbacked). Section sec2 declares no impls
     // → ImplementationMissing.
     let mut store = AtomicStore::new();
-    let mut sec1 = AtomicSection::default();
-    sec1.title = "Sec One".into();
-    sec1.parent_doc = "docs/GENERATED.md".into();
-    sec1.implementations.push(Implementation {
-        file: "src/missing.rs".into(),
-        symbol: Some("expected_symbol".into()),
-    });
+    let sec1 = AtomicSection {
+        title: "Sec One".into(),
+        parent_doc: "docs/GENERATED.md".into(),
+        implementations: vec![Implementation {
+            file: "src/missing.rs".into(),
+            symbol: Some("expected_symbol".into()),
+        }],
+        ..AtomicSection::default()
+    };
     store.sections.insert("sec1".into(), sec1);
-    let mut sec2 = AtomicSection::default();
-    sec2.title = "Sec Two".into();
-    sec2.parent_doc = "docs/GENERATED.md".into();
+    let sec2 = AtomicSection {
+        title: "Sec Two".into(),
+        parent_doc: "docs/GENERATED.md".into(),
+        ..AtomicSection::default()
+    };
     store.sections.insert("sec2".into(), sec2);
 
     // Code file: cites §sec1 (passes binding) + Round 999 (hallucinated).
@@ -152,8 +156,10 @@ fn registry_dispatch_with_filter_id_narrows_to_decay_only() {
     // Missing) and no sections (so steps 3-4 would otherwise fire — but
     // are suppressed under filter mode).
     let mut store = AtomicStore::new();
-    let mut entry = mnemosyne_validator::atomic::AtomicChangelogEntry::default();
-    entry.decision_summary = Some("Round 5 anchor for decay test".into());
+    let mut entry = mnemosyne_validator::atomic::AtomicChangelogEntry {
+        decision_summary: Some("Round 5 anchor for decay test".into()),
+        ..Default::default()
+    };
     entry.clone_audit_into_publishable();
     store.changelog_entries.insert("Round 5".into(), entry);
 

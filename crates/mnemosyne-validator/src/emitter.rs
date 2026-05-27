@@ -25,9 +25,9 @@ pub fn to_github_anchor(heading: &str) -> String {
  let lc = ch.to_ascii_lowercase();
  if lc.is_ascii_alphanumeric() || lc == '-' || lc == '_' || is_cjk_char(lc) {
  chars.push(lc);
- } else if lc == ' ' || lc == '\t' {
- chars.push(' ');
  } else {
+ // Whitespace and every other non-alphanumeric collapse to ' ' →
+ // converted to '-' in the second pass below.
  chars.push(' ');
  }
  }
@@ -99,7 +99,7 @@ pub fn emit_markdown_with_default(doc: &ParsedDoc, default_doc: Option<&str>) ->
 
  for fl in &doc.frozen_lists {
  out.push_str(&emit_frozen_list_table(fl));
- out.push_str("\n");
+ out.push('\n');
  }
 
  if !doc.changelog_entries.is_empty() {
@@ -109,7 +109,7 @@ pub fn emit_markdown_with_default(doc: &ParsedDoc, default_doc: Option<&str>) ->
   out.push_str(&format!("  - {}\n", sub));
  }
  }
- out.push_str("\n");
+ out.push('\n');
  }
 
  out
@@ -140,9 +140,9 @@ fn emit_cross_doc(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> St
  format!("[link]({})", cr.to_target)
 }
 
-fn build_section_depth_map<'a>(
- doc: &'a ParsedDoc,
-) -> std::collections::BTreeMap<&'a str, usize> {
+fn build_section_depth_map(
+ doc: &ParsedDoc,
+) -> std::collections::BTreeMap<&str, usize> {
  use std::collections::BTreeSet;
  let mut depth: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
  let by_id = section_by_id(doc);

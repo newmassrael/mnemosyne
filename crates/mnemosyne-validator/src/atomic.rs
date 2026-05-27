@@ -364,17 +364,14 @@ impl AtomicChangelogEntry {
 /// reject semantics in later rounds key off `Deprecated`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum InventoryStatus {
+ #[default]
  Active,
  Deprecated,
  Reserved,
 }
 
-impl Default for InventoryStatus {
- fn default() -> Self {
- InventoryStatus::Active
- }
-}
 
 /// Atomic inventory entry — Phase 1A 5th closed-form entity (Round 273).
 ///
@@ -1405,7 +1402,7 @@ pub fn set_section_normative_excerpt(
  .strip_prefix("https://")
  .or_else(|| anchor_url.strip_prefix("http://"))
  .map(|rest| {
- let host_end = rest.find(|c: char| c == '/' || c == '?' || c == '#')
+ let host_end = rest.find(['/', '?', '#'])
  .unwrap_or(rest.len());
  !rest[..host_end].is_empty()
  })
@@ -1643,6 +1640,12 @@ fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError
 /// Frozen ledger semantics: once committed,
 /// existing fields cannot be modified or removed (T2 jaccard); subsequent
 /// mutations to the same `entry_id` are rejected via FrozenLedger error.
+//
+// `clippy::too_many_arguments` allowed: 8 args mirror the public mutate
+// API shape (one per AtomicChangelogEntry audit-half field). Bundling
+// into a struct would force every caller (CLI / MCP / atomic_cli /
+// tests) to construct a new type, with no readability win.
+#[allow(clippy::too_many_arguments)]
 pub fn append_changelog_entry(
  store: &mut AtomicStore,
  sidecar_path: &Path,

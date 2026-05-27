@@ -35,7 +35,7 @@ fn write_string(out: &mut Vec<u8>, s: &str) {
  out.extend_from_slice(bytes);
 }
 
-fn read_string<'a>(buf: &'a [u8], cursor: &mut usize, field: &'static str) -> Result<String, FactCodecError> {
+fn read_string(buf: &[u8], cursor: &mut usize, field: &'static str) -> Result<String, FactCodecError> {
  let start = *cursor;
  if buf.len() < start + 4 {
  return Err(FactCodecError::Truncated {

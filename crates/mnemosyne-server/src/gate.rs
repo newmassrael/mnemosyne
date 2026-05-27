@@ -164,7 +164,7 @@ mod tests {
 
  #[test]
  fn tier1_rejects_cross_ref_with_zero_from() {
- let r = DefaultTier1::default().evaluate(&cross_ref(0, 39, "decision"));
+ let r = DefaultTier1.evaluate(&cross_ref(0, 39, "decision"));
  match r {
  GateOutcome::Reject { tier, reason } => {
   assert_eq!(tier, GateTier::Tier1);
@@ -176,19 +176,19 @@ mod tests {
 
  #[test]
  fn tier1_rejects_cross_ref_with_zero_to() {
- let r = DefaultTier1::default().evaluate(&cross_ref(66, 0, "decision"));
+ let r = DefaultTier1.evaluate(&cross_ref(66, 0, "decision"));
  assert!(matches!(r, GateOutcome::Reject { tier: GateTier::Tier1, .. }));
  }
 
  #[test]
  fn tier1_rejects_cross_ref_with_empty_ref_kind() {
- let r = DefaultTier1::default().evaluate(&cross_ref(66, 39, ""));
+ let r = DefaultTier1.evaluate(&cross_ref(66, 39, ""));
  assert!(matches!(r, GateOutcome::Reject { tier: GateTier::Tier1, .. }));
  }
 
  #[test]
  fn tier1_accepts_valid_cross_ref() {
- let r = DefaultTier1::default().evaluate(&cross_ref(66, 39, "decision"));
+ let r = DefaultTier1.evaluate(&cross_ref(66, 39, "decision"));
  assert!(matches!(r, GateOutcome::Accept { .. }));
  }
 
@@ -204,7 +204,7 @@ mod tests {
   payload: vec![],
  },
  };
- let r = DefaultTier1::default().evaluate(&p);
+ let r = DefaultTier1.evaluate(&p);
  assert!(matches!(r, GateOutcome::Reject { tier: GateTier::Tier1, .. }));
  }
 
@@ -221,7 +221,7 @@ mod tests {
   payload: vec![],
  },
  };
- let r = DefaultTier1::default().evaluate(&p);
+ let r = DefaultTier1.evaluate(&p);
  match r {
  GateOutcome::Reject { tier, reason } => {
   assert_eq!(tier, GateTier::Tier1);
@@ -244,21 +244,21 @@ mod tests {
   payload: vec![1, 2, 3],
  },
  };
- let r = DefaultTier1::default().evaluate(&p);
+ let r = DefaultTier1.evaluate(&p);
  assert!(matches!(r, GateOutcome::Accept { .. }));
  }
 
  #[test]
  fn tier2_phase0_stub_accepts_all() {
  let p = cross_ref(66, 39, "decision");
- let r = DefaultTier2::default().evaluate(&p);
+ let r = DefaultTier2.evaluate(&p);
  assert!(matches!(r, GateOutcome::Accept { .. }));
  }
 
  #[test]
  fn tier3_phase0_stub_no_warnings() {
  let p = cross_ref(66, 39, "decision");
- let warnings = DefaultTier3::default().evaluate(&p);
+ let warnings = DefaultTier3.evaluate(&p);
  assert!(warnings.is_empty());
  }
 }

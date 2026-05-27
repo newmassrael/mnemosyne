@@ -20,26 +20,32 @@ fn build_store() -> AtomicStore {
 
     // Section sec1 — Active by default (decision_status None), one impl
     // with a symbol.
-    let mut sec1 = AtomicSection::default();
-    sec1.title = "Sec One".into();
-    sec1.parent_doc = "docs/GENERATED.md".into();
-    sec1.implementations.push(Implementation {
-        file: "src/foo.rs".into(),
-        symbol: Some("foo_symbol".into()),
-    });
+    let sec1 = AtomicSection {
+        title: "Sec One".into(),
+        parent_doc: "docs/GENERATED.md".into(),
+        implementations: vec![Implementation {
+            file: "src/foo.rs".into(),
+            symbol: Some("foo_symbol".into()),
+        }],
+        ..AtomicSection::default()
+    };
     store.sections.insert("sec1".into(), sec1);
 
     // Section sec2/sub — parented + superseded; zero impls.
-    let mut sec2sub = AtomicSection::default();
-    sec2sub.title = "Sec Two Sub".into();
-    sec2sub.parent_doc = "docs/GENERATED.md".into();
-    sec2sub.parent_section = Some("sec2".into());
-    sec2sub.decision_status = Some(DecisionStatus::Superseded);
+    let sec2sub = AtomicSection {
+        title: "Sec Two Sub".into(),
+        parent_doc: "docs/GENERATED.md".into(),
+        parent_section: Some("sec2".into()),
+        decision_status: Some(DecisionStatus::Superseded),
+        ..AtomicSection::default()
+    };
     store.sections.insert("sec2/sub".into(), sec2sub);
 
     // Changelog entry.
-    let mut entry = AtomicChangelogEntry::default();
-    entry.decision_summary = Some("Test entry — snapshot parity".into());
+    let mut entry = AtomicChangelogEntry {
+        decision_summary: Some("Test entry — snapshot parity".into()),
+        ..AtomicChangelogEntry::default()
+    };
     entry.clone_audit_into_publishable();
     store.changelog_entries.insert("Round 999".into(), entry);
 
@@ -119,5 +125,5 @@ fn snapshot_inventory_carries_status_view() {
         snapshot.inventory.get("INV_DEPR_01").copied(),
         Some(InventoryStatusView::Deprecated)
     );
-    assert!(snapshot.inventory.get("INV_UNKNOWN").is_none());
+    assert!(!snapshot.inventory.contains_key("INV_UNKNOWN"));
 }

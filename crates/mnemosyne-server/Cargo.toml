@@ -89,3 +89,6 @@ tracing-subscriber = { version = "0.3", features = ["registry"] }
 # in-process mock OTLP collector in `tests/grpc_otlp_collector_e2e.rs`.
 # Only consumed under `--features otlp` (the test file is fully gated).
 opentelemetry-proto.workspace = true
+
+[lints]
+workspace = true

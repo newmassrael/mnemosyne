@@ -101,3 +101,19 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 debug = "line-tables-only"
+
+# Workspace lint baseline. The pre-commit + pre-push hooks pass
+# `-D warnings` to clippy so any warning here promotes to a deny gate;
+# the allow list below is a curated set of stylistic / API-shape lints
+# where the cost of fixing exceeds the value (justification per entry).
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# Rustdoc renders bullet continuations correctly with or without the
+# extra indent; project authors carry both styles intentionally
+# (paragraph-as-continuation vs nested-list-item).
+doc_lazy_continuation = "allow"
+# Date-formatted u64 literals (`2026_05_03` = YYYY_MM_DD timestamps in
+# changelog facts / cascade snapshots) are deliberately grouped to
+# preserve human-readable date semantics; clippy's mathematically
+# correct `20_260_503` rewrite loses that intent.
+inconsistent_digit_grouping = "allow"

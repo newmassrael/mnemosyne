@@ -23,10 +23,14 @@
 #      delta, T2 frozen-ledger, round-trip mandatory, divergence /
 #      ledger match, commit↔ledger drift.
 #
-#   4. Clippy gate — `cargo clippy --workspace --all-targets` when any
-#      `.rs` file is staged. Default warn-only (no `-D warnings`); compile
-#      errors trip the exit code, drift toward `pedantic = deny` is a
-#      separate carry round (R307+ debt D9).
+#   4. Clippy gate — `cargo clippy --workspace --all-targets -- -D warnings`
+#      when any `.rs` file is staged. R308 D9 closure (warnings → deny
+#      baseline): any new clippy warning trips the gate. Workspace-level
+#      allow list in root Cargo.toml covers `doc_lazy_continuation` (rustdoc
+#      renders both forms) and `inconsistent_digit_grouping` (YYYY_MM_DD
+#      date u64 literals). Per-site `#[allow]` for API-shape exemptions
+#      (`too_many_arguments` on `append_changelog_entry`, `result_large_err`
+#      on tonic interceptors).
 #
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
@@ -95,10 +99,10 @@ if [[ "$needs_validate" == "1" ]]; then
     "${cli[@]}" validate-workspace
 fi
 
-# Gate 4 — clippy on .rs changes. Default warn-only; compile errors and
-# any future `-D warnings` lift would gate here. R307+ debt D9 (workspace
-# .lints pedantic deny) tightens this to deny.
+# Gate 4 — clippy on .rs changes. R308 D9 closure: `-D warnings` lifts
+# every warning to deny. Workspace allow list (root Cargo.toml) carries
+# stylistic exemptions; per-site `#[allow]` for API-shape exemptions.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
-    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --all-targets" >&2
-    cargo clippy --workspace --all-targets
+    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --all-targets -- -D warnings" >&2
+    cargo clippy --workspace --all-targets -- -D warnings
 fi

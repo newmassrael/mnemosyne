@@ -673,7 +673,7 @@ impl Matcher {
 }
 
 fn field_allowed(filter: Option<&BTreeSet<String>>, field: &str) -> bool {
-    filter.map_or(true, |s| s.contains(field))
+    filter.is_none_or(|s| s.contains(field))
 }
 
 fn push_simple_hit(

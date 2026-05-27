@@ -291,7 +291,7 @@ fn audit_c_duplicate_entry_id_rejected() {
  }
 
  // Now attempt to re-append every entry — each must fail with FrozenLedger.
- for (entry_id, _) in &live.changelog_entries {
+ for entry_id in live.changelog_entries.keys() {
  let result = append_changelog_entry(
  &mut store,
  &sidecar,

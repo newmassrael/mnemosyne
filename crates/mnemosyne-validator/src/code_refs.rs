@@ -818,7 +818,7 @@ fn strip_slash(content: &str) -> String {
  out.push('/');
  chars.next();
  out.push('/');
- while let Some((_, rest)) = chars.next() {
+ for (_, rest) in chars.by_ref() {
  out.push(rest);
  }
  break;
@@ -871,7 +871,7 @@ fn strip_hash(content: &str) -> String {
  }
  if c == '#' {
  out.push('#');
- while let Some((_, rest)) = chars.next() {
+ for (_, rest) in chars.by_ref() {
  out.push(rest);
  }
  break;
@@ -1590,7 +1590,7 @@ pub fn scan_inventory_decay(
 /// ImplementationMissing variants sort by section_id. The variant order is
 /// Citation < ImplementationUnbacked < ImplementationMissing so existing
 /// reports keep their relative diff stability when the third edge surfaces.
-fn sort_violations(violations: &mut Vec<CodeRefViolation>) {
+fn sort_violations(violations: &mut [CodeRefViolation]) {
  violations.sort_by(|a, b| {
  use CodeRefViolation::*;
  use std::cmp::Ordering;

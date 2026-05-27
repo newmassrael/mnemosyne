@@ -17,9 +17,11 @@
 #      - Publishable / audit divergence ↔ override ledger match (R296)
 #      - Commit ↔ ledger drift (cited vs entries scan)
 #
-#   2. `cargo clippy --workspace --all-targets`
-#      - Default lint level; compile errors fail. R307+ debt D9 promotes
-#        `workspace.lints` to `clippy::pedantic = deny` (pinion parity).
+#   2. `cargo clippy --workspace --all-targets -- -D warnings`
+#      - R308 D9 closure: every warning lifts to deny. Workspace allow
+#        list (root Cargo.toml) carries stylistic exemptions
+#        (`doc_lazy_continuation`, `inconsistent_digit_grouping`);
+#        per-site `#[allow]` for API-shape exemptions.
 #      - Unconditional (push validates publishable state, so the clippy
 #        budget is paid once per push regardless of which files changed).
 #
@@ -46,8 +48,8 @@ if ! "${cli[@]}" validate-workspace; then
     exit 1
 fi
 
-echo "pre-push: cargo clippy --workspace --all-targets ..." >&2
-if ! cargo clippy --workspace --all-targets; then
+echo "pre-push: cargo clippy --workspace --all-targets -- -D warnings ..." >&2
+if ! cargo clippy --workspace --all-targets -- -D warnings; then
     echo "pre-push: clippy failed — fix violations before push" >&2
     exit 1
 fi

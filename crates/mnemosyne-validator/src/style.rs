@@ -689,7 +689,7 @@ pub fn effective_sentence_length(sentence: &str) -> usize {
  return sentence.chars().count();
  }
  sentence
- .split(|c: char| c == '—' || c == '–')
+ .split(['—', '–'])
  .map(|s| s.trim().chars().count())
  .max()
  .unwrap_or(0)
