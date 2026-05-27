@@ -236,3 +236,31 @@ consumer 의 1 incident 가 system-level schema 추가를 정당화하지 않음
  `a8a4429` (R298) → `3ff92f3` (R297).
 - Fowler "Event Sourcing"; Kleppmann *DDIA* ch.11 — audit-vs-publishable
  split 이 표현한 CQRS / read-write 분리 패턴.
+
+---
+
+## Addendum — Round 302 (2026-05-27)
+
+본 response 본문이 인용하는 MCP 표면 이름들이 *작성 시점 기준* 으로 정확
+했음. Round 302 (commit `684de56`) 에서 다음 wire-breaking change land:
+
+- `append_changelog_entry_v2` (MCP tool name + CLI subcommand) →
+ `append_changelog_entry`. Postfix versioning 규칙 적용
+ (CLAUDE.md anti-patterns 명문화).
+- §3 옵션 (a) / (b) 의 호출 예시 ( `redact_term` /
+ `set_changelog_publishable_decision_summary` / `emit_publishable_override_ledger_draft` )
+ 는 변경 없음 — 영향 받은 건 *append* primitive 의 이름뿐.
+- §6 의 후속 작업 list 도 영향 없음.
+- 본 disposition 본문의 `append_changelog_entry_v2` 인용은 *작성 시점
+ 기준* 의 사실로 유지 (audit-truth semantic — past entry 들의 author
+ 시점 충실 정책과 동일).
+
+**Pinion 측 영향**: MCP tool call 의 string `"append_changelog_entry_v2"`
+는 unknown tool 로 reject 됨. 호출부 string 만 `"append_changelog_entry"`
+로 업데이트.
+
+같은 round 에서 legacy `mutate::append_changelog_entry` (pre-R162 markdown
+surgical-insert path) 도 entirely removed — 본 response §3 옵션 (b) 가
+사용하는 *atomic* 측 setter / draft emitter 는 영향 받지 않음. Pinion 이
+혹시 markdown surgical CLI subcommand 를 사용 중이었다면 (가능성 낮음 —
+R251 source MD 삭제 이후 dead path) 그것도 제거 대상.

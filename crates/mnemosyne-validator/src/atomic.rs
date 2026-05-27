@@ -110,6 +110,55 @@ pub struct AtomicSection {
  /// can react. Trigger wiring itself is a later round.
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub decision_status: Option<DecisionStatus>,
+
+ /// External-spec mirror — vendored normative quote anchored to this
+ /// Section (RFC-002 FR-1). When `Some`, the Section represents a
+ /// section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR /
+ /// …) mirrored into this workspace; the embedded text + anchor URL +
+ /// source revision pin let reviewers verify code citations against
+ /// the exact spec text the workspace was built against.
+ ///
+ /// **Frozen-ledger zone**: once anchored (None → Some), the value is
+ /// immutable. The mutate primitive
+ /// [`set_section_normative_excerpt`] rejects Some → Some transitions.
+ /// Spec revision drift is modeled as `Section.decision_status =
+ /// Superseded` + a new Section carrying the updated excerpt — same
+ /// pattern as R294 audit-half immutability and R265 decision_status
+ /// supersession.
+ ///
+ /// `None` (default) on every Section that does not mirror an external
+ /// standard. The `[workspace.spec_source]` config (FR-2) names the
+ /// upstream the entire workspace tracks; per-Section `source_revision`
+ /// is the rev that was current when this Section's excerpt was
+ /// anchored, so partially-migrated workspaces can carry old + new
+ /// rev side-by-side via `Active` + `Superseded` Sections.
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub normative_excerpt: Option<NormativeExcerpt>,
+}
+
+/// Vendored quote from an external normative source — embedded into an
+/// [`AtomicSection`] so reviewers can verify code citations without
+/// fetching the upstream HTML.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NormativeExcerpt {
+ /// The normative text as it appeared at `source_revision`. Preserved
+ /// verbatim — leading/trailing whitespace and newline-only edits are
+ /// the only sanitization (mutate primitive trims trailing newline
+ /// to keep round-trip render stable).
+ pub text: String,
+ /// Direct anchor URL (e.g. `https://www.w3.org/TR/scxml/#event` for
+ /// a W3C SCXML section like 3.13). The mutate primitive validates that the string
+ /// parses as an absolute URL (scheme + host) — anchor fragment
+ /// optional, query string allowed.
+ pub anchor_url: String,
+ /// Revision identifier from the upstream spec the excerpt was
+ /// captured at. Free-form string (Recommendation publication date,
+ /// editor's-draft date, RFC number + revision letter, etc.) — the
+ /// workspace's `[workspace.spec_source].revision` is the *current*
+ /// rev; this field is the rev *this specific Section* was anchored
+ /// at, so partially-migrated workspaces stay coherent under spec
+ /// rev bumps.
+ pub source_revision: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1250,6 +1299,78 @@ pub fn set_section_decision_status_atomic(
  store,
  sidecar_path,
  "set_section_decision_status_atomic",
+ "section",
+ section_id,
+ )
+}
+
+/// External-spec mirror — anchor a vendored normative excerpt onto a
+/// Section (RFC-002 FR-1). **Append-only / frozen-ledger semantic**:
+/// the primitive accepts `None → Some` but refuses `Some → Some`. To
+/// model spec revision drift, the caller transitions the existing
+/// Section to `decision_status = Superseded` and creates a new
+/// Section carrying the updated excerpt — same pattern as audit-half
+/// immutability in `append_changelog_entry`.
+///
+/// Validates:
+/// - `text` non-empty (trimmed).
+/// - `anchor_url` parses as absolute URL (scheme `http`/`https` + host).
+/// - `source_revision` non-empty (trimmed).
+/// - Target Section exists.
+/// - Target Section's `normative_excerpt` is currently `None` (frozen
+///   reject otherwise).
+pub fn set_section_normative_excerpt(
+ store: &mut AtomicStore,
+ sidecar_path: &Path,
+ section_id: &str,
+ text: &str,
+ anchor_url: &str,
+ source_revision: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ if text.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "normative_excerpt text blank or whitespace-only".to_string(),
+ ));
+ }
+ if source_revision.trim().is_empty() {
+ return Err(AtomicMutateError::Validation(
+ "normative_excerpt source_revision blank or whitespace-only".to_string(),
+ ));
+ }
+ // Lightweight URL validation — full RFC 3986 parser is out of scope;
+ // require `http://` or `https://` + non-empty host segment.
+ let is_url = anchor_url
+ .strip_prefix("https://")
+ .or_else(|| anchor_url.strip_prefix("http://"))
+ .map(|rest| {
+ let host_end = rest.find(|c: char| c == '/' || c == '?' || c == '#')
+ .unwrap_or(rest.len());
+ !rest[..host_end].is_empty()
+ })
+ .unwrap_or(false);
+ if !is_url {
+ return Err(AtomicMutateError::Validation(format!(
+ "normative_excerpt anchor_url `{}` must be an absolute http(s):// URL with a host",
+ anchor_url
+ )));
+ }
+ let section = section_mut_strict(store, section_id)?;
+ if section.normative_excerpt.is_some() {
+ return Err(AtomicMutateError::FrozenLedger(format!(
+ "normative_excerpt already anchored on §{} — once set, the field is immutable; \
+  model spec rev drift by superseding this Section and creating a new one with the updated excerpt",
+ section_id
+ )));
+ }
+ section.normative_excerpt = Some(NormativeExcerpt {
+ text: text.trim_end_matches('\n').to_string(),
+ anchor_url: anchor_url.to_string(),
+ source_revision: source_revision.to_string(),
+ });
+ save_with_receipt(
+ store,
+ sidecar_path,
+ "set_section_normative_excerpt",
  "section",
  section_id,
  )
@@ -3595,6 +3716,166 @@ mod tests {
  draft.contains(&format!("content_hash_before = \"{}\"", expected_before)),
  "draft must record audit hash as before; draft:\n{}",
  draft
+ );
+ }
+
+ #[test]
+ fn normative_excerpt_sets_when_none() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "The <event> element ...",
+ "https://www.w3.org/TR/scxml/#event",
+ "2015-09-01",
+ )
+ .unwrap();
+ let excerpt = store
+ .section("scxml-3.13")
+ .unwrap()
+ .normative_excerpt
+ .as_ref()
+ .unwrap();
+ assert_eq!(excerpt.text, "The <event> element ...");
+ assert_eq!(excerpt.anchor_url, "https://www.w3.org/TR/scxml/#event");
+ assert_eq!(excerpt.source_revision, "2015-09-01");
+ }
+
+ #[test]
+ fn normative_excerpt_rejects_overwrite() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "first",
+ "https://example.com/spec",
+ "rev1",
+ )
+ .unwrap();
+ let err = set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "second",
+ "https://example.com/spec",
+ "rev2",
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::FrozenLedger(msg) => {
+ assert!(
+  msg.contains("already anchored"),
+  "expected frozen-ledger reject msg; got: {}",
+  msg
+ );
+ }
+ other => panic!("expected FrozenLedger, got {:?}", other),
+ }
+ // Original value preserved
+ let excerpt = store
+ .section("scxml-3.13")
+ .unwrap()
+ .normative_excerpt
+ .as_ref()
+ .unwrap();
+ assert_eq!(excerpt.text, "first");
+ }
+
+ #[test]
+ fn normative_excerpt_rejects_blank_text() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ let err = set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ " \n ",
+ "https://example.com/spec",
+ "rev1",
+ )
+ .unwrap_err();
+ matches!(err, AtomicMutateError::Validation(_));
+ }
+
+ #[test]
+ fn normative_excerpt_rejects_non_url_anchor() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ let err = set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "text",
+ "not-a-url",
+ "rev1",
+ )
+ .unwrap_err();
+ match err {
+ AtomicMutateError::Validation(msg) => {
+ assert!(
+  msg.contains("absolute http(s):// URL"),
+  "expected URL-validation msg; got: {}",
+  msg
+ );
+ }
+ other => panic!("expected Validation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn normative_excerpt_rejects_missing_host() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ let err = set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "text",
+ "https:///path-only",
+ "rev1",
+ )
+ .unwrap_err();
+ matches!(err, AtomicMutateError::Validation(_));
+ }
+
+ #[test]
+ fn normative_excerpt_trims_trailing_newline() {
+ let tmp = TempDir::new().unwrap();
+ let path = tmp.path().join(".atomic/workspace.atomic.json");
+ let mut store = AtomicStore::new();
+ seed_section(&mut store, "scxml-3.13");
+ set_section_normative_excerpt(
+ &mut store,
+ &path,
+ "scxml-3.13",
+ "spec text\n\n",
+ "https://example.com/spec",
+ "rev1",
+ )
+ .unwrap();
+ let excerpt = store
+ .section("scxml-3.13")
+ .unwrap()
+ .normative_excerpt
+ .as_ref()
+ .unwrap();
+ assert_eq!(
+ excerpt.text, "spec text",
+ "trailing newlines should be trimmed for stable round-trip render"
  );
  }
 }

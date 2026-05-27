@@ -132,6 +132,25 @@ pub struct AddSectionExampleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionNormativeExcerptArgs {
+ /// Section ID without the `§` prefix.
+    pub section_id: String,
+ /// Vendored normative quote, verbatim. Trailing newline is trimmed
+ /// for round-trip stability; leading whitespace preserved.
+    pub text: String,
+ /// Absolute http(s):// anchor URL pointing at the upstream
+ /// section (e.g. `https://www.w3.org/TR/scxml/#event`).
+    pub anchor_url: String,
+ /// Upstream revision identifier the excerpt was captured at
+ /// (Recommendation publication date, editor's-draft date, RFC
+ /// number + revision letter, etc.). Free-form string; should
+ /// match `[workspace.spec_source].revision` at the time of
+ /// anchoring, but per-Section field carries independently for
+ /// partially-migrated workspaces.
+    pub source_revision: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionImplementationArgs {
  /// Section ID without the `§` prefix.
     pub section_id: String,
@@ -697,6 +716,31 @@ impl MnemosyneServer {
             args.0.language.clone(),
             "--code-file".to_string(),
             path.to_string_lossy().into_owned(),
+        ];
+        self.run_cli_with_files(argv, vec![path]).await
+    }
+
+    #[tool(
+        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` (set-section-decision-status-atomic) and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
+    )]
+    async fn set_section_normative_excerpt(
+        &self,
+        args: Parameters<SetSectionNormativeExcerptArgs>,
+    ) -> rmcp::model::CallToolResult {
+        let path = match cli::write_temp(&self.workspace, "normative-excerpt", &args.0.text) {
+            Ok(p) => p,
+            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
+        };
+        let argv = vec![
+            "set-section-normative-excerpt".to_string(),
+            "--section".to_string(),
+            format!("§{}", args.0.section_id),
+            "--text-file".to_string(),
+            path.to_string_lossy().into_owned(),
+            "--anchor-url".to_string(),
+            args.0.anchor_url.clone(),
+            "--source-revision".to_string(),
+            args.0.source_revision.clone(),
         ];
         self.run_cli_with_files(argv, vec![path]).await
     }

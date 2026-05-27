@@ -115,7 +115,7 @@ fn run(args: &[String]) -> Result<()> {
  .unwrap_or("mnemosyne-cli");
  let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|commit|query|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|commit|query|add-section|add-cross-ref|set-section-decision-status|set-section-body|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status-atomic|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -175,6 +175,9 @@ fn run(args: &[String]) -> Result<()> {
  // Round 265 — Stage B freshness substrate.
  "set-section-decision-status-atomic" => {
  atomic_cli::cmd_set_section_decision_status_atomic(&repo_root()?, &args[2..])
+ }
+ "set-section-normative-excerpt" => {
+ atomic_cli::cmd_set_section_normative_excerpt(&repo_root()?, &args[2..])
  }
  // Round 267 — section removal (closes Round 266 carry gap).
  "remove-section" => atomic_cli::cmd_remove_section(&repo_root()?, &args[2..]),
@@ -347,6 +350,13 @@ fn print_help(prog: &str) {
  );
  println!(
  "   Round 283 Section.implementations remove primitive (exact (file, symbol) match; --reason mandatory)"
+ );
+ println!(
+ " {} set-section-normative-excerpt --section §<N> --text-file <path> --anchor-url <url> --source-revision <rev> [--sidecar <path>] [--json]",
+ prog
+ );
+ println!(
+ "   external-spec mirror anchor — vendored quote + URL + rev; frozen after first set (model spec rev drift by superseding the Section)"
  );
  println!(
  " {} set-section-decision-status-atomic --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
@@ -1185,6 +1195,15 @@ fn cmd_validate_workspace() -> Result<()> {
  println!("=== mnemosyne-cli validate-workspace ===");
  let configured_doc_count = workspace_config()?.config.workspace.docs.len();
  println!("docs={}/{}", parsed_docs.len(), configured_doc_count);
+ if let Some(spec) = &workspace_config()?.config.workspace.spec_source {
+ println!(
+ "spec_source: url={} revision={} sha256={} fetched_at={}",
+ spec.url,
+ spec.revision,
+ spec.fetched_sha256.as_deref().unwrap_or("-"),
+ spec.fetched_at.as_deref().unwrap_or("-"),
+ );
+ }
  println!(
  "T1 orphan total={} (ledger={}, new=+{}, resolved=-{})",
  actual_orphan_keys.len(),

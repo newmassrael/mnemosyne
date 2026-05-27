@@ -28,6 +28,12 @@ tables:
 docs = [...]   # ordered list of doc paths
 default_doc = "docs/SPEC.md" # cross-doc reference target
 
+[workspace.spec_source]  # optional — external-spec mirror adopters only
+url = "https://www.w3.org/TR/scxml/"
+revision = "2015-09-01"
+fetched_sha256 = "..."   # optional 64-char lowercase hex
+fetched_at = "2026-05-27T00:00:00Z" # optional ISO-8601
+
 [schema]   # optional — defaults to mnemosyne preset
 changelog_titles = [...]  # which heading titles open a ledger
 entry_id_prefix = "Round "  # what opens a ledger entry bullet
@@ -416,21 +422,28 @@ The mutate, read, validate, and cascade paths all honor both overrides
 (Round 280); there is no split-brain. CLI `--sidecar` / `--output`
 flags still win when supplied.
 
-### External-spec mirror — sidecar carry pattern (Phase 1.5 land-pending)
+### External-spec mirror
 
 For projects vendoring an external standard (W3C / IETF RFC / IEEE /
 ISO/IEC / AUTOSAR family) as a workspace mirror so code citations stay
-honest against the spec graph. First-class fields for vendored spec
-quotes (`normative_excerpt`) and workspace provenance (`spec_source` /
-`spec_revision`) belong to Phase 1.5 schema decomposition; until then,
-adopt this **sidecar pattern** so the carry is migration-friendly when
-Phase 1.5 lands.
+honest against the spec graph. Two first-class fields plus the existing
+atomic primitives cover the pattern end-to-end:
+
+- `[workspace.spec_source]` — workspace provenance (RFC-002 FR-2).
+- `AtomicSection.normative_excerpt` — vendored quote anchored to each
+  mirrored section (RFC-002 FR-1).
 
 ```toml
 # docs/spec/scxml/mnemosyne.toml — one workspace per external namespace
 [workspace]
 docs = ["docs/spec/scxml/SCXML.md"]
 default_doc = "docs/spec/scxml/SCXML.md"
+
+[workspace.spec_source]
+url = "https://www.w3.org/TR/scxml/"
+revision = "2015-09-01"
+fetched_sha256 = "abcdef0123...64-hex...0123"
+fetched_at = "2026-05-27T00:00:00Z"
 
 [schema]
 changelog_titles = ["Revision History"]
@@ -450,7 +463,7 @@ comment_only = true
 separate `mnemosyne.toml` trees (e.g. `docs/spec/scxml/`,
 `docs/spec/irp/`, `docs/design/`) and runs `validate-workspace` once
 per tree. Single-`mnemosyne.toml` multi-namespace bundling is *not*
-supported (single audit boundary per workspace is a Phase 0 invariant).
+supported — `[workspace.spec_source]` is single-valued by design.
 
 **Atomic store populated from the upstream spec.** Each spec section
 becomes an `AtomicSection`; each test case in a conformance catalog
@@ -459,61 +472,60 @@ becomes an `InventoryEntry` (Phase 1A) when the id shape fits. Use
 `scxml-3.13` rather than `3.13`, so a future spec restructure does not
 silently re-key 30K citations).
 
-**Vendored spec quotes via sidecar JSON.** Until `normative_excerpt`
-lands as a first-class field, carry quotes in a sibling file the
-external project's own tooling reads:
+**Anchor the vendored quote at section creation.** After `add-section`,
+call `set-section-normative-excerpt` to embed the spec text:
 
-```json
-// docs/spec/scxml/.atomic/normative_excerpts.json (project-side; mnemosyne ignores)
-{
-  "scxml-3.13": {
-    "text": "<event> element ...",
-    "anchor_url": "https://www.w3.org/TR/scxml/#event",
-    "source_revision": "2015-09-01"
-  }
-}
+```bash
+mnemosyne-cli set-section-normative-excerpt \
+  --section §scxml-3.13 \
+  --text-file /tmp/scxml-3-13.txt \
+  --anchor-url "https://www.w3.org/TR/scxml/#event" \
+  --source-revision "2015-09-01"
 ```
 
-Mnemosyne does *not* read this sidecar. The Phase 1.5 migration path
-folds these entries into `AtomicSection.normative_excerpt` directly,
-so the sidecar shape mirrors the planned schema field-by-field.
+The field is **frozen** after first set — once a normative_excerpt is
+anchored, the mutate primitive rejects overwrite. To model spec
+revision drift, supersede the existing Section
+(`set-section-decision-status-atomic --status superseded --superseding
+§<new>`) and create a new Section carrying the updated excerpt. The
+audit trail preserves both revisions in parallel; partially-migrated
+workspaces stay coherent because each Section's `source_revision`
+records the rev it was anchored at.
 
 **Spec revision drift as ChangelogEntry stream.** When upstream bumps
 the spec, append a ChangelogEntry recording the diff and the impacted
-sections — this is the frozen audit trail of "this workspace tracked
-spec rev X → Y":
+sections:
 
 ```bash
-mnemosyne-cli append-changelog-entry-v2 \
-  --entry-id "2026-05-01" \
-  --decision-summary "W3C SCXML §3.13 rev 2026-03-01 → 2026-05-01 — semantic delta on Y" \
-  --changes "§3.13 normative text updated upstream" \
-  --changes "downstream impact: src/scxml/event_dispatch.c (3 cites)" \
-  --impact-ref "scxml-3.13" --impact-ref "scxml-3.14"
+mnemosyne-cli append-changelog-entry \
+  --entry-id "Rev 2026-05-01" \
+  --decision "W3C SCXML §3.13 rev 2026-03-01 → 2026-05-01 — semantic delta on Y" \
+  --changes-file /tmp/rev-changes.txt \
+  --verification-file /tmp/rev-verify.txt \
+  --impact "scxml-3.13,scxml-3.14" \
+  --carry-file /tmp/rev-carry.txt
 ```
 
-`AtomicSection` text is *mutable* (it reflects the current spec
-revision); the audit trail of *which revision the workspace tracks
-right now* lives in the ChangelogEntry stream. T2 frozen-ledger
-semantics apply to the audit half — the rev-bump record is permanent.
+`AtomicSection.normative_excerpt` is frozen per-Section; the workspace-
+wide `[workspace.spec_source].revision` is the *current* rev label.
+The ChangelogEntry stream records *when* the workspace moved between
+revs; per-Section excerpts capture *what* the section said at the rev
+it was anchored at. T2 frozen-ledger semantics apply to the entry
+audit half — rev-bump records are permanent.
 
-**Symbol-level binding (carry-only).** `Implementation.symbol` already
-accepts an opaque language-agnostic identifier; the validator's set-
-equality check is file-only in v1 (see `code_refs.rs` block comment),
-but registering `Implementation { file: "Interpreter.cpp", symbol:
-Some("process_event") }` preserves the symbol in the store so the
-project's own audit tooling can query it. Symbol-aware enforcement
-ships when LSP / treesitter integration lands (Phase 1+).
+**Symbol-level binding (record-only).** `Implementation.symbol` accepts
+an opaque language-agnostic identifier and is preserved in the store
+for project-side audit tooling. The validator's set-equality check is
+file-only (RFC-002 FR-3 deferred — language-aware enforcement requires
+LSP / treesitter wiring outside Phase 0 paradigm).
 
-**Intentional carries for spec drift.** When an upstream spec
-*removes* a section but the workspace must keep citing it (e.g.,
-preserving a historical compatibility comment), use the existing
-`[[orphan_ledger]] kind = "code_citation"` row — the same surface
-that handles legacy markdown carry handles external-spec drift
-unchanged. No new ledger kind is needed.
+**Intentional carries for spec drift.** When an upstream spec *removes*
+a section but the workspace must keep citing it (e.g., preserving a
+historical compatibility comment), use the existing
+`[[orphan_ledger]] kind = "code_citation"` row.
 
-**Markdown prose is cite-able.** The `comment_only` filter strips code-
-fenced blocks before scanning, but prose lines outside fences are
+**Markdown prose is cite-able.** The `comment_only` filter strips
+code-fenced blocks before scanning, but prose lines outside fences are
 scanned the same as code comments — so prose citations in spec
 markdown (e.g., a paragraph inside `SCXML.md` referencing `§3.13`)
 participate in the validate-code-refs gate. Code fences inside the

@@ -586,6 +586,45 @@ pub struct WorkspaceSection {
  /// set, otherwise against the config file's parent dir.
  #[serde(default)]
  pub root: Option<String>,
+
+ /// External-spec mirror provenance (RFC-002 FR-2). Present when this
+ /// workspace is vendored against a specific upstream standard
+ /// revision (W3C / IETF RFC / IEEE / AUTOSAR / etc.). Per-Section
+ /// `normative_excerpt.source_revision` carries the rev that was
+ /// current when each Section was anchored; this workspace-level
+ /// field carries the *current* rev the workspace is tracking, so
+ /// drift detection tooling can diff per-Section rev against the
+ /// workspace rev to surface partially-migrated Sections.
+ ///
+ /// Single `spec_source` per workspace by design — a workspace that
+ /// mirrors multiple standards uses one workspace tree per standard
+ /// (multi-`mnemosyne.toml` shape, see SCHEMA_GUIDE.md
+ /// "External-spec mirror" pattern). RFC-002 FR-5 reject covers the
+ /// "bundle multiple namespaces in one workspace" anti-pattern.
+ #[serde(default)]
+ pub spec_source: Option<SpecSource>,
+}
+
+/// External-spec provenance metadata — anchors a workspace to a
+/// specific upstream standard + revision (RFC-002 FR-2).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SpecSource {
+ /// Canonical URL of the upstream standard (e.g.
+ /// `"https://www.w3.org/TR/scxml/"`).
+ pub url: String,
+ /// Revision identifier the workspace currently tracks. Free-form
+ /// (Recommendation publication date, editor's-draft date, RFC
+ /// number + revision letter, etc.).
+ pub revision: String,
+ /// SHA-256 hex of the upstream content as fetched (lowercase, no
+ /// `0x` prefix, 64 chars). Provenance anchor for drift detection
+ /// — when the upstream rev label is identical but bytes diverge,
+ /// the hash mismatch surfaces it.
+ #[serde(default)]
+ pub fetched_sha256: Option<String>,
+ /// ISO-8601 timestamp at which `fetched_sha256` was captured.
+ #[serde(default)]
+ pub fetched_at: Option<String>,
 }
 
 /// Config discovery + load result.
@@ -627,6 +666,28 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
   "mnemosyne.toml: `workspace.default_doc = {:?}` is not a member of `workspace.docs`",
   default
  );
+ }
+ }
+ if let Some(spec) = &cfg.workspace.spec_source {
+ let is_url = spec.url.starts_with("https://") || spec.url.starts_with("http://");
+ if !is_url {
+ bail!(
+  "mnemosyne.toml: `workspace.spec_source.url = {:?}` must be an absolute http(s):// URL",
+  spec.url
+ );
+ }
+ if spec.revision.trim().is_empty() {
+ bail!("mnemosyne.toml: `workspace.spec_source.revision` must be non-empty");
+ }
+ if let Some(hash) = &spec.fetched_sha256 {
+ let valid_sha = hash.len() == 64
+  && hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase());
+ if !valid_sha {
+  bail!(
+  "mnemosyne.toml: `workspace.spec_source.fetched_sha256` must be 64-char lowercase hex (got `{}`)",
+  hash
+  );
+ }
  }
  }
  Ok(())
@@ -728,6 +789,100 @@ root = "."
  let content = "[workspace]\ndocs = []\n";
  let err = parse_config(content).unwrap_err();
  assert!(err.to_string().contains("workspace.docs"));
+ }
+
+ #[test]
+ fn parse_spec_source_minimal() {
+ let content = r#"
+[workspace]
+docs = ["docs/spec/scxml.md"]
+
+[workspace.spec_source]
+url = "https://www.w3.org/TR/scxml/"
+revision = "2015-09-01"
+"#;
+ let cfg = parse_config(content).unwrap();
+ let spec = cfg.workspace.spec_source.expect("spec_source missing");
+ assert_eq!(spec.url, "https://www.w3.org/TR/scxml/");
+ assert_eq!(spec.revision, "2015-09-01");
+ assert!(spec.fetched_sha256.is_none());
+ assert!(spec.fetched_at.is_none());
+ }
+
+ #[test]
+ fn parse_spec_source_full() {
+ let content = r#"
+[workspace]
+docs = ["docs/spec/scxml.md"]
+
+[workspace.spec_source]
+url = "https://www.w3.org/TR/scxml/"
+revision = "2015-09-01"
+fetched_sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+fetched_at = "2026-05-27T00:00:00Z"
+"#;
+ let cfg = parse_config(content).unwrap();
+ let spec = cfg.workspace.spec_source.expect("spec_source missing");
+ assert_eq!(
+ spec.fetched_sha256.as_deref(),
+ Some("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+ );
+ assert_eq!(spec.fetched_at.as_deref(), Some("2026-05-27T00:00:00Z"));
+ }
+
+ #[test]
+ fn spec_source_rejects_non_http_url() {
+ let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "ftp://example.com/spec"
+revision = "2026-01"
+"#;
+ let err = parse_config(content).unwrap_err();
+ assert!(
+ err.to_string().contains("absolute http(s):// URL"),
+ "expected URL-validation error, got: {}",
+ err
+ );
+ }
+
+ #[test]
+ fn spec_source_rejects_blank_revision() {
+ let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = " "
+"#;
+ let err = parse_config(content).unwrap_err();
+ assert!(
+ err.to_string().contains("revision"),
+ "expected revision-validation error, got: {}",
+ err
+ );
+ }
+
+ #[test]
+ fn spec_source_rejects_malformed_sha() {
+ let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = "2026-01"
+fetched_sha256 = "ABC123"
+"#;
+ let err = parse_config(content).unwrap_err();
+ assert!(
+ err.to_string().contains("fetched_sha256"),
+ "expected sha-validation error, got: {}",
+ err
+ );
  }
 
  #[test]

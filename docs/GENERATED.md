@@ -1703,3 +1703,32 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 303 — external-spec adapter FR-1/FR-2 first-class land (RFC-002 promote from Phase 1.5) — AtomicSection.normative_excerpt + [workspace.spec_source] added as first-class fields. RFC-002 disposition's Phase 1.5 defer reversed — adding 2 fields cost ~half-day; defer label was over-cautious given R265/R275/R287 precedents of Phase 0 schema growth. Frozen-ledger semantic on normative_excerpt mirrors audit-half immutability.
+
+**Changes**:
+- AtomicSection.normative_excerpt field added — Option<NormativeExcerpt { text, anchor_url, source_revision }>. Mutate primitive set_section_normative_excerpt is append-only (None→Some allowed, Some→Some rejected with FrozenLedger error); spec rev drift modeled by superseding the Section
+- [workspace.spec_source] TOML table added (url + revision + optional fetched_sha256/fetched_at) — single per workspace, validates absolute http(s) URL + non-empty revision + 64-char lowercase hex when present
+- CLI subcommand set-section-normative-excerpt + MCP tool set_section_normative_excerpt + lib.rs re-exports wired
+- 6 unit tests for the mutate primitive (set/reject-overwrite/blank-text/non-url/missing-host/trailing-newline trim) + 5 config tests for spec_source (minimal/full/non-http reject/blank revision/malformed sha)
+- validate-workspace surfaces spec_source line when present
+
+
+
+**Verification**:
+- cargo test workspace: 86+25 pass (atomic+config), 0 fail across all crates
+- validate-workspace: T1 orphan=0, round-trip 1/1, GENERATED.md sync, publishable/audit divergence=0, commit↔ledger drift missing=0
+- validate-code-refs: 0 violations across 7 crates
+- normative_excerpt field is opt-in (Option default None); existing atomic stores parse unchanged via #[serde(default)]
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- RFC-002 FR-3 (symbol-level binding enforcement) remains Phase 1+ — requires LSP/treesitter wiring outside Phase 0 paradigm
+- RFC-002 FR-5 (multi-workspace bundling) remains reject — single spec_source per workspace by design
+- Disposition addendum (claudedocs/mnemosyne-rfc-002-sce-response.md) records the Phase 1.5 → Phase 0 promotion of FR-1/FR-2 and the Round 302 wire-name change
+
+
+

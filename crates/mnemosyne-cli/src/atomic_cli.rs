@@ -37,10 +37,10 @@ use mnemosyne_validator::{
  render_changelog_entry, render_section, set_inventory_section_ref, set_inventory_status,
  set_section_alternatives, set_section_decision_status_atomic,
  set_section_impact_scope, set_section_inputs, set_section_intent,
- set_section_outputs, set_section_parent_doc, set_section_parent_section,
- set_section_rationale, set_section_title, AtomicMutateError,
- AtomicMutateReceipt, AtomicStore, DecisionStatus, ExampleBlock,
- InventoryStatus, RejectedAlternative,
+ set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
+ set_section_parent_section, set_section_rationale, set_section_title,
+ AtomicMutateError, AtomicMutateReceipt, AtomicStore, DecisionStatus,
+ ExampleBlock, InventoryStatus, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;
@@ -1141,6 +1141,87 @@ pub fn cmd_set_section_decision_status_atomic(
  finalize_mutate(
  workspace_root,
  mutate_result,
+ sidecar.as_deref(),
+ regenerate,
+ json,
+ )
+}
+
+/// External-spec mirror — anchor a vendored normative excerpt onto a
+/// Section (RFC-002 FR-1). Frozen-ledger semantic: the primitive
+/// rejects overwrite, so spec revision drift is modeled by superseding
+/// the existing Section and creating a new one with the updated
+/// excerpt.
+///
+/// `--text-file` carries multi-line spec quotes verbatim (preserved
+/// trailing newline trimmed). `--anchor-url` must be an absolute
+/// http(s) URL. `--source-revision` is the upstream rev identifier
+/// that was current when the excerpt was captured.
+pub fn cmd_set_section_normative_excerpt(
+ workspace_root: &Path,
+ args: &[String],
+) -> Result<()> {
+ let mut section: Option<String> = None;
+ let mut text_file: Option<String> = None;
+ let mut anchor_url: Option<String> = None;
+ let mut source_revision: Option<String> = None;
+ let mut sidecar: Option<String> = None;
+ let mut json = false;
+ let mut regenerate = true;
+ let mut iter = args.iter();
+ while let Some(arg) = iter.next() {
+ match arg.as_str() {
+ "--section" => {
+ section = Some(iter.next().ok_or_else(|| anyhow!("--section missing"))?.clone())
+ }
+ "--text-file" => {
+ text_file = Some(
+ iter.next()
+  .ok_or_else(|| anyhow!("--text-file missing"))?
+  .clone(),
+ )
+ }
+ "--anchor-url" => {
+ anchor_url = Some(
+ iter.next()
+  .ok_or_else(|| anyhow!("--anchor-url missing"))?
+  .clone(),
+ )
+ }
+ "--source-revision" => {
+ source_revision = Some(
+ iter.next()
+  .ok_or_else(|| anyhow!("--source-revision missing"))?
+  .clone(),
+ )
+ }
+ "--sidecar" => {
+ sidecar = Some(iter.next().ok_or_else(|| anyhow!("--sidecar missing"))?.clone())
+ }
+ "--json" => json = true,
+ "--no-regenerate" => regenerate = false,
+ other => bail!("unknown flag `{}`", other),
+ }
+ }
+ let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+ let text_file = text_file.ok_or_else(|| anyhow!("--text-file arg required"))?;
+ let anchor_url = anchor_url.ok_or_else(|| anyhow!("--anchor-url arg required"))?;
+ let source_revision =
+ source_revision.ok_or_else(|| anyhow!("--source-revision arg required"))?;
+ let text = fs::read_to_string(&text_file)
+ .with_context(|| format!("text-file recovery failed: {}", text_file))?;
+ let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+ let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+ finalize_mutate(
+ workspace_root,
+ set_section_normative_excerpt(
+ &mut store,
+ &sidecar_path,
+ &section,
+ &text,
+ &anchor_url,
+ &source_revision,
+ ),
  sidecar.as_deref(),
  regenerate,
  json,

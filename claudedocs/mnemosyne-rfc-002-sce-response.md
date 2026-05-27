@@ -438,3 +438,65 @@ Phase 1.5 land 대기 불필요. 현 substrate 로 ~80 % 기능 달성 가능.
  — single store / schema 계약.
 - `claudedocs/mnemosyne-rfc-001-response.md` — RFC 의 disposition 형식
  precedent.
+
+---
+
+## Addendum — Round 302 / 303 (2026-05-27)
+
+본 disposition 작성 후 Mnemosyne 측 후속 작업 land. SCE 측 도입 계획에
+영향 있는 항목 요약:
+
+### Round 302 — MCP wire-breaking change
+
+- `append_changelog_entry_v2` MCP tool name → `append_changelog_entry`
+ (postfix versioning rule 적용). CLI subcommand 도 `append-changelog-entry`
+ 로 변경. 본 disposition 본문의 R297/R300 등 `append_changelog_entry_v2`
+ 인용은 *작성 시점 기준* 의 사실로 유지 (audit-truth semantic) — 코드
+ 측은 새 이름 사용.
+- Audit half 는 frozen 상태로 `_v2` 멘션 보존 (R294 schema split 정통).
+ GENERATED.md 의 publishable view 는 retroactive redact 미수행 (각 entry
+ 가 author 시점에 충실하도록).
+- SCE / pinion 등 외부 MCP consumer 는 tool call string 업데이트 필요.
+
+### Round 303 — FR-1 / FR-2 land (Phase 0 hardening 안에서)
+
+본 disposition §2 에서 *Phase 1.5 defer* 라벨 붙였던 두 항목이 *Phase 0
+hardening 안* 으로 promote 되어 land:
+
+- **FR-1 `normative_excerpt`** — `AtomicSection.normative_excerpt:
+ Option<NormativeExcerpt>` 추가. `NormativeExcerpt { text, anchor_url,
+ source_revision }` 3 field. Mutate primitive `set_section_normative_excerpt`
+ 는 *append-only* (None → Some 만 허용; Some → Some 거부) — 본 disposition
+ §FR-1 의 frozen-ledger zone 의도 그대로 구현. Spec rev bump = 새
+ Section 추가 + 옛 Section `decision_status = Superseded` 패턴.
+- **FR-2 `[workspace.spec_source]`** — `SpecSource { url, revision,
+ fetched_sha256, fetched_at }` 4 field. 워크스페이스당 1 spec_source
+ (multi-namespace = multi-디렉토리, FR-5 reject 와 정합).
+
+**Promote 사유**: 본 disposition 의 "Phase 1.5 라벨" 이 실제로는 R265 /
+R275 / R287 등 Phase 0 안에서 schema 확장이 이미 land 된 precedent 와
+일관성 약함. SCE 가 sidecar workaround 으로 carrying 할 수 있긴 했지만,
+1-2 일 단위 작업으로 first-class 지원이 가능한 cost 였음. **Defer 자체가
+disposition 의 의도였다기보다 적절한 trigger 시점이 명시되지 않았던 게
+실수** — Round 303 audit entry 가 이 정정을 담음.
+
+**FR-3 (symbol-level enforcement) 는 여전히 Phase 1+** — LSP / treesitter
+wiring 은 paradigm 변경이므로 별도 라운드.
+
+### SCE 측 영향
+
+§6 의 sidecar carry pattern 은 *더 이상 필수 아님*. 권장 도입 경로 변경:
+
+- W3C SCXML §3.13 → `AtomicSection { section_id: "scxml-3.13", … }` 등록
+ + `set_section_normative_excerpt` 로 vendored quote anchor.
+- `mnemosyne.toml [workspace.spec_source]` 에 fetch 메타데이터 박음.
+- §6.B sidecar JSON 은 *carry path* 가 아니라 *전환 옵션* 으로 격하 —
+ first-class field 와 functionally equivalent 한 경우 sidecar 유지해도
+ OK, 그러나 mnemosyne 측 cascade / validate 와의 integration 은 제공 안 됨.
+
+§6.C (spec rev drift audit via ChangelogEntry stream) 과 §6.D (multi-
+namespace via multi-디렉토리) 는 변경 없음 — 그대로 권장.
+
+**FR-3 carry**: `Implementation.symbol` 기록은 여전히 가능하나 mnemosyne
+측 enforcement 는 file-level only. SCE 측 도구가 symbol 필드 query 하는
+패턴 carry.
