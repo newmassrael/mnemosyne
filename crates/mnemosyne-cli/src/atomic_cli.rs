@@ -1226,7 +1226,12 @@ fn print_inventory_decay_trigger(
  }
  };
  let code_refs_cfg = match loaded.config.code_refs.as_ref() {
- Some(c) if !c.paths.is_empty() && !c.inventory_prefixes.is_empty() => c,
+ Some(c)
+ if !c.paths.is_empty()
+ && (!c.inventory_prefixes.is_empty() || !c.inventory_path_prefixes.is_empty()) =>
+ {
+ c
+ }
  _ => return,
  };
  let hits = match scan_inventory_decay(
@@ -1234,6 +1239,7 @@ fn print_inventory_decay_trigger(
  &code_refs_cfg.paths,
  inventory_id,
  &code_refs_cfg.inventory_prefixes,
+ &code_refs_cfg.inventory_path_prefixes,
  code_refs_cfg.comment_only,
  ) {
  Ok(h) => h,

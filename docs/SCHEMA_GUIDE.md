@@ -128,13 +128,26 @@ when the project never numbers its history rows.
  scanning so only comment citations count. Default `true`; flip only if
  your project deliberately puts §id references in user-visible strings.
 - **`[code_refs].inventory_prefixes`** — multi-prefix list for the
- inventory citation axis (Phase 1A, Round 275). Each entry is an ASCII
- word (`"ARP_"`, `"TCP_"`, `"SOMEIP_ETS_"`); the scanner walks
- `<prefix>[A-Z0-9_]+` tokens whose tail ends in a digit (the
+ *opaque-ID* inventory citation axis (Phase 1A, Round 275). Each entry
+ is an ASCII word (`"ARP_"`, `"TCP_"`, `"SOMEIP_ETS_"`); the scanner
+ walks `<prefix>[A-Z0-9_]+` tokens whose tail ends in a digit (the
  digit-terminus rule suppresses identifier-shaped false positives like
  `TCP_BUFFER_SIZE`). Empty list = axis disabled. Longest-prefix-first
  matching: when both `"SOMEIP_"` and `"SOMEIP_ETS_"` are registered,
  `SOMEIP_ETS_BASICS_01` reports once under the more specific prefix.
+- **`[code_refs].inventory_path_prefixes`** — companion axis with
+ *section-path* tail shape (`[A-Za-z0-9./-_]+`, no digit-terminus
+ requirement). Each entry is a prefix that may include spaces
+ (`"W3C SCXML "`, `"IRP "`); the scanner walks
+ `<prefix><section-path>` tokens, so `W3C SCXML 3.13`, `IRP test144`,
+ `SCXML-D.2.selectTransitions` all match. Targets external-spec
+ mirror adopters (W3C SCXML, IETF RFC, IEEE, AUTOSAR family) who
+ would otherwise face a mass cite migration to the sigil-prefixed
+ form. Resolution target is the same `InventoryEntry` store as
+ `inventory_prefixes` — they are two tail-shape axes feeding the
+ same lifecycle (active / deprecated / reserved). A prefix may be
+ registered in both axes if both citation shapes coexist; the
+ scanner dedups so a matching cite surfaces once.
 - **`[code_refs].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:
@@ -357,6 +370,11 @@ paths = ["src/", "tests/"]
 inventory_prefixes = [
  "ARP_", "TCP_", "UDP_", "IPV4_",
  "ICMPV4_", "DHCPV4_", "SOMEIPSRV_", "SOMEIP_ETS_",
+]
+# External-spec mirror adopters add section-path-shape prefixes here:
+inventory_path_prefixes = [
+ "W3C SCXML ",     # section refs like `W3C SCXML 3.13`
+ "IRP ",           # test catalog refs like `IRP test144`
 ]
 severity_inventory = "warn"  # promote to "reject" after baseline clean
 external_section_prefixes = ["RFC", "IEEE"]  # ignore `(RFC 791 §3.1)`

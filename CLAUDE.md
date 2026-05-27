@@ -56,6 +56,21 @@ recommendation.
 - Enforcing a template on *new* entries OK (Round 162 schema decomposition
  scope), but body mutation of existing entries = 0.
 
+### ❌ "add a `_v2` / `_v3` postfix on a function/struct when extending"
+- API postfix versioning is forbidden in this codebase. Extending a
+ function signature, struct, or enum: *modify the existing definition
+ in place and update all callers in the same change*. Pre-release
+ means no external compat to preserve.
+- The legacy `_v2`/`_v3` wrappers that existed in `code_refs.rs` were
+ cleaned up in the same change that introduced this rule — keep the
+ cleanup, don't recreate the pattern.
+- Round NNN annotations in code comments (e.g., `// Round 275 — …`)
+ are *audit-trail anchors*, not version postfixes — those are
+ acceptable when the annotation cites an actual atomic-store entry.
+ Inventing a fresh "Round NNN" label for the current change is *not*:
+ the round entry must already exist (via `append_changelog_entry_v2`)
+ before the citation lands, per the citation hygiene rule.
+
 ## ✅ Correct patterns — recommend path
 
 - Improve AI query efficiency (e.g. indexed cache, faster lookup, multi-hop graph)

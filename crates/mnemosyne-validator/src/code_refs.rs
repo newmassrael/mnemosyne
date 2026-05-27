@@ -316,35 +316,19 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// word-boundary is implicit. Tail-side boundary: id terminates on any
 /// char outside the token shape.
 ///
-/// Pre-Round-277 caller convenience — delegates to
-/// [`extract_section_citations_v3`] with empty external-prefix slices
-/// (external-skip disabled, identical to the v1 behavior).
-pub fn extract_section_citations(content: &str) -> Vec<(usize, String)> {
- extract_section_citations_v3(content, &[], &[])
-}
-
-/// Round 277 — `§<id>` extractor with external-standard numeric-mode
-/// skip. Delegates to [`extract_section_citations_v3`] with empty
-/// `prefixes_bare` slice (numeric-mode only, identical to the R277/R281
-/// behavior).
-pub fn extract_section_citations_v2(
- content: &str,
- external_prefixes: &[String],
-) -> Vec<(usize, String)> {
- extract_section_citations_v3(content, external_prefixes, &[])
-}
-
-/// Round 284 — `§<id>` extractor with two external-skip axes:
-/// *numeric* (RFC / IEEE / ISO/IEC, `<PREFIX> <NUMERIC> §<id>`) and
-/// *bare* (AUTOSAR family, `<PREFIX> §<id>` without numeric).
+/// `§<id>` extractor with two external-standard skip axes:
+/// *numeric* (RFC / IEEE / ISO/IEC, `<PREFIX> <NUMERIC> §<id>`) via
+/// `external_prefixes_numeric` and *bare* (AUTOSAR family,
+/// `<PREFIX> §<id>` without numeric) via `external_prefixes_bare`.
 ///
 /// The two axes are independent — same prefix may appear in both if the
 /// standard supports both forms; matching tries the axis that applies
 /// based on the shape of the token preceding `§`.
 ///
 /// Empty slices = the corresponding axis disabled. Both empty = no
-/// external skip, equivalent to [`extract_section_citations`].
-pub fn extract_section_citations_v3(
+/// external skip, every `§<id>` is treated as internal to this
+/// workspace's atomic store.
+pub fn extract_section_citations(
  content: &str,
  external_prefixes_numeric: &[String],
  external_prefixes_bare: &[String],
@@ -550,6 +534,56 @@ pub fn extract_inventory_citations(
  prefixes: &[String],
  content: &str,
 ) -> Vec<(usize, String)> {
+ extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::IdToken)
+}
+
+/// Extract *section-path-shaped* inventory citations.
+///
+/// Companion axis to [`extract_inventory_citations`] for external-spec
+/// mirror adopters (W3C SCXML, IETF RFC, IEEE, AUTOSAR, …) whose
+/// citation tail uses section-path characters (`A-Za-z0-9./-_`) instead
+/// of the opaque-ID shape (`[A-Z0-9_]+ ending in digit`). Token form:
+/// `<prefix><tail>` where `<tail>` matches `[A-Za-z0-9./-_]+` with no
+/// digit-terminus requirement — `3.13`, `test144`, `D.2.selectTransitions`
+/// all match.
+///
+/// Word-boundary, backtick-skip, longest-prefix-first ordering, and
+/// dedup semantics are identical to [`extract_inventory_citations`].
+/// Returns empty when `prefixes.is_empty()` (axis disabled).
+///
+/// Use case: an adopter mirroring W3C SCXML registers
+/// `inventory_path_prefixes = ["W3C SCXML "]` and a W3C SCXML section
+/// like `3.13` gets registered as `InventoryEntry { id = "W3C SCXML
+/// 3.13", … }` in the atomic store. Citations of the form
+/// `// W3C SCXML 3.13` in code resolve against the inventory axis
+/// without forcing a mass cite migration to the sigil-prefixed form.
+pub fn extract_inventory_path_citations(
+ prefixes: &[String],
+ content: &str,
+) -> Vec<(usize, String)> {
+ extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::SectionPath)
+}
+
+/// Inventory citation tail shape — distinguishes opaque-ID citations
+/// from section-path identifiers. Internal to the extractor; callers
+/// pick the public function (`extract_inventory_citations` vs
+/// `extract_inventory_path_citations`) and the corresponding mode is
+/// applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InventoryTailMode {
+ /// `[A-Z0-9_]+` with tail ending in a digit. Targets opaque
+ /// inventory IDs (`ARP_07`, `TCP_RETRANSMISSION_TO_04`).
+ IdToken,
+ /// `[A-Za-z0-9./-_]+` with no digit-terminus requirement. Targets
+ /// section paths (`3.13`, `test144`, `D.2.selectTransitions`).
+ SectionPath,
+}
+
+fn extract_inventory_citations_with_tail(
+ prefixes: &[String],
+ content: &str,
+ tail_mode: InventoryTailMode,
+) -> Vec<(usize, String)> {
  if prefixes.is_empty() {
  return Vec::new();
  }
@@ -596,12 +630,27 @@ pub fn extract_inventory_citations(
   continue;
  }
  let tail_start = i + prefix.len();
- // tail = [A-Z0-9_]+ — uppercase-or-digit-or-underscore.
+ // tail char class differs per mode:
+ //   IdToken    → [A-Z0-9_]+ (uppercase, digits, underscore)
+ //   SectionPath → [A-Za-z0-9./-_]+ (alnum + . / - _; mirrors
+ //                 `is_section_id_char` used by the section-citation axis)
  let tail_bytes = &bytes[tail_start..];
  let mut t = 0usize;
  while t < tail_bytes.len() {
   let c = tail_bytes[t];
-  if c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_' {
+  let is_tail = match tail_mode {
+  InventoryTailMode::IdToken => {
+   c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_'
+  }
+  InventoryTailMode::SectionPath => {
+   c.is_ascii_alphanumeric()
+   || c == b'.'
+   || c == b'/'
+   || c == b'-'
+   || c == b'_'
+  }
+  };
+  if is_tail {
   t += 1;
   } else {
   break;
@@ -621,9 +670,13 @@ pub fn extract_inventory_citations(
  if !next_ok {
   continue;
  }
- // tail must end in a digit — TC8 / ISO test-spec convention,
- // suppresses identifier-shaped false positives.
- if !tail_bytes[t - 1].is_ascii_digit() {
+ // IdToken mode: tail must end in a digit (TC8 / ISO test-spec
+ // convention; suppresses identifier-shaped false positives).
+ // SectionPath mode: no digit-terminus — section paths can end
+ // in a letter (`D.2.selectTransitions`) or a digit (`3.13`).
+ if tail_mode == InventoryTailMode::IdToken
+  && !tail_bytes[t - 1].is_ascii_digit()
+ {
   continue;
  }
  let id = format!("{}{}", prefix, &line[tail_start..tail_end]);
@@ -636,7 +689,7 @@ pub fn extract_inventory_citations(
  // Advance past the consumed bytes — `peek/next` until we pass
  // `i + consumed`. char_indices keeps the iterator on valid
  // char boundaries even when prefix-length advance lands on
- // an ASCII byte (TC ID tails are uppercase ASCII by design).
+ // an ASCII byte (tails in both modes are ASCII by design).
  let target_byte = i + consumed;
  while let Some(&(k, _)) = chars.peek() {
  if k < target_byte {
@@ -974,93 +1027,32 @@ pub fn scan_paths_filtered(
 /// (per-extension dispatch via [`comment_syntax_for`]) so the citation
 /// extractor only sees comment text. Unknown extensions fall through to
 /// whole-text scan regardless of the flag.
-/// Pre-Round-275 caller convenience — delegates to
-/// [`scan_paths_bidirectional_v2`] with an empty `inventory_prefixes`
-/// slice (inventory axis disabled). Existing tests + cascade callers
-/// keep their 7-arg shape; the Phase 1A wire-up calls v2 directly.
+/// Scanner with all four cite axes wired in:
+///
+/// 1. `Round NNN` axis — `<entry_id_prefix><number>` (decay-aware via
+///    `filter_id`).
+/// 2. `§<id>` axis with two external-standard skip modes —
+///    *numeric* (`<PREFIX> <NUMERIC> §<id>`) via
+///    `external_section_prefixes_numeric` and *bare*
+///    (`<PREFIX> §<id>` doc-name only) via `external_section_prefixes_bare`.
+/// 3. Inventory axis with two tail shapes — *opaque-ID*
+///    (`<prefix><[A-Z0-9_]+ ending in digit>`) via `inventory_prefixes`
+///    and *section-path* (`<prefix><[A-Za-z0-9./-_]+>`) via
+///    `inventory_path_prefixes`. Both feed the same `InventoryEntry`
+///    store and share `severity_inventory`.
+/// 4. Bidirectional set-equality (Path B) — `§X.implementations` files
+///    vs cited-by sets — surfaces `CitationUnbound`,
+///    `ImplementationUnbacked`, and `ImplementationMissing` (R269
+///    coverage axiom).
+///
+/// `orphan_ledger` rows with `kind = CodeCitation` suppress
+/// section-citation-axis violations and rows with `kind =
+/// InventoryCitation` (R285) suppress inventory-axis violations.
+///
+/// Pass an empty slice on any axis to disable it. `filter_id` is the
+/// decay-scan toggle (Steps 3-4 stay silent under decay mode for
+/// surface-narrowing).
 pub fn scan_paths_bidirectional(
- workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- store: &AtomicStore,
- orphan_ledger: &[OrphanLedgerEntry],
- filter_id: Option<&str>,
- comment_only: bool,
-) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_bidirectional_v2(
- workspace_root,
- paths,
- prefix,
- store,
- orphan_ledger,
- filter_id,
- comment_only,
- &[],
- )
-}
-
-/// Round 275 — Phase 1A scanner with inventory axis. Pre-Round-277
-/// caller convenience — delegates to [`scan_paths_bidirectional_v3`]
-/// with an empty `external_section_prefixes` slice (external skip
-/// disabled, identical to the v2 behavior).
-pub fn scan_paths_bidirectional_v2(
- workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- store: &AtomicStore,
- orphan_ledger: &[OrphanLedgerEntry],
- filter_id: Option<&str>,
- comment_only: bool,
- inventory_prefixes: &[String],
-) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_bidirectional_v3(
- workspace_root,
- paths,
- prefix,
- store,
- orphan_ledger,
- filter_id,
- comment_only,
- inventory_prefixes,
- &[],
- )
-}
-
-/// Round 277 — Phase 1A scanner with inventory axis + external-standard
-/// numeric-mode `§<id>` skip. Delegates to
-/// [`scan_paths_bidirectional_v4`] with an empty
-/// `external_section_prefixes_bare` slice — back-compat shim for
-/// callers from R277 / R281.
-pub fn scan_paths_bidirectional_v3(
- workspace_root: &Path,
- paths: &[String],
- prefix: &str,
- store: &AtomicStore,
- orphan_ledger: &[OrphanLedgerEntry],
- filter_id: Option<&str>,
- comment_only: bool,
- inventory_prefixes: &[String],
- external_section_prefixes: &[String],
-) -> std::io::Result<Vec<CodeRefViolation>> {
- scan_paths_bidirectional_v4(
- workspace_root,
- paths,
- prefix,
- store,
- orphan_ledger,
- filter_id,
- comment_only,
- inventory_prefixes,
- external_section_prefixes,
- &[],
- )
-}
-
-/// Round 284 — scanner with two external-standard `§<id>` axes:
-/// *numeric* (R277 form, `<PREFIX> <NUMERIC> §<id>`) and *bare*
-/// (R284 form, `<PREFIX> §<id>` doc-name only). The two axes are
-/// independent; an empty slice disables the corresponding axis.
-pub fn scan_paths_bidirectional_v4(
  workspace_root: &Path,
  paths: &[String],
  prefix: &str,
@@ -1071,6 +1063,7 @@ pub fn scan_paths_bidirectional_v4(
  inventory_prefixes: &[String],
  external_section_prefixes_numeric: &[String],
  external_section_prefixes_bare: &[String],
+ inventory_path_prefixes: &[String],
 ) -> std::io::Result<Vec<CodeRefViolation>> {
  // Round 293 — valid_entry_ids must match the shape produced by
  // `extract_citations`, which returns `<prefix><number>` (e.g. "Round 293").
@@ -1174,7 +1167,7 @@ pub fn scan_paths_bidirectional_v4(
  if filter_id.is_some() {
  continue;
  }
- for (line, section_id) in extract_section_citations_v3(
+ for (line, section_id) in extract_section_citations(
  &content,
  external_section_prefixes_numeric,
  external_section_prefixes_bare,
@@ -1231,7 +1224,18 @@ pub fn scan_paths_bidirectional_v4(
  // adopters can document intentional historical references (e.g.,
  // "deleted in V2 → V3") via the audit-trail-preserving ledger
  // instead of silencing them outright.
- for (line, inventory_id) in extract_inventory_citations(inventory_prefixes, &content) {
+ //
+ // Chain the section-path inventory axis (`inventory_path_prefixes`).
+ // Both axes resolve against the same `InventoryEntry` store; dedup
+ // on (line, id) so a prefix registered in both axes surfaces once.
+ let mut inventory_cites = extract_inventory_citations(inventory_prefixes, &content);
+ inventory_cites.extend(extract_inventory_path_citations(
+ inventory_path_prefixes,
+ &content,
+ ));
+ inventory_cites.sort();
+ inventory_cites.dedup();
+ for (line, inventory_id) in inventory_cites {
  let kind = match store.inventory(&inventory_id).map(|e| e.status) {
  None => Some(ViolationKind::InventoryMissing),
  Some(crate::atomic::InventoryStatus::Deprecated) => {
@@ -1353,7 +1357,7 @@ pub fn scan_section_decay(
  .strip_prefix(workspace_root)
  .map(|p| p.to_path_buf())
  .unwrap_or(abs.clone());
- for (line, sid) in extract_section_citations(&content) {
+ for (line, sid) in extract_section_citations(&content, &[], &[]) {
  if sid == section_id {
  hits.push(Citation {
   file: rel.clone(),
@@ -1382,14 +1386,22 @@ pub fn scan_section_decay(
 ///
 /// Skips file-read failures silently (consistent with the bidirectional
 /// scanner). Returns hits sorted by `(file, line)`.
+///
+/// Decay scan covers both inventory axes: opaque-ID via
+/// `inventory_prefixes` and section-path via `inventory_path_prefixes`.
+/// Cascade trigger calls this after an `InventoryEntry` transitions to
+/// a status that needs cite-side notification, so a path-shape ID
+/// rename / deprecation surfaces its cite-sites too. An empty slice
+/// disables the corresponding axis.
 pub fn scan_inventory_decay(
  workspace_root: &Path,
  paths: &[String],
  inventory_id: &str,
  inventory_prefixes: &[String],
+ inventory_path_prefixes: &[String],
  comment_only: bool,
 ) -> std::io::Result<Vec<Citation>> {
- if inventory_prefixes.is_empty() {
+ if inventory_prefixes.is_empty() && inventory_path_prefixes.is_empty() {
  return Ok(Vec::new());
  }
  let files = walk_paths(workspace_root, paths)?;
@@ -1408,7 +1420,16 @@ pub fn scan_inventory_decay(
  .strip_prefix(workspace_root)
  .map(|p| p.to_path_buf())
  .unwrap_or(abs.clone());
- for (line, id) in extract_inventory_citations(inventory_prefixes, &content) {
+ // Chain opaque-ID + section-path axes; dedup on (line, id) so a
+ // prefix registered in both axes surfaces once.
+ let mut cites = extract_inventory_citations(inventory_prefixes, &content);
+ cites.extend(extract_inventory_path_citations(
+ inventory_path_prefixes,
+ &content,
+ ));
+ cites.sort();
+ cites.dedup();
+ for (line, id) in cites {
  if id == inventory_id {
  hits.push(Citation {
   file: rel.clone(),
@@ -1561,7 +1582,7 @@ mod tests {
  #[test]
  fn extract_section_citations_basic_numeric() {
  let src = "// §39 carry\n// also §61 for context\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(
  out,
  vec![(1, "39".to_string()), (2, "61".to_string())]
@@ -1571,14 +1592,14 @@ mod tests {
  #[test]
  fn extract_section_citations_fractional_id() {
  let src = "// see §61.1 for sub-section\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(out, vec![(1, "61.1".to_string())]);
  }
 
  #[test]
  fn extract_section_citations_slash_slug() {
  let src = "// §atomic-store/changelog-atomic-ledger anchor\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(
  out,
  vec![(1, "atomic-store/changelog-atomic-ledger".to_string())]
@@ -1588,14 +1609,14 @@ mod tests {
  #[test]
  fn extract_section_citations_trailing_dot_not_consumed() {
  let src = "End of sentence §39. Next line\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(out, vec![(1, "39".to_string())]);
  }
 
  #[test]
  fn extract_section_citations_brackets_and_parens() {
  let src = "(§39) [§61.1] {§atomic-store}\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(
  out,
  vec![
@@ -1609,14 +1630,14 @@ mod tests {
  #[test]
  fn extract_section_citations_solitary_sigil_no_id_skipped() {
  let src = "Just a § sigil with no id following\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert!(out.is_empty());
  }
 
  #[test]
  fn extract_section_citations_underscore_allowed() {
  let src = "// §atomic_store snake case slug\n";
- let out = extract_section_citations(src);
+ let out = extract_section_citations(src, &[], &[]);
  assert_eq!(out, vec![(1, "atomic_store".to_string())]);
  }
 
@@ -1659,6 +1680,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "unexpected violations: {:?}", v);
@@ -1683,6 +1708,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1);
@@ -1716,6 +1745,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -1750,6 +1783,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -1794,6 +1831,10 @@ mod tests {
  &ledger,
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "expected suppression, got: {:?}", v);
@@ -1824,6 +1865,10 @@ mod tests {
  &ledger,
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "expected suppression, got: {:?}", v);
@@ -1856,6 +1901,10 @@ mod tests {
  &[],
  Some("Round 1"),
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1);
@@ -2116,6 +2165,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  // Only one Missing (the line 2 comment); line 1 string literal suppressed.
@@ -2152,6 +2205,10 @@ mod tests {
  &[],
  None,
  false,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  // Whole-text scan picks up BOTH occurrences (line 1 and line 2).
@@ -2185,6 +2242,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  // Unknown extension preserves /258 whole-text behavior.
@@ -2229,6 +2290,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -2260,6 +2325,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -2290,6 +2359,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -2319,6 +2392,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "Removed must not trigger, got: {:?}", v);
@@ -2342,6 +2419,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(
@@ -2367,6 +2448,10 @@ mod tests {
  &[],
  Some("Round 99"),
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "filter_id should silence coverage axiom, got: {:?}", v);
@@ -2420,7 +2505,7 @@ mod tests {
  std::fs::write(tmp.path().join("src/x.rs"), content).unwrap();
  let store = AtomicStore::new();
  let prefixes = vec!["FOO_".to_string()];
- let v = scan_paths_bidirectional_v3(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2429,6 +2514,8 @@ mod tests {
  None,
  true,
  &prefixes,
+ &[],
+ &[],
  &[],
  )
  .expect("scan must not panic on multi-byte comment chars");
@@ -2504,6 +2591,226 @@ mod tests {
  assert!(out.is_empty(), "backtick span should suppress, got: {:?}", out);
  }
 
+ // ============================================================================
+ // Section-path inventory axis tests (RFC-002 FR-4 narrow ext).
+ // ============================================================================
+
+ #[test]
+ fn extract_inventory_path_citations_w3c_scxml_dotted_numeric() {
+ // The motivating case — W3C SCXML 3.13 (dotted-numeric tail) must
+ // match an inventory_path_prefix of "W3C SCXML ".
+ let prefixes = vec!["W3C SCXML ".to_string()];
+ let out = extract_inventory_path_citations(
+ &prefixes,
+ "// see W3C SCXML 3.13 for <event>\n",
+ );
+ assert_eq!(out, vec![(1, "W3C SCXML 3.13".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_lowercase_tail() {
+ // IRP test144 — lowercase alpha + digits, no underscore. R275
+ // axis rejects this (uppercase-only); section-path axis accepts.
+ let prefixes = vec!["IRP ".to_string()];
+ let out = extract_inventory_path_citations(&prefixes, "// IRP test144 catalog\n");
+ assert_eq!(out, vec![(1, "IRP test144".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_alpha_terminus() {
+ // Section paths can end in a letter (`D.2.selectTransitions` in
+ // SCXML Appendix D) — no digit-terminus requirement under section-path mode.
+ let prefixes = vec!["SCXML-".to_string()];
+ let out = extract_inventory_path_citations(
+ &prefixes,
+ "// SCXML-D.2.selectTransitions algorithm\n",
+ );
+ assert_eq!(out, vec![(1, "SCXML-D.2.selectTransitions".to_string())]);
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_multi_prefix() {
+ let prefixes = vec!["W3C SCXML ".to_string(), "IRP ".to_string()];
+ let out = extract_inventory_path_citations(
+ &prefixes,
+ "// W3C SCXML 3.13 vs IRP test144 cross-ref\n",
+ );
+ assert_eq!(
+ out,
+ vec![
+  (1, "IRP test144".to_string()),
+  (1, "W3C SCXML 3.13".to_string()),
+ ]
+ );
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_word_boundary_rejects_alphanumeric_prev() {
+ // `xW3C SCXML 3.13` should NOT match — prefix is not on a word
+ // boundary (the preceding 'x' is alphanumeric).
+ let prefixes = vec!["W3C SCXML ".to_string()];
+ let out = extract_inventory_path_citations(
+ &prefixes,
+ "// xW3C SCXML 3.13 internal name\n",
+ );
+ assert!(out.is_empty(), "expected no match, got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_skips_backtick_codespan() {
+ let prefixes = vec!["W3C SCXML ".to_string()];
+ let out = extract_inventory_path_citations(
+ &prefixes,
+ "// example: `W3C SCXML 3.13` literal\n",
+ );
+ assert!(out.is_empty(), "backtick span should suppress, got: {:?}", out);
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_longest_prefix_wins() {
+ // Both `W3C ` and `W3C SCXML ` registered — the longer specific
+ // prefix wins for "W3C SCXML 3.13".
+ let prefixes = vec!["W3C ".to_string(), "W3C SCXML ".to_string()];
+ let out = extract_inventory_path_citations(&prefixes, "// W3C SCXML 3.13\n");
+ assert_eq!(
+ out,
+ vec![(1, "W3C SCXML 3.13".to_string())],
+ "longer prefix must win"
+ );
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_empty_prefixes_disables_axis() {
+ let out = extract_inventory_path_citations(&[], "// W3C SCXML 3.13\n");
+ assert!(out.is_empty());
+ }
+
+ #[test]
+ fn extract_inventory_path_citations_no_id_token_axis_interference() {
+ // The section-path axis axis must NOT swallow R275 opaque IDs — distinct tail
+ // grammar even if the function were misused. Lowercase tail like
+ // `arp_07` would not match R275 (uppercase-only) but would match
+ // section-path axis if prefix is registered there. This test pins that section-path axis
+ // does not auto-skip uppercase tails — `ARP_07` is still valid
+ // under section-path mode because [A-Za-z0-9./-_] is a superset.
+ let prefixes = vec!["ARP_".to_string()];
+ let out = extract_inventory_path_citations(&prefixes, "// ARP_07 cite\n");
+ assert_eq!(out, vec![(1, "ARP_07".to_string())]);
+ }
+
+ #[test]
+ fn scan_v5_section_path_inventory_missing() {
+ // Full-scanner path: a path-shape cite (`W3C SCXML 3.13`) with
+ // no matching atomic store entry must surface as InventoryMissing
+ // via the section-path axis axis, not silently pass.
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// W3C SCXML 3.13 cited but not registered\n",
+ )
+ .unwrap();
+ let store = AtomicStore::new();
+ let path_prefixes = vec!["W3C SCXML ".to_string()];
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &[],
+ &[],
+ &[],
+ &path_prefixes,
+ )
+ .unwrap();
+ assert_eq!(v.len(), 1, "got: {:?}", v);
+ match &v[0] {
+ CodeRefViolation::Citation { kind, citation } => {
+ assert!(matches!(kind, ViolationKind::InventoryMissing));
+ assert_eq!(citation.entry_id, "W3C SCXML 3.13");
+ }
+ other => panic!("expected Citation, got {:?}", other),
+ }
+ }
+
+ #[test]
+ fn scan_v5_section_path_inventory_active_silent() {
+ // Registered InventoryEntry with Active status — cite passes
+ // silently on the section-path axis axis, same policy as R275.
+ use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(
+ tmp.path().join("src/foo.rs"),
+ "// W3C SCXML 3.13 cite\n",
+ )
+ .unwrap();
+ let mut store = AtomicStore::new();
+ store.inventory_entries.insert(
+ "W3C SCXML 3.13".to_string(),
+ InventoryEntry {
+ status: InventoryStatus::Active,
+ section_ref: None,
+ source: None,
+ reason: None,
+ },
+ );
+ let path_prefixes = vec!["W3C SCXML ".to_string()];
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &[],
+ &[],
+ &[],
+ &path_prefixes,
+ )
+ .unwrap();
+ assert!(v.is_empty(), "Active section-path axis cite must pass silently, got: {:?}", v);
+ }
+
+ #[test]
+ fn scan_v5_both_inventory_axes_dedup() {
+ // A prefix registered in BOTH axes (e.g., legacy `ARP_` carried
+ // into section-path axis for migration reasons) must surface a matching cite
+ // once, not twice. Dedup on (line, id).
+ use crate::atomic::AtomicStore;
+ let tmp = TempDir::new().unwrap();
+ std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+ std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
+ let store = AtomicStore::new();
+ let opaque = vec!["ARP_".to_string()];
+ let path = vec!["ARP_".to_string()];
+ let v = scan_paths_bidirectional(
+ tmp.path(),
+ &["src/".to_string()],
+ "Round ",
+ &store,
+ &[],
+ None,
+ true,
+ &opaque,
+ &[],
+ &[],
+ &path,
+ )
+ .unwrap();
+ assert_eq!(
+ v.len(),
+ 1,
+ "ARP_07 in both axes must dedup to 1 InventoryMissing, got: {:?}",
+ v
+ );
+ }
+
  #[test]
  fn scan_v2_inventory_missing_reject() {
  use crate::atomic::AtomicStore;
@@ -2512,7 +2819,7 @@ mod tests {
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 not in store\n").unwrap();
  let store = AtomicStore::new();
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional_v2(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2521,6 +2828,9 @@ mod tests {
  None,
  true,
  &prefixes,
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -2550,7 +2860,7 @@ mod tests {
  },
  );
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional_v2(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2559,6 +2869,9 @@ mod tests {
  None,
  true,
  &prefixes,
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(v.len(), 1, "got: {:?}", v);
@@ -2596,7 +2909,7 @@ mod tests {
  },
  );
  let prefixes = vec!["ARP_".to_string()];
- let v = scan_paths_bidirectional_v2(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2605,6 +2918,9 @@ mod tests {
  None,
  true,
  &prefixes,
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(
@@ -2622,7 +2938,7 @@ mod tests {
  fn extract_v2_skips_rfc_external_cite() {
  let prefixes = vec!["RFC".to_string()];
  let out =
- extract_section_citations_v2("// RFC 2131 §3.5 is external\n", &prefixes);
+ extract_section_citations("// RFC 2131 §3.5 is external\n", &prefixes, &[]);
  assert!(
  out.is_empty(),
  "RFC <num> §<id> must be skipped, got: {:?}",
@@ -2634,7 +2950,7 @@ mod tests {
  fn extract_v2_skips_ieee_external_cite() {
  let prefixes = vec!["IEEE".to_string()];
  let out =
- extract_section_citations_v2("// IEEE 802.3 §2.4 frame format\n", &prefixes);
+ extract_section_citations("// IEEE 802.3 §2.4 frame format\n", &prefixes, &[]);
  assert!(out.is_empty(), "IEEE skip failed, got: {:?}", out);
  }
 
@@ -2644,27 +2960,29 @@ mod tests {
  // — the v1 single-token rule handles it natively.
  let prefixes = vec!["ISO/IEC".to_string()];
  let out =
- extract_section_citations_v2("// ISO/IEC 14882 §1.5\n", &prefixes);
+ extract_section_citations("// ISO/IEC 14882 §1.5\n", &prefixes, &[]);
  assert!(out.is_empty(), "ISO/IEC skip failed, got: {:?}", out);
  }
 
  #[test]
  fn extract_v2_keeps_internal_when_no_external_context() {
  let prefixes = vec!["RFC".to_string(), "IEEE".to_string()];
- let out = extract_section_citations_v2("// §4.2.4 internal cite\n", &prefixes);
+ let out = extract_section_citations("// §4.2.4 internal cite\n", &prefixes, &[]);
  assert_eq!(out, vec![(1, "4.2.4".to_string())]);
  }
 
  #[test]
- fn extract_v2_empty_prefixes_matches_v1_behavior() {
- // v1 wrapper delegates with empty prefixes; the two paths must
- // yield identical output for the same input.
- let v1 = extract_section_citations("// RFC 2131 §3.5 and §4.2.4 mixed\n");
- let v2 = extract_section_citations_v2("// RFC 2131 §3.5 and §4.2.4 mixed\n", &[]);
- assert_eq!(v1, v2);
- // Both retain the (incorrect-from-v2-perspective) RFC §.
- assert!(v1.iter().any(|(_, id)| id == "3.5"));
- assert!(v1.iter().any(|(_, id)| id == "4.2.4"));
+ fn extract_section_citations_empty_external_prefixes_treats_all_as_internal() {
+ // With both external-skip axes empty, every §<id> is treated as
+ // internal — `RFC 2131 §3.5` does NOT skip; both 3.5 and 4.2.4
+ // surface as internal citations.
+ let out = extract_section_citations(
+ "// RFC 2131 §3.5 and §4.2.4 mixed\n",
+ &[],
+ &[],
+ );
+ assert!(out.iter().any(|(_, id)| id == "3.5"));
+ assert!(out.iter().any(|(_, id)| id == "4.2.4"));
  }
 
  #[test]
@@ -2674,7 +2992,7 @@ mod tests {
  // fixture string itself doesn't show up as a `§3` citation when
  // the self-application scan walks `code_refs.rs`.
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2("// RFC2131\u{00a7}3 inline form\n", &prefixes);
+ let out = extract_section_citations("// RFC2131\u{00a7}3 inline form\n", &prefixes, &[]);
  assert_eq!(out, vec![(1, "3".to_string())]);
  }
 
@@ -2685,9 +3003,10 @@ mod tests {
  #[test]
  fn extract_v2_skips_paren_prefixed_rfc() {
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2(
+ let out = extract_section_citations(
  "// fragmentation fields (RFC 791 \u{00a7}3.1) per spec\n",
  &prefixes,
+ &[],
  );
  assert!(
  out.is_empty(),
@@ -2699,9 +3018,10 @@ mod tests {
  #[test]
  fn extract_v2_skips_bracket_prefixed_rfc() {
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2(
+ let out = extract_section_citations(
  "// see [RFC 793 \u{00a7}3.9] for retransmit semantics\n",
  &prefixes,
+ &[],
  );
  assert!(out.is_empty(), "[RFC 793] form must be skipped; got: {:?}", out);
  }
@@ -2709,9 +3029,10 @@ mod tests {
  #[test]
  fn extract_v2_skips_quote_prefixed_rfc() {
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2(
+ let out = extract_section_citations(
  "// per \"RFC 2131 \u{00a7}3.4\" the client retransmits\n",
  &prefixes,
+ &[],
  );
  assert!(out.is_empty(), "\"RFC 2131\" form must be skipped; got: {:?}", out);
  }
@@ -2721,9 +3042,10 @@ mod tests {
  // Regression for the original Round 277 form — punctuation strip must
  // not regress the bare-token case.
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2(
+ let out = extract_section_citations(
  "// RFC 2131 \u{00a7}3.5 client behavior\n",
  &prefixes,
+ &[],
  );
  assert!(out.is_empty(), "bare RFC form must stay skipped; got: {:?}", out);
  }
@@ -2748,7 +3070,7 @@ mod tests {
  #[test]
  fn extract_v3_skips_bare_tr_someip() {
  let bare = vec!["TR_SOMEIP".to_string()];
- let out = extract_section_citations_v3(
+ let out = extract_section_citations(
  "// drives a Nack with TTL=0 (TR_SOMEIP \u{00a7}6.7.4.2.4).\n",
  &[],
  &bare,
@@ -2759,7 +3081,7 @@ mod tests {
  #[test]
  fn extract_v3_skips_bare_someipsd() {
  let bare = vec!["SOMEIPSD".to_string()];
- let out = extract_section_citations_v3(
+ let out = extract_section_citations(
  "// multicast reply per SOMEIPSD \u{00a7}6.7.5.2 path\n",
  &[],
  &bare,
@@ -2771,7 +3093,7 @@ mod tests {
  fn extract_v3_skips_paren_wrapped_bare_prefix() {
  // R281 leading-punct strip applies in bare mode too.
  let bare = vec!["AUTOSAR".to_string()];
- let out = extract_section_citations_v3(
+ let out = extract_section_citations(
  "// wire format (AUTOSAR \u{00a7}7.3) over UDP\n",
  &[],
  &bare,
@@ -2788,7 +3110,7 @@ mod tests {
  // Internal §X.Y must surface when the preceding word is not in
  // the bare-prefix registry.
  let bare = vec!["TR_SOMEIP".to_string()];
- let out = extract_section_citations_v3(
+ let out = extract_section_citations(
  "// see FOO \u{00a7}4.2.4 internal cite\n",
  &[],
  &bare,
@@ -2802,7 +3124,7 @@ mod tests {
  // same line, both registered in their respective axes → both skip.
  let numeric = vec!["RFC".to_string()];
  let bare = vec!["TR_SOMEIP".to_string()];
- let out = extract_section_citations_v3(
+ let out = extract_section_citations(
  "// RFC 791 \u{00a7}3.1 and TR_SOMEIP \u{00a7}6.7.4.2.4 both\n",
  &numeric,
  &bare,
@@ -2817,7 +3139,7 @@ mod tests {
  // semantics for the numeric path.
  let numeric = vec!["RFC".to_string()];
  let out =
- extract_section_citations_v3("// RFC 2131 \u{00a7}3.5 client\n", &numeric, &[]);
+ extract_section_citations("// RFC 2131 \u{00a7}3.5 client\n", &numeric, &[]);
  assert!(out.is_empty(), "numeric RFC path must keep working; got: {:?}", out);
  }
 
@@ -2846,7 +3168,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let bare = vec!["TR_SOMEIP".to_string()];
- let v = scan_paths_bidirectional_v4(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2857,7 +3179,7 @@ mod tests {
  &[],
  &[],
  &bare,
- )
+        &[])
  .unwrap();
  assert!(
  v.is_empty(),
@@ -2869,9 +3191,10 @@ mod tests {
  #[test]
  fn extract_v2_mixed_internal_and_external_on_same_line() {
  let prefixes = vec!["RFC".to_string()];
- let out = extract_section_citations_v2(
+ let out = extract_section_citations(
  "// see RFC 2131 §3.5 and §4.2.4 here\n",
  &prefixes,
+ &[],
  );
  assert_eq!(out, vec![(1, "4.2.4".to_string())]);
  }
@@ -2888,7 +3211,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let externals = vec!["RFC".to_string()];
- let v = scan_paths_bidirectional_v3(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2898,6 +3221,8 @@ mod tests {
  true,
  &[],
  &externals,
+ &[],
+ &[],
  )
  .unwrap();
  assert!(
@@ -2921,7 +3246,7 @@ mod tests {
  .unwrap();
  let store = AtomicStore::new();
  let externals = vec!["RFC".to_string()];
- let v = scan_paths_bidirectional_v3(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -2931,6 +3256,8 @@ mod tests {
  true,
  &[],
  &externals,
+ &[],
+ &[],
  )
  .unwrap();
  // Only the internal `\u{00a7}99` should surface.
@@ -2959,6 +3286,7 @@ mod tests {
  &["src/".to_string()],
  "ARP_07",
  &prefixes,
+ &[],
  true,
  )
  .unwrap();
@@ -2977,6 +3305,7 @@ mod tests {
  tmp.path(),
  &["src/".to_string()],
  "ARP_07",
+ &[],
  &[],
  true,
  )
@@ -3000,6 +3329,7 @@ mod tests {
  &["src/".to_string()],
  "ARP_07",
  &prefixes,
+ &[],
  true,
  )
  .unwrap();
@@ -3032,6 +3362,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(v.is_empty(), "v1 wrapper must not scan inventory, got: {:?}", v);
@@ -3064,7 +3398,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional_v4(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3075,7 +3409,7 @@ mod tests {
  &prefixes,
  &[],
  &[],
- )
+        &[])
  .unwrap();
  assert!(v.is_empty(), "ledger must suppress Deprecated cite; got: {:?}", v);
  }
@@ -3098,7 +3432,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional_v4(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3109,7 +3443,7 @@ mod tests {
  &prefixes,
  &[],
  &[],
- )
+        &[])
  .unwrap();
  assert!(v.is_empty(), "ledger must suppress Missing cite; got: {:?}", v);
  }
@@ -3139,7 +3473,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional_v4(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3150,7 +3484,7 @@ mod tests {
  &prefixes,
  &[],
  &[],
- )
+        &[])
  .unwrap();
  assert_eq!(v.len(), 1, "_02 must fire (not in ledger); got: {:?}", v);
  match &v[0] {
@@ -3187,7 +3521,7 @@ mod tests {
  since: "Round 285".to_string(),
  }];
  let prefixes = vec!["IPv4_".to_string()];
- let v = scan_paths_bidirectional_v4(
+ let v = scan_paths_bidirectional(
  tmp.path(),
  &["src/".to_string()],
  "Round ",
@@ -3198,7 +3532,7 @@ mod tests {
  &prefixes,
  &[],
  &[],
- )
+        &[])
  .unwrap();
  assert_eq!(
  v.len(),
@@ -3232,6 +3566,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(
@@ -3262,6 +3600,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert!(
@@ -3296,6 +3638,10 @@ mod tests {
  &[],
  None,
  true,
+ &[],
+ &[],
+ &[],
+ &[],
  )
  .unwrap();
  assert_eq!(

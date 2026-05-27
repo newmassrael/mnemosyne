@@ -20,7 +20,7 @@ use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use mnemosyne_validator::{
  add_cross_ref, append_changelog_entry, check_style,
- code_refs::{scan_paths_bidirectional_v4, CodeRefViolation, ViolationKind},
+ code_refs::{scan_paths_bidirectional, CodeRefViolation, ViolationKind},
  compare_typed_facts, default_ruleset_with_config, discover_config,
  emitter::emit_markdown_with_default,
  parse_markdown_with_schema,
@@ -2308,7 +2308,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  let store = AtomicStore::load(&atomic_path)
  .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
- let violations = scan_paths_bidirectional_v4(
+ let violations = scan_paths_bidirectional(
  &root,
  &cfg.paths,
  &prefix,
@@ -2319,8 +2319,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  &cfg.inventory_prefixes,
  &cfg.external_section_prefixes,
  &cfg.external_section_prefixes_bare,
+ &cfg.inventory_path_prefixes,
  )
- .context("scan_paths_bidirectional_v4 failed")?;
+ .context("scan_paths_bidirectional failed")?;
 
  // missing / section_missing / citation_unbound / impl_unbacked / decay
  // / impl_missing / inventory_missing / inventory_deprecated
@@ -2391,6 +2392,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  "valid_section_count": store.sections.len(),
  "valid_inventory_count": store.inventory_entries.len(),
  "inventory_prefixes": cfg.inventory_prefixes,
+ "inventory_path_prefixes": cfg.inventory_path_prefixes,
  "external_section_prefixes": cfg.external_section_prefixes,
  "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
  "missing_count": missing_count,
@@ -2420,6 +2422,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  );
  if !cfg.inventory_prefixes.is_empty() {
  println!("inventory_prefixes={:?} (Round 275 axis)", cfg.inventory_prefixes);
+ }
+ if !cfg.inventory_path_prefixes.is_empty() {
+ println!(
+ "inventory_path_prefixes={:?} (Round 302 section-path axis)",
+ cfg.inventory_path_prefixes
+ );
  }
  if !cfg.external_section_prefixes.is_empty() {
  println!(

@@ -371,6 +371,38 @@ pub struct CodeRefsSection {
  /// the numeric-mode key keeps its meaning.
  #[serde(default)]
  pub external_section_prefixes_bare: Vec<String>,
+
+ /// Inventory citation prefixes with *section-path* tail shape
+ /// (Phase 0 hardening, RFC-002 FR-4 narrow extension).
+ ///
+ /// Companion axis to `inventory_prefixes` for external-spec mirror
+ /// adopters whose citation tail uses section-path characters
+ /// (`A-Za-z0-9./-_`) instead of the opaque-ID shape that R275
+ /// codified (`[A-Z0-9_]+ ending in digit`). Citation form:
+ /// `<prefix><tail>` where `<tail>` matches `[A-Za-z0-9./-_]+` with
+ /// no digit-terminus requirement.
+ ///
+ /// Use case: W3C SCXML / IETF RFC / IEEE / AUTOSAR mirror. An adopter
+ /// registers `inventory_path_prefixes = ["W3C SCXML "]` and a W3C
+ /// SCXML section like `3.13` gets registered as `InventoryEntry { id
+ /// = "W3C SCXML 3.13", … }` in the atomic store. Citations of the
+ /// form `// W3C SCXML 3.13` in code resolve against the inventory
+ /// axis without forcing a mass cite migration to backslash-sigil form.
+ ///
+ /// Resolution target is the same `InventoryEntry` store as
+ /// `inventory_prefixes` — they are two tail-shape axes that feed the
+ /// same lifecycle (active / deprecated / reserved). `severity_inventory`
+ /// applies to both. Orphan-ledger suppression via
+ /// `[[orphan_ledger]] kind = "inventory_citation"` covers both.
+ ///
+ /// Empty list = path-shape axis disabled. Existing `inventory_prefixes`
+ /// users (R275) are unaffected — the opaque-ID-shape key keeps its
+ /// meaning. A prefix may be registered in both axes if the standard
+ /// supports both citation forms; matching tries the path-shape axis
+ /// after the opaque-ID axis (longest-prefix-first ordering within
+ /// each axis is preserved).
+ #[serde(default)]
+ pub inventory_path_prefixes: Vec<String>,
 }
 
 fn default_severity_reject() -> String {
