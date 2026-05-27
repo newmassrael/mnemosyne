@@ -30,7 +30,8 @@
 //! ref orphan reject). Schema + mutate primitive only — validator
 //! extension and section seeding are deferred to later rounds.
 
-use crate::schema::{DecisionStatus, Section};
+use crate::schema::Section;
+use mnemosyne_plugin::{DecisionStatus, InventoryStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -354,25 +355,6 @@ impl AtomicChangelogEntry {
  }
 }
 
-/// Inventory entry lifecycle status (Round 273, Phase 1A).
-///
-/// Distinguished from `DecisionStatus` (audit-trail genre — `Active` /
-/// `Superseded` / `Removed` over Section / ChangelogEntry decisions) because
-/// inventory entries belong to a different genre: stable external IDs (test
-/// cases, requirement IDs, regulation IDs) whose lifecycle vocabulary is
-/// "in use" / "no longer cited" / "set aside but reserved". Cite-time
-/// reject semantics in later rounds key off `Deprecated`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum InventoryStatus {
- #[default]
- Active,
- Deprecated,
- Reserved,
-}
-
-
 /// Atomic inventory entry — Phase 1A 5th closed-form entity (Round 273).
 ///
 /// Schema rationale: external-dogfood projects (TC8 harness as the seeding
@@ -636,6 +618,9 @@ impl mnemosyne_plugin::AtomicStoreView for AtomicStore {
 
  let section_ids_with_implied_parents = self.atomic_section_id_set();
 
+ // R309 textbook unification: SectionView.decision_status now carries
+ // the canonical DecisionStatus (lifted to mnemosyne-plugin); no
+ // adapter layer between schema and view types.
  let sections: BTreeMap<String, mnemosyne_plugin::SectionView> = self
  .sections
  .iter()
@@ -648,36 +633,20 @@ impl mnemosyne_plugin::AtomicStoreView for AtomicStore {
   symbol: i.symbol.clone(),
  })
  .collect();
- let decision_status = sec.decision_status.map(|s| match s {
- DecisionStatus::Active => mnemosyne_plugin::DecisionStatusView::Active,
- DecisionStatus::Superseded => {
-  mnemosyne_plugin::DecisionStatusView::Superseded
- }
- DecisionStatus::Removed => mnemosyne_plugin::DecisionStatusView::Removed,
- });
  (
  sid.clone(),
  mnemosyne_plugin::SectionView {
   implementations,
-  decision_status,
+  decision_status: sec.decision_status,
  },
  )
  })
  .collect();
 
- let inventory: BTreeMap<String, mnemosyne_plugin::InventoryStatusView> = self
+ let inventory: BTreeMap<String, InventoryStatus> = self
  .inventory_entries
  .iter()
- .map(|(id, e)| {
- let status = match e.status {
- InventoryStatus::Active => mnemosyne_plugin::InventoryStatusView::Active,
- InventoryStatus::Reserved => mnemosyne_plugin::InventoryStatusView::Reserved,
- InventoryStatus::Deprecated => {
-  mnemosyne_plugin::InventoryStatusView::Deprecated
- }
- };
- (id.clone(), status)
- })
+ .map(|(id, e)| (id.clone(), e.status))
  .collect();
 
  mnemosyne_plugin::AtomicSnapshot {

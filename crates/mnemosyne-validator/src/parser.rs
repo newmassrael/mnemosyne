@@ -22,8 +22,9 @@
 
 use crate::config::SchemaSection;
 use crate::schema::{
- ChangelogEntry, CrossRef, DecisionStatus, ParsedDoc, RefKind, Section,
+ ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section,
 };
+use mnemosyne_plugin::DecisionStatus;
 use std::collections::BTreeMap;
 
 /// markdown bytes → typed facts state. Deterministic — same input → same ParsedDoc.

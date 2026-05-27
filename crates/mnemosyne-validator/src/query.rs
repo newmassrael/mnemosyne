@@ -34,7 +34,8 @@
 use crate::atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
 };
-use crate::schema::{ChangelogEntry, CrossRef, DecisionStatus, ParsedDoc, RefKind, Section};
+use crate::schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
+use mnemosyne_plugin::DecisionStatus;
 use crate::workspace::Workspace;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -1345,8 +1346,9 @@ mod tests {
 
  use crate::atomic::{
  AtomicChangelogEntry, AtomicSection, ExampleBlock, Implementation,
- InventoryEntry, InventoryStatus, RejectedAlternative,
+ InventoryEntry, RejectedAlternative,
  };
+ use mnemosyne_plugin::InventoryStatus;
 
  fn store_with_one_section(id: &str, s: AtomicSection) -> AtomicStore {
  let mut store = AtomicStore::default();

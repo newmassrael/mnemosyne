@@ -63,7 +63,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
-use crate::schema::DecisionStatus;
+use mnemosyne_plugin::DecisionStatus;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
 /// file. `entry_id` retains the cite shape verbatim (`""` or
@@ -1275,7 +1275,7 @@ impl SetEqualityValidator {
  for (line, inventory_id) in inventory_cites {
  let kind = match snapshot.inventory.get(&inventory_id).copied() {
   None => Some(ViolationKind::InventoryMissing),
-  Some(mnemosyne_plugin::InventoryStatusView::Deprecated) => {
+  Some(mnemosyne_plugin::InventoryStatus::Deprecated) => {
   Some(ViolationKind::InventoryDeprecated)
   }
   // Active / Reserved — cite-permitted.
@@ -1336,36 +1336,25 @@ impl SetEqualityValidator {
  if !section.implementations.is_empty() {
  continue;
  }
- let resolved_view = section
+ // R309 textbook unification: SectionView.decision_status now IS
+ // DecisionStatus (canonical, lifted to mnemosyne-plugin). Step 4
+ // axiom + emitted ImplementationMissing variant share the same enum
+ // — no adapter layer.
+ let resolved = section
  .decision_status
- .unwrap_or(mnemosyne_plugin::DecisionStatusView::Active);
- if resolved_view == mnemosyne_plugin::DecisionStatusView::Removed {
+ .unwrap_or(DecisionStatus::Active);
+ if resolved == DecisionStatus::Removed {
  continue;
  }
- let schema_status = section.decision_status.map(view_to_schema_decision_status);
  violations.push(CodeRefViolation::ImplementationMissing {
  section_id: section_id.clone(),
- decision_status: schema_status,
+ decision_status: section.decision_status,
  });
  }
  }
 
  sort_violations(&mut violations);
  Ok(violations)
- }
-}
-
-/// Map plugin-substrate `DecisionStatusView` back onto the validator's
-/// schema `DecisionStatus`. Used at the `Vec<CodeRefViolation>` boundary
-/// where `ImplementationMissing` carries `Option<DecisionStatus>` for
-/// JSON / TTY back-compat.
-fn view_to_schema_decision_status(
- v: mnemosyne_plugin::DecisionStatusView,
-) -> DecisionStatus {
- match v {
- mnemosyne_plugin::DecisionStatusView::Active => DecisionStatus::Active,
- mnemosyne_plugin::DecisionStatusView::Superseded => DecisionStatus::Superseded,
- mnemosyne_plugin::DecisionStatusView::Removed => DecisionStatus::Removed,
  }
 }
 
@@ -2861,7 +2850,8 @@ mod tests {
  fn scan_v5_section_path_inventory_active_silent() {
  // Registered InventoryEntry with Active status — cite passes
  // silently on the section-path axis axis, same policy as R275.
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -2965,7 +2955,8 @@ mod tests {
 
  #[test]
  fn scan_v2_inventory_deprecated_reject() {
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
@@ -3005,7 +2996,8 @@ mod tests {
 
  #[test]
  fn scan_v2_inventory_active_and_reserved_silent() {
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -3462,7 +3454,8 @@ mod tests {
  // The pre-Round-275 7-arg shape calls into v2 with an empty
  // inventory_prefixes slice. Even when the store has Deprecated
  // entries, no violation surfaces — back-compat guarantee.
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
@@ -3497,7 +3490,8 @@ mod tests {
 
  #[test]
  fn inventory_orphan_ledger_suppresses_inventory_deprecated() {
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 hist\n").unwrap();
@@ -3571,7 +3565,8 @@ mod tests {
  #[test]
  fn inventory_orphan_ledger_unregistered_fires() {
  // (file, id) not in ledger → violation fires normally.
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_02 cite\n").unwrap();
@@ -3619,7 +3614,8 @@ mod tests {
  fn inventory_orphan_ledger_axis_filter_isolates_kinds() {
  // CodeCitation ledger rows must NOT suppress inventory violations,
  // and vice-versa. Axes are independent.
- use crate::atomic::{AtomicStore, InventoryEntry, InventoryStatus};
+ use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_plugin::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 cite\n").unwrap();

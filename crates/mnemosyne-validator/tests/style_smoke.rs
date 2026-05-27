@@ -4,9 +4,9 @@
 //! markdown parser path — guards against drift between style.rs and the
 //! Section.body / ChangelogEntry.sub_bullets surface.
 
+use mnemosyne_plugin::DecisionStatus;
 use mnemosyne_validator::{
- check_style, default_ruleset, parse_markdown, schema::DecisionStatus, AtomicStore,
- StyleSeverity,
+ check_style, default_ruleset, parse_markdown, AtomicStore, StyleSeverity,
 };
 
 // Round 140 detector tightening — strong-carry skip applies to top_level_numeric

@@ -1904,3 +1904,38 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 309 — Textbook unification — DecisionStatus + InventoryStatus enums lifted to mnemosyne-plugin substrate; parallel View enums (DecisionStatusView + InventoryStatusView) and view_to_schema adapter retired; single canonical home across the workspace
+
+**Changes**:
+- DecisionStatus enum lifted from mnemosyne-validator::schema to mnemosyne-plugin (substrate-canonical home) — all derives preserved (Debug Clone Copy PartialEq Eq PartialOrd Ord Hash Serialize Deserialize) plus serde rename_all lowercase
+- InventoryStatus enum lifted from mnemosyne-validator::atomic to mnemosyne-plugin (substrate-canonical home) — all derives preserved (Debug Clone Copy PartialEq Eq Serialize Deserialize) plus Default Active plus serde rename_all snake_case
+- DecisionStatusView and InventoryStatusView parallel View enums retired in full — they existed only as boundary adapters and are no longer needed since SectionView.decision_status and AtomicSnapshot.inventory now carry the canonical types directly
+- view_to_schema_decision_status adapter function retired from code_refs.rs — Step 4 coverage axiom emits CodeRefViolation::ImplementationMissing.decision_status directly from snapshot section.decision_status without enum translation
+- impl AtomicStoreView for AtomicStore simplified — Inventory and Section iteration paths drop the match-arm view conversion and copy canonical enum values straight into the snapshot
+- 17 import sites updated across mnemosyne-validator (lib.rs pub use lines, schema.rs use, atomic.rs use, code_refs.rs lib + 7 test mods, parser.rs, query.rs, validator.rs, workspace.rs tests, style.rs 10 fixture rows) plus mnemosyne-cli (atomic_cli.rs + main.rs 8 sites) plus 2 integration tests
+- mnemosyne-validator no longer re-exports DecisionStatus or InventoryStatus from its crate root — single canonical import path is mnemosyne_plugin::DecisionStatus and mnemosyne_plugin::InventoryStatus across the workspace
+
+
+
+**Verification**:
+- cargo build --release green across all 9 workspace crates after enum lift and 17-site import migration
+- cargo test --workspace --release green — atomic_store_view_parity test now imports DecisionStatus + InventoryStatus from mnemosyne_plugin directly, no view-type indirection; style_smoke test migrated similarly
+- cargo clippy --workspace --all-targets --release -- -D warnings exits 0 — R308 D9 gate held under the refactor (no new warnings introduced by the enum migration)
+- cargo run mnemosyne-cli validate-workspace baseline clean — entries 55 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0
+- Serde wire format unchanged — both lifted enums preserve their exact serde rename_all attributes (DecisionStatus lowercase / InventoryStatus snake_case) so docs/.atomic/workspace.atomic.json round-trips byte-identically (verified via validate-workspace round-trip mandatory N/N)
+- JSON wire-format spot-check on a Deprecated InventoryStatus entry round-trips as deprecated string with single-word variants serializing identically under lowercase and snake_case rules (no on-disk migration needed)
+
+
+
+
+**Carry forward**:
+- R310 D3 transport abstraction (MCP self-ref dogfood) — original R308/R309 plan moves forward to R310; mnemosyne-plugin-mcp-resolver crate with McpProcessResolver (rmcp client + TokioChildProcess + Runtime::block_on bridge), resolve_symbol_at MCP tool in mnemosyne-mcp, transport_parity integration test asserting InProcess vs MCP equality
+- R311 D4+D5 medium adapter substrate — MediumAdapter trait in mnemosyne-core + DesignDocAdapter refactor + mnemosyne-core owning surface declaration
+- R312+ D6 external plugin extension mechanism — dlopen libloading or external-binary orchestrator path (RFC-003 risk register #5)
+- D7 severity_symbol promote — Mnemosyne dogfood activates plugins.symbol_resolver.rust block; N round measurement evidence before promotion decision
+- D8 Round 172 priority audit re-validation — at Phase 1 entry trigger re-measure value × measurability over risk × unmet_deps
+- ValidationFinding.extras typing review — re-evaluated and accepted as correct substrate extensibility pattern; analogous to MCP tool result content + GraphQL extensions + OTel attributes; no further work needed
+- Future pedantic tightening — current workspace lint baseline is clippy::all warn; promote to clippy::pedantic warn (or selectively deny on chosen pedantic lints) once codebase absorbs a few rounds of D9 baseline
+
+
+

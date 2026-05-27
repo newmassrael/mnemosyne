@@ -157,7 +157,8 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::schema::{DecisionStatus, RefKind, Section};
+ use crate::schema::{RefKind, Section};
+ use mnemosyne_plugin::DecisionStatus;
 
  fn make_section(id: &str, title: &str, parent_doc: &str) -> Section {
  Section {

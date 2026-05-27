@@ -41,7 +41,7 @@ pub mod commit_ledger;
 pub mod redact;
 
 pub use schema::{
- ChangelogEntry, CrossRef, DecisionStatus, FrozenList, LockKind, ParsedDoc, RefKind, Section,
+ ChangelogEntry, CrossRef, FrozenList, LockKind, ParsedDoc, RefKind, Section,
 };
 pub use parser::{parse_markdown, parse_markdown_with_schema};
 pub use emitter::{compare_typed_facts, emit_markdown, to_github_anchor, RoundTripDiff};
@@ -86,7 +86,7 @@ pub use atomic::{
  set_section_rationale, set_section_title, AtomicChangelogEntry,
  AtomicMutateError, AtomicMutateReceipt, AtomicSection, AtomicStore,
  AtomicStoreError, ExampleBlock, Implementation, InventoryEntry,
- InventoryStatus, NormativeExcerpt, RejectedAlternative,
+ NormativeExcerpt, RejectedAlternative,
 };
 pub use render::{render_changelog_entry, render_section, RenderError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};

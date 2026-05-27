@@ -12,7 +12,7 @@
 //! `to_target` / `ref_kind` enum (decision / impl / cross_doc) /
 //! `created_at_changelog_entry` ref.
 
-use serde::{Deserialize, Serialize};
+use mnemosyne_plugin::DecisionStatus;
 use std::collections::BTreeMap;
 
 /// Section entity — closed-form 5 field full shape.
@@ -47,15 +47,6 @@ pub struct Section {
  /// keys by). Lookup helpers (`resolve_atomic_section`) try this first
  /// and fall back to `section_id` for legacy / pre-decompose docs.
  pub atomic_section_id: Option<String>,
-}
-
-/// Section.decision_status enum — closed-form registered carry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DecisionStatus {
- Active,
- Superseded,
- Removed,
 }
 
 /// ChangelogEntry — closed-form 4 field, append-only.

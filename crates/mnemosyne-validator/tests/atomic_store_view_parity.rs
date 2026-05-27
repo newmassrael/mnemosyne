@@ -8,12 +8,10 @@
 //! round trip (atomic store fields → snapshot → indices the validator
 //! consumes).
 
-use mnemosyne_plugin::{AtomicStoreView, DecisionStatusView, InventoryStatusView};
+use mnemosyne_plugin::{AtomicStoreView, DecisionStatus, InventoryStatus};
 use mnemosyne_validator::atomic::{
     AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry,
-    InventoryStatus,
 };
-use mnemosyne_validator::schema::DecisionStatus;
 
 fn build_store() -> AtomicStore {
     let mut store = AtomicStore::new();
@@ -109,7 +107,7 @@ fn snapshot_section_view_carries_implementations_and_status() {
 
     let sec2 = snapshot.sections.get("sec2/sub").expect("sec2/sub present");
     assert!(sec2.implementations.is_empty());
-    assert_eq!(sec2.decision_status, Some(DecisionStatusView::Superseded));
+    assert_eq!(sec2.decision_status, Some(DecisionStatus::Superseded));
 }
 
 #[test]
@@ -119,11 +117,11 @@ fn snapshot_inventory_carries_status_view() {
 
     assert_eq!(
         snapshot.inventory.get("INV_ACTIVE_01").copied(),
-        Some(InventoryStatusView::Active)
+        Some(InventoryStatus::Active)
     );
     assert_eq!(
         snapshot.inventory.get("INV_DEPR_01").copied(),
-        Some(InventoryStatusView::Deprecated)
+        Some(InventoryStatus::Deprecated)
     );
     assert!(!snapshot.inventory.contains_key("INV_UNKNOWN"));
 }

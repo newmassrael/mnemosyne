@@ -76,13 +76,13 @@ pub struct AtomicSnapshot {
     /// `/` path components (mirror of `AtomicStore::atomic_section_id_set`).
     pub section_ids_with_implied_parents: BTreeSet<String>,
     pub sections: BTreeMap<String, SectionView>,
-    pub inventory: BTreeMap<String, InventoryStatusView>,
+    pub inventory: BTreeMap<String, InventoryStatus>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SectionView {
     pub implementations: Vec<ImplementationRef>,
-    pub decision_status: Option<DecisionStatusView>,
+    pub decision_status: Option<DecisionStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,20 +91,34 @@ pub struct ImplementationRef {
     pub symbol: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Section.decision_status lifecycle vocabulary — substrate-canonical
+/// enum. Lives in `mnemosyne-plugin` (not `mnemosyne-validator`) so
+/// every plugin author works against one type, and the validator
+/// snapshot returned from `AtomicStoreView::snapshot` round-trips
+/// without an adapter.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
-pub enum DecisionStatusView {
+pub enum DecisionStatus {
     Active,
     Superseded,
     Removed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum InventoryStatusView {
+/// Inventory entry lifecycle vocabulary — substrate-canonical enum.
+/// Genre distinct from `DecisionStatus`: stable external IDs (test
+/// cases, requirement IDs, regulation IDs) whose lifecycle is
+/// `Active` / `Deprecated` / `Reserved`. Lives in `mnemosyne-plugin`
+/// alongside `DecisionStatus` so every plugin reads one canonical
+/// status surface.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InventoryStatus {
+    #[default]
     Active,
-    Reserved,
     Deprecated,
+    Reserved,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

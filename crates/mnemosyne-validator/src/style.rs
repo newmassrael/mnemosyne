@@ -856,7 +856,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  let long = "-".repeat(1500);
@@ -874,7 +874,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  let long = "-".repeat(2000);
@@ -925,7 +925,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  // 250-char sentence — under the new 300 cap, no violation (was over 200 cap pre-140).
@@ -944,7 +944,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  let body2 = format!("{}.", "-".repeat(350));
@@ -964,7 +964,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  doc.bodies.insert("1".into(), "-".repeat(6000));
@@ -1022,7 +1022,7 @@ mod tests {
  parent_doc: "TEST".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  doc.bodies
@@ -1068,7 +1068,7 @@ mod tests {
  parent_doc: "GENERATED.md".into(),
  parent_section: None,
  title: "4.2".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  // Bare-key uniformity: this test pre-dates the atomic_section_id
  // bridge and intentionally collapses parser-key and atomic-key onto
  // the same string, so the atomic-store fallback path covers the
@@ -1143,7 +1143,7 @@ mod tests {
  parent_doc: "GENERATED.md".into(),
  parent_section: None,
  title: "1".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: Some("p/1".into()),
  });
  let mut store = AtomicStore::default();
@@ -1282,7 +1282,7 @@ mod tests {
  parent_doc: "DESIGN.md".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  doc.bodies
@@ -1299,7 +1299,7 @@ mod tests {
  parent_doc: "DESIGN.md".into(),
  parent_section: None,
  title: "Test".into(),
- decision_status: crate::schema::DecisionStatus::Active,
+ decision_status: mnemosyne_plugin::DecisionStatus::Active,
  atomic_section_id: None,
  });
  doc.bodies

@@ -29,6 +29,7 @@
 //! sub_bullets field preserved).
 
 use anyhow::{anyhow, bail, Context, Result};
+use mnemosyne_plugin::{DecisionStatus, InventoryStatus};
 use mnemosyne_validator::{
  add_inventory_entry, add_section_caveat, add_section_example,
  add_section_implementation, append_changelog_entry,
@@ -39,8 +40,8 @@ use mnemosyne_validator::{
  set_section_impact_scope, set_section_inputs, set_section_intent,
  set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
  set_section_parent_section, set_section_rationale, set_section_title,
- AtomicMutateError, AtomicMutateReceipt, AtomicStore, DecisionStatus,
- ExampleBlock, InventoryStatus, RejectedAlternative,
+ AtomicMutateError, AtomicMutateReceipt, AtomicStore,
+ ExampleBlock, RejectedAlternative,
 };
 use std::fs;
 use std::io::Write;

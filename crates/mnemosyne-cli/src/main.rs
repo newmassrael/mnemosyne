@@ -722,9 +722,9 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  } else {
  for (id, entry) in &atomic_store.inventory_entries {
  let status_label = match entry.status {
-  mnemosyne_validator::InventoryStatus::Active => "active",
-  mnemosyne_validator::InventoryStatus::Deprecated => "deprecated",
-  mnemosyne_validator::InventoryStatus::Reserved => "reserved",
+  mnemosyne_plugin::InventoryStatus::Active => "active",
+  mnemosyne_plugin::InventoryStatus::Deprecated => "deprecated",
+  mnemosyne_plugin::InventoryStatus::Reserved => "reserved",
  };
  let section_part = entry
   .section_ref
@@ -755,9 +755,9 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  println!("{}", serde_json::to_string_pretty(&view)?);
  } else {
  let status_label = match entry.status {
- mnemosyne_validator::InventoryStatus::Active => "active",
- mnemosyne_validator::InventoryStatus::Deprecated => "deprecated",
- mnemosyne_validator::InventoryStatus::Reserved => "reserved",
+ mnemosyne_plugin::InventoryStatus::Active => "active",
+ mnemosyne_plugin::InventoryStatus::Deprecated => "deprecated",
+ mnemosyne_plugin::InventoryStatus::Reserved => "reserved",
  };
  println!("inventory_id: {}", inv_id);
  println!("status: {}", status_label);
@@ -1451,8 +1451,8 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  for (section_id, section) in &store.sections {
  if matches!(
  section.decision_status,
- Some(mnemosyne_validator::DecisionStatus::Superseded)
- | Some(mnemosyne_validator::DecisionStatus::Removed)
+ Some(mnemosyne_plugin::DecisionStatus::Superseded)
+ | Some(mnemosyne_plugin::DecisionStatus::Removed)
  ) {
  targets.push(section_id.as_str());
  }
