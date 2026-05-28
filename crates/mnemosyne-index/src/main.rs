@@ -6,7 +6,7 @@
 //! atomic log) and [`IndexReader`] (serve point queries from it). It lives on
 //! the RocksDB subgraph on purpose — the authoring binaries (`mnemosyne-cli`,
 //! `mnemosyne-mcp`) carry no `store`/`facts` edge, so the write path never pays
-//! the RocksDB cost (ARCHITECTURE.md §4; the point of Round 328).
+//! the RocksDB cost (ARCHITECTURE.md persistence model; the point of Round 328).
 //!
 //! The atomic log is the single source of truth; the index this tool writes is
 //! a derived, rebuildable view (ARCHITECTURE.md anti-drift invariant #2), so

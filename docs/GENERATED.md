@@ -2652,3 +2652,23 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 333 — uniform code-citation guard coverage — add index, ops, and tree-sitter-rust src to [code_refs] paths — Close the citation-guard coverage gap. The validate-code-refs scan set listed only 15 of the 18 production crates, leaving mnemosyne-index (R331), mnemosyne-ops (R319), and mnemosyne-plugin-tree-sitter-rust unguarded — their Round-NNN and section citations were never checked by the pre-commit gate, so a hallucinated round number in those crates would have passed silently. Add all three src trees to the [code_refs] scan paths so every production crate is guarded uniformly. Extending coverage immediately earned its keep: it caught a bare section-4 citation in the R332 admin-binary doc comment, which the citation grammar reads as an atomic-store section reference (the section sigil is reserved for store sections, not ARCHITECTURE.md headings); reworded to unambiguous prose. ops and the tree-sitter plugin passed clean, confirming the gap was coverage, not latent corruption.
+
+**Changes**:
+- Add mnemosyne-index, mnemosyne-ops, and mnemosyne-plugin-tree-sitter-rust src trees to the [code_refs] scan paths so all 18 production crates are citation-guarded uniformly
+- Reword a bare §4 citation in the R332 admin-binary doc comment that the extended guard correctly flagged as a missing atomic-store section reference
+
+
+
+**Verification**:
+- validate-code-refs now scans 18/18 crate src trees with violations total=0 (was 15/18, leaving index/ops/plugin unguarded)
+- cargo build green; the pre-commit and pre-push gates (fmt, clippy -D warnings, validate-workspace) stay clean
+
+
+
+
+**Carry forward**:
+- Uniform guard coverage is now policy: any new production crate must be added to the [code_refs] scan paths in the same round it is introduced — R319 (ops) and R331 (index) both missed this, which is how the gap accumulated
+
+
+
