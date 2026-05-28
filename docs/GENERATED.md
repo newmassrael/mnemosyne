@@ -2561,3 +2561,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 329 — Convergence B1: project the atomic log into Section facts — Add the first atomic-to-fact projection: mnemosyne-atomic gains project_section_facts / project_cross_ref_facts mapping the live AtomicStore into core SectionFact + CrossRefFact with a deterministic SHA-256-derived entity_id, RocksDB-free since the canonical structs moved to core in R328.
+
+**Changes**:
+- Added crates/mnemosyne-atomic/src/project.rs — AtomicStore::project_section_facts + project_cross_ref_facts map the live store's sections and impact_scope edges onto core SectionFact / CrossRefFact at MAIN_BRANCH_ID, valid_from 0 (single-snapshot scope honest to the single-branch dogfood).
+- section_entity_id derives a stable u64 from the first 8 big-endian bytes of SHA-256(section_id) — content-addressable, so rebuilds map a section to the same composite-key row; SectionFact keeps the string id for reverse lookup.
+- No new dependency edge: the projection emits core fact types over the existing atomic-to-core edge, keeping mnemosyne-store (RocksDB) out of the authoring path (the point of R328).
+
+
+
+**Verification**:
+- 4 new unit tests pass: one SectionFact per section, deterministic + distinct entity_id, cross-ref endpoints match section entity_ids, empty-store no-op.
+- Full mnemosyne-atomic suite green; cargo clippy --all-targets -D warnings clean; cargo fmt --all --check clean.
+
+
+
+
+**Carry forward**:
+- B2 next — project ChangelogEntry (round_number parsed from the prose entry_id key, summary, appended_at); this is the round that settles its canonical scalar shape under a real consumer.
+- B3 after — persist projected facts into the RocksDB index via TypedFactStore on the cascade/server side plus a rebuild-from-log path; the index stays a derived, rebuildable view.
+
+
+

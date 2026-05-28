@@ -30,7 +30,9 @@
 //! ref orphan reject). Schema + mutate primitive only — validator
 //! extension and section seeding are deferred to later rounds.
 
+pub mod project;
 pub mod redact;
+pub use project::{section_entity_id, MAIN_BRANCH_ID};
 pub use redact::*;
 
 use mnemosyne_core::{DecisionStatus, InventoryStatus};
