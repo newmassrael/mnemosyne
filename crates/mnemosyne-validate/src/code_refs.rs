@@ -448,7 +448,7 @@ pub fn extract_section_citations(
         // — single-line backtick state. `` inside a code-span
         // is documentation example, not a citation. Toggled on each backtick
         // and reset at line end (multi-line fenced code spans are not
-        // recognized in v1; the comment-only stripper already gates this for
+        // recognized; the comment-only stripper already gates this for
         // most source files, and inline backtick spans cover the doc-comment
         // example case that survives stripping).
         let mut in_backtick = false;
@@ -565,8 +565,8 @@ pub fn extract_section_citations(
 /// registered in both if the standard supports both forms; matching
 /// tries the relevant axis.
 ///
-/// Multi-token prefixes (e.g., `"ETSI TS"`) are not v1 — only the last
-/// non-whitespace token before the trigger is consulted. Workaround:
+/// Multi-token prefixes (e.g., `"ETSI TS"`) match on only the last
+/// non-whitespace token before the trigger. Workaround:
 /// register the trailing token (`"TS"`) as a slightly looser match.
 fn is_external_section_cite(
     line_before_sigil: &str,
@@ -1302,7 +1302,7 @@ impl SetEqualityValidator {
                 }
                 // Section exists — check spec-side membership of (file in
                 // §<id>.implementations files). Matching is by `file` string only;
-                // symbol is opaque metadata not in the v1 bidirectional set-equality.
+                // symbol is opaque metadata not in the bidirectional set-equality.
                 let bound = impl_files_by_section
                     .get(section_id.as_str())
                     .map(|files| files.contains(rel_str.as_str()))
@@ -2619,7 +2619,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v3_survives_non_ascii_comment_chars() {
+    fn scan_survives_non_ascii_comment_chars() {
         // Round 279 Bug #1 regression — full scan path (including
         // strip_to_comments) must not panic when a workspace source file
         // contains the original em-dash trigger from the tc8-harness
@@ -2941,7 +2941,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v2_inventory_missing_reject() {
+    fn scan_inventory_missing_reject() {
         use mnemosyne_atomic::AtomicStore;
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -2973,7 +2973,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v2_inventory_deprecated_reject() {
+    fn scan_inventory_deprecated_reject() {
         use mnemosyne_atomic::{AtomicStore, InventoryEntry};
         use mnemosyne_core::InventoryStatus;
         let tmp = TempDir::new().unwrap();
@@ -3014,7 +3014,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v2_inventory_active_and_reserved_silent() {
+    fn scan_inventory_active_and_reserved_silent() {
         use mnemosyne_atomic::{AtomicStore, InventoryEntry};
         use mnemosyne_core::InventoryStatus;
         let tmp = TempDir::new().unwrap();
@@ -3066,7 +3066,7 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn extract_v2_skips_rfc_external_cite() {
+    fn extract_skips_rfc_external_cite() {
         let prefixes = vec!["RFC".to_string()];
         let out = extract_section_citations("// RFC 2131 §3.5 is external\n", &prefixes, &[]);
         assert!(
@@ -3077,23 +3077,23 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_skips_ieee_external_cite() {
+    fn extract_skips_ieee_external_cite() {
         let prefixes = vec!["IEEE".to_string()];
         let out = extract_section_citations("// IEEE 802.3 §2.4 frame format\n", &prefixes, &[]);
         assert!(out.is_empty(), "IEEE skip failed, got: {:?}", out);
     }
 
     #[test]
-    fn extract_v2_skips_iso_iec_external_cite() {
+    fn extract_skips_iso_iec_external_cite() {
         // ISO/IEC contains `/` and is itself a single non-whitespace token
-        // — the v1 single-token rule handles it natively.
+        // — the single-token rule handles it natively.
         let prefixes = vec!["ISO/IEC".to_string()];
         let out = extract_section_citations("// ISO/IEC 14882 §1.5\n", &prefixes, &[]);
         assert!(out.is_empty(), "ISO/IEC skip failed, got: {:?}", out);
     }
 
     #[test]
-    fn extract_v2_keeps_internal_when_no_external_context() {
+    fn extract_keeps_internal_when_no_external_context() {
         let prefixes = vec!["RFC".to_string(), "IEEE".to_string()];
         let out = extract_section_citations("// §4.2.4 internal cite\n", &prefixes, &[]);
         assert_eq!(out, vec![(1, "4.2.4".to_string())]);
@@ -3110,7 +3110,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_requires_whitespace_between_numeric_and_sigil() {
+    fn extract_requires_whitespace_between_numeric_and_sigil() {
         // `RFC2131§3` (no whitespace) is NOT the recognized form — falls
         // through to the regular extractor. Source uses `\u{00a7}` so the
         // fixture string itself doesn't show up as a `§3` citation when
@@ -3125,7 +3125,7 @@ mod tests {
     // standard reference in parens / brackets / quotes.
 
     #[test]
-    fn extract_v2_skips_paren_prefixed_rfc() {
+    fn extract_skips_paren_prefixed_rfc() {
         let prefixes = vec!["RFC".to_string()];
         let out = extract_section_citations(
             "// fragmentation fields (RFC 791 \u{00a7}3.1) per spec\n",
@@ -3140,7 +3140,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_skips_bracket_prefixed_rfc() {
+    fn extract_skips_bracket_prefixed_rfc() {
         let prefixes = vec!["RFC".to_string()];
         let out = extract_section_citations(
             "// see [RFC 793 \u{00a7}3.9] for retransmit semantics\n",
@@ -3155,7 +3155,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_skips_quote_prefixed_rfc() {
+    fn extract_skips_quote_prefixed_rfc() {
         let prefixes = vec!["RFC".to_string()];
         let out = extract_section_citations(
             "// per \"RFC 2131 \u{00a7}3.4\" the client retransmits\n",
@@ -3170,7 +3170,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_bare_rfc_form_still_skipped() {
+    fn extract_bare_rfc_form_still_skipped() {
         // Regression for the original Round 277 form — punctuation strip must
         // not regress the bare-token case.
         let prefixes = vec!["RFC".to_string()];
@@ -3201,7 +3201,7 @@ mod tests {
     // so the prefix sits directly before the sigil: `<PREFIX> §<id>`.
 
     #[test]
-    fn extract_v3_skips_bare_tr_someip() {
+    fn extract_skips_bare_tr_someip() {
         let bare = vec!["TR_SOMEIP".to_string()];
         let out = extract_section_citations(
             "// drives a Nack with TTL=0 (TR_SOMEIP \u{00a7}6.7.4.2.4).\n",
@@ -3216,7 +3216,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v3_skips_bare_someipsd() {
+    fn extract_skips_bare_someipsd() {
         let bare = vec!["SOMEIPSD".to_string()];
         let out = extract_section_citations(
             "// multicast reply per SOMEIPSD \u{00a7}6.7.5.2 path\n",
@@ -3231,7 +3231,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v3_skips_paren_wrapped_bare_prefix() {
+    fn extract_skips_paren_wrapped_bare_prefix() {
         // R281 leading-punct strip applies in bare mode too.
         let bare = vec!["AUTOSAR".to_string()];
         let out = extract_section_citations(
@@ -3247,7 +3247,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v3_bare_mode_negative_unregistered_prefix() {
+    fn extract_bare_mode_negative_unregistered_prefix() {
         // Internal §X.Y must surface when the preceding word is not in
         // the bare-prefix registry.
         let bare = vec!["TR_SOMEIP".to_string()];
@@ -3256,7 +3256,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v3_numeric_and_bare_axes_independent() {
+    fn extract_numeric_and_bare_axes_independent() {
         // `RFC 791 §3.1` (numeric) + `TR_SOMEIP §6.7.4.2.4` (bare) on the
         // same line, both registered in their respective axes → both skip.
         let numeric = vec!["RFC".to_string()];
@@ -3270,7 +3270,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v3_numeric_mode_unaffected_by_bare_registration() {
+    fn extract_numeric_mode_unaffected_by_bare_registration() {
         // R277 / R281 regression: numeric path keeps working when only the
         // numeric axis is registered; an empty bare slice must not change
         // semantics for the numeric path.
@@ -3330,7 +3330,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_v2_mixed_internal_and_external_on_same_line() {
+    fn extract_mixed_internal_and_external_on_same_line() {
         let prefixes = vec!["RFC".to_string()];
         let out =
             extract_section_citations("// see RFC 2131 §3.5 and §4.2.4 here\n", &prefixes, &[]);
@@ -3338,7 +3338,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v3_external_rfc_cite_does_not_trigger_section_missing() {
+    fn scan_external_rfc_cite_does_not_trigger_section_missing() {
         use mnemosyne_atomic::AtomicStore;
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3371,7 +3371,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v3_internal_cite_still_fires_after_external_skip() {
+    fn scan_internal_cite_still_fires_after_external_skip() {
         use mnemosyne_atomic::AtomicStore;
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3470,10 +3470,9 @@ mod tests {
     }
 
     #[test]
-    fn scan_v1_wrapper_disables_inventory_axis() {
-        // The pre-Round-275 7-arg shape calls into v2 with an empty
-        // inventory_prefixes slice. Even when the store has Deprecated
-        // entries, no violation surfaces — back-compat guarantee.
+    fn scan_empty_inventory_prefixes_disables_inventory_axis() {
+        // An empty inventory_prefixes slice disables the inventory axis:
+        // even when the store has Deprecated entries, no violation surfaces.
         use mnemosyne_atomic::{AtomicStore, InventoryEntry};
         use mnemosyne_core::InventoryStatus;
         let tmp = TempDir::new().unwrap();
@@ -3503,7 +3502,7 @@ mod tests {
         .unwrap();
         assert!(
             v.is_empty(),
-            "v1 wrapper must not scan inventory, got: {:?}",
+            "empty inventory_prefixes must not scan inventory, got: {:?}",
             v
         );
     }
