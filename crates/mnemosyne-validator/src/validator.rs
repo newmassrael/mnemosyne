@@ -7,12 +7,12 @@
 //! 4. **Section decision_status transition** — active → superseded on superseding cross-ref enforced (rule 4)
 //!
 //! OPTION H-2 adoption carry — rule 1 step (2) lookup:
-//! single-doc orphan check failure on [`crate::workspace::Workspace::default_doc_has_section`]
+//! single-doc orphan check failure on [`mnemosyne_workspace::Workspace::default_doc_has_section`]
 //! reclassify-possibility fallback check. If both are missing, step (3) rejects as orphan.
 
 use mnemosyne_schema::{ChangelogEntry, FrozenList, ParsedDoc, RefKind, Section};
 use mnemosyne_core::DecisionStatus;
-use crate::workspace::Workspace;
+use mnemosyne_workspace::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

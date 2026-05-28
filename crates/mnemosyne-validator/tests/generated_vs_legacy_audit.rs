@@ -25,7 +25,9 @@
 use mnemosyne_config::{SchemaSection, discover_config};
 use mnemosyne_parser::{parse_markdown_with_schema};
 use mnemosyne_atomic::{AtomicStore, append_changelog_entry};
-use mnemosyne_validator::{StyleSeverity, Workspace, check_style, default_ruleset_with_config, render_changelog_entry, workspace_section_id_set};
+use mnemosyne_workspace::{Workspace};
+use mnemosyne_style::{StyleSeverity, check_style, default_ruleset_with_config};
+use mnemosyne_query::{render_changelog_entry, workspace_section_id_set};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;

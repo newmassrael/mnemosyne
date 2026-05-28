@@ -15,7 +15,7 @@
 
 use mnemosyne_parser::{parse_markdown};
 use mnemosyne_atomic::{AtomicStore};
-use mnemosyne_validator::{check_style, default_ruleset};
+use mnemosyne_style::{check_style, default_ruleset};
 
 /// Repeated filler word (8 chars) used to inflate paragraph length without
 /// triggering terminology violations.

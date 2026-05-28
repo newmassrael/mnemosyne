@@ -5,7 +5,7 @@
 //! reframe ratify): same input always produces same output (deterministic).
 
 use mnemosyne_atomic::{AtomicStore, ExampleBlock, RejectedAlternative, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, set_section_alternatives, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs, set_section_rationale};
-use mnemosyne_validator::{render_changelog_entry, render_section};
+use mnemosyne_query::{render_changelog_entry, render_section};
 use tempfile::TempDir;
 
 #[test]

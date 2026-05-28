@@ -23,10 +23,10 @@ use mnemosyne_config::{LoadedConfig, OrphanKind, SchemaSection, WorkspaceConfig,
 use mnemosyne_parser::{parse_markdown_with_schema};
 use mnemosyne_atomic::{AtomicStore};
 use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
-use mnemosyne_validator::{ValidationError, Workspace, check_style, code_refs::SetEqualityValidator, default_ruleset_with_config, query::{
- build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
- section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
- }, style::{StyleSeverity, StyleViolation}, validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_workspace::{Workspace};
+use mnemosyne_style::{StyleSeverity, StyleViolation, check_style, default_ruleset_with_config};
+use mnemosyne_query::{TermMode, TermQuery, TermScope, build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic, section_by_id, workspace_section_id_set};
+use mnemosyne_validator::{ValidationError, code_refs::SetEqualityValidator, validator::cross_ref_orphan_reject_with_workspace};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -805,9 +805,9 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
  } else {
  for hit in &hits {
  let kind = match hit.target_kind {
- mnemosyne_validator::query::TermTargetKind::Section => "section",
- mnemosyne_validator::query::TermTargetKind::ChangelogEntry => "entry",
- mnemosyne_validator::query::TermTargetKind::Inventory => "inventory",
+ mnemosyne_query::TermTargetKind::Section => "section",
+ mnemosyne_query::TermTargetKind::ChangelogEntry => "entry",
+ mnemosyne_query::TermTargetKind::Inventory => "inventory",
  };
  println!(
  "{}\t{}\t{}\t{}",

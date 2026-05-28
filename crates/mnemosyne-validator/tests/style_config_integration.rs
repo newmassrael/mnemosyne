@@ -11,7 +11,7 @@
 //! (rule still runs but matches nothing).
 
 use mnemosyne_config::{StyleSection, TerminologySection};
-use mnemosyne_validator::{StyleThreshold, default_ruleset, default_ruleset_with_config, glossary_from_config};
+use mnemosyne_style::{StyleThreshold, default_ruleset, default_ruleset_with_config, glossary_from_config};
 use std::collections::BTreeMap;
 
 #[test]

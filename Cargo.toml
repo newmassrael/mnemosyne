@@ -14,6 +14,9 @@ members = [
  "crates/mnemosyne-config",
  "crates/mnemosyne-parser",
  "crates/mnemosyne-atomic",
+ "crates/mnemosyne-workspace",
+ "crates/mnemosyne-style",
+ "crates/mnemosyne-query",
 ]
 
 [workspace.package]

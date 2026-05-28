@@ -1105,10 +1105,13 @@ dependencies = [
  "mnemosyne-core",
  "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
+ "mnemosyne-query",
  "mnemosyne-schema",
  "mnemosyne-server",
  "mnemosyne-store",
+ "mnemosyne-style",
  "mnemosyne-validator",
+ "mnemosyne-workspace",
  "regex",
  "serde_json",
  "sha2",
@@ -1185,6 +1188,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-query"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-atomic",
+ "mnemosyne-core",
+ "mnemosyne-parser",
+ "mnemosyne-schema",
+ "mnemosyne-workspace",
+ "regex",
+ "serde",
+ "serde_json",
+ "tera",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mnemosyne-schema"
 version = "0.1.0"
 dependencies = [
@@ -1244,6 +1263,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-style"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-atomic",
+ "mnemosyne-config",
+ "mnemosyne-core",
+ "mnemosyne-parser",
+ "mnemosyne-query",
+ "mnemosyne-schema",
+ "regex",
+]
+
+[[package]]
 name = "mnemosyne-validator"
 version = "0.1.0"
 dependencies = [
@@ -1253,7 +1285,10 @@ dependencies = [
  "mnemosyne-core",
  "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
+ "mnemosyne-query",
  "mnemosyne-schema",
+ "mnemosyne-style",
+ "mnemosyne-workspace",
  "regex",
  "serde",
  "serde_json",
@@ -1263,6 +1298,15 @@ dependencies = [
  "thiserror 1.0.69",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "mnemosyne-workspace"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-config",
+ "mnemosyne-core",
+ "mnemosyne-schema",
 ]
 
 [[package]]

@@ -16,7 +16,8 @@
 
 use mnemosyne_parser::{parse_markdown};
 use mnemosyne_atomic::{AtomicStore};
-use mnemosyne_validator::{StyleViolation, Workspace, check_style, default_ruleset};
+use mnemosyne_workspace::{Workspace};
+use mnemosyne_style::{StyleViolation, check_style, default_ruleset};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

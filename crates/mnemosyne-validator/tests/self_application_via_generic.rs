@@ -18,7 +18,9 @@ use mnemosyne_config::{SchemaSection, discover_config};
 use mnemosyne_parser::{parse_markdown_with_schema};
 use mnemosyne_atomic::{AtomicStore};
 use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
-use mnemosyne_validator::{StyleSeverity, Workspace, default_ruleset_with_config, validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_workspace::{Workspace};
+use mnemosyne_style::{StyleSeverity, default_ruleset_with_config};
+use mnemosyne_validator::{validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use std::path::PathBuf;
 
@@ -137,7 +139,7 @@ fn self_application_style_baseline_via_generic_loader() {
  let atomic_store = AtomicStore::load(&AtomicStore::default_sidecar_path(&root))
  .expect("atomic sidecar load");
  for (path, parsed) in &docs {
- let v = mnemosyne_validator::check_style(path, parsed, &atomic_store, &ruleset);
+ let v = mnemosyne_style::check_style(path, parsed, &atomic_store, &ruleset);
  for sv in &v {
  match sv.severity {
   StyleSeverity::Warn => warn += 1,

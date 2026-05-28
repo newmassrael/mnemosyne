@@ -31,12 +31,15 @@
 //! - `mnemosyne-cli query [--include-related] [--include-changelog] [--json]`
 //! - `mnemosyne-cli query --list-sections`
 
+pub mod render;
+pub use render::*;
+
 use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
 };
 use mnemosyne_schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
 use mnemosyne_core::DecisionStatus;
-use crate::workspace::Workspace;
+use mnemosyne_workspace::Workspace;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use thiserror::Error;

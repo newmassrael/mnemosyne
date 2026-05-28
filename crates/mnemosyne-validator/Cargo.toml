@@ -27,6 +27,9 @@ mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
+mnemosyne-workspace = { path = "../mnemosyne-workspace" }
+mnemosyne-style = { path = "../mnemosyne-style" }
+mnemosyne-query = { path = "../mnemosyne-query" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -36,6 +39,9 @@ mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
+mnemosyne-workspace = { path = "../mnemosyne-workspace" }
+mnemosyne-style = { path = "../mnemosyne-style" }
+mnemosyne-query = { path = "../mnemosyne-query" }
 
 [lints]
 workspace = true

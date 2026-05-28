@@ -1180,7 +1180,7 @@ mod tests {
  fn terminology_consistency_roundtrip_excludes_impl_paths_in_nested_layout() {
  use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
  use mnemosyne_parser::parse_markdown;
- use crate::render::render_section;
+ use mnemosyne_query::render::render_section;
 
  // Glossary of the same shape as the production failure: lowercase
  // path-shaped tokens that collide with canonical prose forms.

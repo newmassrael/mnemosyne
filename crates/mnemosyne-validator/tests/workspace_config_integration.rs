@@ -15,7 +15,8 @@
 
 use mnemosyne_config::{discover_config};
 use mnemosyne_parser::{parse_markdown};
-use mnemosyne_validator::{Workspace, validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_workspace::{Workspace};
+use mnemosyne_validator::{validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;

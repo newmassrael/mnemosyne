@@ -26,11 +26,7 @@
 //! production gate.
 
 pub mod validator;
-pub mod workspace;
-pub mod query;
 pub mod t2;
-pub mod style;
-pub mod render;
 pub mod code_refs;
 pub mod commit_ledger;
 
@@ -38,18 +34,5 @@ pub use validator::{
  atomic_section_supersede_state_reject, changelog_entry_append_only, cross_ref_orphan_reject,
  frozen_list_membership_delta, section_decision_status_transition, ValidationError,
 };
-pub use workspace::Workspace;
-pub use query::{
- build_envelope, changelog_entries_for_section, query_term, related_sections,
- related_sections_with_atomic, section_by_id, workspace_section_id_set,
- ChangelogEntryView, CrossRefView, QueryEnvelope, QueryTermError, RelatedSections,
- SectionView, TermHit, TermMode, TermQuery, TermScope, TermTargetKind,
-};
 pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
-pub use style::{
- check_style, default_ruleset, default_ruleset_with_config, glossary_from_config, StyleRule,
- StyleScope, StyleSeverity, StyleThreshold, StyleTier,
- StyleViolation,
-};
-pub use render::{render_changelog_entry, render_section, RenderError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};

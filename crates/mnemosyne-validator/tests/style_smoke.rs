@@ -7,7 +7,7 @@
 use mnemosyne_core::DecisionStatus;
 use mnemosyne_parser::{parse_markdown};
 use mnemosyne_atomic::{AtomicStore};
-use mnemosyne_validator::{StyleSeverity, check_style, default_ruleset};
+use mnemosyne_style::{StyleSeverity, check_style, default_ruleset};
 
 // Round 140 detector tightening — strong-carry skip applies to top_level_numeric
 // section_ids, so this fixture uses a prose-named heading to keep the run-on

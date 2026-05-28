@@ -97,10 +97,13 @@ paths = [
  "crates/mnemosyne-facts/src/",
  "crates/mnemosyne-mcp/src/",
  "crates/mnemosyne-parser/src/",
+ "crates/mnemosyne-query/src/",
  "crates/mnemosyne-schema/src/",
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
+ "crates/mnemosyne-style/src/",
  "crates/mnemosyne-validator/src/",
+ "crates/mnemosyne-workspace/src/",
 ]
 severity_missing = "reject"
 severity_binding = "reject"
