@@ -2296,3 +2296,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 318 — R318 — close MCP validate_workspace gate gap: add supersede + R296 publishable-ledger gates to ops
+
+**Changes**:
+- ops::validate_workspace now runs atomic_section_supersede_state_reject (T1 rule 4 atomic axis)
+- ops::validate_workspace now runs the R296 publishable/audit divergence ledger gate
+- MCP validate_workspace surfaces supersede + publishable-divergence; render_plain prints divergence line
+
+
+
+**Verification**:
+- MCP stdio validate_workspace prints publishable divergence entries=9 ledger_rows=9 (matches CLI)
+- cargo test --workspace 670 pass / clippy -D warnings clean
+
+
+
+**Impact**: §atomic-store-mutate-api, §code-citation-defense
+
+
+**Carry forward**:
+- Full single-source: refactor cmd_validate_workspace to delegate to ops (carries CLI-only decay + commit-drift surfaces)
+- R317 #6 carry: cli main.rs command-module split still pending
+
+
+

@@ -46,6 +46,10 @@ pub struct ValidateWorkspaceReport {
     pub style_t3_warn: usize,
     pub style_t4_info: usize,
     pub style_t3_reject_messages: Vec<String>,
+    pub supersede_violations: Vec<String>,
+    pub publishable_divergence: usize,
+    pub publishable_ledger_rows: usize,
+    pub publishable_unmatched: Vec<String>,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -227,6 +231,49 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .cloned()
         .collect();
 
+    // T1 rule 4 (atomic axis) — Superseded sections must carry a
+    // superseding cross-ref. State-based post-condition gate; the CLI's
+    // validate-workspace runs the same check, so the MCP wire must too
+    // (R318 closed the gap where ops omitted it).
+    let parsed_docs_refs: Vec<&mnemosyne_schema::ParsedDoc> =
+        parsed_docs.iter().map(|(_, doc)| doc).collect();
+    let supersede_violations: Vec<String> =
+        mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_for_style, &parsed_docs_refs)
+            .into_iter()
+            .filter_map(|e| match e {
+                ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
+                    "§{} decision_status=Superseded but no superseding cross-ref (Decision|Impl)",
+                    section_id
+                )),
+                _ => None,
+            })
+            .collect();
+
+    // R296 publishable / audit divergence ledger gate. Each entry whose
+    // publishable half diverges from the audit half must have a matching
+    // [[publishable_override_ledger]] row (target_id + content_hash_after).
+    let ledger = &loaded.config.publishable_override_ledger;
+    let divergent: Vec<(&String, &mnemosyne_atomic::AtomicChangelogEntry)> = atomic_for_style
+        .changelog_entries
+        .iter()
+        .filter(|(_, e)| !e.publishable_matches_audit())
+        .collect();
+    let publishable_divergence = divergent.len();
+    let publishable_ledger_rows = ledger.len();
+    let mut publishable_unmatched: Vec<String> = Vec::new();
+    for (entry_id, entry) in &divergent {
+        let current_hash = entry.publishable_hash_hex();
+        let matched = ledger
+            .iter()
+            .any(|row| row.target_id == **entry_id && row.content_hash_after == current_hash);
+        if !matched {
+            publishable_unmatched.push(format!(
+                "diverged `{}` — publishable_hash={} (no matching ledger row)",
+                entry_id, current_hash
+            ));
+        }
+    }
+
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
     if round_trip_pass != parsed_docs.len() {
@@ -271,6 +318,18 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     if !atomic.generated_in_sync {
         failure_reasons.push("GENERATED.md stale (run `generate-docs` then stage)".to_string());
     }
+    if !supersede_violations.is_empty() {
+        failure_reasons.push(format!(
+            "T1 rule 4 (atomic axis): {} Superseded section(s) without superseding cross-ref",
+            supersede_violations.len()
+        ));
+    }
+    if !publishable_unmatched.is_empty() {
+        failure_reasons.push(format!(
+            "publishable/audit divergence on {} entry(ies) without matching [[publishable_override_ledger]] row",
+            publishable_unmatched.len()
+        ));
+    }
     let failed = !failure_reasons.is_empty();
 
     Ok(ValidateWorkspaceReport {
@@ -296,6 +355,10 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         style_t3_warn: t3_warn_count,
         style_t4_info: t4_count,
         style_t3_reject_messages: t3_reject_messages,
+        supersede_violations,
+        publishable_divergence,
+        publishable_ledger_rows,
+        publishable_unmatched,
         failed,
         failure_reasons,
     })
@@ -359,6 +422,17 @@ impl ValidateWorkspaceReport {
             self.atomic_orphan_section_refs,
             if self.generated_in_sync { "sync" } else { "STALE" }
         );
+        for v in &self.supersede_violations {
+            let _ = writeln!(out, "  T1 rule 4 (atomic axis): {}", v);
+        }
+        let _ = writeln!(
+            out,
+            "publishable / audit divergence: entries={} ledger_rows={}",
+            self.publishable_divergence, self.publishable_ledger_rows
+        );
+        for u in &self.publishable_unmatched {
+            let _ = writeln!(out, "  {}", u);
+        }
         if self.failed {
             let _ = writeln!(out, "FAILED:");
             for r in &self.failure_reasons {
