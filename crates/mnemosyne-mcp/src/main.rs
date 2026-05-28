@@ -49,10 +49,11 @@ pub struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ValidateProjectionArgs {
-    /// Re-sync the warm projection from the current log before validating.
-    /// Default (false) serves the memoized in-process projection; pass true
-    /// after authoring to re-project from the log (automatic re-sync on mutate
-    /// is convergence D).
+    /// Force a re-sync from the current log before validating. The warm
+    /// projection already re-syncs automatically after every successful mutate
+    /// tool (Round 341), so the default (false) is current; pass true only to
+    /// pick up an out-of-band log change (e.g. a manual JSON edit or a CLI
+    /// mutate run against the same workspace).
     #[serde(default)]
     pub refresh: bool,
 }
@@ -417,9 +418,29 @@ impl MnemosyneServer {
     /// Finish a mutate op: success → receipt JSON, error → tool error.
     fn finish_mutate(&self, outcome: Result<MutateOutcome, OpError>) -> CallToolResult {
         match outcome {
-            Ok(o) => self.tool_json(&o),
+            Ok(o) => {
+                self.notify_projection();
+                self.tool_json(&o)
+            }
             Err(e) => self.op_error(e),
         }
+    }
+
+    /// Re-sync the warm read-side projection from the just-written log after a
+    /// successful mutate, so the default (non-refresh) `validate_projection`
+    /// reflects the current state. The reload is incremental (Round 340): only
+    /// the entities this mutation changed re-execute on the next validate, and
+    /// the rest carry from the Salsa memo cache. This is the host half of
+    /// convergence D — the mutate primitives notifying the read-side service.
+    /// A poisoned lock is recovered (the projection is a rebuildable cache, not
+    /// authoritative state), so a notify never blocks the write path.
+    fn notify_projection(&self) {
+        let atomic = ops::load_atomic_store(&self.workspace, None);
+        let mut svc = self
+            .projection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        svc.reload(&atomic);
     }
 }
 
@@ -497,7 +518,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Validate the Layer-0 cascade invariants (Section supersession refs + FrozenList membership) through the WARM in-process Salsa projection — the read-side service that folds the log into a fine-grained cascade index and serves validation incrementally, RocksDB-free. Repeated calls hit the memo cache. Pass refresh=true to re-project from the current log after authoring. This is the incremental read model; `validate_workspace` remains the authoritative cold validator."
+        description = "Validate the Layer-0 cascade invariants (Section supersession refs + FrozenList membership) through the WARM in-process Salsa projection — the read-side service that folds the log into a fine-grained cascade index and serves validation incrementally, RocksDB-free. The projection auto-re-syncs after every successful mutate tool (incrementally — only changed entities re-execute), so the default reflects the current log and repeated calls hit the memo cache. Pass refresh=true only to pick up an out-of-band log change (manual JSON edit or a separate CLI mutate). This is the incremental read model; `validate_workspace` remains the authoritative cold validator."
     )]
     async fn validate_projection(
         &self,
@@ -1162,6 +1183,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         match outcome {
             Ok(o) => {
+                self.notify_projection();
                 let decay = if run_cascade {
                     ops::inventory_decay_scan(&self.workspace, inventory_id)
                         .into_iter()

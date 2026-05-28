@@ -4492,6 +4492,38 @@
       "publishable_carry_forward_bullets": [
         "Next — convergence D host wiring: make the MCP mutate tools notify the warm ProjectionService on success (an incremental reload) so default validate_projection is always current without an explicit refresh — the mutate-primitives-notify-the-read-side half of D. Then the render projection: Layer-1 design_doc content as Salsa inputs, per-section memoized GENERATED.md render superseding the full-rebuild auto_regenerate. The standalone mnemosyne-server daemon host stays deferred (YAGNI) until a non-MCP warm consumer needs it."
       ]
+    },
+    "Round 341 — MCP mutate tools notify the warm projection so default validate_projection is auto-current after authoring": {
+      "decision_summary": "Wire the host half of convergence D — every successful MCP mutate tool re-syncs the warm read-side ProjectionService from the just-written log through a single notify_projection seam on both mutate finishers (finish_mutate / finish_inventory_mutate), covering all ~25 mutate sites. The reload is incremental (Round 340), so only changed entities re-execute. This removes the stale-default footgun: validate_projection(refresh=false) now reflects the current log, and refresh=true is reserved for out-of-band changes (manual JSON edit or a separate CLI mutate). The notify re-reads the design_doc adapter and drives Salsa in memory, keeping the authoring path RocksDB-free (Round 328 / Round 337); validate_workspace remains the authoritative cold validator.",
+      "changes_bullets": [
+        "mnemosyne-mcp: add MnemosyneServer::notify_projection — re-read the just-written log and incrementally reload the warm ProjectionService (recovering a poisoned lock so a notify never blocks the write path). Called from the Ok branch of both mutate finishers (finish_mutate and finish_inventory_mutate), so all ~25 mutate tools re-sync the read model through one seam.",
+        "validate_projection(refresh=false) now reflects the current log because the projection auto-syncs on every successful mutate; refresh=true is reserved for out-of-band log changes (manual JSON edit or a separate CLI mutate). Updated the tool description and the refresh arg doc to match.",
+        "No new edge and no RocksDB dep: the notify re-reads the design_doc adapter (load_atomic_store) and drives Salsa in memory, preserving the CQRS RocksDB-free authoring split (Round 328 / Round 337). The reload is incremental (Round 340), so only the entities the mutation changed re-execute."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green; cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "End-to-end MCP stdio against a temp workspace copy: baseline default validate_projection ok; an out-of-band CLI supersede leaves the warm default validate STALE-ok (proving the projection is held warm, not re-read per call); a subsequent MCP set_section_title mutate flips the default (refresh=false) validate to VIOLATIONS=1, proving the notify reloads the full current log on mutate.",
+        "Citation hygiene: Round 328, Round 337, Round 339, Round 340 verified present in the atomic store before citing."
+      ],
+      "carry_forward_bullets": [
+        "Next — render projection (convergence D Step 2): Layer-1 design_doc content as Salsa inputs, per-section memoized GENERATED.md render superseding the full-rebuild auto_regenerate; the notify seam wired here is its write-to-read trigger.",
+        "Finding (separate round): the validation projection over-flags supersession. project_cross_ref_facts emits only impact_scope-kind cross-refs, but section_decision_violation requires a decision/impl-kind outbound ref, so a section superseded WITH a valid superseding pointer is still flagged a violation — validate_projection diverges from validate-workspace for any superseded section. No live impact yet (all five dogfood sections are Active). Fix: project the supersession pointer as a decision-kind CrossRefFact so the read model matches the authoritative validator."
+      ],
+      "publishable_decision_summary": "Wire the host half of convergence D — every successful MCP mutate tool re-syncs the warm read-side ProjectionService from the just-written log through a single notify_projection seam on both mutate finishers (finish_mutate / finish_inventory_mutate), covering all ~25 mutate sites. The reload is incremental (Round 340), so only changed entities re-execute. This removes the stale-default footgun: validate_projection(refresh=false) now reflects the current log, and refresh=true is reserved for out-of-band changes (manual JSON edit or a separate CLI mutate). The notify re-reads the design_doc adapter and drives Salsa in memory, keeping the authoring path RocksDB-free (Round 328 / Round 337); validate_workspace remains the authoritative cold validator.",
+      "publishable_changes_bullets": [
+        "mnemosyne-mcp: add MnemosyneServer::notify_projection — re-read the just-written log and incrementally reload the warm ProjectionService (recovering a poisoned lock so a notify never blocks the write path). Called from the Ok branch of both mutate finishers (finish_mutate and finish_inventory_mutate), so all ~25 mutate tools re-sync the read model through one seam.",
+        "validate_projection(refresh=false) now reflects the current log because the projection auto-syncs on every successful mutate; refresh=true is reserved for out-of-band log changes (manual JSON edit or a separate CLI mutate). Updated the tool description and the refresh arg doc to match.",
+        "No new edge and no RocksDB dep: the notify re-reads the design_doc adapter (load_atomic_store) and drives Salsa in memory, preserving the CQRS RocksDB-free authoring split (Round 328 / Round 337). The reload is incremental (Round 340), so only the entities the mutation changed re-execute."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green; cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "End-to-end MCP stdio against a temp workspace copy: baseline default validate_projection ok; an out-of-band CLI supersede leaves the warm default validate STALE-ok (proving the projection is held warm, not re-read per call); a subsequent MCP set_section_title mutate flips the default (refresh=false) validate to VIOLATIONS=1, proving the notify reloads the full current log on mutate.",
+        "Citation hygiene: Round 328, Round 337, Round 339, Round 340 verified present in the atomic store before citing."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Next — render projection (convergence D Step 2): Layer-1 design_doc content as Salsa inputs, per-section memoized GENERATED.md render superseding the full-rebuild auto_regenerate; the notify seam wired here is its write-to-read trigger.",
+        "Finding (separate round): the validation projection over-flags supersession. project_cross_ref_facts emits only impact_scope-kind cross-refs, but section_decision_violation requires a decision/impl-kind outbound ref, so a section superseded WITH a valid superseding pointer is still flagged a violation — validate_projection diverges from validate-workspace for any superseded section. No live impact yet (all five dogfood sections are Active). Fix: project the supersession pointer as a decision-kind CrossRefFact so the read model matches the authoritative validator."
+      ]
     }
   },
   "inventory_entries": {},
