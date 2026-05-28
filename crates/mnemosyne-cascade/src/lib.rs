@@ -1,47 +1,42 @@
-//! Mnemosyne cascade — Phase 0 production crate (DESIGN.md).
+//! Mnemosyne cascade — the Salsa incremental-projection engine (Layer-0 → read
+//! model) for the design_doc cascade queries.
 //!
-//! This crate is *cascade_query kind*'s actual Salsa 0.26 runtime binding —
-//! `#[salsa::input]` CascadeBranch + `#[salsa::tracked]`
-//! cascade query functions + `#[salsa::db]` `CascadeDb` trait + concrete
-//! `MnemosyneCascadeDb` runtime + cascade dependency graph metadata.
+//! The engine is built on per-entity `#[salsa::input]` records (Section /
+//! CrossRef / FrozenList / ChangelogEntry) collected under a `BranchIndex`
+//! input, plus per-record tracked sub-queries and per-branch aggregators. Salsa
+//! 0.26 field-level dependency tracking gives bounded, size-independent
+//! invalidation: mutating one record's field re-executes only the sub-queries
+//! that read it, and the aggregator backdates when sub-query results are
+//! unchanged.
 //!
-//! prototype `bench/codegen-prototype/src/salsa_wire.rs` (codegen emit source)
-//! Production binding — emits one source string compiled via the actual Rust pipeline
-//! direct dogfood of the codegen result.
+//! The engine is pure and in-memory: it consumes canonical facts
+//! (`mnemosyne-facts`) directly and knows nothing of the authoring adapter or
+//! the RocksDB index. The read-side service that builds a `BranchIndex` from the
+//! live log lives one layer up (so this crate never depends on the adapter).
 //!
-//! paradigm carry — the Salsa runtime itself emits Rust-only (cascade_query
-//! scope — *partial break of the 5-language emit contract* (audit trail). Studio Kotlin / CLI
-//! Python's dependency-graph visualization `metadata` module — the 5-language emit
-//! in read-only consumer path.
+//! ## Modules
 //!
-//! ## Module separation
-//!
-//! - [`runtime`]: Salsa input struct (`CascadeBranch`) + tracked query functions +
-//! `CascadeDb` trait + `MnemosyneCascadeDb` concrete runtime + `ValidationResult`.
-//! - [`metadata`]: cascade dependency graph + ordering axis (Studio/CLI visualize
-//! read-only consumer path, 5-language metadata emit).
+//! - [`fine_grained`]: per-entity Salsa inputs + tracked sub-queries + per-branch
+//!   aggregators + the concrete `FineCascadeDb` runtime + `build_branch_index`.
+//! - [`result`]: the `ValidationResult` query output value object.
+//! - [`metadata`]: cascade dependency graph + ordering axis (read-only consumers
+//!   visualize the query topology).
 //! - [`spec`]: cascade query spec types (CascadeQuerySpec / ReadDep / TriggerSpec)
-//! + `design_doc_cascade_fixture`.
-//! - [`snapshot`]: per-branch typed-fact bundle + serde encoding + store load
-//! helper.
+//!   + `design_doc_cascade_fixture`.
 
 pub mod fine_grained;
 pub mod metadata;
-pub mod runtime;
-pub mod snapshot;
+pub mod result;
 pub mod spec;
 
 pub use fine_grained::{
     build_branch_index, changelog_by_round_number, frozen_list_membership_aggregated,
     outbound_crossrefs_by_section, section_by_entity_id, section_decision_status_aggregated,
-    BranchIndex, ChangelogRecord, CrossRefRecord, FineCascadeDb, FrozenListRecord, SectionRecord,
+    BranchIndex, CascadeDb, ChangelogRecord, CrossRefRecord, FineCascadeDb, FrozenListRecord,
+    SectionRecord,
 };
 pub use metadata::{cascade_dependency_edges, cascade_orderings};
-pub use runtime::{
-    frozen_list_membership, section_decision_status, CascadeBranch, CascadeDb, MnemosyneCascadeDb,
-    ValidationResult,
-};
-pub use snapshot::{BranchEntityPartition, BranchSnapshotData, SnapshotError};
+pub use result::ValidationResult;
 pub use spec::{
     design_doc_cascade_fixture, CascadeQuerySpec, CascadeWireSpec, ReadDep, TriggerSpec,
 };

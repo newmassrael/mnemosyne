@@ -1,44 +1,53 @@
-//! Integration test — Salsa runtime tracked-function invocation, memoize
-//! stability, cascade dependency graph metadata, CascadeDb trait dispatch.
-//!
-//! Round 81 carry — `CascadeBranch::new(db, branch_id, revision, snapshot_payload)`
-//! signature in empty snapshot as vacuous-ok smoke validation.
+//! Integration test — fine-grained Salsa engine tracked-function invocation,
+//! memoize stability, CascadeDb trait dispatch, and the cascade dependency-graph
+//! metadata / fixture topology.
 
 use mnemosyne_cascade::{
-    cascade_dependency_edges, cascade_orderings, design_doc_cascade_fixture,
-    frozen_list_membership, section_decision_status, BranchSnapshotData, CascadeBranch,
-    MnemosyneCascadeDb, ValidationResult,
+    build_branch_index, cascade_dependency_edges, cascade_orderings, design_doc_cascade_fixture,
+    frozen_list_membership_aggregated, section_decision_status_aggregated, CascadeDb,
+    FineCascadeDb, ValidationResult,
 };
 
-fn empty_branch(db: &MnemosyneCascadeDb, branch_id: u64) -> CascadeBranch {
-    let payload = BranchSnapshotData::default().encode().expect("encode");
-    CascadeBranch::new(db, branch_id, 1, payload)
+#[test]
+fn empty_branch_section_decision_status_is_vacuously_ok() {
+    let db = FineCascadeDb::new();
+    let idx = build_branch_index(&db, 0, &[], &[], &[], &[]);
+    assert_eq!(
+        section_decision_status_aggregated(&db, idx),
+        ValidationResult::ok()
+    );
 }
 
 #[test]
-fn tracked_section_decision_status_invokes() {
-    let db = MnemosyneCascadeDb::default();
-    let branch = empty_branch(&db, 0);
-    assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
-}
-
-#[test]
-fn tracked_frozen_list_membership_invokes() {
-    let db = MnemosyneCascadeDb::default();
-    let branch = empty_branch(&db, 7);
-    assert_eq!(frozen_list_membership(&db, branch), ValidationResult::ok());
+fn empty_branch_frozen_list_membership_is_vacuously_ok() {
+    let db = FineCascadeDb::new();
+    let idx = build_branch_index(&db, 7, &[], &[], &[], &[]);
+    assert_eq!(
+        frozen_list_membership_aggregated(&db, idx),
+        ValidationResult::ok()
+    );
 }
 
 #[test]
 fn memoize_returns_same_result_on_re_invocation() {
-    let db = MnemosyneCascadeDb::default();
-    let branch = empty_branch(&db, 42);
-    let a = section_decision_status(&db, branch);
-    let b = section_decision_status(&db, branch);
+    let db = FineCascadeDb::new();
+    let idx = build_branch_index(&db, 42, &[], &[], &[], &[]);
+    let a = section_decision_status_aggregated(&db, idx);
+    let b = section_decision_status_aggregated(&db, idx);
     assert_eq!(a, b);
-    let c = frozen_list_membership(&db, branch);
-    let d = frozen_list_membership(&db, branch);
+    let c = frozen_list_membership_aggregated(&db, idx);
+    let d = frozen_list_membership_aggregated(&db, idx);
     assert_eq!(c, d);
+}
+
+#[test]
+fn cascade_db_trait_method_dispatch() {
+    let db = FineCascadeDb::new();
+    let idx = build_branch_index(&db, 0, &[], &[], &[], &[]);
+    let r1 = db.fine_section_decision_status(idx);
+    let r2 = db.fine_frozen_list_membership(idx);
+    assert_eq!(r1, ValidationResult::ok());
+    assert_eq!(r2, ValidationResult::ok());
 }
 
 #[test]
@@ -58,17 +67,6 @@ fn ordering_axis_metadata_callable() {
     for (_, ord) in orderings {
         assert_eq!(*ord, "global_fifo");
     }
-}
-
-#[test]
-fn cascade_db_trait_method_dispatch() {
-    use mnemosyne_cascade::CascadeDb;
-    let db = MnemosyneCascadeDb::default();
-    let branch = empty_branch(&db, 0);
-    let r1 = db.section_decision_status(branch);
-    let r2 = db.frozen_list_membership(branch);
-    assert_eq!(r1, ValidationResult::ok());
-    assert_eq!(r2, ValidationResult::ok());
 }
 
 #[test]

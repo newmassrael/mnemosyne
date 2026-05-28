@@ -1,106 +1,104 @@
-//! Phase 1.5 cascade gate — measurement source for this layer.
+//! Cascade measurement — fine-grained engine invalidation gates.
 //!
-//! DESIGN.md §43 *Phase 1.5 cascade gate measurement source carry* (Round 22
-//! Tier 5 #1 Salsa-lock handle — result-stable carry; Round 36 paradigm-decision source.
-//! explicit) — 50K asset / 5K fact / 100 branch synthetic over:
+//! Migrated from the coarse-engine Phase 1.5 measurement when the fine-grained
+//! engine became C's production engine and the coarse `runtime`/`snapshot` path
+//! was retired (R338). The coarse engine re-executed at *branch* granularity, so
+//! the only thing its "invalidation" gate could measure was payload size; the
+//! fine engine's defining property is **size-independent invalidation** — a
+//! single fact mutation re-executes a bounded number of sub-queries regardless
+//! of branch size. These gates assert that directly: the same mutation is run at
+//! two fixture scales and the per-DB execution counter is compared.
 //!
-//! (i) memory footprint < 1GB
-//! (ii) invalidation polynomial (size band 0 / 1-9 / 10-99 / 100+ distribution)
-//! (iii) cascade preview ±0 accuracy (eager resolution enforced over lazy-semantics comparison)
-//!
-//! When the 3 gates do not pass, the Salsa → Differential Dataflow / Adapton / direct-implementation
-//! library re-selection — Phase 2 commit deferred.
-//!
-//! Round 81 = registers only the *baseline scaffold* of this measurement source — full
-//! 50K-scale measurement runs in the release-mode bench harness (Phase 1.5 measurement
-//! spike-time carry). This file's small-scale fixture:
-//!
-//! - 10 branches × (50 Section + 50 ChangelogEntry + 25 FrozenList + 50 CrossRef)
-//! - = 1,750 fact entries / 100 branches × 500 facts = 1/29 of the 50K full-scale workload
-//!
-//! cargo test is deterministic and completes in < 1s (CI scope); actual 50K measurement
-//! separate round (Phase 1.5 entry time measurement-pending lock #1 carry).
+//! Synthetic per-branch fixture (the scale dimension the inline unit tests in
+//! `fine_grained.rs` do not cover): 10 branches × (50 Section + 50 ChangelogEntry
+//! + 25 FrozenList + 50 CrossRef) = 1,750 facts. Deterministic, < 1s under
+//! `cargo test`. Full release-scale measurement remains a separate bench concern.
 
 use mnemosyne_cascade::{
-    frozen_list_membership, section_decision_status, BranchSnapshotData, CascadeBranch,
-    MnemosyneCascadeDb, ValidationResult,
+    build_branch_index, frozen_list_membership_aggregated, section_decision_status_aggregated,
+    BranchIndex, FineCascadeDb, ValidationResult,
 };
 use mnemosyne_facts::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
     SectionSkeleton,
 };
+use salsa::Setter;
 
 const SECTIONS_PER_BRANCH: usize = 50;
 const CHANGELOG_PER_BRANCH: usize = 50;
 const FROZEN_LISTS_PER_BRANCH: usize = 25;
 const CROSS_REFS_PER_BRANCH: usize = 50;
 const BRANCH_COUNT: usize = 10;
+const TOTAL_FACTS: usize = BRANCH_COUNT
+    * (SECTIONS_PER_BRANCH
+        + CHANGELOG_PER_BRANCH
+        + FROZEN_LISTS_PER_BRANCH
+        + CROSS_REFS_PER_BRANCH);
 
-/// Synthetic per-branch fixture — deterministic generator. branch_id seeds the
-/// entity_id allocation so cross-branch facts stay disjoint.
-fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
-    let mut sections = Vec::with_capacity(SECTIONS_PER_BRANCH);
-    let mut changelog_entries = Vec::with_capacity(CHANGELOG_PER_BRANCH);
-    let mut frozen_lists = Vec::with_capacity(FROZEN_LISTS_PER_BRANCH);
-    let mut cross_refs = Vec::with_capacity(CROSS_REFS_PER_BRANCH);
-
-    let base = branch_id * 1_000_000;
-    for i in 0..SECTIONS_PER_BRANCH {
-        let entity_id = base + i as u64;
-        sections.push(SectionFact {
-            key: FactKey {
-                branch_id,
-                entity_id,
-                valid_from: 100,
-            },
-            section_id: format!("{}.{}", branch_id, i),
-            skeleton: SectionSkeleton {
-                title: format!("Section {} of branch {}", i, branch_id),
-                parent_doc: format!("docs/synthetic-{}.md", branch_id),
-                parent_section: None,
-                decision_status: Some(DecisionStatus::Active),
-            },
-        });
+fn section_fact(branch_id: u64, entity_id: u64, status: DecisionStatus) -> SectionFact {
+    SectionFact {
+        key: FactKey {
+            branch_id,
+            entity_id,
+            valid_from: 100,
+        },
+        section_id: format!("{branch_id}.{entity_id}"),
+        skeleton: SectionSkeleton {
+            title: format!("section {entity_id} of branch {branch_id}"),
+            parent_doc: format!("docs/synthetic-{branch_id}.md"),
+            parent_section: None,
+            decision_status: Some(status),
+        },
     }
-    for i in 0..CHANGELOG_PER_BRANCH {
-        let entity_id = base + 1000 + i as u64;
-        changelog_entries.push(ChangelogEntryFact {
+}
+
+/// Full synthetic branch — all four fact kinds, sized for the 1,750-fact
+/// aggregate. Owners and frozen rounds resolve, every section is Active, so both
+/// aggregators pass.
+struct SyntheticBranch {
+    sections: Vec<SectionFact>,
+    changelog_entries: Vec<ChangelogEntryFact>,
+    frozen_lists: Vec<FrozenListFact>,
+    cross_refs: Vec<CrossRefFact>,
+}
+
+fn synthetic_branch(branch_id: u64) -> SyntheticBranch {
+    let base = branch_id * 1_000_000;
+    let sections = (0..SECTIONS_PER_BRANCH)
+        .map(|i| section_fact(branch_id, base + i as u64, DecisionStatus::Active))
+        .collect();
+    let changelog_entries = (0..CHANGELOG_PER_BRANCH)
+        .map(|i| ChangelogEntryFact {
             key: FactKey {
                 branch_id,
-                entity_id,
+                entity_id: base + 1000 + i as u64,
                 valid_from: 100 + i as u64,
             },
             round_number: i as u64,
-            summary: format!("synthetic round {} branch {}", i, branch_id),
-        });
-    }
-    for i in 0..FROZEN_LISTS_PER_BRANCH {
-        let entity_id = base + 2000 + i as u64;
-        let owner_idx = i % SECTIONS_PER_BRANCH;
-        let owner_section = base + owner_idx as u64;
-        frozen_lists.push(FrozenListFact {
+            summary: format!("synthetic round {i} branch {branch_id}"),
+        })
+        .collect();
+    let frozen_lists = (0..FROZEN_LISTS_PER_BRANCH)
+        .map(|i| FrozenListFact {
             key: FactKey {
                 branch_id,
-                entity_id,
+                entity_id: base + 2000 + i as u64,
                 valid_from: 100,
             },
-            owner_section,
+            owner_section: base + (i % SECTIONS_PER_BRANCH) as u64,
             frozen_round: i as u64,
             kind: "release_lock".into(),
-        });
-    }
-    for i in 0..CROSS_REFS_PER_BRANCH {
-        let from_idx = i % SECTIONS_PER_BRANCH;
-        let to_idx = (i + 1) % SECTIONS_PER_BRANCH;
-        cross_refs.push(CrossRefFact {
+        })
+        .collect();
+    let cross_refs = (0..CROSS_REFS_PER_BRANCH)
+        .map(|i| CrossRefFact {
             branch_id,
-            from_section: base + from_idx as u64,
-            to_section: base + to_idx as u64,
+            from_section: base + (i % SECTIONS_PER_BRANCH) as u64,
+            to_section: base + ((i + 1) % SECTIONS_PER_BRANCH) as u64,
             ref_kind: "decision".into(),
-        });
-    }
-
-    BranchSnapshotData {
+        })
+        .collect();
+    SyntheticBranch {
         sections,
         changelog_entries,
         frozen_lists,
@@ -108,143 +106,154 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
     }
 }
 
-fn classify_size_band(n: usize) -> &'static str {
-    match n {
-        0 => "0",
-        1..=9 => "1-9",
-        10..=99 => "10-99",
-        _ => "100+",
-    }
+fn build_synthetic(db: &FineCascadeDb, branch_id: u64) -> BranchIndex {
+    let b = synthetic_branch(branch_id);
+    build_branch_index(
+        db,
+        branch_id,
+        &b.sections,
+        &b.cross_refs,
+        &b.frozen_lists,
+        &b.changelog_entries,
+    )
 }
 
-/// Gate (i) — memory footprint per snapshot encoding.
-///
-/// Phase 1.5 target: < 1GB at 50K asset. Baseline (small fixture) ratio
-/// projected — assert per-branch payload < 100KB so 100-branch full scale
-/// stays well under 10MB encoding overhead (Salsa Storage allocations are
-/// dominant in real measurement, not measured here).
+/// A branch of `n` Active sections and no other facts — the clean substrate for
+/// the invalidation gate: flipping one section to Superseded yields exactly one
+/// violation (no outbound ref), and the re-execution count is independent of `n`.
+fn active_only_branch(db: &FineCascadeDb, branch_id: u64, n: usize) -> BranchIndex {
+    let base = branch_id * 1_000_000;
+    let sections: Vec<SectionFact> = (0..n)
+        .map(|i| section_fact(branch_id, base + i as u64, DecisionStatus::Active))
+        .collect();
+    build_branch_index(db, branch_id, &sections, &[], &[], &[])
+}
+
 #[test]
-fn gate_i_memory_footprint_per_branch_under_band() {
+fn full_fixture_passes_both_aggregators_at_scale() {
+    let db = FineCascadeDb::new();
     for branch_id in 0..BRANCH_COUNT as u64 {
-        let snap = synthetic_branch_snapshot(branch_id);
-        let payload = snap.encode().expect("encode");
-        // Rough band — full 50K target: < 1GB. Per-branch baseline < 100KB.
-        assert!(
-            payload.len() < 100_000,
-            "branch {} payload exceeded baseline band: {} bytes",
-            branch_id,
-            payload.len()
+        let idx = build_synthetic(&db, branch_id);
+        assert_eq!(
+            section_decision_status_aggregated(&db, idx),
+            ValidationResult::ok(),
+            "branch {branch_id} decision status"
+        );
+        assert_eq!(
+            frozen_list_membership_aggregated(&db, idx),
+            ValidationResult::ok(),
+            "branch {branch_id} frozen-list membership"
         );
     }
 }
 
-#[test]
-fn gate_i_aggregate_memory_footprint_under_baseline() {
-    let total: usize = (0..BRANCH_COUNT as u64)
-        .map(|b| synthetic_branch_snapshot(b).encode().expect("encode").len())
-        .sum();
-    // Baseline scaffold — full 50K scale would be ~30x; gate assertion lives
-    // in Phase 1.5 release-mode bench, not here.
-    assert!(
-        total < 1_000_000,
-        "aggregate payload exceeded 1MB baseline: {} bytes",
-        total
-    );
-}
-
-/// Gate (ii) — invalidation polynomial size band per single-fact mutation.
-///
-/// Salsa memoization size-band distribution (0 / 1-9 / 10-99 / 100+). Baseline measurement.
-/// — each cascade-query invocation against this fixture costs 1 unit (memoize hit/miss). Phase 1.5
-/// Release-mode actual band-distribution output (count of derived facts impacted by the mutation,
-/// counter source).
-#[test]
-fn gate_ii_invalidation_size_band_baseline() {
-    let db = MnemosyneCascadeDb::default();
-    for branch_id in 0..BRANCH_COUNT as u64 {
-        let snap = synthetic_branch_snapshot(branch_id);
-        let payload = snap.encode().expect("encode");
-        let branch = CascadeBranch::new(&db, branch_id, 1, payload);
-        let r = section_decision_status(&db, branch);
-        let band = classify_size_band(r.violation_count as usize);
-        assert!(
-            ["0", "1-9", "10-99", "100+"].contains(&band),
-            "unexpected band: {}",
-            band
-        );
-        // Active-only synthetic — 0 violations expected.
-        assert_eq!(band, "0", "branch {} expected band 0", branch_id);
-    }
-}
-
-/// Gate (iii) — cascade preview ±0 accuracy (deterministic re-run).
-///
-/// same input → same output. Salsa memoize-stability baseline validation —
-/// the essence of *eager-resolution-over-lazy semantics comparison* (deterministic
-/// floor-measurement of the preview output.
-#[test]
-fn gate_iii_cascade_preview_deterministic_byte_equal() {
-    let db = MnemosyneCascadeDb::default();
-    for branch_id in 0..BRANCH_COUNT as u64 {
-        let snap = synthetic_branch_snapshot(branch_id);
-        let payload = snap.encode().expect("encode");
-        let branch = CascadeBranch::new(&db, branch_id, 1, payload);
-        let a1 = section_decision_status(&db, branch);
-        let a2 = section_decision_status(&db, branch);
-        assert_eq!(a1, a2, "section_decision_status drifted on re-run");
-        let b1 = frozen_list_membership(&db, branch);
-        let b2 = frozen_list_membership(&db, branch);
-        assert_eq!(b1, b2, "frozen_list_membership drifted on re-run");
-    }
-}
-
-/// Gate (iii.b) — cross-DB determinism. Same fixture, different DB instances
-/// On reconstruction yields the same result. Validates that Salsa storage state has no impact on the result.
-#[test]
-fn gate_iii_cross_db_deterministic() {
-    for branch_id in 0..BRANCH_COUNT as u64 {
-        let snap = synthetic_branch_snapshot(branch_id);
-        let payload = snap.encode().expect("encode");
-
-        let db1 = MnemosyneCascadeDb::default();
-        let branch1 = CascadeBranch::new(&db1, branch_id, 1, payload.clone());
-        let r1 = section_decision_status(&db1, branch1);
-
-        let db2 = MnemosyneCascadeDb::default();
-        let branch2 = CascadeBranch::new(&db2, branch_id, 1, payload);
-        let r2 = section_decision_status(&db2, branch2);
-
-        assert_eq!(r1, r2, "branch {} cross-db drift", branch_id);
-    }
-}
-
-/// Synthetic violation injection — flips one Section to Superseded without
-/// outbound CrossRef. The cascade query detects exactly 1 violation.
-#[test]
-fn gate_iii_violation_injection_round_trip_accurate() {
-    let db = MnemosyneCascadeDb::default();
-    let mut snap = synthetic_branch_snapshot(0);
-    snap.sections[0].skeleton.decision_status = Some(DecisionStatus::Superseded);
-    let target = snap.sections[0].key.entity_id;
-    snap.cross_refs.retain(|cr| cr.from_section != target);
-
-    let payload = snap.encode().expect("encode");
-    let branch = CascadeBranch::new(&db, 0, 1, payload);
-    let r = section_decision_status(&db, branch);
-    assert_eq!(r, ValidationResult::violations(1));
-}
-
-/// Aggregate fact count — full 50K scale projection sanity check.
 #[test]
 fn fixture_total_fact_count_matches_projection() {
     let total: usize = (0..BRANCH_COUNT as u64)
-        .map(|b| synthetic_branch_snapshot(b).fact_count())
+        .map(|b| {
+            let s = synthetic_branch(b);
+            s.sections.len() + s.changelog_entries.len() + s.frozen_lists.len() + s.cross_refs.len()
+        })
         .sum();
-    let expected = BRANCH_COUNT
-        * (SECTIONS_PER_BRANCH
-            + CHANGELOG_PER_BRANCH
-            + FROZEN_LISTS_PER_BRANCH
-            + CROSS_REFS_PER_BRANCH);
-    assert_eq!(total, expected);
+    assert_eq!(total, TOTAL_FACTS);
     assert_eq!(total, 1_750);
+}
+
+/// Gate (iii) — deterministic re-run: same input → same output, both within one
+/// DB (memoize stability) and across fresh DB instances (no storage-state leak).
+#[test]
+fn aggregator_results_are_deterministic_within_and_across_dbs() {
+    for branch_id in 0..BRANCH_COUNT as u64 {
+        let db1 = FineCascadeDb::new();
+        let idx1 = build_synthetic(&db1, branch_id);
+        let a1 = section_decision_status_aggregated(&db1, idx1);
+        let a2 = section_decision_status_aggregated(&db1, idx1);
+        assert_eq!(a1, a2, "branch {branch_id} re-run drift");
+
+        let db2 = FineCascadeDb::new();
+        let idx2 = build_synthetic(&db2, branch_id);
+        let b1 = section_decision_status_aggregated(&db2, idx2);
+        assert_eq!(a1, b1, "branch {branch_id} cross-db drift");
+    }
+}
+
+/// Violation injection — one Superseded section without an outbound decision/impl
+/// ref is detected as exactly one violation, even embedded in the full fixture.
+#[test]
+fn violation_injection_detected_in_full_fixture() {
+    let db = FineCascadeDb::new();
+    let mut b = synthetic_branch(0);
+    b.sections[0].skeleton.decision_status = Some(DecisionStatus::Superseded);
+    let target = b.sections[0].key.entity_id;
+    b.cross_refs.retain(|cr| cr.from_section != target);
+    let idx = build_branch_index(
+        &db,
+        0,
+        &b.sections,
+        &b.cross_refs,
+        &b.frozen_lists,
+        &b.changelog_entries,
+    );
+    assert_eq!(
+        section_decision_status_aggregated(&db, idx),
+        ValidationResult::violations(1)
+    );
+}
+
+/// Gate (ii.a) — an unread-field mutation (Section.title) invalidates nothing,
+/// independent of branch size. Run at two scales; both must be zero.
+#[test]
+fn title_mutation_invalidates_zero_sub_queries_at_any_scale() {
+    for &n in &[5usize, 50] {
+        let mut db = FineCascadeDb::new();
+        let idx = active_only_branch(&db, 1, n);
+        let r0 = section_decision_status_aggregated(&db, idx);
+        assert!(r0.ok);
+
+        db.reset_exec_counter();
+        let target = idx.sections(&db)[n / 2];
+        target.set_title(&mut db).to("changed".into());
+        let r1 = section_decision_status_aggregated(&db, idx);
+        assert!(r1.ok);
+        assert_eq!(
+            db.exec_counter(),
+            0,
+            "Section.title mutation must invalidate zero sub-queries at n={n}"
+        );
+    }
+}
+
+/// Gate (ii.b) — the invalidation polynomial is **size-independent**. Flipping
+/// one Active section to Superseded re-executes the same bounded set of bodies
+/// (target sub-query + its per-section outbound cache + the aggregator) whether
+/// the branch holds 5 or 50 sections.
+#[test]
+fn decision_status_flip_invalidation_is_independent_of_branch_size() {
+    fn flip_one_to_superseded(n: usize) -> usize {
+        let mut db = FineCascadeDb::new();
+        let idx = active_only_branch(&db, 1, n);
+        let r0 = section_decision_status_aggregated(&db, idx);
+        assert!(r0.ok, "baseline must be clean at n={n}");
+
+        db.reset_exec_counter();
+        let target = idx.sections(&db)[n / 2];
+        target
+            .set_decision_status(&mut db)
+            .to(Some(DecisionStatus::Superseded));
+        let r1 = section_decision_status_aggregated(&db, idx);
+        assert_eq!(r1.violation_count, 1, "exactly one violation at n={n}");
+        db.exec_counter()
+    }
+
+    let small = flip_one_to_superseded(5);
+    let large = flip_one_to_superseded(50);
+    assert_eq!(
+        small, large,
+        "invalidation count must not grow with branch size (5 vs 50 sections): {small} != {large}"
+    );
+    // target sub-query + outbound_crossrefs_by_section(target) + aggregator.
+    assert_eq!(
+        small, 3,
+        "expected the bounded 3-body re-execution; got {small}"
+    );
 }

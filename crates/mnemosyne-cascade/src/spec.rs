@@ -1,8 +1,8 @@
-//! Cascade query spec types — *input*'s `<query>` block carry.
+//! Cascade query spec types — declarative `<query>` block carry.
 //!
-//! Spec types describe cascade queries declaratively. The actual Salsa runtime
-//! lives in [`crate::runtime`]; this module captures the query topology used
-//! by both the runtime and the metadata layer (5-language read-only emit).
+//! Spec types describe cascade queries declaratively. The executable Salsa
+//! engine lives in [`crate::fine_grained`]; this module captures the query
+//! topology consumed by the [`crate::metadata`] dependency-graph layer.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadDep {

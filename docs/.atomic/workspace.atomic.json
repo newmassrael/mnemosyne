@@ -4380,6 +4380,46 @@
         "Decisions derived from the cost-no-object textbook + Phase-0 AI-efficiency mandate and checked against ARCHITECTURE.md invariants #1 (keep the foundation), #3 (YAGNI gates upper layers), #4 (core stays domain-agnostic), plus the R328 RocksDB-free authoring principle.",
         "Citation hygiene: cited rounds R335, R336, R328, R331, R332 verified present in the atomic store before writing the references."
       ]
+    },
+    "Round 338 — retire the coarse cascade engine (runtime.rs/snapshot.rs); cascade becomes a pure in-memory Salsa engine — Implement R337's decision that the coarse runtime.rs is retired at C's implementation: delete the branch-granularity engine and its BranchSnapshotData store-loader (the sole cascade to mnemosyne-store edge), relocate ValidationResult into its own result.rs, and migrate the measurement + smoke tests to the fine-grained engine. Dropping the store edge makes mnemosyne-cascade RocksDB-free so the upcoming read-side projection service (and its MCP warm host) can depend on the engine without dragging RocksDB into the authoring path (the CQRS invariant); cascade deps collapse to mnemosyne-facts + salsa. The migrated measurement test now asserts the fine engine's defining property — size-independent invalidation: the same single-fact mutation re-executes an identical bounded set of bodies at 5 and 50 sections.": {
+      "decision_summary": "Retire the coarse branch-granularity cascade engine (runtime.rs + snapshot.rs) per R337, making mnemosyne-cascade a pure in-memory Salsa engine: ValidationResult moves to result.rs, the sole cascade to mnemosyne-store edge is dropped (deps now just facts + salsa), and the measurement/smoke tests migrate to the fine-grained engine with a size-independent invalidation gate.",
+      "changes_bullets": [
+        "Delete crates/mnemosyne-cascade/src/runtime.rs (the coarse branch-granularity CascadeBranch/MnemosyneCascadeDb engine) and src/snapshot.rs (BranchSnapshotData + load_from_store) — the only consumers of the cascade to mnemosyne-store edge.",
+        "Move ValidationResult into a new src/result.rs value-object module, re-exported from lib.rs; fine_grained.rs keeps `use crate::ValidationResult`.",
+        "Drop the now-dead mnemosyne-store, serde, serde_json, anyhow, thiserror and tracing deps from cascade Cargo.toml; deps collapse to mnemosyne-facts + salsa, with salsa added as a dev-dependency for the measurement-test setters.",
+        "Rewrite lib.rs module doc + re-exports (CascadeDb now sourced from fine_grained, not runtime) and fix the spec.rs doc comment that referenced the deleted crate::runtime.",
+        "Migrate tests/cascade_query_smoke.rs to the fine-grained engine, preserving the engine-independent cascade dependency-graph metadata + fixture-topology tests.",
+        "Migrate tests/phase_1_5_measurement.rs to the fine-grained engine: the coarse payload-size gates (which measured a representation that no longer exists) are replaced by a size-independent invalidation gate plus scale correctness, determinism and violation-injection over the 1,750-fact synthetic fixture."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green (cascade: 29 unit + 7 smoke + 6 measurement); the size-invariance gate asserts the single-section flip re-executes an identical bounded body set at 5 and 50 sections (small == large == 3).",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync, commit-to-ledger drift missing 0.",
+        "Confirmed no production consumer of the coarse engine before deletion — workspace grep found only the two cascade test files; the mnemosyne-server `opentelemetry runtime::Tokio` hit is an unrelated tokio runtime.",
+        "Citation hygiene: R337 (the decision mandating runtime.rs retirement at C's implementation) and R328 (RocksDB-free authoring) verified present and Active in the atomic store before citing."
+      ],
+      "carry_forward_bullets": [
+        "Next (C/D Step 1 walking skeleton, now unblocked by the RocksDB-free cascade): a read-side warm projection service crate (atomic + cascade + core) that builds a fine-grained BranchIndex from the live atomic log and serves validate via Salsa, wired into MCP as a warm-held consumer so the orphaned cascade substrate reaches a live path and the warm-host + RocksDB-free split is proven end-to-end."
+      ],
+      "publishable_decision_summary": "Retire the coarse branch-granularity cascade engine (runtime.rs + snapshot.rs) per R337, making mnemosyne-cascade a pure in-memory Salsa engine: ValidationResult moves to result.rs, the sole cascade to mnemosyne-store edge is dropped (deps now just facts + salsa), and the measurement/smoke tests migrate to the fine-grained engine with a size-independent invalidation gate.",
+      "publishable_changes_bullets": [
+        "Delete crates/mnemosyne-cascade/src/runtime.rs (the coarse branch-granularity CascadeBranch/MnemosyneCascadeDb engine) and src/snapshot.rs (BranchSnapshotData + load_from_store) — the only consumers of the cascade to mnemosyne-store edge.",
+        "Move ValidationResult into a new src/result.rs value-object module, re-exported from lib.rs; fine_grained.rs keeps `use crate::ValidationResult`.",
+        "Drop the now-dead mnemosyne-store, serde, serde_json, anyhow, thiserror and tracing deps from cascade Cargo.toml; deps collapse to mnemosyne-facts + salsa, with salsa added as a dev-dependency for the measurement-test setters.",
+        "Rewrite lib.rs module doc + re-exports (CascadeDb now sourced from fine_grained, not runtime) and fix the spec.rs doc comment that referenced the deleted crate::runtime.",
+        "Migrate tests/cascade_query_smoke.rs to the fine-grained engine, preserving the engine-independent cascade dependency-graph metadata + fixture-topology tests.",
+        "Migrate tests/phase_1_5_measurement.rs to the fine-grained engine: the coarse payload-size gates (which measured a representation that no longer exists) are replaced by a size-independent invalidation gate plus scale correctness, determinism and violation-injection over the 1,750-fact synthetic fixture."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green (cascade: 29 unit + 7 smoke + 6 measurement); the size-invariance gate asserts the single-section flip re-executes an identical bounded body set at 5 and 50 sections (small == large == 3).",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync, commit-to-ledger drift missing 0.",
+        "Confirmed no production consumer of the coarse engine before deletion — workspace grep found only the two cascade test files; the mnemosyne-server `opentelemetry runtime::Tokio` hit is an unrelated tokio runtime.",
+        "Citation hygiene: R337 (the decision mandating runtime.rs retirement at C's implementation) and R328 (RocksDB-free authoring) verified present and Active in the atomic store before citing."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Next (C/D Step 1 walking skeleton, now unblocked by the RocksDB-free cascade): a read-side warm projection service crate (atomic + cascade + core) that builds a fine-grained BranchIndex from the live atomic log and serves validate via Salsa, wired into MCP as a warm-held consumer so the orphaned cascade substrate reaches a live path and the warm-host + RocksDB-free split is proven end-to-end."
+      ]
     }
   },
   "inventory_entries": {},
