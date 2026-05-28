@@ -14,7 +14,7 @@ name = "mnemosyne-cli"
 path = "src/main.rs"
 
 [dependencies]
-mnemosyne-validator = { path = "../mnemosyne-validator" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-server = { path = "../mnemosyne-server" }
 mnemosyne-store = { path = "../mnemosyne-store" }
 mnemosyne-core = { path = "../mnemosyne-core" }

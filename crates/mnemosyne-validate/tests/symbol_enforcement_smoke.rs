@@ -23,7 +23,7 @@ use mnemosyne_core::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
 use mnemosyne_config::{SetEqualityValidatorConfig};
 use mnemosyne_atomic::{AtomicStore, add_section, add_section_implementation};
-use mnemosyne_validator::{code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind}};
+use mnemosyne_validate::{code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind}};
 use tempfile::TempDir;
 
 fn rust_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {

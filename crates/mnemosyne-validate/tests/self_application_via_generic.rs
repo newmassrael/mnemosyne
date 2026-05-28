@@ -20,7 +20,7 @@ use mnemosyne_atomic::{AtomicStore};
 use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
 use mnemosyne_workspace::{Workspace};
 use mnemosyne_style::{StyleSeverity, default_ruleset_with_config};
-use mnemosyne_validator::{validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use std::path::PathBuf;
 

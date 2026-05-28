@@ -22,7 +22,7 @@
 use mnemosyne_config::{SchemaSection, discover_config};
 use mnemosyne_parser::{parse_markdown_with_schema};
 use mnemosyne_workspace::{Workspace};
-use mnemosyne_validator::{validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use tempfile::TempDir;
 

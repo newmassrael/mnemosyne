@@ -37,8 +37,8 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 **Implementations**:
-- crates/mnemosyne-validator/src/code_refs.rs
 - crates/mnemosyne-cli/src/main.rs
+- crates/mnemosyne-validate/src/code_refs.rs
 
 
 
@@ -54,8 +54,8 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 **Implementations**:
-- crates/mnemosyne-validator/src/code_refs.rs
 - crates/mnemosyne-atomic/src/lib.rs
+- crates/mnemosyne-validate/src/code_refs.rs
 
 
 
@@ -2083,6 +2083,56 @@ Source: `docs/.atomic/workspace.atomic.json`
 - 13-smell #11 Box Status tonic interceptor allow — tonic API constraint; remove only when upstream tonic relaxes interceptor trait signature
 - 13-smell #12 AtomicSection 14 field data clump analysis — extract Outline title parent_doc parent_section sub-struct candidate; needs cohesion measurement before commit
 - 13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes
+
+
+
+### Round 313 — Mnemosyne-validator god-crate decomposition complete — mnemosyne-validate crate created from final 4 residual modules (validator + t2 + code_refs + commit_ledger); mnemosyne-validator crate deleted entirely; 18 integration tests redistributed to mnemosyne-validate/tests/; 13-smell #5 fully closed (15-module 16804-line god crate replaced by 8 cohesion-driven crates)
+
+**Changes**:
+- mnemosyne-validate crate created with the final 4 validator residual modules — validator.rs (T1 cross-ref-orphan + changelog-append-only + frozen-list-membership-delta + section-decision-status-transition + atomic-section-supersede-state) plus t2.rs (T2 frozen-ledger jaccard + atomic frozen check) plus code_refs.rs (R256+ SetEqualityValidator code-citation defense with scan_section_decay + scan_inventory_decay + symbol-mismatch axis + Validator trait impl + tests) plus commit_ledger.rs (commit↔ledger drift report)
+- mnemosyne-validator crate deleted entirely — directory crates/mnemosyne-validator/ removed; workspace member entry removed from root Cargo.toml; pre-release no-compat policy applies (no external API to preserve since the residual surface migrated 1-1 into mnemosyne-validate)
+- 18 integration tests moved from crates/mnemosyne-validator/tests/ to crates/mnemosyne-validate/tests/ — atomic_round_trip + atomic_store_view_parity + changelog_pattern_plugin + external_fixtures_integration + generated_vs_legacy_audit + phase_1_priority_audit + schema_as_input_integration + self_application_via_generic + self_validation + 6 style_* tests + symbol_enforcement_smoke + validator_trait_dispatch + workspace_config_integration; mnemosyne-validate dev-dependencies span tempfile + mnemosyne-parser + mnemosyne-style + mnemosyne-query + mnemosyne-plugin-tree-sitter-rust so the cross-cutting integration suite still compiles in its new home
+- atomic_round_trip.rs path assertion updated — the test's expected file path crates/mnemosyne-validator/src/atomic.rs corrected to crates/mnemosyne-atomic/src/lib.rs (post-R311 atomic crate extraction); two assertion sites fixed
+- mnemosyne-validate/src/code_refs.rs SetEqualityValidator plugin_name string updated from "mnemosyne-validator::SetEqualityValidator" to "mnemosyne-validate::SetEqualityValidator" so the plugin registry identifier reflects the canonical crate name
+- consumer migration sweep — all mnemosyne_validator (snake) sites replaced with mnemosyne_validate across mnemosyne-cli (main.rs + atomic_cli.rs) + mnemosyne-server + mnemosyne-mcp + the 18 moved tests; all mnemosyne-validator (kebab) Cargo.toml dep entries replaced with mnemosyne-validate
+- mnemosyne.toml [plugins.set_equality_validator].paths swap — crates/mnemosyne-validator/src/ entry replaced with crates/mnemosyne-validate/src/ so code-citation defense scans the canonical sources
+- atomic-store implementation refs updated — §code-citation-defense plus §code-citation-defense/bidirectional-binding section.implementations rows pointing at crates/mnemosyne-validator/src/code_refs.rs migrated to crates/mnemosyne-validate/src/code_refs.rs via remove-section-implementation plus add-section-implementation primitive pair (preserves audit trail across the move)
+- god-crate decomposition #5 fully closed — 8 new cohesion-driven crates (mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic + mnemosyne-workspace + mnemosyne-style + mnemosyne-query + mnemosyne-validate) replace the 15-module 16804-line mnemosyne-validator god crate; workspace now hosts 17 production crates total (3 prior - validator + 8 new = 17 wait 9+8-1=16 actually)
+- mnemosyne-cli main.rs reference comment block (the 5-module separation list under the lib.rs doc comment) is now obsolete — the doc-comment description superseded; future R316 cli decomposition round will rewrite the cli docs
+
+
+
+**Verification**:
+- cargo build --workspace green across all 16 production crates after deleting mnemosyne-validator + creating mnemosyne-validate (mnemosyne-store + mnemosyne-facts + mnemosyne-core + mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic + mnemosyne-workspace + mnemosyne-style + mnemosyne-query + mnemosyne-validate + mnemosyne-cascade + mnemosyne-server + mnemosyne-cli + mnemosyne-mcp + mnemosyne-plugin-tree-sitter-rust)
+- cargo test --workspace --no-fail-fast green — 82 test result groups all pass with the 18 redistributed integration tests now running from mnemosyne-validate/tests/; mnemosyne-validator no longer appears in the cargo test target list (deleted)
+- cargo clippy --workspace --all-targets -- -D warnings exits 0 — R308 D9 baseline held under the final wave of decomposition; no new warnings introduced across the deleted-validator transition or the consumer name swap
+- mnemosyne-cli validate-workspace baseline clean — entries 59 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0
+- mnemosyne-cli validate-code-refs clean — 0 violations across the 15 scanned paths after §code-citation-defense plus §code-citation-defense/bidirectional-binding implementation refs were migrated from mnemosyne-validator/src/ to mnemosyne-validate/src/ via the atomic-store add-implementation plus remove-implementation primitives
+- atomic store wire format unchanged — the validator deletion plus validate creation moved Rust source between crate boundaries only; no schema field renames + no serde attribute changes + no fact bytes layout touched
+- mnemosyne-validate dev-dep graph permits the cross-cutting tests to compile — mnemosyne-parser + mnemosyne-style + mnemosyne-query + mnemosyne-plugin-tree-sitter-rust + tempfile dev-deps cover the integration test surface that used to live in mnemosyne-validator/tests/
+
+
+
+**Impact**: §generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-312--mnemosyne-validator-god-crate-decomposition-second-wave--3-new-crates-mnemosyne-workspace--mnemosyne-style--mnemosyne-query-with-render-submodule-extracted-with-full-consumer-migration-validator-shrunk-from-10-modules-to-5-faade-free-per-claude-no-legacy-carry-13-smell-5-second-of-three-progress-r313-deletes-the-residual-validator-crate-next
+
+
+**Carry forward**:
+- R314 13-smell #1 + #2 typed Validator trait + dedup finding — trait Validator with associated type Finding plus ErasedValidator object-safe wrapper for dynamic dispatch through PluginRegistry; retire ValidationFinding stringly-typed extras BTreeMap and CodeRefViolation duplicate representation; substrate ready since mnemosyne-validate now hosts the Validator surface cleanly
+- R315 13-smell #8 mnemosyne-mcp library API split — mnemosyne-mcp tool methods call mnemosyne-validate plus mnemosyne-query plus mnemosyne-atomic library APIs directly instead of spawning mnemosyne-cli subprocess (eliminate process fork + arg parsing + JSON round-trip per call)
+- R316 13-smell #6 + #7 main.rs decomposition — cli commands module split (cli/commands/{validate + query + style + append + each cmd_ function into its own module}.rs) plus append_changelog_entry 8-arg builder or request struct to retire too_many_arguments per-site allow; mnemosyne-cli/src/main.rs is 1800+ lines and the textbook split is by subcommand
+- R317 D3 transport abstraction MCP self-ref dogfood — was originally R309 R310 plan; deferred again because transport-on-stringly-typed-boundary would deepen #1 + #2 debt; only enter after R314 typed Validator trait closure
+- R318+ D4 MediumAdapter trait plus DesignDocAdapter refactor — Phase 1A prerequisite; medium adapter trait home declared on mnemosyne-core or on a new mnemosyne-medium crate; narrative adapter lands as second impl in Phase 1A
+- R319+ D6 external plugin extension mechanism — dlopen libloading dynamic loading or external-binary orchestrator path; large design round
+- D7 severity_symbol Mnemosyne self-dogfood — activate plugins.symbol_resolver.rust in mnemosyne.toml plus N round measurement evidence before promotion decision (R263 measure-then-promote pattern)
+- D8 Round 172 priority audit re-validation — at Phase 1 entry trigger re-measure parameter value times measurability over risk times one plus unmet deps
+- 13-smell #3 AtomicSnapshot eager allocation lazy iterator GAT — defer until ledger entries cross 10K scale threshold; current 59 entries well below hot path concern
+- 13-smell #9 doc_lazy_continuation 206 sites blanket allow removal — continuous-improvement; address without blocking on a single round
+- 13-smell #10 YyyyMmDd typed newtype — replace inconsistent_digit_grouping blanket allow with strong type at 9 fact sites; mechanical refactor
+- 13-smell #11 Box Status tonic interceptor allow — tonic API constraint; remove only when upstream tonic relaxes interceptor trait signature
+- 13-smell #12 AtomicSection 14 field data clump analysis — extract Outline title parent_doc parent_section sub-struct candidate; needs cohesion measurement before commit
+- 13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes (currently no multi-validator scenario)
+- post-R313 test redistribution — 18 tests live in mnemosyne-validate/tests/; some are cross-cutting and would conceptually fit other crates (atomic_round_trip → mnemosyne-atomic; style_* → mnemosyne-style; workspace_config_integration → mnemosyne-workspace); leave the current single-location layout pending a future round if test discovery cost shows up in practice
+- bench/codegen-prototype/src/query_api.rs doc-comment references mnemosyne-validator by old name twice — pure prose carry from the bench era; not in any scanned path so it does not affect citation defense; clean up if revisiting bench
 
 
 

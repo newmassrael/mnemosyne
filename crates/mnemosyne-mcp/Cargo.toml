@@ -11,7 +11,7 @@ name = "mnemosyne-mcp"
 path = "src/main.rs"
 
 [dependencies]
-mnemosyne-validator = { path = "../mnemosyne-validator" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
 rmcp = { version = "1.6", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 serde = { workspace = true }

@@ -1110,7 +1110,7 @@ dependencies = [
  "mnemosyne-server",
  "mnemosyne-store",
  "mnemosyne-style",
- "mnemosyne-validator",
+ "mnemosyne-validate",
  "mnemosyne-workspace",
  "regex",
  "serde_json",
@@ -1158,7 +1158,7 @@ name = "mnemosyne-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mnemosyne-validator",
+ "mnemosyne-validate",
  "rmcp",
  "schemars",
  "serde",
@@ -1220,7 +1220,7 @@ dependencies = [
  "mnemosyne-cascade",
  "mnemosyne-facts",
  "mnemosyne-store",
- "mnemosyne-validator",
+ "mnemosyne-validate",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-proto",
@@ -1276,7 +1276,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mnemosyne-validator"
+name = "mnemosyne-validate"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1294,10 +1294,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "tera",
  "thiserror 1.0.69",
- "toml",
- "tracing",
 ]
 
 [[package]]

@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
- "crates/mnemosyne-validator",
  "crates/mnemosyne-store",
  "crates/mnemosyne-facts",
  "crates/mnemosyne-cascade",
@@ -17,6 +16,7 @@ members = [
  "crates/mnemosyne-workspace",
  "crates/mnemosyne-style",
  "crates/mnemosyne-query",
+ "crates/mnemosyne-validate",
 ]
 
 [workspace.package]
@@ -49,7 +49,7 @@ sha2 = "0.10"
 
 # Round 292 — regex backend for `query_term` read primitive
 # (literal+regex search over atomic-store fields, replacing external grep).
-# Used by mnemosyne-validator::query::query_term; not pulled into runtime
+# Used by mnemosyne-validate::query::query_term; not pulled into runtime
 # crates that don't enable it.
 regex = "1"
 

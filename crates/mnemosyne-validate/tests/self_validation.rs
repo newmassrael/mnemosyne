@@ -16,7 +16,7 @@
 use mnemosyne_parser::{parse_markdown};
 use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
 use mnemosyne_workspace::{Workspace};
-use mnemosyne_validator::{t2::{frozen_ledger_jaccard, T2ValidationError}, validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_validate::{t2::{frozen_ledger_jaccard, T2ValidationError}, validator::cross_ref_orphan_reject_with_workspace};
 use std::path::PathBuf;
 
 const DOC_PATHS: &[&str] = &["docs/GENERATED.md"];
@@ -102,7 +102,7 @@ fn step_2_reclassify_eliminates_six_file_orphans() {
  let content = read_doc(path);
  let parsed = parse_markdown(&content, path);
 
- let step1_only = mnemosyne_validator::validator::cross_ref_orphan_reject(&parsed);
+ let step1_only = mnemosyne_validate::validator::cross_ref_orphan_reject(&parsed);
  let step12 = cross_ref_orphan_reject_with_workspace(&parsed, &ws);
 
  println!(
@@ -152,7 +152,7 @@ fn step_2_reclassify_drops_six_file_orphans_to_zero() {
  all_zero = false;
  // dump first 5 for diagnostics.
  for err in orphans.iter().take(5) {
-  if let mnemosyne_validator::ValidationError::OrphanCrossRef {
+  if let mnemosyne_validate::ValidationError::OrphanCrossRef {
   from_section,
   to_target,
   ref_kind,

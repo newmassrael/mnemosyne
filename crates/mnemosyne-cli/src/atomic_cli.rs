@@ -33,7 +33,7 @@ use mnemosyne_core::{DecisionStatus, InventoryStatus};
 use mnemosyne_config::{discover_config};
 use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore, ExampleBlock, RejectedAlternative, add_inventory_entry, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, remove_inventory_entry, remove_section, remove_section_implementation, set_inventory_section_ref, set_inventory_status, set_section_alternatives, set_section_decision_status, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_normative_excerpt, set_section_outputs, set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title};
 use mnemosyne_query::{render_changelog_entry, render_section};
-use mnemosyne_validator::{code_refs::{scan_inventory_decay, scan_section_decay}};
+use mnemosyne_validate::{code_refs::{scan_inventory_decay, scan_section_decay}};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};

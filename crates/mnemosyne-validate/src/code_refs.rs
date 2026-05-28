@@ -1361,7 +1361,7 @@ impl SetEqualityValidator {
 impl mnemosyne_core::Validator for SetEqualityValidator {
  fn version_surface(&self) -> mnemosyne_core::VersionSurface {
  mnemosyne_core::VersionSurface {
- plugin_name: "mnemosyne-validator::SetEqualityValidator".into(),
+ plugin_name: "mnemosyne-validate::SetEqualityValidator".into(),
  plugin_version: env!("CARGO_PKG_VERSION").into(),
  schema_min: 4,
  schema_max: 4,

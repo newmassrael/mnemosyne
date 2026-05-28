@@ -26,7 +26,7 @@ use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
 use mnemosyne_workspace::{Workspace};
 use mnemosyne_style::{StyleSeverity, StyleViolation, check_style, default_ruleset_with_config};
 use mnemosyne_query::{TermMode, TermQuery, TermScope, build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic, section_by_id, workspace_section_id_set};
-use mnemosyne_validator::{ValidationError, code_refs::SetEqualityValidator, validator::cross_ref_orphan_reject_with_workspace};
+use mnemosyne_validate::{ValidationError, code_refs::SetEqualityValidator, validator::cross_ref_orphan_reject_with_workspace};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -507,7 +507,7 @@ fn cmd_validate(file: &str) -> Result<()> {
  let parsed = parse_markdown_with_schema(&content, &rel, schema);
 
  // Single-doc T1 (intra-doc only) — workspace fallback validate-workspace scope.
- let orphans = mnemosyne_validator::validator::cross_ref_orphan_reject(&parsed);
+ let orphans = mnemosyne_validate::validator::cross_ref_orphan_reject(&parsed);
 
  // Round-trip — single doc scope, default_doc = None.
  let emitted = emit_markdown_with_default(&parsed, None);
@@ -1273,13 +1273,13 @@ fn cmd_validate_workspace() -> Result<()> {
  // Some(Removed) is tombstone-exempt (asserts finality, not replacement).
  let parsed_docs_refs: Vec<&mnemosyne_schema::ParsedDoc> =
  parsed_docs.iter().map(|(_, doc)| doc).collect();
- let atomic_supersede_errors = mnemosyne_validator::atomic_section_supersede_state_reject(
+ let atomic_supersede_errors = mnemosyne_validate::atomic_section_supersede_state_reject(
  &validate_workspace_atomic,
  &parsed_docs_refs,
  );
  if !atomic_supersede_errors.is_empty() {
  for err in &atomic_supersede_errors {
- if let mnemosyne_validator::ValidationError::SupersedeMissingRef {
+ if let mnemosyne_validate::ValidationError::SupersedeMissingRef {
  section_id, ..
  } = err
  {
@@ -1457,7 +1457,7 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  let mut total = 0usize;
  let mut per_section: Vec<(&str, usize)> = Vec::new();
  for sid in &targets {
- let hits = mnemosyne_validator::code_refs::scan_section_decay(
+ let hits = mnemosyne_validate::code_refs::scan_section_decay(
  root,
  &code_refs_cfg.paths,
  sid,
@@ -1507,7 +1507,7 @@ fn print_commit_ledger_drift_surface(
  return Ok(());
  }
  let ledger = collect_ledger_round_numbers(atomic);
- let report = mnemosyne_validator::commit_ledger_diff(&cited, &ledger);
+ let report = mnemosyne_validate::commit_ledger_diff(&cited, &ledger);
  println!(
  "commit↔ledger drift: cited={} / ledger={} / missing={} (last {} commits scanned)",
  report.cited_count,

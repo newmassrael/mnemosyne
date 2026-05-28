@@ -61,7 +61,7 @@ fn atomic_section_round_trip_full_shape() {
  &mut store,
  &sidecar,
  "43",
- "crates/mnemosyne-validator/src/atomic.rs",
+ "crates/mnemosyne-atomic/src/lib.rs",
  Some("AtomicSection"),
  )
  .unwrap();
@@ -91,7 +91,7 @@ fn atomic_section_round_trip_full_shape() {
  assert!(md.contains("```rust"));
  assert!(md.contains("fn main() {}"));
  assert!(md.contains("**Implementations**"));
- assert!(md.contains("- crates/mnemosyne-validator/src/atomic.rs:AtomicSection"));
+ assert!(md.contains("- crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
  assert!(md.contains("- crates/mnemosyne-cli/src/atomic_cli.rs"));
 }
 

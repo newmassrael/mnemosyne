@@ -21,7 +21,7 @@ use mnemosyne_core::{
     AtomicStoreView, PluginRegistry, Severity, ValidationContext,
 };
 use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
-use mnemosyne_validator::code_refs::SetEqualityValidator;
+use mnemosyne_validate::code_refs::SetEqualityValidator;
 use mnemosyne_config::SetEqualityValidatorConfig;
 use tempfile::TempDir;
 

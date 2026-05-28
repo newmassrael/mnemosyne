@@ -33,7 +33,7 @@ otlp = [
 mnemosyne-store = { path = "../mnemosyne-store" }
 mnemosyne-facts = { path = "../mnemosyne-facts" }
 mnemosyne-cascade = { path = "../mnemosyne-cascade" }
-mnemosyne-validator = { path = "../mnemosyne-validator" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
 
 serde.workspace = true
 serde_json.workspace = true

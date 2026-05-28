@@ -2,7 +2,7 @@
 #
 # Phase 0e generic library extraction: this file pulls out what used to be
 # hardcoded in `crates/mnemosyne-cli/src/main.rs::WORKSPACE_DOC_PATHS` and
-# `crates/mnemosyne-validator/src/workspace.rs::MNEMOSYNE_DEFAULT_DOC`.
+# `crates/mnemosyne-validate/src/workspace.rs::MNEMOSYNE_DEFAULT_DOC`.
 #
 # External users author their own `mnemosyne.toml` with the same shape; the
 # Mnemosyne self-application is now the first dogfood consumer of the
@@ -102,9 +102,9 @@ paths = [
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-style/src/",
- "crates/mnemosyne-validator/src/",
+ "crates/mnemosyne-validate/src/",
  "crates/mnemosyne-workspace/src/",
-]
+ ]
 severity_missing = "reject"
 severity_binding = "reject"
 comment_only = true
