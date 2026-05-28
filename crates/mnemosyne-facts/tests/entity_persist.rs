@@ -48,7 +48,6 @@ fn entity_put_get_round_trip_all_four_kinds() {
         },
         round_number: 73,
         summary: "OPTION B-2 mnemosyne-store production".to_string(),
-        appended_at: 1714_780_000,
     };
     typed.put_changelog_entry(&changelog).unwrap();
     assert_eq!(

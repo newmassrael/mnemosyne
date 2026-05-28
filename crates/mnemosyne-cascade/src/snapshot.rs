@@ -153,7 +153,6 @@ mod tests {
                 },
                 round_number: 81,
                 summary: "Round 81 — cascade body".into(),
-                appended_at: 2026_05_03,
             }],
             frozen_lists: vec![FrozenListFact {
                 key: FactKey {

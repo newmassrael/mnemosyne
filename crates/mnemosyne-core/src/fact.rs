@@ -105,12 +105,17 @@ pub struct SectionFact {
 }
 
 /// ChangelogEntry entity instance.
+///
+/// Canonical scalars are the round ordinal and a one-line summary. There is no
+/// `appended_at` payload field: in this event-sourced, git-native log the
+/// transaction-time is the git commit time (the store's transaction-time axis),
+/// not a denormalized fact field; `round_number` already orders entries
+/// (Round 330 — Convergence B2, dropped the unsourced field).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChangelogEntryFact {
     pub key: FactKey,
     pub round_number: u64,
     pub summary: String,
-    pub appended_at: u64,
 }
 
 /// FrozenList entity instance.

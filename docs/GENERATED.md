@@ -2583,3 +2583,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 330 — Convergence B2: project ChangelogEntry facts, drop appended_at — Convergence B2 — project ChangelogEntry into the fact model and settle its canonical scalar shape: round_number parses from the prose entry_id key, summary = decision_summary; appended_at is dropped from ChangelogEntryFact (and codec and cascade ChangelogRecord) since the git-native log's transaction-time is the git commit, not a denormalized payload field.
+
+**Changes**:
+- Dropped appended_at from core ChangelogEntryFact, the facts IndexCodec encode/decode, and cascade ChangelogRecord (a Salsa input nothing read — verified no .appended_at accessor existed); round_number now serves as both identity and logical clock.
+- Added AtomicStore::project_changelog_entry_facts + parse_round_number: entity_id = valid_from = round_number (parsed from the prose key), summary = decision_summary falling back to the key for pre-required-summary legacy entries, non-round keys skipped.
+- Updated all ChangelogEntryFact / ChangelogRecord construction sites (facts + cascade tests, persist integration test, phase_1_5 measurement) to the slimmer shape.
+
+
+
+**Verification**:
+- 679 workspace tests pass (4 new: round-number parse forms, per-round projection, summary key-fallback, non-round skip); cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean.
+- Section / FrozenList / CrossRef codecs unchanged — only the ChangelogEntry value bytes shrank by the removed u64.
+
+
+
+
+**Carry forward**:
+- B3 next — persist projected facts into the RocksDB index via TypedFactStore on the cascade/server side plus a rebuild-from-log path; the index-rebuild driver belongs on the index-owning subgraph (server/cascade), keeping cli/ops RocksDB-free.
+- mnemosyne-facts codegen prototype (schema/emit/fixture/canonical) still lists an appended_at field for ChangelogEntry — a decoupled Phase -1A demo, flagged for a separate dead-code review rather than maintained in lockstep.
+
+
+

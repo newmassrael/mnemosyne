@@ -112,7 +112,6 @@ pub struct ChangelogRecord {
     pub valid_from: u64,
     pub round_number: u64,
     pub summary: String,
-    pub appended_at: u64,
 }
 
 #[salsa::input]
@@ -298,9 +297,9 @@ pub fn frozen_list_owner_resolution<'db>(
 /// cascading invalidation when the resolved handle is unchanged across
 /// mutation:
 ///
-/// - **ChangelogRecord.summary / appended_at mutation**: this body does NOT
-/// read those fields → no dep formed → no invalidation here. Downstream
-/// sub-queries also stay cached.
+/// - **ChangelogRecord.summary mutation**: this body does NOT read that field
+/// → no dep formed → no invalidation here. Downstream sub-queries also stay
+/// cached.
 /// - **ChangelogRecord.round_number mutation**: every per-round cache slot
 /// re-runs (the iteration reads each entry's `round_number`); only those
 /// whose result changed propagate. Bounded by the number of unique
@@ -517,7 +516,6 @@ pub fn build_branch_index(
                 c.key.valid_from,
                 c.round_number,
                 c.summary.clone(),
-                c.appended_at,
             )
         })
         .collect();
@@ -605,7 +603,6 @@ mod tests {
             },
             round_number: 60,
             summary: "x".into(),
-            appended_at: 2026_05_03,
         }
     }
 
@@ -636,7 +633,6 @@ mod tests {
             },
             round_number: round,
             summary: "x".into(),
-            appended_at: 2026_05_03,
         }
     }
 

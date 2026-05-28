@@ -338,7 +338,6 @@ mod tests {
                 },
                 round_number: 60,
                 summary: "round 60 ratify".into(),
-                appended_at: 2026_05_03,
             }],
             frozen_lists: vec![FrozenListFact {
                 key: FactKey {
@@ -368,7 +367,6 @@ mod tests {
                 },
                 round_number: 60,
                 summary: "x".into(),
-                appended_at: 100,
             }],
             frozen_lists: vec![FrozenListFact {
                 key: FactKey {

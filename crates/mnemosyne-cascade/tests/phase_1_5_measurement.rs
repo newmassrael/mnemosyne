@@ -72,7 +72,6 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
             },
             round_number: i as u64,
             summary: format!("synthetic round {} branch {}", i, branch_id),
-            appended_at: 2026_05_03 + i as u64,
         });
     }
     for i in 0..FROZEN_LISTS_PER_BRANCH {

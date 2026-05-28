@@ -206,10 +206,9 @@ impl IndexCodec for SectionFact {
 
 impl IndexCodec for ChangelogEntryFact {
     fn encode_value(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(16 + 4 + self.summary.len());
+        let mut out = Vec::with_capacity(8 + 4 + self.summary.len());
         write_u64(&mut out, self.round_number);
         write_string(&mut out, &self.summary);
-        write_u64(&mut out, self.appended_at);
         out
     }
 
@@ -222,7 +221,6 @@ impl IndexCodec for ChangelogEntryFact {
         let mut cursor = 0;
         let round_number = read_u64(buf, &mut cursor)?;
         let summary = read_string(buf, &mut cursor, "summary")?;
-        let appended_at = read_u64(buf, &mut cursor)?;
         Ok(Self {
             key: FactKey {
                 branch_id,
@@ -231,7 +229,6 @@ impl IndexCodec for ChangelogEntryFact {
             },
             round_number,
             summary,
-            appended_at,
         })
     }
 }
@@ -346,7 +343,6 @@ mod tests {
             },
             round_number: 73,
             summary: "OPTION B-2 mnemosyne-store production".to_string(),
-            appended_at: 2026_05_03_12_30,
         };
         let bytes = fact.encode_value();
         let decoded = ChangelogEntryFact::decode_value(1, 73, 2026_05_03, &bytes).expect("decode");
