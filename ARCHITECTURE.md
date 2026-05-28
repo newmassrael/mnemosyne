@@ -107,41 +107,61 @@ append-only fact log            ──→   materialized index keyed by
 
 ## 5. Current state vs target — the debt to converge
 
-The largest remaining deviation is a **partially duplicated fact model**: the
-ChangelogEntry / FrozenList / CrossRef concepts are still modeled twice — once
-for the live JSON authoring store, once for the RocksDB index codec. Section is
-the exception: as of R326 both adapters share one `SectionSkeleton` (the JSON log
-writes it inline; the index codec encodes the same struct), so only the
-adapter-specific wrappers differ. (A third, Salsa per-entity face —
+The fact model exists as **two unreconciled type definitions** — one for the
+live JSON authoring store (`mnemosyne-atomic`), one for the RocksDB index codec
+(`mnemosyne-facts`) — that **nothing connects yet**: no production code projects
+the atomic store into the fact structs (every `*Fact` construction lives in
+tests, the persist substrate, or cascade fixtures). So this is a *type*-level
+deviation, not a live-data duplication. (A third, Salsa per-entity face —
 `SectionInput` / `ChangelogEntryInput` / `FrozenListInput` — was removed in R322;
 cascade now consumes facts through `BranchSnapshotData` rather than redefining
 them.)
 
-| Concept | `mnemosyne-atomic` (JSON, live) | `mnemosyne-facts` (RocksDB index codec) |
-|---|---|---|
-| Section | `AtomicSection` (Layer-0 `SectionSkeleton` + design_doc content) | `SectionFact` (embeds `SectionSkeleton`) |
-| ChangelogEntry | `AtomicChangelogEntry` | `ChangelogEntryFact` |
-| FrozenList | (in `AtomicStore`) | `FrozenListFact` |
-| CrossRef | (in `AtomicSection.impact_scope`) | `CrossRefFact` |
+The two faces overlap far less than a "modeled twice" framing suggests, and the
+right convergence differs per entity (R327 corrected this from an earlier
+over-statement):
 
-Consequences today: two unreconciled persistence models (JSON atomic store =
-live; RocksDB store = built-but-orphaned), and a tier-gate concept that exists
-both in `validate-workspace` (real) and in `mnemosyne-server` (stub). The write
-path that once bridged them through a broken `commit` hashing stub was removed
-in R321.
+| Concept | `mnemosyne-atomic` (JSON, live) | `mnemosyne-facts` (index codec) | Convergence |
+|---|---|---|---|
+| Section | `AtomicSection` = `SectionSkeleton` + design_doc content | `SectionFact` embeds `SectionSkeleton` | **done** (R325/R326): one shared skeleton |
+| CrossRef | inline `AtomicSection.impact_scope` | first-class `CrossRefFact` relation rows | adapter-divergent by design (R326); projected at index build |
+| ChangelogEntry | `AtomicChangelogEntry` — audit + publishable bullet halves, keyed by prose `entry_id` | `ChangelogEntryFact` — scalar `round_number` / `summary` / `appended_at` | **B-driven**: the two share *no* fields; the canonical scalar shape is settled by the projection, not a pre-emptive shared struct |
+| FrozenList | *none* — frozen-ledger is a behavioral semantic (the `FrozenLedger` mutate-reject), not a stored entity | `FrozenListFact` + cascade `FrozenListRecord` | forward-looking substrate; no live counterpart to unify (YAGNI until a real consumer) |
+
+So **convergence A (unify the fact model) is complete for the only entity that
+had genuine cross-face duplication — Section.** ChangelogEntry has no shared
+skeleton to lift today: its atomic face carries medium-shaped design_doc content
+keyed by prose, while its fact face is pure scalars that exist nowhere in the
+live store. Forcing a shared struct now would either strand a one-embedder type
+or demand a frozen-ledger schema migration — both premature ahead of the consumer
+that defines the right shape. That consumer is **convergence B** (the
+projection). FrozenList has no atomic representation at all, so there is nothing
+to reconcile until a real frozen-list consumer exists.
+
+Other consequences today: the RocksDB store is built-but-orphaned (the bitemporal
+substrate is correct and kept, just unwired), and a tier-gate concept exists both
+in `validate-workspace` (real) and `mnemosyne-server` (stub). The write path that
+once bridged them through a broken `commit` hashing stub was removed in R321.
 
 The substrate components are **well-built and kept** — `store` is a correct
 bitemporal/branch KV; `cascade` is a correct incremental-projection seed. They
 are not dead code; they are *not yet wired*.
 
 ### Convergence sequence (each step independently verifiable)
-- **A — unify the fact model (keystone).** One canonical skeleton carrying both
-  serde (the JSON log) and the byte codec (the RocksDB index). Everything depends
-  on this. (R323 hoisted `FactKey`; R325 made the live model compose
-  `SectionSkeleton`; R326 made the index codec encode the same `SectionSkeleton`
-  — Section is done, ChangelogEntry/FrozenList remain.)
-- **B — RocksDB as materialized index.** Project the log into the composite-key
-  store; route queries through it instead of full-JSON scan.
+- **A — unify the fact model. _Done._** One canonical skeleton carrying both
+  serde (the JSON log) and the byte codec (the RocksDB index), for every entity
+  that has two genuine faces. R323 hoisted `FactKey`; R325 made the live model
+  compose `SectionSkeleton`; R326 made the index codec encode the same
+  `SectionSkeleton`. Section was the only such entity — ChangelogEntry's faces
+  share no fields and FrozenList has no atomic face, so their reconciliation is
+  owned by B (the projection that defines the canonical shape), not a
+  pre-emptive shared struct (R327).
+- **B — RocksDB as materialized index. _Active keystone._** Write the missing
+  projection: fold the atomic log into `*Fact` values, persist them under the
+  composite key, and route queries through the index instead of a full-JSON
+  scan. This is where ChangelogEntry's scalar fact shape is settled by a real
+  consumer, and where the orphaned bitemporal substrate is finally wired. The
+  index stays a *derived, rebuildable* view — never a second authoritative store.
 - **C — cascade as incremental projection.** Replace full re-render with Salsa
   incremental recompute on log change.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
@@ -173,11 +193,16 @@ R325–R326 unified the Section fact: `AtomicSection` embeds
 `mnemosyne_core::SectionSkeleton` via `#[serde(flatten)]` (byte-identical JSON),
 and `SectionFact` embeds the same `SectionSkeleton` behind a full-fidelity byte
 codec — the log and the index now share one skeleton definition for Section.
-Still owed: ChangelogEntry / FrozenList get the same treatment, then B/C/D. The
-cascade Salsa input (`SectionRecord`) still carries a stringly-typed status,
-bridged at the conversion boundary until convergence C adopts the typed enum.
-This is what lets new media (fiction, ADR, spec) become first-class adapters
-without the core ever learning what a "rationale" or a "normative excerpt" is.
+ChangelogEntry and FrozenList do **not** get a copy of this treatment (R327): a
+shared skeleton is the right tool only when both faces already persist the same
+scalars, as Section's did. ChangelogEntry's faces share no fields and FrozenList
+has no atomic face, so their canonical shape is settled by convergence B (the
+projection consumer), not lifted pre-emptively. The cascade Salsa input
+(`SectionRecord`) still carries a stringly-typed status, bridged at the
+conversion boundary until convergence C adopts the typed enum. The skeleton
+discipline is what lets new media (fiction, ADR, spec) become first-class
+adapters without the core ever learning what a "rationale" or a "normative
+excerpt" is.
 
 ## 6. Anti-drift invariants
 

@@ -2515,3 +2515,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 327 — Convergence A closeout: correct §5 fact-model duplication scope — Correct ARCHITECTURE.md §5 fact-model duplication scope: convergence A is complete (Section was the only entity with genuine cross-face duplication, unified R325/R326); ChangelogEntry and FrozenList reconciliation is B-driven, not a pre-emptive shared skeleton.
+
+**Changes**:
+- Rewrote ARCHITECTURE.md §5 table and prose — ChangelogEntry's atomic and fact faces share zero fields, and FrozenList has no atomic representation (frozen-ledger is the FrozenLedger mutate-reject semantic, not a stored entity).
+- Recorded that no production code projects the atomic store into the *Fact structs, so the fact model is two unreconciled type definitions, not a live-data duplication.
+- Marked convergence A complete — Section was the only entity with genuine cross-face duplication (unified R325/R326) — and elevated B to the active keystone.
+- Dropped the prior "ChangelogEntry/FrozenList get the same skeleton treatment" framing as an over-statement; a shared skeleton fits only when both faces already persist identical scalars.
+
+
+
+**Verification**:
+- Confirmed live atomic store top-level keys are sections, changelog_entries, inventory_entries, schema_version — no frozen-list entity exists.
+- Confirmed every SectionFact / ChangelogEntryFact / FrozenListFact construction lives in tests, the persist substrate, or cascade fixtures — no atomic-to-fact projection in production.
+- validate-workspace green after the edit — T3 reject=0, round-trip 1/1, GENERATED.md in sync.
+
+
+
+
+**Carry forward**:
+- Convergence B is next — write the atomic-to-fact projection that defines ChangelogEntry's canonical scalar shape and wires the orphaned RocksDB index as a derived, rebuildable view.
+- ChangelogEntry round_number is currently trapped in the prose entry_id key; B decides whether to surface it as a real field or derive it at projection time.
+
+
+
