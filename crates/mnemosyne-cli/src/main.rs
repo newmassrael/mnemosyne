@@ -13,7 +13,9 @@
 //! pre-commit hook + CI workflow this binary invoke with design_doc lifecycle
 //! Performs auto-validation — OPTION C Phase 0 dogfood entry source.
 
-mod atomic_cli;
+// atomic_cli is exposed via the package library (src/lib.rs); the bin
+// reaches it through the lib so both targets share one module instance.
+use mnemosyne_cli::atomic_cli;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

@@ -17,17 +17,21 @@
 //! }
 //! ```
 
-mod cli;
 mod resources;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use mnemosyne_atomic::{self as atomic, ExampleBlock, RejectedAlternative};
+use mnemosyne_cli::ops::{self, QuerySectionMode, QueryTermInput, RedactTermInput, StyleCheckInput};
+use mnemosyne_cli::{run_atomic_mutate, MutateOutcome, OpError};
+use mnemosyne_core::InventoryStatus;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        Annotated, ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams,
-        ReadResourceResult, RawResource, ResourceContents, ServerCapabilities, ServerInfo,
+        Annotated, CallToolResult, ListResourcesResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResult, RawResource, ResourceContents,
+        ServerCapabilities, ServerInfo,
     },
     schemars,
     service::{RequestContext, RoleServer},
@@ -35,7 +39,7 @@ use rmcp::{
     transport::stdio,
     ErrorData as McpError, ServerHandler, ServiceExt,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EmptyArgs {}
@@ -368,38 +372,77 @@ impl MnemosyneServer {
         }
     }
 
-    fn tool_text(s: String) -> rmcp::model::CallToolResult {
-        rmcp::model::CallToolResult::success(vec![rmcp::model::Content::text(s)])
+    fn tool_text(s: String) -> CallToolResult {
+        CallToolResult::success(vec![rmcp::model::Content::text(s)])
     }
 
-    fn tool_error(s: String) -> rmcp::model::CallToolResult {
-        rmcp::model::CallToolResult::error(vec![rmcp::model::Content::text(s)])
+    fn tool_error(s: String) -> CallToolResult {
+        CallToolResult::error(vec![rmcp::model::Content::text(s)])
     }
 
-    async fn run_cli(&self, args: &[&str]) -> rmcp::model::CallToolResult {
-        match cli::run(&self.workspace, args).await {
-            Ok(out) if out.ok() => Self::tool_text(out.combined()),
-            Ok(out) => Self::tool_error(format!(
-                "exit={} workspace={}\n{}",
-                out.status,
-                self.workspace.display(),
-                out.combined()
-            )),
-            Err(e) => Self::tool_error(format!("subprocess error: {}", e)),
+    /// Serialize a structured payload to pretty JSON (read ops + receipts).
+    fn tool_json<T: Serialize>(&self, value: &T) -> CallToolResult {
+        match serde_json::to_string_pretty(value) {
+            Ok(s) => Self::tool_text(s),
+            Err(e) => Self::tool_error(format!("serialize: {}", e)),
         }
     }
 
-    async fn run_cli_with_files(
-        &self,
-        args_template: Vec<String>,
-        temp_files: Vec<PathBuf>,
-    ) -> rmcp::model::CallToolResult {
-        let args: Vec<&str> = args_template.iter().map(|s| s.as_str()).collect();
-        let result = self.run_cli(&args).await;
-        for path in &temp_files {
-            let _ = std::fs::remove_file(path);
+    /// Map an in-process op error to a tool error with workspace context.
+    fn op_error(&self, e: OpError) -> CallToolResult {
+        Self::tool_error(format!("workspace={}\n{}", self.workspace.display(), e))
+    }
+
+    /// Finish a mutate op: success → receipt JSON, error → tool error.
+    fn finish_mutate(&self, outcome: Result<MutateOutcome, OpError>) -> CallToolResult {
+        match outcome {
+            Ok(o) => self.tool_json(&o),
+            Err(e) => self.op_error(e),
         }
-        result
+    }
+}
+
+fn strip_section(section_id: &str) -> &str {
+    section_id.strip_prefix('§').unwrap_or(section_id)
+}
+
+/// Parse `<alternative> -- <reason>` / `<alternative> — <reason>` bullets
+/// into structured rejected-alternative rows. Mirrors the CLI's
+/// `parse_alternatives_file`.
+fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, String> {
+    let mut out = Vec::new();
+    for (i, raw) in bullets.iter().enumerate() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let stripped = trimmed.strip_prefix("- ").unwrap_or(trimmed);
+        let (alt, reason) = stripped
+            .split_once(" — ")
+            .or_else(|| stripped.split_once(" -- "))
+            .ok_or_else(|| {
+                format!(
+                    "alternative[{}]: expected `<alternative> -- <reason>` (or ` — ` separator)",
+                    i
+                )
+            })?;
+        out.push(RejectedAlternative {
+            alternative: alt.trim().to_string(),
+            reason: reason.trim().to_string(),
+        });
+    }
+    Ok(out)
+}
+
+fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
+    match raw.to_ascii_lowercase().as_str() {
+        "active" => Ok(InventoryStatus::Active),
+        "deprecated" => Ok(InventoryStatus::Deprecated),
+        "reserved" => Ok(InventoryStatus::Reserved),
+        other => Err(format!(
+            "status `{}` invalid (expected active|deprecated|reserved)",
+            other
+        )),
     }
 }
 
@@ -408,167 +451,133 @@ impl MnemosyneServer {
     #[tool(
         description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + round-trip validation across the entire workspace. Returns the metric summary (orphan total / round-trip mandatory / T3 warn / T4 info). Run this at session start to surface the baseline, and after every mutation to confirm no new violations."
     )]
-    async fn validate_workspace(
-        &self,
-        _args: Parameters<EmptyArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["validate-workspace"]).await
+    async fn validate_workspace(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::validate_workspace(&self.workspace) {
+            Ok(report) => Self::tool_text(report.render_plain()),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
         description = "List every section_id in the workspace (one per line, BTreeMap order). Use this to discover the section topology before authoring §N references."
     )]
-    async fn list_sections(
-        &self,
-        _args: Parameters<EmptyArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["query", "--list-sections"]).await
+    async fn list_sections(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::list_sections(&self.workspace) {
+            Ok(report) => {
+                let mut out = report.section_ids.join("\n");
+                out.push_str(&format!("\n# total {} section(s)", report.total));
+                Self::tool_text(out)
+            }
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
         description = "Look up a single section. Returns the SectionView (atomic fields rendered as JSON). Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections."
     )]
-    async fn query_section(
-        &self,
-        args: Parameters<QuerySectionArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec!["query".to_string(), format!("§{}", args.0.section_id), "--json".to_string()];
-        if args.0.include_related {
-            argv.push("--include-related".to_string());
+    async fn query_section(&self, args: Parameters<QuerySectionArgs>) -> CallToolResult {
+        let mode = match (args.0.include_related, args.0.include_changelog) {
+            (true, true) => QuerySectionMode::Envelope,
+            (true, false) | (false, true) => QuerySectionMode::WithRelated,
+            (false, false) => QuerySectionMode::Brief,
+        };
+        match ops::query_section(&self.workspace, &args.0.section_id, mode) {
+            Ok(payload) => self.tool_json(&payload),
+            Err(e) => self.op_error(e),
         }
-        if args.0.include_changelog {
-            argv.push("--include-changelog".to_string());
-        }
-        let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
-        self.run_cli(&argv_ref).await
     }
 
     #[tool(
-        description = "Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`, `alternatives_rejected[0].reason`), line_context (full field/bullet text). Pure read. Use this before redact_term (deferred) or before mutating prose, to know which entries cite a term."
+        description = "Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`, `alternatives_rejected[0].reason`), line_context (full field/bullet text). Pure read. Use this before redact_term or before mutating prose, to know which entries cite a term."
     )]
-    async fn query_term(
-        &self,
-        args: Parameters<QueryTermArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "query".to_string(),
-            "--term".to_string(),
-            args.0.pattern.clone(),
-            "--json".to_string(),
-        ];
-        if args.0.regex {
-            argv.push("--regex".to_string());
+    async fn query_term(&self, args: Parameters<QueryTermArgs>) -> CallToolResult {
+        let input = QueryTermInput {
+            pattern: args.0.pattern.clone(),
+            regex: args.0.regex,
+            case_insensitive: args.0.case_insensitive,
+            scope: args.0.scope.clone(),
+            fields: args.0.fields.clone(),
+        };
+        match ops::query_term(&self.workspace, &input) {
+            Ok(hits) => self.tool_json(&hits),
+            Err(e) => self.op_error(e),
         }
-        if args.0.case_insensitive {
-            argv.push("--case-insensitive".to_string());
-        }
-        if let Some(scope) = &args.0.scope {
-            argv.push("--scope".to_string());
-            argv.push(scope.clone());
-        }
-        if !args.0.fields.is_empty() {
-            argv.push("--field".to_string());
-            argv.push(args.0.fields.join(","));
-        }
-        let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
-        self.run_cli(&argv_ref).await
     }
 
     #[tool(
         description = "Render the atomic store to docs/GENERATED.md (template render → atomic write temp + rename). Cascade auto-update normally invokes this after every successful mutate primitive; call directly only when you need to force-refresh after a manual JSON edit (which you should not do)."
     )]
-    async fn generate_docs(
-        &self,
-        _args: Parameters<EmptyArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["generate-docs"]).await
+    async fn generate_docs(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::generate_docs(&self.workspace, None, None) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
-        description = "Verify that docs/GENERATED.md byte-equals what would be rendered fresh from the atomic store. Exit code 0 = synced, 1 = stale. Wire into pre-commit hooks to catch drift."
+        description = "Verify that docs/GENERATED.md byte-equals what would be rendered fresh from the atomic store. Returns in_sync = true/false. Wire into pre-commit hooks to catch drift."
     )]
-    async fn verify_generated(
-        &self,
-        _args: Parameters<EmptyArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["verify-generated"]).await
+    async fn verify_generated(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::verify_generated(&self.workspace, None, None) {
+            Ok(report) if report.in_sync => self.tool_json(&report),
+            Ok(report) => Self::tool_error(format!(
+                "STALE — GENERATED.md does not match atomic sidecar\n{}",
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            )),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
         description = "Run T3/T4 style checks. T3 = warning surface (max_paragraph_length, sentence length, terminology); T4 = info. Reject power is configurable; default = warn-only so existing prose stays valid on day 1."
     )]
-    async fn style_check(
-        &self,
-        args: Parameters<StyleCheckArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec!["style-check".to_string()];
-        if let Some(doc) = &args.0.doc {
-            argv.push("--doc".to_string());
-            argv.push(doc.clone());
+    async fn style_check(&self, args: Parameters<StyleCheckArgs>) -> CallToolResult {
+        let input = StyleCheckInput {
+            doc: args.0.doc.clone(),
+            severity: args.0.severity.clone(),
+        };
+        match ops::style_check(&self.workspace, &input) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
         }
-        if let Some(sev) = &args.0.severity {
-            argv.push("--severity".to_string());
-            argv.push(sev.clone());
-        }
-        let argv_ref: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
-        self.run_cli(&argv_ref).await
     }
 
     #[tool(
         description = "Create a new Section in the atomic store (Round 287/289). Outline fields only — `section_id` (no `§` prefix), `parent_doc`, `title`, and optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`. Pairs with remove_section."
     )]
-    async fn add_section(
-        &self,
-        args: Parameters<AddSectionArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "add-section".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--parent-doc".to_string(),
-            args.0.parent_doc.clone(),
-            "--title".to_string(),
-            args.0.title.clone(),
-        ];
-        if let Some(parent) = &args.0.parent_section {
-            argv.push("--parent".to_string());
-            argv.push(format!("§{}", parent));
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    async fn add_section(&self, args: Parameters<AddSectionArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let parent_doc = args.0.parent_doc.clone();
+        let title = args.0.title.clone();
+        let parent = args.0.parent_section.as_deref().map(|p| strip_section(p).to_string());
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::add_section(store, path, &section, &parent_doc, &title, parent.as_deref())
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Set Section.title (heading text). Section must exist (use add_section to create first)."
     )]
-    async fn set_section_title(
-        &self,
-        args: Parameters<SetSectionTextArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "set-section-title".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--title".to_string(),
-            args.0.text.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    async fn set_section_title(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let title = args.0.text.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_title(store, path, &section, &title)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Set Section.parent_doc (re-bind section to a different owning doc). Section must exist."
     )]
-    async fn set_section_parent_doc(
-        &self,
-        args: Parameters<SetSectionTextArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "set-section-parent-doc".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--parent-doc".to_string(),
-            args.0.text.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    async fn set_section_parent_doc(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let parent_doc = args.0.text.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_parent_doc(store, path, &section, &parent_doc)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
@@ -577,172 +586,136 @@ impl MnemosyneServer {
     async fn set_section_parent_section(
         &self,
         args: Parameters<SetSectionParentSectionArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "set-section-parent-section".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-        ];
-        match &args.0.parent_section {
-            Some(p) => {
-                argv.push("--parent".to_string());
-                argv.push(format!("§{}", p));
-            }
-            None => argv.push("--no-parent".to_string()),
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    ) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let parent = args.0.parent_section.as_deref().map(|p| strip_section(p).to_string());
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_parent_section(store, path, &section, parent.as_deref())
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Set Section.intent atomic field. The intent is a one-sentence statement of what the section is for. Replaces any previous intent. T1+T2 run pre-write."
     )]
-    async fn set_section_intent(
-        &self,
-        args: Parameters<SetSectionTextArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "set-section-intent".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--intent".to_string(),
-            args.0.text.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    async fn set_section_intent(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let intent = args.0.text.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_intent(store, path, &section, &intent)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Set Section.rationale_bullets. Replaces existing. Each bullet ≤ 100 chars (T3 default)."
     )]
-    async fn set_section_rationale(
-        &self,
-        args: Parameters<SetSectionBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.set_section_bullets("set-section-rationale", &args.0).await
+    async fn set_section_rationale(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_rationale(store, path, &section, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(description = "Set Section.inputs_bullets. Replaces existing.")]
-    async fn set_section_inputs(
-        &self,
-        args: Parameters<SetSectionBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.set_section_bullets("set-section-inputs", &args.0).await
+    async fn set_section_inputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_inputs(store, path, &section, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(description = "Set Section.outputs_bullets. Replaces existing.")]
-    async fn set_section_outputs(
-        &self,
-        args: Parameters<SetSectionBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.set_section_bullets("set-section-outputs", &args.0).await
+    async fn set_section_outputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_outputs(store, path, &section, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Append a single caveat bullet to Section.caveats_bullets. Append-only — does not replace existing caveats."
     )]
-    async fn add_section_caveat(
-        &self,
-        args: Parameters<AddSectionCaveatArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "add-section-caveat".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--bullet".to_string(),
-            args.0.bullet.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    async fn add_section_caveat(&self, args: Parameters<AddSectionCaveatArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let bullet = args.0.bullet.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::add_section_caveat(store, path, &section, &bullet)
+        });
+        self.finish_mutate(outcome)
     }
 
-    #[tool(description = "Set Section.alternatives_rejected. Replaces existing.")]
+    #[tool(description = "Set Section.alternatives_rejected. Replaces existing. Each bullet is `<alternative> -- <reason>`.")]
     async fn set_section_alternatives(
         &self,
         args: Parameters<SetSectionBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let payload = args.0.bullets.join("\n");
-        let path = match cli::write_temp(&self.workspace, "alternatives", &payload) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
+    ) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let alternatives = match parse_alternatives(&args.0.bullets) {
+            Ok(a) => a,
+            Err(e) => return Self::tool_error(e),
         };
-        let argv = vec![
-            "set-section-alternatives".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--alternatives-file".to_string(),
-            path.to_string_lossy().into_owned(),
-        ];
-        self.run_cli_with_files(argv, vec![path]).await
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_alternatives(store, path, &section, &alternatives)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Set Section.impact_scope. Each ref is a section_id without the `§` prefix; T1 cross-ref orphan reject runs pre-write so non-existent §N targets fail cleanly."
     )]
-    async fn set_section_impact_scope(
-        &self,
-        args: Parameters<SetImpactScopeArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let refs_arg: String = args
-            .0
-            .refs
-            .iter()
-            .map(|r| format!("§{}", r))
-            .collect::<Vec<_>>()
-            .join(",");
-        let argv = vec![
-            "set-section-impact-scope".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--refs".to_string(),
-            refs_arg,
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    async fn set_section_impact_scope(&self, args: Parameters<SetImpactScopeArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let refs: Vec<String> = args.0.refs.iter().map(|r| strip_section(r).to_string()).collect();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_impact_scope(store, path, &section, &refs)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Append a code-fenced example to Section.examples. The code block is rendered with the supplied language tag."
     )]
-    async fn add_section_example(
-        &self,
-        args: Parameters<AddSectionExampleArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let path = match cli::write_temp(&self.workspace, "example", &args.0.code) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
+    async fn add_section_example(&self, args: Parameters<AddSectionExampleArgs>) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let example = ExampleBlock {
+            language: args.0.language.clone(),
+            code: args.0.code.clone(),
         };
-        let argv = vec![
-            "add-section-example".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--language".to_string(),
-            args.0.language.clone(),
-            "--code-file".to_string(),
-            path.to_string_lossy().into_owned(),
-        ];
-        self.run_cli_with_files(argv, vec![path]).await
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::add_section_example(store, path, &section, example)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` (set-section-decision-status) and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
+        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
     )]
     async fn set_section_normative_excerpt(
         &self,
         args: Parameters<SetSectionNormativeExcerptArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let path = match cli::write_temp(&self.workspace, "normative-excerpt", &args.0.text) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
-        };
-        let argv = vec![
-            "set-section-normative-excerpt".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--text-file".to_string(),
-            path.to_string_lossy().into_owned(),
-            "--anchor-url".to_string(),
-            args.0.anchor_url.clone(),
-            "--source-revision".to_string(),
-            args.0.source_revision.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![path]).await
+    ) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let text = args.0.text.clone();
+        let anchor_url = args.0.anchor_url.clone();
+        let source_revision = args.0.source_revision.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_section_normative_excerpt(
+                store,
+                path,
+                &section,
+                &text,
+                &anchor_url,
+                &source_revision,
+            )
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
@@ -751,19 +724,14 @@ impl MnemosyneServer {
     async fn add_section_implementation(
         &self,
         args: Parameters<AddSectionImplementationArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "add-section-implementation".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--file".to_string(),
-            args.0.file.clone(),
-        ];
-        if let Some(symbol) = &args.0.symbol {
-            argv.push("--symbol".to_string());
-            argv.push(symbol.clone());
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    ) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let file = args.0.file.clone();
+        let symbol = args.0.symbol.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::add_section_implementation(store, path, &section, &file, symbol.as_deref())
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
@@ -772,21 +740,22 @@ impl MnemosyneServer {
     async fn remove_section_implementation(
         &self,
         args: Parameters<RemoveSectionImplementationArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "remove-section-implementation".to_string(),
-            "--section".to_string(),
-            format!("§{}", args.0.section_id),
-            "--file".to_string(),
-            args.0.file.clone(),
-            "--reason".to_string(),
-            args.0.reason.clone(),
-        ];
-        if let Some(symbol) = &args.0.symbol {
-            argv.push("--symbol".to_string());
-            argv.push(symbol.clone());
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    ) -> CallToolResult {
+        let section = strip_section(&args.0.section_id).to_string();
+        let file = args.0.file.clone();
+        let symbol = args.0.symbol.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::remove_section_implementation(
+                store,
+                path,
+                &section,
+                &file,
+                symbol.as_deref(),
+                &reason,
+            )
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
@@ -795,52 +764,26 @@ impl MnemosyneServer {
     async fn append_changelog_entry(
         &self,
         args: Parameters<AppendChangelogEntryArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let changes = args.0.changes_bullets.join("\n");
-        let verify = args.0.verification_bullets.join("\n");
-        let carry = args.0.carry_forward_bullets.join("\n");
-
-        let changes_path = match cli::write_temp(&self.workspace, "changes", &changes) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write changes: {}", e)),
-        };
-        let verify_path = match cli::write_temp(&self.workspace, "verify", &verify) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write verify: {}", e)),
-        };
-        let carry_path = match cli::write_temp(&self.workspace, "carry", &carry) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write carry: {}", e)),
-        };
-
-        let impact_arg: String = args
-            .0
-            .impact_refs
-            .iter()
-            .map(|r| format!("§{}", r))
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let mut argv = vec![
-            "append-changelog-entry".to_string(),
-            "--entry-id".to_string(),
-            args.0.entry_id.clone(),
-            "--decision".to_string(),
-            args.0.decision_summary.clone(),
-            "--changes-file".to_string(),
-            changes_path.to_string_lossy().into_owned(),
-            "--verification-file".to_string(),
-            verify_path.to_string_lossy().into_owned(),
-            "--carry-file".to_string(),
-            carry_path.to_string_lossy().into_owned(),
-        ];
-        if !impact_arg.is_empty() {
-            argv.push("--impact".to_string());
-            argv.push(impact_arg);
-        }
-
-        self.run_cli_with_files(argv, vec![changes_path, verify_path, carry_path])
-            .await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let decision = args.0.decision_summary.clone();
+        let changes = args.0.changes_bullets.clone();
+        let verify = args.0.verification_bullets.clone();
+        let impact: Vec<String> = args.0.impact_refs.iter().map(|r| strip_section(r).to_string()).collect();
+        let carry = args.0.carry_forward_bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::append_changelog_entry(
+                store,
+                path,
+                &entry_id,
+                Some(&decision),
+                &changes,
+                &verify,
+                &impact,
+                &carry,
+            )
+        });
+        self.finish_mutate(outcome)
     }
 
     // Round 299 — publishable-half setters + redact_term MCP wire. The
@@ -856,98 +799,113 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_decision_summary(
         &self,
         args: Parameters<SetChangelogPublishableStringArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "set-changelog-publishable-decision-summary".to_string(),
-            "--entry".to_string(),
-            args.0.entry_id.clone(),
-            "--value".to_string(),
-            args.0.value.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let value = args.0.value.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_changelog_publishable_decision_summary(store, path, &entry_id, &value)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_changes(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_publishable_bullets("set-changelog-publishable-changes", &args.0)
-            .await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_changelog_publishable_changes_bullets(store, path, &entry_id, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_verification(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_publishable_bullets("set-changelog-publishable-verification", &args.0)
-            .await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_changelog_publishable_verification_bullets(store, path, &entry_id, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: scope refinement, cross-ref correction, post-hoc impact rescoping. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen. Use cases: scope refinement, cross-ref correction, post-hoc impact rescoping. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_impact_refs(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_publishable_bullets("set-changelog-publishable-impact-refs", &args.0)
-            .await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let bullets: Vec<String> = args.0.bullets.iter().map(|r| strip_section(r).to_string()).collect();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_changelog_publishable_impact_refs(store, path, &entry_id, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen and cannot be damaged by this primitive. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_carry_forward(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_publishable_bullets("set-changelog-publishable-carry-forward", &args.0)
-            .await
+    ) -> CallToolResult {
+        let entry_id = args.0.entry_id.clone();
+        let bullets = args.0.bullets.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_changelog_publishable_carry_forward_bullets(store, path, &entry_id, &bullets)
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
         description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the R296 publishable_override_ledger gate accepts the result (R297, RFC P1). Audit half is never read or written. mode = literal (default) or regex (`regex` crate); set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in are required for audit; kind defaults to \"redaction\". The returned ledger drafts paste directly into mnemosyne.toml `[[publishable_override_ledger]]`."
     )]
-    async fn redact_term(
-        &self,
-        args: Parameters<RedactTermArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "redact-term".to_string(),
-            "--pattern".to_string(),
-            args.0.pattern.clone(),
-            "--replacement".to_string(),
-            args.0.replacement.clone(),
-            "--reason".to_string(),
-            args.0.reason.clone(),
-            "--applied-in".to_string(),
-            args.0.applied_in.clone(),
-        ];
-        if args.0.regex {
-            argv.push("--regex".to_string());
+    async fn redact_term(&self, args: Parameters<RedactTermArgs>) -> CallToolResult {
+        let input = RedactTermInput {
+            pattern: args.0.pattern.clone(),
+            replacement: args.0.replacement.clone(),
+            regex: args.0.regex,
+            case_insensitive: args.0.case_insensitive,
+            scope: args.0.scope.clone(),
+            dry_run: args.0.dry_run,
+            reason: args.0.reason.clone(),
+            applied_in: args.0.applied_in.clone(),
+            kind: args.0.kind.clone(),
+        };
+        match ops::redact_term(&self.workspace, None, true, &input) {
+            Ok((report, regenerated)) => {
+                let payload = serde_json::json!({
+                    "primitive": "redact_term",
+                    "dry_run": report.dry_run,
+                    "regenerated": regenerated,
+                    "hits": report
+                        .hits
+                        .iter()
+                        .map(|h| serde_json::json!({
+                            "entry_id": h.entry_id,
+                            "field": h.field,
+                            "index": h.index,
+                            "original": h.original,
+                            "redacted": h.redacted,
+                        }))
+                        .collect::<Vec<_>>(),
+                    "ledger_drafts": report.ledger_drafts,
+                });
+                self.tool_json(&payload)
+            }
+            Err(e) => self.op_error(e),
         }
-        if args.0.case_insensitive {
-            argv.push("--case-insensitive".to_string());
-        }
-        if let Some(s) = &args.0.scope {
-            argv.push("--scope".to_string());
-            argv.push(s.clone());
-        }
-        if args.0.dry_run {
-            argv.push("--dry-run".to_string());
-        }
-        if let Some(k) = &args.0.kind {
-            argv.push("--kind".to_string());
-            argv.push(k.clone());
-        }
-        argv.push("--json".to_string());
-        self.run_cli_with_files(argv, vec![]).await
     }
 
     #[tool(
@@ -956,95 +914,84 @@ impl MnemosyneServer {
     async fn emit_publishable_override_ledger_draft(
         &self,
         args: Parameters<EmitPublishableOverrideLedgerDraftArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "emit-publishable-override-ledger-draft".to_string(),
-            "--entry".to_string(),
-            args.0.entry_id.clone(),
-            "--reason".to_string(),
-            args.0.reason.clone(),
-            "--applied-in".to_string(),
-            args.0.applied_in.clone(),
-        ];
-        if let Some(k) = &args.0.kind {
-            argv.push("--kind".to_string());
-            argv.push(k.clone());
+    ) -> CallToolResult {
+        match ops::emit_publishable_override_ledger_draft(
+            &self.workspace,
+            None,
+            &args.0.entry_id,
+            &args.0.reason,
+            &args.0.applied_in,
+            args.0.kind.as_deref(),
+        ) {
+            Ok(draft) => self.tool_json(&serde_json::json!({
+                "entry_id": args.0.entry_id,
+                "in_sync": draft.is_none(),
+                "ledger_draft": draft,
+            })),
+            Err(e) => self.op_error(e),
         }
-        argv.push("--json".to_string());
-        self.run_cli_with_files(argv, vec![]).await
     }
 
     // Round 278 — Phase 1A inventory tool surface.
 
     #[tool(
-        description = "List every inventory entry in the atomic store (id, status, section_ref). Phase 1A 5th-entity surface (Round 273). Returns one entry per line by default — pass nothing, the CLI walks AtomicStore.inventory_entries in BTreeMap order."
+        description = "List every inventory entry in the atomic store (id, status, section_ref). Phase 1A 5th-entity surface (Round 273). Walks AtomicStore.inventory_entries in BTreeMap order."
     )]
-    async fn list_inventory(
-        &self,
-        _args: Parameters<EmptyArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["query", "--list-inventory", "--json"]).await
+    async fn list_inventory(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        let entries = ops::list_inventory(&self.workspace);
+        self.tool_json(&entries)
     }
 
     #[tool(
         description = "Look up a single inventory entry (status / section_ref / source / reason). Phase 1A 5th-entity (Round 273). Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite; cite-time reject is the validator's job, but author-time check is cheap)."
     )]
-    async fn query_inventory(
-        &self,
-        args: Parameters<InventoryIdArgs>,
-    ) -> rmcp::model::CallToolResult {
-        self.run_cli(&["query", "--inventory", &args.0.inventory_id, "--json"])
-            .await
+    async fn query_inventory(&self, args: Parameters<InventoryIdArgs>) -> CallToolResult {
+        match ops::query_inventory(&self.workspace, &args.0.inventory_id) {
+            Ok(view) => self.tool_json(&view),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
         description = "Register a new inventory entry (Phase 1A, Round 274). Duplicate inventory_id rejects. status = active|deprecated|reserved. Pass status=deprecated to register an already-retired upstream id; the mutate-time cascade (Round 276) then surfaces any pre-existing cite-sites. section_ref omits the leading §."
     )]
-    async fn add_inventory_entry(
-        &self,
-        args: Parameters<AddInventoryEntryArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "add-inventory-entry".to_string(),
-            "--id".to_string(),
-            args.0.inventory_id.clone(),
-            "--status".to_string(),
-            args.0.status.clone(),
-        ];
-        if let Some(s) = &args.0.section_ref {
-            argv.push("--section".to_string());
-            argv.push(format!("§{}", s));
-        }
-        if let Some(s) = &args.0.source {
-            argv.push("--source".to_string());
-            argv.push(s.clone());
-        }
-        if let Some(s) = &args.0.reason {
-            argv.push("--reason".to_string());
-            argv.push(s.clone());
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    async fn add_inventory_entry(&self, args: Parameters<AddInventoryEntryArgs>) -> CallToolResult {
+        let inventory_id = args.0.inventory_id.clone();
+        let status = match parse_inventory_status(&args.0.status) {
+            Ok(s) => s,
+            Err(e) => return Self::tool_error(e),
+        };
+        let section_ref = args.0.section_ref.as_deref().map(|s| strip_section(s).to_string());
+        let source = args.0.source.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::add_inventory_entry(
+                store,
+                path,
+                &inventory_id,
+                status,
+                section_ref.as_deref(),
+                source.as_deref(),
+                reason.as_deref(),
+            )
+        });
+        self.finish_inventory_mutate(outcome, &inventory_id, status == InventoryStatus::Deprecated)
     }
 
     #[tool(
         description = "Update an inventory entry's status (Round 274). Returns NotFound if the id is not registered. reason: omit to preserve existing; pass empty string to clear; pass non-empty to overwrite. Active→Deprecated transitions invoke the cascade scan (Round 276)."
     )]
-    async fn set_inventory_status(
-        &self,
-        args: Parameters<SetInventoryStatusArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "set-inventory-status".to_string(),
-            "--id".to_string(),
-            args.0.inventory_id.clone(),
-            "--status".to_string(),
-            args.0.status.clone(),
-        ];
-        if let Some(s) = &args.0.reason {
-            argv.push("--reason".to_string());
-            argv.push(s.clone());
-        }
-        self.run_cli_with_files(argv, vec![]).await
+    async fn set_inventory_status(&self, args: Parameters<SetInventoryStatusArgs>) -> CallToolResult {
+        let inventory_id = args.0.inventory_id.clone();
+        let status = match parse_inventory_status(&args.0.status) {
+            Ok(s) => s,
+            Err(e) => return Self::tool_error(e),
+        };
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_inventory_status(store, path, &inventory_id, status, reason.as_deref())
+        });
+        self.finish_inventory_mutate(outcome, &inventory_id, status == InventoryStatus::Deprecated)
     }
 
     #[tool(
@@ -1053,27 +1000,21 @@ impl MnemosyneServer {
     async fn set_inventory_section_ref(
         &self,
         args: Parameters<SetInventorySectionRefArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let mut argv = vec![
-            "set-inventory-section-ref".to_string(),
-            "--id".to_string(),
-            args.0.inventory_id.clone(),
-        ];
-        match (&args.0.section_ref, args.0.clear) {
-            (Some(s), false) => {
-                argv.push("--section".to_string());
-                argv.push(format!("§{}", s));
-            }
-            (None, true) => {
-                argv.push("--clear".to_string());
-            }
+    ) -> CallToolResult {
+        let cleaned: Option<String> = match (&args.0.section_ref, args.0.clear) {
+            (Some(s), false) => Some(strip_section(s).to_string()),
+            (None, true) => None,
             _ => {
                 return Self::tool_error(
                     "exactly one of section_ref or clear must be supplied".to_string(),
                 );
             }
-        }
-        self.run_cli_with_files(argv, vec![]).await
+        };
+        let inventory_id = args.0.inventory_id.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::set_inventory_section_ref(store, path, &inventory_id, cleaned.as_deref())
+        });
+        self.finish_mutate(outcome)
     }
 
     #[tool(
@@ -1082,57 +1023,51 @@ impl MnemosyneServer {
     async fn remove_inventory_entry(
         &self,
         args: Parameters<RemoveInventoryEntryArgs>,
-    ) -> rmcp::model::CallToolResult {
-        let argv = vec![
-            "remove-inventory-entry".to_string(),
-            "--id".to_string(),
-            args.0.inventory_id.clone(),
-            "--reason".to_string(),
-            args.0.reason.clone(),
-        ];
-        self.run_cli_with_files(argv, vec![]).await
+    ) -> CallToolResult {
+        let inventory_id = args.0.inventory_id.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
+            atomic::remove_inventory_entry(store, path, &inventory_id, &reason)
+        });
+        self.finish_inventory_mutate(outcome, &inventory_id, true)
     }
 }
 
 impl MnemosyneServer {
-    async fn set_section_bullets(
+    /// Finish an inventory mutate that may trigger the R276 decay cascade.
+    /// On success, when `run_cascade` is set (Deprecated transition or
+    /// removal), scan for now-stale cite-sites and append them to the
+    /// JSON payload (parity with the CLI's stderr cascade lines).
+    fn finish_inventory_mutate(
         &self,
-        cmd: &str,
-        args: &SetSectionBulletsArgs,
-    ) -> rmcp::model::CallToolResult {
-        let payload = args.bullets.join("\n");
-        let path = match cli::write_temp(&self.workspace, cmd, &payload) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
-        };
-        let argv = vec![
-            cmd.to_string(),
-            "--section".to_string(),
-            format!("§{}", args.section_id),
-            "--bullets-file".to_string(),
-            path.to_string_lossy().into_owned(),
-        ];
-        self.run_cli_with_files(argv, vec![path]).await
-    }
-
-    async fn run_publishable_bullets(
-        &self,
-        cmd: &str,
-        args: &SetChangelogPublishableBulletsArgs,
-    ) -> rmcp::model::CallToolResult {
-        let payload = args.bullets.join("\n");
-        let path = match cli::write_temp(&self.workspace, cmd, &payload) {
-            Ok(p) => p,
-            Err(e) => return Self::tool_error(format!("temp write: {}", e)),
-        };
-        let argv = vec![
-            cmd.to_string(),
-            "--entry".to_string(),
-            args.entry_id.clone(),
-            "--bullets-file".to_string(),
-            path.to_string_lossy().into_owned(),
-        ];
-        self.run_cli_with_files(argv, vec![path]).await
+        outcome: Result<MutateOutcome, OpError>,
+        inventory_id: &str,
+        run_cascade: bool,
+    ) -> CallToolResult {
+        match outcome {
+            Ok(o) => {
+                let decay = if run_cascade {
+                    ops::inventory_decay_scan(&self.workspace, inventory_id)
+                        .into_iter()
+                        .map(|c| {
+                            serde_json::json!({
+                                "file": c.file.display().to_string(),
+                                "line": c.line,
+                                "entry_id": c.entry_id,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                self.tool_json(&serde_json::json!({
+                    "receipt": o.receipt,
+                    "regenerated": o.regenerated,
+                    "cascade_decay_hits": decay,
+                }))
+            }
+            Err(e) => self.op_error(e),
+        }
     }
 }
 
@@ -1229,8 +1164,8 @@ fn parse_workspace_arg() -> anyhow::Result<PathBuf> {
                 eprintln!(
                     "mnemosyne-mcp {} ({}) — MCP server for Mnemosyne\n\n\
                      usage: mnemosyne-mcp [--workspace <path>]\n\n\
-                     Communicates over stdio. Set MNEMOSYNE_CLI to override the\n\
-                     mnemosyne-cli binary path (default: looked up on PATH).\n\
+                     Communicates over stdio. Mutate + query run in-process\n\
+                     against the mnemosyne-cli library (no subprocess spawn).\n\
                      If --workspace is omitted, the current directory is used.",
                     env!("CARGO_PKG_VERSION"),
                     env!("BUILD_GIT_HASH"),

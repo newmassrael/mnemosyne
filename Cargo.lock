@@ -1114,9 +1114,11 @@ dependencies = [
  "mnemosyne-validate",
  "mnemosyne-workspace",
  "regex",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1159,7 +1161,9 @@ name = "mnemosyne-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mnemosyne-validate",
+ "mnemosyne-atomic",
+ "mnemosyne-cli",
+ "mnemosyne-core",
  "rmcp",
  "schemars",
  "serde",

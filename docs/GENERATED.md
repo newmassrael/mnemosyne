@@ -2246,3 +2246,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 316 — R316 — mnemosyne-mcp library API split: drop CLI subprocess spawn, call mnemosyne-cli ops in-process
+
+**Changes**:
+- Added mnemosyne-cli lib target + ops module (mutate via run_atomic_mutate, query, validate, style, docs)
+- mnemosyne-mcp links mnemosyne-cli + mnemosyne-atomic; every #[tool] calls a Rust fn, not a forked mnemosyne-cli process
+- Deleted mnemosyne-mcp/src/cli.rs subprocess wrapper + the .mnemosyne/tmp write_temp file-passing pattern
+- run_atomic_mutate single-sources sidecar resolve + cascade GENERATED.md regenerate for bin and mcp
+
+
+
+**Verification**:
+- cargo test --workspace green (all suites); cargo clippy --all-targets -D warnings clean
+- validate-workspace: T1 orphan=0, round-trip 1/1, T3 reject=0, atomic ledger 62 entries sync
+- MCP stdio handshake smoke test: validate_workspace + list_sections return correct data in-process
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- R317: unify cmd_* (cli main.rs + atomic_cli.rs) onto ops, retiring parallel read-path aggregation
+- R317: cli main.rs split into commands/ modules + append_changelog_entry 8-arg builder/request struct
+
+
+

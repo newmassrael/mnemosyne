@@ -11,12 +11,14 @@ name = "mnemosyne-mcp"
 path = "src/main.rs"
 
 [dependencies]
-mnemosyne-validate = { path = "../mnemosyne-validate" }
+mnemosyne-cli = { path = "../mnemosyne-cli" }
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
+mnemosyne-core = { path = "../mnemosyne-core" }
 rmcp = { version = "1.6", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "signal", "process"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "signal"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

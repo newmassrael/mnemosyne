@@ -3652,6 +3652,46 @@
         "ErasedValidator default JSON shape — auto-derived externally-tagged enum form is what the trait boundary surface uses; external consumers reading from validate_erased get the verbose shape; cli sticks with to_cli_json flat shape; if a future round wants the boundary shape to match cli flat shape directly, customize CodeRefViolation Serialize impl (trade-off vs auto-derive maintainability)",
         "Future validator plugins — declare type Finding pointing at the plugin own typed enum (BehavioralFinding for behavioral-checker plugins, NarrativeFinding for narrative-continuity plugins, etc); blanket ErasedValidator impl auto-bridges to PluginRegistry; CLI consumers of new plugins pattern-match on the typed enum directly"
       ]
+    },
+    "Round 316": {
+      "decision_summary": "R316 — mnemosyne-mcp library API split: drop CLI subprocess spawn, call mnemosyne-cli ops in-process",
+      "changes_bullets": [
+        "Added mnemosyne-cli lib target + ops module (mutate via run_atomic_mutate, query, validate, style, docs)",
+        "mnemosyne-mcp links mnemosyne-cli + mnemosyne-atomic; every #[tool] calls a Rust fn, not a forked mnemosyne-cli process",
+        "Deleted mnemosyne-mcp/src/cli.rs subprocess wrapper + the .mnemosyne/tmp write_temp file-passing pattern",
+        "run_atomic_mutate single-sources sidecar resolve + cascade GENERATED.md regenerate for bin and mcp"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green (all suites); cargo clippy --all-targets -D warnings clean",
+        "validate-workspace: T1 orphan=0, round-trip 1/1, T3 reject=0, atomic ledger 62 entries sync",
+        "MCP stdio handshake smoke test: validate_workspace + list_sections return correct data in-process"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R317: unify cmd_* (cli main.rs + atomic_cli.rs) onto ops, retiring parallel read-path aggregation",
+        "R317: cli main.rs split into commands/ modules + append_changelog_entry 8-arg builder/request struct"
+      ],
+      "publishable_decision_summary": "R316 — mnemosyne-mcp library API split: drop CLI subprocess spawn, call mnemosyne-cli ops in-process",
+      "publishable_changes_bullets": [
+        "Added mnemosyne-cli lib target + ops module (mutate via run_atomic_mutate, query, validate, style, docs)",
+        "mnemosyne-mcp links mnemosyne-cli + mnemosyne-atomic; every #[tool] calls a Rust fn, not a forked mnemosyne-cli process",
+        "Deleted mnemosyne-mcp/src/cli.rs subprocess wrapper + the .mnemosyne/tmp write_temp file-passing pattern",
+        "run_atomic_mutate single-sources sidecar resolve + cascade GENERATED.md regenerate for bin and mcp"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green (all suites); cargo clippy --all-targets -D warnings clean",
+        "validate-workspace: T1 orphan=0, round-trip 1/1, T3 reject=0, atomic ledger 62 entries sync",
+        "MCP stdio handshake smoke test: validate_workspace + list_sections return correct data in-process"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R317: unify cmd_* (cli main.rs + atomic_cli.rs) onto ops, retiring parallel read-path aggregation",
+        "R317: cli main.rs split into commands/ modules + append_changelog_entry 8-arg builder/request struct"
+      ]
     }
   },
   "inventory_entries": {},

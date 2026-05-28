@@ -1360,7 +1360,7 @@ fn print_inventory_decay_trigger(
 /// cascade auto-update wire (atomic mutate → regenerate, pre-commit sync
 /// check) can share the single render path. `Source:` line uses a path
 /// relative to `workspace_root` so the output is portable across checkouts.
-fn render_atomic_store_to_md(
+pub fn render_atomic_store_to_md(
  workspace_root: &Path,
  sidecar_path: &Path,
 ) -> Result<(String, AtomicStore)> {
@@ -1429,7 +1429,7 @@ fn render_atomic_store_to_md(
 }
 
 /// Atomic-write the rendered content to `output_path` (temp + rename).
-fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
+pub fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
  if let Some(parent) = output_path.parent() {
  if !parent.exists() {
  fs::create_dir_all(parent)?;
@@ -1633,7 +1633,7 @@ pub fn validate_atomic_store(
 /// `--no-regenerate`). Errors are propagated — a regenerate failure after
 /// a successful mutate aborts the command, signalling that the cascade is
 /// in an inconsistent state and needs manual intervention.
-fn auto_regenerate(workspace_root: &Path, sidecar: Option<&str>) -> Result<()> {
+pub fn auto_regenerate(workspace_root: &Path, sidecar: Option<&str>) -> Result<()> {
  let sidecar_path = resolve_sidecar(workspace_root, sidecar);
  let output_path = resolve_output(workspace_root, None);
  let (content, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
