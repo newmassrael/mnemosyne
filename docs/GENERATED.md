@@ -2442,3 +2442,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 324 — Convergence A2 design: canonical fact-model Layer-0/Layer-1 boundary — Convergence A2 design decision (no code): the canonical core fact is the domain-agnostic SKELETON — FactKey identity, title/parent, decision_status, cross-refs — while the rich design_doc content (intent, rationale, inputs/outputs, caveats, alternatives, examples, normative_excerpt, implementations, publishable_*) is design_doc-MEDIUM-shaped and belongs to the Layer-1 MediumAdapter, not Layer 0. AtomicSection currently conflates both; the A3 code round will split the skeleton into mnemosyne-core and the content into a design_doc adapter, keeping Layer 0 free of medium/spec/code knowledge per the ARCHITECTURE.md §1 invariant and making fiction/ADR media first-class without polluting the core.
+
+**Changes**:
+- Decision only: no code this round; defines the A2/A3 canonical-model boundary
+- Core skeleton = FactKey + title/parent + decision_status + cross-refs (domain-agnostic)
+- design_doc content (intent/rationale/.../implementations) = Layer-1 adapter payload
+
+
+
+**Verification**:
+- Derived from ARCHITECTURE.md §1 (core domain-agnostic) + §3 (4-layer hexagonal)
+- validate-workspace green; round-trip 1/1; GENERATED.md sync
+- ARCHITECTURE.md §5 refined with the field-level skeleton/content split
+
+
+
+
+**Carry forward**:
+- A3 (code): split AtomicSection into core skeleton + design_doc adapter content
+- A3 risk: live workspace.atomic.json serde must stay byte-identical (round-trip)
+- B/C/D: RocksDB index from log, cascade incremental projection, unified write path
+
+
+

@@ -136,6 +136,28 @@ are not dead code; they are *not yet wired*.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
   reconcile into one command path (append log → update index → cascade).
 
+### Canonical fact-model boundary (A's keystone decision, R323–R324)
+
+`A` splits along a strict Layer-0 / Layer-1 line so the core stays
+domain-agnostic (§1):
+
+- **Layer 0 — canonical skeleton (`mnemosyne-core`).** The bitemporal identity
+  `FactKey { branch_id, entity_id, valid_from }` (landed R323) plus the
+  medium-neutral attributes every fact has regardless of medium: `title`,
+  parent links, `decision_status`, and cross-refs. This is all the core knows.
+- **Layer 1 — medium content (design_doc adapter).** The rich design_doc fields
+  — `intent`, `rationale`, `inputs`/`outputs`, `caveats`, `alternatives`,
+  `examples`, `normative_excerpt`, `implementations`, `publishable_*` — are
+  *shaped by the design_doc medium* (a fiction or ADR section carries different
+  content) and live in the Layer-1 `MediumAdapter` payload, never in Layer 0.
+
+`AtomicSection` today conflates skeleton + content in one struct. The A3 code
+round splits it: skeleton → `mnemosyne-core`, content → the design_doc adapter.
+The on-disk `workspace.atomic.json` serde representation must stay byte-identical
+across the split (the round-trip gate is the guard). This is what lets new media
+(fiction, ADR, spec) become first-class adapters without the core ever learning
+what a "rationale" or a "normative excerpt" is.
+
 ## 6. Anti-drift invariants
 
 1. **Never delete the bitemporal foundation** (`store / facts / cascade /
