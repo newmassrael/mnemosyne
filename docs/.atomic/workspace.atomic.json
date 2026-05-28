@@ -4604,6 +4604,32 @@
         "Index relation-key disambiguation by ref_kind = future index-layer round (composite key is fixed 3xu64)",
         "Render Step 2 (Layer-1 Salsa inputs, per-section memoized GENERATED.md) remains the large next epic"
       ]
+    },
+    "Round 344 — orphan-check the superseded_by forward-pointer target": {
+      "decision_summary": "Close the orphan-coverage gap R343 created: validate_atomic_store now scans AtomicSection.superseded_by for orphan section refs, mirroring impact_scope. set_section_decision_status defers the target-existence check to validate-workspace (T1 rule 1), but the orphan scan covered only impact_scope — so a Superseded section pointing at a phantom §M passed the supersede-state gate (a pointer exists) yet dangled. The scan now flags it. No live impact (no dogfood section is Superseded).",
+      "changes_bullets": [
+        "validate_atomic_store scans superseded_by for orphan section refs (mirrors impact_scope)"
+      ],
+      "verification_bullets": [
+        "New integration test: §1 superseded by non-existent §99 → validate-workspace rejects (orphan_refs=0+1)",
+        "Reproduced in a temp workspace dry-run; cargo test (cli smoke) 5/5 ok; fmt + clippy clean"
+      ],
+      "carry_forward_bullets": [
+        "Index relation-key still omits ref_kind (R343 carry) — future index-layer round",
+        "Render Step 2 (Layer-1 Salsa inputs, per-section memoized GENERATED.md) remains the large next epic"
+      ],
+      "publishable_decision_summary": "Close the orphan-coverage gap R343 created: validate_atomic_store now scans AtomicSection.superseded_by for orphan section refs, mirroring impact_scope. set_section_decision_status defers the target-existence check to validate-workspace (T1 rule 1), but the orphan scan covered only impact_scope — so a Superseded section pointing at a phantom §M passed the supersede-state gate (a pointer exists) yet dangled. The scan now flags it. No live impact (no dogfood section is Superseded).",
+      "publishable_changes_bullets": [
+        "validate_atomic_store scans superseded_by for orphan section refs (mirrors impact_scope)"
+      ],
+      "publishable_verification_bullets": [
+        "New integration test: §1 superseded by non-existent §99 → validate-workspace rejects (orphan_refs=0+1)",
+        "Reproduced in a temp workspace dry-run; cargo test (cli smoke) 5/5 ok; fmt + clippy clean"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Index relation-key still omits ref_kind (R343 carry) — future index-layer round",
+        "Render Step 2 (Layer-1 Salsa inputs, per-section memoized GENERATED.md) remains the large next epic"
+      ]
     }
   },
   "inventory_entries": {},

@@ -238,6 +238,16 @@ pub fn validate_atomic_store(
                 orphan_section_refs.push((section_id.clone(), r.clone()));
             }
         }
+        // R344: the supersession forward-pointer is a section cross-ref too —
+        // its target must resolve, the existence check set_section_decision_status
+        // defers here (R342). Without this, a Superseded section pointing at a
+        // phantom §M would pass the supersede-state gate (a decision ref exists)
+        // yet dangle.
+        if let Some(target) = &atomic.superseded_by {
+            if !section_id_set.contains(target) {
+                orphan_section_refs.push((section_id.clone(), target.clone()));
+            }
+        }
     }
 
     let output_path = resolve_output(workspace_root, None);

@@ -167,6 +167,65 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
 }
 
 #[test]
+fn validate_workspace_rejects_superseded_by_orphan() {
+    // R344: a Superseded section's superseded_by forward-pointer is a section
+    // cross-ref whose target must resolve. §1 superseded by a non-existent §99
+    // satisfies the supersede-state gate (a pointer is set) but must be caught
+    // as an orphan — the existence check the setter defers to validate-workspace.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+
+    Command::new(cli_binary())
+        .args([
+            "add-section",
+            "--section",
+            "1",
+            "--parent-doc",
+            "docs/STUB.md",
+            "--title",
+            "Top",
+        ])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-section");
+    Command::new(cli_binary())
+        .args([
+            "set-section-decision-status",
+            "--section",
+            "1",
+            "--status",
+            "superseded",
+            "--superseding",
+            "99",
+        ])
+        .current_dir(tmp.path())
+        .output()
+        .expect("set-section-decision-status");
+
+    let out = Command::new(cli_binary())
+        .arg("validate-workspace")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run validate-workspace");
+    assert!(
+        !out.status.success(),
+        "validate-workspace must reject a superseded_by orphan; stdout={}, stderr={}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("atomic orphan") || combined.contains("orphan_refs=0+1"),
+        "expected superseded_by orphan diagnostic; got: {}",
+        combined
+    );
+}
+
+#[test]
 fn validate_workspace_rejects_stale_generated_md() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());

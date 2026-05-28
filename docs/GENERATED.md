@@ -2914,3 +2914,23 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 344 — orphan-check the superseded_by forward-pointer target — Close the orphan-coverage gap R343 created: validate_atomic_store now scans AtomicSection.superseded_by for orphan section refs, mirroring impact_scope. set_section_decision_status defers the target-existence check to validate-workspace (T1 rule 1), but the orphan scan covered only impact_scope — so a Superseded section pointing at a phantom §M passed the supersede-state gate (a pointer exists) yet dangled. The scan now flags it. No live impact (no dogfood section is Superseded).
+
+**Changes**:
+- validate_atomic_store scans superseded_by for orphan section refs (mirrors impact_scope)
+
+
+
+**Verification**:
+- New integration test: §1 superseded by non-existent §99 → validate-workspace rejects (orphan_refs=0+1)
+- Reproduced in a temp workspace dry-run; cargo test (cli smoke) 5/5 ok; fmt + clippy clean
+
+
+
+
+**Carry forward**:
+- Index relation-key still omits ref_kind (R343 carry) — future index-layer round
+- Render Step 2 (Layer-1 Salsa inputs, per-section memoized GENERATED.md) remains the large next epic
+
+
+
