@@ -473,7 +473,7 @@ pub(crate) fn format_ledger_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{append_changelog_entry, AtomicStore};
+    use crate::{append_changelog_entry, AtomicStore, ChangelogEntryDraft};
     use tempfile::TempDir;
 
     fn req_literal(pattern: &str, replacement: &str) -> RedactRequest {
@@ -494,12 +494,14 @@ mod tests {
         append_changelog_entry(
             store,
             path,
-            entry_id,
-            Some("XYZ123 leaked summary"),
-            &["XYZ123 in changes".into(), "clean change".into()],
-            &["XYZ123 in verify".into()],
-            &["43".into()],
-            &["XYZ123 in carry".into()],
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: Some("XYZ123 leaked summary"),
+                changes_bullets: &["XYZ123 in changes".into(), "clean change".into()],
+                verification_bullets: &["XYZ123 in verify".into()],
+                impact_refs: &["43".into()],
+                carry_forward_bullets: &["XYZ123 in carry".into()],
+            },
         )
         .unwrap();
     }
@@ -591,12 +593,14 @@ mod tests {
         append_changelog_entry(
             &mut store,
             &path,
-            "Round 999",
-            Some("EMAIL: foo@example.com leaked"),
-            &["another foo@example.com cite".into()],
-            &["v".into()],
-            &[],
-            &["c".into()],
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("EMAIL: foo@example.com leaked"),
+                changes_bullets: &["another foo@example.com cite".into()],
+                verification_bullets: &["v".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &["c".into()],
+            },
         )
         .unwrap();
         let mut req = req_literal(r"\b\w+@\w+\.\w+\b", "[EMAIL]");

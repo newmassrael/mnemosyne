@@ -41,7 +41,7 @@ use mnemosyne_atomic::{
     set_section_decision_status, set_section_impact_scope, set_section_inputs, set_section_intent,
     set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
     set_section_parent_section, set_section_rationale, set_section_title, AtomicMutateError,
-    AtomicMutateReceipt, AtomicStore, ExampleBlock, RejectedAlternative,
+    AtomicMutateReceipt, AtomicStore, ChangelogEntryDraft, ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
 use mnemosyne_core::{DecisionStatus, InventoryStatus};
@@ -1754,12 +1754,14 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
  append_changelog_entry(
  &mut store,
  &sidecar_path,
- &entry_id,
- decision_summary.as_deref(),
- &changes,
- &verification,
- &impact_refs,
- &carry_forward,
+ ChangelogEntryDraft {
+ entry_id: &entry_id,
+ decision_summary: decision_summary.as_deref(),
+ changes_bullets: &changes,
+ verification_bullets: &verification,
+ impact_refs: &impact_refs,
+ carry_forward_bullets: &carry_forward,
+ },
  ),
  sidecar.as_deref(),
  regenerate,

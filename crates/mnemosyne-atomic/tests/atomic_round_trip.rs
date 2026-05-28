@@ -4,7 +4,7 @@
 //! markdown with expected structure. Round-trip invariant (Round 161 §56
 //! reframe ratify): same input always produces same output (deterministic).
 
-use mnemosyne_atomic::{AtomicStore, ExampleBlock, RejectedAlternative, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, set_section_alternatives, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs, set_section_rationale};
+use mnemosyne_atomic::{AtomicStore, ChangelogEntryDraft, ExampleBlock, RejectedAlternative, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, set_section_alternatives, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs, set_section_rationale};
 use mnemosyne_query::{render_changelog_entry, render_section};
 use tempfile::TempDir;
 
@@ -102,22 +102,24 @@ fn atomic_changelog_entry_round_trip() {
  let mut store = AtomicStore::new();
 
  append_changelog_entry(
- &mut store,
- &sidecar,
- "Round 162",
- Some("template engine + atomic mutate API"),
- &[
+            &mut store,
+            &sidecar,
+            ChangelogEntryDraft {
+                entry_id: "Round 162",
+                decision_summary: Some("template engine + atomic mutate API"),
+                changes_bullets: &[
  "tera workspace dep added".into(),
  "templates/section.md.tera + changelog_entry.md.tera".into(),
  "9 atomic mutate primitives".into(),
  ],
- &[
+                verification_bullets: &[
  "411 production tests PASS".into(),
  "round-trip render deterministic".into(),
  ],
- &["15".into(), "39".into(), "56".into()],
- &["Round 163 forward-wire next".into()],
- )
+                impact_refs: &["15".into(), "39".into(), "56".into()],
+                carry_forward_bullets: &["Round 163 forward-wire next".into()],
+            },
+        )
  .unwrap();
 
  let loaded = AtomicStore::load(&sidecar).unwrap();
@@ -220,27 +222,31 @@ fn atomic_changelog_v2_frozen_after_append() {
  let mut store = AtomicStore::new();
 
  append_changelog_entry(
- &mut store,
- &sidecar,
- "Round 162",
- Some("first"),
- &["change A".into()],
- &["verify A".into()],
- &[],
- &[],
- )
+            &mut store,
+            &sidecar,
+            ChangelogEntryDraft {
+                entry_id: "Round 162",
+                decision_summary: Some("first"),
+                changes_bullets: &["change A".into()],
+                verification_bullets: &["verify A".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap();
 
  let result = append_changelog_entry(
- &mut store,
- &sidecar,
- "Round 162",
- Some("attempted overwrite"),
- &[],
- &[],
- &[],
- &[],
- );
+            &mut store,
+            &sidecar,
+            ChangelogEntryDraft {
+                entry_id: "Round 162",
+                decision_summary: Some("attempted overwrite"),
+                changes_bullets: &[],
+                verification_bullets: &[],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        );
  assert!(
  result.is_err(),
  "second append to same entry_id must fail (T2 frozen ledger)"

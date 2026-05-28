@@ -24,7 +24,7 @@
 
 use mnemosyne_config::{SchemaSection, discover_config};
 use mnemosyne_parser::{parse_markdown_with_schema};
-use mnemosyne_atomic::{AtomicStore, append_changelog_entry};
+use mnemosyne_atomic::{AtomicStore, ChangelogEntryDraft, append_changelog_entry};
 use mnemosyne_workspace::{Workspace};
 use mnemosyne_style::{StyleSeverity, check_style, default_ruleset_with_config};
 use mnemosyne_query::{render_changelog_entry, workspace_section_id_set};
@@ -278,30 +278,34 @@ fn audit_c_duplicate_entry_id_rejected() {
  // Replay every live entry into a tmp store via the public mutate API.
  for (entry_id, entry) in &live.changelog_entries {
  append_changelog_entry(
- &mut store,
- &sidecar,
- entry_id,
- entry.decision_summary.as_deref(),
- &entry.changes_bullets,
- &entry.verification_bullets,
- &entry.impact_refs,
- &entry.carry_forward_bullets,
- )
+            &mut store,
+            &sidecar,
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: entry.decision_summary.as_deref(),
+                changes_bullets: &entry.changes_bullets,
+                verification_bullets: &entry.verification_bullets,
+                impact_refs: &entry.impact_refs,
+                carry_forward_bullets: &entry.carry_forward_bullets,
+            },
+        )
  .unwrap_or_else(|e| panic!("replay {} into tmp store: {}", entry_id, e));
  }
 
  // Now attempt to re-append every entry — each must fail with FrozenLedger.
  for entry_id in live.changelog_entries.keys() {
  let result = append_changelog_entry(
- &mut store,
- &sidecar,
- entry_id,
- Some("duplicate attempt"),
- &[],
- &[],
- &[],
- &[],
- );
+            &mut store,
+            &sidecar,
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: Some("duplicate attempt"),
+                changes_bullets: &[],
+                verification_bullets: &[],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        );
  assert!(
  result.is_err(),
  "duplicate append for {} must be rejected (T2 frozen ledger)",

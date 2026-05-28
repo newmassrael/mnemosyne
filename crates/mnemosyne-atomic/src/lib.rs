@@ -1607,27 +1607,48 @@ fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError
 // ChangelogEntry atomic mutate primitive.
 // ============================================================================
 
+/// Audit-half fields for a new changelog entry. Bundles the five
+/// `AtomicChangelogEntry` audit fields + `entry_id` so the append
+/// primitive takes one named struct instead of 8 positional args.
+///
+/// Named fields close a latent bug class: `changes_bullets`,
+/// `verification_bullets`, `impact_refs`, and `carry_forward_bullets` are
+/// all `&[String]`, so positional calls could silently transpose them. All
+/// fields borrow; [`append_changelog_entry`] clones into the store.
+#[derive(Debug, Clone, Copy)]
+pub struct ChangelogEntryDraft<'a> {
+ /// Strictly-monotonic entry id (e.g. `"Round 316"`).
+ pub entry_id: &'a str,
+ /// One-sentence headline. Required (Round 298 silent-accept gate).
+ pub decision_summary: Option<&'a str>,
+ /// What concretely changed. ≥ 1 non-blank bullet required.
+ pub changes_bullets: &'a [String],
+ /// How the change was verified. ≥ 1 non-blank bullet required.
+ pub verification_bullets: &'a [String],
+ /// Affected section ids (no `§` prefix).
+ pub impact_refs: &'a [String],
+ /// Carry-forward items for the next round.
+ pub carry_forward_bullets: &'a [String],
+}
+
 /// `append_changelog_entry` primitive — atomic-aware changelog append.
 ///
 /// Frozen ledger semantics: once committed,
 /// existing fields cannot be modified or removed (T2 jaccard); subsequent
 /// mutations to the same `entry_id` are rejected via FrozenLedger error.
-//
-// `clippy::too_many_arguments` allowed: 8 args mirror the public mutate
-// API shape (one per AtomicChangelogEntry audit-half field). Bundling
-// into a struct would force every caller (CLI / MCP / atomic_cli /
-// tests) to construct a new type, with no readability win.
-#[allow(clippy::too_many_arguments)]
 pub fn append_changelog_entry(
  store: &mut AtomicStore,
  sidecar_path: &Path,
- entry_id: &str,
- decision_summary: Option<&str>,
- changes_bullets: &[String],
- verification_bullets: &[String],
- impact_refs: &[String],
- carry_forward_bullets: &[String],
+ draft: ChangelogEntryDraft<'_>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+ let ChangelogEntryDraft {
+ entry_id,
+ decision_summary,
+ changes_bullets,
+ verification_bullets,
+ impact_refs,
+ carry_forward_bullets,
+ } = draft;
  if entry_id.trim().is_empty() {
  return Err(AtomicMutateError::Validation(
  "entry_id blank (Round 298 silent-accept gate)".to_string(),
@@ -2122,26 +2143,30 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  append_changelog_entry(
- &mut store,
- &path,
- "Round 162",
- Some("test summary"),
- &["change 1".into()],
- &["verify 1".into()],
- &["43".into()],
- &["carry 1".into()],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 162",
+                decision_summary: Some("test summary"),
+                changes_bullets: &["change 1".into()],
+                verification_bullets: &["verify 1".into()],
+                impact_refs: &["43".into()],
+                carry_forward_bullets: &["carry 1".into()],
+            },
+        )
  .unwrap();
  let err = append_changelog_entry(
- &mut store,
- &path,
- "Round 162",
- Some("attempted overwrite"),
- &[],
- &[],
- &[],
- &[],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 162",
+                decision_summary: Some("attempted overwrite"),
+                changes_bullets: &[],
+                verification_bullets: &[],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap_err();
  match err {
  AtomicMutateError::FrozenLedger(_) => {}
@@ -2325,15 +2350,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  append_changelog_entry(
- &mut store,
- &path,
- "Round 999",
- Some("appended summary"),
- &["appended change".into()],
- &["appended verify".into()],
- &["43".into()],
- &["appended carry".into()],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("appended summary"),
+                changes_bullets: &["appended change".into()],
+                verification_bullets: &["appended verify".into()],
+                impact_refs: &["43".into()],
+                carry_forward_bullets: &["appended carry".into()],
+            },
+        )
  .unwrap();
  let entry = store.changelog_entries.get("Round 999").unwrap();
  assert!(entry.publishable_matches_audit());
@@ -2357,7 +2384,18 @@ mod tests {
  path: &Path,
  entry_id: &str,
  ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
- append_changelog_entry(store, path, entry_id, None, &[], &[], &[], &[])
+ append_changelog_entry(
+            store,
+            path,
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: None,
+                changes_bullets: &[],
+                verification_bullets: &[],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  }
 
  #[test]
@@ -2395,15 +2433,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  let err = append_changelog_entry(
- &mut store,
- &path,
- "Round 999",
- Some("decision"),
- &[],
- &["verify".into()],
- &[],
- &[],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("decision"),
+                changes_bullets: &[],
+                verification_bullets: &["verify".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap_err();
  match err {
  AtomicMutateError::Validation(msg) => {
@@ -2419,15 +2459,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  let err = append_changelog_entry(
- &mut store,
- &path,
- "Round 999",
- Some("decision"),
- &["change".into()],
- &[],
- &[],
- &[],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("decision"),
+                changes_bullets: &["change".into()],
+                verification_bullets: &[],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap_err();
  match err {
  AtomicMutateError::Validation(msg) => {
@@ -2443,15 +2485,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  let err = append_changelog_entry(
- &mut store,
- &path,
- "Round 999",
- Some("decision"),
- &["valid".into(), "   ".into()],
- &["verify".into()],
- &[],
- &[],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("decision"),
+                changes_bullets: &["valid".into(), "   ".into()],
+                verification_bullets: &["verify".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap_err();
  match err {
  AtomicMutateError::Validation(msg) => {
@@ -2470,15 +2514,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  let err = append_changelog_entry(
- &mut store,
- &path,
- "Round 999",
- Some("decision"),
- &["change".into()],
- &["verify".into()],
- &["".into()],
- &[],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 999",
+                decision_summary: Some("decision"),
+                changes_bullets: &["change".into()],
+                verification_bullets: &["verify".into()],
+                impact_refs: &["".into()],
+                carry_forward_bullets: &[],
+            },
+        )
  .unwrap_err();
  match err {
  AtomicMutateError::Validation(msg) => {
@@ -3412,15 +3458,17 @@ mod tests {
  let path = tmp.path().join(".atomic/workspace.atomic.json");
  let mut store = AtomicStore::new();
  append_changelog_entry(
- &mut store,
- &path,
- "Round 243",
- Some("test"),
- &["change".into()],
- &["verify".into()],
- &[],
- &["carry".into()],
- )
+            &mut store,
+            &path,
+            ChangelogEntryDraft {
+                entry_id: "Round 243",
+                decision_summary: Some("test"),
+                changes_bullets: &["change".into()],
+                verification_bullets: &["verify".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &["carry".into()],
+            },
+        )
  .unwrap();
  let id_set = store.atomic_section_id_set();
  assert!(id_set.is_empty());
@@ -3430,15 +3478,17 @@ mod tests {
 
  fn seed_entry(store: &mut AtomicStore, path: &Path, entry_id: &str) {
  append_changelog_entry(
- store,
- path,
- entry_id,
- Some("audit summary"),
- &["audit change".into()],
- &["audit verify".into()],
- &["43".into()],
- &["audit carry".into()],
- )
+            store,
+            path,
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: Some("audit summary"),
+                changes_bullets: &["audit change".into()],
+                verification_bullets: &["audit verify".into()],
+                impact_refs: &["43".into()],
+                carry_forward_bullets: &["audit carry".into()],
+            },
+        )
  .unwrap();
  }
 
@@ -3591,15 +3641,17 @@ mod tests {
  let path_a = tmp_a.path().join(".atomic/workspace.atomic.json");
  let mut store_a = AtomicStore::new();
  append_changelog_entry(
- &mut store_a,
- &path_a,
- "Round PA",
- Some(&long_summary),
- &["c".into()],
- &["v".into()],
- &["1".into()],
- &["cf".into()],
- )
+            &mut store_a,
+            &path_a,
+            ChangelogEntryDraft {
+                entry_id: "Round PA",
+                decision_summary: Some(&long_summary),
+                changes_bullets: &["c".into()],
+                verification_bullets: &["v".into()],
+                impact_refs: &["1".into()],
+                carry_forward_bullets: &["cf".into()],
+            },
+        )
  .expect("append must accept arbitrary-length decision_summary");
 
  // publishable setter path accepts the same input on a pre-existing entry.
@@ -3629,15 +3681,17 @@ mod tests {
  let path_a = tmp_a.path().join(".atomic/workspace.atomic.json");
  let mut store_a = AtomicStore::new();
  append_changelog_entry(
- &mut store_a,
- &path_a,
- "Round PB",
- Some("audit summary"),
- &bullets,
- &bullets,
- &bullets,
- &bullets,
- )
+            &mut store_a,
+            &path_a,
+            ChangelogEntryDraft {
+                entry_id: "Round PB",
+                decision_summary: Some("audit summary"),
+                changes_bullets: &bullets,
+                verification_bullets: &bullets,
+                impact_refs: &bullets,
+                carry_forward_bullets: &bullets,
+            },
+        )
  .expect("append must accept long bullets across all bullet-family fields");
 
  // publishable setter path: each of the 4 setters accepts the same input.

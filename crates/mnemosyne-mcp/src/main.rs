@@ -22,7 +22,7 @@ mod resources;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mnemosyne_atomic::{self as atomic, ExampleBlock, RejectedAlternative};
+use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
 use mnemosyne_cli::ops::{self, QuerySectionMode, QueryTermInput, RedactTermInput, StyleCheckInput};
 use mnemosyne_cli::{run_atomic_mutate, MutateOutcome, OpError};
 use mnemosyne_core::InventoryStatus;
@@ -775,12 +775,14 @@ impl MnemosyneServer {
             atomic::append_changelog_entry(
                 store,
                 path,
-                &entry_id,
-                Some(&decision),
-                &changes,
-                &verify,
-                &impact,
-                &carry,
+                ChangelogEntryDraft {
+                    entry_id: &entry_id,
+                    decision_summary: Some(&decision),
+                    changes_bullets: &changes,
+                    verification_bullets: &verify,
+                    impact_refs: &impact,
+                    carry_forward_bullets: &carry,
+                },
             )
         });
         self.finish_mutate(outcome)

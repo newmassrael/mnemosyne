@@ -2272,3 +2272,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 317 — R317 — retire append_changelog_entry 8-arg signature for a named ChangelogEntryDraft struct
+
+**Changes**:
+- Replace append_changelog_entry 8 positional args with ChangelogEntryDraft struct
+- Retire #[allow(clippy::too_many_arguments)]; named fields kill the swappable-&[String] bug class
+- Update all 19 call sites (2 production: atomic_cli + mcp; 17 tests) in same change
+
+
+
+**Verification**:
+- cargo test --workspace: 670 passed / 0 failed
+- cargo clippy --all-targets -D warnings clean (redundant-field-name pass)
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- R317 #6 deferred: cli main.rs (2161 lines) split into commands/ modules
+- R316 read-path carry: unify cmd_validate_workspace/cmd_query/cmd_style_check onto ops
+
+
+
