@@ -2344,3 +2344,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 320 — R320 — single-source validate-workspace: cmd delegates to ops, delete the 430-line duplicate aggregation
+
+**Changes**:
+- cmd_validate_workspace delegates to ops::validate_workspace; keeps only CLI-only decay + commit-drift informational surfaces
+- Deleted the duplicate check_publishable_override_ledger gate + dead OrphanKey / KnownStaleOrphan / KNOWN_STALE_ORPHANS
+- main.rs 2161 to 1658 lines (-503); validate-workspace stdout byte-identical to pre-R320
+
+
+
+**Verification**:
+- validate-workspace stdout unchanged; atomic_first_validate_smoke + r280_atomic_path_config_smoke pass
+- cargo test --workspace 670 pass; clippy -D warnings clean; cargo fmt --all --check clean
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- Mutate path (cmd_* vs run_atomic_mutate) composes the same single-sourced atomic primitives + cascade::auto_regenerate — not a duplicate algorithm, no unification owed
+- D4 MediumAdapter (Phase 1A North-Star gateway) next, on the now-clean ops base
+
+
+
