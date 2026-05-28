@@ -11,7 +11,9 @@
 //! to the caller's `entity_id` allocation strategy (Phase 0 implementation
 //! concern, not in scope here).
 
-use crate::facts::{ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, SectionFact};
+use crate::{
+    ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, IndexCodec, SectionFact,
+};
 use mnemosyne_store::{CfId, MnemosyneStore, StoreError};
 use thiserror::Error;
 

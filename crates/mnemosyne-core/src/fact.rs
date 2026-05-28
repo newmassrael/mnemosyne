@@ -76,3 +76,61 @@ pub struct SectionSkeleton {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_status: Option<DecisionStatus>,
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Canonical typed-fact instances (Section / ChangelogEntry / FrozenList /
+// CrossRef). Hoisted from `mnemosyne-facts` into the domain core (Round 328 —
+// Convergence B prerequisite) so Layer 0 owns *the one canonical fact model*
+// per the ARCHITECTURE.md target, free of any persistence-engine dependency. The
+// derived-index *byte codec* for these structs stays in `mnemosyne-facts`
+// (the `IndexCodec` trait) — encoding is an index concern, not domain.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Section entity instance — the canonical Section fact.
+///
+/// Embeds the shared [`SectionSkeleton`] (the medium-neutral scalars) plus the
+/// string `section_id` that the JSON authoring store uses as its map key.
+/// Cross-refs are intentionally absent: the index represents them as
+/// first-class [`CrossRefFact`] relation rows, never an inline list (Round 326
+/// boundary).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SectionFact {
+    pub key: FactKey,
+    /// String section identity (the JSON store's map key). Kept explicit
+    /// because the index addresses rows by the numeric `key.entity_id`.
+    pub section_id: String,
+    /// Canonical Layer-0 scalar skeleton, shared verbatim with the JSON log
+    /// adapter (`mnemosyne_atomic::AtomicSection`).
+    pub skeleton: SectionSkeleton,
+}
+
+/// ChangelogEntry entity instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChangelogEntryFact {
+    pub key: FactKey,
+    pub round_number: u64,
+    pub summary: String,
+    pub appended_at: u64,
+}
+
+/// FrozenList entity instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FrozenListFact {
+    pub key: FactKey,
+    /// Owner section entity_id — EntityRef target = Section.
+    pub owner_section: u64,
+    pub frozen_round: u64,
+    pub kind: String,
+}
+
+/// CrossRef relation instance (Section → Section). Uses a distinct key shape
+/// (source/target entity ids), so it carries no [`FactKey`] envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CrossRefFact {
+    pub branch_id: u64,
+    /// Source section entity_id.
+    pub from_section: u64,
+    /// Target section entity_id (carried in the `valid_from` key slot).
+    pub to_section: u64,
+    pub ref_kind: String,
+}

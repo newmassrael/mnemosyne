@@ -1,17 +1,24 @@
-//! Typed-fact instance encoding — Section / ChangelogEntry / FrozenList / CrossRef.
+//! Derived-index byte codec for the canonical typed facts.
 //!
-//! Each fact carries its composite-key components (branch_id / entity_id /
-//! valid_from) plus the entity-specific payload. Persistence layout: composite
-//! key encoded by `mnemosyne_store::encode_composite_key`, value encoded as
-//! length-prefixed UTF-8 string fields + u64 BE numeric fields.
+//! The fact *structs* (Section / ChangelogEntry / FrozenList / CrossRef) live
+//! in `mnemosyne-core` (Layer 0 — the one canonical fact model). This module
+//! owns only the *index encoding*: how those structs are serialized into the
+//! RocksDB materialized index. Encoding is a persistence-layer concern, so it
+//! stays out of the domain core (Round 328 — Convergence B prerequisite).
 //!
-//! Wire format keeps deterministic byte layout so identical facts produce
-//! Identical bytes — required for content-addressable hashing and audit.
+//! Persistence layout: composite key encoded by
+//! `mnemosyne_store::encode_composite_key`, value encoded as length-prefixed
+//! UTF-8 string fields + u64 BE numeric fields.
+//!
+//! Wire format keeps a deterministic byte layout so identical facts produce
+//! identical bytes — required for content-addressable hashing and audit
 //! comparison.
 
 use byteorder::{BigEndian, ByteOrder};
-use mnemosyne_core::{DecisionStatus, FactKey, SectionSkeleton};
-use serde::{Deserialize, Serialize};
+use mnemosyne_core::{
+    ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
+    SectionSkeleton,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -118,8 +125,8 @@ fn read_opt_string(
     }
 }
 
-/// `Option<DecisionStatus>` codec: a single discriminator byte. The typed
-/// enum replaces the pre-Round-326 stringly-typed status field.
+/// `Option<DecisionStatus>` codec: a single discriminator byte. The typed enum
+/// replaces the pre-Round-326 stringly-typed status field.
 fn encode_decision_status(status: Option<DecisionStatus>) -> u8 {
     match status {
         None => 0,
@@ -145,28 +152,20 @@ fn read_decision_status(
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// SectionFact — Section entity instance (production typed fact).
-// ────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SectionFact {
-    pub key: FactKey,
-    /// String section identity (the JSON store's map key). Kept as an explicit
-    /// field because the index addresses rows by the numeric `key.entity_id`.
-    pub section_id: String,
-    /// Canonical Layer-0 scalar skeleton, shared verbatim with the JSON log
-    /// adapter (`mnemosyne_atomic::AtomicSection`) — Round 326 fulfils
-    /// convergence A for Section: one skeleton type carries both the serde
-    /// (log) and the byte codec (index). The codec persists every skeleton
-    /// field with full fidelity. Cross-refs are intentionally absent: the
-    /// index stores them as first-class `CrossRefFact` relation rows, so a
-    /// SectionFact never carries an inline cross-ref list.
-    pub skeleton: SectionSkeleton,
+/// Derived-index byte codec for a canonical typed fact.
+///
+/// Implemented in this persistence-layer crate (not in the domain core where
+/// the structs live) so Layer 0 carries no byte-layout concern. The three key
+/// slots passed to [`IndexCodec::decode_value`] are the composite-key
+/// components: for entity facts `(branch_id, entity_id, valid_from)`; for the
+/// `CrossRef` relation `(branch_id, from_section, to_section)`.
+pub trait IndexCodec: Sized {
+    fn encode_value(&self) -> Vec<u8>;
+    fn decode_value(k0: u64, k1: u64, k2: u64, buf: &[u8]) -> Result<Self, FactCodecError>;
 }
 
-impl SectionFact {
-    pub fn encode_value(&self) -> Vec<u8> {
+impl IndexCodec for SectionFact {
+    fn encode_value(&self) -> Vec<u8> {
         let mut out = Vec::new();
         write_string(&mut out, &self.section_id);
         write_string(&mut out, &self.skeleton.parent_doc);
@@ -176,7 +175,7 @@ impl SectionFact {
         out
     }
 
-    pub fn decode_value(
+    fn decode_value(
         branch_id: u64,
         entity_id: u64,
         valid_from: u64,
@@ -205,20 +204,8 @@ impl SectionFact {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// ChangelogEntryFact.
-// ────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ChangelogEntryFact {
-    pub key: FactKey,
-    pub round_number: u64,
-    pub summary: String,
-    pub appended_at: u64,
-}
-
-impl ChangelogEntryFact {
-    pub fn encode_value(&self) -> Vec<u8> {
+impl IndexCodec for ChangelogEntryFact {
+    fn encode_value(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(16 + 4 + self.summary.len());
         write_u64(&mut out, self.round_number);
         write_string(&mut out, &self.summary);
@@ -226,7 +213,7 @@ impl ChangelogEntryFact {
         out
     }
 
-    pub fn decode_value(
+    fn decode_value(
         branch_id: u64,
         entity_id: u64,
         valid_from: u64,
@@ -249,21 +236,8 @@ impl ChangelogEntryFact {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// FrozenListFact.
-// ────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FrozenListFact {
-    pub key: FactKey,
-    /// Owner section entity_id — EntityRef target=Section.
-    pub owner_section: u64,
-    pub frozen_round: u64,
-    pub kind: String,
-}
-
-impl FrozenListFact {
-    pub fn encode_value(&self) -> Vec<u8> {
+impl IndexCodec for FrozenListFact {
+    fn encode_value(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(16 + 4 + self.kind.len());
         write_u64(&mut out, self.owner_section);
         write_u64(&mut out, self.frozen_round);
@@ -271,7 +245,7 @@ impl FrozenListFact {
         out
     }
 
-    pub fn decode_value(
+    fn decode_value(
         branch_id: u64,
         entity_id: u64,
         valid_from: u64,
@@ -294,28 +268,14 @@ impl FrozenListFact {
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// CrossRefFact — relation (Section→Section).
-// ────────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct CrossRefFact {
-    pub branch_id: u64,
-    /// Source section entity_id.
-    pub from_section: u64,
-    /// Target section entity_id (carried in `valid_from` slot of the composite key).
-    pub to_section: u64,
-    pub ref_kind: String,
-}
-
-impl CrossRefFact {
-    pub fn encode_value(&self) -> Vec<u8> {
+impl IndexCodec for CrossRefFact {
+    fn encode_value(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(4 + self.ref_kind.len());
         write_string(&mut out, &self.ref_kind);
         out
     }
 
-    pub fn decode_value(
+    fn decode_value(
         branch_id: u64,
         from_section: u64,
         to_section: u64,

@@ -34,12 +34,15 @@ pub use emit::{
     emit_all_languages, emit_cpp, emit_kotlin, emit_protobuf, emit_python, emit_rust,
     EmittedMultiLang,
 };
-pub use facts::{ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, SectionFact};
+pub use facts::{FactCodecError, IndexCodec};
 pub use fixture::design_doc_schema_fixture;
-// Re-exported so consumers of the entity facts (which expose `key: FactKey`
-// and `skeleton: SectionSkeleton`) get the shared core types without a direct
-// mnemosyne-core dependency edge.
-pub use mnemosyne_core::{DecisionStatus, FactKey, SectionSkeleton};
+// The canonical fact structs live in `mnemosyne-core` (Layer 0); re-exported
+// here so existing consumers (`cascade`, `server`) keep importing the whole
+// fact vocabulary — structs + the index codec — from one place.
+pub use mnemosyne_core::{
+    ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
+    SectionSkeleton,
+};
 pub use persist::{PersistError, TypedFactStore};
 pub use schema::{
     CompositeKey, EntityDef, FieldDef, FieldType, GraphSpec, Persistence, RelationDef,

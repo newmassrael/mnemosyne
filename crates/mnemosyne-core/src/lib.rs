@@ -31,7 +31,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod fact;
-pub use fact::{FactKey, SectionSkeleton};
+pub use fact::{
+    ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, SectionSkeleton,
+};
 
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;

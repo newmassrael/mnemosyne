@@ -2539,3 +2539,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 328 — Convergence B prerequisite: lift canonical fact structs into core — Lift the 4 canonical fact structs from mnemosyne-facts into mnemosyne-core so Layer 0 owns the one canonical fact model (ARCHITECTURE.md §3); the derived-index byte codec stays in mnemosyne-facts as the new IndexCodec trait, keeping RocksDB out of the canonical model.
+
+**Changes**:
+- Moved the 4 fact structs (SectionFact / ChangelogEntryFact / FrozenListFact / CrossRefFact) into mnemosyne-core/src/fact.rs alongside FactKey + SectionSkeleton; core gains no new dependency since the structs are serde-only.
+- Converted the inherent encode_value/decode_value methods into a new IndexCodec trait implemented in mnemosyne-facts, keeping the byteorder byte-layout concern in the persistence layer, out of the domain core.
+- Re-exported the structs from mnemosyne-facts so cascade and server keep importing the full fact vocabulary from one place; persist.rs imports IndexCodec for the codec calls.
+
+
+
+**Verification**:
+- cargo check --workspace clean; 671 tests pass (0 failed); cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean.
+- No production behavior change — the codec byte layout and struct field shapes are identical; only crate residence moved (compiler-driven, byte-for-byte codec preserved).
+
+
+
+
+**Carry forward**:
+- B1 next — write the atomic-to-fact projection (AtomicStore to core fact structs), now placeable RocksDB-free since the canonical structs no longer drag mnemosyne-store into the authoring path.
+- Remaining facts crate residue (codegen: schema/emit/fixture/canonical = Phase -1A 5-language prototype) is unrelated to the persist binding; flag for a later dead-code review, not in scope here.
+
+
+
