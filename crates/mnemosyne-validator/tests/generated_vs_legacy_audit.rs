@@ -22,12 +22,10 @@
 //!
 //! permission boundary: audit only — atomic store / workspace docs scope mutation 0.
 
-use mnemosyne_validator::{
- append_changelog_entry, check_style, default_ruleset_with_config,
- discover_config, parse_markdown_with_schema, render_changelog_entry,
- workspace_section_id_set, AtomicStore, SchemaSection, StyleSeverity,
- Workspace,
-};
+use mnemosyne_config::{SchemaSection, discover_config};
+use mnemosyne_parser::{parse_markdown_with_schema};
+use mnemosyne_atomic::{AtomicStore, append_changelog_entry};
+use mnemosyne_validator::{StyleSeverity, Workspace, check_style, default_ruleset_with_config, render_changelog_entry, workspace_section_id_set};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;

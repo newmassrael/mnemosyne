@@ -4,13 +4,8 @@
 //! markdown with expected structure. Round-trip invariant (Round 161 §56
 //! reframe ratify): same input always produces same output (deterministic).
 
-use mnemosyne_validator::{
- add_section_caveat, add_section_example, add_section_implementation,
- append_changelog_entry, render_changelog_entry, render_section,
- set_section_alternatives, set_section_impact_scope, set_section_inputs,
- set_section_intent, set_section_outputs, set_section_rationale,
- AtomicStore, ExampleBlock, RejectedAlternative,
-};
+use mnemosyne_atomic::{AtomicStore, ExampleBlock, RejectedAlternative, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, set_section_alternatives, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs, set_section_rationale};
+use mnemosyne_validator::{render_changelog_entry, render_section};
 use tempfile::TempDir;
 
 #[test]
@@ -20,7 +15,7 @@ fn atomic_section_round_trip_full_shape() {
  let mut store = AtomicStore::new();
 
  // Round 287 fail-loud: explicit Section creation before content mutates.
- mnemosyne_validator::atomic::add_section(
+ mnemosyne_atomic::add_section(
  &mut store,
  &sidecar,
  "43",
@@ -144,7 +139,7 @@ fn atomic_section_render_deterministic_across_loads() {
  let mut store = AtomicStore::new();
 
  // Round 287 fail-loud: explicit Section creation.
- mnemosyne_validator::atomic::add_section(
+ mnemosyne_atomic::add_section(
  &mut store,
  &sidecar,
  "43",
@@ -194,7 +189,7 @@ fn atomic_section_legacy_carry_unaffected() {
  let mut store = AtomicStore::new();
 
  // Round 287 fail-loud: explicit Section creation.
- mnemosyne_validator::atomic::add_section(
+ mnemosyne_atomic::add_section(
  &mut store,
  &sidecar,
  "43",

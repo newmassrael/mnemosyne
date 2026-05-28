@@ -10,7 +10,7 @@
 //! single-doc orphan check failure on [`crate::workspace::Workspace::default_doc_has_section`]
 //! reclassify-possibility fallback check. If both are missing, step (3) rejects as orphan.
 
-use crate::schema::{ChangelogEntry, FrozenList, ParsedDoc, RefKind, Section};
+use mnemosyne_schema::{ChangelogEntry, FrozenList, ParsedDoc, RefKind, Section};
 use mnemosyne_core::DecisionStatus;
 use crate::workspace::Workspace;
 use std::collections::{BTreeMap, BTreeSet};
@@ -292,7 +292,7 @@ pub fn section_decision_status_transition(
 /// legal predecessor under the rule; reusing `SupersedeMissingRef` keeps
 /// downstream consumers schema-stable.
 pub fn atomic_section_supersede_state_reject(
- store: &crate::atomic::AtomicStore,
+ store: &mnemosyne_atomic::AtomicStore,
  parsed_docs: &[&ParsedDoc],
 ) -> Vec<ValidationError> {
  let mut errors = Vec::new();
@@ -320,7 +320,7 @@ pub fn atomic_section_supersede_state_reject(
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::schema::{ChangelogEntry, CrossRef, FrozenList, LockKind, Section};
+ use mnemosyne_schema::{ChangelogEntry, CrossRef, FrozenList, LockKind, Section};
 
  fn make_doc(
  sections: Vec<Section>,
@@ -746,12 +746,12 @@ mod tests {
  // guard at atomic::set_section_decision_status: catches
  // historical writes that predate the guard and atomic-only
  // overrides invisible to the parser-pair transition check.
- let mut store = crate::atomic::AtomicStore::new();
+ let mut store = mnemosyne_atomic::AtomicStore::new();
  // Round 287 fail-loud: explicit Section creation. Direct sections.insert
  // since this is a test fixture (no audit-receipt path needed).
  store.sections.insert(
  "39".to_string(),
- crate::atomic::AtomicSection {
+ mnemosyne_atomic::AtomicSection {
  decision_status: Some(DecisionStatus::Superseded),
  ..Default::default()
  },
@@ -770,10 +770,10 @@ mod tests {
  #[test]
  fn atomic_rule4_state_gate_superseded_with_ref_passes() {
  // Superseding cross-ref present in a parsed doc → clean.
- let mut store = crate::atomic::AtomicStore::new();
+ let mut store = mnemosyne_atomic::AtomicStore::new();
  store.sections.insert(
  "39".to_string(),
- crate::atomic::AtomicSection {
+ mnemosyne_atomic::AtomicSection {
  decision_status: Some(DecisionStatus::Superseded),
  ..Default::default()
  },
@@ -798,10 +798,10 @@ mod tests {
  // Removed asserts finality, not replacement → no superseding ref
  // required. Symmetric with markdown-axis rule 4 which fires only
  // on Active → Superseded.
- let mut store = crate::atomic::AtomicStore::new();
+ let mut store = mnemosyne_atomic::AtomicStore::new();
  store.sections.insert(
  "39".to_string(),
- crate::atomic::AtomicSection {
+ mnemosyne_atomic::AtomicSection {
  decision_status: Some(DecisionStatus::Removed),
  ..Default::default()
  },
@@ -815,10 +815,10 @@ mod tests {
  fn atomic_rule4_state_gate_active_and_none_skip() {
  // Some(Active) and default None (no atomic override) are not
  // rule-4 violations regardless of cross-ref shape.
- let mut store = crate::atomic::AtomicStore::new();
+ let mut store = mnemosyne_atomic::AtomicStore::new();
  store.sections.insert(
  "1".to_string(),
- crate::atomic::AtomicSection {
+ mnemosyne_atomic::AtomicSection {
  decision_status: Some(DecisionStatus::Active),
  ..Default::default()
  },
@@ -826,7 +826,7 @@ mod tests {
  // section "2" left at default None (no atomic override).
  store
  .sections
- .insert("2".to_string(), crate::atomic::AtomicSection::default());
+ .insert("2".to_string(), mnemosyne_atomic::AtomicSection::default());
  let doc = make_doc(vec![], vec![], vec![], vec![]);
  let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
  assert!(errors.is_empty());

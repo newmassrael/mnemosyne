@@ -20,8 +20,11 @@
 //! Skip-entry path. Cascade B/C = surface scope (emitter / query
 //! / mutate / validator) — once they rebase to atomic-first, this path's effectiveness drops to 0.
 
-use crate::config::SchemaSection;
-use crate::schema::{
+pub mod emitter;
+pub use emitter::*;
+
+use mnemosyne_config::SchemaSection;
+use mnemosyne_schema::{
  ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section,
 };
 use mnemosyne_core::DecisionStatus;
@@ -275,7 +278,7 @@ struct ParsedHeading {
  /// Recognises both numeric (`§39`, `§39.1`) and slug (`§code-citation-defense`,
  /// `§code-citation-defense/bidirectional-binding`) forms. `None` for
  /// structural headings without a `§` (e.g. `# GENERATED.md ...`,
- /// `## Sections`). Threads through to [`crate::schema::Section::atomic_section_id`].
+ /// `## Sections`). Threads through to [`mnemosyne_schema::Section::atomic_section_id`].
  atomic_section_id: Option<String>,
 }
 
@@ -731,7 +734,7 @@ pub struct Section {
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::schema::{parsed_doc_canonical, sha256_hex};
+ use mnemosyne_schema::{parsed_doc_canonical, sha256_hex};
 
  #[test]
  fn fixture_is_non_empty() {

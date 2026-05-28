@@ -1067,6 +1067,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-atomic"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "mnemosyne-schema",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mnemosyne-cascade"
 version = "0.1.0"
 dependencies = [
@@ -1086,8 +1100,12 @@ name = "mnemosyne-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "mnemosyne-atomic",
+ "mnemosyne-config",
  "mnemosyne-core",
+ "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
+ "mnemosyne-schema",
  "mnemosyne-server",
  "mnemosyne-store",
  "mnemosyne-validator",
@@ -1095,6 +1113,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "mnemosyne-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -1138,6 +1166,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-parser"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-config",
+ "mnemosyne-core",
+ "mnemosyne-schema",
+]
+
+[[package]]
 name = "mnemosyne-plugin-tree-sitter-rust"
 version = "0.1.0"
 dependencies = [
@@ -1145,6 +1182,14 @@ dependencies = [
  "tempfile",
  "tree-sitter",
  "tree-sitter-rust",
+]
+
+[[package]]
+name = "mnemosyne-schema"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "sha2",
 ]
 
 [[package]]
@@ -1203,8 +1248,12 @@ name = "mnemosyne-validator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "mnemosyne-atomic",
+ "mnemosyne-config",
  "mnemosyne-core",
+ "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
+ "mnemosyne-schema",
  "regex",
  "serde",
  "serde_json",

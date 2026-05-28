@@ -195,7 +195,7 @@ pub fn sha256_hex(s: &str) -> String {
 }
 
 /// Section by id helper — used by depth map + reference resolution.
-pub(crate) fn section_by_id(doc: &ParsedDoc) -> BTreeMap<&str, &Section> {
+pub fn section_by_id(doc: &ParsedDoc) -> BTreeMap<&str, &Section> {
  doc.sections
  .iter()
  .map(|s| (s.section_id.as_str(), s))

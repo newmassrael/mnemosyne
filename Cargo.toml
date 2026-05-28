@@ -10,6 +10,10 @@ members = [
  "crates/mnemosyne-mcp",
  "crates/mnemosyne-core",
  "crates/mnemosyne-plugin-tree-sitter-rust",
+ "crates/mnemosyne-schema",
+ "crates/mnemosyne-config",
+ "crates/mnemosyne-parser",
+ "crates/mnemosyne-atomic",
 ]
 
 [workspace.package]

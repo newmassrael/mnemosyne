@@ -9,7 +9,7 @@
 //! - **row 9**: CrossRef (ref_kind = cross_doc, to_target ≠ workspace default cross-doc
 //! target) → `[{text}]({other.md}#{anchor})` markdown link
 
-use crate::schema::{section_by_id, FrozenList, LockKind, ParsedDoc, RefKind};
+use mnemosyne_schema::{section_by_id, FrozenList, LockKind, ParsedDoc, RefKind};
 
 /// Convert heading text → GitHub-flavored markdown anchor.
 ///
@@ -49,15 +49,6 @@ fn is_cjk_char(ch: char) -> bool {
  | 0x4E00..=0x9FFF
  | 0xAC00..=0xD7AF
  )
-}
-
-/// ParsedDoc → markdown bytes. Deterministic — same ParsedDoc → same markdown bytes.
-///
-/// Default workspace default-doc binding = `Workspace::MNEMOSYNE_DEFAULT_DOC`
-/// (`docs/DESIGN.md`) — emit on `to_target` prefix match in row 8 vs row 9 branch.
-/// To emit using a different workspace's default-doc, use [`emit_markdown_with_default`].
-pub fn emit_markdown(doc: &ParsedDoc) -> String {
- emit_markdown_with_default(doc, Some(crate::workspace::Workspace::MNEMOSYNE_DEFAULT_DOC))
 }
 
 /// `default_doc` = workspace's default cross-doc target prefix. None = row 8 unused.
@@ -116,7 +107,7 @@ pub fn emit_markdown_with_default(doc: &ParsedDoc, default_doc: Option<&str>) ->
 }
 
 /// Single CrossRef emit — row 7/8/9 branch logic.
-fn emit_cross_ref(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> String {
+fn emit_cross_ref(cr: &mnemosyne_schema::CrossRef, default_doc: Option<&str>) -> String {
  match cr.ref_kind {
  // Row 7: intra-doc decision/impl → `§{N}` (or impl link).
  RefKind::Decision => format!("§{}", cr.to_target),
@@ -127,7 +118,7 @@ fn emit_cross_ref(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> St
 }
 
 /// Cross-doc emit — row 8 (default-doc) vs row 9 (non-default).
-fn emit_cross_doc(cr: &crate::schema::CrossRef, default_doc: Option<&str>) -> String {
+fn emit_cross_doc(cr: &mnemosyne_schema::CrossRef, default_doc: Option<&str>) -> String {
  if let Some(default) = default_doc {
  // Row 8: to_target = `{default_doc}#§{N}` canonical form
  // → `§{N}` inline literal (source markdown notation preserved).
@@ -297,8 +288,8 @@ pub fn compare_typed_facts(a: &ParsedDoc, b: &ParsedDoc) -> RoundTripDiff {
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::parser::{design_doc_small_fixture, parse_markdown};
- use crate::schema::{sha256_hex, CrossRef};
+ use crate::{design_doc_small_fixture, parse_markdown};
+ use mnemosyne_schema::{sha256_hex, CrossRef};
 
  #[test]
  fn anchor_simple_lowercase() {
@@ -333,14 +324,14 @@ mod tests {
  #[test]
  fn emit_h1_doc_root() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("# Mnemosyne Design Decisions"));
  }
 
  #[test]
  fn emit_numbered_top_level_section() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("## 39. Graph schema codegen"));
  assert!(md.contains("## 61. Import adapter framework"));
  }
@@ -348,21 +339,21 @@ mod tests {
  #[test]
  fn emit_unnumbered_section_changelog() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("## Changelog"));
  }
 
  #[test]
  fn emit_nested_heading_depth() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("### Phase 0 design_doc schema closed-form registered"));
  }
 
  #[test]
  fn emit_changelog_entries_with_sub_bullets() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("- Round 60:"));
  assert!(md.contains("- Round 61:"));
  assert!(md.contains(" - "));
@@ -371,7 +362,7 @@ mod tests {
  #[test]
  fn emit_cross_refs_inline() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  assert!(md.contains("§39"));
  assert!(md.contains("§41"));
  assert!(md.contains("§56"));
@@ -380,18 +371,18 @@ mod tests {
  #[test]
  fn emit_determinism() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let a = emit_markdown(&parsed);
- let b = emit_markdown(&parsed);
+ let a = emit_markdown_with_default(&parsed, None);
+ let b = emit_markdown_with_default(&parsed, None);
  assert_eq!(a, b);
  }
 
  #[test]
  fn emit_canonical_render_sha256_stable() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md = emit_markdown(&parsed);
+ let md = emit_markdown_with_default(&parsed, None);
  let h1 = sha256_hex(&md);
  let parsed2 = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let md2 = emit_markdown(&parsed2);
+ let md2 = emit_markdown_with_default(&parsed2, None);
  let h2 = sha256_hex(&md2);
  assert_eq!(h1, h2);
  assert_eq!(h1.len(), 64);
@@ -400,7 +391,7 @@ mod tests {
  #[test]
  fn round_trip_section_identity_preserved() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let emitted = emit_markdown(&parsed);
+ let emitted = emit_markdown_with_default(&parsed, None);
  let reparsed = parse_markdown(&emitted, "DESIGN.md");
  let diff = compare_typed_facts(&parsed, &reparsed);
  assert!(
@@ -413,7 +404,7 @@ mod tests {
  #[test]
  fn round_trip_changelog_sequence_preserved() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let emitted = emit_markdown(&parsed);
+ let emitted = emit_markdown_with_default(&parsed, None);
  let reparsed = parse_markdown(&emitted, "DESIGN.md");
  let diff = compare_typed_facts(&parsed, &reparsed);
  assert!(diff.changelog_sequence_match);
@@ -422,7 +413,7 @@ mod tests {
  #[test]
  fn round_trip_cross_ref_set_preserved() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let emitted = emit_markdown(&parsed);
+ let emitted = emit_markdown_with_default(&parsed, None);
  let reparsed = parse_markdown(&emitted, "DESIGN.md");
  let a_decision = parsed
  .cross_refs
@@ -440,7 +431,7 @@ mod tests {
  #[test]
  fn round_trip_typed_facts_overall() {
  let parsed = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
- let emitted = emit_markdown(&parsed);
+ let emitted = emit_markdown_with_default(&parsed, None);
  let reparsed = parse_markdown(&emitted, "DESIGN.md");
  let diff = compare_typed_facts(&parsed, &reparsed);
  assert!(diff.mandatory_preserved);

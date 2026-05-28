@@ -24,8 +24,8 @@
 //! - `max_section_body_length` (default 5000 char) — section body char count
 //! - `bullet_list_preference` — enumeration pattern detection in run-on paragraphs
 
-use crate::atomic::{AtomicSection, AtomicStore};
-use crate::schema::{ChangelogEntry, ParsedDoc, Section};
+use mnemosyne_atomic::{AtomicSection, AtomicStore};
+use mnemosyne_schema::{ChangelogEntry, ParsedDoc, Section};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,7 +117,7 @@ pub fn workspace_glossary() -> BTreeMap<String, BTreeSet<String>> {
 /// convert a `TerminologySection` into the parser's glossary
 /// shape. Empty config → empty glossary (terminology rule disabled).
 pub fn glossary_from_config(
- config: &crate::config::TerminologySection,
+ config: &mnemosyne_config::TerminologySection,
 ) -> BTreeMap<String, BTreeSet<String>> {
  let mut g = BTreeMap::new();
  for (canonical, variants) in &config.glossary {
@@ -132,8 +132,8 @@ pub fn glossary_from_config(
 /// from `[terminology.glossary]`. Empty glossary disables the
 /// `terminology_consistency` rule's reject power without removing the rule.
 pub fn default_ruleset_with_config(
- style: Option<&crate::config::StyleSection>,
- terminology: Option<&crate::config::TerminologySection>,
+ style: Option<&mnemosyne_config::StyleSection>,
+ terminology: Option<&mnemosyne_config::TerminologySection>,
 ) -> Vec<StyleRule> {
  let glossary = match terminology {
  Some(t) if !t.glossary.is_empty() => glossary_from_config(t),
@@ -337,7 +337,7 @@ pub fn check_style(
 /// Resolve the prose body for a section's style checks. atomic-first source
 ///: if the atomic store has an entry
 /// for this `section`, synthesize a prose body via
-/// [`crate::atomic::synthesize_section_prose_body`] (excludes mechanical
+/// [`mnemosyne_atomic::synthesize_section_prose_body`] (excludes mechanical
 /// citation blocks like `implementations` file paths — see that function's
 /// doc for the category rationale); otherwise fall back to the legacy
 /// `parsed.bodies` map for sections that have not yet been
@@ -369,10 +369,10 @@ fn resolve_section_body(
 // identifiers follow Unix/C filesystem conventions (lowercase) regardless
 // of the canonical prose form of the same concept (e.g. `dut/...` vs the
 // canonical `DUT` glossary form). query.rs continues to use
-// [`crate::atomic::synthesize_section_body`] (the full variant) for
+// [`mnemosyne_atomic::synthesize_section_body`] (the full variant) for
 // SectionView.body, where downstream consumers want the rendered citations.
 fn synthesize_atomic_body(atomic: &AtomicSection) -> String {
- crate::atomic::synthesize_section_prose_body(atomic)
+ mnemosyne_atomic::synthesize_section_prose_body(atomic)
 }
 
 fn check_section_body_rule(
@@ -1043,7 +1043,7 @@ mod tests {
  /// fix: 0.
  #[test]
  fn terminology_consistency_ignores_implementation_paths() {
- use crate::atomic::{AtomicSection, Implementation};
+ use mnemosyne_atomic::{AtomicSection, Implementation};
  let mut glossary = BTreeMap::new();
  for (canon, variants) in [
  ("TC8", &["tc8", "Tc8"][..]),
@@ -1124,7 +1124,7 @@ mod tests {
  /// authored prose (intent text).
  #[test]
  fn terminology_consistency_still_fires_on_prose_variants() {
- use crate::atomic::AtomicSection;
+ use mnemosyne_atomic::AtomicSection;
  let mut glossary = BTreeMap::new();
  let mut variants = BTreeSet::new();
  variants.insert("tc8".to_string());
@@ -1178,8 +1178,8 @@ mod tests {
  /// and `synthesize_section_prose_body` correctly excludes the impl block.
  #[test]
  fn terminology_consistency_roundtrip_excludes_impl_paths_in_nested_layout() {
- use crate::atomic::{AtomicSection, AtomicStore, Implementation};
- use crate::parser::parse_markdown;
+ use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
+ use mnemosyne_parser::parse_markdown;
  use crate::render::render_section;
 
  // Glossary of the same shape as the production failure: lowercase

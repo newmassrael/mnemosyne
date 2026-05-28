@@ -10,10 +10,8 @@
 //! 4. An empty glossary effectively disables the terminology rule
 //! (rule still runs but matches nothing).
 
-use mnemosyne_validator::{
- config::{StyleSection, TerminologySection},
- default_ruleset, default_ruleset_with_config, glossary_from_config, StyleThreshold,
-};
+use mnemosyne_config::{StyleSection, TerminologySection};
+use mnemosyne_validator::{StyleThreshold, default_ruleset, default_ruleset_with_config, glossary_from_config};
 use std::collections::BTreeMap;
 
 #[test]

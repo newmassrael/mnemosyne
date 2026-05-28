@@ -18,21 +18,15 @@ mod atomic_cli;
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
-use mnemosyne_validator::{
- check_style,
- code_refs::SetEqualityValidator,
- compare_typed_facts, default_ruleset_with_config, discover_config,
- emitter::emit_markdown_with_default,
- parse_markdown_with_schema,
- query::{
+use mnemosyne_schema::{ParsedDoc};
+use mnemosyne_config::{LoadedConfig, OrphanKind, SchemaSection, WorkspaceConfig, discover_config};
+use mnemosyne_parser::{parse_markdown_with_schema};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
+use mnemosyne_validator::{ValidationError, Workspace, check_style, code_refs::SetEqualityValidator, default_ruleset_with_config, query::{
  build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
  section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
- },
- style::{StyleSeverity, StyleViolation},
- validator::cross_ref_orphan_reject_with_workspace,
- AtomicStore, LoadedConfig, OrphanKind, ParsedDoc, SchemaSection, ValidationError,
- Workspace, WorkspaceConfig,
-};
+ }, style::{StyleSeverity, StyleViolation}, validator::cross_ref_orphan_reject_with_workspace};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -87,7 +81,7 @@ fn cli_schema() -> Result<&'static SchemaSection> {
 fn build_symbol_resolver_map(
  cfg: &WorkspaceConfig,
 ) -> std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> {
- use mnemosyne_validator::SymbolResolverConfig;
+ use mnemosyne_config::SymbolResolverConfig;
  let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
  std::collections::BTreeMap::new();
  let Some(plugins) = cfg.plugins.as_ref() else {
@@ -1277,7 +1271,7 @@ fn cmd_validate_workspace() -> Result<()> {
  // condition — complements the parser-pair transition check by catching
  // atomic-only overrides that no markdown prev/curr snapshot would expose.
  // Some(Removed) is tombstone-exempt (asserts finality, not replacement).
- let parsed_docs_refs: Vec<&mnemosyne_validator::ParsedDoc> =
+ let parsed_docs_refs: Vec<&mnemosyne_schema::ParsedDoc> =
  parsed_docs.iter().map(|(_, doc)| doc).collect();
  let atomic_supersede_errors = mnemosyne_validator::atomic_section_supersede_state_reject(
  &validate_workspace_atomic,
@@ -1355,10 +1349,10 @@ fn cmd_validate_workspace() -> Result<()> {
 /// Prints one informational line summarizing divergence count and
 /// ledger-row count regardless of pass/fail. Bails on first reject.
 fn check_publishable_override_ledger(
- atomic: &mnemosyne_validator::AtomicStore,
- ledger: &[mnemosyne_validator::PublishableOverrideLedgerEntry],
+ atomic: &mnemosyne_atomic::AtomicStore,
+ ledger: &[mnemosyne_config::PublishableOverrideLedgerEntry],
 ) -> Result<()> {
- let divergent_entries: Vec<(&String, &mnemosyne_validator::AtomicChangelogEntry)> = atomic
+ let divergent_entries: Vec<(&String, &mnemosyne_atomic::AtomicChangelogEntry)> = atomic
  .changelog_entries
  .iter()
  .filter(|(_, e)| !e.publishable_matches_audit())
@@ -1441,7 +1435,7 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
  Some(c) if !c.paths.is_empty() => c,
  _ => return Ok(()),
  };
- let store = match mnemosyne_validator::AtomicStore::load(
+ let store = match mnemosyne_atomic::AtomicStore::load(
  &atomic_cli::resolve_sidecar(root, None),
  ) {
  Ok(s) => s,
@@ -1506,7 +1500,7 @@ const MAX_COMMIT_SCAN: usize = 200;
 
 fn print_commit_ledger_drift_surface(
  root: &std::path::Path,
- atomic: &mnemosyne_validator::AtomicStore,
+ atomic: &mnemosyne_atomic::AtomicStore,
 ) -> Result<()> {
  let cited = collect_recent_commit_round_labels(root, MAX_COMMIT_SCAN);
  if cited.is_empty() {
@@ -1577,7 +1571,7 @@ fn collect_recent_commit_round_labels(
 }
 
 fn collect_ledger_round_numbers(
- atomic: &mnemosyne_validator::AtomicStore,
+ atomic: &mnemosyne_atomic::AtomicStore,
 ) -> BTreeSet<u32> {
  let re = match regex::Regex::new(r"^Round (\d+)") {
  Ok(r) => r,

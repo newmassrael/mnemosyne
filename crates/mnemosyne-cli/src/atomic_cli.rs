@@ -30,19 +30,9 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use mnemosyne_core::{DecisionStatus, InventoryStatus};
-use mnemosyne_validator::{
- add_inventory_entry, add_section_caveat, add_section_example,
- add_section_implementation, append_changelog_entry,
- code_refs::{scan_inventory_decay, scan_section_decay}, discover_config,
- remove_inventory_entry, remove_section, remove_section_implementation,
- render_changelog_entry, render_section, set_inventory_section_ref, set_inventory_status,
- set_section_alternatives, set_section_decision_status,
- set_section_impact_scope, set_section_inputs, set_section_intent,
- set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
- set_section_parent_section, set_section_rationale, set_section_title,
- AtomicMutateError, AtomicMutateReceipt, AtomicStore,
- ExampleBlock, RejectedAlternative,
-};
+use mnemosyne_config::{discover_config};
+use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore, ExampleBlock, RejectedAlternative, add_inventory_entry, add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry, remove_inventory_entry, remove_section, remove_section_implementation, set_inventory_section_ref, set_inventory_status, set_section_alternatives, set_section_decision_status, set_section_impact_scope, set_section_inputs, set_section_intent, set_section_normative_excerpt, set_section_outputs, set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title};
+use mnemosyne_validator::{code_refs::{scan_inventory_decay, scan_section_decay}, render_changelog_entry, render_section};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -261,7 +251,7 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
  finalize_mutate(
  workspace_root,
- mnemosyne_validator::atomic::add_section(
+ mnemosyne_atomic::add_section(
  &mut store,
  &sidecar_path,
  &section,
@@ -435,7 +425,7 @@ pub fn cmd_set_changelog_publishable_decision_summary(
  args,
  "decision_summary",
  |s, p, id, v| {
- mnemosyne_validator::set_changelog_publishable_decision_summary(s, p, id, v)
+ mnemosyne_atomic::set_changelog_publishable_decision_summary(s, p, id, v)
  },
  )
 }
@@ -449,7 +439,7 @@ pub fn cmd_set_changelog_publishable_changes(
  args,
  "publishable_changes",
  |s, p, id, b| {
- mnemosyne_validator::set_changelog_publishable_changes_bullets(s, p, id, b)
+ mnemosyne_atomic::set_changelog_publishable_changes_bullets(s, p, id, b)
  },
  )
 }
@@ -463,7 +453,7 @@ pub fn cmd_set_changelog_publishable_verification(
  args,
  "publishable_verification",
  |s, p, id, b| {
- mnemosyne_validator::set_changelog_publishable_verification_bullets(
+ mnemosyne_atomic::set_changelog_publishable_verification_bullets(
  s, p, id, b,
  )
  },
@@ -479,7 +469,7 @@ pub fn cmd_set_changelog_publishable_impact_refs(
  args,
  "publishable_impact_refs",
  |s, p, id, b| {
- mnemosyne_validator::set_changelog_publishable_impact_refs(s, p, id, b)
+ mnemosyne_atomic::set_changelog_publishable_impact_refs(s, p, id, b)
  },
  )
 }
@@ -493,7 +483,7 @@ pub fn cmd_set_changelog_publishable_carry_forward(
  args,
  "publishable_carry_forward",
  |s, p, id, b| {
- mnemosyne_validator::set_changelog_publishable_carry_forward_bullets(
+ mnemosyne_atomic::set_changelog_publishable_carry_forward_bullets(
  s, p, id, b,
  )
  },
@@ -544,7 +534,7 @@ pub fn cmd_emit_publishable_override_ledger_draft(
  let applied_in = applied_in.ok_or_else(|| anyhow!("--applied-in arg required"))?;
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
- let draft = mnemosyne_validator::emit_publishable_override_ledger_draft(
+ let draft = mnemosyne_atomic::emit_publishable_override_ledger_draft(
  &store,
  &entry,
  &reason,
@@ -2015,7 +2005,7 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
 
 /// Round 297 — `redact-term` CLI subcommand (RFC P1).
 ///
-/// Wraps `mnemosyne_validator::redact_term`. By default `--dry-run`
+/// Wraps `mnemosyne_atomic::redact_term`. By default `--dry-run`
 /// is **off** — explicit safety contract: a redaction without `--dry-run`
 /// mutates publishable_* in place. The output prints both the per-hit
 /// summary and the ready-to-paste `[[publishable_override_ledger]]` draft
@@ -2023,9 +2013,9 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
 pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
  let mut pattern: Option<String> = None;
  let mut replacement: Option<String> = None;
- let mut mode = mnemosyne_validator::RedactMode::Literal;
+ let mut mode = mnemosyne_atomic::RedactMode::Literal;
  let mut case_insensitive = false;
- let mut scope = mnemosyne_validator::RedactScope::All;
+ let mut scope = mnemosyne_atomic::RedactScope::All;
  let mut dry_run = false;
  let mut reason: Option<String> = None;
  let mut applied_in: Option<String> = None;
@@ -2045,7 +2035,7 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
   .clone(),
   )
  }
- "--regex" => mode = mnemosyne_validator::RedactMode::Regex,
+ "--regex" => mode = mnemosyne_atomic::RedactMode::Regex,
  "-i" | "--case-insensitive" => case_insensitive = true,
  "--scope" => {
   let raw = iter
@@ -2053,21 +2043,21 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
   .ok_or_else(|| anyhow!("--scope missing value"))?
   .clone();
   scope = match raw.as_str() {
-  "all" => mnemosyne_validator::RedactScope::All,
+  "all" => mnemosyne_atomic::RedactScope::All,
   "decision_summary" | "publishable_decision_summary" => {
-  mnemosyne_validator::RedactScope::DecisionSummary
+  mnemosyne_atomic::RedactScope::DecisionSummary
   }
   "changes_bullets" | "publishable_changes_bullets" => {
-  mnemosyne_validator::RedactScope::ChangesBullets
+  mnemosyne_atomic::RedactScope::ChangesBullets
   }
   "verification_bullets" | "publishable_verification_bullets" => {
-  mnemosyne_validator::RedactScope::VerificationBullets
+  mnemosyne_atomic::RedactScope::VerificationBullets
   }
   "impact_refs" | "publishable_impact_refs" => {
-  mnemosyne_validator::RedactScope::ImpactRefs
+  mnemosyne_atomic::RedactScope::ImpactRefs
   }
   "carry_forward_bullets" | "publishable_carry_forward_bullets" => {
-  mnemosyne_validator::RedactScope::CarryForwardBullets
+  mnemosyne_atomic::RedactScope::CarryForwardBullets
   }
   other => bail!(
   "unknown --scope `{}` — expected: all | decision_summary | changes_bullets \
@@ -2095,7 +2085,7 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
  other => bail!("unknown flag `{}`", other),
  }
  }
- let req = mnemosyne_validator::RedactRequest {
+ let req = mnemosyne_atomic::RedactRequest {
  pattern: pattern.ok_or_else(|| anyhow!("--pattern arg required"))?,
  replacement: replacement.ok_or_else(|| anyhow!("--replacement arg required"))?,
  mode,
@@ -2109,7 +2099,7 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
  let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
  let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
  let report =
- mnemosyne_validator::redact_term(&mut store, &sidecar_path, &req).map_err(|e| anyhow!("{}", e))?;
+ mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req).map_err(|e| anyhow!("{}", e))?;
  if json {
  let payload = serde_json::json!({
  "primitive": "redact_term",

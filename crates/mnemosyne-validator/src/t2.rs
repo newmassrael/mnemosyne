@@ -27,8 +27,8 @@
 //! meaning consistency). T2 is *slightly more lenient* than T1 (sub_bullets — additions allowed; removal
 //! block); datalog rule format auto-enforced.
 
-use crate::atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore, RejectedAlternative};
-use crate::schema::{ChangelogEntry, ParsedDoc};
+use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore, RejectedAlternative};
+use mnemosyne_schema::{ChangelogEntry, ParsedDoc};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// T2 ValidationError — `frozen_ledger_jaccard` rule violation.
@@ -369,8 +369,8 @@ fn push_alternatives_diff(
 
 fn push_examples_diff(
  section_id: &str,
- prev: &[crate::atomic::ExampleBlock],
- curr: &[crate::atomic::ExampleBlock],
+ prev: &[mnemosyne_atomic::ExampleBlock],
+ curr: &[mnemosyne_atomic::ExampleBlock],
  errors: &mut Vec<T2ValidationError>,
 ) {
  let curr_set: BTreeSet<(&str, &str)> = curr
@@ -394,7 +394,7 @@ fn push_examples_diff(
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::schema::ChangelogEntry;
+ use mnemosyne_schema::ChangelogEntry;
 
  fn entry(id: &str, bullets: &[&str], txn: i64) -> ChangelogEntry {
  ChangelogEntry {
@@ -498,7 +498,7 @@ mod tests {
  fn jaccard_self_check_design_md_passes() {
  // DESIGN.md itself frozen ledger principle in self-check — same doc two time parse
  // on jaccard = 1.0 (vector equality in frozen principle carry).
- use crate::parser::{design_doc_small_fixture, parse_markdown};
+ use mnemosyne_parser::{design_doc_small_fixture, parse_markdown};
  let a = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
  let b = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
  let errors = frozen_ledger_jaccard(&a, &b);

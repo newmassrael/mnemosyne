@@ -13,7 +13,9 @@
 //! 3. **Threshold tuning** — `max_sentence_length` 200 -> 300 char to fit
 //! technical-prose syllable density.
 
-use mnemosyne_validator::{check_style, default_ruleset, parse_markdown, AtomicStore};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_validator::{check_style, default_ruleset};
 
 /// Repeated filler word (8 chars) used to inflate paragraph length without
 /// triggering terminology violations.

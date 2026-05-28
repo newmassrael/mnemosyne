@@ -8,10 +8,9 @@
 //! (re-anchor here) or the rule semantics changed (separate spec round). Either
 //! way the test must be updated with intent.
 
-use mnemosyne_validator::{
- check_style, default_ruleset, parse_markdown, AtomicStore, StyleSeverity, StyleViolation,
- Workspace,
-};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_validator::{StyleSeverity, StyleViolation, Workspace, check_style, default_ruleset};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

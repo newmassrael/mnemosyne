@@ -30,7 +30,10 @@
 //! ref orphan reject). Schema + mutate primitive only — validator
 //! extension and section seeding are deferred to later rounds.
 
-use crate::schema::Section;
+pub mod redact;
+pub use redact::*;
+
+use mnemosyne_schema::Section;
 use mnemosyne_core::{DecisionStatus, InventoryStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

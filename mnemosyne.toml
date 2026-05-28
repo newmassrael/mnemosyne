@@ -89,11 +89,15 @@ max_section_body_length = 5000
 # in favor of single-responsibility per asset class.
 [plugins.set_equality_validator]
 paths = [
+ "crates/mnemosyne-atomic/src/",
  "crates/mnemosyne-cascade/src/",
  "crates/mnemosyne-cli/src/",
+ "crates/mnemosyne-config/src/",
+ "crates/mnemosyne-core/src/",
  "crates/mnemosyne-facts/src/",
  "crates/mnemosyne-mcp/src/",
- "crates/mnemosyne-core/src/",
+ "crates/mnemosyne-parser/src/",
+ "crates/mnemosyne-schema/src/",
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-validator/src/",

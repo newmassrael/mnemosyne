@@ -10,9 +10,8 @@
 //! 3. **Custom override** — author-supplied changelog titles (e.g.
 //! `["Decisions"]`) parse correctly without touching production code.
 
-use mnemosyne_validator::{
- config::SchemaSection, parse_markdown, parse_markdown_with_schema,
-};
+use mnemosyne_config::{SchemaSection};
+use mnemosyne_parser::{parse_markdown, parse_markdown_with_schema};
 use std::fs;
 use std::path::PathBuf;
 

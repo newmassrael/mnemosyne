@@ -14,9 +14,9 @@
 //! Decision-matrix outcome anchored at the bottom — drives Round 140+ round
 //! selection (α / γ / δ / hybrid).
 
-use mnemosyne_validator::{
- check_style, default_ruleset, parse_markdown, AtomicStore, StyleViolation, Workspace,
-};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_validator::{StyleViolation, Workspace, check_style, default_ruleset};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

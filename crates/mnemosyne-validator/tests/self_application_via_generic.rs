@@ -14,12 +14,11 @@
 //! closes once this test continues to PASS alongside the external
 //! fixtures from Round 147.
 
-use mnemosyne_validator::{
- compare_typed_facts, default_ruleset_with_config, discover_config,
- emitter::emit_markdown_with_default, parse_markdown_with_schema,
- validator::cross_ref_orphan_reject_with_workspace, AtomicStore, SchemaSection, StyleSeverity,
- Workspace,
-};
+use mnemosyne_config::{SchemaSection, discover_config};
+use mnemosyne_parser::{parse_markdown_with_schema};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
+use mnemosyne_validator::{StyleSeverity, Workspace, default_ruleset_with_config, validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use std::path::PathBuf;
 

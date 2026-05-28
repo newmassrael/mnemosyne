@@ -10,7 +10,7 @@
 //! markdown text is deterministic (same input always produces same output).
 //! Re-import path () is multi-session migration scope.
 
-use crate::atomic::{AtomicChangelogEntry, AtomicSection};
+use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection};
 use serde_json::json;
 use std::sync::OnceLock;
 use tera::{Context, Tera};
@@ -147,7 +147,7 @@ pub fn render_changelog_entry(
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::atomic::{ExampleBlock, Implementation, RejectedAlternative};
+ use mnemosyne_atomic::{ExampleBlock, Implementation, RejectedAlternative};
 
  #[test]
  fn render_section_minimal_intent_only() {

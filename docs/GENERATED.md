@@ -20,8 +20,8 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 **Implementations**:
-- crates/mnemosyne-validator/src/atomic.rs
 - crates/mnemosyne-cli/src/atomic_cli.rs
+- crates/mnemosyne-atomic/src/lib.rs
 
 
 
@@ -55,7 +55,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 **Implementations**:
 - crates/mnemosyne-validator/src/code_refs.rs
-- crates/mnemosyne-validator/src/atomic.rs
+- crates/mnemosyne-atomic/src/lib.rs
 
 
 
@@ -71,7 +71,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 **Implementations**:
-- crates/mnemosyne-validator/src/parser.rs
+- crates/mnemosyne-parser/src/lib.rs
 
 
 
@@ -87,7 +87,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 **Implementations**:
-- crates/mnemosyne-validator/src/config.rs
+- crates/mnemosyne-config/src/lib.rs
 
 
 
@@ -1984,6 +1984,54 @@ Source: `docs/.atomic/workspace.atomic.json`
 - 13-smell #11 Box Status tonic interceptor allow — tonic API constraint; remove only when upstream tonic relaxes interceptor trait signature
 - 13-smell #12 AtomicSection 14 field data clump analysis — extract Outline title parent_doc parent_section sub-struct candidate; needs cohesion measurement before commit
 - 13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes (currently no multi-validator scenario)
+
+
+
+### Round 311 — Mnemosyne-validator god-crate decomposition first wave — 4 leaf crates (mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic) extracted with full consumer migration; validator shrunk from 15 modules to 10; façade-free per CLAUDE.md no-legacy-carry; 13-smell #5 partial closure (3 more rounds R312/R313 to fully delete mnemosyne-validator crate)
+
+**Changes**:
+- mnemosyne-schema crate extracted from mnemosyne-validator src/schema.rs — 4 typed-fact entity/relation types (Section + ChangelogEntry + FrozenList + CrossRef) plus LockKind RefKind ParsedDoc plus sha256_hex canonical helper plus section_by_id traversal helper now live in their own leaf crate (depends only on mnemosyne-core for DecisionStatus)
+- mnemosyne-config crate extracted from mnemosyne-validator src/config.rs — mnemosyne.toml loader (LoadedConfig + WorkspaceConfig + SchemaSection + StyleSection + PluginsSection + TerminologySection + AtomicConfigSection + SetEqualityValidatorConfig + SymbolResolverConfig + OrphanKind + OrphanLedgerEntry + PublishableOverrideLedgerEntry) plus discover_config + load_config + parse_config primitives; pure data + serde + toml + anyhow only, no internal deps
+- mnemosyne-parser crate extracted from mnemosyne-validator src/parser.rs and src/emitter.rs — markdown bytes ↔ ParsedDoc bidirectional transform; parse_markdown + parse_markdown_with_schema + compare_typed_facts + emit_markdown_with_default + to_github_anchor + RoundTripDiff; emitter is a sub-module since parser and emitter are paired round-trip primitives
+- mnemosyne-atomic crate extracted from mnemosyne-validator src/atomic.rs and src/redact.rs — AtomicStore + AtomicSection + AtomicChangelogEntry + InventoryEntry + ExampleBlock + Implementation + NormativeExcerpt + RejectedAlternative types plus all atomic mutate primitives (append_changelog_entry + add_section + set_section_* + add_section_* + remove_section_* + add_inventory_entry + set_inventory_* + remove_inventory_entry + 5 publishable setters + emit_publishable_override_ledger_draft) plus redact_term + RedactRequest + RedactionReport — redact lives in mnemosyne-atomic since publishable redaction is an atomic mutation operation
+- emit_markdown no-arg convenience function dropped from mnemosyne-parser — it hardcoded mnemosyne-validator workspace Workspace::MNEMOSYNE_DEFAULT_DOC which was a workspace-specific coupling that did not belong in a generic parser crate; callers now use emit_markdown_with_default(doc, default_doc_or_None) explicitly so external workspaces are not forced into the Mnemosyne self-application default
+- 4 new workspace members added to root Cargo.toml — mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic
+- mnemosyne-validator/lib.rs no longer hosts pub mod schema + pub mod config + pub mod parser + pub mod emitter + pub mod atomic + pub mod redact and no longer pub use re-exports of those modules' items — façade-free per CLAUDE.md no-legacy-carry policy (lib.rs re-exports of superseded modules count as legacy carry)
+- 71 mnemosyne_validator::* consumer use sites migrated across mnemosyne-cli (main.rs + atomic_cli.rs) and mnemosyne-validator/tests (18 integration tests) — each use block split by which extracted crate owns the imported type; sub-module paths (atomic:: schema:: config:: parser:: redact:: emitter::) rewritten to point at the new crate root
+- mnemosyne-cli Cargo.toml gained dependencies on mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic so the binary can call the extracted crates directly
+- mnemosyne-validator dev-dependencies gained mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic + serde_json so the 18 integration tests retained in mnemosyne-validator/tests/ still compile while the source extraction proceeds (these tests will move to their respective domain crates in a future round once style + query + validate + workspace are also extracted)
+- mnemosyne-validator src/ shrunk from 15 modules + lib.rs (16804 lines) to 10 modules + lib.rs (validator + workspace + query + t2 + style + render + code_refs + commit_ledger) — 5 modules + ~7000 lines lifted into the 4 extracted crates
+
+
+
+**Verification**:
+- cargo build --workspace green across all 13 workspace crates (mnemosyne-store + mnemosyne-facts + mnemosyne-core + mnemosyne-schema + mnemosyne-config + mnemosyne-parser + mnemosyne-atomic + mnemosyne-cascade + mnemosyne-server + mnemosyne-cli + mnemosyne-mcp + mnemosyne-validator + mnemosyne-plugin-tree-sitter-rust)
+- cargo test --workspace --no-fail-fast green — 76 test result groups all pass with the 4 extracted crates plus their integration tests (atomic_round_trip + atomic_store_view_parity + changelog_pattern_plugin + 5 style_* + symbol_enforcement_smoke + validator_trait_dispatch + workspace_config_integration + self_application_via_generic + self_validation + external_fixtures_integration + generated_vs_legacy_audit + schema_as_input_integration + phase_1_priority_audit)
+- cargo clippy --workspace --all-targets -- -D warnings exits 0 — R308 D9 baseline held under the god-crate decomposition refactor; no new warnings introduced across the 4 new crates or the touched consumer files
+- mnemosyne-cli validate-workspace baseline clean — entries 57 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0
+- atomic store wire format unchanged — the decomposition moved Rust source between crate boundaries only; no schema field renames + no serde attribute changes + no fact bytes layout touched + docs/.atomic/workspace.atomic.json round-trips byte-identically
+- code-citation defense gate still passes — mnemosyne.toml [plugins.set_equality_validator].paths covered the validator/src/ tree which now spans crates/mnemosyne-validator/src/ plus crates/mnemosyne-schema/src/ + crates/mnemosyne-config/src/ + crates/mnemosyne-parser/src/ + crates/mnemosyne-atomic/src/; paths updated in mnemosyne.toml to cover the new crate sources
+- API surface for downstream consumers narrowed — callers must import from the canonical crate (mnemosyne_schema::Section + mnemosyne_config::LoadedConfig + mnemosyne_parser::parse_markdown + mnemosyne_atomic::AtomicStore) instead of via mnemosyne_validator façade; future-round consumer migration cost is bounded since this round closed the migration for the 4 extracted concerns
+
+
+
+**Impact**: §generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-310--plugin-substrate-rename-to-mnemosyne-core--legacy-core-typed-facts-layer-rename-to-mnemosyne-facts--d5-closure-substrate-role-declared-by-name-and-13-smell-4-closure-layering-inversion-fix-schema--core-dependency-direction-is-now-honest-since-core-is-the-substrate-that-defines-what-plugins-implement-against
+
+
+**Carry forward**:
+- R312 13-smell #5 god-crate decomposition continuation — extract mnemosyne-style (T3/T4 rules) + mnemosyne-workspace (Workspace data type + config orchestrator) + mnemosyne-query (read views + render) from mnemosyne-validator; 5 modules remaining after that round (validator + t2 + code_refs + commit_ledger + lib.rs)
+- R313 13-smell #5 final extraction — mnemosyne-validate crate from validator + t2 + code_refs + commit_ledger modules; delete mnemosyne-validator crate entirely at that point; move retained tests to respective domain crates
+- R314 13-smell #1 + #2 typed Validator trait + dedup finding — trait Validator with associated type Finding plus ErasedValidator object-safe wrapper for dynamic dispatch through PluginRegistry; retire ValidationFinding stringly-typed extras BTreeMap and CodeRefViolation duplicate representation
+- R315 13-smell #8 mnemosyne-mcp library API split — mnemosyne-mcp tool methods call mnemosyne-validate library API directly instead of spawning mnemosyne-cli subprocess
+- R316 13-smell #6 + #7 main.rs decomposition — cli commands module split (validate + query + style + append + each cmd_ function into its own module) plus append_changelog_entry 8-arg builder or request struct to retire too_many_arguments per-site allow
+- R317 D3 transport abstraction MCP self-ref dogfood — was originally R309 R310 plan; deferred again because transport-on-stringly-typed-boundary would deepen #1 + #2 debt; only enter after R314 typed Validator trait closure
+- R318+ D4 MediumAdapter trait plus DesignDocAdapter refactor — Phase 1A prerequisite; medium adapter trait home declared on mnemosyne-core or on a new mnemosyne-medium crate; narrative adapter lands as second impl in Phase 1A
+- R319+ D6 external plugin extension mechanism — dlopen libloading dynamic loading or external-binary orchestrator path; large design round
+- D7 severity_symbol Mnemosyne self-dogfood — activate plugins.symbol_resolver.rust in mnemosyne.toml plus N round measurement evidence before promotion decision (R263 measure-then-promote pattern)
+- D8 Round 172 priority audit re-validation — at Phase 1 entry trigger re-measure parameter value times measurability over risk times one plus unmet deps
+- 13-smell #4 (layering inversion) full closure — partial closure in R310 via mnemosyne-core rename; full closure requires schema (now in mnemosyne-schema) to not depend on plugin trait surface at all (DecisionStatus from mnemosyne-core is still imported); current dependency direction is honest since mnemosyne-core is by name the substrate
+- mnemosyne-validator/tests/ test redistribution — 18 integration tests still hosted in mnemosyne-validator/tests/; redistribute to mnemosyne-schema/tests + mnemosyne-config/tests + mnemosyne-parser/tests + mnemosyne-atomic/tests + mnemosyne-cli/tests (cross-cutting) once R313 deletes mnemosyne-validator crate
+- emit_markdown removal API impact — the no-arg convenience function was workspace-coupled to Workspace::MNEMOSYNE_DEFAULT_DOC; callers now use emit_markdown_with_default(doc, None) or pass a workspace-specific default; pre-release no-compat policy applies (no external API to preserve)
 
 
 

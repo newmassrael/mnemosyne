@@ -9,7 +9,7 @@
 //! Closes RFC G1 (no atomic primitive for cross-store term replacement) when
 //! taken together with R294 schema split + R295 setters + R296 ledger gate.
 
-use crate::atomic::{
+use crate::{
     set_changelog_publishable_carry_forward_bullets,
     set_changelog_publishable_changes_bullets,
     set_changelog_publishable_decision_summary,
@@ -396,7 +396,7 @@ fn redact_vec(
 }
 
 fn apply_planned_to_entry(
-    entry: &mut crate::atomic::AtomicChangelogEntry,
+    entry: &mut crate::AtomicChangelogEntry,
     entry_id: &str,
     hits: &[RedactionHit],
     replacement: &str,
@@ -473,7 +473,7 @@ pub(crate) fn format_ledger_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::atomic::{append_changelog_entry, AtomicStore};
+    use crate::{append_changelog_entry, AtomicStore};
     use tempfile::TempDir;
 
     fn req_literal(pattern: &str, replacement: &str) -> RedactRequest {

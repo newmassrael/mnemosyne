@@ -23,10 +23,19 @@ sha2.workspace = true
 tera.workspace = true
 regex.workspace = true
 mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-schema = { path = "../mnemosyne-schema" }
+mnemosyne-config = { path = "../mnemosyne-config" }
+mnemosyne-parser = { path = "../mnemosyne-parser" }
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serde_json.workspace = true
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
+mnemosyne-schema = { path = "../mnemosyne-schema" }
+mnemosyne-config = { path = "../mnemosyne-config" }
+mnemosyne-parser = { path = "../mnemosyne-parser" }
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 
 [lints]
 workspace = true

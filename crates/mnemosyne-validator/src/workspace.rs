@@ -7,8 +7,8 @@
 //! config); other design_doc workspaces are free to choose their own self-default — mnemosyne
 //! Only this production crate binds the workspace default to DESIGN.md.
 
-use crate::config::LoadedConfig;
-use crate::schema::ParsedDoc;
+use mnemosyne_config::LoadedConfig;
+use mnemosyne_schema::ParsedDoc;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Workspace state — source of truth for multi-doc lookup.
@@ -42,7 +42,7 @@ impl Workspace {
  /// framing-reset (Phase 0e generic library extraction): this
  /// constant is retained as a *fallback only* for callers that cannot
  /// load `mnemosyne.toml`. Production paths route through
- /// [`Workspace::from_config`] + [`crate::config::discover_config`]; this
+ /// [`Workspace::from_config`] + [`mnemosyne_config::discover_config`]; this
  /// constant must not appear in public-facing call sites of external
  /// users.
  pub const MNEMOSYNE_DEFAULT_DOC: &'static str = "docs/GENERATED.md";
@@ -133,7 +133,7 @@ impl Workspace {
 
  for cr in doc.cross_refs.iter_mut() {
  // Skip if already cross-doc explicitly emitted as link form.
- if cr.ref_kind == crate::schema::RefKind::CrossDoc {
+ if cr.ref_kind == mnemosyne_schema::RefKind::CrossDoc {
   continue;
  }
  // Step (1): intra-doc — change missing.
@@ -144,7 +144,7 @@ impl Workspace {
  if self.default_doc_has_section(&cr.to_target) {
   let default = self.default_doc.as_ref().expect("checked above");
   cr.to_target = format!("{}#§{}", default, cr.to_target);
-  cr.ref_kind = crate::schema::RefKind::CrossDoc;
+  cr.ref_kind = mnemosyne_schema::RefKind::CrossDoc;
   continue;
  }
  // Step (3): both all missing — this function change missing (validator
@@ -157,7 +157,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::schema::{RefKind, Section};
+ use mnemosyne_schema::{RefKind, Section};
  use mnemosyne_core::DecisionStatus;
 
  fn make_section(id: &str, title: &str, parent_doc: &str) -> Section {
@@ -213,7 +213,7 @@ mod tests {
 
  let other = ParsedDoc {
  sections: vec![make_section("l1", "Layer 1", "docs/OTHER.md")],
- cross_refs: vec![crate::schema::CrossRef {
+ cross_refs: vec![mnemosyne_schema::CrossRef {
   from_section: "l1".to_string(),
   to_target: "39".to_string(),
   ref_kind: RefKind::Decision,
@@ -238,7 +238,7 @@ mod tests {
   make_section("39", "Graph schema", "docs/GENERATED.md"),
   make_section("66", "Self-application", "docs/GENERATED.md"),
  ],
- cross_refs: vec![crate::schema::CrossRef {
+ cross_refs: vec![mnemosyne_schema::CrossRef {
   from_section: "66".to_string(),
   to_target: "39".to_string(),
   ref_kind: RefKind::Decision,
@@ -266,7 +266,7 @@ mod tests {
 
  let other = ParsedDoc {
  sections: vec![make_section("l1", "Layer 1", "docs/OTHER.md")],
- cross_refs: vec![crate::schema::CrossRef {
+ cross_refs: vec![mnemosyne_schema::CrossRef {
   from_section: "l1".to_string(),
   to_target: "999".to_string(),
   ref_kind: RefKind::Decision,

@@ -25,38 +25,20 @@
 //! shape (Claude-consumable). prerequisite #5 *AI agent dogfood proof*
 //! production gate.
 
-pub mod schema;
-pub mod parser;
-pub mod emitter;
 pub mod validator;
 pub mod workspace;
-pub mod config;
 pub mod query;
 pub mod t2;
 pub mod style;
-pub mod atomic;
 pub mod render;
 pub mod code_refs;
 pub mod commit_ledger;
-pub mod redact;
 
-pub use schema::{
- ChangelogEntry, CrossRef, FrozenList, LockKind, ParsedDoc, RefKind, Section,
-};
-pub use parser::{parse_markdown, parse_markdown_with_schema};
-pub use emitter::{compare_typed_facts, emit_markdown, to_github_anchor, RoundTripDiff};
 pub use validator::{
  atomic_section_supersede_state_reject, changelog_entry_append_only, cross_ref_orphan_reject,
  frozen_list_membership_delta, section_decision_status_transition, ValidationError,
 };
 pub use workspace::Workspace;
-pub use config::{
- discover_config, load_config, parse_config, AtomicConfigSection,
- LoadedConfig, OrphanKind, OrphanLedgerEntry, PluginsSection,
- PublishableOverrideLedgerEntry, SchemaSection, SetEqualityValidatorConfig,
- StyleSection, SymbolResolverConfig, TerminologySection, WorkspaceConfig,
- WorkspaceSection,
-};
 pub use query::{
  build_envelope, changelog_entries_for_section, query_term, related_sections,
  related_sections_with_atomic, section_by_id, workspace_section_id_set,
@@ -69,28 +51,5 @@ pub use style::{
  StyleScope, StyleSeverity, StyleThreshold, StyleTier,
  StyleViolation,
 };
-pub use atomic::{
- add_inventory_entry, add_section_caveat, add_section_example,
- add_section_implementation, append_changelog_entry,
- emit_publishable_override_ledger_draft, remove_inventory_entry,
- remove_section, remove_section_implementation,
- set_changelog_publishable_carry_forward_bullets,
- set_changelog_publishable_changes_bullets,
- set_changelog_publishable_decision_summary,
- set_changelog_publishable_impact_refs,
- set_changelog_publishable_verification_bullets, set_inventory_section_ref,
- set_inventory_status, set_section_alternatives,
- set_section_decision_status, set_section_impact_scope,
- set_section_inputs, set_section_intent, set_section_normative_excerpt,
- set_section_outputs, set_section_parent_doc, set_section_parent_section,
- set_section_rationale, set_section_title, AtomicChangelogEntry,
- AtomicMutateError, AtomicMutateReceipt, AtomicSection, AtomicStore,
- AtomicStoreError, ExampleBlock, Implementation, InventoryEntry,
- NormativeExcerpt, RejectedAlternative,
-};
 pub use render::{render_changelog_entry, render_section, RenderError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
-pub use redact::{
- redact_term, RedactError, RedactMode, RedactRequest, RedactScope, RedactionHit,
- RedactionReport,
-};

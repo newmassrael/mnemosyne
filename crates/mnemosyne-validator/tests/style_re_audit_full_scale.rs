@@ -16,10 +16,9 @@
 //! Round 155-160 budget recalibration anchored at the bottom — drives
 //! Δ-per-round assignment and SD-remaining target after audit.
 
-use mnemosyne_validator::{
- check_style, default_ruleset, parse_markdown, AtomicStore, StyleSeverity, StyleViolation,
- Workspace,
-};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_atomic::{AtomicStore};
+use mnemosyne_validator::{StyleSeverity, StyleViolation, Workspace, check_style, default_ruleset};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

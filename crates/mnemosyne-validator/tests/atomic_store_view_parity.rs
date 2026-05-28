@@ -9,9 +9,7 @@
 //! consumes).
 
 use mnemosyne_core::{AtomicStoreView, DecisionStatus, InventoryStatus};
-use mnemosyne_validator::atomic::{
-    AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry,
-};
+use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry};
 
 fn build_store() -> AtomicStore {
     let mut store = AtomicStore::new();

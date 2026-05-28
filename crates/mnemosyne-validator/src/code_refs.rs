@@ -62,7 +62,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
+use mnemosyne_config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
 use mnemosyne_core::DecisionStatus;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
@@ -1625,7 +1625,7 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::atomic::{add_section_implementation, AtomicStore};
+ use mnemosyne_atomic::{add_section_implementation, AtomicStore};
  use tempfile::TempDir;
 
  /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
@@ -1826,7 +1826,7 @@ mod tests {
  // (test fixture path — direct insert bypasses audit-receipt overhead).
  store.sections.insert(
  section_id.to_string(),
- crate::atomic::AtomicSection::default(),
+ mnemosyne_atomic::AtomicSection::default(),
  );
  add_section_implementation(&mut store, path, section_id, impl_file, symbol).unwrap();
  store
@@ -2063,7 +2063,7 @@ mod tests {
  let mut s2 = store.clone();
  s2.changelog_entries.insert(
  "Round 1".to_string(),
- crate::atomic::AtomicChangelogEntry::default(),
+ mnemosyne_atomic::AtomicChangelogEntry::default(),
  );
  let v = scan_paths_no_resolvers(
  tmp.path(),
@@ -2376,7 +2376,7 @@ mod tests {
  // (test fixture path — no audit-receipt needed).
  store.sections.insert(
  section_id.to_string(),
- crate::atomic::AtomicSection {
+ mnemosyne_atomic::AtomicSection {
  decision_status,
  ..Default::default()
  },
@@ -2604,7 +2604,7 @@ mod tests {
  // strip_to_comments) must not panic when a workspace source file
  // contains the original em-dash trigger from the tc8-harness
  // bug report.
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  let content = format!(
@@ -2812,7 +2812,7 @@ mod tests {
  // Full-scanner path: a path-shape cite (`W3C SCXML 3.13`) with
  // no matching atomic store entry must surface as InventoryMissing
  // via the section-path axis axis, not silently pass.
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -2850,7 +2850,7 @@ mod tests {
  fn scan_v5_section_path_inventory_active_silent() {
  // Registered InventoryEntry with Active status — cite passes
  // silently on the section-path axis axis, same policy as R275.
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -2892,7 +2892,7 @@ mod tests {
  // A prefix registered in BOTH axes (e.g., legacy `ARP_` carried
  // into section-path axis for migration reasons) must surface a matching cite
  // once, not twice. Dedup on (line, id).
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 cite\n").unwrap();
@@ -2923,7 +2923,7 @@ mod tests {
 
  #[test]
  fn scan_v2_inventory_missing_reject() {
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// ARP_07 not in store\n").unwrap();
@@ -2955,7 +2955,7 @@ mod tests {
 
  #[test]
  fn scan_v2_inventory_deprecated_reject() {
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -2996,7 +2996,7 @@ mod tests {
 
  #[test]
  fn scan_v2_inventory_active_and_reserved_silent() {
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3270,7 +3270,7 @@ mod tests {
 
  #[test]
  fn scan_v4_bare_external_skips_section_missing() {
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -3313,7 +3313,7 @@ mod tests {
 
  #[test]
  fn scan_v3_external_rfc_cite_does_not_trigger_section_missing() {
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(
@@ -3346,7 +3346,7 @@ mod tests {
 
  #[test]
  fn scan_v3_internal_cite_still_fires_after_external_skip() {
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  // `\u{00a7}` avoids the literal sigil in this source file (self-
@@ -3454,7 +3454,7 @@ mod tests {
  // The pre-Round-275 7-arg shape calls into v2 with an empty
  // inventory_prefixes slice. Even when the store has Deprecated
  // entries, no violation surfaces — back-compat guarantee.
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3490,7 +3490,7 @@ mod tests {
 
  #[test]
  fn inventory_orphan_ledger_suppresses_inventory_deprecated() {
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3532,7 +3532,7 @@ mod tests {
  fn inventory_orphan_ledger_suppresses_inventory_missing() {
  // Deleted-from-store case: id not registered at all, ledger still
  // suppresses (author's intentional historical reference).
- use crate::atomic::AtomicStore;
+ use mnemosyne_atomic::AtomicStore;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
  std::fs::write(tmp.path().join("src/foo.rs"), "// IPv4_OPTIONS_01 hist\n").unwrap();
@@ -3565,7 +3565,7 @@ mod tests {
  #[test]
  fn inventory_orphan_ledger_unregistered_fires() {
  // (file, id) not in ledger → violation fires normally.
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3614,7 +3614,7 @@ mod tests {
  fn inventory_orphan_ledger_axis_filter_isolates_kinds() {
  // CodeCitation ledger rows must NOT suppress inventory violations,
  // and vice-versa. Axes are independent.
- use crate::atomic::{AtomicStore, InventoryEntry};
+ use mnemosyne_atomic::{AtomicStore, InventoryEntry};
  use mnemosyne_core::InventoryStatus;
  let tmp = TempDir::new().unwrap();
  std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -3672,7 +3672,7 @@ mod tests {
  let mut store = AtomicStore::new();
  store.changelog_entries.insert(
  "Round 293 — R291 backfill entry append + commit↔ledger drift gate".to_string(),
- crate::atomic::AtomicChangelogEntry::default(),
+ mnemosyne_atomic::AtomicChangelogEntry::default(),
  );
  let v = scan_paths_no_resolvers(
  tmp.path(),
@@ -3706,7 +3706,7 @@ mod tests {
  let mut store = AtomicStore::new();
  store.changelog_entries.insert(
  "Round 292".to_string(),
- crate::atomic::AtomicChangelogEntry::default(),
+ mnemosyne_atomic::AtomicChangelogEntry::default(),
  );
  let v = scan_paths_no_resolvers(
  tmp.path(),
@@ -3744,7 +3744,7 @@ mod tests {
  let mut store = AtomicStore::new();
  store.changelog_entries.insert(
  "Round 292".to_string(),
- crate::atomic::AtomicChangelogEntry::default(),
+ mnemosyne_atomic::AtomicChangelogEntry::default(),
  );
  let v = scan_paths_no_resolvers(
  tmp.path(),

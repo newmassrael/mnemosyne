@@ -20,11 +20,9 @@ use std::path::PathBuf;
 use mnemosyne_core::{
     AtomicStoreView, PluginRegistry, Severity, ValidationContext,
 };
-use mnemosyne_validator::atomic::{
-    AtomicSection, AtomicStore, Implementation,
-};
+use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
 use mnemosyne_validator::code_refs::SetEqualityValidator;
-use mnemosyne_validator::SetEqualityValidatorConfig;
+use mnemosyne_config::SetEqualityValidatorConfig;
 use tempfile::TempDir;
 
 fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
@@ -156,7 +154,7 @@ fn registry_dispatch_with_filter_id_narrows_to_decay_only() {
     // Missing) and no sections (so steps 3-4 would otherwise fire — but
     // are suppressed under filter mode).
     let mut store = AtomicStore::new();
-    let mut entry = mnemosyne_validator::atomic::AtomicChangelogEntry {
+    let mut entry = mnemosyne_atomic::AtomicChangelogEntry {
         decision_summary: Some("Round 5 anchor for decay test".into()),
         ..Default::default()
     };

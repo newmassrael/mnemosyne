@@ -31,10 +31,10 @@
 //! - `mnemosyne-cli query [--include-related] [--include-changelog] [--json]`
 //! - `mnemosyne-cli query --list-sections`
 
-use crate::atomic::{
+use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
 };
-use crate::schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
+use mnemosyne_schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
 use mnemosyne_core::DecisionStatus;
 use crate::workspace::Workspace;
 use serde::Serialize;
@@ -946,7 +946,7 @@ fn scan_inventory_entry(
 #[cfg(test)]
 mod tests {
  use super::*;
- use crate::parser::{design_doc_small_fixture, parse_markdown};
+ use mnemosyne_parser::{design_doc_small_fixture, parse_markdown};
 
  fn fixture_workspace() -> Workspace {
  let mut ws = Workspace::mnemosyne();
@@ -1060,7 +1060,7 @@ mod tests {
  fn section_by_id_atomic_first_body_source() {
  // atomic-first body: atomic store in section is present
  // synthesize_section_body result SectionView.body authoritative source.
- use crate::atomic::AtomicSection;
+ use mnemosyne_atomic::AtomicSection;
  let mut ws = Workspace::mnemosyne();
  let mut doc = ParsedDoc::default();
  doc.sections.push(Section {
@@ -1124,7 +1124,7 @@ mod tests {
  // Round 287 — atomic-only surface now uses real outline fields
  // (title / parent_doc / parent_section) instead of the legacy
  // ATOMIC_ONLY_PARENT_DOC sentinel + intent→title fallback.
- use crate::atomic::AtomicSection;
+ use mnemosyne_atomic::AtomicSection;
  let ws = Workspace::mnemosyne();
  let mut store = AtomicStore::default();
  store.sections.insert(
@@ -1148,7 +1148,7 @@ mod tests {
  // overrides the parser's hardcoded Active. Verifies both code paths:
  // (1) markdown-backed section + atomic override, (2) atomic-only section
  // with explicit Superseded.
- use crate::atomic::AtomicSection;
+ use mnemosyne_atomic::AtomicSection;
 
  // Path 1: markdown-backed section with Active parser status, atomic
  // override to Superseded.
@@ -1344,7 +1344,7 @@ mod tests {
  // Round 292 — query_term test suite.
  // ========================================================================
 
- use crate::atomic::{
+ use mnemosyne_atomic::{
  AtomicChangelogEntry, AtomicSection, ExampleBlock, Implementation,
  InventoryEntry, RejectedAlternative,
  };

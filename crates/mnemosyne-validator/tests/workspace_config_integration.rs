@@ -13,10 +13,9 @@
 //! Both share the same code path the CLI takes — proving the generic loader
 //! is the *only* path (no hardcoded fallback consulted in production runs).
 
-use mnemosyne_validator::{
- discover_config, parse_markdown, validator::cross_ref_orphan_reject_with_workspace,
- Workspace,
-};
+use mnemosyne_config::{discover_config};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_validator::{Workspace, validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;

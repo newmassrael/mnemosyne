@@ -13,14 +13,9 @@
 //! — exercised against GENERATED.md changelog area whose entries are
 //! atomic-decomposed and rendered.
 
-use mnemosyne_validator::{
- compare_typed_facts,
- emitter::emit_markdown_with_default,
- parse_markdown,
- t2::{frozen_ledger_jaccard, T2ValidationError},
- validator::cross_ref_orphan_reject_with_workspace,
- Workspace,
-};
+use mnemosyne_parser::{parse_markdown};
+use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
+use mnemosyne_validator::{Workspace, t2::{frozen_ledger_jaccard, T2ValidationError}, validator::cross_ref_orphan_reject_with_workspace};
 use std::path::PathBuf;
 
 const DOC_PATHS: &[&str] = &["docs/GENERATED.md"];

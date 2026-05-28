@@ -8,7 +8,8 @@
 //! 4. **Empty prefix** — captures disabled entirely.
 //! 5. **Decimal portion** — `Round 33.5` style sub-IDs preserved.
 
-use mnemosyne_validator::{config::SchemaSection, parse_markdown_with_schema};
+use mnemosyne_config::{SchemaSection};
+use mnemosyne_parser::{parse_markdown_with_schema};
 
 #[test]
 fn mnemosyne_preset_extracts_round_n() {

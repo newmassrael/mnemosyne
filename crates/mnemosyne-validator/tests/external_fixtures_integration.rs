@@ -19,10 +19,9 @@
 //! "zero-decoding" proof for Round 151 closure: the codebase is unchanged
 //! between fixtures; only the TOML differs.
 
-use mnemosyne_validator::{
- discover_config, parse_markdown_with_schema,
- validator::cross_ref_orphan_reject_with_workspace, SchemaSection, Workspace,
-};
+use mnemosyne_config::{SchemaSection, discover_config};
+use mnemosyne_parser::{parse_markdown_with_schema};
+use mnemosyne_validator::{Workspace, validator::cross_ref_orphan_reject_with_workspace};
 use std::fs;
 use tempfile::TempDir;
 
