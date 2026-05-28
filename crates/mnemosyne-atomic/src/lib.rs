@@ -808,7 +808,7 @@ fn check_bullet_len(text: &str, field: &str) -> Result<(), AtomicMutateError> {
 // previously entry-id alone with no decision/changes/verification body could
 // land a record-less row into the frozen ledger. The primitive now refuses
 // at the boundary, which covers CLI and MCP wires equally.
-fn check_changelog_entry_v2_required(
+fn check_changelog_entry_required(
     decision_summary: Option<&str>,
     changes_bullets: &[String],
     verification_bullets: &[String],
@@ -1663,7 +1663,7 @@ pub fn append_changelog_entry(
     // / future wires share the same enforcement surface. Frozen-ledger reject
     // wins over field validation (existing FrozenLedger test passes empty
     // body intentionally).
-    check_changelog_entry_v2_required(
+    check_changelog_entry_required(
         decision_summary,
         changes_bullets,
         verification_bullets,
@@ -2130,7 +2130,7 @@ mod tests {
     }
 
     #[test]
-    fn changelog_entry_v2_frozen_after_append() {
+    fn changelog_entry_frozen_after_append() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();

@@ -2368,3 +2368,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 321 — R321 — drop dead cli commit path (wrote a file-hash to an unread RocksDB store) and retire dead _v2 changelog postfix; substrate crates (store/facts/cascade/server) kept intact, now genuinely orphaned-from-the-live-binary per ARCHITECTURE.md §5
+
+**Changes**:
+- Remove cli `commit` subcommand (cmd_commit + dispatch + help + module-doc): it submitted a SHA-256 file-hash through server.submit into RocksDB CfId::Entities that nothing read back — a write-only dead path
+- Drop cli deps on mnemosyne-server / mnemosyne-store / sha2 plus their imports; substrate crates (store/facts/cascade/server) kept intact and tested, now built-but-orphaned (zero live callers) matching ARCHITECTURE.md §5
+- Rename check_changelog_entry_v2_required to check_changelog_entry_required (def+call) and test fn changelog_entry_v2_frozen_after_append to changelog_entry_frozen_after_append; legacy v1 markdown append already removed so _v2 was a dead postfix
+- Fix CLAUDE.md stale `append-changelog-entry-v2` to `append-changelog-entry` (the actual dispatch name)
+
+
+
+**Verification**:
+- cargo build --workspace + clippy --all-targets (-D warnings) + cargo fmt --all --check all clean
+- cargo test --workspace: 86 test groups ok, 0 failed
+- validate-workspace: docs 1/1, T1 orphan=0, round-trip 1/1, T3 reject=0, GENERATED.md=sync, commit-ledger drift missing=0
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- extract_v2_* / scan_v2_* test names in code_refs.rs call clean production extract_section_citations (the v2/v3 wrappers were already removed); a test-name purity pass is optional and not a production violation
+- ARCHITECTURE.md §5 is now literally accurate (commit stub removed so RocksDB is genuinely built-but-orphaned); foundation convergence A to D remains the next code work
+
+
+

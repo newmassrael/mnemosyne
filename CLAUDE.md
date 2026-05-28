@@ -166,7 +166,7 @@ grep / Read of GENERATED.md not required).
 ## Mutate API enforcement (Round 127 carry)
 
 All spec mutation routes through `mnemosyne-cli` mutate API:
-- `append-changelog-entry-v2` (add a Round N entry, atomic)
+- `append-changelog-entry` (add a Round N entry, atomic)
 - `set-section-intent` / `set-section-rationale` / etc. (atomic Section
  primitives)
 - `add-section` / `add-cross-ref` (legacy markdown surgical insert,

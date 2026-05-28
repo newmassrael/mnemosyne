@@ -2,13 +2,11 @@
 //!
 //! Spec binding: §code-citation-defense (via cmd_validate_code_refs).
 //!
-//! 3 sub-commands:
+//! 2 sub-commands:
 //!
 //! - `validate <file>` — single doc T1 + intra-doc round-trip validation.
 //! - `validate-workspace` — 7 markdown doc workspace lookup + reclassify +
 //! round-trip 7/7 mandatory preserved.
-//! - `commit <file>` — file validation, then binding through ProposalHandler with audit append
-//! (mnemosyne-server embedded API).
 //!
 //! pre-commit hook + CI workflow this binary invoke with design_doc lifecycle
 //! Performs auto-validation — OPTION C Phase 0 dogfood entry source.
@@ -20,11 +18,10 @@ use mnemosyne_cli::atomic_cli;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::{env, fs};
 
 use anyhow::{anyhow, bail, Context, Result};
-use sha2::{Digest, Sha256};
 
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, WorkspaceConfig};
@@ -36,8 +33,6 @@ use mnemosyne_query::{
     section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
 };
 use mnemosyne_schema::ParsedDoc;
-use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
-use mnemosyne_store::MnemosyneStore;
 use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
 use mnemosyne_validate::{code_refs::SetEqualityValidator, ValidationError};
 use mnemosyne_workspace::Workspace;
@@ -169,12 +164,6 @@ fn run(args: &[String]) -> Result<()> {
             cmd_validate(file)
         }
         "validate-workspace" => cmd_validate_workspace(),
-        "commit" => {
-            let file = args
-                .get(2)
-                .ok_or_else(|| anyhow!("usage: {} commit <file>", prog))?;
-            cmd_commit(file)
-        }
         "query" => cmd_query(prog, &args[2..]),
         "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
         "style-check" => cmd_style_check(prog, &args[2..]),
@@ -294,10 +283,6 @@ fn print_help(prog: &str) {
     println!(" {} validate <file> single-doc T1 + round-trip", prog);
     println!(
         " {} validate-workspace 7 markdown doc full validation",
-        prog
-    );
-    println!(
-        " {} commit <file>  validate + audit append (proposal handler binding)",
         prog
     );
     println!(
@@ -1092,64 +1077,6 @@ fn collect_ledger_round_numbers(atomic: &mnemosyne_atomic::AtomicStore) -> BTree
 }
 
 // ============================================================================
-// commit <file> — validate + ProposalHandler binding.
-// ============================================================================
-
-fn cmd_commit(file: &str) -> Result<()> {
-    let abs = PathBuf::from(file)
-        .canonicalize()
-        .with_context(|| format!("file recovery failed: {}", file))?;
-    let rel = repo_relative_path(&abs)?;
-
-    // Phase 1: validate-workspace and identical validation carry (round-trip + T1).
-    cmd_validate_workspace().context("commit precondition: validate-workspace")?;
-
-    // Phase 2: this file payload hash → ProposalKind::EntityCreate audit append.
-    let content = fs::read_to_string(&abs).with_context(|| format!("read {}", abs.display()))?;
-    let mut hasher = Sha256::new();
-    hasher.update(rel.as_bytes());
-    hasher.update(content.as_bytes());
-    let digest = hasher.finalize();
-
-    let store_dir = repo_root()?.join(".mnemosyne/store");
-    fs::create_dir_all(&store_dir)
-        .with_context(|| format!("store dir create failure: {}", store_dir.display()))?;
-    let store = Arc::new(
-        MnemosyneStore::open(&store_dir)
-            .with_context(|| format!("store open failure: {}", store_dir.display()))?,
-    );
-    let server = MnemosyneServer::new(store);
-
-    let valid_from = current_unix_seconds();
-    let entity_id = stable_entity_id(&rel);
-    let proposal = Proposal {
-        proposal_id: format!("design-doc-commit-{}-{}", rel, valid_from),
-        actor: env::var("USER").unwrap_or_else(|_| "mnemosyne-cli".to_string()),
-        kind: ProposalKind::EntityCreate {
-            entity_type: "DesignDocCommit".to_string(),
-            branch_id: 1,
-            entity_id,
-            valid_from,
-            payload: digest.to_vec(),
-        },
-    };
-    let result = server
-        .submit(&proposal)
-        .map_err(|e| anyhow!("ProposalHandler submit failure: {:#}", e))?;
-
-    println!("=== mnemosyne-cli commit {} ===", rel);
-    println!("proposal_id={}", result.proposal_id);
-    println!("accepted={}", result.accepted);
-    if let Some(txn) = result.audit_transaction_id {
-        println!("audit_transaction_id={}", txn);
-    }
-    if let Some(reason) = &result.rejection_reason {
-        bail!("commit rejected: {}", reason);
-    }
-    Ok(())
-}
-
-// ============================================================================
 // helpers
 // ============================================================================
 
@@ -1215,22 +1142,6 @@ fn print_orphans(path: &str, orphans: &[ValidationError], limit: usize) {
     if orphans.len() > limit {
         println!(" ... +{} more in {}", orphans.len() - limit, path);
     }
-}
-
-fn current_unix_seconds() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-fn stable_entity_id(rel_path: &str) -> u64 {
-    // 8 byte stable digest prefix — same path → same entity_id.
-    let mut hasher = Sha256::new();
-    hasher.update(b"DesignDocCommit:");
-    hasher.update(rel_path.as_bytes());
-    let d = hasher.finalize();
-    u64::from_be_bytes([d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]])
 }
 
 // ============================================================================
