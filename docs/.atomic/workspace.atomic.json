@@ -4420,6 +4420,42 @@
       "publishable_carry_forward_bullets": [
         "Next (C/D Step 1 walking skeleton, now unblocked by the RocksDB-free cascade): a read-side warm projection service crate (atomic + cascade + core) that builds a fine-grained BranchIndex from the live atomic log and serves validate via Salsa, wired into MCP as a warm-held consumer so the orphaned cascade substrate reaches a live path and the warm-host + RocksDB-free split is proven end-to-end."
       ]
+    },
+    "Round 339 — read-side warm projection service + MCP validate_projection (C/D Step 1 walking skeleton) — Stand up the convergence C/D Step 1 walking skeleton: a new mnemosyne-projection app-service crate (the warm read-side service) folds the git-native authoring log into a fine-grained Salsa BranchIndex and serves Layer-0 validation entirely in memory (RocksDB-free), wired into the MCP warm host as the validate_projection tool. This is the first live wiring of the previously-orphaned cascade engine, proving the warm-host + RocksDB-free CQRS split (R337) end-to-end now that R338 made cascade store-free. ProjectionService is held warm in MnemosyneServer (Arc<Mutex>) so repeated validate hits the Salsa memo cache; reload re-projects from the log (incremental delta-apply on mutate is convergence D). validate_workspace remains the authoritative cold validator.": {
+      "decision_summary": "Introduce mnemosyne-projection, the warm read-side projection service composing the design_doc adapter projections with the fine-grained cascade engine to serve Layer-0 validation RocksDB-free, and wire it into the MCP warm host as validate_projection — the first live consumer of the cascade engine and the end-to-end proof of the warm-host + RocksDB-free CQRS split (R337/R338).",
+      "changes_bullets": [
+        "New crate mnemosyne-projection (deps: mnemosyne-atomic + mnemosyne-cascade; mnemosyne-core as a dev-dep): ProjectionService holds a warm FineCascadeDb + a BranchIndex projected from the authoring log (project_section/cross_ref/changelog facts; FrozenList input empty per Round 327) and serves a combined ProjectionValidation; reload re-syncs from the log (wholesale rebuild — incremental delta-apply is convergence D).",
+        "DIP placement mirrors mnemosyne-index (Round 331): the app-service composes the design_doc adapter + the cascade engine so the engine never depends on the adapter; the service is RocksDB-free (drives Salsa in memory, never touches the materialized index).",
+        "MCP: MnemosyneServer now holds an Arc<Mutex<ProjectionService>> built from the log at startup and shared across the router's handler clones; a new validate_projection tool serves the warm projection (refresh=true re-projects from the current log), while validate_workspace remains the authoritative cold validator.",
+        "Registered the new crate in the workspace members and in [plugins.set_equality_validator].paths the same round it was introduced (Round 333 policy)."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green; mnemosyne-projection adds 5 unit tests (empty store ok, active sections ok, Superseded-without-outbound-ref flagged, impact_scope-only edge still flagged, reload re-syncs after a log change).",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "End-to-end MCP stdio smoke against the live workspace: initialize handshake + validate_projection (default warm) + validate_projection(refresh=true) all return section_decision ok / frozen_membership ok / overall ok — the first live wiring of the previously-orphaned cascade engine.",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync, commit-to-ledger drift missing 0.",
+        "Citation hygiene: R337, R338, R327, R328, R331, R333 verified present in the atomic store before citing."
+      ],
+      "carry_forward_bullets": [
+        "Next — convergence D: replace ProjectionService::reload's wholesale rebuild with an incremental delta-apply so the mutate primitives notify the warm read-side service (Salsa setters on the changed entities) and unchanged sub-queries stay memoized across a re-sync; then the render projection (per-section memoized GENERATED.md superseding the full-rebuild auto_regenerate). The standalone mnemosyne-server daemon host stays deferred (YAGNI) until a non-MCP warm consumer needs it."
+      ],
+      "publishable_decision_summary": "Introduce mnemosyne-projection, the warm read-side projection service composing the design_doc adapter projections with the fine-grained cascade engine to serve Layer-0 validation RocksDB-free, and wire it into the MCP warm host as validate_projection — the first live consumer of the cascade engine and the end-to-end proof of the warm-host + RocksDB-free CQRS split (R337/R338).",
+      "publishable_changes_bullets": [
+        "New crate mnemosyne-projection (deps: mnemosyne-atomic + mnemosyne-cascade; mnemosyne-core as a dev-dep): ProjectionService holds a warm FineCascadeDb + a BranchIndex projected from the authoring log (project_section/cross_ref/changelog facts; FrozenList input empty per Round 327) and serves a combined ProjectionValidation; reload re-syncs from the log (wholesale rebuild — incremental delta-apply is convergence D).",
+        "DIP placement mirrors mnemosyne-index (Round 331): the app-service composes the design_doc adapter + the cascade engine so the engine never depends on the adapter; the service is RocksDB-free (drives Salsa in memory, never touches the materialized index).",
+        "MCP: MnemosyneServer now holds an Arc<Mutex<ProjectionService>> built from the log at startup and shared across the router's handler clones; a new validate_projection tool serves the warm projection (refresh=true re-projects from the current log), while validate_workspace remains the authoritative cold validator.",
+        "Registered the new crate in the workspace members and in [plugins.set_equality_validator].paths the same round it was introduced (Round 333 policy)."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green; mnemosyne-projection adds 5 unit tests (empty store ok, active sections ok, Superseded-without-outbound-ref flagged, impact_scope-only edge still flagged, reload re-syncs after a log change).",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0; cargo fmt --all --check clean.",
+        "End-to-end MCP stdio smoke against the live workspace: initialize handshake + validate_projection (default warm) + validate_projection(refresh=true) all return section_decision ok / frozen_membership ok / overall ok — the first live wiring of the previously-orphaned cascade engine.",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync, commit-to-ledger drift missing 0.",
+        "Citation hygiene: R337, R338, R327, R328, R331, R333 verified present in the atomic store before citing."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Next — convergence D: replace ProjectionService::reload's wholesale rebuild with an incremental delta-apply so the mutate primitives notify the warm read-side service (Salsa setters on the changed entities) and unchanged sub-queries stay memoized across a re-sync; then the render projection (per-section memoized GENERATED.md superseding the full-rebuild auto_regenerate). The standalone mnemosyne-server daemon host stays deferred (YAGNI) until a non-MCP warm consumer needs it."
+      ]
     }
   },
   "inventory_entries": {},

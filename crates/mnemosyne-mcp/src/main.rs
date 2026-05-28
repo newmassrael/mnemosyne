@@ -20,7 +20,7 @@
 mod resources;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
 use mnemosyne_core::InventoryStatus;
@@ -28,6 +28,7 @@ use mnemosyne_ops::{
     self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
     RedactTermInput, StyleCheckInput,
 };
+use mnemosyne_projection::{ProjectionService, ProjectionValidation};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
@@ -45,6 +46,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EmptyArgs {}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ValidateProjectionArgs {
+    /// Re-sync the warm projection from the current log before validating.
+    /// Default (false) serves the memoized in-process projection; pass true
+    /// after authoring to re-project from the log (automatic re-sync on mutate
+    /// is convergence D).
+    #[serde(default)]
+    pub refresh: bool,
+}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QuerySectionArgs {
@@ -362,14 +373,22 @@ pub struct AppendChangelogEntryArgs {
 #[derive(Clone)]
 pub struct MnemosyneServer {
     workspace: Arc<PathBuf>,
+    /// Warm read-side projection (convergence C/D Step 1). Built once from the
+    /// log at startup and held across tool calls so `validate_projection` serves
+    /// from the in-process Salsa memo cache. Shared (not duplicated) across the
+    /// router's handler clones.
+    projection: Arc<Mutex<ProjectionService>>,
     #[allow(dead_code)] // populated by #[tool_router] expansion
     tool_router: ToolRouter<Self>,
 }
 
 impl MnemosyneServer {
     pub fn new(workspace: PathBuf) -> Self {
+        let atomic = ops::load_atomic_store(&workspace, None);
+        let projection = ProjectionService::build(&atomic, atomic::MAIN_BRANCH_ID);
         Self {
             workspace: Arc::new(workspace),
+            projection: Arc::new(Mutex::new(projection)),
             tool_router: Self::tool_router(),
         }
     }
@@ -406,6 +425,23 @@ impl MnemosyneServer {
 
 fn strip_section(section_id: &str) -> &str {
     section_id.strip_prefix('§').unwrap_or(section_id)
+}
+
+/// Render a warm-projection validation result as a plain-text summary.
+fn render_projection_validation(v: &ProjectionValidation) -> String {
+    let status = |ok: bool| if ok { "ok" } else { "VIOLATIONS" };
+    format!(
+        "warm projection validate (fine-grained Salsa engine, RocksDB-free)\n\
+         section_decision: {} (violations={})\n\
+         frozen_membership: {} (violations={})\n\
+         overall: {} (total violations={})",
+        status(v.section_decision.ok),
+        v.section_decision.violation_count,
+        status(v.frozen_membership.ok),
+        v.frozen_membership.violation_count,
+        status(v.ok()),
+        v.total_violations(),
+    )
 }
 
 /// Parse `<alternative> -- <reason>` / `<alternative> — <reason>` bullets
@@ -458,6 +494,27 @@ impl MnemosyneServer {
             Ok(report) => Self::tool_text(report.render_plain()),
             Err(e) => self.op_error(e),
         }
+    }
+
+    #[tool(
+        description = "Validate the Layer-0 cascade invariants (Section supersession refs + FrozenList membership) through the WARM in-process Salsa projection — the read-side service that folds the log into a fine-grained cascade index and serves validation incrementally, RocksDB-free. Repeated calls hit the memo cache. Pass refresh=true to re-project from the current log after authoring. This is the incremental read model; `validate_workspace` remains the authoritative cold validator."
+    )]
+    async fn validate_projection(
+        &self,
+        args: Parameters<ValidateProjectionArgs>,
+    ) -> CallToolResult {
+        let report = {
+            let mut svc = self
+                .projection
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if args.0.refresh {
+                let atomic = ops::load_atomic_store(&self.workspace, None);
+                svc.reload(&atomic);
+            }
+            render_projection_validation(&svc.validate())
+        };
+        Self::tool_text(report)
     }
 
     #[tool(

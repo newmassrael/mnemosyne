@@ -19,6 +19,7 @@ members = [
  "crates/mnemosyne-validate",
  "crates/mnemosyne-ops",
  "crates/mnemosyne-index",
+ "crates/mnemosyne-projection",
 ]
 
 [workspace.package]

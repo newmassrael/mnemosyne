@@ -1163,6 +1163,7 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-core",
  "mnemosyne-ops",
+ "mnemosyne-projection",
  "rmcp",
  "schemars",
  "serde",
@@ -1209,6 +1210,15 @@ dependencies = [
  "tempfile",
  "tree-sitter",
  "tree-sitter-rust",
+]
+
+[[package]]
+name = "mnemosyne-projection"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-atomic",
+ "mnemosyne-cascade",
+ "mnemosyne-core",
 ]
 
 [[package]]
