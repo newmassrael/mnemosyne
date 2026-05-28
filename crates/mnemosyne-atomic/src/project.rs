@@ -26,9 +26,13 @@ use sha2::{Digest, Sha256};
 /// branching is wired; until then every projected fact lives on this branch.
 pub const MAIN_BRANCH_ID: u64 = 0;
 
-/// Valid-time lower bound for the single-snapshot projection. Real valid-time
-/// populates this once bitemporal history exists.
-const SNAPSHOT_VALID_FROM: u64 = 0;
+/// Valid-time lower bound for a Section's single-snapshot projection. The
+/// write side ([`AtomicStore::project_section_facts`]) stamps this on every
+/// section's [`FactKey`], so the read side must address rows at the same
+/// `valid_from` — exposing it as one `pub` constant keeps the two from
+/// drifting (the index reader looks up sections at this exact slot). Real
+/// valid-time populates it once bitemporal history exists.
+pub const SECTION_VALID_FROM: u64 = 0;
 
 /// Cross-ref kind emitted for an `AtomicSection.impact_scope` edge.
 const IMPACT_SCOPE_REF_KIND: &str = "impact_scope";
@@ -67,7 +71,7 @@ impl AtomicStore {
                 key: FactKey {
                     branch_id,
                     entity_id: section_entity_id(section_id),
-                    valid_from: SNAPSHOT_VALID_FROM,
+                    valid_from: SECTION_VALID_FROM,
                 },
                 section_id: section_id.clone(),
                 skeleton: section.skeleton.clone(),

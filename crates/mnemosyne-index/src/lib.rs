@@ -15,7 +15,8 @@
 //! rows (composite keys are deterministic), so a stale or deleted index is
 //! always recoverable by replaying the log.
 
-use mnemosyne_atomic::AtomicStore;
+use mnemosyne_atomic::{section_entity_id, AtomicStore, SECTION_VALID_FROM};
+use mnemosyne_core::{ChangelogEntryFact, SectionFact};
 use mnemosyne_facts::{PersistError, TypedFactStore};
 use mnemosyne_store::MnemosyneStore;
 use thiserror::Error;
@@ -69,6 +70,52 @@ pub fn rebuild_index(
     }
 
     Ok(stats)
+}
+
+/// Read side of the materialized index — the CQRS read model over the RocksDB
+/// store. Serves point lookups addressed by *domain* key (a section's string
+/// id, a changelog round ordinal) by re-deriving the exact composite key the
+/// write-side projection stamped. The derivation is shared with the projection
+/// ([`section_entity_id`] + [`SECTION_VALID_FROM`] for sections; `round_number`
+/// for entries), so a read addresses precisely the row a [`rebuild_index`] pass
+/// wrote — the two halves cannot drift. Returns `None` for a key the index does
+/// not hold (never materialized, or a stale/empty index — the log is the SSOT,
+/// so a miss is always recoverable by rebuilding).
+pub struct IndexReader<'a> {
+    typed: TypedFactStore<'a>,
+}
+
+impl<'a> IndexReader<'a> {
+    /// Open a reader over an already-materialized [`MnemosyneStore`].
+    pub fn new(store: &'a MnemosyneStore) -> Self {
+        Self {
+            typed: TypedFactStore::new(store),
+        }
+    }
+
+    /// Read the [`SectionFact`] for `section_id` on `branch_id`.
+    pub fn section(
+        &self,
+        section_id: &str,
+        branch_id: u64,
+    ) -> Result<Option<SectionFact>, IndexError> {
+        Ok(self
+            .typed
+            .get_section(branch_id, section_entity_id(section_id), SECTION_VALID_FROM)?)
+    }
+
+    /// Read the [`ChangelogEntryFact`] for `round_number` on `branch_id`. The
+    /// round ordinal is both the entity id and the valid-time slot (the
+    /// projection's logical clock), so it addresses the row directly.
+    pub fn changelog_entry(
+        &self,
+        round_number: u64,
+        branch_id: u64,
+    ) -> Result<Option<ChangelogEntryFact>, IndexError> {
+        Ok(self
+            .typed
+            .get_changelog_entry(branch_id, round_number, round_number)?)
+    }
 }
 
 #[cfg(test)]
@@ -180,5 +227,53 @@ mod tests {
         let store = MnemosyneStore::open(dir.path()).unwrap();
         let stats = rebuild_index(&AtomicStore::new(), &store, MAIN_BRANCH_ID).unwrap();
         assert_eq!(stats.total(), 0);
+    }
+
+    #[test]
+    fn reader_serves_section_by_string_id() {
+        let dir = TempDir::new().unwrap();
+        let store = MnemosyneStore::open(dir.path()).unwrap();
+        rebuild_index(&sample_atomic(), &store, MAIN_BRANCH_ID).unwrap();
+
+        let reader = IndexReader::new(&store);
+        let alpha = reader
+            .section("alpha", MAIN_BRANCH_ID)
+            .unwrap()
+            .expect("alpha materialized");
+        assert_eq!(alpha.section_id, "alpha");
+        assert_eq!(alpha.skeleton.title, "Alpha");
+        assert_eq!(alpha.skeleton.decision_status, Some(DecisionStatus::Active));
+    }
+
+    #[test]
+    fn reader_serves_changelog_entry_by_round() {
+        let dir = TempDir::new().unwrap();
+        let store = MnemosyneStore::open(dir.path()).unwrap();
+        rebuild_index(&sample_atomic(), &store, MAIN_BRANCH_ID).unwrap();
+
+        let reader = IndexReader::new(&store);
+        let entry = reader
+            .changelog_entry(329, MAIN_BRANCH_ID)
+            .unwrap()
+            .expect("round 329 materialized");
+        assert_eq!(entry.round_number, 329);
+        assert_eq!(entry.summary, "did b1");
+    }
+
+    #[test]
+    fn reader_returns_none_for_absent_keys() {
+        let dir = TempDir::new().unwrap();
+        let store = MnemosyneStore::open(dir.path()).unwrap();
+        rebuild_index(&sample_atomic(), &store, MAIN_BRANCH_ID).unwrap();
+
+        let reader = IndexReader::new(&store);
+        assert!(reader
+            .section("nonexistent", MAIN_BRANCH_ID)
+            .unwrap()
+            .is_none());
+        assert!(reader
+            .changelog_entry(999, MAIN_BRANCH_ID)
+            .unwrap()
+            .is_none());
     }
 }

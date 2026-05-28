@@ -4204,6 +4204,42 @@
         "B read-side remaining: route point/branch queries through the index instead of a full-JSON scan (B3 covered the write/materialize side) + a production rebuild driver on the index-owning subgraph (server admin op or a RocksDB-side CLI), keeping cli/ops RocksDB-free.",
         "C next: cascade incremental projection (Salsa) replacing full rebuild on log change; SectionRecord adopts the typed DecisionStatus enum, retiring the string bridge."
       ]
+    },
+    "Round 332 — Convergence B read-side — IndexReader serves the materialized index and a RocksDB-side admin driver makes the index load-bearing": {
+      "decision_summary": "Convergence B read-side — close the orphan B3 left: rebuild_index materialized the RocksDB index but nothing read it, so the substrate was written-but-unread. Add IndexReader, the CQRS read model that serves point lookups (section by string id, changelog entry by round) from the materialized index by re-deriving the exact composite key the write-side projection stamped — section_entity_id plus the now-shared SECTION_VALID_FROM constant for sections, round_number for entries — so reads and writes cannot drift apart. Add a thin RocksDB-side admin binary (mnemosyne-index: rebuild / get-section / get-entry) that drives rebuild_index and IndexReader, making the previously orphaned bitemporal substrate load-bearing through a real executable. The driver sits on the RocksDB subgraph; the authoring binaries (mnemosyne-cli, mnemosyne-mcp) keep zero store/facts edge, so the write path stays RocksDB-free (the point of R328). The log remains the single source of truth; the index is a derived, rebuildable view.",
+      "changes_bullets": [
+        "Add IndexReader to mnemosyne-index — the CQRS read model over TypedFactStore serving point lookups (section by string id, changelog entry by round) from the materialized RocksDB index, returning canonical core facts",
+        "Expose mnemosyne-atomic SECTION_VALID_FROM as a pub constant so the write-side projection and the read-side IndexReader share one valid-from convention and cannot drift to different composite keys",
+        "Add a RocksDB-side admin binary to mnemosyne-index (rebuild / get-section / get-entry subcommands; explicit --atomic and --index paths) that drives rebuild_index plus IndexReader, making the previously orphaned bitemporal substrate load-bearing through a real executable",
+        "Consolidate to a single multi-command admin driver, removing a redundant untracked rebuild-only binary"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green; mnemosyne-index now carries 6 unit tests (3 rebuild + 3 IndexReader round-trip/miss)",
+        "cargo clippy --workspace --all-targets -- -D warnings and cargo fmt --all --check both clean",
+        "Dogfood: rebuild over docs/.atomic/workspace.atomic.json into .mnemosyne/index materialized 5 sections and 78 changelog entries; get-entry 331/330 and get-section returned the live rows, and absent keys reported a clean miss"
+      ],
+      "carry_forward_bullets": [
+        "Add crates/mnemosyne-index/src/ to mnemosyne.toml [code_refs] paths so the new crate's Round-NNN citations are guarded by the pre-commit gate (R331 added the crate but not the scan path; its citations are currently unchecked)",
+        "Convergence C: cascade incremental projection (Salsa) replacing full rebuild on log change, and SectionRecord adopting the typed DecisionStatus enum, retiring the as_str + None-to-active string bridge",
+        "Read-side list/range queries (composite-key prefix scans for cross-refs or per-branch enumeration) when a concrete consumer needs more than point lookups"
+      ],
+      "publishable_decision_summary": "Convergence B read-side — close the orphan B3 left: rebuild_index materialized the RocksDB index but nothing read it, so the substrate was written-but-unread. Add IndexReader, the CQRS read model that serves point lookups (section by string id, changelog entry by round) from the materialized index by re-deriving the exact composite key the write-side projection stamped — section_entity_id plus the now-shared SECTION_VALID_FROM constant for sections, round_number for entries — so reads and writes cannot drift apart. Add a thin RocksDB-side admin binary (mnemosyne-index: rebuild / get-section / get-entry) that drives rebuild_index and IndexReader, making the previously orphaned bitemporal substrate load-bearing through a real executable. The driver sits on the RocksDB subgraph; the authoring binaries (mnemosyne-cli, mnemosyne-mcp) keep zero store/facts edge, so the write path stays RocksDB-free (the point of R328). The log remains the single source of truth; the index is a derived, rebuildable view.",
+      "publishable_changes_bullets": [
+        "Add IndexReader to mnemosyne-index — the CQRS read model over TypedFactStore serving point lookups (section by string id, changelog entry by round) from the materialized RocksDB index, returning canonical core facts",
+        "Expose mnemosyne-atomic SECTION_VALID_FROM as a pub constant so the write-side projection and the read-side IndexReader share one valid-from convention and cannot drift to different composite keys",
+        "Add a RocksDB-side admin binary to mnemosyne-index (rebuild / get-section / get-entry subcommands; explicit --atomic and --index paths) that drives rebuild_index plus IndexReader, making the previously orphaned bitemporal substrate load-bearing through a real executable",
+        "Consolidate to a single multi-command admin driver, removing a redundant untracked rebuild-only binary"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green; mnemosyne-index now carries 6 unit tests (3 rebuild + 3 IndexReader round-trip/miss)",
+        "cargo clippy --workspace --all-targets -- -D warnings and cargo fmt --all --check both clean",
+        "Dogfood: rebuild over docs/.atomic/workspace.atomic.json into .mnemosyne/index materialized 5 sections and 78 changelog entries; get-entry 331/330 and get-section returned the live rows, and absent keys reported a clean miss"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Add crates/mnemosyne-index/src/ to mnemosyne.toml [code_refs] paths so the new crate's Round-NNN citations are guarded by the pre-commit gate (R331 added the crate but not the scan path; its citations are currently unchecked)",
+        "Convergence C: cascade incremental projection (Salsa) replacing full rebuild on log change, and SectionRecord adopting the typed DecisionStatus enum, retiring the as_str + None-to-active string bridge",
+        "Read-side list/range queries (composite-key prefix scans for cross-refs or per-branch enumeration) when a concrete consumer needs more than point lookups"
+      ]
     }
   },
   "inventory_entries": {},

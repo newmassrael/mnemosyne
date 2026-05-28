@@ -10,6 +10,10 @@ description = "Mnemosyne — materialize the RocksDB fact index from the atomic 
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "mnemosyne-index"
+path = "src/main.rs"
+
 [dependencies]
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
