@@ -61,30 +61,6 @@ pub struct CascadeBranch {
     pub snapshot_payload: Vec<u8>,
 }
 
-#[salsa::input]
-pub struct SectionInput {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
-    pub payload: Vec<u8>,
-}
-
-#[salsa::input]
-pub struct ChangelogEntryInput {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
-    pub payload: Vec<u8>,
-}
-
-#[salsa::input]
-pub struct FrozenListInput {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
-    pub payload: Vec<u8>,
-}
-
 #[salsa::db]
 pub trait CascadeDb: salsa::Database {
     fn section_decision_status(&self, branch: CascadeBranch) -> ValidationResult;

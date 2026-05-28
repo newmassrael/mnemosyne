@@ -2394,3 +2394,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 322 — Convergence A: remove dead Salsa per-entity inputs — Convergence A (fact-model unification per ARCHITECTURE.md §5) begins by removing the three dead salsa::input structs SectionInput/ChangelogEntryInput/FrozenListInput from mnemosyne-cascade: speculative scaffolding with zero constructors anywhere in production, whose presence inflated the documented triplicated-fact-model. Removal follows the no-legacy-carry rule and collapses the Section concept's dead third face without touching the live cascade path.
+
+**Changes**:
+- Remove 3 dead per-entity salsa::input structs from mnemosyne-cascade runtime.rs
+- Drop their lib.rs re-exports; correct the runtime module doc comment
+- Live path (CascadeBranch + BranchSnapshotData) unchanged; no production caller affected
+
+
+
+**Verification**:
+- cargo test --workspace green (cascade unit + snapshot suites pass)
+- validate-workspace green: round-trip 1/1, T3 reject 0, GENERATED.md synced
+- grep repo-wide: the 3 inputs had 0 constructors (bench prototype refs independent)
+
+
+
+
+**Carry forward**:
+- A1b: hoist bitemporal FactKey envelope into mnemosyne-core; adopt across facts
+- A2: canonical Section/ChangelogEntry/FrozenList/CrossRef payloads defined in core
+- A3: reconcile live AtomicSection/AtomicChangelogEntry onto canonical core types
+
+
+

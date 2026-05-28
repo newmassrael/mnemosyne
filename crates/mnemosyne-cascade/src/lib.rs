@@ -1,7 +1,7 @@
 //! Mnemosyne cascade — Phase 0 production crate (DESIGN.md).
 //!
 //! This crate is *cascade_query kind*'s actual Salsa 0.26 runtime binding —
-//! `#[salsa::input]` CascadeBranch + entity input structs + `#[salsa::tracked]`
+//! `#[salsa::input]` CascadeBranch + `#[salsa::tracked]`
 //! cascade query functions + `#[salsa::db]` `CascadeDb` trait + concrete
 //! `MnemosyneCascadeDb` runtime + cascade dependency graph metadata.
 //!
@@ -16,8 +16,7 @@
 //!
 //! ## Module separation
 //!
-//! - [`runtime`]: Salsa input structs (`CascadeBranch`, `SectionInput`,
-//! `ChangelogEntryInput`, `FrozenListInput`) + tracked query functions +
+//! - [`runtime`]: Salsa input struct (`CascadeBranch`) + tracked query functions +
 //! `CascadeDb` trait + `MnemosyneCascadeDb` concrete runtime + `ValidationResult`.
 //! - [`metadata`]: cascade dependency graph + ordering axis (Studio/CLI visualize
 //! read-only consumer path, 5-language metadata emit).
@@ -39,8 +38,8 @@ pub use fine_grained::{
 };
 pub use metadata::{cascade_dependency_edges, cascade_orderings};
 pub use runtime::{
-    frozen_list_membership, section_decision_status, CascadeBranch, CascadeDb, ChangelogEntryInput,
-    FrozenListInput, MnemosyneCascadeDb, SectionInput, ValidationResult,
+    frozen_list_membership, section_decision_status, CascadeBranch, CascadeDb, MnemosyneCascadeDb,
+    ValidationResult,
 };
 pub use snapshot::{BranchEntityPartition, BranchSnapshotData, SnapshotError};
 pub use spec::{
