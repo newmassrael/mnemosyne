@@ -162,8 +162,20 @@ are not dead code; they are *not yet wired*.
   scan. This is where ChangelogEntry's scalar fact shape is settled by a real
   consumer, and where the orphaned bitemporal substrate is finally wired. The
   index stays a *derived, rebuildable* view — never a second authoritative store.
-- **C — cascade as incremental projection.** Replace full re-render with Salsa
-  incremental recompute on log change.
+- **C — cascade as incremental projection.** _Status half done (R335)._ The
+  cascade Salsa input (`SectionRecord`) now carries the typed
+  `Option<DecisionStatus>` directly, retiring the string bridge. The
+  incremental-projection half remains, and an audit (R336) scoped two questions
+  it must settle first: (1) the crate carries two parallel Salsa designs —
+  `runtime.rs` (coarse, branch-level snapshot payload, non-incremental by
+  construction) and `fine_grained.rs` (genuinely per-entity incremental, today
+  consumer-less and Phase-1.5-tagged) — so C must pick the incremental engine;
+  (2) both compute T1 *validation* only, never a render, and the `GENERATED.md`
+  body needs Layer-1 design_doc content the Layer-0 fact skeleton omits — so
+  "incremental projection" must define whether C makes the *validation* or the
+  *markdown render* incremental, and where Layer-1 content enters without
+  breaking the domain-agnostic core (invariant #4). The RocksDB-free
+  authoring-driver constraint is shared with D.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
   reconcile into one command path (append log → update index → cascade).
 
@@ -197,12 +209,13 @@ ChangelogEntry and FrozenList do **not** get a copy of this treatment (R327): a
 shared skeleton is the right tool only when both faces already persist the same
 scalars, as Section's did. ChangelogEntry's faces share no fields and FrozenList
 has no atomic face, so their canonical shape is settled by convergence B (the
-projection consumer), not lifted pre-emptively. The cascade Salsa input
-(`SectionRecord`) still carries a stringly-typed status, bridged at the
-conversion boundary until convergence C adopts the typed enum. The skeleton
-discipline is what lets new media (fiction, ADR, spec) become first-class
-adapters without the core ever learning what a "rationale" or a "normative
-excerpt" is.
+projection consumer), not lifted pre-emptively. R335 completed convergence C's
+status half: the cascade Salsa input (`SectionRecord`) now carries the typed
+`Option<DecisionStatus>` directly, retiring the `as_str` + None→"active" string
+bridge (the lone surviving `as_str` caller is the read-side `SectionView` string
+projection). The skeleton discipline is what lets new media (fiction, ADR, spec)
+become first-class adapters without the core ever learning what a "rationale" or
+a "normative excerpt" is.
 
 ## 6. Anti-drift invariants
 

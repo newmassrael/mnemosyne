@@ -4332,6 +4332,30 @@
         "Convergence C status half is done; the incremental-projection half (wiring the Salsa cascade into the live GENERATED.md render path) remains, gated behind B live-index reads and D write-path unification — deliberately not started to avoid a half-finished large change",
         "SectionView still carries decision_status as a String at the query output boundary by design (a view projection); the typed DecisionStatus is now the single source from the skeleton through the cascade Salsa input, converted to a string only at that one view edge"
       ]
+    },
+    "Round 336 — refine §5 convergence-C: status half done (R335), scope the render-semantics gap": {
+      "decision_summary": "Refine ARCHITECTURE.md §5 convergence-C after an independent textbook audit (all gates green; the wired live system is clean). Correct the stale claim that the cascade Salsa input SectionRecord is stringly-typed and bridged: R335 adopted the typed Option<DecisionStatus>, completing C's status half. Scope the remaining C work from audit findings: the cascade crate carries two parallel Salsa designs — runtime.rs (coarse branch-level snapshot payload, non-incremental by construction) and fine_grained.rs (genuinely per-entity incremental, currently consumer-less and Phase-1.5-tagged) — and both compute T1 validation only. Neither renders, and the GENERATED.md body needs Layer-1 design_doc content (intent/rationale/inputs/outputs) that the Layer-0 fact skeleton omits. So cascade-as-incremental-projection must first settle whether C makes the validation projection or the markdown render incremental, and where Layer-1 content enters without breaking the domain-agnostic core — an open North-Star-semantics call flagged for the next design round. The RocksDB-free authoring-driver constraint is shared with D.",
+      "changes_bullets": [
+        "ARCHITECTURE.md §5: correct the stale claim that the cascade Salsa input SectionRecord is stringly-typed and bridged — R335 adopted the typed Option<DecisionStatus>, so convergence C's status half is complete.",
+        "ARCHITECTURE.md §5: refine the convergence-C description with the audit findings — the cascade crate carries two parallel Salsa designs (runtime.rs coarse branch-level vs fine_grained.rs per-entity incremental), both validation-only with no render path.",
+        "ARCHITECTURE.md §5: record the unresolved render-semantics scope for C — the GENERATED.md body needs Layer-1 design_doc content absent from the Layer-0 fact skeleton, flagged as an open North-Star call for the next design round; the RocksDB-free authoring-driver constraint is shared with D."
+      ],
+      "verification_bullets": [
+        "Independent audit baseline green: cargo test --workspace, cargo clippy --all-targets -D warnings, cargo fmt --check, and validate-workspace (docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync) all pass.",
+        "Doc-vs-code drift confirmed by grep: SectionRecord.decision_status is Option<DecisionStatus> in cascade fine_grained.rs and runtime.rs compares Some(DecisionStatus::Superseded); the lone DecisionStatus::as_str caller is the query SectionView string projection.",
+        "Citation hygiene: cited rounds R335, R327, R326 verified present in the atomic store before writing the references."
+      ],
+      "publishable_decision_summary": "Refine ARCHITECTURE.md §5 convergence-C after an independent textbook audit (all gates green; the wired live system is clean). Correct the stale claim that the cascade Salsa input SectionRecord is stringly-typed and bridged: R335 adopted the typed Option<DecisionStatus>, completing C's status half. Scope the remaining C work from audit findings: the cascade crate carries two parallel Salsa designs — runtime.rs (coarse branch-level snapshot payload, non-incremental by construction) and fine_grained.rs (genuinely per-entity incremental, currently consumer-less and Phase-1.5-tagged) — and both compute T1 validation only. Neither renders, and the GENERATED.md body needs Layer-1 design_doc content (intent/rationale/inputs/outputs) that the Layer-0 fact skeleton omits. So cascade-as-incremental-projection must first settle whether C makes the validation projection or the markdown render incremental, and where Layer-1 content enters without breaking the domain-agnostic core — an open North-Star-semantics call flagged for the next design round. The RocksDB-free authoring-driver constraint is shared with D.",
+      "publishable_changes_bullets": [
+        "ARCHITECTURE.md §5: correct the stale claim that the cascade Salsa input SectionRecord is stringly-typed and bridged — R335 adopted the typed Option<DecisionStatus>, so convergence C's status half is complete.",
+        "ARCHITECTURE.md §5: refine the convergence-C description with the audit findings — the cascade crate carries two parallel Salsa designs (runtime.rs coarse branch-level vs fine_grained.rs per-entity incremental), both validation-only with no render path.",
+        "ARCHITECTURE.md §5: record the unresolved render-semantics scope for C — the GENERATED.md body needs Layer-1 design_doc content absent from the Layer-0 fact skeleton, flagged as an open North-Star call for the next design round; the RocksDB-free authoring-driver constraint is shared with D."
+      ],
+      "publishable_verification_bullets": [
+        "Independent audit baseline green: cargo test --workspace, cargo clippy --all-targets -D warnings, cargo fmt --check, and validate-workspace (docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync) all pass.",
+        "Doc-vs-code drift confirmed by grep: SectionRecord.decision_status is Option<DecisionStatus> in cascade fine_grained.rs and runtime.rs compares Some(DecisionStatus::Superseded); the lone DecisionStatus::as_str caller is the query SectionView string projection.",
+        "Citation hygiene: cited rounds R335, R327, R326 verified present in the atomic store before writing the references."
+      ]
     }
   },
   "inventory_entries": {},
