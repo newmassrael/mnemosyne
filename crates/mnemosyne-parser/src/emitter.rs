@@ -9,7 +9,7 @@
 //! - **row 9**: CrossRef (ref_kind = cross_doc, to_target ≠ workspace default cross-doc
 //! target) → `[{text}]({other.md}#{anchor})` markdown link
 
-use mnemosyne_schema::{section_by_id, FrozenList, LockKind, ParsedDoc, RefKind};
+use mnemosyne_schema::{sections_by_id_map, FrozenList, LockKind, ParsedDoc, RefKind};
 
 /// Convert heading text → GitHub-flavored markdown anchor.
 ///
@@ -136,7 +136,7 @@ fn build_section_depth_map(
 ) -> std::collections::BTreeMap<&str, usize> {
  use std::collections::BTreeSet;
  let mut depth: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
- let by_id = section_by_id(doc);
+ let by_id = sections_by_id_map(doc);
  for section in &doc.sections {
  let mut d = 1usize;
  let mut cur = section;

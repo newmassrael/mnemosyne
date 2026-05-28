@@ -16,9 +16,11 @@ mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 regex.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-query = { path = "../mnemosyne-query" }
+mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 
 [lints]
 workspace = true

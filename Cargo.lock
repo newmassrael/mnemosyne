@@ -1071,6 +1071,7 @@ name = "mnemosyne-atomic"
 version = "0.1.0"
 dependencies = [
  "mnemosyne-core",
+ "mnemosyne-query",
  "mnemosyne-schema",
  "regex",
  "serde",
@@ -1175,6 +1176,7 @@ dependencies = [
  "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-schema",
+ "tempfile",
 ]
 
 [[package]]
@@ -1272,7 +1274,9 @@ dependencies = [
  "mnemosyne-parser",
  "mnemosyne-query",
  "mnemosyne-schema",
+ "mnemosyne-workspace",
  "regex",
+ "tempfile",
 ]
 
 [[package]]
@@ -1285,9 +1289,7 @@ dependencies = [
  "mnemosyne-core",
  "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
- "mnemosyne-query",
  "mnemosyne-schema",
- "mnemosyne-style",
  "mnemosyne-workspace",
  "regex",
  "serde",
@@ -1303,7 +1305,10 @@ version = "0.1.0"
 dependencies = [
  "mnemosyne-config",
  "mnemosyne-core",
+ "mnemosyne-parser",
  "mnemosyne-schema",
+ "mnemosyne-validate",
+ "tempfile",
 ]
 
 [[package]]

@@ -2,7 +2,7 @@
 //!
 //! - **Tier 1** (semantic): cross-ref orphan reject + append-only enforcement +
 //! FrozenList membership-delta + supersede ref enforcement. Routed to
-//! `mnemosyne-validator` rules.
+//! `mnemosyne-validate` rules.
 //! - **Tier 2** (structural): family tree + resource conservation. Phase 0 stub.
 //! stub — extends in Phase 1.
 //! - **Tier 3** (convention): warn-only. Phase 0 stub — extends in Phase 1.

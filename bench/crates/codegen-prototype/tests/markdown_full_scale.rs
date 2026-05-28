@@ -595,7 +595,7 @@ fn dump_remaining_orphans_detail() {
  println!("§61 mapping-table row: DIRECTORY_REF policy etc. — DESIGN.md Round 78 ratify carry");
 
  // The categorization itself is a measurement output; the test passes as long
- // as the run succeeds. Production assertions live in mnemosyne-validator
+ // as the run succeeds. Production assertions live in mnemosyne-validate
  // self_validation tests (where workspace reclassification eliminates the
  // CROSS_DOC_INTENT bucket).
 }

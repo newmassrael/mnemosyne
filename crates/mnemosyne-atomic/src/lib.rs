@@ -2796,7 +2796,7 @@ mod tests {
  &mut store,
  &path,
  "39",
- "crates/mnemosyne-validator/src/atomic.rs",
+ "crates/mnemosyne-atomic/src/lib.rs",
  Some("AtomicSection"),
  )
  .unwrap();
@@ -2811,7 +2811,7 @@ mod tests {
  let loaded = AtomicStore::load(&path).unwrap();
  let impls = &loaded.section("39").unwrap().implementations;
  assert_eq!(impls.len(), 2);
- assert_eq!(impls[0].file, "crates/mnemosyne-validator/src/atomic.rs");
+ assert_eq!(impls[0].file, "crates/mnemosyne-atomic/src/lib.rs");
  assert_eq!(impls[0].symbol.as_deref(), Some("AtomicSection"));
  assert_eq!(impls[1].file, "crates/mnemosyne-cli/src/atomic_cli.rs");
  assert!(impls[1].symbol.is_none());

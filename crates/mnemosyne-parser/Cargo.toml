@@ -14,5 +14,8 @@ mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

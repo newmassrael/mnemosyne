@@ -194,8 +194,15 @@ pub fn sha256_hex(s: &str) -> String {
  out
 }
 
-/// Section by id helper — used by depth map + reference resolution.
-pub fn section_by_id(doc: &ParsedDoc) -> BTreeMap<&str, &Section> {
+/// Build a `BTreeMap<section_id, &Section>` lookup index over a `ParsedDoc`.
+///
+/// This is a *map builder* (returns an index), distinct from the
+/// workspace-wide find-by-id query [`mnemosyne_query::section_by_id`]
+/// which returns `Option<SectionView>` for a single key. Named
+/// `sections_by_id_map` to make the "returns a map" semantics explicit
+/// at the call site and avoid the naming collision with the query
+/// crate's lookup function.
+pub fn sections_by_id_map(doc: &ParsedDoc) -> BTreeMap<&str, &Section> {
  doc.sections
  .iter()
  .map(|s| (s.section_id.as_str(), s))

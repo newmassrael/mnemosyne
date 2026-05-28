@@ -3,7 +3,7 @@
 //! ids, section ids with implied parents, per-section impl tuples,
 //! inventory status).
 //!
-//! Lives in `mnemosyne-validator/tests/` because that crate hosts the
+//! Lives in `mnemosyne-atomic/tests/` because that crate hosts the
 //! `impl AtomicStoreView for AtomicStore`. Test exercises the end-to-end
 //! round trip (atomic store fields → snapshot → indices the validator
 //! consumes).

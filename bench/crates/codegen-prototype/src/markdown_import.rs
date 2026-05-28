@@ -963,7 +963,7 @@ mod tests {
  #[test]
  fn parse_directory_ref_excluded_from_cross_ref() {
  // Round 80 — bench prototype twin sync (production
- // crates/mnemosyne-validator/src/parser.rs::parse_directory_ref_excluded_from_cross_ref).
+ // crates/mnemosyne-validate/src/parser.rs::parse_directory_ref_excluded_from_cross_ref).
  // markdown link target's directory path (`[text](dir/)` form) - dropped silently from cross_refs.
  let input = "## status\n\n[bench](bench/) [crates](crates/) [file](crates/foo.rs)\n";
  let doc = parse_markdown(input, "README.md");

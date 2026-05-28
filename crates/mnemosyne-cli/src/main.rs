@@ -15,24 +15,31 @@
 
 mod atomic_cli;
 
-use anyhow::{anyhow, bail, Context, Result};
-use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
-use mnemosyne_store::MnemosyneStore;
-use mnemosyne_schema::{ParsedDoc};
-use mnemosyne_config::{LoadedConfig, OrphanKind, SchemaSection, WorkspaceConfig, discover_config};
-use mnemosyne_parser::{parse_markdown_with_schema};
-use mnemosyne_atomic::{AtomicStore};
-use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default};
-use mnemosyne_workspace::{Workspace};
-use mnemosyne_style::{StyleSeverity, StyleViolation, check_style, default_ruleset_with_config};
-use mnemosyne_query::{TermMode, TermQuery, TermScope, build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic, section_by_id, workspace_section_id_set};
-use mnemosyne_validate::{ValidationError, code_refs::SetEqualityValidator, validator::cross_ref_orphan_reject_with_workspace};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 use std::{env, fs};
+
+use anyhow::{anyhow, bail, Context, Result};
+use sha2::{Digest, Sha256};
+
+use mnemosyne_atomic::AtomicStore;
+use mnemosyne_config::{discover_config, LoadedConfig, OrphanKind, SchemaSection, WorkspaceConfig};
+use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema};
+use mnemosyne_query::{
+    build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
+    section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
+};
+use mnemosyne_schema::ParsedDoc;
+use mnemosyne_server::{MnemosyneServer, Proposal, ProposalKind};
+use mnemosyne_store::MnemosyneStore;
+use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
+use mnemosyne_validate::{
+    code_refs::SetEqualityValidator, validator::cross_ref_orphan_reject_with_workspace,
+    ValidationError,
+};
+use mnemosyne_workspace::Workspace;
 
 /// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`

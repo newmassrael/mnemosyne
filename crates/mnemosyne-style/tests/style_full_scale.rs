@@ -2,7 +2,7 @@
 //!
 //! Anchored counts on the 7-doc workspace establish the migration baseline that
 //! Round 132-137 cleanup rounds drive to zero. Pattern follows Round 68's cross-ref
-//! orphan measurement test (`crates/mnemosyne-validator/tests/cross_ref_orphan_full_scale.rs`).
+//! orphan measurement test (`crates/mnemosyne-style/tests/style_full_scale.rs`).
 //!
 //! Anchors are deliberately strict — drift means either the source docs changed
 //! (re-anchor here) or the rule semantics changed (separate spec round). Either

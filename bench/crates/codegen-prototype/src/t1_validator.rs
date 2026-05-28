@@ -11,7 +11,7 @@
 //! salsa_wire / closure_runtime / markdown_import / markdown_export / **t1_validator**)
 //! - single-doc validator (rule 1) + diff validator (rule 2/3/4) separation
 //! - small-fixture validation feasibility source — Phase 0 implementation time
-//! Reference data layer for the mnemosyne-validator production crate (Round 41 entity-relation
+//! Reference data layer for the mnemosyne-validate production crate (Round 41 entity-relation
 //! Graph-indexer prototype — §39 entity_indexer's reference-data-layer pattern equivalent.
 
 use crate::markdown_import::{

@@ -25,8 +25,6 @@ sha2.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 mnemosyne-parser = { path = "../mnemosyne-parser" }
-mnemosyne-style = { path = "../mnemosyne-style" }
-mnemosyne-query = { path = "../mnemosyne-query" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
 
 [lints]

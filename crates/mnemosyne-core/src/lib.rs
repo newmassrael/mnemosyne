@@ -47,10 +47,11 @@ pub trait Validator: Send + Sync {
 
 /// Read-only view of the atomic store as seen by `Validator` plugins.
 ///
-/// The trait lives in `mnemosyne-core` (not `mnemosyne-validator`) so the
-/// trust boundary is the Cargo edge: external Validator authors import
-/// only `mnemosyne-core` and consume the store via this trait — no
-/// reverse edge back into the validator crate is required.
+/// The trait lives in `mnemosyne-core` (not in any downstream crate) so
+/// the trust boundary is the Cargo edge: external Validator authors
+/// import only `mnemosyne-core` and consume the store via this trait —
+/// no reverse edge back into the producer crate (`mnemosyne-atomic`) is
+/// required.
 ///
 /// `snapshot()` is the single read primitive: producers materialize every
 /// field the current plugin contract needs upfront, callers index into
@@ -66,9 +67,9 @@ pub trait AtomicStoreView: Send + Sync {
 ///
 /// Closed-form by construction — extending the surface requires growing
 /// this struct, which the substrate then ratifies. Producers (the
-/// canonical impl in `mnemosyne-validator::atomic::AtomicStore`) fill
-/// every field; consumers (SetEqualityValidator and future plugins) read
-/// the indices they need.
+/// canonical impl in `mnemosyne-atomic::AtomicStore`) fill every field;
+/// consumers (`SetEqualityValidator` and future plugins) read the
+/// indices they need.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AtomicSnapshot {
     pub changelog_entry_ids: BTreeSet<String>,
@@ -92,9 +93,9 @@ pub struct ImplementationRef {
 }
 
 /// Section.decision_status lifecycle vocabulary — substrate-canonical
-/// enum. Lives in `mnemosyne-core` (not `mnemosyne-validator`) so
-/// every plugin author works against one type, and the validator
-/// snapshot returned from `AtomicStoreView::snapshot` round-trips
+/// enum. Lives in `mnemosyne-core` (not in `mnemosyne-schema` or any
+/// downstream crate) so every plugin author works against one type, and
+/// the snapshot returned from `AtomicStoreView::snapshot` round-trips
 /// without an adapter.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,

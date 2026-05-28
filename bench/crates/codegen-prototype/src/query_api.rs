@@ -28,7 +28,7 @@
 //! markdown_export / t1_validator / query_api).
 //! - in-memory typed-fact state is limited (RocksDB persistence is out-of-scope carry,
 //! separate follow-up round).
-//! - production crate (mnemosyne-validator / mnemosyne-cli) entry is out of scope —
+//! - production crate (mnemosyne-validate / mnemosyne-cli) entry is out of scope —
 //! Round 120 production lift subsequent.
 
 use crate::markdown_import::{
@@ -43,7 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Workspace = (path → ParsedDoc) mapping + workspace default cross-doc target.
 ///
-/// Round 70 OPTION H-2 carry — production `mnemosyne-validator::workspace::Workspace`
+/// Round 70 OPTION H-2 carry — production `mnemosyne-workspace::Workspace`
 /// Bench-prototype equivalent. mnemosyne workspace default = `docs/DESIGN.md`.
 #[derive(Debug, Clone, Default)]
 pub struct Workspace {

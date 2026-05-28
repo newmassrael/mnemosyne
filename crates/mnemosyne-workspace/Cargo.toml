@@ -14,7 +14,10 @@ mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 
 [dev-dependencies]
+tempfile.workspace = true
 mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-parser = { path = "../mnemosyne-parser" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
 
 [lints]
 workspace = true

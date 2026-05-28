@@ -23,7 +23,7 @@ const DOC_PATHS: &[&str] = &["docs/GENERATED.md"];
 const PRIMARY_DOC: &str = "docs/GENERATED.md";
 
 fn repo_root() -> PathBuf {
- // CARGO_MANIFEST_DIR = crates/mnemosyne-validator, repo root = ../..
+ // CARGO_MANIFEST_DIR = crates/mnemosyne-cli, repo root = ../..
  let manifest_dir = env!("CARGO_MANIFEST_DIR");
  PathBuf::from(manifest_dir)
  .join("../..")

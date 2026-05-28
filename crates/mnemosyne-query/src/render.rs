@@ -181,7 +181,7 @@ mod tests {
  }],
  implementations: vec![
  Implementation {
-  file: "crates/mnemosyne-validator/src/atomic.rs".into(),
+  file: "crates/mnemosyne-atomic/src/lib.rs".into(),
   symbol: Some("AtomicSection".into()),
  },
  Implementation {
@@ -204,7 +204,7 @@ mod tests {
  assert!(out.contains("```rust"));
  assert!(out.contains("fn main() {}"));
  assert!(out.contains("**Implementations**"));
- assert!(out.contains("- crates/mnemosyne-validator/src/atomic.rs:AtomicSection"));
+ assert!(out.contains("- crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
  assert!(out.contains("- crates/mnemosyne-cli/src/atomic_cli.rs"));
  }
 
