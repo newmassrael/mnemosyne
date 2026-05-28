@@ -47,7 +47,9 @@
 //! through Changelog entries only.
 
 use crate::ValidationResult;
-use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+use mnemosyne_facts::{
+    ChangelogEntryFact, CrossRefFact, DecisionStatus, FrozenListFact, SectionFact,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -84,7 +86,7 @@ pub struct SectionRecord {
     pub doc_path: String,
     pub section_id: String,
     pub title: String,
-    pub decision_status: String,
+    pub decision_status: Option<DecisionStatus>,
 }
 
 #[salsa::input]
@@ -197,8 +199,7 @@ pub fn section_decision_violation<'db>(
     section: SectionRecord,
     branch_index: BranchIndex,
 ) -> u32 {
-    let status = section.decision_status(db);
-    if !status.eq_ignore_ascii_case("superseded") {
+    if section.decision_status(db) != Some(DecisionStatus::Superseded) {
         return 0;
     }
     let entity_id = section.entity_id(db);
@@ -469,14 +470,7 @@ pub fn build_branch_index(
                 s.skeleton.parent_doc.clone(),
                 s.section_id.clone(),
                 s.skeleton.title.clone(),
-                // Bridge to the Salsa layer's still-stringly-typed status.
-                // SectionRecord adopts the typed enum in convergence C; until
-                // then None (no override) maps to the "active" default.
-                s.skeleton
-                    .decision_status
-                    .map(|d| d.as_str())
-                    .unwrap_or("active")
-                    .to_string(),
+                s.skeleton.decision_status,
             )
         })
         .collect();
@@ -757,7 +751,9 @@ mod tests {
 
         db.reset_exec_counter();
         let target = idx.sections(&db)[1];
-        target.set_decision_status(&mut db).to("Superseded".into());
+        target
+            .set_decision_status(&mut db)
+            .to(Some(DecisionStatus::Superseded));
 
         let r1 = section_decision_status_aggregated(&db, idx);
         assert_eq!(r1.violation_count, 1);

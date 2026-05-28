@@ -2696,3 +2696,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 335 — adopt the typed DecisionStatus in the cascade SectionRecord, retiring the string bridge — Convergence C status half. The cascade Salsa input SectionRecord carried decision_status as a String, bridged from the typed SectionSkeleton at build time via DecisionStatus::as_str with a None-to-active string fallback — the explicit deferral recorded in Round 327 (the cascade input keeps a stringly-typed status, bridged at the conversion boundary until convergence C adopts the typed enum). Round 326 already made the skeleton carry Option<DecisionStatus>; this round closes the gap by making SectionRecord mirror that type directly, so the projection is lossless and section_decision_violation compares the typed Some(DecisionStatus::Superseded) — the same pattern the runtime module's section_decision_status already uses on the skeleton. This is the bounded, independently-verifiable status half of convergence C; the larger incremental-projection half (wiring the Salsa cascade into the live render path) stays deferred because it is entangled with B (live index reads) and D (the unified write path). Removing the only DecisionStatus::as_str caller surfaced a duplicate: mnemosyne-query held a private decision_status_str that re-implemented as_str verbatim. Route the query SectionView string projection through the canonical as_str and delete the duplicate, so one canonical lowercase label serves the one view boundary that still needs a string.
+
+**Changes**:
+- cascade fine_grained.rs: SectionRecord.decision_status changes from String to Option<DecisionStatus>, mirroring SectionSkeleton; build_branch_index passes skeleton.decision_status through unchanged (no as_str, no None-to-active string fallback)
+- section_decision_violation now compares the typed value (!= Some(DecisionStatus::Superseded)) instead of eq_ignore_ascii_case on a String, matching the existing runtime.rs section_decision_status pattern
+- query/lib.rs: the SectionView decision_status string projection routes through the canonical DecisionStatus::as_str, and the private decision_status_str fn that re-implemented it verbatim is deleted
+
+
+
+**Verification**:
+- cargo test --workspace green; clippy -D warnings, cargo fmt --all --check, and validate-workspace all clean
+- DecisionStatus derives Copy/Clone/Eq/Hash so it is a valid Salsa input field; the only SectionRecord constructor (build_branch_index) and the single test setter were updated, and an exhaustive workspace grep confirms no other construction site
+- the canonical DecisionStatus::as_str now has exactly one caller (the query view-string boundary); no String-typed decision_status remains anywhere in the cascade Salsa layer
+
+
+
+
+**Carry forward**:
+- Convergence C status half is done; the incremental-projection half (wiring the Salsa cascade into the live GENERATED.md render path) remains, gated behind B live-index reads and D write-path unification — deliberately not started to avoid a half-finished large change
+- SectionView still carries decision_status as a String at the query output boundary by design (a view projection); the typed DecisionStatus is now the single source from the skeleton through the cascade Salsa input, converted to a string only at that one view edge
+
+
+

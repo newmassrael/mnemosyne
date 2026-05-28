@@ -216,17 +216,9 @@ fn build_section_view(
         parent_doc: path.to_string(),
         parent_section: section.parent_section.clone(),
         title: section.title.clone(),
-        decision_status: decision_status_str(resolved_status).to_string(),
+        decision_status: resolved_status.as_str().to_string(),
         body,
         line_anchor,
-    }
-}
-
-fn decision_status_str(s: DecisionStatus) -> &'static str {
-    match s {
-        DecisionStatus::Active => "active",
-        DecisionStatus::Superseded => "superseded",
-        DecisionStatus::Removed => "removed",
     }
 }
 
