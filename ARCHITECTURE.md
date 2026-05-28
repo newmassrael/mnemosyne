@@ -235,7 +235,10 @@ Cross-refs are deliberately **not** in the shared skeleton: they are
 adapter-divergent — the JSON log stores them inline as `AtomicSection.impact_scope`,
 the index stores them as first-class `CrossRefFact` relation rows — so each
 adapter owns its own representation (a shared value object holds only what every
-embedder persists the same way).
+embedder persists the same way). The supersession forward-pointer
+(`AtomicSection.superseded_by`, R342) joins `impact_scope` as a second inline
+adapter cross-ref, projected to a `decision`-kind `CrossRefFact` — see *Supersession
+cross-ref convergence* below.
 
 R325–R326 unified the Section fact: `AtomicSection` embeds
 `mnemosyne_core::SectionSkeleton` via `#[serde(flatten)]` (byte-identical JSON),
@@ -252,6 +255,48 @@ bridge (the lone surviving `as_str` caller is the read-side `SectionView` string
 projection). The skeleton discipline is what lets new media (fiction, ADR, spec)
 become first-class adapters without the core ever learning what a "rationale" or
 a "normative excerpt" is.
+
+### Supersession cross-ref convergence (R342)
+
+A Superseded section forward-points to the decision that replaced it. The
+markdown-axis validator (`section_decision_status_transition`) and the
+authoritative atomic-axis gate (`atomic_section_supersede_state_reject`) both
+encode the invariant *Superseded ⟹ an outbound `decision`/`impl` cross-ref
+exists*. But the pointer had **no structural home**: `set_section_decision_status`
+validated `--superseding §M`'s *presence* and then discarded it, so the only
+surviving trace of the replacement target was whatever `§M` citation the author
+happened to type into free prose, recovered by re-parsing the rendered markdown.
+The atomic-axis gate sourced its cross-refs from `parsed_docs`, so it stayed
+correct; the warm read-side projection (R339), which reads **only** the atomic
+store, could never see a `decision`-kind ref and therefore over-flagged *every*
+Superseded section. That is a single-source-of-truth break: the supersession
+relation lived in the markdown projection, not the canonical store.
+
+**Decision — model the pointer as a first-class adapter cross-ref field**
+`AtomicSection.superseded_by: Option<String>`, placed beside `impact_scope` and
+following the identical adapter-divergent pattern (inline in the JSON log,
+projected to a `CrossRefFact` at index build). `set_section_decision_status`
+becomes the single write path: it stores the target on the `→ Superseded`
+transition and clears it on `→ Active`/`→ Removed`, so the
+`decision_status`/`superseded_by` pair cannot drift. `project_cross_ref_facts`
+emits a `ref_kind = "decision"` relation for the pointer; the fine-grained
+cascade already accepts `decision`/`impl` outbound refs
+(`section_decision_violation`), so the engine needs no change and the projection
+stops over-flagging. The atomic-axis gate now reads `superseded_by` from the
+store (the SSOT) instead of re-parsed markdown, and the render derives the
+`**Superseded by**: §M` line from the field so the human surface and the
+round-trip citation are *projections* of the stored fact rather than its only
+home.
+
+**Rejected alternatives.** *(A) A `SectionSkeleton` scalar* next to
+`decision_status`: would force the pointer into the index codec, producing a
+double representation (once in `SectionFact.skeleton`, once as the projected
+`CrossRefFact`) and contradicting the scalar-only skeleton boundary above.
+*(C) A general first-class cross-ref store* (an `AtomicSection` cross-ref vector
+with typed `ref_kind`): the broader "adapter-divergent cross-refs" convergence,
+deferred as YAGNI — supersession is the only divergent ref with a live consumer,
+and a cardinality-1 lifecycle-coupled pointer does not need a general relation
+collection. `impact_scope` keeps its own field; supersession keeps its own.
 
 ## 6. Anti-drift invariants
 

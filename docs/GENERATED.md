@@ -2855,3 +2855,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 342 — decide supersession cross-ref convergence (superseded_by as adapter cross-ref) — Supersession-pointer convergence: the Superseded forward-pointer becomes a first-class adapter cross-ref field AtomicSection.superseded_by — mirroring impact_scope — projected to a decision-kind CrossRefFact, so the warm read-side projection (R339) reads the supersession relation from the canonical store rather than from re-parsed markdown. Rejected (A) a SectionSkeleton scalar — index double-representation plus a scalar-only-skeleton contradiction — and (C) a general first-class cross-ref store as YAGNI, supersession being the only adapter-divergent ref with a live consumer. set_section_decision_status becomes the single write path (store on Superseded, clear on Active/Removed); the atomic-axis gate atomic_section_supersede_state_reject reads the field as the single source of truth; render derives the §M citation. Design only — R343 implements.
+
+**Changes**:
+- ARCHITECTURE.md §5: add Supersession cross-ref convergence subsection + rejected alternatives A and C
+- Refine §5 cross-ref boundary: superseded_by joins impact_scope as a second inline adapter cross-ref
+- Design only — no code this round; the decision unblocks R343 across atomic/projection/validate/render
+
+
+
+**Verification**:
+- Root cause: set_section_decision_status validates then discards --superseding (atomic/lib.rs:1314)
+- project_cross_ref_facts emits only impact_scope, so the warm projection cannot see the supersede ref
+- Cascade section_decision_violation already accepts decision/impl outbound refs — engine needs no change
+- Cited rounds 265/326/327/337/339 verified present in the atomic ledger before writing the citations
+
+
+
+
+**Carry forward**:
+- R343: add AtomicSection.superseded_by; store on Superseded, clear on Active/Removed (single write path)
+- R343: project a decision-kind CrossRefFact; atomic_section_supersede_state_reject reads the store field
+- R343: render **Superseded by**: §M; add field-invariant + projection tests
+- R343: dogfood — validate-workspace green + GENERATED.md byte-identical (all 5 live sections Active)
+
+
+
