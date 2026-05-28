@@ -2672,3 +2672,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 334 — remove the Phase -1A 5-language codegen prototype from mnemosyne-facts — Remove the Phase -1A 5-language codegen prototype (the canonical/emit/fixture/schema modules) from mnemosyne-facts. It was the Lock 1 measurement spike that proved the typed-fact data shape is portable across rust/kotlin/python/cpp/protobuf; that measurement is closed and recorded in the changelog. The code has had zero consumers — production or cross-crate test — since, and its design_doc_schema_fixture diverged from the real fact model after Round 330 dropped appended_at. A divergent, unconsumed prototype is exactly the dead code the no-legacy-carry rule says to remove in the same change rather than leave for a future agent to reanimate. mnemosyne-facts now cleanly equals the canonical fact codec (IndexCodec) plus the persist binding (TypedFactStore), matching its index-side role in the target architecture; the bitemporal foundation (facts.rs, persist.rs, store) is deliberately untouched.
+
+**Changes**:
+- Delete mnemosyne-facts src/{canonical,emit,fixture,schema}.rs — the Phase -1A 5-language schema-emit codegen demo (GraphSpec to rust/kotlin/python/cpp/protobuf plus the Jaccard identifier-inclusion check), a measurement artifact with zero consumers
+- Drop the prototype re-exports from lib.rs (emit_* / EmittedMultiLang / canonical_identifier_set / jaccard_inclusion / sha256_hex / GraphSpec / EntityDef / FieldDef / FieldType / Persistence / RelationDef / CompositeKey / design_doc_schema_fixture) and rewrite the crate doc to its focused role: the IndexCodec byte codec plus the TypedFactStore persist binding
+- Prune the two emit/Jaccard tests from tests/entity_persist.rs, keeping the three TypedFactStore round-trip and re-open persistence tests
+- Drop the now-unused crate dependencies serde and sha2 (prototype-only) plus serde_json, anyhow, and tracing (already dead) — mnemosyne-facts now depends only on mnemosyne-core, mnemosyne-store, thiserror, and byteorder
+
+
+
+**Verification**:
+- cargo test --workspace green; mnemosyne-facts passes 13 tests (IndexCodec round-trips plus TypedFactStore put/get/reopen against real RocksDB)
+- clippy -D warnings, cargo fmt --all --check, and validate-workspace all clean; the clean compile confirms serde/sha2/serde_json/anyhow/tracing were genuinely unused
+- No reverse coupling: the deleted prototype modules referenced no facts.rs or persist symbols, and every external consumer (cascade / index / server) imports only the foundation surface (SectionFact / FactKey / IndexCodec / TypedFactStore / PersistError)
+
+
+
+
+**Carry forward**:
+- The Lock 1 finding (typed-fact data shape is 5-language portable) stays recorded in the atomic-store changelog and the bench historical workspace; deleting the live demo code does not erase the measurement
+- mnemosyne-facts is now exactly canonical-fact codec plus persist binding; the bitemporal foundation (store / facts / cascade / server) is untouched — only a speculative codegen upper-layer with no consumer was removed, per the YAGNI anti-drift invariant in ARCHITECTURE.md
+
+
+

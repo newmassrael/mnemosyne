@@ -1143,16 +1143,11 @@ dependencies = [
 name = "mnemosyne-facts"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "byteorder",
  "mnemosyne-core",
  "mnemosyne-store",
- "serde",
- "serde_json",
- "sha2",
  "tempfile",
  "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]

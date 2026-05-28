@@ -1,10 +1,9 @@
 //! Integration test — `TypedFactStore` against actual `mnemosyne-store` RocksDB,
-//! Cross-language emit Jaccard — deterministic composite-key encoding.
+//! deterministic composite-key encoding.
 
 use mnemosyne_facts::{
-    canonical_identifier_set, design_doc_schema_fixture, emit_all_languages, jaccard_inclusion,
-    sha256_hex, ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact,
-    SectionFact, SectionSkeleton, TypedFactStore,
+    ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
+    SectionSkeleton, TypedFactStore,
 };
 use mnemosyne_store::{encode_composite_key, MnemosyneStore};
 use tempfile::TempDir;
@@ -93,39 +92,6 @@ fn composite_key_encoding_deterministic() {
     assert_eq!(a.len(), 24);
     let earlier = encode_composite_key(1, 42, 999);
     assert!(earlier < a);
-}
-
-#[test]
-fn cross_language_emit_jaccard_inclusion_one() {
-    let spec = design_doc_schema_fixture();
-    let canonical = canonical_identifier_set(&spec);
-    let m = emit_all_languages(&spec);
-    for (lang, text) in [
-        ("rust", &m.rust),
-        ("kotlin", &m.kotlin),
-        ("python", &m.python),
-        ("cpp", &m.cpp),
-        ("protobuf", &m.protobuf),
-    ] {
-        let j = jaccard_inclusion(text, &canonical);
-        assert!(
-            (j - 1.0).abs() < f64::EPSILON,
-            "{lang} Jaccard = {j} (expected 1.0)"
-        );
-    }
-}
-
-#[test]
-fn five_language_emit_distinct_sha256() {
-    let spec = design_doc_schema_fixture();
-    let m = emit_all_languages(&spec);
-    let mut hashes = std::collections::BTreeSet::new();
-    for s in [&m.rust, &m.kotlin, &m.python, &m.cpp, &m.protobuf] {
-        let h = sha256_hex(s);
-        assert_eq!(h.len(), 64);
-        assert!(hashes.insert(h));
-    }
-    assert_eq!(hashes.len(), 5);
 }
 
 #[test]
