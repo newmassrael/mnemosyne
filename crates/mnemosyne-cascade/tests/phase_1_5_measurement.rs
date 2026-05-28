@@ -25,7 +25,7 @@ use mnemosyne_cascade::{
     frozen_list_membership, section_decision_status, BranchSnapshotData, CascadeBranch,
     MnemosyneCascadeDb, ValidationResult,
 };
-use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact};
 
 const SECTIONS_PER_BRANCH: usize = 50;
 const CHANGELOG_PER_BRANCH: usize = 50;
@@ -45,9 +45,11 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
     for i in 0..SECTIONS_PER_BRANCH {
         let entity_id = base + i as u64;
         sections.push(SectionFact {
-            branch_id,
-            entity_id,
-            valid_from: 100,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from: 100,
+            },
             doc_path: format!("docs/synthetic-{}.md", branch_id),
             section_id: format!("{}.{}", branch_id, i),
             title: format!("Section {} of branch {}", i, branch_id),
@@ -57,9 +59,11 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
     for i in 0..CHANGELOG_PER_BRANCH {
         let entity_id = base + 1000 + i as u64;
         changelog_entries.push(ChangelogEntryFact {
-            branch_id,
-            entity_id,
-            valid_from: 100 + i as u64,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from: 100 + i as u64,
+            },
             round_number: i as u64,
             summary: format!("synthetic round {} branch {}", i, branch_id),
             appended_at: 2026_05_03 + i as u64,
@@ -70,9 +74,11 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
         let owner_idx = i % SECTIONS_PER_BRANCH;
         let owner_section = base + owner_idx as u64;
         frozen_lists.push(FrozenListFact {
-            branch_id,
-            entity_id,
-            valid_from: 100,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from: 100,
+            },
             owner_section,
             frozen_round: i as u64,
             kind: "release_lock".into(),
@@ -214,7 +220,7 @@ fn gate_iii_violation_injection_round_trip_accurate() {
     let db = MnemosyneCascadeDb::default();
     let mut snap = synthetic_branch_snapshot(0);
     snap.sections[0].decision_status = "Superseded".into();
-    let target = snap.sections[0].entity_id;
+    let target = snap.sections[0].key.entity_id;
     snap.cross_refs.retain(|cr| cr.from_section != target);
 
     let payload = snap.encode().expect("encode");

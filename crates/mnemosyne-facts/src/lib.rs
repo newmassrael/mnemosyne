@@ -36,6 +36,9 @@ pub use emit::{
 };
 pub use facts::{ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, SectionFact};
 pub use fixture::design_doc_schema_fixture;
+// Re-exported so consumers of the entity facts (which expose `key: FactKey`)
+// get the type without a direct mnemosyne-core dependency.
+pub use mnemosyne_core::FactKey;
 pub use persist::{PersistError, TypedFactStore};
 pub use schema::{
     CompositeKey, EntityDef, FieldDef, FieldType, GraphSpec, Persistence, RelationDef,

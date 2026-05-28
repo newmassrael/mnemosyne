@@ -464,9 +464,9 @@ pub fn build_branch_index(
         .map(|s| {
             SectionRecord::new(
                 db,
-                s.branch_id,
-                s.entity_id,
-                s.valid_from,
+                s.key.branch_id,
+                s.key.entity_id,
+                s.key.valid_from,
                 s.doc_path.clone(),
                 s.section_id.clone(),
                 s.title.clone(),
@@ -491,9 +491,9 @@ pub fn build_branch_index(
         .map(|fl| {
             FrozenListRecord::new(
                 db,
-                fl.branch_id,
-                fl.entity_id,
-                fl.valid_from,
+                fl.key.branch_id,
+                fl.key.entity_id,
+                fl.key.valid_from,
                 fl.owner_section,
                 fl.frozen_round,
                 fl.kind.clone(),
@@ -505,9 +505,9 @@ pub fn build_branch_index(
         .map(|c| {
             ChangelogRecord::new(
                 db,
-                c.branch_id,
-                c.entity_id,
-                c.valid_from,
+                c.key.branch_id,
+                c.key.entity_id,
+                c.key.valid_from,
                 c.round_number,
                 c.summary.clone(),
                 c.appended_at,
@@ -543,13 +543,15 @@ pub fn build_branch_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_facts::SectionFact;
+    use mnemosyne_facts::{FactKey, SectionFact};
 
     fn make_section(branch: u64, entity: u64, status: &str) -> SectionFact {
         SectionFact {
-            branch_id: branch,
-            entity_id: entity,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: branch,
+                entity_id: entity,
+                valid_from: 100,
+            },
             doc_path: "docs/DESIGN.md".into(),
             section_id: format!("{branch}.{entity}"),
             title: format!("section {entity}"),
@@ -568,9 +570,11 @@ mod tests {
 
     fn make_frozen_list(branch: u64, entity: u64, owner: u64) -> FrozenListFact {
         FrozenListFact {
-            branch_id: branch,
-            entity_id: entity,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: branch,
+                entity_id: entity,
+                valid_from: 100,
+            },
             owner_section: owner,
             frozen_round: 60,
             kind: "release_lock".into(),
@@ -579,9 +583,11 @@ mod tests {
 
     fn make_changelog(branch: u64, entity: u64) -> ChangelogEntryFact {
         ChangelogEntryFact {
-            branch_id: branch,
-            entity_id: entity,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: branch,
+                entity_id: entity,
+                valid_from: 100,
+            },
             round_number: 60,
             summary: "x".into(),
             appended_at: 2026_05_03,
@@ -595,9 +601,11 @@ mod tests {
         round: u64,
     ) -> FrozenListFact {
         FrozenListFact {
-            branch_id: branch,
-            entity_id: entity,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: branch,
+                entity_id: entity,
+                valid_from: 100,
+            },
             owner_section: owner,
             frozen_round: round,
             kind: "release_lock".into(),
@@ -606,9 +614,11 @@ mod tests {
 
     fn make_changelog_with_round(branch: u64, entity: u64, round: u64) -> ChangelogEntryFact {
         ChangelogEntryFact {
-            branch_id: branch,
-            entity_id: entity,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: branch,
+                entity_id: entity,
+                valid_from: 100,
+            },
             round_number: round,
             summary: "x".into(),
             appended_at: 2026_05_03,

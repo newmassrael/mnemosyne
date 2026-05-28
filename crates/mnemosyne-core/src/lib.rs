@@ -30,6 +30,24 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Bitemporal + branch identity coordinate shared by every versioned typed
+/// fact. The triple `(branch_id, entity_id, valid_from)` is the composite key
+/// the persistence index (`mnemosyne-store`) encodes as a 24-byte big-endian
+/// key. Hoisted into the domain core (Round 323 — Convergence A) so the
+/// bitemporal envelope is defined once instead of copy-pasted across every
+/// fact struct in `mnemosyne-facts`.
+///
+/// Relations (e.g. CrossRef) use a distinct key shape (source/target entity
+/// ids) and intentionally do not carry a `FactKey`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FactKey {
+    pub branch_id: u64,
+    pub entity_id: u64,
+    /// Valid-time axis lower bound — when the fact became true in the modeled
+    /// world. Transaction-time is tracked by the store, not carried here.
+    pub valid_from: u64,
+}
+
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 

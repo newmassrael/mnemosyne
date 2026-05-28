@@ -35,9 +35,9 @@ impl<'a> TypedFactStore<'a> {
     pub fn put_section(&self, fact: &SectionFact) -> Result<(), PersistError> {
         self.store.put(
             CfId::Entities,
-            fact.branch_id,
-            fact.entity_id,
-            fact.valid_from,
+            fact.key.branch_id,
+            fact.key.entity_id,
+            fact.key.valid_from,
             &fact.encode_value(),
         )?;
         Ok(())
@@ -63,9 +63,9 @@ impl<'a> TypedFactStore<'a> {
     pub fn put_changelog_entry(&self, fact: &ChangelogEntryFact) -> Result<(), PersistError> {
         self.store.put(
             CfId::Entities,
-            fact.branch_id,
-            fact.entity_id,
-            fact.valid_from,
+            fact.key.branch_id,
+            fact.key.entity_id,
+            fact.key.valid_from,
             &fact.encode_value(),
         )?;
         Ok(())
@@ -91,9 +91,9 @@ impl<'a> TypedFactStore<'a> {
     pub fn put_frozen_list(&self, fact: &FrozenListFact) -> Result<(), PersistError> {
         self.store.put(
             CfId::Entities,
-            fact.branch_id,
-            fact.entity_id,
-            fact.valid_from,
+            fact.key.branch_id,
+            fact.key.entity_id,
+            fact.key.valid_from,
             &fact.encode_value(),
         )?;
         Ok(())
@@ -152,6 +152,7 @@ impl<'a> TypedFactStore<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mnemosyne_core::FactKey;
     use tempfile::TempDir;
 
     fn fresh_store() -> (TempDir, MnemosyneStore) {
@@ -165,9 +166,11 @@ mod tests {
         let (_dir, store) = fresh_store();
         let typed = TypedFactStore::new(&store);
         let fact = SectionFact {
-            branch_id: 1,
-            entity_id: 42,
-            valid_from: 1000,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 42,
+                valid_from: 1000,
+            },
             doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
             title: "Phase 0".to_string(),

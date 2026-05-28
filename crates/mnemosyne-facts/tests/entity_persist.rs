@@ -3,7 +3,8 @@
 
 use mnemosyne_facts::{
     canonical_identifier_set, design_doc_schema_fixture, emit_all_languages, jaccard_inclusion,
-    sha256_hex, ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact, TypedFactStore,
+    sha256_hex, ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact,
+    TypedFactStore,
 };
 use mnemosyne_store::{encode_composite_key, MnemosyneStore};
 use tempfile::TempDir;
@@ -20,9 +21,11 @@ fn entity_put_get_round_trip_all_four_kinds() {
     let typed = TypedFactStore::new(&store);
 
     let section = SectionFact {
-        branch_id: 1,
-        entity_id: 1,
-        valid_from: 100,
+        key: FactKey {
+            branch_id: 1,
+            entity_id: 1,
+            valid_from: 100,
+        },
         doc_path: "docs/DESIGN.md".to_string(),
         section_id: "39".to_string(),
         title: "Phase 0 design_doc schema".to_string(),
@@ -35,9 +38,11 @@ fn entity_put_get_round_trip_all_four_kinds() {
     );
 
     let changelog = ChangelogEntryFact {
-        branch_id: 1,
-        entity_id: 73,
-        valid_from: 200,
+        key: FactKey {
+            branch_id: 1,
+            entity_id: 73,
+            valid_from: 200,
+        },
         round_number: 73,
         summary: "OPTION B-2 mnemosyne-store production".to_string(),
         appended_at: 1714_780_000,
@@ -49,9 +54,11 @@ fn entity_put_get_round_trip_all_four_kinds() {
     );
 
     let frozen_list = FrozenListFact {
-        branch_id: 1,
-        entity_id: 200,
-        valid_from: 300,
+        key: FactKey {
+            branch_id: 1,
+            entity_id: 200,
+            valid_from: 300,
+        },
         owner_section: 1, // Section entity_id from above
         frozen_round: 60,
         kind: "release_lock".to_string(),
@@ -123,9 +130,11 @@ fn five_language_emit_distinct_sha256() {
 fn re_open_preserves_typed_facts() {
     let dir = TempDir::new().unwrap();
     let section = SectionFact {
-        branch_id: 1,
-        entity_id: 1,
-        valid_from: 100,
+        key: FactKey {
+            branch_id: 1,
+            entity_id: 1,
+            valid_from: 100,
+        },
         doc_path: "docs/DESIGN.md".to_string(),
         section_id: "39".to_string(),
         title: "Persistent across reopen".to_string(),

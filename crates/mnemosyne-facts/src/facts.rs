@@ -10,6 +10,7 @@
 //! comparison.
 
 use byteorder::{BigEndian, ByteOrder};
+use mnemosyne_core::FactKey;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -86,9 +87,7 @@ fn read_u64(buf: &[u8], cursor: &mut usize) -> Result<u64, FactCodecError> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SectionFact {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
+    pub key: FactKey,
     pub doc_path: String,
     pub section_id: String,
     pub title: String,
@@ -122,9 +121,11 @@ impl SectionFact {
         let title = read_string(buf, &mut cursor, "title")?;
         let decision_status = read_string(buf, &mut cursor, "decision_status")?;
         Ok(Self {
-            branch_id,
-            entity_id,
-            valid_from,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from,
+            },
             doc_path,
             section_id,
             title,
@@ -139,9 +140,7 @@ impl SectionFact {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChangelogEntryFact {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
+    pub key: FactKey,
     pub round_number: u64,
     pub summary: String,
     pub appended_at: u64,
@@ -167,9 +166,11 @@ impl ChangelogEntryFact {
         let summary = read_string(buf, &mut cursor, "summary")?;
         let appended_at = read_u64(buf, &mut cursor)?;
         Ok(Self {
-            branch_id,
-            entity_id,
-            valid_from,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from,
+            },
             round_number,
             summary,
             appended_at,
@@ -183,9 +184,7 @@ impl ChangelogEntryFact {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FrozenListFact {
-    pub branch_id: u64,
-    pub entity_id: u64,
-    pub valid_from: u64,
+    pub key: FactKey,
     /// Owner section entity_id — EntityRef target=Section.
     pub owner_section: u64,
     pub frozen_round: u64,
@@ -212,9 +211,11 @@ impl FrozenListFact {
         let frozen_round = read_u64(buf, &mut cursor)?;
         let kind = read_string(buf, &mut cursor, "kind")?;
         Ok(Self {
-            branch_id,
-            entity_id,
-            valid_from,
+            key: FactKey {
+                branch_id,
+                entity_id,
+                valid_from,
+            },
             owner_section,
             frozen_round,
             kind,
@@ -267,9 +268,11 @@ mod tests {
     #[test]
     fn section_fact_round_trip() {
         let fact = SectionFact {
-            branch_id: 1,
-            entity_id: 42,
-            valid_from: 1000,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 42,
+                valid_from: 1000,
+            },
             doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
             title: "Phase 0 design_doc schema".to_string(),
@@ -283,9 +286,11 @@ mod tests {
     #[test]
     fn changelog_entry_round_trip() {
         let fact = ChangelogEntryFact {
-            branch_id: 1,
-            entity_id: 73,
-            valid_from: 2026_05_03,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 73,
+                valid_from: 2026_05_03,
+            },
             round_number: 73,
             summary: "OPTION B-2 mnemosyne-store production".to_string(),
             appended_at: 2026_05_03_12_30,
@@ -298,9 +303,11 @@ mod tests {
     #[test]
     fn frozen_list_round_trip() {
         let fact = FrozenListFact {
-            branch_id: 1,
-            entity_id: 100,
-            valid_from: 1000,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 100,
+                valid_from: 1000,
+            },
             owner_section: 39,
             frozen_round: 60,
             kind: "release_lock".to_string(),
@@ -333,9 +340,11 @@ mod tests {
     #[test]
     fn deterministic_encoding() {
         let fact = SectionFact {
-            branch_id: 1,
-            entity_id: 42,
-            valid_from: 1000,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 42,
+                valid_from: 1000,
+            },
             doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
             title: "Test".to_string(),

@@ -3912,6 +3912,40 @@
         "A2: canonical Section/ChangelogEntry/FrozenList/CrossRef payloads defined in core",
         "A3: reconcile live AtomicSection/AtomicChangelogEntry onto canonical core types"
       ]
+    },
+    "Round 323 — Convergence A: hoist bitemporal FactKey envelope into core": {
+      "decision_summary": "Convergence A continues: introduce a canonical FactKey value object (branch_id, entity_id, valid_from) in mnemosyne-core and adopt it across the three entity facts (SectionFact / ChangelogEntryFact / FrozenListFact) in mnemosyne-facts, replacing the copy-pasted bitemporal-key triple. FactKey is the domain-agnostic composite-identity coordinate the 24-byte RocksDB key encodes; CrossRefFact keeps its distinct relation key (branch_id, from_section, to_section).",
+      "changes_bullets": [
+        "Add FactKey {branch_id, entity_id, valid_from} value object to mnemosyne-core",
+        "SectionFact/ChangelogEntryFact/FrozenListFact carry key: FactKey (facts -> core edge)",
+        "CrossRefFact unchanged (relation key); byte codec unaffected (key not in value bytes)"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green; facts + cascade fact constructors updated",
+        "validate-workspace green; round-trip 1/1; T3 reject 0; GENERATED.md sync",
+        "clippy --workspace -D warnings + cargo fmt --all --check clean"
+      ],
+      "carry_forward_bullets": [
+        "A2: core canonical Section skeleton (domain-agnostic) vs design_doc adapter content",
+        "A2 boundary: intent/rationale/inputs/outputs = design_doc-medium fields, not Layer-0",
+        "A3: reconcile live atomic onto canonical core skeleton + adapter content split"
+      ],
+      "publishable_decision_summary": "Convergence A continues: introduce a canonical FactKey value object (branch_id, entity_id, valid_from) in mnemosyne-core and adopt it across the three entity facts (SectionFact / ChangelogEntryFact / FrozenListFact) in mnemosyne-facts, replacing the copy-pasted bitemporal-key triple. FactKey is the domain-agnostic composite-identity coordinate the 24-byte RocksDB key encodes; CrossRefFact keeps its distinct relation key (branch_id, from_section, to_section).",
+      "publishable_changes_bullets": [
+        "Add FactKey {branch_id, entity_id, valid_from} value object to mnemosyne-core",
+        "SectionFact/ChangelogEntryFact/FrozenListFact carry key: FactKey (facts -> core edge)",
+        "CrossRefFact unchanged (relation key); byte codec unaffected (key not in value bytes)"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green; facts + cascade fact constructors updated",
+        "validate-workspace green; round-trip 1/1; T3 reject 0; GENERATED.md sync",
+        "clippy --workspace -D warnings + cargo fmt --all --check clean"
+      ],
+      "publishable_carry_forward_bullets": [
+        "A2: core canonical Section skeleton (domain-agnostic) vs design_doc adapter content",
+        "A2 boundary: intent/rationale/inputs/outputs = design_doc-medium fields, not Layer-0",
+        "A3: reconcile live atomic onto canonical core skeleton + adapter content split"
+      ]
     }
   },
   "inventory_entries": {},

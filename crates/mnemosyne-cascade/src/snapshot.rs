@@ -124,33 +124,39 @@ impl BranchSnapshotData {
 mod tests {
     use super::*;
     use mnemosyne_facts::{
-        ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact, TypedFactStore,
+        ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, TypedFactStore,
     };
     use tempfile::TempDir;
 
     fn sample_snapshot() -> BranchSnapshotData {
         BranchSnapshotData {
             sections: vec![SectionFact {
-                branch_id: 1,
-                entity_id: 39,
-                valid_from: 100,
+                key: FactKey {
+                    branch_id: 1,
+                    entity_id: 39,
+                    valid_from: 100,
+                },
                 doc_path: "docs/DESIGN.md".into(),
                 section_id: "39".into(),
                 title: "graph_schema".into(),
                 decision_status: "Active".into(),
             }],
             changelog_entries: vec![ChangelogEntryFact {
-                branch_id: 1,
-                entity_id: 81,
-                valid_from: 100,
+                key: FactKey {
+                    branch_id: 1,
+                    entity_id: 81,
+                    valid_from: 100,
+                },
                 round_number: 81,
                 summary: "Round 81 — cascade body".into(),
                 appended_at: 2026_05_03,
             }],
             frozen_lists: vec![FrozenListFact {
-                branch_id: 1,
-                entity_id: 1000,
-                valid_from: 100,
+                key: FactKey {
+                    branch_id: 1,
+                    entity_id: 1000,
+                    valid_from: 100,
+                },
                 owner_section: 39,
                 frozen_round: 60,
                 kind: "release_lock".into(),
@@ -199,9 +205,11 @@ mod tests {
         let typed = TypedFactStore::new(&store);
 
         let s = SectionFact {
-            branch_id: 1,
-            entity_id: 39,
-            valid_from: 100,
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 39,
+                valid_from: 100,
+            },
             doc_path: "docs/DESIGN.md".into(),
             section_id: "39".into(),
             title: "graph_schema".into(),
@@ -236,9 +244,11 @@ mod tests {
         for branch_id in &[1u64, 2] {
             typed
                 .put_section(&SectionFact {
-                    branch_id: *branch_id,
-                    entity_id: 39,
-                    valid_from: 100,
+                    key: FactKey {
+                        branch_id: *branch_id,
+                        entity_id: 39,
+                        valid_from: 100,
+                    },
                     doc_path: "docs/DESIGN.md".into(),
                     section_id: format!("{}", branch_id),
                     title: "x".into(),
