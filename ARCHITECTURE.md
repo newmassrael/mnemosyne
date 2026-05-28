@@ -162,22 +162,58 @@ are not dead code; they are *not yet wired*.
   scan. This is where ChangelogEntry's scalar fact shape is settled by a real
   consumer, and where the orphaned bitemporal substrate is finally wired. The
   index stays a *derived, rebuildable* view — never a second authoritative store.
-- **C — cascade as incremental projection.** _Status half done (R335)._ The
-  cascade Salsa input (`SectionRecord`) now carries the typed
-  `Option<DecisionStatus>` directly, retiring the string bridge. The
-  incremental-projection half remains, and an audit (R336) scoped two questions
-  it must settle first: (1) the crate carries two parallel Salsa designs —
-  `runtime.rs` (coarse, branch-level snapshot payload, non-incremental by
-  construction) and `fine_grained.rs` (genuinely per-entity incremental, today
-  consumer-less and Phase-1.5-tagged) — so C must pick the incremental engine;
-  (2) both compute T1 *validation* only, never a render, and the `GENERATED.md`
-  body needs Layer-1 design_doc content the Layer-0 fact skeleton omits — so
-  "incremental projection" must define whether C makes the *validation* or the
-  *markdown render* incremental, and where Layer-1 content enters without
-  breaking the domain-agnostic core (invariant #4). The RocksDB-free
-  authoring-driver constraint is shared with D.
+- **C — cascade as incremental projection.** _Status half done (R335);
+  architecture decided (R337)._ `SectionRecord` already carries the typed
+  `Option<DecisionStatus>`. The remaining incremental half is a **read-side
+  projection service** — a warm Salsa host behind the §3 Transport seam — built
+  jointly with D. The audit's two open questions (R336) are resolved in
+  *Incremental projection architecture* below: engine = `fine_grained.rs`
+  (coarse `runtime.rs` retired); render is the chosen target, reached after a
+  validation walking skeleton.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
-  reconcile into one command path (append log → update index → cascade).
+  reconcile into one command path: append log (RocksDB-free) → notify the
+  read-side projection service → incremental index update + cascade recompute. D
+  shares C's read-side driver and is **co-designed with C** (R337), not a later
+  sequential step.
+
+### Incremental projection architecture (C + D keystone, R337)
+
+R336 surfaced two questions for C; R337 resolves them and the C/D split, derived
+from the cost-no-object textbook + Phase-0 mandate (AI reads/mutates spec
+efficiently):
+
+- **CQRS split.** The write side (the `cli` / `ops` mutate primitives) appends to
+  the git-native fact log — the SSOT — and stays **RocksDB-free** (R328). The
+  read side owns the RocksDB index and the Salsa cascade DB and *projects*. They
+  never share a process edge that drags RocksDB into authoring; they meet at the
+  `core::Transport { InProcess | Mcp | Cli }` seam (§3).
+- **Warm host, because Salsa memoization is in-process.** Incremental recompute
+  pays off only in a *live* process — a one-shot CLI rebuilds cold every
+  invocation. So C is a **read-side projection service**, not a new edge from the
+  authoring CLI. The host binary is bound when the first warm consumer is built;
+  MCP (the AI's long-running entry point) is the natural first home, and a
+  standalone `mnemosyne-server` daemon stays deferred until a consumer needs it
+  (YAGNI, invariant #3). The `cli` keeps its one-shot full-rebuild path for
+  human / CI use — correct for that scale, and it keeps authoring RocksDB-free.
+- **Engine = `fine_grained.rs`.** The genuine per-entity `#[salsa::input]` design
+  is C's engine; the coarse `runtime.rs` (monolithic `snapshot_payload`,
+  non-incremental by construction) is retired at C's implementation
+  (no-legacy-carry), and its measurement test moves to the fine-grained engine.
+- **Layer-1 content feeds the projection engine as Salsa inputs.** The engine is
+  a Layer-3-producing *read model*, not the domain-agnostic Layer-0 core, so
+  supplying it the design_doc content (intent / rationale / …) that the markdown
+  render needs does not breach invariant #4. Validation needs only the Layer-0
+  skeleton; the render adds the Layer-1 inputs.
+- **Persisted vs in-process state.** The RocksDB index (B) is the durable,
+  cross-process read model, updated by applying only the log delta. Within a warm
+  session, Salsa memoizes the recompute. Both are derived and rebuildable — the
+  log remains the single source of truth.
+- **Sequencing (no half-finished).** (1) A **validation** projection through the
+  warm service first — Layer-0 only, the cheapest real projection, proving the
+  warm-host + RocksDB-free split end-to-end (walking skeleton). (2) The **render**
+  projection (the chosen target): Layer-1 content as Salsa inputs, per-section
+  render memoized, `GENERATED.md` produced incrementally, superseding the
+  full-rebuild `auto_regenerate`.
 
 ### Canonical fact-model boundary (A's keystone, R323–R326)
 
