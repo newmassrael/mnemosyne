@@ -23,14 +23,18 @@
 #      delta, T2 frozen-ledger, round-trip mandatory, divergence /
 #      ledger match, commit↔ledger drift.
 #
-#   4. Clippy gate — `cargo clippy --workspace --all-targets -- -D warnings`
+#   4. Format gate — `cargo fmt --all --check` when any `.rs` file is
+#      staged. rustfmt 4-space repo-wide (rustfmt.toml, edition 2021);
+#      rejects unformatted code so layout stays uniform.
+#
+#   5. Clippy gate — `cargo clippy --workspace --all-targets -- -D warnings`
 #      when any `.rs` file is staged. R308 D9 closure (warnings → deny
 #      baseline): any new clippy warning trips the gate. Workspace-level
 #      allow list in root Cargo.toml covers `doc_lazy_continuation` (rustdoc
 #      renders both forms) and `inconsistent_digit_grouping` (YYYY_MM_DD
 #      date u64 literals). Per-site `#[allow]` for API-shape exemptions
-#      (`too_many_arguments` on `append_changelog_entry`, `result_large_err`
-#      on tonic interceptors).
+#      (`result_large_err` on tonic interceptors; `too_many_arguments` on
+#      the `scan_paths_no_resolvers` test helper).
 #
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
@@ -99,7 +103,20 @@ if [[ "$needs_validate" == "1" ]]; then
     "${cli[@]}" validate-workspace
 fi
 
-# Gate 4 — clippy on .rs changes. R308 D9 closure: `-D warnings` lifts
+# Gate 4 — rustfmt on .rs changes. Enforces the 4-space repo-wide baseline
+# (rustfmt.toml); rejects unformatted code so the layout stays uniform.
+if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+    echo "[mnemosyne pre-commit] .rs staged — cargo fmt --all --check" >&2
+    if ! cargo fmt --all --check; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — unformatted code"
+            echo "  fix: cargo fmt --all && git add -u"
+        } >&2
+        exit 1
+    fi
+fi
+
+# Gate 5 — clippy on .rs changes. R308 D9 closure: `-D warnings` lifts
 # every warning to deny. Workspace allow list (root Cargo.toml) carries
 # stylistic exemptions; per-site `#[allow]` for API-shape exemptions.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then

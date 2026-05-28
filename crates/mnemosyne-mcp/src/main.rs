@@ -23,15 +23,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
-use mnemosyne_cli::ops::{self, QuerySectionMode, QueryTermInput, RedactTermInput, StyleCheckInput};
+use mnemosyne_cli::ops::{
+    self, QuerySectionMode, QueryTermInput, RedactTermInput, StyleCheckInput,
+};
 use mnemosyne_cli::{run_atomic_mutate, MutateOutcome, OpError};
 use mnemosyne_core::InventoryStatus;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        Annotated, CallToolResult, ListResourcesResult, PaginatedRequestParams,
-        ReadResourceRequestParams, ReadResourceResult, RawResource, ResourceContents,
-        ServerCapabilities, ServerInfo,
+        Annotated, CallToolResult, ListResourcesResult, PaginatedRequestParams, RawResource,
+        ReadResourceRequestParams, ReadResourceResult, ResourceContents, ServerCapabilities,
+        ServerInfo,
     },
     schemars,
     service::{RequestContext, RoleServer},
@@ -46,14 +48,14 @@ pub struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QuerySectionArgs {
- /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
- /// `"changelog"`). Pass `--list-sections` form via `list_sections`
- /// instead.
+    /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
+    /// `"changelog"`). Pass `--list-sections` form via `list_sections`
+    /// instead.
     pub section_id: String,
- /// Include 1-hop CrossRef neighborhood (outbound + inbound).
+    /// Include 1-hop CrossRef neighborhood (outbound + inbound).
     #[serde(default)]
     pub include_related: bool,
- /// Include §N citations from changelog entries.
+    /// Include §N citations from changelog entries.
     #[serde(default)]
     pub include_changelog: bool,
 }
@@ -64,107 +66,107 @@ pub struct QuerySectionArgs {
 // before mutating.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct QueryTermArgs {
- /// Pattern to search. Literal by default; set `regex = true` to
- /// interpret as a regex (`regex` crate syntax).
+    /// Pattern to search. Literal by default; set `regex = true` to
+    /// interpret as a regex (`regex` crate syntax).
     pub pattern: String,
- /// Interpret `pattern` as a regex. Default = literal substring.
+    /// Interpret `pattern` as a regex. Default = literal substring.
     #[serde(default)]
     pub regex: bool,
- /// Case-insensitive match. Default = case-sensitive.
+    /// Case-insensitive match. Default = case-sensitive.
     #[serde(default)]
     pub case_insensitive: bool,
- /// Scope. One of `"all"` (default), `"sections"`, `"changelog"`,
- /// `"inventory"`.
+    /// Scope. One of `"all"` (default), `"sections"`, `"changelog"`,
+    /// `"inventory"`.
     #[serde(default)]
     pub scope: Option<String>,
- /// Optional field-name whitelist. When non-empty, only hits in the
- /// listed fields are returned. Use base field names: `"intent"`,
- /// `"rationale_bullets"`, `"decision_summary"`,
- /// `"changes_bullets"`, `"alternatives_rejected"`, `"examples"`,
- /// `"implementations"`, `"source"`, `"reason"`, etc.
+    /// Optional field-name whitelist. When non-empty, only hits in the
+    /// listed fields are returned. Use base field names: `"intent"`,
+    /// `"rationale_bullets"`, `"decision_summary"`,
+    /// `"changes_bullets"`, `"alternatives_rejected"`, `"examples"`,
+    /// `"implementations"`, `"source"`, `"reason"`, etc.
     #[serde(default)]
     pub fields: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StyleCheckArgs {
- /// Optional doc path relative to workspace root. Omit to check
- /// every doc listed in `mnemosyne.toml`.
+    /// Optional doc path relative to workspace root. Omit to check
+    /// every doc listed in `mnemosyne.toml`.
     #[serde(default)]
     pub doc: Option<String>,
- /// Severity filter — `"t3"`, `"t4"`, or `"all"` (default).
+    /// Severity filter — `"t3"`, `"t4"`, or `"all"` (default).
     #[serde(default)]
     pub severity: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionTextArgs {
- /// Section ID to mutate. Pass `"39"`, not `""`.
+    /// Section ID to mutate. Pass `"39"`, not `""`.
     pub section_id: String,
- /// New value. For intent: a single sentence, max ~200 chars.
+    /// New value. For intent: a single sentence, max ~200 chars.
     pub text: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionBulletsArgs {
     pub section_id: String,
- /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
+    /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
     pub bullets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionCaveatArgs {
     pub section_id: String,
- /// Single caveat bullet to append.
+    /// Single caveat bullet to append.
     pub bullet: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetImpactScopeArgs {
     pub section_id: String,
- /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
+    /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
     pub refs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionExampleArgs {
     pub section_id: String,
- /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
+    /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
     pub language: String,
- /// Code body — embedded inside a fenced block. No leading fence.
+    /// Code body — embedded inside a fenced block. No leading fence.
     pub code: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionNormativeExcerptArgs {
- /// Section ID without the `§` prefix.
+    /// Section ID without the `§` prefix.
     pub section_id: String,
- /// Vendored normative quote, verbatim. Trailing newline is trimmed
- /// for round-trip stability; leading whitespace preserved.
+    /// Vendored normative quote, verbatim. Trailing newline is trimmed
+    /// for round-trip stability; leading whitespace preserved.
     pub text: String,
- /// Absolute http(s):// anchor URL pointing at the upstream
- /// section (e.g. `https://www.w3.org/TR/scxml/#event`).
+    /// Absolute http(s):// anchor URL pointing at the upstream
+    /// section (e.g. `https://www.w3.org/TR/scxml/#event`).
     pub anchor_url: String,
- /// Upstream revision identifier the excerpt was captured at
- /// (Recommendation publication date, editor's-draft date, RFC
- /// number + revision letter, etc.). Free-form string; should
- /// match `[workspace.spec_source].revision` at the time of
- /// anchoring, but per-Section field carries independently for
- /// partially-migrated workspaces.
+    /// Upstream revision identifier the excerpt was captured at
+    /// (Recommendation publication date, editor's-draft date, RFC
+    /// number + revision letter, etc.). Free-form string; should
+    /// match `[workspace.spec_source].revision` at the time of
+    /// anchoring, but per-Section field carries independently for
+    /// partially-migrated workspaces.
     pub source_revision: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionImplementationArgs {
- /// Section ID without the `§` prefix.
+    /// Section ID without the `§` prefix.
     pub section_id: String,
- /// Workspace-relative POSIX file path. No leading `/`, no leading
- /// `./`, no `..` segment, no backslash. The file does not need to
- /// exist at write time — schema records intent.
+    /// Workspace-relative POSIX file path. No leading `/`, no leading
+    /// `./`, no `..` segment, no backslash. The file does not need to
+    /// exist at write time — schema records intent.
     pub file: String,
- /// Optional opaque language-agnostic identifier (function / type /
- /// qualified path). Stored as-is; no language-grammar regex applied.
- /// Omit for file-level binding.
+    /// Optional opaque language-agnostic identifier (function / type /
+    /// qualified path). Stored as-is; no language-grammar regex applied.
+    /// Omit for file-level binding.
     #[serde(default)]
     pub symbol: Option<String>,
 }
@@ -173,41 +175,41 @@ pub struct AddSectionImplementationArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionArgs {
- /// Section ID to create. No `§` prefix in the value; use the bare slug
- /// or numbered id (e.g. `"39"`, `"39.1"`, `"my-section"`).
+    /// Section ID to create. No `§` prefix in the value; use the bare slug
+    /// or numbered id (e.g. `"39"`, `"39.1"`, `"my-section"`).
     pub section_id: String,
- /// Owning doc identifier (workspace-relative path or doc id).
+    /// Owning doc identifier (workspace-relative path or doc id).
     pub parent_doc: String,
- /// Heading title (non-empty).
+    /// Heading title (non-empty).
     pub title: String,
- /// Optional parent section id. Omit for top-level; pass a bare id
- /// (no `§`) to nest under an existing section. The parent must exist
- /// in the atomic store at write time.
+    /// Optional parent section id. Omit for top-level; pass a bare id
+    /// (no `§`) to nest under an existing section. The parent must exist
+    /// in the atomic store at write time.
     #[serde(default)]
     pub parent_section: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionParentSectionArgs {
- /// Section being re-parented.
+    /// Section being re-parented.
     pub section_id: String,
- /// New parent. Pass `Some("<id>")` to nest under that section, or
- /// `None` (omit) to promote to top-level. Self-loop rejected.
+    /// New parent. Pass `Some("<id>")` to nest under that section, or
+    /// `None` (omit) to promote to top-level. Self-loop rejected.
     #[serde(default)]
     pub parent_section: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveSectionImplementationArgs {
- /// Section ID without the `§` prefix.
+    /// Section ID without the `§` prefix.
     pub section_id: String,
- /// Workspace-relative POSIX file path to remove from the binding set.
+    /// Workspace-relative POSIX file path to remove from the binding set.
     pub file: String,
- /// Optional symbol — must exact-match the row to remove. Omit to
- /// target a file-only binding (a row with `symbol = None`).
+    /// Optional symbol — must exact-match the row to remove. Omit to
+    /// target a file-only binding (a row with `symbol = None`).
     #[serde(default)]
     pub symbol: Option<String>,
- /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale recorded on the receipt (audit safeguard).
     pub reason: String,
 }
 
@@ -215,24 +217,24 @@ pub struct RemoveSectionImplementationArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InventoryIdArgs {
- /// Inventory id (e.g. `"ARP_07"`, `"TCP_RETRANSMISSION_TO_04"`).
+    /// Inventory id (e.g. `"ARP_07"`, `"TCP_RETRANSMISSION_TO_04"`).
     pub inventory_id: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddInventoryEntryArgs {
- /// Stable inventory id. Must be non-empty, no whitespace.
+    /// Stable inventory id. Must be non-empty, no whitespace.
     pub inventory_id: String,
- /// Lifecycle status: `"active"` / `"deprecated"` / `"reserved"`.
+    /// Lifecycle status: `"active"` / `"deprecated"` / `"reserved"`.
     pub status: String,
- /// Optional section binding without leading `§` (e.g. `"4.2.4"`).
+    /// Optional section binding without leading `§` (e.g. `"4.2.4"`).
     #[serde(default)]
     pub section_ref: Option<String>,
- /// Optional traceability pointer (PDF page ref, JSON row id, etc.).
+    /// Optional traceability pointer (PDF page ref, JSON row id, etc.).
     #[serde(default)]
     pub source: Option<String>,
- /// Optional rationale (typically used when status starts as
- /// `"deprecated"` — explains the deprecation cause).
+    /// Optional rationale (typically used when status starts as
+    /// `"deprecated"` — explains the deprecation cause).
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -240,9 +242,9 @@ pub struct AddInventoryEntryArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetInventoryStatusArgs {
     pub inventory_id: String,
- /// New status: `"active"` / `"deprecated"` / `"reserved"`.
+    /// New status: `"active"` / `"deprecated"` / `"reserved"`.
     pub status: String,
- /// Optional reason. Omit to preserve existing; empty string clears.
+    /// Optional reason. Omit to preserve existing; empty string clears.
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -250,12 +252,12 @@ pub struct SetInventoryStatusArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetInventorySectionRefArgs {
     pub inventory_id: String,
- /// New section_ref without `§`. Omit (or pass `null`) AND set
- /// `clear: true` to unset the binding.
+    /// New section_ref without `§`. Omit (or pass `null`) AND set
+    /// `clear: true` to unset the binding.
     #[serde(default)]
     pub section_ref: Option<String>,
- /// Set to `true` to explicitly unset the section_ref. Exactly one
- /// of `section_ref` or `clear` must be present.
+    /// Set to `true` to explicitly unset the section_ref. Exactly one
+    /// of `section_ref` or `clear` must be present.
     #[serde(default)]
     pub clear: bool,
 }
@@ -263,7 +265,7 @@ pub struct SetInventorySectionRefArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveInventoryEntryArgs {
     pub inventory_id: String,
- /// Mandatory rationale recorded in the receipt (audit safeguard).
+    /// Mandatory rationale recorded in the receipt (audit safeguard).
     pub reason: String,
 }
 
@@ -275,84 +277,84 @@ pub struct RemoveInventoryEntryArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetChangelogPublishableStringArgs {
- /// Existing entry_id whose publishable_decision_summary will be updated.
- /// NotFound if the entry has not been appended yet.
+    /// Existing entry_id whose publishable_decision_summary will be updated.
+    /// NotFound if the entry has not been appended yet.
     pub entry_id: String,
- /// Replacement decision_summary text. The audit half is untouched.
+    /// Replacement decision_summary text. The audit half is untouched.
     pub value: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetChangelogPublishableBulletsArgs {
- /// Existing entry_id whose publishable bullet list will be replaced.
+    /// Existing entry_id whose publishable bullet list will be replaced.
     pub entry_id: String,
- /// Replacement bullets in order. Empty vec clears the publishable list
- /// (audit half untouched).
+    /// Replacement bullets in order. Empty vec clears the publishable list
+    /// (audit half untouched).
     pub bullets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EmitPublishableOverrideLedgerDraftArgs {
- /// Entry whose current publishable-vs-audit divergence is rendered as
- /// a `[[publishable_override_ledger]]` block. NotFound if entry_id is
- /// absent; returns `in_sync: true` and `ledger_draft: null` when the
- /// publishable half still matches the audit half (nothing to anchor).
+    /// Entry whose current publishable-vs-audit divergence is rendered as
+    /// a `[[publishable_override_ledger]]` block. NotFound if entry_id is
+    /// absent; returns `in_sync: true` and `ledger_draft: null` when the
+    /// publishable half still matches the audit half (nothing to anchor).
     pub entry_id: String,
- /// Audit reason recorded in the draft. Mandatory.
+    /// Audit reason recorded in the draft. Mandatory.
     pub reason: String,
- /// `applied_in` field for the draft (commit ref, PR id, etc.). Mandatory.
+    /// `applied_in` field for the draft (commit ref, PR id, etc.). Mandatory.
     pub applied_in: String,
- /// Override kind label. Defaults to `"redaction"`.
+    /// Override kind label. Defaults to `"redaction"`.
     #[serde(default)]
     pub kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RedactTermArgs {
- /// Pattern to search across the publishable half. Literal by default;
- /// set `regex = true` for `regex` crate syntax.
+    /// Pattern to search across the publishable half. Literal by default;
+    /// set `regex = true` for `regex` crate syntax.
     pub pattern: String,
- /// Replacement string. Substituted verbatim per match.
+    /// Replacement string. Substituted verbatim per match.
     pub replacement: String,
- /// Treat `pattern` as a regex. Default = literal substring.
+    /// Treat `pattern` as a regex. Default = literal substring.
     #[serde(default)]
     pub regex: bool,
- /// Case-insensitive match. Default = case-sensitive.
+    /// Case-insensitive match. Default = case-sensitive.
     #[serde(default)]
     pub case_insensitive: bool,
- /// Field scope. One of `"all"` (default), `"decision_summary"`,
- /// `"changes_bullets"`, `"verification_bullets"`, `"impact_refs"`,
- /// `"carry_forward_bullets"`.
+    /// Field scope. One of `"all"` (default), `"decision_summary"`,
+    /// `"changes_bullets"`, `"verification_bullets"`, `"impact_refs"`,
+    /// `"carry_forward_bullets"`.
     #[serde(default)]
     pub scope: Option<String>,
- /// Dry-run mode: returns hits + ledger drafts without mutating the
- /// store. Default = false.
+    /// Dry-run mode: returns hits + ledger drafts without mutating the
+    /// store. Default = false.
     #[serde(default)]
     pub dry_run: bool,
- /// Audit reason recorded in every emitted ledger draft. Mandatory.
+    /// Audit reason recorded in every emitted ledger draft. Mandatory.
     pub reason: String,
- /// `applied_in` field for the ledger draft (commit ref, PR id, etc.).
+    /// `applied_in` field for the ledger draft (commit ref, PR id, etc.).
     pub applied_in: String,
- /// Override kind label for ledger drafts. Defaults to `"redaction"`.
+    /// Override kind label for ledger drafts. Defaults to `"redaction"`.
     #[serde(default)]
     pub kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppendChangelogEntryArgs {
- /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
- /// monotonic (greater than the last entry's id).
+    /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
+    /// monotonic (greater than the last entry's id).
     pub entry_id: String,
- /// One-sentence headline of the decision.
+    /// One-sentence headline of the decision.
     pub decision_summary: String,
- /// What concretely changed. File paths, primitives, etc.
+    /// What concretely changed. File paths, primitives, etc.
     pub changes_bullets: Vec<String>,
- /// How the change was validated (tests, measurements).
+    /// How the change was validated (tests, measurements).
     pub verification_bullets: Vec<String>,
- /// Section ids affected (without `§`), e.g. `["39", "66"]`.
+    /// Section ids affected (without `§`), e.g. `["39", "66"]`.
     #[serde(default)]
     pub impact_refs: Vec<String>,
- /// Carry-forward items for next round.
+    /// Carry-forward items for next round.
     #[serde(default)]
     pub carry_forward_bullets: Vec<String>,
 }
@@ -549,9 +551,20 @@ impl MnemosyneServer {
         let section = strip_section(&args.0.section_id).to_string();
         let parent_doc = args.0.parent_doc.clone();
         let title = args.0.title.clone();
-        let parent = args.0.parent_section.as_deref().map(|p| strip_section(p).to_string());
+        let parent = args
+            .0
+            .parent_section
+            .as_deref()
+            .map(|p| strip_section(p).to_string());
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
-            atomic::add_section(store, path, &section, &parent_doc, &title, parent.as_deref())
+            atomic::add_section(
+                store,
+                path,
+                &section,
+                &parent_doc,
+                &title,
+                parent.as_deref(),
+            )
         });
         self.finish_mutate(outcome)
     }
@@ -588,7 +601,11 @@ impl MnemosyneServer {
         args: Parameters<SetSectionParentSectionArgs>,
     ) -> CallToolResult {
         let section = strip_section(&args.0.section_id).to_string();
-        let parent = args.0.parent_section.as_deref().map(|p| strip_section(p).to_string());
+        let parent = args
+            .0
+            .parent_section
+            .as_deref()
+            .map(|p| strip_section(p).to_string());
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
             atomic::set_section_parent_section(store, path, &section, parent.as_deref())
         });
@@ -610,7 +627,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.rationale_bullets. Replaces existing. Each bullet ≤ 100 chars (T3 default)."
     )]
-    async fn set_section_rationale(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+    async fn set_section_rationale(
+        &self,
+        args: Parameters<SetSectionBulletsArgs>,
+    ) -> CallToolResult {
         let section = strip_section(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
@@ -651,7 +671,9 @@ impl MnemosyneServer {
         self.finish_mutate(outcome)
     }
 
-    #[tool(description = "Set Section.alternatives_rejected. Replaces existing. Each bullet is `<alternative> -- <reason>`.")]
+    #[tool(
+        description = "Set Section.alternatives_rejected. Replaces existing. Each bullet is `<alternative> -- <reason>`."
+    )]
     async fn set_section_alternatives(
         &self,
         args: Parameters<SetSectionBulletsArgs>,
@@ -670,9 +692,17 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.impact_scope. Each ref is a section_id without the `§` prefix; T1 cross-ref orphan reject runs pre-write so non-existent §N targets fail cleanly."
     )]
-    async fn set_section_impact_scope(&self, args: Parameters<SetImpactScopeArgs>) -> CallToolResult {
+    async fn set_section_impact_scope(
+        &self,
+        args: Parameters<SetImpactScopeArgs>,
+    ) -> CallToolResult {
         let section = strip_section(&args.0.section_id).to_string();
-        let refs: Vec<String> = args.0.refs.iter().map(|r| strip_section(r).to_string()).collect();
+        let refs: Vec<String> = args
+            .0
+            .refs
+            .iter()
+            .map(|r| strip_section(r).to_string())
+            .collect();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
             atomic::set_section_impact_scope(store, path, &section, &refs)
         });
@@ -769,7 +799,12 @@ impl MnemosyneServer {
         let decision = args.0.decision_summary.clone();
         let changes = args.0.changes_bullets.clone();
         let verify = args.0.verification_bullets.clone();
-        let impact: Vec<String> = args.0.impact_refs.iter().map(|r| strip_section(r).to_string()).collect();
+        let impact: Vec<String> = args
+            .0
+            .impact_refs
+            .iter()
+            .map(|r| strip_section(r).to_string())
+            .collect();
         let carry = args.0.carry_forward_bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
             atomic::append_changelog_entry(
@@ -848,7 +883,12 @@ impl MnemosyneServer {
         args: Parameters<SetChangelogPublishableBulletsArgs>,
     ) -> CallToolResult {
         let entry_id = args.0.entry_id.clone();
-        let bullets: Vec<String> = args.0.bullets.iter().map(|r| strip_section(r).to_string()).collect();
+        let bullets: Vec<String> = args
+            .0
+            .bullets
+            .iter()
+            .map(|r| strip_section(r).to_string())
+            .collect();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
             atomic::set_changelog_publishable_impact_refs(store, path, &entry_id, &bullets)
         });
@@ -865,7 +905,9 @@ impl MnemosyneServer {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
-            atomic::set_changelog_publishable_carry_forward_bullets(store, path, &entry_id, &bullets)
+            atomic::set_changelog_publishable_carry_forward_bullets(
+                store, path, &entry_id, &bullets,
+            )
         });
         self.finish_mutate(outcome)
     }
@@ -963,7 +1005,11 @@ impl MnemosyneServer {
             Ok(s) => s,
             Err(e) => return Self::tool_error(e),
         };
-        let section_ref = args.0.section_ref.as_deref().map(|s| strip_section(s).to_string());
+        let section_ref = args
+            .0
+            .section_ref
+            .as_deref()
+            .map(|s| strip_section(s).to_string());
         let source = args.0.source.clone();
         let reason = args.0.reason.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
@@ -977,13 +1023,20 @@ impl MnemosyneServer {
                 reason.as_deref(),
             )
         });
-        self.finish_inventory_mutate(outcome, &inventory_id, status == InventoryStatus::Deprecated)
+        self.finish_inventory_mutate(
+            outcome,
+            &inventory_id,
+            status == InventoryStatus::Deprecated,
+        )
     }
 
     #[tool(
         description = "Update an inventory entry's status (Round 274). Returns NotFound if the id is not registered. reason: omit to preserve existing; pass empty string to clear; pass non-empty to overwrite. Active→Deprecated transitions invoke the cascade scan (Round 276)."
     )]
-    async fn set_inventory_status(&self, args: Parameters<SetInventoryStatusArgs>) -> CallToolResult {
+    async fn set_inventory_status(
+        &self,
+        args: Parameters<SetInventoryStatusArgs>,
+    ) -> CallToolResult {
         let inventory_id = args.0.inventory_id.clone();
         let status = match parse_inventory_status(&args.0.status) {
             Ok(s) => s,
@@ -993,7 +1046,11 @@ impl MnemosyneServer {
         let outcome = run_atomic_mutate(&self.workspace, None, true, |store, path| {
             atomic::set_inventory_status(store, path, &inventory_id, status, reason.as_deref())
         });
-        self.finish_inventory_mutate(outcome, &inventory_id, status == InventoryStatus::Deprecated)
+        self.finish_inventory_mutate(
+            outcome,
+            &inventory_id,
+            status == InventoryStatus::Deprecated,
+        )
     }
 
     #[tool(

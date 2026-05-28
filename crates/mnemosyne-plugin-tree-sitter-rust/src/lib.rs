@@ -13,9 +13,7 @@
 use std::fs;
 use std::path::Path;
 
-use mnemosyne_core::{
-    PluginRegistry, ResolverError, SymbolResolver, VersionSurface,
-};
+use mnemosyne_core::{PluginRegistry, ResolverError, SymbolResolver, VersionSurface};
 use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 pub const BACKEND_KEY: &str = "tree-sitter-rust";
@@ -32,14 +30,9 @@ impl SymbolResolver for TreesitterRustResolver {
         }
     }
 
-    fn resolve_symbol_at(
-        &self,
-        file: &Path,
-        line: u32,
-    ) -> Result<Option<String>, ResolverError> {
-        let source = fs::read_to_string(file).map_err(|e| {
-            ResolverError::Internal(format!("read `{}`: {}", file.display(), e))
-        })?;
+    fn resolve_symbol_at(&self, file: &Path, line: u32) -> Result<Option<String>, ResolverError> {
+        let source = fs::read_to_string(file)
+            .map_err(|e| ResolverError::Internal(format!("read `{}`: {}", file.display(), e)))?;
         let mut parser = Parser::new();
         parser
             .set_language(&tree_sitter_rust::LANGUAGE.into())
@@ -70,9 +63,8 @@ impl SymbolResolver for TreesitterRustResolver {
         (union_item name: (type_identifier) @sym)
         (macro_definition name: (identifier) @sym)
         "#;
-        let query = Query::new(&lang, query_src).map_err(|e| {
-            ResolverError::Internal(format!("query compile: {}", e))
-        })?;
+        let query = Query::new(&lang, query_src)
+            .map_err(|e| ResolverError::Internal(format!("query compile: {}", e)))?;
 
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, root, source.as_bytes());

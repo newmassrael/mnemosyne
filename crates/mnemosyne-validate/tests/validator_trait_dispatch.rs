@@ -20,12 +20,8 @@ use std::path::PathBuf;
 
 use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
 use mnemosyne_config::SetEqualityValidatorConfig;
-use mnemosyne_core::{
-    AtomicStoreView, PluginRegistry, Validator, ValidationContext,
-};
-use mnemosyne_validate::code_refs::{
-    CodeRefViolation, SetEqualityValidator, ViolationKind,
-};
+use mnemosyne_core::{AtomicStoreView, PluginRegistry, ValidationContext, Validator};
+use mnemosyne_validate::code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind};
 use tempfile::TempDir;
 
 fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
@@ -102,7 +98,15 @@ fn typed_dispatch_yields_typed_findings() {
     // ImplementationMissing for sec2.
     let missing = violations
         .iter()
-        .find(|v| matches!(v, CodeRefViolation::Citation { kind: ViolationKind::Missing, .. }))
+        .find(|v| {
+            matches!(
+                v,
+                CodeRefViolation::Citation {
+                    kind: ViolationKind::Missing,
+                    ..
+                }
+            )
+        })
         .expect("missing citation present");
     if let CodeRefViolation::Citation { citation, .. } = missing {
         assert_eq!(citation.entry_id, "Round 999");
@@ -135,10 +139,7 @@ fn erased_dispatch_via_registry_serializes_findings_to_json() {
     std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
 
     let mut registry = PluginRegistry::new();
-    registry.register_validator(
-        "set_equality_validator",
-        Box::new(build_validator(None)),
-    );
+    registry.register_validator("set_equality_validator", Box::new(build_validator(None)));
     let dispatched = registry
         .validator("set_equality_validator")
         .expect("just registered");
@@ -216,7 +217,10 @@ fn typed_dispatch_filter_id_narrows_to_decay_only() {
     assert!(
         matches!(
             decay,
-            CodeRefViolation::Citation { kind: ViolationKind::Decay, .. }
+            CodeRefViolation::Citation {
+                kind: ViolationKind::Decay,
+                ..
+            }
         ),
         "filter mode should surface decay only, got: {:?}",
         decay

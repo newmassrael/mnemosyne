@@ -9,14 +9,12 @@ use std::path::Path;
 use anyhow::Context;
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::OrphanKind;
-use mnemosyne_parser::{compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema};
+use mnemosyne_parser::{
+    compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema,
+};
 use mnemosyne_query::workspace_section_id_set;
-use mnemosyne_style::{
-    check_style, default_ruleset_with_config, StyleSeverity, StyleViolation,
-};
-use mnemosyne_validate::{
-    validator::cross_ref_orphan_reject_with_workspace, ValidationError,
-};
+use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
+use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace, ValidationError};
 use serde::Serialize;
 
 use super::{query::load_workspace, resolve_sidecar, OpError};
@@ -72,8 +70,11 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .schema
         .clone()
         .unwrap_or_else(mnemosyne_config::SchemaSection::mnemosyne_preset);
-    let parsed_docs: Vec<(String, mnemosyne_schema::ParsedDoc)> =
-        ws.docs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let parsed_docs: Vec<(String, mnemosyne_schema::ParsedDoc)> = ws
+        .docs
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
 
     let mut actual_orphan_keys: BTreeSet<(String, String, String)> = BTreeSet::new();
     for (path, parsed) in &parsed_docs {
@@ -85,11 +86,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
                 ..
             } = err
             {
-                actual_orphan_keys.insert((
-                    path.clone(),
-                    from_section.clone(),
-                    to_target.clone(),
-                ));
+                actual_orphan_keys.insert((path.clone(), from_section.clone(), to_target.clone()));
             }
         }
     }
@@ -238,16 +235,19 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let parsed_docs_refs: Vec<&mnemosyne_schema::ParsedDoc> =
         parsed_docs.iter().map(|(_, doc)| doc).collect();
     let supersede_violations: Vec<String> =
-        mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_for_style, &parsed_docs_refs)
-            .into_iter()
-            .filter_map(|e| match e {
-                ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
-                    "§{} decision_status=Superseded but no superseding cross-ref (Decision|Impl)",
-                    section_id
-                )),
-                _ => None,
-            })
-            .collect();
+        mnemosyne_validate::atomic_section_supersede_state_reject(
+            &atomic_for_style,
+            &parsed_docs_refs,
+        )
+        .into_iter()
+        .filter_map(|e| match e {
+            ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
+                "§{} decision_status=Superseded but no superseding cross-ref (Decision|Impl)",
+                section_id
+            )),
+            _ => None,
+        })
+        .collect();
 
     // R296 publishable / audit divergence ledger gate. Each entry whose
     // publishable half diverges from the audit half must have a matching
@@ -383,18 +383,30 @@ impl ValidateWorkspaceReport {
             self.orphan_resolved.len(),
         );
         for o in &self.orphan_actual {
-            let _ = writeln!(out, "  orphan {}: §{} -> §{}", o.doc, o.from_section, o.to_target);
+            let _ = writeln!(
+                out,
+                "  orphan {}: §{} -> §{}",
+                o.doc, o.from_section, o.to_target
+            );
         }
         if !self.orphan_new.is_empty() {
             let _ = writeln!(out, "new orphans (ledger registration or fix enforced):");
             for o in &self.orphan_new {
-                let _ = writeln!(out, "  + {}: §{} -> §{}", o.doc, o.from_section, o.to_target);
+                let _ = writeln!(
+                    out,
+                    "  + {}: §{} -> §{}",
+                    o.doc, o.from_section, o.to_target
+                );
             }
         }
         if !self.orphan_resolved.is_empty() {
             let _ = writeln!(out, "resolved ledger entries (delete from ledger):");
             for o in &self.orphan_resolved {
-                let _ = writeln!(out, "  - {}: §{} -> §{}", o.doc, o.from_section, o.to_target);
+                let _ = writeln!(
+                    out,
+                    "  - {}: §{} -> §{}",
+                    o.doc, o.from_section, o.to_target
+                );
             }
         }
         let _ = writeln!(
@@ -420,7 +432,11 @@ impl ValidateWorkspaceReport {
             self.atomic_sections,
             self.atomic_orphan_entry_refs,
             self.atomic_orphan_section_refs,
-            if self.generated_in_sync { "sync" } else { "STALE" }
+            if self.generated_in_sync {
+                "sync"
+            } else {
+                "STALE"
+            }
         );
         for v in &self.supersede_violations {
             let _ = writeln!(out, "  T1 rule 4 (atomic axis): {}", v);

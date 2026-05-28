@@ -4,9 +4,7 @@
 use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_style::{
-    check_style, default_ruleset_with_config, StyleSeverity, StyleViolation,
-};
+use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
 use serde::Serialize;
 
 use super::{query::load_workspace, resolve_sidecar, OpError};

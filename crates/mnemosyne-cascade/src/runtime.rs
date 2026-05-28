@@ -28,24 +28,24 @@ use crate::snapshot::BranchSnapshotData;
 /// non-empty snapshot payloads.
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ValidationResult {
- pub ok: bool,
- pub violation_count: u32,
+    pub ok: bool,
+    pub violation_count: u32,
 }
 
 impl ValidationResult {
- pub fn ok() -> Self {
- Self {
- ok: true,
- violation_count: 0,
- }
- }
+    pub fn ok() -> Self {
+        Self {
+            ok: true,
+            violation_count: 0,
+        }
+    }
 
- pub fn violations(count: u32) -> Self {
- Self {
- ok: false,
- violation_count: count,
- }
- }
+    pub fn violations(count: u32) -> Self {
+        Self {
+            ok: false,
+            violation_count: count,
+        }
+    }
 }
 
 /// Cascade root input — branch identity wrap (Salsa primitive types are not
@@ -56,39 +56,39 @@ impl ValidationResult {
 /// deterministic byte equality.
 #[salsa::input]
 pub struct CascadeBranch {
- pub branch_id: u64,
- pub revision: u64,
- pub snapshot_payload: Vec<u8>,
+    pub branch_id: u64,
+    pub revision: u64,
+    pub snapshot_payload: Vec<u8>,
 }
 
 #[salsa::input]
 pub struct SectionInput {
- pub branch_id: u64,
- pub entity_id: u64,
- pub valid_from: u64,
- pub payload: Vec<u8>,
+    pub branch_id: u64,
+    pub entity_id: u64,
+    pub valid_from: u64,
+    pub payload: Vec<u8>,
 }
 
 #[salsa::input]
 pub struct ChangelogEntryInput {
- pub branch_id: u64,
- pub entity_id: u64,
- pub valid_from: u64,
- pub payload: Vec<u8>,
+    pub branch_id: u64,
+    pub entity_id: u64,
+    pub valid_from: u64,
+    pub payload: Vec<u8>,
 }
 
 #[salsa::input]
 pub struct FrozenListInput {
- pub branch_id: u64,
- pub entity_id: u64,
- pub valid_from: u64,
- pub payload: Vec<u8>,
+    pub branch_id: u64,
+    pub entity_id: u64,
+    pub valid_from: u64,
+    pub payload: Vec<u8>,
 }
 
 #[salsa::db]
 pub trait CascadeDb: salsa::Database {
- fn section_decision_status(&self, branch: CascadeBranch) -> ValidationResult;
- fn frozen_list_membership(&self, branch: CascadeBranch) -> ValidationResult;
+    fn section_decision_status(&self, branch: CascadeBranch) -> ValidationResult;
+    fn frozen_list_membership(&self, branch: CascadeBranch) -> ValidationResult;
 }
 
 /// Cascade query: ChangelogEntry append → Section.decision_status update.
@@ -100,38 +100,35 @@ pub trait CascadeDb: salsa::Database {
 /// surfaced as a cascade query (per *cascade_query Forge kind*).
 #[salsa::tracked]
 pub fn section_decision_status<'db>(
- db: &'db dyn CascadeDb,
- branch: CascadeBranch,
+    db: &'db dyn CascadeDb,
+    branch: CascadeBranch,
 ) -> ValidationResult {
- let _branch_id = branch.branch_id(db);
- let _revision = branch.revision(db);
- let payload = branch.snapshot_payload(db);
- let snap = match BranchSnapshotData::decode(&payload) {
- Ok(s) => s,
- Err(_) => return ValidationResult::violations(0),
- };
- let mut violation_count: u32 = 0;
- for section in &snap.sections {
- if !section
- .decision_status
- .eq_ignore_ascii_case("superseded")
- {
- continue;
- }
- let has_supersedes_ref = snap.cross_refs.iter().any(|cr| {
- cr.from_section == section.entity_id
-  && (cr.ref_kind.eq_ignore_ascii_case("decision")
-  || cr.ref_kind.eq_ignore_ascii_case("impl"))
- });
- if !has_supersedes_ref {
- violation_count = violation_count.saturating_add(1);
- }
- }
- if violation_count == 0 {
- ValidationResult::ok()
- } else {
- ValidationResult::violations(violation_count)
- }
+    let _branch_id = branch.branch_id(db);
+    let _revision = branch.revision(db);
+    let payload = branch.snapshot_payload(db);
+    let snap = match BranchSnapshotData::decode(&payload) {
+        Ok(s) => s,
+        Err(_) => return ValidationResult::violations(0),
+    };
+    let mut violation_count: u32 = 0;
+    for section in &snap.sections {
+        if !section.decision_status.eq_ignore_ascii_case("superseded") {
+            continue;
+        }
+        let has_supersedes_ref = snap.cross_refs.iter().any(|cr| {
+            cr.from_section == section.entity_id
+                && (cr.ref_kind.eq_ignore_ascii_case("decision")
+                    || cr.ref_kind.eq_ignore_ascii_case("impl"))
+        });
+        if !has_supersedes_ref {
+            violation_count = violation_count.saturating_add(1);
+        }
+    }
+    if violation_count == 0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::violations(violation_count)
+    }
 }
 
 /// Cascade query: FrozenList membership check (CrossRef cascade).
@@ -144,32 +141,32 @@ pub fn section_decision_status<'db>(
 /// attachment per T1 rule 3 (`frozen_list_membership_delta`).
 #[salsa::tracked]
 pub fn frozen_list_membership<'db>(
- db: &'db dyn CascadeDb,
- branch: CascadeBranch,
+    db: &'db dyn CascadeDb,
+    branch: CascadeBranch,
 ) -> ValidationResult {
- let _branch_id = branch.branch_id(db);
- let _revision = branch.revision(db);
- let payload = branch.snapshot_payload(db);
- let snap = match BranchSnapshotData::decode(&payload) {
- Ok(s) => s,
- Err(_) => return ValidationResult::violations(0),
- };
- let mut violation_count: u32 = 0;
- let section_ids: std::collections::BTreeSet<u64> =
- snap.sections.iter().map(|s| s.entity_id).collect();
- for frozen_list in &snap.frozen_lists {
- if !section_ids.contains(&frozen_list.owner_section) {
- violation_count = violation_count.saturating_add(1);
- }
- }
- if !snap.frozen_lists.is_empty() && snap.changelog_entries.is_empty() {
- violation_count = violation_count.saturating_add(snap.frozen_lists.len() as u32);
- }
- if violation_count == 0 {
- ValidationResult::ok()
- } else {
- ValidationResult::violations(violation_count)
- }
+    let _branch_id = branch.branch_id(db);
+    let _revision = branch.revision(db);
+    let payload = branch.snapshot_payload(db);
+    let snap = match BranchSnapshotData::decode(&payload) {
+        Ok(s) => s,
+        Err(_) => return ValidationResult::violations(0),
+    };
+    let mut violation_count: u32 = 0;
+    let section_ids: std::collections::BTreeSet<u64> =
+        snap.sections.iter().map(|s| s.entity_id).collect();
+    for frozen_list in &snap.frozen_lists {
+        if !section_ids.contains(&frozen_list.owner_section) {
+            violation_count = violation_count.saturating_add(1);
+        }
+    }
+    if !snap.frozen_lists.is_empty() && snap.changelog_entries.is_empty() {
+        violation_count = violation_count.saturating_add(snap.frozen_lists.len() as u32);
+    }
+    if violation_count == 0 {
+        ValidationResult::ok()
+    } else {
+        ValidationResult::violations(violation_count)
+    }
 }
 
 /// Concrete cascade DB — owns Salsa storage + dispatches `CascadeDb` trait
@@ -177,7 +174,7 @@ pub fn frozen_list_membership<'db>(
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct MnemosyneCascadeDb {
- storage: salsa::Storage<Self>,
+    storage: salsa::Storage<Self>,
 }
 
 #[salsa::db]
@@ -185,267 +182,271 @@ impl salsa::Database for MnemosyneCascadeDb {}
 
 #[salsa::db]
 impl CascadeDb for MnemosyneCascadeDb {
- fn section_decision_status(&self, branch: CascadeBranch) -> ValidationResult {
- section_decision_status(self, branch)
- }
- fn frozen_list_membership(&self, branch: CascadeBranch) -> ValidationResult {
- frozen_list_membership(self, branch)
- }
+    fn section_decision_status(&self, branch: CascadeBranch) -> ValidationResult {
+        section_decision_status(self, branch)
+    }
+    fn frozen_list_membership(&self, branch: CascadeBranch) -> ValidationResult {
+        frozen_list_membership(self, branch)
+    }
 }
 
 #[cfg(test)]
 mod tests {
- use super::*;
- use crate::snapshot::BranchSnapshotData;
- use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+    use super::*;
+    use crate::snapshot::BranchSnapshotData;
+    use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 
- fn make_branch(db: &MnemosyneCascadeDb, branch_id: u64, snap: &BranchSnapshotData) -> CascadeBranch {
- let payload = snap.encode().expect("encode");
- CascadeBranch::new(db, branch_id, 1, payload)
- }
+    fn make_branch(
+        db: &MnemosyneCascadeDb,
+        branch_id: u64,
+        snap: &BranchSnapshotData,
+    ) -> CascadeBranch {
+        let payload = snap.encode().expect("encode");
+        CascadeBranch::new(db, branch_id, 1, payload)
+    }
 
- #[test]
- fn empty_snapshot_section_decision_status_is_vacuously_ok() {
- let db = MnemosyneCascadeDb::default();
- let branch = make_branch(&db, 0, &BranchSnapshotData::default());
- assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
- }
+    #[test]
+    fn empty_snapshot_section_decision_status_is_vacuously_ok() {
+        let db = MnemosyneCascadeDb::default();
+        let branch = make_branch(&db, 0, &BranchSnapshotData::default());
+        assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
+    }
 
- #[test]
- fn empty_snapshot_frozen_list_membership_is_vacuously_ok() {
- let db = MnemosyneCascadeDb::default();
- let branch = make_branch(&db, 0, &BranchSnapshotData::default());
- assert_eq!(frozen_list_membership(&db, branch), ValidationResult::ok());
- }
+    #[test]
+    fn empty_snapshot_frozen_list_membership_is_vacuously_ok() {
+        let db = MnemosyneCascadeDb::default();
+        let branch = make_branch(&db, 0, &BranchSnapshotData::default());
+        assert_eq!(frozen_list_membership(&db, branch), ValidationResult::ok());
+    }
 
- #[test]
- fn active_section_passes_decision_status_check() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 39,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "39".into(),
-  title: "x".into(),
-  decision_status: "Active".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
- }
+    #[test]
+    fn active_section_passes_decision_status_check() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 39,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "39".into(),
+                title: "x".into(),
+                decision_status: "Active".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
+    }
 
- #[test]
- fn superseded_section_with_outbound_decision_ref_passes() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 15,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "15".into(),
-  title: "old SDK".into(),
-  decision_status: "Superseded".into(),
- }],
- cross_refs: vec![CrossRefFact {
-  branch_id: 1,
-  from_section: 15,
-  to_section: 56,
-  ref_kind: "decision".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
- }
+    #[test]
+    fn superseded_section_with_outbound_decision_ref_passes() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 15,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "15".into(),
+                title: "old SDK".into(),
+                decision_status: "Superseded".into(),
+            }],
+            cross_refs: vec![CrossRefFact {
+                branch_id: 1,
+                from_section: 15,
+                to_section: 56,
+                ref_kind: "decision".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(section_decision_status(&db, branch), ValidationResult::ok());
+    }
 
- #[test]
- fn superseded_section_without_outbound_ref_fails() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 15,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "15".into(),
-  title: "old SDK".into(),
-  decision_status: "Superseded".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(
- section_decision_status(&db, branch),
- ValidationResult::violations(1)
- );
- }
+    #[test]
+    fn superseded_section_without_outbound_ref_fails() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 15,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "15".into(),
+                title: "old SDK".into(),
+                decision_status: "Superseded".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(
+            section_decision_status(&db, branch),
+            ValidationResult::violations(1)
+        );
+    }
 
- #[test]
- fn superseded_section_with_unrelated_crossref_still_fails() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 15,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "15".into(),
-  title: "old SDK".into(),
-  decision_status: "Superseded".into(),
- }],
- cross_refs: vec![CrossRefFact {
-  branch_id: 1,
-  from_section: 99,
-  to_section: 15,
-  ref_kind: "decision".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(
- section_decision_status(&db, branch),
- ValidationResult::violations(1)
- );
- }
+    #[test]
+    fn superseded_section_with_unrelated_crossref_still_fails() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 15,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "15".into(),
+                title: "old SDK".into(),
+                decision_status: "Superseded".into(),
+            }],
+            cross_refs: vec![CrossRefFact {
+                branch_id: 1,
+                from_section: 99,
+                to_section: 15,
+                ref_kind: "decision".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(
+            section_decision_status(&db, branch),
+            ValidationResult::violations(1)
+        );
+    }
 
- #[test]
- fn frozen_list_with_owner_in_snapshot_and_changelog_passes() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 39,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "39".into(),
-  title: "x".into(),
-  decision_status: "Active".into(),
- }],
- changelog_entries: vec![ChangelogEntryFact {
-  branch_id: 1,
-  entity_id: 60,
-  valid_from: 100,
-  round_number: 60,
-  summary: "round 60 ratify".into(),
-  appended_at: 2026_05_03,
- }],
- frozen_lists: vec![FrozenListFact {
-  branch_id: 1,
-  entity_id: 1000,
-  valid_from: 100,
-  owner_section: 39,
-  frozen_round: 60,
-  kind: "release_lock".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(frozen_list_membership(&db, branch), ValidationResult::ok());
- }
+    #[test]
+    fn frozen_list_with_owner_in_snapshot_and_changelog_passes() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 39,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "39".into(),
+                title: "x".into(),
+                decision_status: "Active".into(),
+            }],
+            changelog_entries: vec![ChangelogEntryFact {
+                branch_id: 1,
+                entity_id: 60,
+                valid_from: 100,
+                round_number: 60,
+                summary: "round 60 ratify".into(),
+                appended_at: 2026_05_03,
+            }],
+            frozen_lists: vec![FrozenListFact {
+                branch_id: 1,
+                entity_id: 1000,
+                valid_from: 100,
+                owner_section: 39,
+                frozen_round: 60,
+                kind: "release_lock".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(frozen_list_membership(&db, branch), ValidationResult::ok());
+    }
 
- #[test]
- fn frozen_list_with_dangling_owner_fails() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- changelog_entries: vec![ChangelogEntryFact {
-  branch_id: 1,
-  entity_id: 60,
-  valid_from: 100,
-  round_number: 60,
-  summary: "x".into(),
-  appended_at: 100,
- }],
- frozen_lists: vec![FrozenListFact {
-  branch_id: 1,
-  entity_id: 1000,
-  valid_from: 100,
-  owner_section: 99,
-  frozen_round: 60,
-  kind: "release_lock".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(
- frozen_list_membership(&db, branch),
- ValidationResult::violations(1)
- );
- }
+    #[test]
+    fn frozen_list_with_dangling_owner_fails() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            changelog_entries: vec![ChangelogEntryFact {
+                branch_id: 1,
+                entity_id: 60,
+                valid_from: 100,
+                round_number: 60,
+                summary: "x".into(),
+                appended_at: 100,
+            }],
+            frozen_lists: vec![FrozenListFact {
+                branch_id: 1,
+                entity_id: 1000,
+                valid_from: 100,
+                owner_section: 99,
+                frozen_round: 60,
+                kind: "release_lock".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(
+            frozen_list_membership(&db, branch),
+            ValidationResult::violations(1)
+        );
+    }
 
- #[test]
- fn frozen_list_without_changelog_attachment_fails() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 39,
-  valid_from: 100,
-  doc_path: "docs/DESIGN.md".into(),
-  section_id: "39".into(),
-  title: "x".into(),
-  decision_status: "Active".into(),
- }],
- frozen_lists: vec![FrozenListFact {
-  branch_id: 1,
-  entity_id: 1000,
-  valid_from: 100,
-  owner_section: 39,
-  frozen_round: 60,
-  kind: "release_lock".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- assert_eq!(
- frozen_list_membership(&db, branch),
- ValidationResult::violations(1)
- );
- }
+    #[test]
+    fn frozen_list_without_changelog_attachment_fails() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 39,
+                valid_from: 100,
+                doc_path: "docs/DESIGN.md".into(),
+                section_id: "39".into(),
+                title: "x".into(),
+                decision_status: "Active".into(),
+            }],
+            frozen_lists: vec![FrozenListFact {
+                branch_id: 1,
+                entity_id: 1000,
+                valid_from: 100,
+                owner_section: 39,
+                frozen_round: 60,
+                kind: "release_lock".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        assert_eq!(
+            frozen_list_membership(&db, branch),
+            ValidationResult::violations(1)
+        );
+    }
 
- #[test]
- fn tracked_function_memoize_stability() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData {
- sections: vec![SectionFact {
-  branch_id: 1,
-  entity_id: 39,
-  valid_from: 100,
-  doc_path: "x".into(),
-  section_id: "39".into(),
-  title: "x".into(),
-  decision_status: "Active".into(),
- }],
- ..Default::default()
- };
- let branch = make_branch(&db, 1, &snap);
- let a = section_decision_status(&db, branch);
- let b = section_decision_status(&db, branch);
- assert_eq!(a, b);
- let c = frozen_list_membership(&db, branch);
- let d = frozen_list_membership(&db, branch);
- assert_eq!(c, d);
- }
+    #[test]
+    fn tracked_function_memoize_stability() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData {
+            sections: vec![SectionFact {
+                branch_id: 1,
+                entity_id: 39,
+                valid_from: 100,
+                doc_path: "x".into(),
+                section_id: "39".into(),
+                title: "x".into(),
+                decision_status: "Active".into(),
+            }],
+            ..Default::default()
+        };
+        let branch = make_branch(&db, 1, &snap);
+        let a = section_decision_status(&db, branch);
+        let b = section_decision_status(&db, branch);
+        assert_eq!(a, b);
+        let c = frozen_list_membership(&db, branch);
+        let d = frozen_list_membership(&db, branch);
+        assert_eq!(c, d);
+    }
 
- #[test]
- fn cascade_db_trait_dispatch() {
- let db = MnemosyneCascadeDb::default();
- let snap = BranchSnapshotData::default();
- let branch = make_branch(&db, 7, &snap);
- let r1 = db.section_decision_status(branch);
- let r2 = db.frozen_list_membership(branch);
- assert_eq!(r1, ValidationResult::ok());
- assert_eq!(r2, ValidationResult::ok());
- }
+    #[test]
+    fn cascade_db_trait_dispatch() {
+        let db = MnemosyneCascadeDb::default();
+        let snap = BranchSnapshotData::default();
+        let branch = make_branch(&db, 7, &snap);
+        let r1 = db.section_decision_status(branch);
+        let r2 = db.frozen_list_membership(branch);
+        assert_eq!(r1, ValidationResult::ok());
+        assert_eq!(r2, ValidationResult::ok());
+    }
 
- #[test]
- fn malformed_payload_returns_default_violations() {
- let db = MnemosyneCascadeDb::default();
- let branch = CascadeBranch::new(&db, 1, 1, vec![0xFF, 0xFE, 0xFD]);
- let r = section_decision_status(&db, branch);
- assert!(!r.ok);
- }
+    #[test]
+    fn malformed_payload_returns_default_violations() {
+        let db = MnemosyneCascadeDb::default();
+        let branch = CascadeBranch::new(&db, 1, 1, vec![0xFF, 0xFE, 0xFD]);
+        let r = section_decision_status(&db, branch);
+        assert!(!r.ok);
+    }
 }

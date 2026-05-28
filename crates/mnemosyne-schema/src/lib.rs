@@ -19,91 +19,91 @@ use std::collections::BTreeMap;
 /// `parent_section` nullable ref (file doc-root = None).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
- /// Canonical key — §N format ("39", "61.1") or unnumbered slug ("changelog").
- ///
- /// For nested headings (depth ≥ 3 or unnumbered with a parent) the parser
- /// produces a parent-prefixed form (`{parent}/{n}` or `{parent}/{slug}`)
- /// to keep markdown headings disambiguable across docs. This means
- /// `section_id` is *not* always a valid atomic-store key — see
- /// [`Self::atomic_section_id`] for the parser's record of the
- /// heading's own `§<token>` slot, which is the atomic-store lookup
- /// candidate.
- pub section_id: String,
- /// Owning doc identifier (relative path or doc-id).
- pub parent_doc: String,
- /// nullable ref — the file's first h1 = None; subsequent headings carry parent section_id.
- pub parent_section: Option<String>,
- pub title: String,
- pub decision_status: DecisionStatus,
- /// Atomic-store lookup candidate extracted from the heading's `§<token>`
- /// slot, when present. `None` for structural headings without a
- /// `§<token>` (e.g. `# GENERATED.md ...`, `## Sections`).
- ///
- /// Set by the parser at heading-emission time. This is the bridge
- /// between markdown-derived `Section` and atomic-store `AtomicSection`:
- /// `section_id` records the parser's tree position (always present, may
- /// be parent-prefixed), while `atomic_section_id` records the original
- /// heading slug (the form the renderer wrote, the form the atomic store
- /// keys by). Lookup helpers (`resolve_atomic_section`) try this first
- /// and fall back to `section_id` for legacy / pre-decompose docs.
- pub atomic_section_id: Option<String>,
+    /// Canonical key — §N format ("39", "61.1") or unnumbered slug ("changelog").
+    ///
+    /// For nested headings (depth ≥ 3 or unnumbered with a parent) the parser
+    /// produces a parent-prefixed form (`{parent}/{n}` or `{parent}/{slug}`)
+    /// to keep markdown headings disambiguable across docs. This means
+    /// `section_id` is *not* always a valid atomic-store key — see
+    /// [`Self::atomic_section_id`] for the parser's record of the
+    /// heading's own `§<token>` slot, which is the atomic-store lookup
+    /// candidate.
+    pub section_id: String,
+    /// Owning doc identifier (relative path or doc-id).
+    pub parent_doc: String,
+    /// nullable ref — the file's first h1 = None; subsequent headings carry parent section_id.
+    pub parent_section: Option<String>,
+    pub title: String,
+    pub decision_status: DecisionStatus,
+    /// Atomic-store lookup candidate extracted from the heading's `§<token>`
+    /// slot, when present. `None` for structural headings without a
+    /// `§<token>` (e.g. `# GENERATED.md ...`, `## Sections`).
+    ///
+    /// Set by the parser at heading-emission time. This is the bridge
+    /// between markdown-derived `Section` and atomic-store `AtomicSection`:
+    /// `section_id` records the parser's tree position (always present, may
+    /// be parent-prefixed), while `atomic_section_id` records the original
+    /// heading slug (the form the renderer wrote, the form the atomic store
+    /// keys by). Lookup helpers (`resolve_atomic_section`) try this first
+    /// and fall back to `section_id` for legacy / pre-decompose docs.
+    pub atomic_section_id: Option<String>,
 }
 
 /// ChangelogEntry — closed-form 4 field, append-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangelogEntry {
- /// Canonical key — "Round N" format.
- pub entry_id: String,
- /// nullable ref — chained sub-entry parent.
- pub parent_changelog_entry: Option<String>,
- /// Ordered nested bullet content (raw markdown text preserved).
- ///
- /// *legacy field, carry stable* (sub_bullets cascade A scope
- /// decision). frozen ledger consistency — this field -162 legacy
- /// Markdown entry's prose body — carried until the atomic store is registered as the source.
- /// New entry — empty. Atomic dimension is the authoritative source.
- /// [`crate::atomic::AtomicChangelogEntry`] (`changes_bullets` /
- /// `verification_bullets` / `impact_refs` / `carry_forward_bullets`).
- /// MD-DELETION-RATIFY carry on parser extraction skip path
- /// entry — for those, this field defaults to empty.
- pub sub_bullets: Vec<String>,
- /// frozen_at_transaction_time -- in the Phase 0 prototype this captures register-order
- /// i64 monotonic stamp. Full Phase 0 implementation scope.
- /// Transaction-time service source.
- pub frozen_at_transaction_time: i64,
+    /// Canonical key — "Round N" format.
+    pub entry_id: String,
+    /// nullable ref — chained sub-entry parent.
+    pub parent_changelog_entry: Option<String>,
+    /// Ordered nested bullet content (raw markdown text preserved).
+    ///
+    /// *legacy field, carry stable* (sub_bullets cascade A scope
+    /// decision). frozen ledger consistency — this field -162 legacy
+    /// Markdown entry's prose body — carried until the atomic store is registered as the source.
+    /// New entry — empty. Atomic dimension is the authoritative source.
+    /// [`crate::atomic::AtomicChangelogEntry`] (`changes_bullets` /
+    /// `verification_bullets` / `impact_refs` / `carry_forward_bullets`).
+    /// MD-DELETION-RATIFY carry on parser extraction skip path
+    /// entry — for those, this field defaults to empty.
+    pub sub_bullets: Vec<String>,
+    /// frozen_at_transaction_time -- in the Phase 0 prototype this captures register-order
+    /// i64 monotonic stamp. Full Phase 0 implementation scope.
+    /// Transaction-time service source.
+    pub frozen_at_transaction_time: i64,
 }
 
 /// FrozenList — closed-form 4 field, version-locked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrozenList {
- pub list_id: String,
- /// ChangelogEntry.entry_id ref — this list 's frozen anchor.
- pub created_at_changelog_entry: String,
- /// Set semantics — Vec<String> in deterministic order (preserves insertion order).
- pub members: Vec<String>,
- pub lock_kind: LockKind,
+    pub list_id: String,
+    /// ChangelogEntry.entry_id ref — this list 's frozen anchor.
+    pub created_at_changelog_entry: String,
+    /// Set semantics — Vec<String> in deterministic order (preserves insertion order).
+    pub members: Vec<String>,
+    pub lock_kind: LockKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LockKind {
- ReleaseLock,
- DecisionFreeze,
+    ReleaseLock,
+    DecisionFreeze,
 }
 
 /// CrossRef relation — Section→Section|Entity, 2 field + ref_kind + created_at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrossRef {
- pub from_section: String,
- pub to_target: String,
- pub ref_kind: RefKind,
- pub created_at_changelog_entry: Option<String>,
+    pub from_section: String,
+    pub to_target: String,
+    pub ref_kind: RefKind,
+    pub created_at_changelog_entry: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RefKind {
- Decision,
- Impl,
- CrossDoc,
+    Decision,
+    Impl,
+    CrossDoc,
 }
 
 /// Parser/emitter typed-facts container — in-memory state for the 4 entity/relation kinds.
@@ -114,84 +114,84 @@ pub enum RefKind {
 /// (round-trip diff = ∅ validation cardinality identical maintain, derived dimension).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedDoc {
- pub sections: Vec<Section>,
- pub changelog_entries: Vec<ChangelogEntry>,
- pub frozen_lists: Vec<FrozenList>,
- pub cross_refs: Vec<CrossRef>,
- /// Parser warnings — line ref legacy / unmapped construct / FrozenList
- /// lock_kind such as absence.
- pub warnings: Vec<String>,
- /// section_id → raw body lines (everything from after the heading up to before the next heading,
- /// code-fence interiors preserved verbatim. Source for spec query API's SectionView.body
- /// source — derived dimension (excluded from round-trip diff comparisons).
- ///
- /// *legacy field, atomic-first fallback only*. atomic store
- /// for the section, this returns [`crate::atomic::synthesize_section_body`]'s result.
- /// SectionView.body authoritative source, this field legacy markdown
- /// carry stable scope. MD-DELETION-RATIFY (extend
- /// 248) carry on parser extraction-skip + this field defaults to empty only.
- pub bodies: BTreeMap<String, String>,
- /// section_id → heading line number (1-indexed). spec query
- /// Source for the API's SectionView.line_anchor — derived dimension.
- pub line_anchors: BTreeMap<String, usize>,
+    pub sections: Vec<Section>,
+    pub changelog_entries: Vec<ChangelogEntry>,
+    pub frozen_lists: Vec<FrozenList>,
+    pub cross_refs: Vec<CrossRef>,
+    /// Parser warnings — line ref legacy / unmapped construct / FrozenList
+    /// lock_kind such as absence.
+    pub warnings: Vec<String>,
+    /// section_id → raw body lines (everything from after the heading up to before the next heading,
+    /// code-fence interiors preserved verbatim. Source for spec query API's SectionView.body
+    /// source — derived dimension (excluded from round-trip diff comparisons).
+    ///
+    /// *legacy field, atomic-first fallback only*. atomic store
+    /// for the section, this returns [`crate::atomic::synthesize_section_body`]'s result.
+    /// SectionView.body authoritative source, this field legacy markdown
+    /// carry stable scope. MD-DELETION-RATIFY (extend
+    /// 248) carry on parser extraction-skip + this field defaults to empty only.
+    pub bodies: BTreeMap<String, String>,
+    /// section_id → heading line number (1-indexed). spec query
+    /// Source for the API's SectionView.line_anchor — derived dimension.
+    pub line_anchors: BTreeMap<String, usize>,
 }
 
 /// Render ParsedDoc as canonical text (deterministic ordering for hash check).
 /// sha256 canon pattern equivalent.
 pub fn parsed_doc_canonical(doc: &ParsedDoc) -> String {
- let mut out = String::new();
- out.push_str("=== sections ===\n");
- for s in &doc.sections {
- out.push_str(&format!(
- "section_id={} parent_doc={} parent_section={:?} title={} status={:?}\n",
- s.section_id, s.parent_doc, s.parent_section, s.title, s.decision_status
- ));
- }
- out.push_str("=== changelog_entries ===\n");
- for e in &doc.changelog_entries {
- out.push_str(&format!(
- "entry_id={} parent={:?} txn_time={} sub_bullets[{}]\n",
- e.entry_id,
- e.parent_changelog_entry,
- e.frozen_at_transaction_time,
- e.sub_bullets.len()
- ));
- for b in &e.sub_bullets {
- out.push_str(&format!(" | {}\n", b));
- }
- }
- out.push_str("=== frozen_lists ===\n");
- for f in &doc.frozen_lists {
- out.push_str(&format!(
- "list_id={} created_at={} lock_kind={:?} members={:?}\n",
- f.list_id, f.created_at_changelog_entry, f.lock_kind, f.members
- ));
- }
- out.push_str("=== cross_refs ===\n");
- for c in &doc.cross_refs {
- out.push_str(&format!(
- "from={} to={} kind={:?} created_at={:?}\n",
- c.from_section, c.to_target, c.ref_kind, c.created_at_changelog_entry
- ));
- }
- out.push_str("=== warnings ===\n");
- for w in &doc.warnings {
- out.push_str(&format!("WARN: {}\n", w));
- }
- out
+    let mut out = String::new();
+    out.push_str("=== sections ===\n");
+    for s in &doc.sections {
+        out.push_str(&format!(
+            "section_id={} parent_doc={} parent_section={:?} title={} status={:?}\n",
+            s.section_id, s.parent_doc, s.parent_section, s.title, s.decision_status
+        ));
+    }
+    out.push_str("=== changelog_entries ===\n");
+    for e in &doc.changelog_entries {
+        out.push_str(&format!(
+            "entry_id={} parent={:?} txn_time={} sub_bullets[{}]\n",
+            e.entry_id,
+            e.parent_changelog_entry,
+            e.frozen_at_transaction_time,
+            e.sub_bullets.len()
+        ));
+        for b in &e.sub_bullets {
+            out.push_str(&format!(" | {}\n", b));
+        }
+    }
+    out.push_str("=== frozen_lists ===\n");
+    for f in &doc.frozen_lists {
+        out.push_str(&format!(
+            "list_id={} created_at={} lock_kind={:?} members={:?}\n",
+            f.list_id, f.created_at_changelog_entry, f.lock_kind, f.members
+        ));
+    }
+    out.push_str("=== cross_refs ===\n");
+    for c in &doc.cross_refs {
+        out.push_str(&format!(
+            "from={} to={} kind={:?} created_at={:?}\n",
+            c.from_section, c.to_target, c.ref_kind, c.created_at_changelog_entry
+        ));
+    }
+    out.push_str("=== warnings ===\n");
+    for w in &doc.warnings {
+        out.push_str(&format!("WARN: {}\n", w));
+    }
+    out
 }
 
 /// Sha256 hex digest of arbitrary string (deterministic content hash).
 pub fn sha256_hex(s: &str) -> String {
- use sha2::Digest;
- let mut hasher = sha2::Sha256::new();
- hasher.update(s.as_bytes());
- let digest = hasher.finalize();
- let mut out = String::with_capacity(64);
- for b in digest.iter() {
- out.push_str(&format!("{:02x}", b));
- }
- out
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(s.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(64);
+    for b in digest.iter() {
+        out.push_str(&format!("{:02x}", b));
+    }
+    out
 }
 
 /// Build a `BTreeMap<section_id, &Section>` lookup index over a `ParsedDoc`.
@@ -203,40 +203,40 @@ pub fn sha256_hex(s: &str) -> String {
 /// at the call site and avoid the naming collision with the query
 /// crate's lookup function.
 pub fn sections_by_id_map(doc: &ParsedDoc) -> BTreeMap<&str, &Section> {
- doc.sections
- .iter()
- .map(|s| (s.section_id.as_str(), s))
- .collect()
+    doc.sections
+        .iter()
+        .map(|s| (s.section_id.as_str(), s))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
- use super::*;
+    use super::*;
 
- #[test]
- fn parsed_doc_canonical_deterministic() {
- let doc = ParsedDoc {
- sections: vec![Section {
-  section_id: "39".to_string(),
-  parent_doc: "DESIGN.md".to_string(),
-  parent_section: None,
-  title: "Graph schema codegen".to_string(),
-  decision_status: DecisionStatus::Active,
-  atomic_section_id: Some("39".to_string()),
- }],
- ..Default::default()
- };
- let a = parsed_doc_canonical(&doc);
- let b = parsed_doc_canonical(&doc);
- assert_eq!(a, b);
- assert!(a.contains("section_id=39"));
- }
+    #[test]
+    fn parsed_doc_canonical_deterministic() {
+        let doc = ParsedDoc {
+            sections: vec![Section {
+                section_id: "39".to_string(),
+                parent_doc: "DESIGN.md".to_string(),
+                parent_section: None,
+                title: "Graph schema codegen".to_string(),
+                decision_status: DecisionStatus::Active,
+                atomic_section_id: Some("39".to_string()),
+            }],
+            ..Default::default()
+        };
+        let a = parsed_doc_canonical(&doc);
+        let b = parsed_doc_canonical(&doc);
+        assert_eq!(a, b);
+        assert!(a.contains("section_id=39"));
+    }
 
- #[test]
- fn sha256_hex_stable_64_chars() {
- let h = sha256_hex("test");
- assert_eq!(h.len(), 64);
- assert_eq!(h, sha256_hex("test"));
- assert_ne!(h, sha256_hex("other"));
- }
+    #[test]
+    fn sha256_hex_stable_64_chars() {
+        let h = sha256_hex("test");
+        assert_eq!(h.len(), 64);
+        assert_eq!(h, sha256_hex("test"));
+        assert_ne!(h, sha256_hex("other"));
+    }
 }

@@ -112,8 +112,8 @@ where
     F: FnOnce(&mut AtomicStore, &Path) -> Result<AtomicMutateReceipt, AtomicMutateError>,
 {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar);
-    let mut store = AtomicStore::load(&sidecar_path)
-        .map_err(|e| OpError::Other(format!("{}", e)))?;
+    let mut store =
+        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let receipt = primitive(&mut store, &sidecar_path)?;
     if regenerate {
         crate::atomic_cli::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
@@ -186,8 +186,8 @@ pub fn redact_term(
             .unwrap_or_else(|| "redaction".to_string()),
     };
     let sidecar_path = resolve_sidecar(workspace_root, sidecar);
-    let mut store = AtomicStore::load(&sidecar_path)
-        .map_err(|e| OpError::Other(format!("{}", e)))?;
+    let mut store =
+        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let report = mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req)?;
     let did_regenerate = if regenerate && !report.dry_run {
         crate::atomic_cli::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
@@ -245,8 +245,7 @@ pub fn emit_publishable_override_ledger_draft(
     kind: Option<&str>,
 ) -> Result<Option<String>, OpError> {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar);
-    let store = AtomicStore::load(&sidecar_path)
-        .map_err(|e| OpError::Other(format!("{}", e)))?;
+    let store = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let draft = mnemosyne_atomic::emit_publishable_override_ledger_draft(
         &store,
         entry_id,

@@ -23,25 +23,25 @@ use tokio::net::TcpListener;
 /// real OTLP collector.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn otlp_tracing_subscriber_initializes_and_accepts_spans() {
- // Reserve a port the OS will not reuse immediately — the exporter targets
- // it but we never accept handshakes. The batch processor swallows
- // unreachable-endpoint errors silently; the helper must still return Ok.
- let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
- let addr = listener.local_addr().expect("local_addr");
- drop(listener);
- let endpoint = format!("http://127.0.0.1:{}", addr.port());
+    // Reserve a port the OS will not reuse immediately — the exporter targets
+    // it but we never accept handshakes. The batch processor swallows
+    // unreachable-endpoint errors silently; the helper must still return Ok.
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("local_addr");
+    drop(listener);
+    let endpoint = format!("http://127.0.0.1:{}", addr.port());
 
- let _guard = init_otlp_tracing_subscriber(&endpoint)
- .expect("OTLP tracing subscriber must initialize");
+    let _guard =
+        init_otlp_tracing_subscriber(&endpoint).expect("OTLP tracing subscriber must initialize");
 
- // Emit a span carrying both the legacy `trace_id` field and the OTLP-
- // compatible `trace.id` attribute key (Round 99 + Round 102 propagation
- // shape) — the layer should accept both without panic.
- let span = tracing::info_span!(
- "otlp.smoke",
- trace_id = "deadbeefdeadbeefdeadbeefdeadbeef",
- "trace.id" = "deadbeefdeadbeefdeadbeefdeadbeef"
- );
- let _enter = span.enter();
- tracing::info!("otlp smoke event");
+    // Emit a span carrying both the legacy `trace_id` field and the OTLP-
+    // compatible `trace.id` attribute key (Round 99 + Round 102 propagation
+    // shape) — the layer should accept both without panic.
+    let span = tracing::info_span!(
+        "otlp.smoke",
+        trace_id = "deadbeefdeadbeefdeadbeefdeadbeef",
+        "trace.id" = "deadbeefdeadbeefdeadbeefdeadbeef"
+    );
+    let _enter = span.enter();
+    tracing::info!("otlp smoke event");
 }

@@ -82,8 +82,8 @@ pub fn load_workspace(workspace_root: &Path) -> Result<(Workspace, LoadedConfig,
     let docs: Vec<String> = loaded.doc_paths().map(|s| s.to_string()).collect();
     for path in &docs {
         let abs = workspace_root.join(path);
-        let content = std::fs::read_to_string(&abs)
-            .with_context(|| format!("read {}", abs.display()))?;
+        let content =
+            std::fs::read_to_string(&abs).with_context(|| format!("read {}", abs.display()))?;
         let parsed = parse_markdown_with_schema(&content, path, &schema);
         ws.insert(path.clone(), parsed);
     }
@@ -142,10 +142,7 @@ pub fn query_section(
 
 /// Literal/regex search across atomic Section + ChangelogEntry +
 /// Inventory text fields (R292).
-pub fn query_term(
-    workspace_root: &Path,
-    input: &QueryTermInput,
-) -> Result<Vec<TermHit>, OpError> {
+pub fn query_term(workspace_root: &Path, input: &QueryTermInput) -> Result<Vec<TermHit>, OpError> {
     let atomic_store = load_atomic_store(workspace_root, None);
     let scope = match input.scope.as_deref().unwrap_or("all") {
         "all" => TermScope::All,

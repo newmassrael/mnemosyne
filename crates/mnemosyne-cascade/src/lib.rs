@@ -33,14 +33,16 @@ pub mod snapshot;
 pub mod spec;
 
 pub use fine_grained::{
- build_branch_index, changelog_by_round_number, frozen_list_membership_aggregated,
- outbound_crossrefs_by_section, section_by_entity_id, section_decision_status_aggregated,
- BranchIndex, ChangelogRecord, CrossRefRecord, FineCascadeDb, FrozenListRecord, SectionRecord,
+    build_branch_index, changelog_by_round_number, frozen_list_membership_aggregated,
+    outbound_crossrefs_by_section, section_by_entity_id, section_decision_status_aggregated,
+    BranchIndex, ChangelogRecord, CrossRefRecord, FineCascadeDb, FrozenListRecord, SectionRecord,
 };
 pub use metadata::{cascade_dependency_edges, cascade_orderings};
 pub use runtime::{
- frozen_list_membership, section_decision_status, CascadeBranch, CascadeDb,
- ChangelogEntryInput, FrozenListInput, MnemosyneCascadeDb, SectionInput, ValidationResult,
+    frozen_list_membership, section_decision_status, CascadeBranch, CascadeDb, ChangelogEntryInput,
+    FrozenListInput, MnemosyneCascadeDb, SectionInput, ValidationResult,
 };
 pub use snapshot::{BranchEntityPartition, BranchSnapshotData, SnapshotError};
-pub use spec::{design_doc_cascade_fixture, CascadeQuerySpec, CascadeWireSpec, ReadDep, TriggerSpec};
+pub use spec::{
+    design_doc_cascade_fixture, CascadeQuerySpec, CascadeWireSpec, ReadDep, TriggerSpec,
+};

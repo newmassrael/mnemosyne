@@ -30,10 +30,13 @@ pub mod persist;
 pub mod schema;
 
 pub use canonical::{canonical_identifier_set, jaccard_inclusion, sha256_hex};
-pub use emit::{emit_all_languages, emit_cpp, emit_kotlin, emit_protobuf, emit_python, emit_rust, EmittedMultiLang};
+pub use emit::{
+    emit_all_languages, emit_cpp, emit_kotlin, emit_protobuf, emit_python, emit_rust,
+    EmittedMultiLang,
+};
 pub use facts::{ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, SectionFact};
 pub use fixture::design_doc_schema_fixture;
 pub use persist::{PersistError, TypedFactStore};
 pub use schema::{
- CompositeKey, EntityDef, FieldDef, FieldType, GraphSpec, Persistence, RelationDef,
+    CompositeKey, EntityDef, FieldDef, FieldType, GraphSpec, Persistence, RelationDef,
 };

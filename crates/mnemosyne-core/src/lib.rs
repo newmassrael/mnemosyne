@@ -33,11 +33,7 @@ use thiserror::Error;
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 
-    fn resolve_symbol_at(
-        &self,
-        file: &Path,
-        line: u32,
-    ) -> Result<Option<String>, ResolverError>;
+    fn resolve_symbol_at(&self, file: &Path, line: u32) -> Result<Option<String>, ResolverError>;
 }
 
 /// Validator plugin contract — typed-finding form.
@@ -162,9 +158,7 @@ pub struct ImplementationRef {
 /// downstream crate) so every plugin author works against one type, and
 /// the snapshot returned from `AtomicStoreView::snapshot` round-trips
 /// without an adapter.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DecisionStatus {
     Active,
@@ -326,11 +320,7 @@ impl SymbolResolver for McpResolver {
         }
     }
 
-    fn resolve_symbol_at(
-        &self,
-        _file: &Path,
-        _line: u32,
-    ) -> Result<Option<String>, ResolverError> {
+    fn resolve_symbol_at(&self, _file: &Path, _line: u32) -> Result<Option<String>, ResolverError> {
         Err(ResolverError::NotImplemented)
     }
 }
@@ -355,11 +345,7 @@ impl SymbolResolver for CliResolver {
         }
     }
 
-    fn resolve_symbol_at(
-        &self,
-        _file: &Path,
-        _line: u32,
-    ) -> Result<Option<String>, ResolverError> {
+    fn resolve_symbol_at(&self, _file: &Path, _line: u32) -> Result<Option<String>, ResolverError> {
         Err(ResolverError::NotImplemented)
     }
 }
@@ -393,9 +379,7 @@ mod tests {
         let mut reg = PluginRegistry::new();
         reg.register_symbol_resolver("rust", Box::new(AlwaysNoneResolver));
         let r = reg.symbol_resolver("rust").expect("registered");
-        let out = r
-            .resolve_symbol_at(Path::new("/dev/null"), 1)
-            .expect("ok");
+        let out = r.resolve_symbol_at(Path::new("/dev/null"), 1).expect("ok");
         assert!(out.is_none());
         assert!(reg.symbol_resolver("unregistered").is_none());
     }
@@ -405,12 +389,16 @@ mod tests {
         let toml_in_process = r#"transport = "in-process"
 backend = "tree-sitter-rust""#;
         let parsed: Transport = toml::from_str(toml_in_process).unwrap();
-        assert!(matches!(parsed, Transport::InProcess { ref backend } if backend == "tree-sitter-rust"));
+        assert!(
+            matches!(parsed, Transport::InProcess { ref backend } if backend == "tree-sitter-rust")
+        );
 
         let toml_mcp = r#"transport = "mcp"
 command = ["python", "-m", "resolver"]"#;
         let parsed: Transport = toml::from_str(toml_mcp).unwrap();
-        assert!(matches!(parsed, Transport::Mcp { ref command } if command == &vec!["python".to_string(), "-m".to_string(), "resolver".to_string()]));
+        assert!(
+            matches!(parsed, Transport::Mcp { ref command } if command == &vec!["python".to_string(), "-m".to_string(), "resolver".to_string()])
+        );
 
         let toml_cli = r#"transport = "cli"
 command = ["gopls"]

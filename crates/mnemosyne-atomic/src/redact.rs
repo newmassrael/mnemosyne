@@ -10,10 +10,8 @@
 //! taken together with R294 schema split + R295 setters + R296 ledger gate.
 
 use crate::{
-    set_changelog_publishable_carry_forward_bullets,
-    set_changelog_publishable_changes_bullets,
-    set_changelog_publishable_decision_summary,
-    set_changelog_publishable_impact_refs,
+    set_changelog_publishable_carry_forward_bullets, set_changelog_publishable_changes_bullets,
+    set_changelog_publishable_decision_summary, set_changelog_publishable_impact_refs,
     set_changelog_publishable_verification_bullets, AtomicMutateError, AtomicStore,
 };
 use std::path::Path;
@@ -108,11 +106,7 @@ pub struct RedactionReport {
 
 impl RedactionReport {
     pub fn touched_entries(&self) -> Vec<&str> {
-        let mut out: Vec<&str> = self
-            .hits
-            .iter()
-            .map(|h| h.entry_id.as_str())
-            .collect();
+        let mut out: Vec<&str> = self.hits.iter().map(|h| h.entry_id.as_str()).collect();
         out.sort();
         out.dedup();
         out
@@ -228,33 +222,39 @@ pub fn redact_term(
         // the same behavior as a sequence of manual setter calls.
         for (entry_id, value) in planned_summary {
             set_changelog_publishable_decision_summary(store, sidecar_path, &entry_id, &value)
-                .map_err(|e| RedactError::Mutate { entry_id, source: e })?;
+                .map_err(|e| RedactError::Mutate {
+                    entry_id,
+                    source: e,
+                })?;
         }
         for (entry_id, vec) in planned_changes {
             set_changelog_publishable_changes_bullets(store, sidecar_path, &entry_id, &vec)
-                .map_err(|e| RedactError::Mutate { entry_id, source: e })?;
+                .map_err(|e| RedactError::Mutate {
+                    entry_id,
+                    source: e,
+                })?;
         }
         for (entry_id, vec) in planned_verification {
-            set_changelog_publishable_verification_bullets(
-                store,
-                sidecar_path,
-                &entry_id,
-                &vec,
-            )
-            .map_err(|e| RedactError::Mutate { entry_id, source: e })?;
+            set_changelog_publishable_verification_bullets(store, sidecar_path, &entry_id, &vec)
+                .map_err(|e| RedactError::Mutate {
+                    entry_id,
+                    source: e,
+                })?;
         }
         for (entry_id, vec) in planned_impact_refs {
-            set_changelog_publishable_impact_refs(store, sidecar_path, &entry_id, &vec)
-                .map_err(|e| RedactError::Mutate { entry_id, source: e })?;
+            set_changelog_publishable_impact_refs(store, sidecar_path, &entry_id, &vec).map_err(
+                |e| RedactError::Mutate {
+                    entry_id,
+                    source: e,
+                },
+            )?;
         }
         for (entry_id, vec) in planned_carry {
-            set_changelog_publishable_carry_forward_bullets(
-                store,
-                sidecar_path,
-                &entry_id,
-                &vec,
-            )
-            .map_err(|e| RedactError::Mutate { entry_id, source: e })?;
+            set_changelog_publishable_carry_forward_bullets(store, sidecar_path, &entry_id, &vec)
+                .map_err(|e| RedactError::Mutate {
+                entry_id,
+                source: e,
+            })?;
         }
     }
 
@@ -312,7 +312,10 @@ pub fn redact_term(
 // ============================================================================
 
 enum Matcher {
-    Literal { needle: String, case_insensitive: bool },
+    Literal {
+        needle: String,
+        case_insensitive: bool,
+    },
     Regex(regex::Regex),
 }
 
@@ -406,8 +409,7 @@ fn apply_planned_to_entry(
         match hit.field {
             "publishable_decision_summary" => {
                 if let Some(s) = entry.publishable_decision_summary.as_deref() {
-                    entry.publishable_decision_summary =
-                        Some(matcher.replace_all(s, replacement));
+                    entry.publishable_decision_summary = Some(matcher.replace_all(s, replacement));
                 }
             }
             "publishable_changes_bullets" => {
@@ -519,7 +521,7 @@ mod tests {
 
         assert!(report.dry_run);
         assert_eq!(report.hits.len(), 4); // summary + 1 of 2 changes + verify + carry
-        // store untouched
+                                          // store untouched
         let entry = store.changelog_entries.get("Round 999").unwrap();
         assert_eq!(
             entry.publishable_decision_summary.as_deref(),
@@ -552,7 +554,10 @@ mod tests {
             entry.publishable_decision_summary.as_deref(),
             Some("[REDACTED] leaked summary")
         );
-        assert_eq!(entry.publishable_changes_bullets[0], "[REDACTED] in changes");
+        assert_eq!(
+            entry.publishable_changes_bullets[0],
+            "[REDACTED] in changes"
+        );
         assert_eq!(entry.publishable_changes_bullets[1], "clean change");
         // audit untouched
         assert_eq!(

@@ -17,7 +17,10 @@
 #      - Publishable / audit divergence ↔ override ledger match (R296)
 #      - Commit ↔ ledger drift (cited vs entries scan)
 #
-#   2. `cargo clippy --workspace --all-targets -- -D warnings`
+#   2. `cargo fmt --all --check`
+#      - rustfmt 4-space repo-wide baseline (rustfmt.toml, edition 2021).
+#
+#   3. `cargo clippy --workspace --all-targets -- -D warnings`
 #      - R308 D9 closure: every warning lifts to deny. Workspace allow
 #        list (root Cargo.toml) carries stylistic exemptions
 #        (`doc_lazy_continuation`, `inconsistent_digit_grouping`);
@@ -45,6 +48,12 @@ fi
 echo "pre-push: ${cli[*]} validate-workspace ..." >&2
 if ! "${cli[@]}" validate-workspace; then
     echo "pre-push: validate-workspace failed — fix violations before push" >&2
+    exit 1
+fi
+
+echo "pre-push: cargo fmt --all --check ..." >&2
+if ! cargo fmt --all --check; then
+    echo "pre-push: unformatted code — run cargo fmt --all before push" >&2
     exit 1
 fi
 

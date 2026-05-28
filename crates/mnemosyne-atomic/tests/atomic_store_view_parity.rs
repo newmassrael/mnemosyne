@@ -8,8 +8,10 @@
 //! round trip (atomic store fields → snapshot → indices the validator
 //! consumes).
 
+use mnemosyne_atomic::{
+    AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry,
+};
 use mnemosyne_core::{AtomicStoreView, DecisionStatus, InventoryStatus};
-use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry};
 
 fn build_store() -> AtomicStore {
     let mut store = AtomicStore::new();
@@ -81,7 +83,9 @@ fn snapshot_section_ids_include_implied_parents() {
     let store = build_store();
     let snapshot = store.snapshot();
     assert!(snapshot.section_ids_with_implied_parents.contains("sec1"));
-    assert!(snapshot.section_ids_with_implied_parents.contains("sec2/sub"));
+    assert!(snapshot
+        .section_ids_with_implied_parents
+        .contains("sec2/sub"));
     // Implied parent prefix derived from `/` split — atomic_section_id_set
     // parity (R287 carry; mirrored by AtomicStoreView::snapshot).
     assert!(
@@ -98,7 +102,10 @@ fn snapshot_section_view_carries_implementations_and_status() {
     let sec1 = snapshot.sections.get("sec1").expect("sec1 present");
     assert_eq!(sec1.implementations.len(), 1);
     assert_eq!(sec1.implementations[0].file, "src/foo.rs");
-    assert_eq!(sec1.implementations[0].symbol.as_deref(), Some("foo_symbol"));
+    assert_eq!(
+        sec1.implementations[0].symbol.as_deref(),
+        Some("foo_symbol")
+    );
     // No explicit decision_status set on sec1 → None (consumer applies
     // default-Active fallback at use site).
     assert_eq!(sec1.decision_status, None);

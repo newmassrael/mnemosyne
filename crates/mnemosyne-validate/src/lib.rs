@@ -10,14 +10,14 @@
 //! - [`commit_ledger`] commit↔ledger drift report (last-N-commits scan
 //!   vs atomic ledger entry IDs).
 
-pub mod validator;
-pub mod t2;
 pub mod code_refs;
 pub mod commit_ledger;
+pub mod t2;
+pub mod validator;
 
-pub use validator::{
- atomic_section_supersede_state_reject, changelog_entry_append_only, cross_ref_orphan_reject,
- frozen_list_membership_delta, section_decision_status_transition, ValidationError,
-};
-pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
+pub use t2::{frozen_ledger_atomic, frozen_ledger_jaccard, T2ValidationError};
+pub use validator::{
+    atomic_section_supersede_state_reject, changelog_entry_append_only, cross_ref_orphan_reject,
+    frozen_list_membership_delta, section_decision_status_transition, ValidationError,
+};

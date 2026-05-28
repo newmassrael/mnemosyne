@@ -39,8 +39,7 @@ pub fn generate_docs(
     };
     let (content, store) = render_atomic_store_to_md(workspace_root, &sidecar_path)
         .map_err(|e| OpError::Other(format!("{:#}", e)))?;
-    write_generated_md(&output_path, &content)
-        .map_err(|e| OpError::Other(format!("{:#}", e)))?;
+    write_generated_md(&output_path, &content).map_err(|e| OpError::Other(format!("{:#}", e)))?;
     Ok(GenerateDocsReport {
         sidecar_path: sidecar_path.display().to_string(),
         output_path: output_path.display().to_string(),

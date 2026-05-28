@@ -22,7 +22,7 @@
 //! `ProposalKind` enum (entity_create / entity_update / changelog_append /
 //! cross_ref_create / frozen_list_membership_change).
 //! - [`gate`]: 3-tier gate (T1 cross-ref orphan reject + append-only +
-//! membership-delta + supersede; T2 structural; T3 convention) — 
+//! membership-delta + supersede; T2 structural; T3 convention) —
 //! Tier mapping carry.
 //! - [`audit`]: `AuditAppender` — append-only audit CF in transaction-record
 //! write.
@@ -44,13 +44,13 @@ pub use audit::{AuditAppender, AuditRecord};
 pub use error::ServerError;
 pub use gate::{GateOutcome, GateTier, Tier1Gate, Tier2Gate, Tier3Gate};
 pub use grpc::{
- build_health_service, build_reflection_service, with_tracing_span, MnemosyneGrpcService,
- MnemosyneServer as GrpcServer, MNEMOSYNE_FILE_DESCRIPTOR_SET,
+    build_health_service, build_reflection_service, with_tracing_span, MnemosyneGrpcService,
+    MnemosyneServer as GrpcServer, MNEMOSYNE_FILE_DESCRIPTOR_SET,
 };
-#[cfg(feature = "tls")]
-pub use grpc::{install_default_crypto_provider, server_tls_config, tls_identity_from_pem};
 #[cfg(feature = "otlp")]
 pub use grpc::{init_otlp_tracing_subscriber, OtlpTracerGuard};
+#[cfg(feature = "tls")]
+pub use grpc::{install_default_crypto_provider, server_tls_config, tls_identity_from_pem};
 pub use handler::{MnemosyneServer, ProposalHandler};
 pub use proposal::{Proposal, ProposalKind, ProposalResult};
 pub use service::MnemosyneService;
