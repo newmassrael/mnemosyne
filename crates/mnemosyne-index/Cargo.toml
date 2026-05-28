@@ -1,0 +1,25 @@
+[package]
+name = "mnemosyne-index"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — materialize the RocksDB fact index from the atomic log (Convergence B). Composes the design_doc adapter (mnemosyne-atomic) with the typed-fact persistence (mnemosyne-facts/store); the index is a derived, rebuildable view of the log."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
+mnemosyne-facts = { path = "../mnemosyne-facts" }
+mnemosyne-store = { path = "../mnemosyne-store" }
+
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

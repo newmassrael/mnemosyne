@@ -4174,6 +4174,36 @@
         "B3 next — persist projected facts into the RocksDB index via TypedFactStore on the cascade/server side plus a rebuild-from-log path; the index-rebuild driver belongs on the index-owning subgraph (server/cascade), keeping cli/ops RocksDB-free.",
         "mnemosyne-facts codegen prototype (schema/emit/fixture/canonical) still lists an appended_at field for ChangelogEntry — a decoupled Phase -1A demo, flagged for a separate dead-code review rather than maintained in lockstep."
       ]
+    },
+    "Round 331 — Convergence B3: materialize the RocksDB index from the atomic log": {
+      "decision_summary": "Convergence B3 — add the mnemosyne-index application-service crate: rebuild_index reads the atomic log, projects it via the B1/B2 projections, and persists the facts into the RocksDB composite-key store through TypedFactStore. First production wiring of the previously-orphaned bitemporal substrate; the index is a derived, idempotent, rebuildable view.",
+      "changes_bullets": [
+        "New crate mnemosyne-index (deps: atomic + facts + store + core) with rebuild_index + RebuildStats; composes the design_doc adapter with the typed-fact persistence so the projection engine (cascade) need not depend on the adapter — dependency direction stays inward (DIP).",
+        "rebuild_index projects sections / changelog entries / impact_scope cross-refs and puts each via TypedFactStore; idempotent because composite keys are deterministic (re-run converges to the same rows).",
+        "Registered the crate in the workspace (17 to 18 production crates)."
+      ],
+      "verification_bullets": [
+        "3 integration tests pass: full project-to-persist-to-read-back round-trip (section / changelog / cross-ref fields verified against the live store), idempotent double-rebuild, empty-log to empty-index.",
+        "cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean; full workspace test suite green."
+      ],
+      "carry_forward_bullets": [
+        "B read-side remaining: route point/branch queries through the index instead of a full-JSON scan (B3 covered the write/materialize side) + a production rebuild driver on the index-owning subgraph (server admin op or a RocksDB-side CLI), keeping cli/ops RocksDB-free.",
+        "C next: cascade incremental projection (Salsa) replacing full rebuild on log change; SectionRecord adopts the typed DecisionStatus enum, retiring the string bridge."
+      ],
+      "publishable_decision_summary": "Convergence B3 — add the mnemosyne-index application-service crate: rebuild_index reads the atomic log, projects it via the B1/B2 projections, and persists the facts into the RocksDB composite-key store through TypedFactStore. First production wiring of the previously-orphaned bitemporal substrate; the index is a derived, idempotent, rebuildable view.",
+      "publishable_changes_bullets": [
+        "New crate mnemosyne-index (deps: atomic + facts + store + core) with rebuild_index + RebuildStats; composes the design_doc adapter with the typed-fact persistence so the projection engine (cascade) need not depend on the adapter — dependency direction stays inward (DIP).",
+        "rebuild_index projects sections / changelog entries / impact_scope cross-refs and puts each via TypedFactStore; idempotent because composite keys are deterministic (re-run converges to the same rows).",
+        "Registered the crate in the workspace (17 to 18 production crates)."
+      ],
+      "publishable_verification_bullets": [
+        "3 integration tests pass: full project-to-persist-to-read-back round-trip (section / changelog / cross-ref fields verified against the live store), idempotent double-rebuild, empty-log to empty-index.",
+        "cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean; full workspace test suite green."
+      ],
+      "publishable_carry_forward_bullets": [
+        "B read-side remaining: route point/branch queries through the index instead of a full-JSON scan (B3 covered the write/materialize side) + a production rebuild driver on the index-owning subgraph (server admin op or a RocksDB-side CLI), keeping cli/ops RocksDB-free.",
+        "C next: cascade incremental projection (Salsa) replacing full rebuild on log change; SectionRecord adopts the typed DecisionStatus enum, retiring the string bridge."
+      ]
     }
   },
   "inventory_entries": {},

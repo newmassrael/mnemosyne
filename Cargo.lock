@@ -1156,6 +1156,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-index"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-atomic",
+ "mnemosyne-core",
+ "mnemosyne-facts",
+ "mnemosyne-store",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mnemosyne-mcp"
 version = "0.1.0"
 dependencies = [

@@ -2605,3 +2605,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 331 — Convergence B3: materialize the RocksDB index from the atomic log — Convergence B3 — add the mnemosyne-index application-service crate: rebuild_index reads the atomic log, projects it via the B1/B2 projections, and persists the facts into the RocksDB composite-key store through TypedFactStore. First production wiring of the previously-orphaned bitemporal substrate; the index is a derived, idempotent, rebuildable view.
+
+**Changes**:
+- New crate mnemosyne-index (deps: atomic + facts + store + core) with rebuild_index + RebuildStats; composes the design_doc adapter with the typed-fact persistence so the projection engine (cascade) need not depend on the adapter — dependency direction stays inward (DIP).
+- rebuild_index projects sections / changelog entries / impact_scope cross-refs and puts each via TypedFactStore; idempotent because composite keys are deterministic (re-run converges to the same rows).
+- Registered the crate in the workspace (17 to 18 production crates).
+
+
+
+**Verification**:
+- 3 integration tests pass: full project-to-persist-to-read-back round-trip (section / changelog / cross-ref fields verified against the live store), idempotent double-rebuild, empty-log to empty-index.
+- cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean; full workspace test suite green.
+
+
+
+
+**Carry forward**:
+- B read-side remaining: route point/branch queries through the index instead of a full-JSON scan (B3 covered the write/materialize side) + a production rebuild driver on the index-owning subgraph (server admin op or a RocksDB-side CLI), keeping cli/ops RocksDB-free.
+- C next: cascade incremental projection (Salsa) replacing full rebuild on log change; SectionRecord adopts the typed DecisionStatus enum, retiring the string bridge.
+
+
+
