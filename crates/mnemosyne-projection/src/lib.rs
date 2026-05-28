@@ -36,8 +36,8 @@
 
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_cascade::{
-    build_branch_index, frozen_list_membership_aggregated, section_decision_status_aggregated,
-    BranchIndex, FineCascadeDb, ValidationResult,
+    build_branch_index, frozen_list_membership_aggregated, reconcile_branch_index,
+    section_decision_status_aggregated, BranchIndex, FineCascadeDb, ValidationResult,
 };
 
 /// Combined Layer-0 validation over a projected branch: the two cascade
@@ -100,12 +100,24 @@ impl ProjectionService {
 
     /// Re-sync the projection from the current log, reusing the warm engine.
     ///
-    /// Step 1 rebuilds the `BranchIndex` wholesale (fresh Salsa inputs), so the
-    /// memo cache does not carry across a reload. Replacing this with an
-    /// incremental delta-apply on each mutation — so only the changed entities'
-    /// sub-queries re-execute across a re-sync — is convergence D.
+    /// Applies the minimal Salsa-input delta against the live `BranchIndex`
+    /// (convergence D): unchanged entities keep their record handles, so their
+    /// memoized sub-queries carry across the re-sync and only the entities that
+    /// actually changed re-execute on the next [`validate`](Self::validate). The
+    /// `BranchIndex` handle itself is preserved, so the aggregators stay memoized
+    /// when no sub-query result changed.
     pub fn reload(&mut self, atomic: &AtomicStore) {
-        self.index = project_branch(&self.db, atomic, self.branch_id);
+        let sections = atomic.project_section_facts(self.branch_id);
+        let cross_refs = atomic.project_cross_ref_facts(self.branch_id);
+        let changelog = atomic.project_changelog_entry_facts(self.branch_id);
+        reconcile_branch_index(
+            &mut self.db,
+            self.index,
+            &sections,
+            &cross_refs,
+            &[],
+            &changelog,
+        );
     }
 }
 
@@ -225,5 +237,33 @@ mod tests {
             svc.validate().section_decision,
             ValidationResult::violations(1)
         );
+    }
+
+    #[test]
+    fn reload_handles_section_add_and_remove() {
+        // Exercises the membership-change branch of the incremental reconcile
+        // (add allocates a record + resets the list; remove drops it).
+        let mut store = store_with(vec![(
+            "alpha",
+            section("Alpha", Some(DecisionStatus::Active), &[]),
+        )]);
+        let mut svc = ProjectionService::build(&store, MAIN_BRANCH_ID);
+        assert!(svc.validate().ok());
+
+        // Add a Superseded section with no supersession ref → one violation.
+        store.sections.insert(
+            "beta".to_string(),
+            section("Beta", Some(DecisionStatus::Superseded), &[]),
+        );
+        svc.reload(&store);
+        assert_eq!(
+            svc.validate().section_decision,
+            ValidationResult::violations(1)
+        );
+
+        // Remove the offending section → clean again.
+        store.sections.remove("beta");
+        svc.reload(&store);
+        assert!(svc.validate().ok());
     }
 }

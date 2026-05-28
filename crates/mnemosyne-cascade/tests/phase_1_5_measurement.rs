@@ -15,8 +15,8 @@
 //! `cargo test`. Full release-scale measurement remains a separate bench concern.
 
 use mnemosyne_cascade::{
-    build_branch_index, frozen_list_membership_aggregated, section_decision_status_aggregated,
-    BranchIndex, FineCascadeDb, ValidationResult,
+    build_branch_index, frozen_list_membership_aggregated, reconcile_branch_index,
+    section_decision_status_aggregated, BranchIndex, FineCascadeDb, ValidationResult,
 };
 use mnemosyne_facts::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
@@ -255,5 +255,48 @@ fn decision_status_flip_invalidation_is_independent_of_branch_size() {
     assert_eq!(
         small, 3,
         "expected the bounded 3-body re-execution; got {small}"
+    );
+}
+
+/// Convergence D — re-syncing through `reconcile_branch_index` (the read-side
+/// service's incremental reload) applies the *same* minimal delta a direct field
+/// setter would: a new fact snapshot that flips one section to Superseded
+/// re-executes the identical bounded body set (target sub-query + its outbound
+/// cache + the aggregator) at 5 and 50 sections. A wholesale rebuild would
+/// instead re-execute every section's sub-query, growing with branch size — so
+/// the size-independence here is the proof that reload reuses unchanged handles.
+#[test]
+fn reconcile_single_section_flip_invalidation_is_independent_of_branch_size() {
+    fn flip_via_reconcile(n: usize) -> usize {
+        let mut db = FineCascadeDb::new();
+        let base = 1_000_000u64;
+        let mut sections: Vec<SectionFact> = (0..n)
+            .map(|i| section_fact(1, base + i as u64, DecisionStatus::Active))
+            .collect();
+        let idx = build_branch_index(&db, 1, &sections, &[], &[], &[]);
+        assert!(
+            section_decision_status_aggregated(&db, idx).ok,
+            "baseline must be clean at n={n}"
+        );
+
+        // The new snapshot differs only in the middle section's decision_status.
+        sections[n / 2].skeleton.decision_status = Some(DecisionStatus::Superseded);
+
+        db.reset_exec_counter();
+        reconcile_branch_index(&mut db, idx, &sections, &[], &[], &[]);
+        let r = section_decision_status_aggregated(&db, idx);
+        assert_eq!(r.violation_count, 1, "exactly one violation at n={n}");
+        db.exec_counter()
+    }
+
+    let small = flip_via_reconcile(5);
+    let large = flip_via_reconcile(50);
+    assert_eq!(
+        small, large,
+        "reconcile re-sync invalidation must not grow with branch size (5 vs 50): {small} != {large}"
+    );
+    assert_eq!(
+        small, 3,
+        "reconcile must apply the same bounded 3-body delta a direct setter does; got {small}"
     );
 }

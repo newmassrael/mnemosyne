@@ -50,6 +50,7 @@ use crate::ValidationResult;
 use mnemosyne_facts::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FrozenListFact, SectionFact,
 };
+use salsa::Setter;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -537,6 +538,220 @@ pub fn build_branch_index(
         sections_map,
         changelog_entries_map,
     )
+}
+
+/// Reconcile an existing `BranchIndex` to a new fact snapshot by applying the
+/// minimal set of Salsa-input deltas, reusing unchanged record handles so the
+/// memo cache survives across a re-sync. This is the incremental half of
+/// convergence D — the read-side projection service re-syncs through this rather
+/// than [`build_branch_index`].
+///
+/// [`build_branch_index`] allocates fresh inputs every call, so new handle
+/// identities give the next query a cold cache. `reconcile_branch_index` keeps
+/// the same `BranchIndex` handle and every unchanged per-record handle and
+/// mutates only the fields that actually changed, so a single-entity edit
+/// re-executes only that entity's sub-query on the next query (size-independent
+/// invalidation), exactly as a direct field setter would.
+///
+/// Reconciliation granularity differs by entity identity:
+/// - **Section / ChangelogEntry** have a stable key (entity_id / round_number),
+///   so they reconcile field-by-field: a matching key reuses the handle and sets
+///   only changed fields; a new key allocates a record; a dropped key falls out
+///   of the rebuilt list.
+/// - **CrossRef / FrozenList** are relation rows with no stable identity, so they
+///   reconcile at set granularity: identical projected tuples keep the old
+///   handles verbatim, otherwise the whole list is reallocated.
+///
+/// The `BranchIndex` Vec / map fields are reset only when *membership* changes; a
+/// field-only edit leaves them bit-identical (the same mutated handles), so the
+/// aggregator's dependency on the list is not invalidated and only the changed
+/// record's sub-query re-runs. Projection order is stable across re-syncs (the
+/// adapter projects from `BTreeMap`-ordered stores), so a field-only edit never
+/// reorders the lists.
+pub fn reconcile_branch_index(
+    db: &mut FineCascadeDb,
+    index: BranchIndex,
+    sections: &[SectionFact],
+    cross_refs: &[CrossRefFact],
+    frozen_lists: &[FrozenListFact],
+    changelog_entries: &[ChangelogEntryFact],
+) {
+    reconcile_sections(db, index, sections);
+    reconcile_cross_refs(db, index, cross_refs);
+    reconcile_frozen_lists(db, index, frozen_lists);
+    reconcile_changelog(db, index, changelog_entries);
+}
+
+/// Field-level Section reconcile keyed by entity_id. Reuses the handle for a
+/// matching key (setting only changed fields), allocates for a new key, and
+/// resets the `sections` Vec + `sections_map` together only when membership
+/// changes (so a field-only edit does not invalidate the aggregator's list dep).
+fn reconcile_sections(db: &mut FineCascadeDb, index: BranchIndex, facts: &[SectionFact]) {
+    let old_map = index.sections_map(db);
+    let mut membership_changed = facts.len() != old_map.len();
+    let mut new_records: Vec<SectionRecord> = Vec::with_capacity(facts.len());
+    let mut new_map: std::collections::BTreeMap<u64, SectionRecord> =
+        std::collections::BTreeMap::new();
+    for f in facts {
+        let entity_id = f.key.entity_id;
+        let record = match old_map.get(&entity_id) {
+            Some(&existing) => {
+                if existing.branch_id(db) != f.key.branch_id {
+                    existing.set_branch_id(db).to(f.key.branch_id);
+                }
+                if existing.valid_from(db) != f.key.valid_from {
+                    existing.set_valid_from(db).to(f.key.valid_from);
+                }
+                if existing.doc_path(db) != f.skeleton.parent_doc {
+                    existing.set_doc_path(db).to(f.skeleton.parent_doc.clone());
+                }
+                if existing.section_id(db) != f.section_id {
+                    existing.set_section_id(db).to(f.section_id.clone());
+                }
+                if existing.title(db) != f.skeleton.title {
+                    existing.set_title(db).to(f.skeleton.title.clone());
+                }
+                if existing.decision_status(db) != f.skeleton.decision_status {
+                    existing
+                        .set_decision_status(db)
+                        .to(f.skeleton.decision_status);
+                }
+                existing
+            }
+            None => {
+                membership_changed = true;
+                SectionRecord::new(
+                    db,
+                    f.key.branch_id,
+                    entity_id,
+                    f.key.valid_from,
+                    f.skeleton.parent_doc.clone(),
+                    f.section_id.clone(),
+                    f.skeleton.title.clone(),
+                    f.skeleton.decision_status,
+                )
+            }
+        };
+        new_records.push(record);
+        new_map.insert(entity_id, record);
+    }
+    if membership_changed {
+        index.set_sections(db).to(new_records);
+        index.set_sections_map(db).to(new_map);
+    }
+}
+
+/// Field-level ChangelogEntry reconcile keyed by round_number (its entity
+/// identity). `summary` is the only mutable payload field; round_number is the
+/// key, so a matched entry's round is unchanged by construction.
+fn reconcile_changelog(db: &mut FineCascadeDb, index: BranchIndex, facts: &[ChangelogEntryFact]) {
+    let old_map = index.changelog_entries_map(db);
+    let mut membership_changed = facts.len() != old_map.len();
+    let mut new_records: Vec<ChangelogRecord> = Vec::with_capacity(facts.len());
+    let mut new_map: std::collections::BTreeMap<u64, ChangelogRecord> =
+        std::collections::BTreeMap::new();
+    for f in facts {
+        let round = f.round_number;
+        let record = match old_map.get(&round) {
+            Some(&existing) => {
+                if existing.branch_id(db) != f.key.branch_id {
+                    existing.set_branch_id(db).to(f.key.branch_id);
+                }
+                if existing.entity_id(db) != f.key.entity_id {
+                    existing.set_entity_id(db).to(f.key.entity_id);
+                }
+                if existing.valid_from(db) != f.key.valid_from {
+                    existing.set_valid_from(db).to(f.key.valid_from);
+                }
+                if existing.summary(db) != f.summary {
+                    existing.set_summary(db).to(f.summary.clone());
+                }
+                existing
+            }
+            None => {
+                membership_changed = true;
+                ChangelogRecord::new(
+                    db,
+                    f.key.branch_id,
+                    f.key.entity_id,
+                    f.key.valid_from,
+                    f.round_number,
+                    f.summary.clone(),
+                )
+            }
+        };
+        new_records.push(record);
+        new_map.insert(round, record);
+    }
+    if membership_changed {
+        index.set_changelog_entries(db).to(new_records);
+        index.set_changelog_entries_map(db).to(new_map);
+    }
+}
+
+/// Set-level CrossRef reconcile. Relation rows carry no stable identity, so the
+/// only sound comparison is the projected tuple set; if it is unchanged the old
+/// handles are kept verbatim, otherwise the whole list is reallocated.
+fn reconcile_cross_refs(db: &mut FineCascadeDb, index: BranchIndex, facts: &[CrossRefFact]) {
+    let old = index.cross_refs(db);
+    let unchanged = old.len() == facts.len()
+        && old.iter().zip(facts).all(|(o, f)| {
+            o.branch_id(db) == f.branch_id
+                && o.from_section(db) == f.from_section
+                && o.to_section(db) == f.to_section
+                && o.ref_kind(db) == f.ref_kind
+        });
+    if unchanged {
+        return;
+    }
+    let new_records: Vec<CrossRefRecord> = facts
+        .iter()
+        .map(|cr| {
+            CrossRefRecord::new(
+                db,
+                cr.branch_id,
+                cr.from_section,
+                cr.to_section,
+                cr.ref_kind.clone(),
+            )
+        })
+        .collect();
+    index.set_cross_refs(db).to(new_records);
+}
+
+/// Set-level FrozenList reconcile (same rationale as cross-refs). The design_doc
+/// adapter projects no frozen lists today (Round 327), so this is empty-vs-empty
+/// in the live path; it is implemented for correctness when a frozen-list
+/// projection appears.
+fn reconcile_frozen_lists(db: &mut FineCascadeDb, index: BranchIndex, facts: &[FrozenListFact]) {
+    let old = index.frozen_lists(db);
+    let unchanged = old.len() == facts.len()
+        && old.iter().zip(facts).all(|(o, f)| {
+            o.branch_id(db) == f.key.branch_id
+                && o.entity_id(db) == f.key.entity_id
+                && o.valid_from(db) == f.key.valid_from
+                && o.owner_section(db) == f.owner_section
+                && o.frozen_round(db) == f.frozen_round
+                && o.kind(db) == f.kind
+        });
+    if unchanged {
+        return;
+    }
+    let new_records: Vec<FrozenListRecord> = facts
+        .iter()
+        .map(|fl| {
+            FrozenListRecord::new(
+                db,
+                fl.key.branch_id,
+                fl.key.entity_id,
+                fl.key.valid_from,
+                fl.owner_section,
+                fl.frozen_round,
+                fl.kind.clone(),
+            )
+        })
+        .collect();
+    index.set_frozen_lists(db).to(new_records);
 }
 
 #[cfg(test)]

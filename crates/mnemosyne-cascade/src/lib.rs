@@ -31,9 +31,9 @@ pub mod spec;
 
 pub use fine_grained::{
     build_branch_index, changelog_by_round_number, frozen_list_membership_aggregated,
-    outbound_crossrefs_by_section, section_by_entity_id, section_decision_status_aggregated,
-    BranchIndex, CascadeDb, ChangelogRecord, CrossRefRecord, FineCascadeDb, FrozenListRecord,
-    SectionRecord,
+    outbound_crossrefs_by_section, reconcile_branch_index, section_by_entity_id,
+    section_decision_status_aggregated, BranchIndex, CascadeDb, ChangelogRecord, CrossRefRecord,
+    FineCascadeDb, FrozenListRecord, SectionRecord,
 };
 pub use metadata::{cascade_dependency_edges, cascade_orderings};
 pub use result::ValidationResult;
