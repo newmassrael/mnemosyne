@@ -37,6 +37,12 @@ pub const SECTION_VALID_FROM: u64 = 0;
 /// Cross-ref kind emitted for an `AtomicSection.impact_scope` edge.
 const IMPACT_SCOPE_REF_KIND: &str = "impact_scope";
 
+/// Cross-ref kind emitted for an `AtomicSection.superseded_by` edge. The
+/// supersession forward-pointer projects as a `decision`-kind relation, which
+/// the cascade's `section_decision_violation` recognizes as satisfying the
+/// Superseded-state invariant (R342).
+const SUPERSEDED_BY_REF_KIND: &str = "decision";
+
 /// Deterministic numeric entity id for a string `section_id`: the first 8 bytes
 /// (big-endian) of its SHA-256 digest. Content-addressable and stable across
 /// rebuilds, so the same section always maps to the same composite-key row. The
@@ -79,8 +85,10 @@ impl AtomicStore {
             .collect()
     }
 
-    /// Project every `AtomicSection.impact_scope` edge into a [`CrossRefFact`]
-    /// relation (source section → target section). Both endpoints run through
+    /// Project every section's outbound cross-ref edges into [`CrossRefFact`]
+    /// relations (source section → target section): each `impact_scope` target
+    /// as an `impact_scope`-kind edge, and the `superseded_by` forward-pointer
+    /// (when set) as a `decision`-kind edge (R342). Both endpoints run through
     /// [`section_entity_id`], so a relation's `from`/`to` match the entity ids
     /// of the corresponding [`SectionFact`]s.
     pub fn project_cross_ref_facts(&self, branch_id: u64) -> Vec<CrossRefFact> {
@@ -93,6 +101,14 @@ impl AtomicStore {
                     from_section,
                     to_section: section_entity_id(target),
                     ref_kind: IMPACT_SCOPE_REF_KIND.to_string(),
+                });
+            }
+            if let Some(target) = &section.superseded_by {
+                out.push(CrossRefFact {
+                    branch_id,
+                    from_section,
+                    to_section: section_entity_id(target),
+                    ref_kind: SUPERSEDED_BY_REF_KIND.to_string(),
                 });
             }
         }
@@ -189,6 +205,27 @@ mod tests {
         assert_eq!(refs[0].from_section, section_entity_id("beta"));
         assert_eq!(refs[0].to_section, section_entity_id("alpha"));
         assert_eq!(refs[0].ref_kind, "impact_scope");
+    }
+
+    #[test]
+    fn superseded_by_projects_a_decision_cross_ref() {
+        // R342: the supersession forward-pointer projects as a `decision`-kind
+        // edge (source = superseded section, target = replacement), distinct
+        // from any `impact_scope` edge on the same section.
+        let mut old = section("Old", &["beta"]);
+        old.skeleton.decision_status = Some(DecisionStatus::Superseded);
+        old.superseded_by = Some("new".to_string());
+        let store = store_with(vec![("old", old)]);
+        let refs = store.project_cross_ref_facts(MAIN_BRANCH_ID);
+        let decision: Vec<_> = refs.iter().filter(|r| r.ref_kind == "decision").collect();
+        assert_eq!(decision.len(), 1);
+        assert_eq!(decision[0].from_section, section_entity_id("old"));
+        assert_eq!(decision[0].to_section, section_entity_id("new"));
+        // The impact_scope edge is still projected independently.
+        assert_eq!(
+            refs.iter().filter(|r| r.ref_kind == "impact_scope").count(),
+            1
+        );
     }
 
     #[test]

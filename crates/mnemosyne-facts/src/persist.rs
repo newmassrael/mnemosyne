@@ -10,6 +10,16 @@
 //! CF, all relations share `relations`. Per-entity-kind discrimination is left
 //! to the caller's `entity_id` allocation strategy (Phase 0 implementation
 //! concern, not in scope here).
+//!
+//! **Relation key does not carry `ref_kind`** — two edges with the same
+//! `(branch, from, to)` but different `ref_kind` collide here (the later
+//! `put_cross_ref` wins). Reachable only by a section that both
+//! `impact_scope`s and `superseded_by` the *same* target (R342). The live
+//! warm projection is unaffected — it builds its `BranchIndex` from the
+//! `project_cross_ref_facts` Vec, where both edges coexist — so this is a
+//! latent RocksDB-index limitation, not a live correctness gap. Disambiguating
+//! the relation key by `ref_kind` is a future index-key round (the composite
+//! key is a fixed 3×u64; `ref_kind` is a String, so it needs its own design).
 
 use crate::{
     ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, IndexCodec, SectionFact,

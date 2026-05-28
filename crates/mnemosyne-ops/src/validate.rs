@@ -228,26 +228,22 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .cloned()
         .collect();
 
-    // T1 rule 4 (atomic axis) — Superseded sections must carry a
-    // superseding cross-ref. State-based post-condition gate; the CLI's
+    // T1 rule 4 (atomic axis) — Superseded sections must carry the
+    // structural superseded_by forward-pointer (R342). State-based
+    // post-condition gate reading the atomic store as SSOT; the CLI's
     // validate-workspace runs the same check, so the MCP wire must too
     // (R318 closed the gap where ops omitted it).
-    let parsed_docs_refs: Vec<&mnemosyne_schema::ParsedDoc> =
-        parsed_docs.iter().map(|(_, doc)| doc).collect();
     let supersede_violations: Vec<String> =
-        mnemosyne_validate::atomic_section_supersede_state_reject(
-            &atomic_for_style,
-            &parsed_docs_refs,
-        )
-        .into_iter()
-        .filter_map(|e| match e {
-            ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
-                "§{} decision_status=Superseded but no superseding cross-ref (Decision|Impl)",
-                section_id
-            )),
-            _ => None,
-        })
-        .collect();
+        mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_for_style)
+            .into_iter()
+            .filter_map(|e| match e {
+                ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
+                    "§{} decision_status=Superseded but superseded_by is unset",
+                    section_id
+                )),
+                _ => None,
+            })
+            .collect();
 
     // R296 publishable / audit divergence ledger gate. Each entry whose
     // publishable half diverges from the audit half must have a matching

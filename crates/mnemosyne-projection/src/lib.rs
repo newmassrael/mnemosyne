@@ -214,6 +214,24 @@ mod tests {
     }
 
     #[test]
+    fn superseded_with_stored_superseded_by_passes() {
+        // R342: the structural superseded_by forward-pointer projects to a
+        // `decision`-kind CrossRefFact, which satisfies the invariant — so a
+        // Superseded section that recorded its replacement validates clean.
+        // This is the over-flagging bug the warm projection had before the
+        // pointer was stored structurally (it could only see impact_scope).
+        let mut old = section("Old", Some(DecisionStatus::Superseded), &[]);
+        old.superseded_by = Some("new".to_string());
+        let store = store_with(vec![
+            ("old", old),
+            ("new", section("New", Some(DecisionStatus::Active), &[])),
+        ]);
+        let svc = ProjectionService::build(&store, MAIN_BRANCH_ID);
+        assert!(svc.validate().ok());
+        assert_eq!(svc.validate().section_decision, ValidationResult::ok());
+    }
+
+    #[test]
     fn reload_re_syncs_after_a_log_change() {
         let mut store = store_with(vec![(
             "alpha",

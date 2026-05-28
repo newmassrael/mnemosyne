@@ -2,6 +2,9 @@
 {% if decision_status and decision_status != "active" %}
 **Status**: {{ decision_status }}
 {% endif %}
+{% if superseded_by %}
+**Superseded by**: §{{ superseded_by }}
+{% endif %}
 {% if intent %}
 **Intent**: {{ intent }}
 {% endif %}

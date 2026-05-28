@@ -259,19 +259,18 @@ pub fn section_decision_status_transition(
 /// Atomic-axis T1 rule 4 state gate.
 ///
 /// Walks the atomic store for sections where
-/// `decision_status == Some(Superseded)` and verifies a superseding cross-ref
-/// (`RefKind::Decision` or `RefKind::Impl`) exists from that section in any
-/// parsed doc in the workspace. State-based, not transition-based — the
-/// transition counterpart `section_decision_status_transition` requires a
-/// parser-snapshot pair (prev + curr), which `validate-workspace` does not
-/// have. This state gate catches:
-///
-/// 1. Violations that bypassed the author-time guard at
-///    `atomic::set_section_decision_status` (e.g. atomic store writes
-///    that predate the guard's introduction).
-/// 2. Atomic-only overrides whose corresponding markdown section never
-///    carried a Superseded marker in any prev snapshot — invisible to the
-///    parser-pair rule 4 walk.
+/// `decision_status == Some(Superseded)` and verifies the structural
+/// `superseded_by` forward-pointer is set (R342). Reads the atomic store as
+/// the single source of truth — the supersession relation is stored, not
+/// recovered from re-parsed markdown — so this gate agrees with the warm
+/// read-side projection (`section_decision_violation`), which reads the same
+/// field projected to a `decision`-kind `CrossRefFact`. State-based, not
+/// transition-based — the transition counterpart
+/// `section_decision_status_transition` requires a parser-snapshot pair
+/// (prev + curr), which `validate-workspace` does not have. This state gate
+/// catches Superseded sections whose `superseded_by` is unset — e.g. a direct
+/// JSON write bypassing `atomic::set_section_decision_status`, or an atomic
+/// store written before R342 made the pointer structural.
 ///
 /// `Some(Removed)` is tombstone-exempt: Removed asserts finality, not
 /// replacement, so demanding a forward-pointer would be a category error.
@@ -281,20 +280,13 @@ pub fn section_decision_status_transition(
 /// downstream consumers schema-stable.
 pub fn atomic_section_supersede_state_reject(
     store: &mnemosyne_atomic::AtomicStore,
-    parsed_docs: &[&ParsedDoc],
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     for (section_id, atomic_section) in &store.sections {
         if atomic_section.skeleton.decision_status != Some(DecisionStatus::Superseded) {
             continue;
         }
-        let has_superseding_ref = parsed_docs.iter().any(|doc| {
-            doc.cross_refs.iter().any(|cr| {
-                cr.from_section == *section_id
-                    && (cr.ref_kind == RefKind::Decision || cr.ref_kind == RefKind::Impl)
-            })
-        });
-        if !has_superseding_ref {
+        if atomic_section.superseded_by.is_none() {
             errors.push(ValidationError::SupersedeMissingRef {
                 section_id: section_id.clone(),
                 prev_status: DecisionStatus::Active,
@@ -728,12 +720,11 @@ mod tests {
 
     #[test]
     fn atomic_rule4_state_gate_superseded_without_ref_rejects() {
-        // Section with atomic decision_status=Some(Superseded) but no
-        // superseding cross-ref in any parsed doc → SupersedeMissingRef.
-        // This is the validate-workspace counterpart to the author-time
-        // guard at atomic::set_section_decision_status: catches
-        // historical writes that predate the guard and atomic-only
-        // overrides invisible to the parser-pair transition check.
+        // Section with atomic decision_status=Some(Superseded) but
+        // superseded_by unset → SupersedeMissingRef (R342). This is the
+        // validate-workspace counterpart to the author-time guard at
+        // atomic::set_section_decision_status: catches a direct JSON write
+        // that bypassed the setter or a store written before R342.
         let mut store = mnemosyne_atomic::AtomicStore::new();
         // Round 287 fail-loud: explicit Section creation. Direct sections.insert
         // since this is a test fixture (no audit-receipt path needed).
@@ -747,8 +738,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let doc = make_doc(vec![], vec![], vec![], vec![]);
-        let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+        let errors = atomic_section_supersede_state_reject(&store);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
             ValidationError::SupersedeMissingRef { section_id, .. } => {
@@ -760,7 +750,8 @@ mod tests {
 
     #[test]
     fn atomic_rule4_state_gate_superseded_with_ref_passes() {
-        // Superseding cross-ref present in a parsed doc → clean.
+        // superseded_by set on the store section → clean (R342: the gate
+        // reads the field, not a re-parsed markdown cross-ref).
         let mut store = mnemosyne_atomic::AtomicStore::new();
         store.sections.insert(
             "39".to_string(),
@@ -769,21 +760,11 @@ mod tests {
                     decision_status: Some(DecisionStatus::Superseded),
                     ..Default::default()
                 },
+                superseded_by: Some("40".to_string()),
                 ..Default::default()
             },
         );
-        let doc = make_doc(
-            vec![],
-            vec![],
-            vec![],
-            vec![CrossRef {
-                from_section: "39".to_string(),
-                to_target: "40".to_string(),
-                ref_kind: RefKind::Decision,
-                created_at_changelog_entry: None,
-            }],
-        );
-        let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+        let errors = atomic_section_supersede_state_reject(&store);
         assert!(errors.is_empty());
     }
 
@@ -803,8 +784,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let doc = make_doc(vec![], vec![], vec![], vec![]);
-        let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+        let errors = atomic_section_supersede_state_reject(&store);
         assert!(errors.is_empty());
     }
 
@@ -827,8 +807,7 @@ mod tests {
         store
             .sections
             .insert("2".to_string(), mnemosyne_atomic::AtomicSection::default());
-        let doc = make_doc(vec![], vec![], vec![], vec![]);
-        let errors = atomic_section_supersede_state_reject(&store, &[&doc]);
+        let errors = atomic_section_supersede_state_reject(&store);
         assert!(errors.is_empty());
     }
 }

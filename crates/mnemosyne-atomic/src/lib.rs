@@ -92,6 +92,17 @@ pub struct AtomicSection {
     /// here; index projection (convergence B) reads this and emits CrossRefFacts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub impact_scope: Vec<String>,
+    /// Supersession forward-pointer — the section_id (without the `§` prefix)
+    /// of the decision that replaced this one. `Some` iff
+    /// `decision_status == Superseded`; the pairing is enforced by the single
+    /// write path [`set_section_decision_status`] (R342). Adapter-local like
+    /// [`Self::impact_scope`]: cross-refs stay out of the Layer-0 skeleton, so
+    /// this lives on the JSON log adapter and is projected to a
+    /// `decision`-kind `CrossRefFact` at index build (`project_cross_ref_facts`).
+    /// Storing it structurally is what lets the warm read-side projection (R339)
+    /// see the supersession relation from the store instead of re-parsed markdown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
     /// code/config block list. T3 style threshold: code block itself exempt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
@@ -1299,11 +1310,15 @@ pub fn set_section_parent_section(
 /// semantically-incoherent state (replaced, but no replacement recorded).
 /// `Removed` is tombstone-exempt (asserts finality, not replacement).
 ///
-/// This guard does not validate that the named superseding section_id
-/// exists in the atomic store — cross-ref orphan checking is T1 rule 1's
-/// territory, picked up by `validate-workspace`. This primitive only
-/// enforces presence of the *intent to forward*; existence is checked
-/// by the validator pass.
+/// On `Superseded` the `superseding` target is stored structurally in
+/// `AtomicSection.superseded_by` (the single write path that keeps the
+/// `decision_status`/`superseded_by` pair coherent, R342); a transition to
+/// `Active`/`Removed` clears it so no stale forward-pointer survives. This
+/// guard does not validate that the named superseding section_id exists in
+/// the atomic store — cross-ref orphan checking is T1 rule 1's territory,
+/// picked up by `validate-workspace`. The caller normalizes the `§` prefix
+/// (uniform with [`set_section_impact_scope`]); the stored id is the bare
+/// section_id so `project_cross_ref_facts` can address it by entity id.
 pub fn set_section_decision_status(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -1316,9 +1331,14 @@ pub fn set_section_decision_status(
  "(T1 rule 4, atomic axis): superseding section_id mandatory for active → superseded transition".to_string(),
  ));
     }
-    section_mut_strict(store, section_id)?
-        .skeleton
-        .decision_status = Some(new_status);
+    {
+        let section = section_mut_strict(store, section_id)?;
+        section.skeleton.decision_status = Some(new_status);
+        section.superseded_by = match new_status {
+            DecisionStatus::Superseded => superseding.map(str::to_string),
+            DecisionStatus::Active | DecisionStatus::Removed => None,
+        };
+    }
     save_with_receipt(
         store,
         sidecar_path,
@@ -3534,6 +3554,36 @@ mod tests {
             store.section("39").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Superseded)
         );
+        // R342: the superseding target is stored structurally.
+        assert_eq!(
+            store.section("39").unwrap().superseded_by.as_deref(),
+            Some("40")
+        );
+    }
+
+    #[test]
+    fn set_section_decision_status_clears_superseded_by_on_active() {
+        // R342 pairing invariant: → Superseded stores the forward-pointer; a
+        // later → Active clears it so no stale superseded_by survives. Single
+        // write path enforces decision_status / superseded_by coherence.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "39");
+        set_section_decision_status(
+            &mut store,
+            &path,
+            "39",
+            DecisionStatus::Superseded,
+            Some("40"),
+        )
+        .unwrap();
+        assert_eq!(
+            store.section("39").unwrap().superseded_by.as_deref(),
+            Some("40")
+        );
+        set_section_decision_status(&mut store, &path, "39", DecisionStatus::Active, None).unwrap();
+        assert!(store.section("39").unwrap().superseded_by.is_none());
     }
 
     #[test]

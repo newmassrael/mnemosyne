@@ -58,6 +58,9 @@ pub fn render_section(
     ctx.insert("section_id", section_id);
     ctx.insert("title", title);
     ctx.insert("decision_status", decision_status);
+    if let Some(superseded_by) = &atomic.superseded_by {
+        ctx.insert("superseded_by", superseded_by);
+    }
     if let Some(intent) = &atomic.intent {
         ctx.insert("intent", intent);
     }
@@ -221,6 +224,25 @@ mod tests {
         let atomic = AtomicSection::default();
         let out = render_section("43", "test", "superseded", &atomic).unwrap();
         assert!(out.contains("**Status**: superseded"));
+    }
+
+    #[test]
+    fn render_section_emits_superseded_by_pointer() {
+        // R342: the stored forward-pointer renders as a §M citation so the
+        // human surface and the round-trip cross-ref derive from the field.
+        let atomic = AtomicSection {
+            superseded_by: Some("44".into()),
+            ..Default::default()
+        };
+        let out = render_section("43", "test", "superseded", &atomic).unwrap();
+        assert!(out.contains("**Superseded by**: §44"));
+    }
+
+    #[test]
+    fn render_section_omits_superseded_by_when_absent() {
+        let atomic = AtomicSection::default();
+        let out = render_section("43", "test", "active", &atomic).unwrap();
+        assert!(!out.contains("**Superseded by**"));
     }
 
     #[test]

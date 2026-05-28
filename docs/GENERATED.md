@@ -19,6 +19,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 **Implementations**:
 - crates/mnemosyne-cli/src/atomic_cli.rs
 - crates/mnemosyne-atomic/src/lib.rs
@@ -26,6 +27,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 ### §code-citation-defense. Code Citation Defense
+
 
 
 
@@ -53,6 +55,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 **Implementations**:
 - crates/mnemosyne-atomic/src/lib.rs
 - crates/mnemosyne-validate/src/code_refs.rs
@@ -70,12 +73,14 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 **Implementations**:
 - crates/mnemosyne-parser/src/lib.rs
 
 
 
 ### §orphan-ledger. Orphan Ledger
+
 
 
 
@@ -2878,6 +2883,34 @@ Source: `docs/.atomic/workspace.atomic.json`
 - R343: project a decision-kind CrossRefFact; atomic_section_supersede_state_reject reads the store field
 - R343: render **Superseded by**: §M; add field-invariant + projection tests
 - R343: dogfood — validate-workspace green + GENERATED.md byte-identical (all 5 live sections Active)
+
+
+
+### Round 343 — implement supersession cross-ref convergence (superseded_by stored + projected) — Implement R342: AtomicSection.superseded_by stores the supersession forward-pointer as a first-class adapter cross-ref (beside impact_scope), set and cleared by the single write path set_section_decision_status, projected to a decision-kind CrossRefFact so the warm read-side projection (R339) stops over-flagging Superseded sections. The atomic-axis gate atomic_section_supersede_state_reject now reads the store field as the single source of truth instead of re-parsed markdown, and render derives the **Superseded by**: §M line from the field. The fine-grained cascade needed no change — it already accepts decision/impl outbound refs. Known limitation carried: the RocksDB relation key omits ref_kind, so an impact+supersede edge to the same target collides in the materialized index — off every live path (the warm projection builds its BranchIndex from the projection Vec) and deferred to a future index-key round.
+
+**Changes**:
+- AtomicSection.superseded_by: Option<String> — adapter cross-ref beside impact_scope
+- set_section_decision_status stores it on Superseded, clears on Active/Removed (single write path)
+- project_cross_ref_facts emits a decision-kind CrossRefFact; the fine-grained cascade already accepts it
+- atomic_section_supersede_state_reject reads the store field as SSOT (drops the parsed_docs arg + ops caller)
+- section.md.tera renders **Superseded by**: §M derived from the stored field
+
+
+
+**Verification**:
+- cargo test --workspace: 91 suites ok, 0 failures; clippy -D warnings clean; fmt clean
+- validate-workspace green: round-trip 1/1, T3 reject 0, GENERATED.md=sync, ledger 90
+- projection unit test: Superseded + stored superseded_by validates clean — the over-flag is fixed
+- render test asserts **Superseded by**: §44; setter test asserts store-then-clear pairing
+
+
+
+
+**Carry forward**:
+- RocksDB relation key omits ref_kind: an impact+supersede edge to the same target collides
+- That collision is off every live path — the warm projection builds its BranchIndex from the Vec
+- Index relation-key disambiguation by ref_kind = future index-layer round (composite key is fixed 3xu64)
+- Render Step 2 (Layer-1 Salsa inputs, per-section memoized GENERATED.md) remains the large next epic
 
 
 
