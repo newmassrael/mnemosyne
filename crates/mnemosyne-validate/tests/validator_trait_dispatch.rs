@@ -1,28 +1,31 @@
-//! End-to-end PluginRegistry → Validator trait dispatch smoke.
+//! End-to-end Validator + ErasedValidator two-tier dispatch smoke.
 //!
-//! Asserts the R307 D1 closure: cmd_validate_code_refs goes through
-//! `PluginRegistry::register_validator` + `PluginRegistry::validator()`
-//! + `Validator::validate(ctx)` and gets back `Vec<ValidationFinding>`
-//! that round-trips the rich `CodeRefViolation` payload via
-//! `ValidationFinding.kind` + `ValidationFinding.extras`.
+//! Asserts both paths land in production:
+//! 1. `Validator::validate(&ctx)` returns typed `Vec<Self::Finding>`
+//!    — pattern-match on `CodeRefViolation` variants for assertions.
+//! 2. `PluginRegistry::register_validator(Box::new(v))` + retrieve via
+//!    `registry.validator(key)` → `ErasedValidator::validate_erased(&ctx)`
+//!    returns `Vec<serde_json::Value>` (typed findings serialized at
+//!    the object-safe trait boundary).
 //!
 //! Coverage:
-//! 1. Validator registers + retrieves via the registry by key.
-//! 2. Findings carry the kind tag the consumer reads for per-class
-//!    counting (`missing` / `section_missing` / `citation_unbound` /
-//!    `impl_unbacked` / `impl_missing`).
-//! 3. Extras preserve `entry_id` (for Citation kinds), `symbol` (for
-//!    `impl_unbacked`), and `decision_status` (for `impl_missing`).
+//! - Typed path preserves full enum shape (Citation { citation, kind } /
+//!   ImplementationMissing { section_id, decision_status } / etc).
+//! - Erased path serializes each finding via the auto-derived
+//!   `CodeRefViolation: Serialize` impl and routes through
+//!   `ValidatorError::Internal` if serialization ever fails.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_core::{
-    AtomicStoreView, PluginRegistry, Severity, ValidationContext,
-};
 use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
-use mnemosyne_validate::code_refs::SetEqualityValidator;
 use mnemosyne_config::SetEqualityValidatorConfig;
+use mnemosyne_core::{
+    AtomicStoreView, PluginRegistry, Validator, ValidationContext,
+};
+use mnemosyne_validate::code_refs::{
+    CodeRefViolation, SetEqualityValidator, ViolationKind,
+};
 use tempfile::TempDir;
 
 fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
@@ -45,17 +48,14 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
     }
 }
 
-#[test]
-fn registry_dispatch_yields_findings_with_kind_and_extras() {
+fn seed_workspace_for_unbacked_and_missing() -> (TempDir, AtomicStore) {
     let tmp = TempDir::new().unwrap();
-    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
-    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
-
-    // Section sec1 declares an impl at src/missing.rs (no code citation
-    // back → ImplementationUnbacked). Section sec2 declares no impls
-    // → ImplementationMissing.
     let mut store = AtomicStore::new();
+    // sec1 declares an impl at src/missing.rs (no §sec1 cite in that file
+    // — but a Round 999 hallucinated cite — triggers ImplementationUnbacked
+    // ... actually src/missing.rs DOES cite §sec1, so binding holds for
+    // sec1; the unbacked variant covers the other-section case below).
     let sec1 = AtomicSection {
         title: "Sec One".into(),
         parent_doc: "docs/GENERATED.md".into(),
@@ -66,21 +66,74 @@ fn registry_dispatch_yields_findings_with_kind_and_extras() {
         ..AtomicSection::default()
     };
     store.sections.insert("sec1".into(), sec1);
+    // sec2 declares no impls → ImplementationMissing (default-Active).
     let sec2 = AtomicSection {
         title: "Sec Two".into(),
         parent_doc: "docs/GENERATED.md".into(),
         ..AtomicSection::default()
     };
     store.sections.insert("sec2".into(), sec2);
-
     // Code file: cites §sec1 (passes binding) + Round 999 (hallucinated).
     std::fs::write(
         tmp.path().join("src/missing.rs"),
         "// §sec1 bound\n// Round 999 hallucinated\n",
     )
     .unwrap();
+    (tmp, store)
+}
 
-    // Register validator + dispatch via PluginRegistry.
+#[test]
+fn typed_dispatch_yields_typed_findings() {
+    let (tmp, store) = seed_workspace_for_unbacked_and_missing();
+    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+    let validator = build_validator(None);
+    let store_view: &dyn AtomicStoreView = &store;
+    let ctx = ValidationContext {
+        workspace_root: tmp.path(),
+        atomic_sidecar: &sidecar,
+        store: store_view,
+    };
+    let violations =
+        <SetEqualityValidator as Validator>::validate(&validator, &ctx).expect("typed dispatch ok");
+
+    // Expect a Citation { Missing } for Round 999 + an
+    // ImplementationMissing for sec2.
+    let missing = violations
+        .iter()
+        .find(|v| matches!(v, CodeRefViolation::Citation { kind: ViolationKind::Missing, .. }))
+        .expect("missing citation present");
+    if let CodeRefViolation::Citation { citation, .. } = missing {
+        assert_eq!(citation.entry_id, "Round 999");
+        assert_eq!(citation.file, PathBuf::from("src/missing.rs"));
+        assert_eq!(citation.line, 2);
+    } else {
+        panic!("expected Citation variant");
+    }
+
+    let impl_missing = violations
+        .iter()
+        .find(|v| matches!(v, CodeRefViolation::ImplementationMissing { .. }))
+        .expect("impl_missing present");
+    if let CodeRefViolation::ImplementationMissing {
+        section_id,
+        decision_status,
+    } = impl_missing
+    {
+        assert_eq!(section_id, "sec2");
+        assert!(decision_status.is_none(), "default-Active fallback path");
+    } else {
+        panic!("expected ImplementationMissing variant");
+    }
+}
+
+#[test]
+fn erased_dispatch_via_registry_serializes_findings_to_json() {
+    let (tmp, store) = seed_workspace_for_unbacked_and_missing();
+    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
     let mut registry = PluginRegistry::new();
     registry.register_validator(
         "set_equality_validator",
@@ -95,53 +148,37 @@ fn registry_dispatch_yields_findings_with_kind_and_extras() {
         atomic_sidecar: &sidecar,
         store: store_view,
     };
-    let findings = dispatched.validate(&ctx).expect("dispatch ok");
+    let json_values = dispatched
+        .validate_erased(&ctx)
+        .expect("erased dispatch ok");
 
-    // Expect:
-    // - 1 "missing" (Round 999) carrying entry_id in extras.
-    // - 1 "impl_missing" for sec2 (no impls, default-Active).
-    let kinds: Vec<String> = findings
+    // Each erased finding round-trips back into CodeRefViolation via
+    // the auto-derived serde shape (default externally-tagged enum).
+    // Verify the discriminator-style JSON carries the variant names
+    // SetEqualityValidator emits.
+    let has_citation_missing = json_values.iter().any(|v| {
+        v.get("Citation")
+            .and_then(|c| c.get("kind"))
+            .and_then(|k| k.as_str())
+            == Some("Missing")
+    });
+    let has_impl_missing = json_values
         .iter()
-        .filter_map(|f| f.kind.clone())
-        .collect();
-    assert!(kinds.contains(&"missing".to_string()), "kinds = {:?}", kinds);
+        .any(|v| v.get("ImplementationMissing").is_some());
     assert!(
-        kinds.contains(&"impl_missing".to_string()),
-        "kinds = {:?}",
-        kinds
+        has_citation_missing,
+        "expected Citation/Missing finding in erased output: {:#?}",
+        json_values
     );
-
-    // Verify the "missing" finding carries entry_id + file + line.
-    let missing = findings
-        .iter()
-        .find(|f| f.kind.as_deref() == Some("missing"))
-        .expect("missing finding present");
-    assert_eq!(missing.severity, Severity::Reject);
-    assert_eq!(missing.file, Some(PathBuf::from("src/missing.rs")));
-    assert_eq!(missing.line, Some(2));
-    assert_eq!(
-        missing.extras.get("entry_id").and_then(|v| v.as_str()),
-        Some("Round 999")
-    );
-
-    // Verify the "impl_missing" finding carries section_id +
-    // decision_status (none → "none(default-active)").
-    let impl_missing = findings
-        .iter()
-        .find(|f| f.kind.as_deref() == Some("impl_missing"))
-        .expect("impl_missing finding present");
-    assert_eq!(impl_missing.section_id.as_deref(), Some("sec2"));
-    assert_eq!(
-        impl_missing
-            .extras
-            .get("decision_status")
-            .and_then(|v| v.as_str()),
-        Some("none(default-active)")
+    assert!(
+        has_impl_missing,
+        "expected ImplementationMissing finding in erased output: {:#?}",
+        json_values
     );
 }
 
 #[test]
-fn registry_dispatch_with_filter_id_narrows_to_decay_only() {
+fn typed_dispatch_filter_id_narrows_to_decay_only() {
     // Decay-cascade caller pattern: filter_id = Some("Round 5") narrows
     // the scan to just that one entry's decay sites. Step 3/4 are
     // suppressed under filter_id.
@@ -150,9 +187,6 @@ fn registry_dispatch_with_filter_id_narrows_to_decay_only() {
     std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
 
-    // Store has an entry "Round 5" (so the cite is valid Decay, not
-    // Missing) and no sections (so steps 3-4 would otherwise fire — but
-    // are suppressed under filter mode).
     let mut store = AtomicStore::new();
     let mut entry = mnemosyne_atomic::AtomicChangelogEntry {
         decision_summary: Some("Round 5 anchor for decay test".into()),
@@ -167,33 +201,24 @@ fn registry_dispatch_with_filter_id_narrows_to_decay_only() {
     )
     .unwrap();
 
-    let mut registry = PluginRegistry::new();
-    registry.register_validator(
-        "set_equality_validator",
-        Box::new(build_validator(Some("Round 5".into()))),
-    );
+    let validator = build_validator(Some("Round 5".into()));
     let store_view: &dyn AtomicStoreView = &store;
     let ctx = ValidationContext {
         workspace_root: tmp.path(),
         atomic_sidecar: &sidecar,
         store: store_view,
     };
-    let findings = registry
-        .validator("set_equality_validator")
-        .unwrap()
-        .validate(&ctx)
-        .unwrap();
+    let violations =
+        <SetEqualityValidator as Validator>::validate(&validator, &ctx).expect("typed dispatch ok");
 
-    // Only "decay" findings — no "missing" for "Round 7", no
-    // "impl_missing"/etc from steps 3-4.
-    for f in &findings {
-        assert_eq!(
-            f.kind.as_deref(),
-            Some("decay"),
-            "filter mode should surface decay only, got: {:?}",
-            f.kind
-        );
-        assert_eq!(f.severity, Severity::Info);
-    }
-    assert_eq!(findings.len(), 1, "expected exactly 1 decay finding");
+    assert_eq!(violations.len(), 1, "expected exactly 1 decay finding");
+    let decay = &violations[0];
+    assert!(
+        matches!(
+            decay,
+            CodeRefViolation::Citation { kind: ViolationKind::Decay, .. }
+        ),
+        "filter mode should surface decay only, got: {:?}",
+        decay
+    );
 }

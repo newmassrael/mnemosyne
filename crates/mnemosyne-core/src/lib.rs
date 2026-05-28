@@ -7,8 +7,12 @@
 //!
 //! Two trait categories cover every foreseen extension surface:
 //! - `Validator` reads the atomic store + plugin-specific input and emits
-//!   zero or more `ValidationFinding` records (e.g. set-equality citation
-//!   audit, behavioral spec checker, narrative continuity validator).
+//!   zero or more *typed* findings via the associated `type Finding`
+//!   (e.g. set-equality citation audit emits a `CodeRefViolation` enum;
+//!   behavioral spec checkers emit their own typed payload). The
+//!   companion `ErasedValidator` trait (blanket-implemented for every
+//!   `Validator`) provides object-safe dispatch through `PluginRegistry`
+//!   with findings serialized to `serde_json::Value` at the trait edge.
 //! - `SymbolResolver` is a binding-class capability that answers
 //!   `(file, line) -> Option<symbol_name>` so the validator can enforce
 //!   `Implementation.symbol` at file+symbol granularity instead of file-
@@ -21,7 +25,7 @@
 //! not change call sites.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -36,13 +40,74 @@ pub trait SymbolResolver: Send + Sync {
     ) -> Result<Option<String>, ResolverError>;
 }
 
+/// Validator plugin contract — typed-finding form.
+///
+/// Each plugin declares its own `Finding` type with the rich shape that
+/// best fits its domain (citation defense → `CodeRefViolation` enum,
+/// behavioral checker → its own typed payload, etc.). The associated-
+/// type form gives plugin authors and concrete callers full static
+/// guarantees on payload shape. Use `Validator` when the caller knows
+/// the concrete plugin type; use the object-safe [`ErasedValidator`]
+/// companion (blanket-implemented for every `Validator`) when dispatch
+/// must go through `PluginRegistry`.
 pub trait Validator: Send + Sync {
+    /// Plugin-specific typed finding payload. Must be `Serialize` so the
+    /// erased dispatch path can carry the value across the object-safe
+    /// trait boundary; `Debug` for diagnostics; `Send` for cross-thread
+    /// dispatch.
+    type Finding: Serialize + Send + std::fmt::Debug;
+
     fn version_surface(&self) -> VersionSurface;
 
     fn validate(
         &self,
         context: &ValidationContext<'_>,
-    ) -> Result<Vec<ValidationFinding>, ValidatorError>;
+    ) -> Result<Vec<Self::Finding>, ValidatorError>;
+}
+
+/// Object-safe companion to [`Validator`]. Blanket-implemented for every
+/// `V: Validator`, so registering a typed validator into
+/// [`PluginRegistry`] is the same code path: `Box::new(my_validator)`
+/// coerces to `Box<dyn ErasedValidator>` automatically.
+///
+/// The erased path serializes each typed finding to `serde_json::Value`
+/// at the trait edge — losing static type info in exchange for object-
+/// safety. Callers that need the typed shape back can hold the concrete
+/// `V` directly and invoke [`Validator::validate`] instead.
+pub trait ErasedValidator: Send + Sync {
+    fn version_surface(&self) -> VersionSurface;
+
+    fn validate_erased(
+        &self,
+        context: &ValidationContext<'_>,
+    ) -> Result<Vec<serde_json::Value>, ValidatorError>;
+}
+
+impl<V> ErasedValidator for V
+where
+    V: Validator,
+{
+    fn version_surface(&self) -> VersionSurface {
+        <V as Validator>::version_surface(self)
+    }
+
+    fn validate_erased(
+        &self,
+        context: &ValidationContext<'_>,
+    ) -> Result<Vec<serde_json::Value>, ValidatorError> {
+        let findings = <V as Validator>::validate(self, context)?;
+        findings
+            .into_iter()
+            .map(|f| {
+                serde_json::to_value(f).map_err(|e| {
+                    ValidatorError::Internal(format!(
+                        "Finding serialization failed at erased dispatch edge: {}",
+                        e
+                    ))
+                })
+            })
+            .collect()
+    }
 }
 
 /// Read-only view of the atomic store as seen by `Validator` plugins.
@@ -136,27 +201,6 @@ pub struct ValidationContext<'a> {
     pub store: &'a dyn AtomicStoreView,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationFinding {
-    pub severity: Severity,
-    /// Validator-defined sub-kind tag (e.g., `"missing"`,
-    /// `"section_missing"`, `"impl_unbacked"`). External consumers route
-    /// per-class severity / counting off this string. None = the
-    /// validator does not subdivide its findings.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    pub section_id: Option<String>,
-    pub file: Option<PathBuf>,
-    pub line: Option<u32>,
-    pub message: String,
-    /// Validator-specific structured payload — preserves rich detail
-    /// that doesn't fit the universal axes (e.g. `entry_id`, `symbol`,
-    /// `decision_status`). JSON-compatible by construction so dispatch
-    /// over MCP / CLI transports is lossless.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extras: BTreeMap<String, serde_json::Value>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -216,7 +260,7 @@ pub enum ValidatorError {
 #[derive(Default)]
 pub struct PluginRegistry {
     symbol_resolvers: HashMap<String, Box<dyn SymbolResolver>>,
-    validators: HashMap<String, Box<dyn Validator>>,
+    validators: HashMap<String, Box<dyn ErasedValidator>>,
 }
 
 impl PluginRegistry {
@@ -232,10 +276,14 @@ impl PluginRegistry {
         self.symbol_resolvers.insert(key.into(), resolver);
     }
 
+    /// Register a `Validator` plugin. The boxed value is held as a
+    /// `Box<dyn ErasedValidator>`; coercion from `Box<V>` where
+    /// `V: Validator` is automatic via the blanket
+    /// `impl<V: Validator> ErasedValidator for V`.
     pub fn register_validator(
         &mut self,
         key: impl Into<String>,
-        validator: Box<dyn Validator>,
+        validator: Box<dyn ErasedValidator>,
     ) {
         self.validators.insert(key.into(), validator);
     }
@@ -244,7 +292,7 @@ impl PluginRegistry {
         self.symbol_resolvers.get(key).map(|b| b.as_ref())
     }
 
-    pub fn validator(&self, key: &str) -> Option<&dyn Validator> {
+    pub fn validator(&self, key: &str) -> Option<&dyn ErasedValidator> {
         self.validators.get(key).map(|b| b.as_ref())
     }
 

@@ -3558,6 +3558,100 @@
         "13-smell #12 AtomicSection 14 field data clump analysis — Outline title parent_doc parent_section sub-struct extraction candidate",
         "13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes"
       ]
+    },
+    "Round 315": {
+      "decision_summary": "Typed Validator trait + dedup finding — Validator trait redesigned with associated type Finding (Serialize + Send + Debug) so plugins declare typed payload shapes; ErasedValidator companion trait + blanket impl provide object-safe dispatch through PluginRegistry; ValidationFinding stringly-typed BTreeMap form removed; SetEqualityValidator uses CodeRefViolation as its typed Finding directly with violation_to_finding adapter retired; 13-smell #1 + #2 closed",
+      "changes_bullets": [
+        "Validator trait redesigned to typed-finding form — added associated type Finding (with Serialize + Send + Debug bounds) so each plugin declares its own rich payload shape (SetEqualityValidator declares Finding = CodeRefViolation; future plugins declare their own typed enums); validate returns Vec<Self::Finding> directly with full static type information preserved across the call boundary",
+        "ErasedValidator companion trait added as object-safe wrapper — fn validate_erased returns Vec<serde_json::Value> by serializing each typed finding at the trait edge; blanket impl<V: Validator> ErasedValidator for V means every typed validator is automatically object-safe-dispatchable",
+        "PluginRegistry storage type changed from Box<dyn Validator> to Box<dyn ErasedValidator> — coercion from Box<V: Validator> is automatic via the blanket impl so register_validator(Box::new(my_validator)) keeps its call syntax; registry.validator(key) now returns &dyn ErasedValidator",
+        "mnemosyne_core::ValidationFinding struct removed entirely — the stringly-typed kind: Option<String> + extras: BTreeMap<String, Value> shape is no longer the trait return value; typed Self::Finding replaces it; pre-release no-compat policy applies (no external API to preserve)",
+        "mnemosyne_core::ValidationFinding-related imports removed from mnemosyne-core src/lib.rs (PathBuf no longer used at substrate level since findings are typed per-plugin)",
+        "SetEqualityValidator impl Validator typed to type Finding = CodeRefViolation — validate returns Vec<CodeRefViolation> directly without the violation_to_finding adapter",
+        "violation_to_finding adapter function removed from mnemosyne-validate/src/code_refs.rs — the typed enum CodeRefViolation already carries entry_id + symbol + decision_status etc as variant payload so the adapter is now redundant; CLAUDE.md no-legacy-carry rule applies",
+        "CodeRefViolation + Citation + ViolationKind gained Serialize derive — default externally-tagged enum form is the auto-derived shape on the ErasedValidator boundary; cli renders a separately-defined flat shape via to_cli_json",
+        "CodeRefViolation gained Display impl — renders the legacy CLI line shape ([<kind>] <file>:<line> <entry_id> for citations; [<kind>] <file>:<no-cite> §<id> (<symbol>) for impl_unbacked; [<kind>] §<id> (status=<status>) for impl_missing) so cli loops can println {} v with no format-string duplication",
+        "CodeRefViolation gained to_cli_json method — produces the stable flat per-violation JSON shape (kind + file + line + section_id + entry_id + symbol + decision_status fields with optionals omitted when absent) that validate-code-refs --json contract emits to external consumers",
+        "mnemosyne-cli/src/main.rs cmd_validate_code_refs refactored to direct typed dispatch — drops the register-then-immediately-retrieve dance with PluginRegistry that was R307 D1 proof and calls validator.validate(&ctx) directly with typed Vec<CodeRefViolation> return; counts loop now uses CodeRefViolation::kind_tag (typed dispatch) instead of f.kind.as_deref string lookup; TTY rendering uses Display via println {} v; JSON rendering uses to_cli_json per violation",
+        "validator_trait_dispatch test rewritten with 3 scenarios — typed_dispatch_yields_typed_findings asserts pattern-match on CodeRefViolation::Citation { kind: Missing, .. } + CodeRefViolation::ImplementationMissing { section_id, decision_status }; erased_dispatch_via_registry_serializes_findings_to_json asserts registry returns Vec<serde_json::Value> with the auto-derived enum shape (Citation discriminator + ImplementationMissing discriminator); typed_dispatch_filter_id_narrows_to_decay_only asserts filter mode returns exactly 1 Citation { kind: Decay }",
+        "registry indirection retained for the cli only at the test layer — production cli path is direct typed; registry exists at substrate level for future dynamic plugin scenarios where dispatcher does not know the concrete validator type (RFC-003 external plugin extension R319+ anchor)"
+      ],
+      "verification_bullets": [
+        "cargo build --workspace green across all 16 production crates after typed Validator + ErasedValidator + ValidationFinding removal + cli refactor",
+        "cargo test --workspace --no-fail-fast green — 82 test result groups all pass including the 3 rewritten validator_trait_dispatch tests (typed dispatch + erased dispatch + filter mode) and the unchanged symbol_enforcement_smoke",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0 — R308 D9 baseline held under the trait redesign; no new warnings introduced by the typed dispatch refactor",
+        "mnemosyne-cli validate-workspace baseline clean — entries 61 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0",
+        "mnemosyne-cli validate-code-refs clean — 0 violations across 15 scanned paths; the typed CodeRefViolation dispatch path produces the same per-class counts as the stringly-typed ValidationFinding.kind path that preceded it",
+        "atomic store wire format unchanged — the trait redesign is purely Rust type-level; no schema field renames + no serde attribute changes + no fact bytes layout touched",
+        "two-tier dispatch proof — Validator trait dispatch exercised both via direct typed call (cli production path) and via ErasedValidator object-safe wrapper through PluginRegistry (test path); the registry storage type Box<dyn ErasedValidator> accepts Box<V: Validator> via automatic coercion through the blanket impl",
+        "duplicate finding representation eliminated — CodeRefViolation (rich typed enum) is the single representation; the stringly-typed ValidationFinding parallel form (kind + extras BTreeMap) is gone; substrate has one source of truth for what a SetEqualityValidator finding looks like"
+      ],
+      "impact_refs": [
+        "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-314--post-decomposition-cleanup--5-residual-smells-from-r311-r313-closed-test-redistribution-to-textbook-home-crates--mnemosyne-validate-dev-dep-trim--section_by_id-naming-collision-resolution--climainrsatomic_clirs-import-reorganization-to-stdexternalinternal-grouping--benchcodegen-prototype-historical-doc-rot-cleared-repo-wide-mnemosyne-validator-zero-hits-5-god-crate-decomposition-now-true-textbook"
+      ],
+      "carry_forward_bullets": [
+        "R316 13-smell #8 mnemosyne-mcp library API split — mnemosyne-mcp tool methods call mnemosyne-validate + mnemosyne-query + mnemosyne-atomic library APIs directly instead of spawning mnemosyne-cli subprocess (eliminate process fork + arg parsing + JSON round-trip per call)",
+        "R317 13-smell #6 + #7 main.rs decomposition — cli commands module split (cli/commands/{validate + query + style + append + each cmd_ function into its own module}.rs) plus append_changelog_entry 8-arg builder or request struct to retire too_many_arguments per-site allow",
+        "R318 D3 transport abstraction MCP self-ref dogfood — substrate now ready (#1 + #2 closed in R315); mnemosyne-mcp resolve_symbol_at tool + new mnemosyne-plugin-mcp-resolver crate + transport_parity integration test asserting InProcess vs MCP equality",
+        "R319+ D4 MediumAdapter trait plus DesignDocAdapter refactor — Phase 1A prerequisite",
+        "R320+ D6 external plugin extension mechanism — dlopen libloading or external-binary orchestrator path",
+        "D7 severity_symbol Mnemosyne self-dogfood — activate plugins.symbol_resolver.rust in mnemosyne.toml plus N round measurement evidence",
+        "D8 Round 172 priority audit re-validation — at Phase 1 entry trigger",
+        "13-smell #3 AtomicSnapshot eager allocation lazy iterator GAT — defer until ledger entries cross 10K scale threshold",
+        "13-smell #9 doc_lazy_continuation 206 sites blanket allow removal — continuous-improvement",
+        "13-smell #10 YyyyMmDd typed newtype — replace inconsistent_digit_grouping blanket allow with strong type at 9 fact sites",
+        "13-smell #11 Box Status tonic interceptor allow — tonic API constraint",
+        "13-smell #12 AtomicSection 14 field data clump analysis — Outline title parent_doc parent_section sub-struct candidate",
+        "13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes",
+        "ErasedValidator default JSON shape — auto-derived externally-tagged enum form is what the trait boundary surface uses; external consumers reading from validate_erased get the verbose shape; cli sticks with to_cli_json flat shape; if a future round wants the boundary shape to match cli flat shape directly, customize CodeRefViolation Serialize impl (trade-off vs auto-derive maintainability)",
+        "Future validator plugins — declare type Finding pointing at the plugin own typed enum (BehavioralFinding for behavioral-checker plugins, NarrativeFinding for narrative-continuity plugins, etc); blanket ErasedValidator impl auto-bridges to PluginRegistry; CLI consumers of new plugins pattern-match on the typed enum directly"
+      ],
+      "publishable_decision_summary": "Typed Validator trait + dedup finding — Validator trait redesigned with associated type Finding (Serialize + Send + Debug) so plugins declare typed payload shapes; ErasedValidator companion trait + blanket impl provide object-safe dispatch through PluginRegistry; ValidationFinding stringly-typed BTreeMap form removed; SetEqualityValidator uses CodeRefViolation as its typed Finding directly with violation_to_finding adapter retired; 13-smell #1 + #2 closed",
+      "publishable_changes_bullets": [
+        "Validator trait redesigned to typed-finding form — added associated type Finding (with Serialize + Send + Debug bounds) so each plugin declares its own rich payload shape (SetEqualityValidator declares Finding = CodeRefViolation; future plugins declare their own typed enums); validate returns Vec<Self::Finding> directly with full static type information preserved across the call boundary",
+        "ErasedValidator companion trait added as object-safe wrapper — fn validate_erased returns Vec<serde_json::Value> by serializing each typed finding at the trait edge; blanket impl<V: Validator> ErasedValidator for V means every typed validator is automatically object-safe-dispatchable",
+        "PluginRegistry storage type changed from Box<dyn Validator> to Box<dyn ErasedValidator> — coercion from Box<V: Validator> is automatic via the blanket impl so register_validator(Box::new(my_validator)) keeps its call syntax; registry.validator(key) now returns &dyn ErasedValidator",
+        "mnemosyne_core::ValidationFinding struct removed entirely — the stringly-typed kind: Option<String> + extras: BTreeMap<String, Value> shape is no longer the trait return value; typed Self::Finding replaces it; pre-release no-compat policy applies (no external API to preserve)",
+        "mnemosyne_core::ValidationFinding-related imports removed from mnemosyne-core src/lib.rs (PathBuf no longer used at substrate level since findings are typed per-plugin)",
+        "SetEqualityValidator impl Validator typed to type Finding = CodeRefViolation — validate returns Vec<CodeRefViolation> directly without the violation_to_finding adapter",
+        "violation_to_finding adapter function removed from mnemosyne-validate/src/code_refs.rs — the typed enum CodeRefViolation already carries entry_id + symbol + decision_status etc as variant payload so the adapter is now redundant; CLAUDE.md no-legacy-carry rule applies",
+        "CodeRefViolation + Citation + ViolationKind gained Serialize derive — default externally-tagged enum form is the auto-derived shape on the ErasedValidator boundary; cli renders a separately-defined flat shape via to_cli_json",
+        "CodeRefViolation gained Display impl — renders the legacy CLI line shape ([<kind>] <file>:<line> <entry_id> for citations; [<kind>] <file>:<no-cite> §<id> (<symbol>) for impl_unbacked; [<kind>] §<id> (status=<status>) for impl_missing) so cli loops can println {} v with no format-string duplication",
+        "CodeRefViolation gained to_cli_json method — produces the stable flat per-violation JSON shape (kind + file + line + section_id + entry_id + symbol + decision_status fields with optionals omitted when absent) that validate-code-refs --json contract emits to external consumers",
+        "mnemosyne-cli/src/main.rs cmd_validate_code_refs refactored to direct typed dispatch — drops the register-then-immediately-retrieve dance with PluginRegistry that was R307 D1 proof and calls validator.validate(&ctx) directly with typed Vec<CodeRefViolation> return; counts loop now uses CodeRefViolation::kind_tag (typed dispatch) instead of f.kind.as_deref string lookup; TTY rendering uses Display via println {} v; JSON rendering uses to_cli_json per violation",
+        "validator_trait_dispatch test rewritten with 3 scenarios — typed_dispatch_yields_typed_findings asserts pattern-match on CodeRefViolation::Citation { kind: Missing, .. } + CodeRefViolation::ImplementationMissing { section_id, decision_status }; erased_dispatch_via_registry_serializes_findings_to_json asserts registry returns Vec<serde_json::Value> with the auto-derived enum shape (Citation discriminator + ImplementationMissing discriminator); typed_dispatch_filter_id_narrows_to_decay_only asserts filter mode returns exactly 1 Citation { kind: Decay }",
+        "registry indirection retained for the cli only at the test layer — production cli path is direct typed; registry exists at substrate level for future dynamic plugin scenarios where dispatcher does not know the concrete validator type (RFC-003 external plugin extension R319+ anchor)"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build --workspace green across all 16 production crates after typed Validator + ErasedValidator + ValidationFinding removal + cli refactor",
+        "cargo test --workspace --no-fail-fast green — 82 test result groups all pass including the 3 rewritten validator_trait_dispatch tests (typed dispatch + erased dispatch + filter mode) and the unchanged symbol_enforcement_smoke",
+        "cargo clippy --workspace --all-targets -- -D warnings exits 0 — R308 D9 baseline held under the trait redesign; no new warnings introduced by the typed dispatch refactor",
+        "mnemosyne-cli validate-workspace baseline clean — entries 61 / sections 5 / T3 reject 0 / T1 orphan 0 / round-trip 1/1 / atomic ledger sync / commit-ledger drift 0",
+        "mnemosyne-cli validate-code-refs clean — 0 violations across 15 scanned paths; the typed CodeRefViolation dispatch path produces the same per-class counts as the stringly-typed ValidationFinding.kind path that preceded it",
+        "atomic store wire format unchanged — the trait redesign is purely Rust type-level; no schema field renames + no serde attribute changes + no fact bytes layout touched",
+        "two-tier dispatch proof — Validator trait dispatch exercised both via direct typed call (cli production path) and via ErasedValidator object-safe wrapper through PluginRegistry (test path); the registry storage type Box<dyn ErasedValidator> accepts Box<V: Validator> via automatic coercion through the blanket impl",
+        "duplicate finding representation eliminated — CodeRefViolation (rich typed enum) is the single representation; the stringly-typed ValidationFinding parallel form (kind + extras BTreeMap) is gone; substrate has one source of truth for what a SetEqualityValidator finding looks like"
+      ],
+      "publishable_impact_refs": [
+        "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-314--post-decomposition-cleanup--5-residual-smells-from-r311-r313-closed-test-redistribution-to-textbook-home-crates--mnemosyne-validate-dev-dep-trim--section_by_id-naming-collision-resolution--climainrsatomic_clirs-import-reorganization-to-stdexternalinternal-grouping--benchcodegen-prototype-historical-doc-rot-cleared-repo-wide-mnemosyne-validator-zero-hits-5-god-crate-decomposition-now-true-textbook"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R316 13-smell #8 mnemosyne-mcp library API split — mnemosyne-mcp tool methods call mnemosyne-validate + mnemosyne-query + mnemosyne-atomic library APIs directly instead of spawning mnemosyne-cli subprocess (eliminate process fork + arg parsing + JSON round-trip per call)",
+        "R317 13-smell #6 + #7 main.rs decomposition — cli commands module split (cli/commands/{validate + query + style + append + each cmd_ function into its own module}.rs) plus append_changelog_entry 8-arg builder or request struct to retire too_many_arguments per-site allow",
+        "R318 D3 transport abstraction MCP self-ref dogfood — substrate now ready (#1 + #2 closed in R315); mnemosyne-mcp resolve_symbol_at tool + new mnemosyne-plugin-mcp-resolver crate + transport_parity integration test asserting InProcess vs MCP equality",
+        "R319+ D4 MediumAdapter trait plus DesignDocAdapter refactor — Phase 1A prerequisite",
+        "R320+ D6 external plugin extension mechanism — dlopen libloading or external-binary orchestrator path",
+        "D7 severity_symbol Mnemosyne self-dogfood — activate plugins.symbol_resolver.rust in mnemosyne.toml plus N round measurement evidence",
+        "D8 Round 172 priority audit re-validation — at Phase 1 entry trigger",
+        "13-smell #3 AtomicSnapshot eager allocation lazy iterator GAT — defer until ledger entries cross 10K scale threshold",
+        "13-smell #9 doc_lazy_continuation 206 sites blanket allow removal — continuous-improvement",
+        "13-smell #10 YyyyMmDd typed newtype — replace inconsistent_digit_grouping blanket allow with strong type at 9 fact sites",
+        "13-smell #11 Box Status tonic interceptor allow — tonic API constraint",
+        "13-smell #12 AtomicSection 14 field data clump analysis — Outline title parent_doc parent_section sub-struct candidate",
+        "13-smell #13 ValidationContext PluginRegistry reference for multi-validator composition — add when first composition use case materializes",
+        "ErasedValidator default JSON shape — auto-derived externally-tagged enum form is what the trait boundary surface uses; external consumers reading from validate_erased get the verbose shape; cli sticks with to_cli_json flat shape; if a future round wants the boundary shape to match cli flat shape directly, customize CodeRefViolation Serialize impl (trade-off vs auto-derive maintainability)",
+        "Future validator plugins — declare type Finding pointing at the plugin own typed enum (BehavioralFinding for behavioral-checker plugins, NarrativeFinding for narrative-continuity plugins, etc); blanket ErasedValidator impl auto-bridges to PluginRegistry; CLI consumers of new plugins pattern-match on the typed enum directly"
+      ]
     }
   },
   "inventory_entries": {},

@@ -69,7 +69,7 @@ use mnemosyne_core::DecisionStatus;
 /// file. `entry_id` retains the cite shape verbatim (`""` or
 /// `""` — `§` prefix kept so the kind axis is readable from the id
 /// alone).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Citation {
  pub file: PathBuf,
  pub line: usize,
@@ -84,7 +84,7 @@ pub struct Citation {
 /// different evidence (a concrete file:line vs an impl-entry without a
 /// code witness vs a section with no impl entries at all), so the enum
 /// splits at those natural boundaries.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum CodeRefViolation {
  /// Citation-side violation — there is a concrete cite at file:line,
  /// and the cite is wrong in some way (`kind` distinguishes how).
@@ -163,6 +163,107 @@ impl CodeRefViolation {
  CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
  }
  }
+
+ /// Render the violation as a flat JSON object — the shape
+ /// `mnemosyne-cli validate-code-refs --json` emits per violation:
+ /// `{"kind": <tag>, "file": <path>, "line": <n>, "section_id": <id>,
+ /// "entry_id": <id>, "symbol": <name>, "decision_status": <status>}`,
+ /// with optional fields omitted when absent. The default Serialize
+ /// derive on `CodeRefViolation` produces a nested
+ /// variant-tagged form intended for the `ErasedValidator` dispatch
+ /// boundary; this method is the CLI-stable flat shape.
+ pub fn to_cli_json(&self) -> serde_json::Value {
+ use serde_json::{Map, Value};
+ let mut obj = Map::new();
+ let kind_tag = self.kind_tag();
+ obj.insert("kind".into(), Value::String(kind_tag.into()));
+ match self {
+ CodeRefViolation::Citation { citation, .. } => {
+ obj.insert(
+  "file".into(),
+  Value::String(citation.file.to_string_lossy().into_owned()),
+ );
+ obj.insert("line".into(), Value::Number(citation.line.into()));
+ obj.insert(
+  "entry_id".into(),
+  Value::String(citation.entry_id.clone()),
+ );
+ }
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => {
+ obj.insert("section_id".into(), Value::String(section_id.clone()));
+ obj.insert(
+  "file".into(),
+  Value::String(file.to_string_lossy().into_owned()),
+ );
+ if let Some(s) = symbol {
+  obj.insert("symbol".into(), Value::String(s.clone()));
+ }
+ }
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ obj.insert("section_id".into(), Value::String(section_id.clone()));
+ let status_str = match decision_status {
+  Some(s) => format!("{:?}", s).to_lowercase(),
+  None => "none(default-active)".into(),
+ };
+ obj.insert("decision_status".into(), Value::String(status_str));
+ }
+ }
+ Value::Object(obj)
+ }
+}
+
+impl std::fmt::Display for CodeRefViolation {
+ /// Render the human-readable CLI line for one violation. Format
+ /// mirrors the legacy `violation_to_finding` message output:
+ /// `[<kind>] <file>:<line> <entry_id>` for citations,
+ /// `[<kind>] <file>:<no-cite> §<section_id> (<symbol>)` for
+ /// implementation-unbacked, and `[<kind>] §<section_id>
+ /// (status=<status>)` for implementation-missing.
+ fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+ let kind_tag = self.kind_tag();
+ match self {
+ CodeRefViolation::Citation { citation, .. } => write!(
+ f,
+ "[{}] {}:{} {}",
+ kind_tag,
+ citation.file.to_string_lossy(),
+ citation.line,
+ citation.entry_id
+ ),
+ CodeRefViolation::ImplementationUnbacked {
+ section_id,
+ file,
+ symbol,
+ } => write!(
+ f,
+ "[{}] {}:<no-cite> §{}{}",
+ kind_tag,
+ file.to_string_lossy(),
+ section_id,
+ symbol
+  .as_deref()
+  .map(|s| format!(" ({})", s))
+  .unwrap_or_default()
+ ),
+ CodeRefViolation::ImplementationMissing {
+ section_id,
+ decision_status,
+ } => {
+ let status_str = match decision_status {
+ Some(s) => format!("{:?}", s).to_lowercase(),
+ None => "none(default-active)".into(),
+ };
+ write!(f, "[{}] §{} (status={})", kind_tag, section_id, status_str)
+ }
+ }
+ }
 }
 
 /// semantic axis that drives CLI severity flag bucketing.
@@ -184,7 +285,7 @@ pub enum DefectClass {
  Inventory,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum ViolationKind {
  /// `entry_id` not in the atomic store `changelog_entries` map
  /// (hallucinated or refers to a removed entry).
@@ -1359,6 +1460,8 @@ impl SetEqualityValidator {
 }
 
 impl mnemosyne_core::Validator for SetEqualityValidator {
+ type Finding = CodeRefViolation;
+
  fn version_surface(&self) -> mnemosyne_core::VersionSurface {
  mnemosyne_core::VersionSurface {
  plugin_name: "mnemosyne-validate::SetEqualityValidator".into(),
@@ -1371,84 +1474,10 @@ impl mnemosyne_core::Validator for SetEqualityValidator {
  fn validate(
  &self,
  ctx: &mnemosyne_core::ValidationContext<'_>,
- ) -> Result<Vec<mnemosyne_core::ValidationFinding>, mnemosyne_core::ValidatorError>
- {
+ ) -> Result<Vec<CodeRefViolation>, mnemosyne_core::ValidatorError> {
  let snapshot = ctx.store.snapshot();
- let violations = self
- .scan(ctx.workspace_root, &snapshot)
- .map_err(|e| mnemosyne_core::ValidatorError::Internal(e.to_string()))?;
- Ok(violations.into_iter().map(violation_to_finding).collect())
- }
-}
-
-/// `CodeRefViolation` → `ValidationFinding` adapter — preserves the
-/// rich kind / file / line / entry_id / symbol / decision_status payload
-/// across the plugin trait boundary via `kind` + `extras`. Severity is a
-/// structural default (`Reject` for non-Decay, `Info` for `Decay`); the
-/// consumer applies per-class severity overrides (`severity_missing` /
-/// `severity_binding` / `severity_inventory`) off the finding's `kind`
-/// string.
-fn violation_to_finding(v: CodeRefViolation) -> mnemosyne_core::ValidationFinding {
- use serde_json::Value;
- let kind_tag = v.kind_tag().to_string();
- let severity = match v.defect_class() {
- DefectClass::Decay => mnemosyne_core::Severity::Info,
- _ => mnemosyne_core::Severity::Reject,
- };
- let mut extras: BTreeMap<String, Value> = BTreeMap::new();
- let (section_id, file, line, message) = match v {
- CodeRefViolation::Citation { citation, .. } => {
- extras.insert("entry_id".into(), Value::String(citation.entry_id.clone()));
- let msg = format!(
- "[{}] {}:{} {}",
- kind_tag,
- citation.file.to_string_lossy(),
- citation.line,
- citation.entry_id
- );
- (None, Some(citation.file), Some(citation.line as u32), msg)
- }
- CodeRefViolation::ImplementationUnbacked {
- section_id,
- file,
- symbol,
- } => {
- if let Some(s) = &symbol {
- extras.insert("symbol".into(), Value::String(s.clone()));
- }
- let msg = format!(
- "[{}] {}:<no-cite> §{}{}",
- kind_tag,
- file.to_string_lossy(),
- section_id,
- symbol
-  .as_deref()
-  .map(|s| format!(" ({})", s))
-  .unwrap_or_default()
- );
- (Some(section_id), Some(file), None, msg)
- }
- CodeRefViolation::ImplementationMissing {
- section_id,
- decision_status,
- } => {
- let status_str = match decision_status {
- Some(s) => format!("{:?}", s).to_lowercase(),
- None => "none(default-active)".to_string(),
- };
- extras.insert("decision_status".into(), Value::String(status_str.clone()));
- let msg = format!("[{}] §{} (status={})", kind_tag, section_id, status_str);
- (Some(section_id), None, None, msg)
- }
- };
- mnemosyne_core::ValidationFinding {
- severity,
- kind: Some(kind_tag),
- section_id,
- file,
- line,
- message,
- extras,
+ self.scan(ctx.workspace_root, &snapshot)
+ .map_err(|e| mnemosyne_core::ValidatorError::Internal(e.to_string()))
  }
 }
 

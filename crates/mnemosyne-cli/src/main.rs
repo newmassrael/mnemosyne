@@ -1986,11 +1986,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  // backend names log a warning and are skipped.
  let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
 
- // Dispatch through PluginRegistry — closes the R306 carry item #1
- // (validator-class trait surface reached from production, not just
- // type-level). The SetEqualityValidator owns its config + resolver
- // map + orphan ledger + filter_id, so `Validator::validate(ctx)` is
- // self-contained and ValidationContext stays minimal.
+ // Call the validator directly with typed return — cli owns the
+ // concrete SetEqualityValidator construction so the registry
+ // indirection adds no value here. The registry dispatch path is
+ // still exercised end-to-end in validator_trait_dispatch.rs as
+ // proof that ErasedValidator object-safe dispatch works for
+ // dynamic-plugin scenarios.
  let validator = SetEqualityValidator {
  config: cfg.clone(),
  entry_id_prefix: prefix.clone(),
@@ -1998,31 +1999,23 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  symbol_resolvers,
  filter_id: filter_id.clone(),
  };
- let mut registry = mnemosyne_core::PluginRegistry::new();
- registry.register_validator("set_equality_validator", Box::new(validator));
- let dispatched = registry
- .validator("set_equality_validator")
- .expect("just registered");
  let store_view: &dyn mnemosyne_core::AtomicStoreView = &store;
  let ctx = mnemosyne_core::ValidationContext {
  workspace_root: &root,
  atomic_sidecar: &atomic_path,
  store: store_view,
  };
- let findings = dispatched
- .validate(&ctx)
+ let violations = <SetEqualityValidator as mnemosyne_core::Validator>::validate(
+ &validator, &ctx,
+ )
  .map_err(|e| anyhow!("SetEqualityValidator dispatch failed: {}", e))?;
 
- // Per-class counting reads `ValidationFinding.kind` (the validator's
- // sub-kind tag). The kind→count routing matches the
- // pre-dispatch CodeRefViolation arms 1-to-1 — same defect-class
- // bucketing for `severity_missing` / `severity_binding` /
- // `severity_inventory`.
+ // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
+ // is the stable string key shared with `validate-code-refs --json`
+ // output. Pattern match is exhaustive at the type level.
  let mut counts = std::collections::BTreeMap::<&str, usize>::new();
- for f in &findings {
- if let Some(k) = f.kind.as_deref() {
- *counts.entry(k).or_insert(0) += 1;
- }
+ for v in &violations {
+ *counts.entry(v.kind_tag()).or_insert(0) += 1;
  }
  let get = |k: &str| counts.get(k).copied().unwrap_or(0);
  let missing_count = get("missing");
@@ -2044,35 +2037,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  + symbol_mismatch_count;
 
  if json {
- // Reconstruct the pre-R307 JSON shape from ValidationFinding's
- // universal fields + plugin-specific `extras` (entry_id / symbol /
- // decision_status). External consumers see a byte-identical
- // structure modulo extras ordering.
- let view: Vec<serde_json::Value> = findings
- .iter()
- .map(|f| {
- let mut obj = serde_json::Map::new();
- if let Some(k) = &f.kind {
- obj.insert("kind".into(), serde_json::Value::String(k.clone()));
- }
- if let Some(file) = &f.file {
- obj.insert(
-  "file".into(),
-  serde_json::Value::String(file.to_string_lossy().into_owned()),
- );
- }
- if let Some(line) = f.line {
- obj.insert("line".into(), serde_json::Value::Number(line.into()));
- }
- if let Some(sid) = &f.section_id {
- obj.insert("section_id".into(), serde_json::Value::String(sid.clone()));
- }
- for (k, v) in &f.extras {
- obj.insert(k.clone(), v.clone());
- }
- serde_json::Value::Object(obj)
- })
- .collect();
+ // Flat per-violation shape via `CodeRefViolation::to_cli_json` —
+ // the stable CLI JSON contract. The default Serialize derive on
+ // `CodeRefViolation` produces a nested tagged form intended for
+ // the `ErasedValidator` dispatch boundary; cli uses the flat
+ // shape so external consumers see one predictable layout.
+ let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
  let valid_entry_count = store.changelog_entries.len();
  println!(
  "{}",
@@ -2140,7 +2110,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
  inv_missing={} inv_deprecated={} \
  (severity_missing={} severity_binding={} severity_inventory={})",
- findings.len(),
+ violations.len(),
  missing_count,
  section_missing_count,
  citation_unbound_count,
@@ -2153,11 +2123,10 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
  severity_binding,
  severity_inventory,
  );
- // ValidationFinding.message is pre-formatted by
- // `violation_to_finding` to mirror the pre-R307 TTY shape — render
- // each finding's message line as-is.
- for f in &findings {
- println!(" {}", f.message);
+ // `CodeRefViolation: Display` renders the legacy TTY shape
+ // (`[<kind>] <file>:<line> <entry_id>` for citations, etc.).
+ for v in &violations {
+ println!(" {}", v);
  }
  }
 
