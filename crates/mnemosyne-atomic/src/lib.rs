@@ -56,20 +56,15 @@ use thiserror::Error;
 /// invariant: every AtomicSection has non-empty `title` + non-empty `parent_doc`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicSection {
-    /// Heading title. Mirrors schema.rs::Section.title. Default = "" during
-    /// Round 287 transitional state (pre-Phase-I backfill).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub title: String,
-    /// Owning doc identifier (workspace-relative path or doc-id). Mirrors
-    /// schema.rs::Section.parent_doc. Default = "" during Round 287
-    /// transitional state. Replaces the legacy `ATOMIC_ONLY_PARENT_DOC`
-    /// sentinel surfaced via query.rs synthetic_section construction.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub parent_doc: String,
-    /// Nullable parent section_id. `None` = top-level section in its doc.
-    /// Mirrors schema.rs::Section.parent_section.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_section: Option<String>,
+    /// Layer-0 canonical skeleton (Round 325 — Convergence A3): the
+    /// medium-neutral attributes (`title` / `parent_doc` / `parent_section` /
+    /// `impact_scope` / `decision_status`) lifted into `mnemosyne-core`.
+    /// `#[serde(flatten)]` keeps the skeleton fields inline in the JSON, so
+    /// the on-disk authoring shape is byte-identical to the pre-split layout.
+    /// Placed first so flattened skeleton fields serialize ahead of the
+    /// design_doc content below, matching the historical field order.
+    #[serde(flatten)]
+    pub skeleton: mnemosyne_core::SectionSkeleton,
     /// 1-3 sentence summary. T3 style threshold: ≤ 200 char.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
@@ -88,9 +83,6 @@ pub struct AtomicSection {
     /// rejected option + reason pairs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternatives_rejected: Vec<RejectedAlternative>,
-    /// cross-ref list (target section_id without `§` prefix).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub impact_scope: Vec<String>,
     /// code/config block list. T3 style threshold: code block itself exempt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
@@ -101,19 +93,6 @@ pub struct AtomicSection {
     /// `(file, symbol)` rejected at write time (set semantics).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub implementations: Vec<Implementation>,
-    /// Round 265 — atomic decision_status override.
-    ///
-    /// `None` = no atomic override; consumers fall back to the parser-derived
-    /// status (currently hard-coded to `Active` workspace-wide). `Some(_)` =
-    /// the atomic store authoritatively declares the section's status,
-    /// overriding the parser default. Wired through `query::build_section_view`
-    /// so SectionView reports the atomic value when present.
-    ///
-    /// Unblocks Stage B freshness — once a section transitions to
-    /// `Superseded` here, downstream tooling (auto-cascade trigger, decay scan)
-    /// can react. Trigger wiring itself is a later round.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decision_status: Option<DecisionStatus>,
 
     /// External-spec mirror — vendored normative quote anchored to this
     /// Section (RFC-002 FR-1). When `Some`, the Section represents a
@@ -640,7 +619,7 @@ impl mnemosyne_core::AtomicStoreView for AtomicStore {
                     sid.clone(),
                     mnemosyne_core::SectionView {
                         implementations,
-                        decision_status: sec.decision_status,
+                        decision_status: sec.skeleton.decision_status,
                     },
                 )
             })
@@ -726,8 +705,9 @@ fn synthesize_section_body_inner(atomic: &AtomicSection, include_implementations
             .collect();
         parts.push(block.join("\n"));
     }
-    if !atomic.impact_scope.is_empty() {
+    if !atomic.skeleton.impact_scope.is_empty() {
         let block: Vec<String> = atomic
+            .skeleton
             .impact_scope
             .iter()
             .map(|s| format!("- §{}", s))
@@ -1007,7 +987,7 @@ pub fn set_section_impact_scope(
     section_id: &str,
     refs: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    section_mut_strict(store, section_id)?.impact_scope = refs.to_vec();
+    section_mut_strict(store, section_id)?.skeleton.impact_scope = refs.to_vec();
     save_with_receipt(
         store,
         sidecar_path,
@@ -1167,10 +1147,13 @@ pub fn add_section(
     };
 
     let section = AtomicSection {
-        title: title_t.to_string(),
-        parent_doc: parent_doc_t.to_string(),
-        parent_section: parent_section_norm,
-        decision_status: Some(DecisionStatus::Active),
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: title_t.to_string(),
+            parent_doc: parent_doc_t.to_string(),
+            parent_section: parent_section_norm,
+            decision_status: Some(DecisionStatus::Active),
+            ..Default::default()
+        },
         ..Default::default()
     };
     store.sections.insert(section_id_t.to_string(), section);
@@ -1195,7 +1178,7 @@ pub fn set_section_title(
             "set_section_title: title mandatory (non-empty after trim)".to_string(),
         ));
     }
-    section_mut_strict(store, section_id)?.title = title_t.to_string();
+    section_mut_strict(store, section_id)?.skeleton.title = title_t.to_string();
     save_with_receipt(
         store,
         sidecar_path,
@@ -1223,7 +1206,7 @@ pub fn set_section_parent_doc(
             "set_section_parent_doc: parent_doc mandatory (non-empty after trim)".to_string(),
         ));
     }
-    section_mut_strict(store, section_id)?.parent_doc = pd_t.to_string();
+    section_mut_strict(store, section_id)?.skeleton.parent_doc = pd_t.to_string();
     save_with_receipt(
         store,
         sidecar_path,
@@ -1285,7 +1268,9 @@ pub fn set_section_parent_section(
         None => None,
     };
     // Unwrap is safe: contains_key confirmed above and no intervening mutation.
-    section_mut_strict(store, section_id)?.parent_section = parent_norm;
+    section_mut_strict(store, section_id)?
+        .skeleton
+        .parent_section = parent_norm;
     save_with_receipt(
         store,
         sidecar_path,
@@ -1324,7 +1309,9 @@ pub fn set_section_decision_status(
  "(T1 rule 4, atomic axis): superseding section_id mandatory for active → superseded transition".to_string(),
  ));
     }
-    section_mut_strict(store, section_id)?.decision_status = Some(new_status);
+    section_mut_strict(store, section_id)?
+        .skeleton
+        .decision_status = Some(new_status);
     save_with_receipt(
         store,
         sidecar_path,
@@ -2219,12 +2206,15 @@ mod tests {
         std::fs::write(&path, legacy_v2_json).unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
         let s = loaded.sections.get("39").expect("§39 present");
-        assert_eq!(s.title, "", "title defaults to empty pre-backfill");
+        assert_eq!(s.skeleton.title, "", "title defaults to empty pre-backfill");
         assert_eq!(
-            s.parent_doc, "",
+            s.skeleton.parent_doc, "",
             "parent_doc defaults to empty pre-backfill"
         );
-        assert_eq!(s.parent_section, None, "parent_section defaults to None");
+        assert_eq!(
+            s.skeleton.parent_section, None,
+            "parent_section defaults to None"
+        );
         assert_eq!(
             s.intent.as_deref(),
             Some("old-shape section without outline")
@@ -3181,15 +3171,15 @@ mod tests {
         assert_eq!(receipt.primitive, "add_section");
         assert_eq!(receipt.target_id, "39");
         let s = store.section("39").expect("§39 created");
-        assert_eq!(s.title, "Test Title");
-        assert_eq!(s.parent_doc, "docs/GENERATED.md");
-        assert_eq!(s.parent_section, None);
-        assert_eq!(s.decision_status, Some(DecisionStatus::Active));
+        assert_eq!(s.skeleton.title, "Test Title");
+        assert_eq!(s.skeleton.parent_doc, "docs/GENERATED.md");
+        assert_eq!(s.skeleton.parent_section, None);
+        assert_eq!(s.skeleton.decision_status, Some(DecisionStatus::Active));
         // Round-trip through sidecar.
         let reloaded = AtomicStore::load(&path).unwrap();
         let s2 = reloaded.section("39").unwrap();
-        assert_eq!(s2.title, "Test Title");
-        assert_eq!(s2.parent_doc, "docs/GENERATED.md");
+        assert_eq!(s2.skeleton.title, "Test Title");
+        assert_eq!(s2.skeleton.parent_doc, "docs/GENERATED.md");
     }
 
     #[test]
@@ -3235,7 +3225,7 @@ mod tests {
             other => panic!("expected Validation, got {:?}", other),
         }
         // Original section unchanged.
-        assert_eq!(store.section("39").unwrap().title, "First");
+        assert_eq!(store.section("39").unwrap().skeleton.title, "First");
     }
 
     #[test]
@@ -3256,8 +3246,8 @@ mod tests {
         add_section(&mut store, &path, "39", "docs/X.md", "Parent", None).unwrap();
         add_section(&mut store, &path, "39.1", "docs/X.md", "Child", Some("39")).unwrap();
         let child = store.section("39.1").expect("§39.1 created");
-        assert_eq!(child.parent_section.as_deref(), Some("39"));
-        assert_eq!(child.title, "Child");
+        assert_eq!(child.skeleton.parent_section.as_deref(), Some("39"));
+        assert_eq!(child.skeleton.title, "Child");
     }
 
     #[test]
@@ -3283,9 +3273,9 @@ mod tests {
         let mut store = AtomicStore::new();
         add_section(&mut store, &path, "39", "docs/X.md", "old title", None).unwrap();
         set_section_title(&mut store, &path, "39", "new title").unwrap();
-        assert_eq!(store.section("39").unwrap().title, "new title");
+        assert_eq!(store.section("39").unwrap().skeleton.title, "new title");
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.section("39").unwrap().title, "new title");
+        assert_eq!(reloaded.section("39").unwrap().skeleton.title, "new title");
     }
 
     #[test]
@@ -3297,7 +3287,7 @@ mod tests {
         let err = set_section_title(&mut store, &path, "39", "   ").unwrap_err();
         assert!(matches!(err, AtomicMutateError::Validation(_)));
         // Original title unchanged.
-        assert_eq!(store.section("39").unwrap().title, "T");
+        assert_eq!(store.section("39").unwrap().skeleton.title, "T");
     }
 
     #[test]
@@ -3316,9 +3306,15 @@ mod tests {
         let mut store = AtomicStore::new();
         add_section(&mut store, &path, "39", "docs/OLD.md", "T", None).unwrap();
         set_section_parent_doc(&mut store, &path, "39", "docs/NEW.md").unwrap();
-        assert_eq!(store.section("39").unwrap().parent_doc, "docs/NEW.md");
+        assert_eq!(
+            store.section("39").unwrap().skeleton.parent_doc,
+            "docs/NEW.md"
+        );
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.section("39").unwrap().parent_doc, "docs/NEW.md");
+        assert_eq!(
+            reloaded.section("39").unwrap().skeleton.parent_doc,
+            "docs/NEW.md"
+        );
     }
 
     #[test]
@@ -3350,12 +3346,17 @@ mod tests {
         // Re-parent child under parent.
         set_section_parent_section(&mut store, &path, "39.1", Some("39")).unwrap();
         assert_eq!(
-            store.section("39.1").unwrap().parent_section.as_deref(),
+            store
+                .section("39.1")
+                .unwrap()
+                .skeleton
+                .parent_section
+                .as_deref(),
             Some("39")
         );
         // Promote back to top-level (None).
         set_section_parent_section(&mut store, &path, "39.1", None).unwrap();
-        assert_eq!(store.section("39.1").unwrap().parent_section, None);
+        assert_eq!(store.section("39.1").unwrap().skeleton.parent_section, None);
     }
 
     #[test]
@@ -3367,7 +3368,7 @@ mod tests {
         let err = set_section_parent_section(&mut store, &path, "39.1", Some("ghost")).unwrap_err();
         assert!(matches!(err, AtomicMutateError::NotFound(_)));
         // Child unchanged.
-        assert_eq!(store.section("39.1").unwrap().parent_section, None);
+        assert_eq!(store.section("39.1").unwrap().skeleton.parent_section, None);
     }
 
     #[test]
@@ -3413,7 +3414,7 @@ mod tests {
         assert!(raw.contains("\"decision_status\": \"superseded\""));
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            reloaded.section("39").unwrap().decision_status,
+            reloaded.section("39").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Superseded)
         );
     }
@@ -3438,7 +3439,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.section("1").unwrap().decision_status,
+            store.section("1").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Superseded)
         );
     }
@@ -3472,7 +3473,13 @@ mod tests {
         }
         // Atomic store must remain unchanged (no partial write).
         assert!(
-            store.section("39").is_none() || store.section("39").unwrap().decision_status.is_none()
+            store.section("39").is_none()
+                || store
+                    .section("39")
+                    .unwrap()
+                    .skeleton
+                    .decision_status
+                    .is_none()
         );
     }
 
@@ -3489,11 +3496,11 @@ mod tests {
         set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None).unwrap();
         set_section_decision_status(&mut store, &path, "2", DecisionStatus::Removed, None).unwrap();
         assert_eq!(
-            store.section("1").unwrap().decision_status,
+            store.section("1").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Active)
         );
         assert_eq!(
-            store.section("2").unwrap().decision_status,
+            store.section("2").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Removed)
         );
     }
@@ -3517,7 +3524,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.section("39").unwrap().decision_status,
+            store.section("39").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Superseded)
         );
     }
@@ -3537,7 +3544,12 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_section(&mut store, "1");
         set_section_intent(&mut store, &path, "1", "test intent").unwrap();
-        assert!(store.section("1").unwrap().decision_status.is_none());
+        assert!(store
+            .section("1")
+            .unwrap()
+            .skeleton
+            .decision_status
+            .is_none());
         // serde skip_serializing_if confirms field is absent in JSON.
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(!raw.contains("decision_status"));

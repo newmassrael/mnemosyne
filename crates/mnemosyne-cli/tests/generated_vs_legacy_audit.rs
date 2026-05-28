@@ -229,7 +229,7 @@ fn audit_b_section_impact_scope_resolves_in_workspace() {
 
     let mut orphan = 0usize;
     for (section_id, atomic) in &store.sections {
-        for r in &atomic.impact_scope {
+        for r in &atomic.skeleton.impact_scope {
             if !id_set.contains(r) {
                 eprintln!(
                     "orphan impact_scope: section={} → §{} (workspace_section_id_set missing)",

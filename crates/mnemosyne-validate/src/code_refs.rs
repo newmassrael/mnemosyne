@@ -2392,7 +2392,10 @@ mod tests {
         store.sections.insert(
             section_id.to_string(),
             mnemosyne_atomic::AtomicSection {
-                decision_status,
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );

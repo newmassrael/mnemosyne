@@ -19,8 +19,11 @@ fn build_store() -> AtomicStore {
     // Section sec1 — Active by default (decision_status None), one impl
     // with a symbol.
     let sec1 = AtomicSection {
-        title: "Sec One".into(),
-        parent_doc: "docs/GENERATED.md".into(),
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: "Sec One".into(),
+            parent_doc: "docs/GENERATED.md".into(),
+            ..Default::default()
+        },
         implementations: vec![Implementation {
             file: "src/foo.rs".into(),
             symbol: Some("foo_symbol".into()),
@@ -31,10 +34,13 @@ fn build_store() -> AtomicStore {
 
     // Section sec2/sub — parented + superseded; zero impls.
     let sec2sub = AtomicSection {
-        title: "Sec Two Sub".into(),
-        parent_doc: "docs/GENERATED.md".into(),
-        parent_section: Some("sec2".into()),
-        decision_status: Some(DecisionStatus::Superseded),
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: "Sec Two Sub".into(),
+            parent_doc: "docs/GENERATED.md".into(),
+            parent_section: Some("sec2".into()),
+            decision_status: Some(DecisionStatus::Superseded),
+            ..Default::default()
+        },
         ..AtomicSection::default()
     };
     store.sections.insert("sec2/sub".into(), sec2sub);

@@ -122,12 +122,16 @@ pub fn render_atomic_store_to_md(
     if !store.sections.is_empty() {
         out.push_str("## Sections\n\n");
         for (section_id, atomic) in &store.sections {
-            let title = if atomic.title.is_empty() {
+            let title = if atomic.skeleton.title.is_empty() {
                 section_id.as_str()
             } else {
-                atomic.title.as_str()
+                atomic.skeleton.title.as_str()
             };
-            let status = match atomic.decision_status.unwrap_or(DecisionStatus::Active) {
+            let status = match atomic
+                .skeleton
+                .decision_status
+                .unwrap_or(DecisionStatus::Active)
+            {
                 DecisionStatus::Active => "active",
                 DecisionStatus::Superseded => "superseded",
                 DecisionStatus::Removed => "removed",
@@ -229,7 +233,7 @@ pub fn validate_atomic_store(
     }
     let mut orphan_section_refs = Vec::new();
     for (section_id, atomic) in &store.sections {
-        for r in &atomic.impact_scope {
+        for r in &atomic.skeleton.impact_scope {
             if !section_id_set.contains(r) {
                 orphan_section_refs.push((section_id.clone(), r.clone()));
             }

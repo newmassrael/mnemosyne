@@ -937,7 +937,7 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
     let mut targets: Vec<&str> = Vec::new();
     for (section_id, section) in &store.sections {
         if matches!(
-            section.decision_status,
+            section.skeleton.decision_status,
             Some(mnemosyne_core::DecisionStatus::Superseded)
                 | Some(mnemosyne_core::DecisionStatus::Removed)
         ) {

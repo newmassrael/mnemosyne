@@ -158,17 +158,20 @@ pub fn section_by_id(
     if let Some(atomic) = atomic_store.section(section_id) {
         let synthetic_section = Section {
             section_id: section_id.to_string(),
-            parent_doc: atomic.parent_doc.clone(),
-            parent_section: atomic.parent_section.clone(),
-            title: atomic.title.clone(),
-            decision_status: atomic.decision_status.unwrap_or(DecisionStatus::Active),
+            parent_doc: atomic.skeleton.parent_doc.clone(),
+            parent_section: atomic.skeleton.parent_section.clone(),
+            title: atomic.skeleton.title.clone(),
+            decision_status: atomic
+                .skeleton
+                .decision_status
+                .unwrap_or(DecisionStatus::Active),
             // Synthetic section is built directly from the atomic store, so
             // the lookup key is the atomic id verbatim.
             atomic_section_id: Some(section_id.to_string()),
         };
         let synthetic_doc = ParsedDoc::default();
         return Some(build_section_view(
-            &atomic.parent_doc,
+            &atomic.skeleton.parent_doc,
             &synthetic_section,
             &synthetic_doc,
             atomic_store,
@@ -206,7 +209,7 @@ fn build_section_view(
     // when present. parser hardcodes Active workspace-wide; the atomic
     // override is the only path to surface Superseded / Removed.
     let resolved_status = atomic
-        .and_then(|a| a.decision_status)
+        .and_then(|a| a.skeleton.decision_status)
         .unwrap_or(section.decision_status);
     SectionView {
         section_id: section.section_id.clone(),
@@ -294,7 +297,7 @@ pub fn related_sections_with_atomic(
         }
     }
     for (source_section_id, atomic) in &atomic_store.sections {
-        for r in &atomic.impact_scope {
+        for r in &atomic.skeleton.impact_scope {
             if r == section_id {
                 out.inbound_refs.push(CrossRefView {
                     from_doc: "<atomic>".to_string(),
@@ -731,12 +734,12 @@ fn scan_section(
     filter: Option<&BTreeSet<String>>,
     out: &mut Vec<TermHit>,
 ) {
-    if field_allowed(filter, "title") && !s.title.is_empty() {
+    if field_allowed(filter, "title") && !s.skeleton.title.is_empty() {
         push_simple_hit(
             TermTargetKind::Section,
             section_id,
             "title".to_string(),
-            &s.title,
+            &s.skeleton.title,
             m,
             out,
         );
@@ -793,7 +796,7 @@ fn scan_section(
         TermTargetKind::Section,
         section_id,
         "impact_scope",
-        &s.impact_scope,
+        &s.skeleton.impact_scope,
         m,
         filter,
         out,
@@ -1135,8 +1138,11 @@ mod tests {
         store.sections.insert(
             "777".to_string(),
             AtomicSection {
-                title: "Atomic-only Test".to_string(),
-                parent_doc: "docs/GENERATED.md".to_string(),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    title: "Atomic-only Test".to_string(),
+                    parent_doc: "docs/GENERATED.md".to_string(),
+                    ..Default::default()
+                },
                 intent: Some("atomic-only test".to_string()),
                 ..Default::default()
             },
@@ -1173,7 +1179,10 @@ mod tests {
         store.sections.insert(
             "555".to_string(),
             AtomicSection {
-                decision_status: Some(DecisionStatus::Superseded),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Superseded),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );
@@ -1189,8 +1198,11 @@ mod tests {
         store2.sections.insert(
             "666".to_string(),
             AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Removed),
+                    ..Default::default()
+                },
                 intent: Some("removed atomic-only".to_string()),
-                decision_status: Some(DecisionStatus::Removed),
                 ..Default::default()
             },
         );
@@ -1213,8 +1225,11 @@ mod tests {
         store3.sections.insert(
             "444".to_string(),
             AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: None,
+                    ..Default::default()
+                },
                 intent: Some("no status override".to_string()),
-                decision_status: None,
                 ..Default::default()
             },
         );

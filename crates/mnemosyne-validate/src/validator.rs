@@ -285,7 +285,7 @@ pub fn atomic_section_supersede_state_reject(
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     for (section_id, atomic_section) in &store.sections {
-        if atomic_section.decision_status != Some(DecisionStatus::Superseded) {
+        if atomic_section.skeleton.decision_status != Some(DecisionStatus::Superseded) {
             continue;
         }
         let has_superseding_ref = parsed_docs.iter().any(|doc| {
@@ -740,7 +740,10 @@ mod tests {
         store.sections.insert(
             "39".to_string(),
             mnemosyne_atomic::AtomicSection {
-                decision_status: Some(DecisionStatus::Superseded),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Superseded),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );
@@ -762,7 +765,10 @@ mod tests {
         store.sections.insert(
             "39".to_string(),
             mnemosyne_atomic::AtomicSection {
-                decision_status: Some(DecisionStatus::Superseded),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Superseded),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );
@@ -790,7 +796,10 @@ mod tests {
         store.sections.insert(
             "39".to_string(),
             mnemosyne_atomic::AtomicSection {
-                decision_status: Some(DecisionStatus::Removed),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Removed),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );
@@ -807,7 +816,10 @@ mod tests {
         store.sections.insert(
             "1".to_string(),
             mnemosyne_atomic::AtomicSection {
-                decision_status: Some(DecisionStatus::Active),
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    decision_status: Some(DecisionStatus::Active),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         );

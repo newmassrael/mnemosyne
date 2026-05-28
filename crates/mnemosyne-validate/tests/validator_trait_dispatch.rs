@@ -53,8 +53,11 @@ fn seed_workspace_for_unbacked_and_missing() -> (TempDir, AtomicStore) {
     // ... actually src/missing.rs DOES cite §sec1, so binding holds for
     // sec1; the unbacked variant covers the other-section case below).
     let sec1 = AtomicSection {
-        title: "Sec One".into(),
-        parent_doc: "docs/GENERATED.md".into(),
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: "Sec One".into(),
+            parent_doc: "docs/GENERATED.md".into(),
+            ..Default::default()
+        },
         implementations: vec![Implementation {
             file: "src/missing.rs".into(),
             symbol: Some("expected_symbol".into()),
@@ -64,8 +67,11 @@ fn seed_workspace_for_unbacked_and_missing() -> (TempDir, AtomicStore) {
     store.sections.insert("sec1".into(), sec1);
     // sec2 declares no impls → ImplementationMissing (default-Active).
     let sec2 = AtomicSection {
-        title: "Sec Two".into(),
-        parent_doc: "docs/GENERATED.md".into(),
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: "Sec Two".into(),
+            parent_doc: "docs/GENERATED.md".into(),
+            ..Default::default()
+        },
         ..AtomicSection::default()
     };
     store.sections.insert("sec2".into(), sec2);

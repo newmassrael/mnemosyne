@@ -3980,6 +3980,42 @@
         "A3 risk: live workspace.atomic.json serde must stay byte-identical (round-trip)",
         "B/C/D: RocksDB index from log, cascade incremental projection, unified write path"
       ]
+    },
+    "Round 325 — Convergence A3: lift Section skeleton into core": {
+      "decision_summary": "Convergence A3 (code): executed the R324 boundary — AtomicSection now embeds the canonical mnemosyne_core::SectionSkeleton (title, parent_doc, parent_section, impact_scope, decision_status) via #[serde(flatten)], so the domain-agnostic Layer-0 skeleton lives in mnemosyne-core while the rich design_doc content stays in the mnemosyne-atomic adapter (Layer 1). FactKey + SectionSkeleton are grouped in a new mnemosyne-core::fact module. On-disk workspace.atomic.json is byte-identical (skeleton flattened first; live sections populate only skeleton + implementations). Still owed: SectionFact (RocksDB index codec) should adopt the same SectionSkeleton (A3b) so the log and the index share one skeleton definition.",
+      "changes_bullets": [
+        "New mnemosyne-core::fact module: FactKey (moved from lib.rs) + canonical domain-agnostic SectionSkeleton (title, parent_doc, parent_section, impact_scope, decision_status)",
+        "AtomicSection embeds SectionSkeleton via #[serde(flatten)], placed first so flattened skeleton fields serialize ahead of the design_doc content (byte-identical JSON)",
+        "design_doc content (intent/rationale/inputs/outputs/caveats/alternatives/examples/implementations/normative_excerpt) stays in the mnemosyne-atomic adapter = Layer 1",
+        "All skeleton-field call sites across 8 crates (atomic/query/validate/style/cli/ops + 2 test crates) routed through .skeleton"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace: 670 passed / 0 failed; cargo clippy --workspace --all-targets clean",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync",
+        "live workspace.atomic.json sections byte-identical across the split (diff vs pre-split snapshot = empty)"
+      ],
+      "carry_forward_bullets": [
+        "A3b: SectionFact (RocksDB index codec) should adopt mnemosyne-core::SectionSkeleton so log and index share one skeleton definition; reconcile doc_path/section_id naming",
+        "B/C/D: RocksDB index materialized from the log, cascade incremental projection, unified write path",
+        "Minor cleanup carry: CLI usage string still advertises the removed `commit` subcommand (R321 residue)"
+      ],
+      "publishable_decision_summary": "Convergence A3 (code): executed the R324 boundary — AtomicSection now embeds the canonical mnemosyne_core::SectionSkeleton (title, parent_doc, parent_section, impact_scope, decision_status) via #[serde(flatten)], so the domain-agnostic Layer-0 skeleton lives in mnemosyne-core while the rich design_doc content stays in the mnemosyne-atomic adapter (Layer 1). FactKey + SectionSkeleton are grouped in a new mnemosyne-core::fact module. On-disk workspace.atomic.json is byte-identical (skeleton flattened first; live sections populate only skeleton + implementations). Still owed: SectionFact (RocksDB index codec) should adopt the same SectionSkeleton (A3b) so the log and the index share one skeleton definition.",
+      "publishable_changes_bullets": [
+        "New mnemosyne-core::fact module: FactKey (moved from lib.rs) + canonical domain-agnostic SectionSkeleton (title, parent_doc, parent_section, impact_scope, decision_status)",
+        "AtomicSection embeds SectionSkeleton via #[serde(flatten)], placed first so flattened skeleton fields serialize ahead of the design_doc content (byte-identical JSON)",
+        "design_doc content (intent/rationale/inputs/outputs/caveats/alternatives/examples/implementations/normative_excerpt) stays in the mnemosyne-atomic adapter = Layer 1",
+        "All skeleton-field call sites across 8 crates (atomic/query/validate/style/cli/ops + 2 test crates) routed through .skeleton"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace: 670 passed / 0 failed; cargo clippy --workspace --all-targets clean",
+        "validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync",
+        "live workspace.atomic.json sections byte-identical across the split (diff vs pre-split snapshot = empty)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "A3b: SectionFact (RocksDB index codec) should adopt mnemosyne-core::SectionSkeleton so log and index share one skeleton definition; reconcile doc_path/section_id naming",
+        "B/C/D: RocksDB index materialized from the log, cascade incremental projection, unified write path",
+        "Minor cleanup carry: CLI usage string still advertises the removed `commit` subcommand (R321 residue)"
+      ]
     }
   },
   "inventory_entries": {},

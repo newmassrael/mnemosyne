@@ -1093,9 +1093,12 @@ mod tests {
         // prose uses canonical TC8 forms — no terminology violation expected.
         let mut store = AtomicStore::default();
         let section = AtomicSection {
-            title: "4.2".into(),
-            parent_doc: "GENERATED.md".into(),
-            parent_section: None,
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: "4.2".into(),
+                parent_doc: "GENERATED.md".into(),
+                parent_section: None,
+                ..Default::default()
+            },
             intent: Some(
                 "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
             ),
@@ -1162,9 +1165,12 @@ mod tests {
         });
         let mut store = AtomicStore::default();
         let section = AtomicSection {
-            title: "1".into(),
-            parent_doc: "GENERATED.md".into(),
-            parent_section: None,
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: "1".into(),
+                parent_doc: "GENERATED.md".into(),
+                parent_section: None,
+                ..Default::default()
+            },
             intent: Some("the tc8 spec defines ...".into()),
             ..Default::default()
         };
@@ -1218,9 +1224,12 @@ mod tests {
         // Atomic source: prose uses canonical forms, implementations[] holds
         // lowercase filesystem paths that share substrings with the variants.
         let atomic = AtomicSection {
-            title: "TC8 harness §4.2".into(),
-            parent_doc: "docs/GENERATED.md".into(),
-            parent_section: None,
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: "TC8 harness §4.2".into(),
+                parent_doc: "docs/GENERATED.md".into(),
+                parent_section: None,
+                ..Default::default()
+            },
             intent: Some(
                 "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
             ),
@@ -1249,7 +1258,7 @@ mod tests {
         // outer shape: doc-root h1 + `## Sections` parent + the rendered
         // section demoted from `##` to `###` (mirrors atomic_cli.rs's
         // `replacen("## §", "### §", 1)` step in render_atomic_store_to_md).
-        let rendered = render_section("4.2", &atomic.title, "active", &atomic).unwrap();
+        let rendered = render_section("4.2", &atomic.skeleton.title, "active", &atomic).unwrap();
         let demoted = rendered.replacen("## §", "### §", 1);
         let full_md = format!(
             "# GENERATED.md — atomic store derived view\n\n## Sections\n\n{}",
