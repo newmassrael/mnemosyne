@@ -2320,3 +2320,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 319 — R319 — extract mnemosyne-ops crate so cli + mcp share one orchestration lib (mcp drops cli/server/store/cascade)
+
+**Changes**:
+- New mnemosyne-ops crate: cascade (sidecar/render/regenerate/validate) + query/validate/style/docs ops + run_atomic_mutate
+- mnemosyne-mcp depends on mnemosyne-ops not mnemosyne-cli; drops transitive server/store/cascade deps
+- atomic_cli sheds 7 moved orchestration helpers, imports them from mnemosyne_ops::cascade; deleted dead RenderedReport
+
+
+
+**Verification**:
+- cargo test --workspace 670 pass; clippy -D warnings clean; cargo fmt --all --check clean
+- cargo tree: mnemosyne-mcp no longer pulls server/store/cascade/cli
+- MCP stdio validate_workspace returns correct data in-process post-extraction
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- R320: unify cmd_* onto ops — cmd_validate_workspace still a parallel impl alongside ops::validate_workspace
+
+
+

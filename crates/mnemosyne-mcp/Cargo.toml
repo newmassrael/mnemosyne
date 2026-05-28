@@ -11,7 +11,7 @@ name = "mnemosyne-mcp"
 path = "src/main.rs"
 
 [dependencies]
-mnemosyne-cli = { path = "../mnemosyne-cli" }
+mnemosyne-ops = { path = "../mnemosyne-ops" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 rmcp = { version = "1.6", features = ["server", "transport-io", "macros"] }

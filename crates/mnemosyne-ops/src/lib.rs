@@ -1,14 +1,15 @@
-//! In-process operations surface — typed entry points the MCP server and
-//! the CLI bin share.
+//! `mnemosyne-ops` — shared in-process orchestration consumed by the
+//! `mnemosyne-cli` bin and the `mnemosyne-mcp` server.
 //!
-//! R316 substrate: each [`#[tool]`] in `mnemosyne-mcp` used to spawn the
-//! `mnemosyne-cli` binary and parse JSON from stdout. That pattern paid
-//! fork + arg parsing + JSON round-trip on every tool call and lied about
-//! mcp's role as an in-process LLM client. The ops surface eliminates the
-//! subprocess: every mutate/query becomes a direct Rust call against the
-//! underlying primitive crate, with sidecar/regenerate orchestration
-//! shared between bin and mcp.
+//! R316 eliminated the MCP→CLI subprocess spawn; R319 extracts the
+//! orchestration into this dedicated library so neither binary depends on
+//! the other. Both link `mnemosyne-ops` and call typed Rust functions:
+//! mutate via [`run_atomic_mutate`], reads via [`query`] / [`validate`] /
+//! [`style`], cascade render via [`cascade`]. The bins keep only their own
+//! I/O concerns (arg parsing + stdout for the CLI; MCP protocol for the
+//! server).
 
+pub mod cascade;
 pub mod docs;
 pub mod query;
 pub mod style;
@@ -20,6 +21,10 @@ use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore};
 use serde::Serialize;
 use thiserror::Error;
 
+pub use cascade::{
+    auto_regenerate, render_atomic_store_to_md, resolve_output, validate_atomic_store,
+    write_generated_md, AtomicValidationSummary,
+};
 pub use docs::{generate_docs, verify_generated, GenerateDocsReport, VerifyGeneratedReport};
 pub use query::{
     list_inventory, list_sections, query_inventory, query_section, query_term, InventoryEntryView,
@@ -63,10 +68,7 @@ pub struct MutateOutcome {
     pub regenerated: bool,
 }
 
-/// Result wrapper carrying both a structured payload and a human-readable
-/// text form. Read ops that previously printed text from the CLI return
-/// this so the mcp side can pick the JSON payload while the bin keeps
-/// printing the same lines as before.
+/// Input to the convenience-form `redact_term` op.
 #[derive(Debug, Clone, Serialize)]
 pub struct RedactTermInput {
     pub pattern: String,
@@ -80,28 +82,21 @@ pub struct RedactTermInput {
     pub kind: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct RenderedReport {
-    pub json: serde_json::Value,
-    pub plain: String,
-}
-
-/// Resolve the sidecar path with the same precedence chain
-/// `mnemosyne-cli` uses: explicit override → `[atomic] sidecar_path`
-/// config → built-in `<workspace>/docs/.atomic/workspace.atomic.json`.
+/// Resolve the sidecar path with the same precedence chain the CLI uses:
+/// explicit override → `[atomic] sidecar_path` config → built-in
+/// `<workspace>/docs/.atomic/workspace.atomic.json`.
 pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&Path>) -> PathBuf {
     match sidecar {
         Some(p) if p.is_absolute() => p.to_path_buf(),
         Some(p) => workspace_root.join(p),
-        None => crate::atomic_cli::resolve_sidecar(workspace_root, None),
+        None => cascade::resolve_sidecar(workspace_root, None),
     }
 }
 
 /// Run an atomic mutate primitive in-process: load the store, invoke the
 /// supplied closure against it, then (by default) regenerate
-/// `GENERATED.md` so cascade stays in sync. Mirrors the CLI bin's
-/// default behavior exactly, but returns a structured outcome instead
-/// of printing.
+/// `GENERATED.md` so cascade stays in sync. Returns a structured outcome
+/// instead of printing.
 pub fn run_atomic_mutate<F>(
     workspace_root: &Path,
     sidecar: Option<&Path>,
@@ -116,7 +111,7 @@ where
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let receipt = primitive(&mut store, &sidecar_path)?;
     if regenerate {
-        crate::atomic_cli::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
+        cascade::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
             .map_err(|e| OpError::Other(format!("{:#}", e)))?;
     }
     Ok(MutateOutcome {
@@ -190,7 +185,7 @@ pub fn redact_term(
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let report = mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req)?;
     let did_regenerate = if regenerate && !report.dry_run {
-        crate::atomic_cli::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
+        cascade::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
             .map_err(|e| OpError::Other(format!("{:#}", e)))?;
         true
     } else {

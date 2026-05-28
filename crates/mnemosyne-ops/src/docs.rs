@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use crate::atomic_cli::{render_atomic_store_to_md, resolve_output, write_generated_md};
+use crate::cascade::{render_atomic_store_to_md, resolve_output, write_generated_md};
 use serde::Serialize;
 
-use super::{resolve_sidecar, OpError};
+use crate::{resolve_sidecar, OpError};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateDocsReport {

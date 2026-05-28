@@ -699,8 +699,8 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     let root = repo_root()?;
     let (ws, _parsed_docs) = load_workspace(&root)?;
     // cascade B — atomic-first citation surface in atomic store load.
-    let atomic_store =
-        AtomicStore::load(&atomic_cli::resolve_sidecar(&root, None)).unwrap_or_default();
+    let atomic_store = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
+        .unwrap_or_default();
 
     if qargs.list_sections {
         // list_sections covers BOTH the markdown-derived workspace
@@ -1093,7 +1093,8 @@ fn cmd_validate_workspace() -> Result<()> {
         validate_workspace_cfg.config.terminology.as_ref(),
     );
     let validate_workspace_atomic =
-        AtomicStore::load(&atomic_cli::resolve_sidecar(&root, None)).unwrap_or_default();
+        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
+            .unwrap_or_default();
     let mut style_violations: Vec<StyleViolation> = Vec::new();
     for (path, parsed) in &parsed_docs {
         let mut v = check_style(path, parsed, &validate_workspace_atomic, &ruleset);
@@ -1165,7 +1166,7 @@ fn cmd_validate_workspace() -> Result<()> {
     // carries the resolution.
     let mut id_set = workspace_section_id_set(&ws);
     id_set.extend(ws.atomic_id_set.iter().cloned());
-    let atomic = atomic_cli::validate_atomic_store(&root, &id_set)?;
+    let atomic = mnemosyne_ops::cascade::validate_atomic_store(&root, &id_set)?;
     // atomic-internal orphan ledger composition. Compose
     // (from, to) BTreeSets per kind from the same `[[orphan_ledger]]` table
     // that already cover markdown refs. `kind = AtomicEntryRef`
@@ -1444,8 +1445,9 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
         Some(c) if !c.paths.is_empty() => c,
         _ => return Ok(()),
     };
-    let store = match mnemosyne_atomic::AtomicStore::load(&atomic_cli::resolve_sidecar(root, None))
-    {
+    let store = match mnemosyne_atomic::AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(
+        root, None,
+    )) {
         Ok(s) => s,
         Err(_) => return Ok(()),
     };
@@ -1690,7 +1692,7 @@ fn load_workspace(root: &Path) -> Result<(Workspace, Vec<(String, ParsedDoc)>)> 
     let schema = cli_schema()?;
     let mut ws = Workspace::from_config(loaded);
     let atomic_for_id_set =
-        AtomicStore::load(&atomic_cli::resolve_sidecar(root, None)).unwrap_or_default();
+        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(root, None)).unwrap_or_default();
     ws.set_atomic_id_set(atomic_for_id_set.atomic_section_id_set());
     let doc_paths: Vec<&str> = loaded.doc_paths().collect();
     let mut parsed_docs: Vec<(String, ParsedDoc)> = Vec::with_capacity(doc_paths.len());
@@ -1778,7 +1780,8 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
     );
 
     let style_check_atomic =
-        AtomicStore::load(&atomic_cli::resolve_sidecar(&root, None)).unwrap_or_default();
+        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
+            .unwrap_or_default();
     let mut all_violations: Vec<StyleViolation> = Vec::new();
     for (path, parsed) in &parsed_docs {
         if let Some(filter) = &doc_filter {
@@ -1976,7 +1979,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let prefix = cli_schema()?.entry_id_prefix.clone();
     let root = loaded.workspace_root.clone();
 
-    let atomic_path = atomic_cli::resolve_sidecar(&root, None);
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None);
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 

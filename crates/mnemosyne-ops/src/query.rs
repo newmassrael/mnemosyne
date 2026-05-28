@@ -19,7 +19,7 @@ use mnemosyne_schema::ParsedDoc;
 use mnemosyne_workspace::Workspace;
 use serde::Serialize;
 
-use super::{load_atomic_store, OpError};
+use crate::{load_atomic_store, OpError};
 
 #[derive(Debug, Clone, Copy)]
 pub enum QuerySectionMode {

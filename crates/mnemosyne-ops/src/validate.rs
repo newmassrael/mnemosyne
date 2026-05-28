@@ -17,8 +17,8 @@ use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, S
 use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace, ValidationError};
 use serde::Serialize;
 
-use super::{query::load_workspace, resolve_sidecar, OpError};
-use crate::atomic_cli::validate_atomic_store;
+use crate::cascade::validate_atomic_store;
+use crate::{query::load_workspace, resolve_sidecar, OpError};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ValidateWorkspaceReport {

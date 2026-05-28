@@ -17,6 +17,7 @@ members = [
  "crates/mnemosyne-style",
  "crates/mnemosyne-query",
  "crates/mnemosyne-validate",
+ "crates/mnemosyne-ops",
 ]
 
 [workspace.package]

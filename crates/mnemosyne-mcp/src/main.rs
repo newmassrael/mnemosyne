@@ -23,11 +23,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
-use mnemosyne_cli::ops::{
-    self, QuerySectionMode, QueryTermInput, RedactTermInput, StyleCheckInput,
-};
-use mnemosyne_cli::{run_atomic_mutate, MutateOutcome, OpError};
 use mnemosyne_core::InventoryStatus;
+use mnemosyne_ops::{
+    self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
+    RedactTermInput, StyleCheckInput,
+};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{

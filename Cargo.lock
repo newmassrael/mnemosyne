@@ -1104,6 +1104,7 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-config",
  "mnemosyne-core",
+ "mnemosyne-ops",
  "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-rust",
  "mnemosyne-query",
@@ -1162,8 +1163,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mnemosyne-atomic",
- "mnemosyne-cli",
  "mnemosyne-core",
+ "mnemosyne-ops",
  "rmcp",
  "schemars",
  "serde",
@@ -1171,6 +1172,25 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "mnemosyne-ops"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mnemosyne-atomic",
+ "mnemosyne-config",
+ "mnemosyne-core",
+ "mnemosyne-parser",
+ "mnemosyne-query",
+ "mnemosyne-schema",
+ "mnemosyne-style",
+ "mnemosyne-validate",
+ "mnemosyne-workspace",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
