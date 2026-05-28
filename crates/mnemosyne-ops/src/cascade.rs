@@ -233,7 +233,7 @@ pub fn validate_atomic_store(
     }
     let mut orphan_section_refs = Vec::new();
     for (section_id, atomic) in &store.sections {
-        for r in &atomic.skeleton.impact_scope {
+        for r in &atomic.impact_scope {
             if !section_id_set.contains(r) {
                 orphan_section_refs.push((section_id.clone(), r.clone()));
             }

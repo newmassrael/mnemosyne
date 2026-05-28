@@ -31,23 +31,33 @@ pub struct FactKey {
     pub valid_from: u64,
 }
 
-/// Canonical Layer-0 Section skeleton — the medium-neutral attributes every
-/// Section fact carries no matter which medium authored it (Round 325 —
-/// Convergence A3).
+/// Canonical Layer-0 Section skeleton — the medium-neutral *scalar*
+/// attributes every Section fact carries identically no matter which medium
+/// authored it or which adapter persists it (Round 325; scoped to scalars in
+/// Round 326).
 ///
 /// A `design_doc` section, a fiction scene, and an ADR all have a title, an
-/// owning doc, an optional parent, a decision lifecycle status, and a set of
-/// outbound cross-refs. Those five attributes are the skeleton. Everything
-/// medium-shaped (a design_doc's `intent`/`rationale`/`normative_excerpt`,
-/// etc.) belongs to the Layer-1 adapter payload, not here.
+/// owning doc, an optional parent, and a decision lifecycle status. Those four
+/// scalars are the skeleton, and crucially they serialize *identically* across
+/// adapters (the JSON log writes them inline; the RocksDB index encodes the
+/// same values). Everything medium-shaped (a design_doc's
+/// `intent`/`rationale`/`normative_excerpt`, etc.) belongs to the Layer-1
+/// adapter payload, not here.
 ///
-/// The on-disk authoring representation (the JSON atomic store, the
-/// design_doc adapter at `mnemosyne-atomic`) embeds this struct via
-/// `#[serde(flatten)]`, so the skeleton fields serialize inline with the
-/// adapter's content fields — the JSON shape is unchanged by the split. The
-/// bitemporal [`FactKey`] is the *index/log key*, assigned at projection
-/// time, and is deliberately **not** part of the authoring skeleton.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Cross-refs are deliberately **not** in the skeleton: they are
+/// *adapter-divergent* — the JSON log stores them inline
+/// (`AtomicSection.impact_scope`), the index stores them as first-class
+/// `CrossRefFact` relation rows. A shared embeddable value object holds only
+/// what every embedder persists the same way; cross-refs fail that test, so
+/// each adapter owns its own cross-ref representation (Round 326 refinement of
+/// the Round 324 boundary).
+///
+/// The JSON authoring adapter (`mnemosyne-atomic`) embeds this struct via
+/// `#[serde(flatten)]` so the skeleton fields serialize inline with the
+/// adapter's content fields. The bitemporal [`FactKey`] is the *index/log
+/// key*, assigned at projection time, and is deliberately **not** part of the
+/// authoring skeleton.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SectionSkeleton {
     /// Heading title. Default = "" during the pre-backfill transitional
     /// state (Round 287 outline lift).
@@ -60,9 +70,6 @@ pub struct SectionSkeleton {
     /// Nullable parent section_id. `None` = top-level section in its doc.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_section: Option<String>,
-    /// Outbound cross-ref list (target section_id without the `§` prefix).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub impact_scope: Vec<String>,
     /// Atomic decision_status override (Round 265). `None` = fall back to the
     /// parser-derived status; `Some(_)` = the store authoritatively declares
     /// the section's lifecycle state.

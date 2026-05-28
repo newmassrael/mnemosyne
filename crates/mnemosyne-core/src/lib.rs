@@ -169,6 +169,18 @@ pub enum DecisionStatus {
     Removed,
 }
 
+impl DecisionStatus {
+    /// Canonical lowercase label (matches the serde representation). Used by
+    /// adapters that still carry the status as a string at a layer boundary.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DecisionStatus::Active => "active",
+            DecisionStatus::Superseded => "superseded",
+            DecisionStatus::Removed => "removed",
+        }
+    }
+}
+
 /// Inventory entry lifecycle vocabulary — substrate-canonical enum.
 /// Genre distinct from `DecisionStatus`: stable external IDs (test
 /// cases, requirement IDs, regulation IDs) whose lifecycle is

@@ -467,10 +467,17 @@ pub fn build_branch_index(
                 s.key.branch_id,
                 s.key.entity_id,
                 s.key.valid_from,
-                s.doc_path.clone(),
+                s.skeleton.parent_doc.clone(),
                 s.section_id.clone(),
-                s.title.clone(),
-                s.decision_status.clone(),
+                s.skeleton.title.clone(),
+                // Bridge to the Salsa layer's still-stringly-typed status.
+                // SectionRecord adopts the typed enum in convergence C; until
+                // then None (no override) maps to the "active" default.
+                s.skeleton
+                    .decision_status
+                    .map(|d| d.as_str())
+                    .unwrap_or("active")
+                    .to_string(),
             )
         })
         .collect();
@@ -543,19 +550,27 @@ pub fn build_branch_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_facts::{FactKey, SectionFact};
+    use mnemosyne_facts::{DecisionStatus, FactKey, SectionFact, SectionSkeleton};
 
     fn make_section(branch: u64, entity: u64, status: &str) -> SectionFact {
+        let decision_status = match status.to_ascii_lowercase().as_str() {
+            "superseded" => Some(DecisionStatus::Superseded),
+            "removed" => Some(DecisionStatus::Removed),
+            _ => Some(DecisionStatus::Active),
+        };
         SectionFact {
             key: FactKey {
                 branch_id: branch,
                 entity_id: entity,
                 valid_from: 100,
             },
-            doc_path: "docs/DESIGN.md".into(),
             section_id: format!("{branch}.{entity}"),
-            title: format!("section {entity}"),
-            decision_status: status.into(),
+            skeleton: SectionSkeleton {
+                title: format!("section {entity}"),
+                parent_doc: "docs/DESIGN.md".into(),
+                parent_section: None,
+                decision_status,
+            },
         }
     }
 

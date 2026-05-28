@@ -124,7 +124,8 @@ impl BranchSnapshotData {
 mod tests {
     use super::*;
     use mnemosyne_facts::{
-        ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, TypedFactStore,
+        ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
+        SectionSkeleton, TypedFactStore,
     };
     use tempfile::TempDir;
 
@@ -136,10 +137,13 @@ mod tests {
                     entity_id: 39,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "39".into(),
-                title: "graph_schema".into(),
-                decision_status: "Active".into(),
+                skeleton: SectionSkeleton {
+                    title: "graph_schema".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Active),
+                },
             }],
             changelog_entries: vec![ChangelogEntryFact {
                 key: FactKey {
@@ -210,10 +214,13 @@ mod tests {
                 entity_id: 39,
                 valid_from: 100,
             },
-            doc_path: "docs/DESIGN.md".into(),
             section_id: "39".into(),
-            title: "graph_schema".into(),
-            decision_status: "Active".into(),
+            skeleton: SectionSkeleton {
+                title: "graph_schema".into(),
+                parent_doc: "docs/DESIGN.md".into(),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Active),
+            },
         };
         typed.put_section(&s).unwrap();
         let cr = CrossRefFact {
@@ -249,10 +256,13 @@ mod tests {
                         entity_id: 39,
                         valid_from: 100,
                     },
-                    doc_path: "docs/DESIGN.md".into(),
                     section_id: format!("{}", branch_id),
-                    title: "x".into(),
-                    decision_status: "Active".into(),
+                    skeleton: SectionSkeleton {
+                        title: "x".into(),
+                        parent_doc: "docs/DESIGN.md".into(),
+                        parent_section: None,
+                        decision_status: Some(DecisionStatus::Active),
+                    },
                 })
                 .unwrap();
         }

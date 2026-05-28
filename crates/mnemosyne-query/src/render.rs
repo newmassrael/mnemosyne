@@ -81,8 +81,8 @@ pub fn render_section(
             .collect();
         ctx.insert("alternatives_rejected", &alts);
     }
-    if !atomic.skeleton.impact_scope.is_empty() {
-        ctx.insert("impact_scope", &atomic.skeleton.impact_scope);
+    if !atomic.impact_scope.is_empty() {
+        ctx.insert("impact_scope", &atomic.impact_scope);
     }
     if !atomic.examples.is_empty() {
         let examples: Vec<_> = atomic
@@ -164,11 +164,6 @@ mod tests {
     #[test]
     fn render_section_full_shape() {
         let atomic = AtomicSection {
-            skeleton: mnemosyne_core::SectionSkeleton {
-                impact_scope: vec!["15".into(), "39".into()],
-                decision_status: None,
-                ..Default::default()
-            },
             intent: Some("primary intent text".into()),
             rationale_bullets: vec!["reason A".into(), "reason B".into()],
             inputs_bullets: vec!["input X".into()],
@@ -178,6 +173,7 @@ mod tests {
                 alternative: "approach A".into(),
                 reason: "doesn't scale".into(),
             }],
+            impact_scope: vec!["15".into(), "39".into()],
             examples: vec![ExampleBlock {
                 language: "rust".into(),
                 code: "fn main() {}".into(),

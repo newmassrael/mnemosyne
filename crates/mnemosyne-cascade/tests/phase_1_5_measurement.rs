@@ -25,7 +25,10 @@ use mnemosyne_cascade::{
     frozen_list_membership, section_decision_status, BranchSnapshotData, CascadeBranch,
     MnemosyneCascadeDb, ValidationResult,
 };
-use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact};
+use mnemosyne_facts::{
+    ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
+    SectionSkeleton,
+};
 
 const SECTIONS_PER_BRANCH: usize = 50;
 const CHANGELOG_PER_BRANCH: usize = 50;
@@ -50,10 +53,13 @@ fn synthetic_branch_snapshot(branch_id: u64) -> BranchSnapshotData {
                 entity_id,
                 valid_from: 100,
             },
-            doc_path: format!("docs/synthetic-{}.md", branch_id),
             section_id: format!("{}.{}", branch_id, i),
-            title: format!("Section {} of branch {}", i, branch_id),
-            decision_status: "Active".into(),
+            skeleton: SectionSkeleton {
+                title: format!("Section {} of branch {}", i, branch_id),
+                parent_doc: format!("docs/synthetic-{}.md", branch_id),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Active),
+            },
         });
     }
     for i in 0..CHANGELOG_PER_BRANCH {
@@ -219,7 +225,7 @@ fn gate_iii_cross_db_deterministic() {
 fn gate_iii_violation_injection_round_trip_accurate() {
     let db = MnemosyneCascadeDb::default();
     let mut snap = synthetic_branch_snapshot(0);
-    snap.sections[0].decision_status = "Superseded".into();
+    snap.sections[0].skeleton.decision_status = Some(DecisionStatus::Superseded);
     let target = snap.sections[0].key.entity_id;
     snap.cross_refs.retain(|cr| cr.from_section != target);
 

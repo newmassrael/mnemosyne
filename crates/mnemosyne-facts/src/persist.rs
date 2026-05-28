@@ -171,10 +171,13 @@ mod tests {
                 entity_id: 42,
                 valid_from: 1000,
             },
-            doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
-            title: "Phase 0".to_string(),
-            decision_status: "Active".to_string(),
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: "Phase 0".to_string(),
+                parent_doc: "docs/DESIGN.md".to_string(),
+                parent_section: None,
+                decision_status: Some(mnemosyne_core::DecisionStatus::Active),
+            },
         };
         typed.put_section(&fact).unwrap();
         let got = typed.get_section(1, 42, 1000).unwrap();

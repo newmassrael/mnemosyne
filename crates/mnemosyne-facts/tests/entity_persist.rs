@@ -3,8 +3,8 @@
 
 use mnemosyne_facts::{
     canonical_identifier_set, design_doc_schema_fixture, emit_all_languages, jaccard_inclusion,
-    sha256_hex, ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact,
-    TypedFactStore,
+    sha256_hex, ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact,
+    SectionFact, SectionSkeleton, TypedFactStore,
 };
 use mnemosyne_store::{encode_composite_key, MnemosyneStore};
 use tempfile::TempDir;
@@ -26,10 +26,13 @@ fn entity_put_get_round_trip_all_four_kinds() {
             entity_id: 1,
             valid_from: 100,
         },
-        doc_path: "docs/DESIGN.md".to_string(),
         section_id: "39".to_string(),
-        title: "Phase 0 design_doc schema".to_string(),
-        decision_status: "Active".to_string(),
+        skeleton: SectionSkeleton {
+            title: "Phase 0 design_doc schema".to_string(),
+            parent_doc: "docs/DESIGN.md".to_string(),
+            parent_section: None,
+            decision_status: Some(DecisionStatus::Active),
+        },
     };
     typed.put_section(&section).unwrap();
     assert_eq!(
@@ -135,10 +138,13 @@ fn re_open_preserves_typed_facts() {
             entity_id: 1,
             valid_from: 100,
         },
-        doc_path: "docs/DESIGN.md".to_string(),
         section_id: "39".to_string(),
-        title: "Persistent across reopen".to_string(),
-        decision_status: "Active".to_string(),
+        skeleton: SectionSkeleton {
+            title: "Persistent across reopen".to_string(),
+            parent_doc: "docs/DESIGN.md".to_string(),
+            parent_section: None,
+            decision_status: Some(DecisionStatus::Active),
+        },
     };
     {
         let store = MnemosyneStore::open(dir.path()).unwrap();

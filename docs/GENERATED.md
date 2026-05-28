@@ -2491,3 +2491,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 326 — Convergence A: unify Section fact across log and index — Convergence A — the Section fact is now unified across the JSON log and the RocksDB index. SectionFact embeds the canonical mnemosyne_core::SectionSkeleton (R325) behind a full-fidelity byte codec that encodes section_id plus the scalar skeleton (parent_doc, title, parent_section as an Option discriminator, decision_status as a typed-enum discriminator replacing the prior stringly-typed field). Cross-refs were scoped out of the shared skeleton because they are adapter-divergent: the JSON log keeps impact_scope inline on AtomicSection (byte-identical), the index keeps CrossRefFact relation rows. This fulfils convergence A's goal for Section — one SectionSkeleton carries both the serde (log) and the byte codec (index). ChangelogEntry and FrozenList remain on the list.
+
+**Changes**:
+- SectionSkeleton scoped to scalars (title/parent_doc/parent_section/decision_status); impact_scope returned to AtomicSection as a direct field, keeping the live JSON byte-identical
+- SectionFact = {key, section_id, skeleton: SectionSkeleton}; byte codec encodes the scalars with Option<DecisionStatus> as a discriminator byte (typed enum replaces the prior String)
+- Cross-refs left the shared skeleton because they are adapter-divergent: JSON log stores impact_scope inline, index stores CrossRefFact relation rows
+- facts re-exports SectionSkeleton/DecisionStatus; cascade fixtures + runtime bridged; fine_grained SectionRecord stays string-typed (bridged) until convergence C
+
+
+
+**Verification**:
+- cargo test --workspace: 671 passed / 0 failed; cargo clippy --workspace --all-targets -- -D warnings clean
+- validate-workspace green: docs 1/1, T1 orphan 0, round-trip 1/1, T3 reject 0, GENERATED.md sync
+- live workspace.atomic.json sections byte-identical across the refactor (diff vs pre-refactor snapshot = empty)
+
+
+
+
+**Carry forward**:
+- ChangelogEntryFact / FrozenListFact should adopt shared types with their atomic-side counterparts (the remaining A rounds for those entities)
+- B/C/D: RocksDB index materialized from the log, cascade incremental projection (SectionRecord adopts the typed DecisionStatus), unified write path
+
+
+

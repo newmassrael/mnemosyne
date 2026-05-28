@@ -20,6 +20,7 @@
 //! per T1 rule 3).
 
 use crate::snapshot::BranchSnapshotData;
+use mnemosyne_facts::DecisionStatus;
 
 /// Cascade query output type — Phase 0 carries `ok` + per-violation count.
 /// Phase 1.5 expands this to carry T1/T2/T3 gate results + audit trail; the
@@ -88,7 +89,7 @@ pub fn section_decision_status<'db>(
     };
     let mut violation_count: u32 = 0;
     for section in &snap.sections {
-        if !section.decision_status.eq_ignore_ascii_case("superseded") {
+        if section.skeleton.decision_status != Some(DecisionStatus::Superseded) {
             continue;
         }
         let has_supersedes_ref = snap.cross_refs.iter().any(|cr| {
@@ -170,7 +171,9 @@ impl CascadeDb for MnemosyneCascadeDb {
 mod tests {
     use super::*;
     use crate::snapshot::BranchSnapshotData;
-    use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact};
+    use mnemosyne_facts::{
+        ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, SectionSkeleton,
+    };
 
     fn make_branch(
         db: &MnemosyneCascadeDb,
@@ -205,10 +208,13 @@ mod tests {
                     entity_id: 39,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "39".into(),
-                title: "x".into(),
-                decision_status: "Active".into(),
+                skeleton: SectionSkeleton {
+                    title: "x".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Active),
+                },
             }],
             ..Default::default()
         };
@@ -226,10 +232,13 @@ mod tests {
                     entity_id: 15,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "15".into(),
-                title: "old SDK".into(),
-                decision_status: "Superseded".into(),
+                skeleton: SectionSkeleton {
+                    title: "old SDK".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Superseded),
+                },
             }],
             cross_refs: vec![CrossRefFact {
                 branch_id: 1,
@@ -253,10 +262,13 @@ mod tests {
                     entity_id: 15,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "15".into(),
-                title: "old SDK".into(),
-                decision_status: "Superseded".into(),
+                skeleton: SectionSkeleton {
+                    title: "old SDK".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Superseded),
+                },
             }],
             ..Default::default()
         };
@@ -277,10 +289,13 @@ mod tests {
                     entity_id: 15,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "15".into(),
-                title: "old SDK".into(),
-                decision_status: "Superseded".into(),
+                skeleton: SectionSkeleton {
+                    title: "old SDK".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Superseded),
+                },
             }],
             cross_refs: vec![CrossRefFact {
                 branch_id: 1,
@@ -307,10 +322,13 @@ mod tests {
                     entity_id: 39,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "39".into(),
-                title: "x".into(),
-                decision_status: "Active".into(),
+                skeleton: SectionSkeleton {
+                    title: "x".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Active),
+                },
             }],
             changelog_entries: vec![ChangelogEntryFact {
                 key: FactKey {
@@ -381,10 +399,13 @@ mod tests {
                     entity_id: 39,
                     valid_from: 100,
                 },
-                doc_path: "docs/DESIGN.md".into(),
                 section_id: "39".into(),
-                title: "x".into(),
-                decision_status: "Active".into(),
+                skeleton: SectionSkeleton {
+                    title: "x".into(),
+                    parent_doc: "docs/DESIGN.md".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Active),
+                },
             }],
             frozen_lists: vec![FrozenListFact {
                 key: FactKey {
@@ -415,10 +436,13 @@ mod tests {
                     entity_id: 39,
                     valid_from: 100,
                 },
-                doc_path: "x".into(),
                 section_id: "39".into(),
-                title: "x".into(),
-                decision_status: "Active".into(),
+                skeleton: SectionSkeleton {
+                    title: "x".into(),
+                    parent_doc: "x".into(),
+                    parent_section: None,
+                    decision_status: Some(DecisionStatus::Active),
+                },
             }],
             ..Default::default()
         };

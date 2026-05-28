@@ -297,7 +297,7 @@ pub fn related_sections_with_atomic(
         }
     }
     for (source_section_id, atomic) in &atomic_store.sections {
-        for r in &atomic.skeleton.impact_scope {
+        for r in &atomic.impact_scope {
             if r == section_id {
                 out.inbound_refs.push(CrossRefView {
                     from_doc: "<atomic>".to_string(),
@@ -796,7 +796,7 @@ fn scan_section(
         TermTargetKind::Section,
         section_id,
         "impact_scope",
-        &s.skeleton.impact_scope,
+        &s.impact_scope,
         m,
         filter,
         out,

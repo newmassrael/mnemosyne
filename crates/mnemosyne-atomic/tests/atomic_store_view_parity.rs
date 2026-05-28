@@ -39,7 +39,6 @@ fn build_store() -> AtomicStore {
             parent_doc: "docs/GENERATED.md".into(),
             parent_section: Some("sec2".into()),
             decision_status: Some(DecisionStatus::Superseded),
-            ..Default::default()
         },
         ..AtomicSection::default()
     };

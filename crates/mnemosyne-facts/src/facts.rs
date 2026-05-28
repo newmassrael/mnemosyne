@@ -10,7 +10,7 @@
 //! comparison.
 
 use byteorder::{BigEndian, ByteOrder};
-use mnemosyne_core::FactKey;
+use mnemosyne_core::{DecisionStatus, FactKey, SectionSkeleton};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -81,6 +81,70 @@ fn read_u64(buf: &[u8], cursor: &mut usize) -> Result<u64, FactCodecError> {
     Ok(v)
 }
 
+fn read_u8(buf: &[u8], cursor: &mut usize) -> Result<u8, FactCodecError> {
+    let start = *cursor;
+    if buf.len() < start + 1 {
+        return Err(FactCodecError::Truncated {
+            expected: start + 1,
+            got: buf.len(),
+        });
+    }
+    let v = buf[start];
+    *cursor = start + 1;
+    Ok(v)
+}
+
+/// `Option<String>` codec: one discriminator byte (0 = None, 1 = Some) then,
+/// when present, the length-prefixed string.
+fn write_opt_string(out: &mut Vec<u8>, s: Option<&str>) {
+    match s {
+        None => out.push(0),
+        Some(v) => {
+            out.push(1);
+            write_string(out, v);
+        }
+    }
+}
+
+fn read_opt_string(
+    buf: &[u8],
+    cursor: &mut usize,
+    field: &'static str,
+) -> Result<Option<String>, FactCodecError> {
+    match read_u8(buf, cursor)? {
+        0 => Ok(None),
+        1 => Ok(Some(read_string(buf, cursor, field)?)),
+        other => Err(FactCodecError::UnknownDiscriminator(other, field)),
+    }
+}
+
+/// `Option<DecisionStatus>` codec: a single discriminator byte. The typed
+/// enum replaces the pre-Round-326 stringly-typed status field.
+fn encode_decision_status(status: Option<DecisionStatus>) -> u8 {
+    match status {
+        None => 0,
+        Some(DecisionStatus::Active) => 1,
+        Some(DecisionStatus::Superseded) => 2,
+        Some(DecisionStatus::Removed) => 3,
+    }
+}
+
+fn read_decision_status(
+    buf: &[u8],
+    cursor: &mut usize,
+) -> Result<Option<DecisionStatus>, FactCodecError> {
+    match read_u8(buf, cursor)? {
+        0 => Ok(None),
+        1 => Ok(Some(DecisionStatus::Active)),
+        2 => Ok(Some(DecisionStatus::Superseded)),
+        3 => Ok(Some(DecisionStatus::Removed)),
+        other => Err(FactCodecError::UnknownDiscriminator(
+            other,
+            "decision_status",
+        )),
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // SectionFact — Section entity instance (production typed fact).
 // ────────────────────────────────────────────────────────────────────────────
@@ -88,24 +152,27 @@ fn read_u64(buf: &[u8], cursor: &mut usize) -> Result<u64, FactCodecError> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SectionFact {
     pub key: FactKey,
-    pub doc_path: String,
+    /// String section identity (the JSON store's map key). Kept as an explicit
+    /// field because the index addresses rows by the numeric `key.entity_id`.
     pub section_id: String,
-    pub title: String,
-    pub decision_status: String,
+    /// Canonical Layer-0 scalar skeleton, shared verbatim with the JSON log
+    /// adapter (`mnemosyne_atomic::AtomicSection`) — Round 326 fulfils
+    /// convergence A for Section: one skeleton type carries both the serde
+    /// (log) and the byte codec (index). The codec persists every skeleton
+    /// field with full fidelity. Cross-refs are intentionally absent: the
+    /// index stores them as first-class `CrossRefFact` relation rows, so a
+    /// SectionFact never carries an inline cross-ref list.
+    pub skeleton: SectionSkeleton,
 }
 
 impl SectionFact {
     pub fn encode_value(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(
-            16 + self.doc_path.len()
-                + self.section_id.len()
-                + self.title.len()
-                + self.decision_status.len(),
-        );
-        write_string(&mut out, &self.doc_path);
+        let mut out = Vec::new();
         write_string(&mut out, &self.section_id);
-        write_string(&mut out, &self.title);
-        write_string(&mut out, &self.decision_status);
+        write_string(&mut out, &self.skeleton.parent_doc);
+        write_string(&mut out, &self.skeleton.title);
+        write_opt_string(&mut out, self.skeleton.parent_section.as_deref());
+        out.push(encode_decision_status(self.skeleton.decision_status));
         out
     }
 
@@ -116,20 +183,24 @@ impl SectionFact {
         buf: &[u8],
     ) -> Result<Self, FactCodecError> {
         let mut cursor = 0;
-        let doc_path = read_string(buf, &mut cursor, "doc_path")?;
         let section_id = read_string(buf, &mut cursor, "section_id")?;
+        let parent_doc = read_string(buf, &mut cursor, "parent_doc")?;
         let title = read_string(buf, &mut cursor, "title")?;
-        let decision_status = read_string(buf, &mut cursor, "decision_status")?;
+        let parent_section = read_opt_string(buf, &mut cursor, "parent_section")?;
+        let decision_status = read_decision_status(buf, &mut cursor)?;
         Ok(Self {
             key: FactKey {
                 branch_id,
                 entity_id,
                 valid_from,
             },
-            doc_path,
             section_id,
-            title,
-            decision_status,
+            skeleton: SectionSkeleton {
+                title,
+                parent_doc,
+                parent_section,
+                decision_status,
+            },
         })
     }
 }
@@ -267,19 +338,41 @@ mod tests {
 
     #[test]
     fn section_fact_round_trip() {
+        // Exercises both discriminator codecs: parent_section Some + a typed
+        // decision_status.
         let fact = SectionFact {
             key: FactKey {
                 branch_id: 1,
                 entity_id: 42,
                 valid_from: 1000,
             },
-            doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
-            title: "Phase 0 design_doc schema".to_string(),
-            decision_status: "Active".to_string(),
+            skeleton: SectionSkeleton {
+                title: "Phase 0 design_doc schema".to_string(),
+                parent_doc: "docs/DESIGN.md".to_string(),
+                parent_section: Some("38".to_string()),
+                decision_status: Some(DecisionStatus::Superseded),
+            },
         };
         let bytes = fact.encode_value();
         let decoded = SectionFact::decode_value(1, 42, 1000, &bytes).expect("decode");
+        assert_eq!(decoded, fact);
+    }
+
+    #[test]
+    fn section_fact_round_trip_defaults() {
+        // None parent_section + None decision_status (the empty-skeleton path).
+        let fact = SectionFact {
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 7,
+                valid_from: 1,
+            },
+            section_id: "7".to_string(),
+            skeleton: SectionSkeleton::default(),
+        };
+        let bytes = fact.encode_value();
+        let decoded = SectionFact::decode_value(1, 7, 1, &bytes).expect("decode");
         assert_eq!(decoded, fact);
     }
 
@@ -345,10 +438,13 @@ mod tests {
                 entity_id: 42,
                 valid_from: 1000,
             },
-            doc_path: "docs/DESIGN.md".to_string(),
             section_id: "39".to_string(),
-            title: "Test".to_string(),
-            decision_status: "Active".to_string(),
+            skeleton: SectionSkeleton {
+                title: "Test".to_string(),
+                parent_doc: "docs/DESIGN.md".to_string(),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Active),
+            },
         };
         let a = fact.encode_value();
         let b = fact.encode_value();

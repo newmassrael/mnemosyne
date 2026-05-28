@@ -220,8 +220,8 @@ fn check_atomic_section(
     push_string_diff(
         section_id,
         "impact_scope",
-        &prev.skeleton.impact_scope,
-        &curr.skeleton.impact_scope,
+        &prev.impact_scope,
+        &curr.impact_scope,
         errors,
         T2ValidationError::section_frozen,
     );

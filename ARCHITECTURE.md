@@ -107,19 +107,22 @@ append-only fact log            ──→   materialized index keyed by
 
 ## 5. Current state vs target — the debt to converge
 
-The largest remaining deviation is a **duplicated fact model**: the Section /
-ChangelogEntry / FrozenList / CrossRef concepts are modeled twice — once for the
-live JSON authoring store, once for the RocksDB index codec. (A third, Salsa
-per-entity face — `SectionInput` / `ChangelogEntryInput` / `FrozenListInput` —
-was removed in R322; cascade now consumes facts through `BranchSnapshotData`
-rather than redefining them.)
+The largest remaining deviation is a **partially duplicated fact model**: the
+ChangelogEntry / FrozenList / CrossRef concepts are still modeled twice — once
+for the live JSON authoring store, once for the RocksDB index codec. Section is
+the exception: as of R326 both adapters share one `SectionSkeleton` (the JSON log
+writes it inline; the index codec encodes the same struct), so only the
+adapter-specific wrappers differ. (A third, Salsa per-entity face —
+`SectionInput` / `ChangelogEntryInput` / `FrozenListInput` — was removed in R322;
+cascade now consumes facts through `BranchSnapshotData` rather than redefining
+them.)
 
 | Concept | `mnemosyne-atomic` (JSON, live) | `mnemosyne-facts` (RocksDB index codec) |
 |---|---|---|
-| Section | `AtomicSection` (Layer-0 `SectionSkeleton` + design_doc content) | `SectionFact` |
+| Section | `AtomicSection` (Layer-0 `SectionSkeleton` + design_doc content) | `SectionFact` (embeds `SectionSkeleton`) |
 | ChangelogEntry | `AtomicChangelogEntry` | `ChangelogEntryFact` |
 | FrozenList | (in `AtomicStore`) | `FrozenListFact` |
-| CrossRef | (in `SectionSkeleton.impact_scope`) | `CrossRefFact` |
+| CrossRef | (in `AtomicSection.impact_scope`) | `CrossRefFact` |
 
 Consequences today: two unreconciled persistence models (JSON atomic store =
 live; RocksDB store = built-but-orphaned), and a tier-gate concept that exists
@@ -134,8 +137,9 @@ are not dead code; they are *not yet wired*.
 ### Convergence sequence (each step independently verifiable)
 - **A — unify the fact model (keystone).** One canonical skeleton carrying both
   serde (the JSON log) and the byte codec (the RocksDB index). Everything depends
-  on this. (R323 hoisted `FactKey`; R325 hoisted `SectionSkeleton` and made the
-  live model compose it — see below.)
+  on this. (R323 hoisted `FactKey`; R325 made the live model compose
+  `SectionSkeleton`; R326 made the index codec encode the same `SectionSkeleton`
+  — Section is done, ChangelogEntry/FrozenList remain.)
 - **B — RocksDB as materialized index.** Project the log into the composite-key
   store; route queries through it instead of full-JSON scan.
 - **C — cascade as incremental projection.** Replace full re-render with Salsa
@@ -143,28 +147,37 @@ are not dead code; they are *not yet wired*.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
   reconcile into one command path (append log → update index → cascade).
 
-### Canonical fact-model boundary (A's keystone, R323–R325)
+### Canonical fact-model boundary (A's keystone, R323–R326)
 
 `A` splits along a strict Layer-0 / Layer-1 line so the core stays
 domain-agnostic (§1):
 
-- **Layer 0 — canonical skeleton (`mnemosyne-core`).** The bitemporal identity
-  `FactKey { branch_id, entity_id, valid_from }` (landed R323) and the
-  medium-neutral `SectionSkeleton` (landed R325): `title`, parent links,
-  `decision_status`, and cross-refs (`impact_scope`). This is all the core knows.
+- **Layer 0 — canonical scalar skeleton (`mnemosyne-core`).** The bitemporal
+  identity `FactKey { branch_id, entity_id, valid_from }` (R323) and the
+  medium-neutral *scalar* `SectionSkeleton` (R325; scoped to scalars in R326):
+  `title`, parent links, `decision_status`. These serialize identically across
+  every adapter, which is what makes the type safely shareable.
 - **Layer 1 — medium content (design_doc adapter = `mnemosyne-atomic`).** The
   rich design_doc fields — `intent`, `rationale`, `inputs`/`outputs`, `caveats`,
   `alternatives`, `examples`, `normative_excerpt`, `implementations`,
   `publishable_*` — are *shaped by the design_doc medium* (a fiction or ADR
   section carries different content) and stay in the adapter, never in Layer 0.
 
-R325 split the live model: `AtomicSection` now embeds
-`mnemosyne_core::SectionSkeleton` via `#[serde(flatten)]`, so the on-disk
-`workspace.atomic.json` shape stays byte-identical while the core owns the
-skeleton. Still owed: `SectionFact` (the RocksDB index codec) should adopt the
-same `SectionSkeleton` so log and index share one definition (A3b → B). This is
-what lets new media (fiction, ADR, spec) become first-class adapters without the
-core ever learning what a "rationale" or a "normative excerpt" is.
+Cross-refs are deliberately **not** in the shared skeleton: they are
+adapter-divergent — the JSON log stores them inline as `AtomicSection.impact_scope`,
+the index stores them as first-class `CrossRefFact` relation rows — so each
+adapter owns its own representation (a shared value object holds only what every
+embedder persists the same way).
+
+R325–R326 unified the Section fact: `AtomicSection` embeds
+`mnemosyne_core::SectionSkeleton` via `#[serde(flatten)]` (byte-identical JSON),
+and `SectionFact` embeds the same `SectionSkeleton` behind a full-fidelity byte
+codec — the log and the index now share one skeleton definition for Section.
+Still owed: ChangelogEntry / FrozenList get the same treatment, then B/C/D. The
+cascade Salsa input (`SectionRecord`) still carries a stringly-typed status,
+bridged at the conversion boundary until convergence C adopts the typed enum.
+This is what lets new media (fiction, ADR, spec) become first-class adapters
+without the core ever learning what a "rationale" or a "normative excerpt" is.
 
 ## 6. Anti-drift invariants
 

@@ -56,9 +56,9 @@ use thiserror::Error;
 /// invariant: every AtomicSection has non-empty `title` + non-empty `parent_doc`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicSection {
-    /// Layer-0 canonical skeleton (Round 325 — Convergence A3): the
-    /// medium-neutral attributes (`title` / `parent_doc` / `parent_section` /
-    /// `impact_scope` / `decision_status`) lifted into `mnemosyne-core`.
+    /// Layer-0 canonical scalar skeleton (Round 325; scoped to scalars in
+    /// Round 326): the medium-neutral attributes (`title` / `parent_doc` /
+    /// `parent_section` / `decision_status`) lifted into `mnemosyne-core`.
     /// `#[serde(flatten)]` keeps the skeleton fields inline in the JSON, so
     /// the on-disk authoring shape is byte-identical to the pre-split layout.
     /// Placed first so flattened skeleton fields serialize ahead of the
@@ -83,6 +83,13 @@ pub struct AtomicSection {
     /// rejected option + reason pairs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternatives_rejected: Vec<RejectedAlternative>,
+    /// Outbound cross-ref list (target section_id without the `§` prefix).
+    /// Adapter-local (Round 326): cross-refs are *not* part of the shared
+    /// Layer-0 skeleton because the index represents them as `CrossRefFact`
+    /// relations, not an inline array. The JSON log adapter stores them inline
+    /// here; index projection (convergence B) reads this and emits CrossRefFacts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub impact_scope: Vec<String>,
     /// code/config block list. T3 style threshold: code block itself exempt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
@@ -705,9 +712,8 @@ fn synthesize_section_body_inner(atomic: &AtomicSection, include_implementations
             .collect();
         parts.push(block.join("\n"));
     }
-    if !atomic.skeleton.impact_scope.is_empty() {
+    if !atomic.impact_scope.is_empty() {
         let block: Vec<String> = atomic
-            .skeleton
             .impact_scope
             .iter()
             .map(|s| format!("- §{}", s))
@@ -987,7 +993,7 @@ pub fn set_section_impact_scope(
     section_id: &str,
     refs: &[String],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    section_mut_strict(store, section_id)?.skeleton.impact_scope = refs.to_vec();
+    section_mut_strict(store, section_id)?.impact_scope = refs.to_vec();
     save_with_receipt(
         store,
         sidecar_path,
@@ -1152,7 +1158,6 @@ pub fn add_section(
             parent_doc: parent_doc_t.to_string(),
             parent_section: parent_section_norm,
             decision_status: Some(DecisionStatus::Active),
-            ..Default::default()
         },
         ..Default::default()
     };
