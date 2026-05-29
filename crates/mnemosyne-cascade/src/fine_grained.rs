@@ -36,15 +36,13 @@
 //! gives a direct *count of sub-queries that received an invalidation*.
 //! No global static is used, so parallel tests do not race.
 //!
-//! ## Boundary with existing API
+//! ## Sole cascade engine (since R338)
 //!
-//! The existing `runtime` module's `section_decision_status(db, branch:
-//! CascadeBranch)` is the opaque-`Vec<u8>`-snapshot, branch-level full
-//! re-execution path — the Phase 0 production stack's stable carry. This
-//! fine-grained API is a separate parallel path: bench measurement +
-//! Phase 1.5+ production substitution candidate. *cascade_query Forge
-//! kind* body framing is unmutated; this layer's introduction is ratified
-//! through Changelog entries only.
+//! The coarse branch-granularity `runtime` module (the opaque-`Vec<u8>`
+//! snapshot, full-branch re-execution path) was retired in R338; this
+//! fine-grained per-record Salsa engine is now the sole cascade path, with
+//! no parallel coarse sibling. Its introduction and the runtime retirement
+//! are ratified through Changelog entries only.
 
 use crate::ValidationResult;
 use mnemosyne_core::{

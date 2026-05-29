@@ -3104,3 +3104,20 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 352 — Reconcile two residual doc-drift items the R348-R350 ARCHITECTURE.md §5 sweep missed. (1) ARCHITECTURE.md hard-coded a stale entry count ("5 sections + 91 entries"; the store now holds 98) that re-drifts on every appended round — the literal mechanism behind the R348/R349/R350 recurring debt class. Drop the count entirely (a count-free phrasing has no invariant to re-rot) rather than re-bumping it. (2) mnemosyne-cascade/fine_grained.rs's module docstring still described the R338-retired coarse runtime.rs as a live "stable carry" parallel path and called the fine-grained engine a "substitution candidate"; rewrite it to state fine_grained is the sole cascade engine since R338. Documentation/comment only, zero functional or link impact.
+
+**Changes**:
+- ARCHITECTURE.md §5: drop hard count `N = 5 sections + 91 entries` for count-free phrasing
+- fine_grained.rs module doc: state `runtime` retired R338, fine_grained is the sole engine
+
+
+
+**Verification**:
+- store entry count re-derived = 98 changelog entries (doc had claimed stale 91)
+- cargo build/clippy --workspace -D warnings clean; cargo fmt --all --check clean
+- both edits comment/doc-only — zero functional or link impact (no code change)
+
+
+
+
+

@@ -321,10 +321,10 @@ mutate (R340), and is notified from the MCP mutate finishers (R341). What R337
 left open is render's *implementation* architecture, and the gap it closes is
 concrete: `auto_regenerate` re-renders the **entire** `GENERATED.md` — every
 section and every changelog entry back through Tera — on every mutate, so a
-one-field edit pays O(N) template work (today N = 5 sections + 91 entries). The
-four questions below are answered before any render code lands, because render
-adds Layer-1 content to a projection engine the validation skeleton deliberately
-kept Layer-0-only.
+one-field edit pays O(N) template work (today N is small — a handful of
+sections plus the growing changelog ledger). The four questions below are
+answered before any render code lands, because render adds Layer-1 content to a
+projection engine the validation skeleton deliberately kept Layer-0-only.
 
 **Decision 1 — render owns a separate Salsa database (`RenderDb`), not a
 widened validation engine.** Validation needs only the Layer-0 skeleton
