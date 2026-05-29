@@ -5064,6 +5064,28 @@
         "672 workspace tests pass / 0 fail; clippy --all-targets -D warnings + fmt clean",
         "validate-workspace green incl commit-ledger-drift happy path; GENERATED.md sync, T3 reject 0"
       ]
+    },
+    "Round 360 — fail-loud on decay-scan IO + content-hash serialize unwrap_or_default (R356/R359 sweep)": {
+      "decision_summary": "Complete the R356/R359 fail-loud sweep: the last two production unwrap_or_default sites that silently swallowed a scan IO error or degenerated an integrity hash now fail loud.",
+      "changes_bullets": [
+        "print_atomic_decay_surface masked scan_section_decay io::Error (unreadable code_refs.paths dir) as unwrap_or_default → \"0 citations\"; now map_err + ? so an unreadable scan dir fails loud instead of silently under-reporting the decay surface",
+        "ChangelogEntry::publishable_hash_hex + audit_hash_hex computed serde_json::to_vec(payload).unwrap_or_default(); an empty fallback would collapse every entry to the SHA256-of-empty constant, silently defeating the content-integrity anchor — now .expect(\"serializing owned String/Vec is infallible\") = fail-loud intent on the unreachable-but-degenerate path",
+        "closes the R356/R359 fail-loud sweep — a workspace grep now shows no error-masking unwrap_or_default left on any read or integrity path in production"
+      ],
+      "verification_bullets": [
+        "672 workspace tests pass / 0 fail; clippy --workspace --all-targets -D warnings + fmt clean",
+        "validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0"
+      ],
+      "publishable_decision_summary": "Complete the R356/R359 fail-loud sweep: the last two production unwrap_or_default sites that silently swallowed a scan IO error or degenerated an integrity hash now fail loud.",
+      "publishable_changes_bullets": [
+        "print_atomic_decay_surface masked scan_section_decay io::Error (unreadable code_refs.paths dir) as unwrap_or_default → \"0 citations\"; now map_err + ? so an unreadable scan dir fails loud instead of silently under-reporting the decay surface",
+        "ChangelogEntry::publishable_hash_hex + audit_hash_hex computed serde_json::to_vec(payload).unwrap_or_default(); an empty fallback would collapse every entry to the SHA256-of-empty constant, silently defeating the content-integrity anchor — now .expect(\"serializing owned String/Vec is infallible\") = fail-loud intent on the unreachable-but-degenerate path",
+        "closes the R356/R359 fail-loud sweep — a workspace grep now shows no error-masking unwrap_or_default left on any read or integrity path in production"
+      ],
+      "publishable_verification_bullets": [
+        "672 workspace tests pass / 0 fail; clippy --workspace --all-targets -D warnings + fmt clean",
+        "validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0"
+      ]
     }
   },
   "inventory_entries": {},

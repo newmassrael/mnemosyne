@@ -948,7 +948,7 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
             sid,
             code_refs_cfg.comment_only,
         )
-        .unwrap_or_default();
+        .map_err(|e| anyhow!("scan section decay (§{}): {}", sid, e))?;
         if !hits.is_empty() {
             per_section.push((sid, hits.len()));
         }

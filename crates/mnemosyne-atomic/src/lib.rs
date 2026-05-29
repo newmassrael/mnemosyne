@@ -344,7 +344,10 @@ impl AtomicChangelogEntry {
         "publishable_carry_forward_bullets": self.publishable_carry_forward_bullets,
         });
         let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_vec(&payload).unwrap_or_default());
+        hasher.update(
+            serde_json::to_vec(&payload)
+                .expect("serializing owned publishable strings to JSON is infallible"),
+        );
         let bytes = hasher.finalize();
         let mut s = String::with_capacity(bytes.len() * 2);
         for b in bytes {
@@ -367,7 +370,10 @@ impl AtomicChangelogEntry {
         "carry_forward_bullets": self.carry_forward_bullets,
         });
         let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_vec(&payload).unwrap_or_default());
+        hasher.update(
+            serde_json::to_vec(&payload)
+                .expect("serializing owned audit strings to JSON is infallible"),
+        );
         let bytes = hasher.finalize();
         let mut s = String::with_capacity(bytes.len() * 2);
         for b in bytes {
