@@ -3161,3 +3161,19 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 355 — cascade module docstring — consume *Fact structs from core, not facts (R346 drift)
+
+**Changes**:
+- cascade lib.rs module docstring: name the canonical *Fact structs (SectionFact / ChangelogEntryFact / CrossRefFact / FrozenListFact) and their real home mnemosyne-core, not mnemosyne-facts
+- cite R328 (structs lifted to core) + R346 (cascade→facts edge severed); RocksDB-free at link time stated as the consequence
+
+
+
+**Verification**:
+- cargo build -p mnemosyne-cascade clean; doc-comment only, zero behavior change
+- R346 drift class: R350 reconciled ARCHITECTURE.md §5 prose but this module docstring was missed by the R349 docstring sweep
+
+
+
+
+

@@ -9,10 +9,14 @@
 //! that read it, and the aggregator backdates when sub-query results are
 //! unchanged.
 //!
-//! The engine is pure and in-memory: it consumes canonical facts
-//! (`mnemosyne-facts`) directly and knows nothing of the authoring adapter or
-//! the RocksDB index. The read-side service that builds a `BranchIndex` from the
-//! live log lives one layer up (so this crate never depends on the adapter).
+//! The engine is pure and in-memory: it consumes the canonical `*Fact` structs
+//! (`SectionFact` / `ChangelogEntryFact` / `CrossRefFact` / `FrozenListFact`,
+//! defined in `mnemosyne-core`) directly and knows nothing of the authoring
+//! adapter, the `mnemosyne-facts` RocksDB persistence binding, or the index
+//! itself — depending on `core` (not `facts`) keeps it RocksDB-free at link
+//! time (R328/R346, CQRS invariant). The read-side service that builds a
+//! `BranchIndex` from the live log lives one layer up (so this crate never
+//! depends on the adapter).
 //!
 //! ## Modules
 //!

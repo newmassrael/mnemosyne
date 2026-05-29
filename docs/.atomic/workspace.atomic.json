@@ -4948,6 +4948,26 @@
         "Review#2 carry still open: facts codec edge tests + 47 dormant #[ignore] tests",
         "Next epic = render projection Step 2a (R345) — large, fresh budget, do not half-start"
       ]
+    },
+    "Round 355": {
+      "decision_summary": "cascade module docstring — consume *Fact structs from core, not facts (R346 drift)",
+      "changes_bullets": [
+        "cascade lib.rs module docstring: name the canonical *Fact structs (SectionFact / ChangelogEntryFact / CrossRefFact / FrozenListFact) and their real home mnemosyne-core, not mnemosyne-facts",
+        "cite R328 (structs lifted to core) + R346 (cascade→facts edge severed); RocksDB-free at link time stated as the consequence"
+      ],
+      "verification_bullets": [
+        "cargo build -p mnemosyne-cascade clean; doc-comment only, zero behavior change",
+        "R346 drift class: R350 reconciled ARCHITECTURE.md §5 prose but this module docstring was missed by the R349 docstring sweep"
+      ],
+      "publishable_decision_summary": "cascade module docstring — consume *Fact structs from core, not facts (R346 drift)",
+      "publishable_changes_bullets": [
+        "cascade lib.rs module docstring: name the canonical *Fact structs (SectionFact / ChangelogEntryFact / CrossRefFact / FrozenListFact) and their real home mnemosyne-core, not mnemosyne-facts",
+        "cite R328 (structs lifted to core) + R346 (cascade→facts edge severed); RocksDB-free at link time stated as the consequence"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build -p mnemosyne-cascade clean; doc-comment only, zero behavior change",
+        "R346 drift class: R350 reconciled ARCHITECTURE.md §5 prose but this module docstring was missed by the R349 docstring sweep"
+      ]
     }
   },
   "inventory_entries": {},
