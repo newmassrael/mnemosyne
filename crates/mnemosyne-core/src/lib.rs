@@ -198,6 +198,52 @@ pub enum InventoryStatus {
     Reserved,
 }
 
+impl InventoryStatus {
+    /// Canonical snake_case label (matches the serde representation). Used by
+    /// adapters that carry the status as a string at a layer boundary
+    /// (CLI/MCP render). Mirrors [`DecisionStatus::as_str`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InventoryStatus::Active => "active",
+            InventoryStatus::Deprecated => "deprecated",
+            InventoryStatus::Reserved => "reserved",
+        }
+    }
+}
+
+/// Error returned when a string is not a valid [`InventoryStatus`] label.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseInventoryStatusError {
+    pub got: String,
+}
+
+impl std::fmt::Display for ParseInventoryStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "`{}` invalid (expected active|deprecated|reserved)",
+            self.got
+        )
+    }
+}
+
+impl std::error::Error for ParseInventoryStatusError {}
+
+impl std::str::FromStr for InventoryStatus {
+    type Err = ParseInventoryStatusError;
+
+    /// Parse the canonical label (case-insensitive). The sole vocabulary
+    /// source for the CLI/MCP `--status` parsers (Round 357 DRY).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "active" => Ok(InventoryStatus::Active),
+            "deprecated" => Ok(InventoryStatus::Deprecated),
+            "reserved" => Ok(InventoryStatus::Reserved),
+            _ => Err(ParseInventoryStatusError { got: s.to_string() }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionSurface {
     pub plugin_name: String,
@@ -422,5 +468,35 @@ command = ["gopls"]
 output_parser = "gopls_v0_15""#;
         let parsed: Transport = toml::from_str(toml_cli).unwrap();
         assert!(matches!(parsed, Transport::Cli { .. }));
+    }
+
+    #[test]
+    fn inventory_status_as_str_from_str_round_trip() {
+        use std::str::FromStr;
+        for s in [
+            InventoryStatus::Active,
+            InventoryStatus::Deprecated,
+            InventoryStatus::Reserved,
+        ] {
+            assert_eq!(InventoryStatus::from_str(s.as_str()), Ok(s));
+        }
+        // Case-insensitive, matching the prior to_ascii_lowercase parsers.
+        assert_eq!(
+            InventoryStatus::from_str("DEPRECATED"),
+            Ok(InventoryStatus::Deprecated)
+        );
+        // as_str matches the serde snake_case representation.
+        assert_eq!(InventoryStatus::Active.as_str(), "active");
+    }
+
+    #[test]
+    fn inventory_status_from_str_rejects_unknown() {
+        use std::str::FromStr;
+        let err = InventoryStatus::from_str("retired").unwrap_err();
+        assert_eq!(err.got, "retired");
+        assert_eq!(
+            err.to_string(),
+            "`retired` invalid (expected active|deprecated|reserved)"
+        );
     }
 }

@@ -696,11 +696,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&view)?);
         } else {
             for (id, entry) in &atomic_store.inventory_entries {
-                let status_label = match entry.status {
-                    mnemosyne_core::InventoryStatus::Active => "active",
-                    mnemosyne_core::InventoryStatus::Deprecated => "deprecated",
-                    mnemosyne_core::InventoryStatus::Reserved => "reserved",
-                };
+                let status_label = entry.status.as_str();
                 let section_part = entry
                     .section_ref
                     .as_deref()
@@ -729,11 +725,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             });
             println!("{}", serde_json::to_string_pretty(&view)?);
         } else {
-            let status_label = match entry.status {
-                mnemosyne_core::InventoryStatus::Active => "active",
-                mnemosyne_core::InventoryStatus::Deprecated => "deprecated",
-                mnemosyne_core::InventoryStatus::Reserved => "reserved",
-            };
+            let status_label = entry.status.as_str();
             println!("inventory_id: {}", inv_id);
             println!("status: {}", status_label);
             if let Some(s) = entry.section_ref.as_deref() {

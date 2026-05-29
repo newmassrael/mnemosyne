@@ -8,7 +8,6 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection};
-use mnemosyne_core::InventoryStatus;
 use mnemosyne_parser::parse_markdown_with_schema;
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, query_term as query_term_inner,
@@ -183,7 +182,7 @@ pub fn list_inventory(workspace_root: &Path) -> Result<Vec<InventoryEntryView>, 
         .iter()
         .map(|(id, e)| InventoryEntryView {
             id: id.clone(),
-            status: inventory_status_label(e.status),
+            status: e.status.as_str(),
             section_ref: e.section_ref.clone(),
             source: e.source.clone(),
             reason: e.reason.clone(),
@@ -205,19 +204,11 @@ pub fn query_inventory(
     })?;
     Ok(InventoryEntryView {
         id: inventory_id.to_string(),
-        status: inventory_status_label(entry.status),
+        status: entry.status.as_str(),
         section_ref: entry.section_ref.clone(),
         source: entry.source.clone(),
         reason: entry.reason.clone(),
     })
-}
-
-fn inventory_status_label(status: InventoryStatus) -> &'static str {
-    match status {
-        InventoryStatus::Active => "active",
-        InventoryStatus::Deprecated => "deprecated",
-        InventoryStatus::Reserved => "reserved",
-    }
 }
 
 /// Parse + load all configured docs and return the per-doc ParsedDoc map,

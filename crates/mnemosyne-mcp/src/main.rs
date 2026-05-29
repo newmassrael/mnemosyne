@@ -506,15 +506,8 @@ fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, St
 }
 
 fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
-    match raw.to_ascii_lowercase().as_str() {
-        "active" => Ok(InventoryStatus::Active),
-        "deprecated" => Ok(InventoryStatus::Deprecated),
-        "reserved" => Ok(InventoryStatus::Reserved),
-        other => Err(format!(
-            "status `{}` invalid (expected active|deprecated|reserved)",
-            other
-        )),
-    }
+    raw.parse::<InventoryStatus>()
+        .map_err(|e| format!("status {}", e))
 }
 
 #[tool_router]

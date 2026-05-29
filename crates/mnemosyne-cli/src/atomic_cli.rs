@@ -1762,15 +1762,8 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
 // ============================================================================
 
 fn parse_inventory_status(raw: &str) -> Result<InventoryStatus> {
-    match raw.to_ascii_lowercase().as_str() {
-        "active" => Ok(InventoryStatus::Active),
-        "deprecated" => Ok(InventoryStatus::Deprecated),
-        "reserved" => Ok(InventoryStatus::Reserved),
-        other => bail!(
-            "--status `{}` invalid (expected active|deprecated|reserved)",
-            other
-        ),
-    }
+    raw.parse::<InventoryStatus>()
+        .map_err(|e| anyhow!("--status {}", e))
 }
 
 /// `add-inventory-entry --id <ID> --status active|deprecated|reserved \

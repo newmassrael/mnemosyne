@@ -3196,3 +3196,21 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 357 — InventoryStatus as_str + FromStr canonical in core — DRY 5 duplicated CLI/MCP vocabulary sites (R353 follow-through)
+
+**Changes**:
+- add InventoryStatus::as_str + FromStr (+ ParseInventoryStatusError) to mnemosyne-core as the sole active|deprecated|reserved vocabulary source
+- route the 5 duplicated sites: mcp + cli parse_inventory_status delegate to FromStr; 3 reverse-map blocks (ops query, cli main x2) call as_str; inventory_status_label helper deleted
+- mirrors the R353 DecisionStatus::as_str pattern; FromStr is justified here by 2 live parse sites (vs DecisionStatus single-site, left YAGNI)
+
+
+
+**Verification**:
+- 2 new core tests: as_str/FromStr round-trip + case-insensitive parse; unknown label rejects with the canonical message
+- 671 workspace tests pass (+2); clippy --all-targets -D warnings + fmt clean
+- validate-workspace green: GENERATED.md sync, T3 reject 0; status strings byte-identical (same labels)
+
+
+
+
+
