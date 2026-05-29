@@ -3232,3 +3232,20 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 359 — complete R356 fail-fast — convert the 3 leftover CLI read-path load swallows surfaced in review
+
+**Changes**:
+- complete R356: 3 DIRECT CLI read-path AtomicStore::load sites still used unwrap_or_default, silently masking a corrupt store as empty — the half-enforced-invariant the ops-layer R356 fix left open (ops fails-fast, cli swallowed)
+- all 3 (cmd_query, cmd_validate_workspace commit-ledger-drift load, cmd_style_check) now map_err + ? so a corrupt store fails loud instead of returning silently-empty query / drift / style results
+
+
+
+**Verification**:
+- workspace-wide grep confirms zero remaining AtomicStore::load().unwrap_or_default() in production
+- 672 workspace tests pass / 0 fail; clippy --all-targets -D warnings + fmt clean
+- validate-workspace green incl commit-ledger-drift happy path; GENERATED.md sync, T3 reject 0
+
+
+
+
+

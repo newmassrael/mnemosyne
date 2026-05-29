@@ -5042,6 +5042,28 @@
         "672 workspace tests pass (+1); clippy --all-targets -D warnings + fmt clean",
         "validate-workspace green: GENERATED.md sync, T3 reject 0; parsing behavior byte-identical"
       ]
+    },
+    "Round 359": {
+      "decision_summary": "complete R356 fail-fast — convert the 3 leftover CLI read-path load swallows surfaced in review",
+      "changes_bullets": [
+        "complete R356: 3 DIRECT CLI read-path AtomicStore::load sites still used unwrap_or_default, silently masking a corrupt store as empty — the half-enforced-invariant the ops-layer R356 fix left open (ops fails-fast, cli swallowed)",
+        "all 3 (cmd_query, cmd_validate_workspace commit-ledger-drift load, cmd_style_check) now map_err + ? so a corrupt store fails loud instead of returning silently-empty query / drift / style results"
+      ],
+      "verification_bullets": [
+        "workspace-wide grep confirms zero remaining AtomicStore::load().unwrap_or_default() in production",
+        "672 workspace tests pass / 0 fail; clippy --all-targets -D warnings + fmt clean",
+        "validate-workspace green incl commit-ledger-drift happy path; GENERATED.md sync, T3 reject 0"
+      ],
+      "publishable_decision_summary": "complete R356 fail-fast — convert the 3 leftover CLI read-path load swallows surfaced in review",
+      "publishable_changes_bullets": [
+        "complete R356: 3 DIRECT CLI read-path AtomicStore::load sites still used unwrap_or_default, silently masking a corrupt store as empty — the half-enforced-invariant the ops-layer R356 fix left open (ops fails-fast, cli swallowed)",
+        "all 3 (cmd_query, cmd_validate_workspace commit-ledger-drift load, cmd_style_check) now map_err + ? so a corrupt store fails loud instead of returning silently-empty query / drift / style results"
+      ],
+      "publishable_verification_bullets": [
+        "workspace-wide grep confirms zero remaining AtomicStore::load().unwrap_or_default() in production",
+        "672 workspace tests pass / 0 fail; clippy --all-targets -D warnings + fmt clean",
+        "validate-workspace green incl commit-ledger-drift happy path; GENERATED.md sync, T3 reject 0"
+      ]
     }
   },
   "inventory_entries": {},

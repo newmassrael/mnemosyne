@@ -661,7 +661,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     let (ws, _parsed_docs) = load_workspace(&root)?;
     // cascade B — atomic-first citation surface in atomic store load.
     let atomic_store = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
-        .unwrap_or_default();
+        .map_err(|e| anyhow!("atomic store load: {}", e))?;
 
     if qargs.list_sections {
         // list_sections covers BOTH the markdown-derived workspace
@@ -887,7 +887,7 @@ fn cmd_validate_workspace() -> Result<()> {
 
     print_atomic_decay_surface(&root)?;
     let atomic = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
-        .unwrap_or_default();
+        .map_err(|e| anyhow!("atomic store load: {}", e))?;
     print_commit_ledger_drift_surface(&root, &atomic)?;
 
     if report.failed {
@@ -1175,7 +1175,7 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 
     let style_check_atomic =
         AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None))
-            .unwrap_or_default();
+            .map_err(|e| anyhow!("atomic store load: {}", e))?;
     let mut all_violations: Vec<StyleViolation> = Vec::new();
     for (path, parsed) in &parsed_docs {
         if let Some(filter) = &doc_filter {
