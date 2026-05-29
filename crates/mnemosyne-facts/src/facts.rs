@@ -406,4 +406,60 @@ mod tests {
         let b = fact.encode_value();
         assert_eq!(a, b);
     }
+
+    // Round 363 — negative-path coverage for the index byte codec. The
+    // happy-path round-trips above never exercise the decode error variants,
+    // and a silent decode bug here corrupts the derived RocksDB index.
+
+    #[test]
+    fn read_decision_status_unknown_discriminator_rejected() {
+        let mut cursor = 0;
+        let err = read_decision_status(&[9u8], &mut cursor).expect_err("unknown");
+        assert!(matches!(
+            err,
+            FactCodecError::UnknownDiscriminator(9, "decision_status")
+        ));
+    }
+
+    #[test]
+    fn read_opt_string_unknown_discriminator_rejected() {
+        let mut cursor = 0;
+        let err = read_opt_string(&[9u8], &mut cursor, "parent_section").expect_err("unknown");
+        assert!(matches!(
+            err,
+            FactCodecError::UnknownDiscriminator(9, "parent_section")
+        ));
+    }
+
+    #[test]
+    fn read_string_invalid_utf8_rejected() {
+        // 4-byte BE length prefix = 1, then a lone 0xFF (not valid UTF-8).
+        let buf = [0u8, 0, 0, 1, 0xFF];
+        let mut cursor = 0;
+        let err = read_string(&buf, &mut cursor, "title").expect_err("invalid utf8");
+        assert!(matches!(err, FactCodecError::InvalidUtf8 { field, .. } if field == "title"));
+    }
+
+    #[test]
+    fn section_fact_removed_status_round_trip() {
+        // The Removed discriminator (3) is the one round-trip the happy-path
+        // tests skip (they use Active / Superseded / None).
+        let fact = SectionFact {
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 9,
+                valid_from: 5,
+            },
+            section_id: "9".to_string(),
+            skeleton: SectionSkeleton {
+                title: "removed".to_string(),
+                parent_doc: "docs/GENERATED.md".to_string(),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Removed),
+            },
+        };
+        let bytes = fact.encode_value();
+        let decoded = SectionFact::decode_value(1, 9, 5, &bytes).expect("decode");
+        assert_eq!(decoded, fact);
+    }
 }

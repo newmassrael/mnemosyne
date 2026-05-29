@@ -3304,3 +3304,20 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 363 — facts index codec negative-path tests (UnknownDiscriminator / InvalidUtf8 / Removed) — The index byte codec's decode error variants (UnknownDiscriminator, InvalidUtf8) and the DecisionStatus::Removed round-trip were untested — only happy-path round-trips + Truncated existed. Added 4 targeted tests since a silent decode bug here corrupts the derived RocksDB index.
+
+**Changes**:
+- mnemosyne-facts index byte codec had 5 happy-path round-trips + Truncated + determinism tests, but ZERO coverage of the two decode error variants (UnknownDiscriminator, InvalidUtf8) and the DecisionStatus::Removed discriminator (3) round-trip — a silent decode bug there corrupts the derived RocksDB index
+- added 4 targeted tests via the in-module private-helper access: read_decision_status unknown byte → UnknownDiscriminator; read_opt_string unknown byte → UnknownDiscriminator; read_string with a length-prefixed 0xFF → InvalidUtf8; SectionFact Some(Removed) encode/decode round-trip
+- test-only; no production code touched
+
+
+
+**Verification**:
+- 678 workspace tests pass / 0 fail (+4 facts negative-path); clippy -p mnemosyne-facts --all-targets -D warnings + fmt clean
+- validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0
+
+
+
+
+
