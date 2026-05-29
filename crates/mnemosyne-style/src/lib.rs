@@ -1,6 +1,7 @@
 //! Style rule layer (T3/T4 — MD-quality validator) — spec ratify carry,
-//! production wire (DESIGN.md *Style rule layer (T3/T4 — MD-quality)*
-//! sub-section + Stage 1 dogfood depth carry).
+//! production wire (the *Style rule layer (T3/T4 — MD-quality)* spec now
+//! lives in the atomic store changelog post MD-DELETION-RATIFY; Stage 1
+//! dogfood depth carry).
 //!
 //! Layer responsibility: prose property check on parsed design_doc workspace.
 //! Parallel to T1/T2 (typed-fact inference) layer in — different validation

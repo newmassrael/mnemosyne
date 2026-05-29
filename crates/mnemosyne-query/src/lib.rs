@@ -3,7 +3,7 @@
 //! bench prototype (`bench/crates/codegen-prototype/src/query_api.rs`)
 //! First round of the production lift. *Spec query API surface* body
 //! registered + prerequisite #5 *AI agent dogfood proof* binding source — *AI
-//! agent (Claude / future LLM) markdown grep = 0 calls + 0 direct DESIGN.md reads
+//! agent (Claude / future LLM) markdown grep = 0 calls + 0 direct GENERATED.md reads
 //! Zero-time + spec-query-API-only entry contract — production
 //! data path.
 //!

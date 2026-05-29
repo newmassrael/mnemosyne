@@ -12,8 +12,8 @@
 //!
 //! ```toml
 //! [workspace]
-//! docs = ["docs/DESIGN.md", "docs/ARCHITECTURE.md", "README.md"]
-//! default_doc = "docs/DESIGN.md" # optional
+//! docs = ["docs/GENERATED.md", "docs/ARCHITECTURE.md", "README.md"]
+//! default_doc = "docs/GENERATED.md" # optional
 //! root = "." # optional, default = file's dir
 //! ```
 //!

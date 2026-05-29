@@ -1,8 +1,9 @@
-//! Mnemosyne store — Phase 0 production crate (DESIGN.md /).
+//! Mnemosyne store — Phase 0 production crate.
 //!
-//! this crate 10 CF schema (entities / relations / temporal_index /
+//! this crate 10 user-facing CF schema (entities / relations / temporal_index /
 //! temporal_index_open / branch_meta / assets / asset_refs / audit /
-//! epistemic / secrets) in actual `rocksdb::DB` binding + ColumnFamilyDescriptor
+//! epistemic / secrets) + internal `migration_meta` (11 descriptors total)
+//! in actual `rocksdb::DB` binding + ColumnFamilyDescriptor
 //! registered + 24 B BE composite key encode/decode + WriteBatch + iterator
 //! source of truth.
 //!

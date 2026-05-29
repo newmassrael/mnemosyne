@@ -5086,6 +5086,32 @@
         "672 workspace tests pass / 0 fail; clippy --workspace --all-targets -D warnings + fmt clean",
         "validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0"
       ]
+    },
+    "Round 361 — sweep CF-count + dangling DESIGN.md doc-comment drift (R349/R355 class)": {
+      "decision_summary": "Reconcile crate-header/module doc-comments with landed state: store CF count omitted the internal migration_meta (11 descriptors); purge dangling DESIGN.md refs (deleted R251) and fix stale-as-live default-doc examples R349 missed, keeping intentional historical framings.",
+      "changes_bullets": [
+        "CF-count drift: store/lib.rs + cf_layout.rs head docstrings said \"10 CF\" but omitted the internal migration_meta CF; cf_layout.rs:74 + its test already frame it \"10 user-facing + migration_meta = 11 descriptors\" — head docstrings now match (10 user-facing + migration_meta)",
+        "dangling DESIGN.md (deleted R251 MD-DELETION-RATIFY) crate-header refs purged: store/lib.rs:1 + server/lib.rs:1 mangled \"(DESIGN.md /)\" / \"(DESIGN.md / /)\" dropped; style/lib.rs sub-section cite → \"spec now in the atomic store changelog\"; config/lib.rs TOML example docs/DESIGN.md → docs/GENERATED.md; server/audit.rs \"DESIGN.md spec stays frozen\" → \"append-only audit contract stays frozen\"",
+        "stale-as-live default-doc examples fixed: emitter.rs row-8 example + workspace/lib.rs:16 \"(default = DESIGN.md)\" (R349 swept line 7 but missed 16) + query/lib.rs dogfood \"0 direct DESIGN.md reads\" → GENERATED.md",
+        "left intentionally (correct historical framing): workspace/lib.rs:7 + the constant doc (\"pre-deletion this was DESIGN.md\"), atomic_cli.rs legacy-changelog-frozen notes, parser/lib.rs legacy-format back-compat, all test fixtures"
+      ],
+      "verification_bullets": [
+        "doc-comments only, zero behavior change; cargo fmt --check + clippy --workspace --all-targets -D warnings clean",
+        "workspace-wide grep confirms the remaining DESIGN.md refs in crate src are all intentional-historical or test fixtures (none reference DESIGN.md as a live default/target)",
+        "validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0"
+      ],
+      "publishable_decision_summary": "Reconcile crate-header/module doc-comments with landed state: store CF count omitted the internal migration_meta (11 descriptors); purge dangling DESIGN.md refs (deleted R251) and fix stale-as-live default-doc examples R349 missed, keeping intentional historical framings.",
+      "publishable_changes_bullets": [
+        "CF-count drift: store/lib.rs + cf_layout.rs head docstrings said \"10 CF\" but omitted the internal migration_meta CF; cf_layout.rs:74 + its test already frame it \"10 user-facing + migration_meta = 11 descriptors\" — head docstrings now match (10 user-facing + migration_meta)",
+        "dangling DESIGN.md (deleted R251 MD-DELETION-RATIFY) crate-header refs purged: store/lib.rs:1 + server/lib.rs:1 mangled \"(DESIGN.md /)\" / \"(DESIGN.md / /)\" dropped; style/lib.rs sub-section cite → \"spec now in the atomic store changelog\"; config/lib.rs TOML example docs/DESIGN.md → docs/GENERATED.md; server/audit.rs \"DESIGN.md spec stays frozen\" → \"append-only audit contract stays frozen\"",
+        "stale-as-live default-doc examples fixed: emitter.rs row-8 example + workspace/lib.rs:16 \"(default = DESIGN.md)\" (R349 swept line 7 but missed 16) + query/lib.rs dogfood \"0 direct DESIGN.md reads\" → GENERATED.md",
+        "left intentionally (correct historical framing): workspace/lib.rs:7 + the constant doc (\"pre-deletion this was DESIGN.md\"), atomic_cli.rs legacy-changelog-frozen notes, parser/lib.rs legacy-format back-compat, all test fixtures"
+      ],
+      "publishable_verification_bullets": [
+        "doc-comments only, zero behavior change; cargo fmt --check + clippy --workspace --all-targets -D warnings clean",
+        "workspace-wide grep confirms the remaining DESIGN.md refs in crate src are all intentional-historical or test fixtures (none reference DESIGN.md as a live default/target)",
+        "validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0"
+      ]
     }
   },
   "inventory_entries": {},

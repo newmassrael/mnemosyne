@@ -100,7 +100,7 @@ pub const AUDIT_BROADCAST_CAPACITY: usize = 256;
 /// server's RocksDB audit CF and is unaffected by fanout — fanout is an
 /// *observation* layer, not a write path. A cross-process subscriber
 /// receives a copy of the record but never writes to the local audit CF
-/// of the originating server. DESIGN.md spec stays frozen.
+/// of the originating server. The append-only audit contract stays frozen.
 pub trait AuditFanout: Send + Sync + std::fmt::Debug {
     fn publish(&self, record: &AuditRecord);
 }

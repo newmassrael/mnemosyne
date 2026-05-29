@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Workspace state — source of truth for multi-doc lookup.
 ///
 /// `default_doc` = workspace's default cross-doc target (mnemosyne workspace
-/// (default = DESIGN.md). Parser lookup priority step (2) consults this default_doc
+/// (default = GENERATED.md). Parser lookup priority step (2) consults this default_doc
 /// Performs the cross-doc auto-reclassify check using the section_id_set fallback.
 ///
 /// `atomic_id_set` is the atomic-store-derived section_id set

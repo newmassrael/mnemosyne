@@ -1,4 +1,4 @@
-//! Mnemosyne server — Phase 0 production crate (DESIGN.md / /).
+//! Mnemosyne server — Phase 0 production crate.
 //!
 //! Phase 0 server-side stack entry point for this crate — proposal handler
 //! ([`handler`]) + 3-tier gate (T1/T2/T3, [`gate`]) + audit append-only

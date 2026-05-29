@@ -1,7 +1,8 @@
-//! 10 CF layout — / source of truth.
+//! 10 user-facing CF layout (+ internal `migration_meta` = 11 descriptors) —
+//! source of truth.
 //!
 //! `entities / relations / temporal_index / temporal_index_open / branch_meta /
-//! assets / asset_refs / audit / epistemic / secrets`.
+//! assets / asset_refs / audit / epistemic / secrets` (+ `migration_meta`).
 //!
 //! Each CF carries:
 //! - `name`: RocksDB ColumnFamily handle name (snake_case literal).

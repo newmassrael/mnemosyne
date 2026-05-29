@@ -3,7 +3,7 @@
 //! OPTION H-2 adoption carry — emit table row 7/8/9 branch logic:
 //! - **row 7**: CrossRef (ref_kind ∈ {decision, impl}, intra-doc) → `§{N}` inline literal
 //! - **row 8**: CrossRef (ref_kind = cross_doc, to_target = workspace default cross-doc
-//! target = DESIGN.md) → `§{N}` inline literal (default-doc target source-markdown
+//! target = GENERATED.md) → `§{N}` inline literal (default-doc target source-markdown
 //! notation preserved; the parser reclassifies, then emits §N inline verbatim — round-trip
 //! diff = ∅ guaranteed; symmetric to mapping table row 12 lookup priority (2)'s emit side.
 //! - **row 9**: CrossRef (ref_kind = cross_doc, to_target ≠ workspace default cross-doc
