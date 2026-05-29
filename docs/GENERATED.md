@@ -3056,3 +3056,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 350 — ARCHITECTURE.md §5 Decision 2 and Rejected-alternative (B) of the R345 render-projection design both stated mnemosyne-cascade deps as `facts + salsa` — the same SSOT-of-intent doc-drift class R348 fixed elsewhere in §5 but missed in this subsection (added the same session as R345). R346 severed the cascade→facts re-export edge and repointed cascade to mnemosyne-core (the canonical fact structs moved to core at R328; cascade uses none of facts's RocksDB-coupled API), so the actual deps are `core + salsa` — stricter than the doc claimed, and the stale text understated the achieved RocksDB-free isolation. Decision 2 now reads 'R338 reduced mnemosyne-cascade to a pure Salsa engine and R346 severed its last facts re-export edge, leaving deps core + salsa'; alternative (B) now reads 'the pure core + salsa engine (R338/R346)'. Verified against the actual graph: crates/mnemosyne-cascade/Cargo.toml deps = mnemosyne-core + salsa (no facts), and its own dependency comment already cites the R346 rationale. ARCHITECTURE.md is a forward-looking human-facing North-Star artifact, not a frozen atomic-store entry, so the debt-class rule applies in reverse here — the code advanced past the doc, so the doc is corrected to match. Documentation-correctness only; no code change.
+
+**Changes**:
+- §5 Decision 2: `facts + salsa` → `core + salsa`; R338 made cascade a pure Salsa engine, R346 severed the last facts re-export edge
+- §5 Rejected-alternative (B): `pure facts + salsa engine (R338)` → `pure core + salsa engine (R338/R346)`
+
+
+
+**Verification**:
+- crates/mnemosyne-cascade/Cargo.toml deps = mnemosyne-core + salsa (no mnemosyne-facts) — verified
+- cargo tree: rocksdb reaches only store→{facts,index,server}; cascade RocksDB-free at link time
+- citation hygiene: R338/R346/R328/R345/R349 present in ledger (Active)
+- doc-only edit; ARCHITECTURE.md is not the atomic store, so GENERATED.md/round-trip unaffected
+
+
+
+
+**Carry forward**:
+- validate-workspace two-axis design re-confirmed NOT a smell (closes R349 R350-assessment carry): atomic axis = SSOT gate + byte-exact generated_in_sync; markdown axis = published-artifact integrity
+- Next: render projection Step 2a (R345 design) — large epic, fresh full budget, do not half-start
+
+
+

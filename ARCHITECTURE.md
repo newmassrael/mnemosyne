@@ -340,8 +340,9 @@ not even an *input* to the validation db, so it cannot invalidate a validation
 memo. This dissolves the "do we widen `SectionRecord`?" question: no.
 
 **Decision 2 — the render Salsa engine lives one layer up, never inside the
-pure cascade engine.** R338 reduced `mnemosyne-cascade` to deps `facts + salsa`
-on purpose (the CQRS read side stays RocksDB-free and dependency-light). Render
+pure cascade engine.** R338 reduced `mnemosyne-cascade` to a pure Salsa engine
+and R346 severed its last `facts` re-export edge, leaving deps `core + salsa`
+(the CQRS read side stays RocksDB-free and dependency-light). Render
 requires the Tera per-unit renderers, which already live in `mnemosyne-query`
 (`render_section`/`render_changelog_entry`, reading `templates/*.md.tera`). So
 the `RenderDb` + its tracked queries live in the projection layer (extending
@@ -400,9 +401,9 @@ variable set is the only thing that fixes it.
 `FineCascadeDb` with Layer-1 fields* — couples validation invalidation to
 render-only content and bloats the Layer-0 validation input with medium-shaped
 data; a separate `RenderDb` keeps both projections independent. *(B) Move the
-Tera render into `mnemosyne-cascade`* — re-pollutes the pure `facts + salsa`
-engine (R338) with `tera`, template I/O, and medium knowledge; keep render one
-layer up. *(C) Re-implement the `GENERATED.md` format in the incremental path* —
+Tera render into `mnemosyne-cascade`* — re-pollutes the pure `core + salsa`
+engine (R338/R346) with `tera`, template I/O, and medium knowledge; keep render
+one layer up. *(C) Re-implement the `GENERATED.md` format in the incremental path* —
 two format definitions drift against the round-trip/sync gates; single-source the
 builder instead. *(D) Delete `auto_regenerate` / force the CLI onto the warm
 path* — the one-shot CLI rebuilds cold every invocation (warm Salsa buys it
