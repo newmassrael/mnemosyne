@@ -120,12 +120,19 @@ where
     })
 }
 
-/// Load the atomic store at the resolved sidecar path. Returns
-/// `AtomicStore::default()` when the sidecar file is missing — matches
-/// the CLI's tolerant read semantics for fresh workspaces.
-pub fn load_atomic_store(workspace_root: &Path, sidecar: Option<&Path>) -> AtomicStore {
+/// Load the atomic store at the resolved sidecar path.
+///
+/// A missing sidecar is NOT an error — `AtomicStore::load` already returns an
+/// empty store for a fresh workspace. This propagates only genuine failures
+/// (corrupt JSON, IO error, or a newer-than-supported `schema_version`) so a
+/// corrupt SSOT fails loud instead of silently reading as empty (the prior
+/// `unwrap_or_default` masked corruption as a clean empty store).
+pub fn load_atomic_store(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<AtomicStore, OpError> {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar);
-    AtomicStore::load(&sidecar_path).unwrap_or_default()
+    AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
 fn sidecar_to_str(sidecar: Option<&Path>) -> Option<String> {
@@ -249,4 +256,35 @@ pub fn emit_publishable_override_ledger_draft(
         kind.unwrap_or("redaction"),
     )?;
     Ok(draft)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// A fresh workspace with no sidecar file loads as an empty store — a
+    /// missing sidecar is a legitimate state, not an error.
+    #[test]
+    fn load_atomic_store_missing_sidecar_is_empty_not_error() {
+        let tmp = TempDir::new().unwrap();
+        let store =
+            load_atomic_store(tmp.path(), None).expect("missing sidecar must load as empty");
+        assert!(store.atomic_section_id_set().is_empty());
+    }
+
+    /// A corrupt sidecar must propagate the error, not silently read as an
+    /// empty store. Regression for the `unwrap_or_default` that previously
+    /// masked corruption (R356).
+    #[test]
+    fn load_atomic_store_corrupt_sidecar_propagates_error() {
+        let tmp = TempDir::new().unwrap();
+        let sidecar = AtomicStore::default_sidecar_path(tmp.path());
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        std::fs::write(&sidecar, b"{ this is not valid json").unwrap();
+        assert!(
+            load_atomic_store(tmp.path(), None).is_err(),
+            "corrupt sidecar must fail loud, not silently empty"
+        );
+    }
 }

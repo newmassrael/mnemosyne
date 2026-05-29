@@ -3177,3 +3177,22 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 356 — fail-fast on corrupt atomic store — load_atomic_store propagates instead of unwrap_or_default to empty
+
+**Changes**:
+- ops::load_atomic_store now returns Result<AtomicStore, OpError>; corrupt JSON / IO error / newer-than-supported schema_version propagate instead of unwrap_or_default silently reading as an empty store (missing sidecar is still Ok-empty)
+- propagated at every caller: query_term / list_inventory (now Result) / query_inventory / load_workspace; style_check and validate_workspace direct loads; cli load_workspace atomic_for_id_set
+- MnemosyneServer::new is now fallible so a corrupt store fails loud at MCP startup; validate_projection refresh returns op_error on load failure
+- notify_projection keeps the last good warm projection on load error instead of silently reload-to-empty (closes the carry silent-empty-reset)
+
+
+
+**Verification**:
+- new ops regression tests: missing sidecar loads empty Ok; corrupt sidecar propagates Err (2 tests)
+- 669 workspace tests pass (+2); cargo build / clippy --all-targets -D warnings / fmt clean
+- validate-workspace green: docs 1/1, round-trip 1/1, T3 reject 0, GENERATED.md sync, orphan_refs 0+0
+
+
+
+
+

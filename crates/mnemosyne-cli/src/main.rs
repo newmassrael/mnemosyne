@@ -1110,7 +1110,7 @@ fn load_workspace(root: &Path) -> Result<(Workspace, Vec<(String, ParsedDoc)>)> 
     let schema = cli_schema()?;
     let mut ws = Workspace::from_config(loaded);
     let atomic_for_id_set =
-        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(root, None)).unwrap_or_default();
+        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(root, None))?;
     ws.set_atomic_id_set(atomic_for_id_set.atomic_section_id_set());
     let doc_paths: Vec<&str> = loaded.doc_paths().collect();
     let mut parsed_docs: Vec<(String, ParsedDoc)> = Vec::with_capacity(doc_paths.len());

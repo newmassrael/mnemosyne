@@ -76,7 +76,7 @@ pub fn load_workspace(workspace_root: &Path) -> Result<(Workspace, LoadedConfig,
         .schema
         .clone()
         .unwrap_or_else(SchemaSection::mnemosyne_preset);
-    let atomic_store = load_atomic_store(workspace_root, None);
+    let atomic_store = load_atomic_store(workspace_root, None)?;
     let mut ws = Workspace::from_config(&loaded);
     ws.set_atomic_id_set(atomic_store.atomic_section_id_set());
     let docs: Vec<String> = loaded.doc_paths().map(|s| s.to_string()).collect();
@@ -143,7 +143,7 @@ pub fn query_section(
 /// Literal/regex search across atomic Section + ChangelogEntry +
 /// Inventory text fields (R292).
 pub fn query_term(workspace_root: &Path, input: &QueryTermInput) -> Result<Vec<TermHit>, OpError> {
-    let atomic_store = load_atomic_store(workspace_root, None);
+    let atomic_store = load_atomic_store(workspace_root, None)?;
     let scope = match input.scope.as_deref().unwrap_or("all") {
         "all" => TermScope::All,
         "sections" => TermScope::Sections,
@@ -176,9 +176,9 @@ pub fn query_term(workspace_root: &Path, input: &QueryTermInput) -> Result<Vec<T
 }
 
 /// All inventory entries from the atomic store (R273).
-pub fn list_inventory(workspace_root: &Path) -> Vec<InventoryEntryView> {
-    let store = load_atomic_store(workspace_root, None);
-    store
+pub fn list_inventory(workspace_root: &Path) -> Result<Vec<InventoryEntryView>, OpError> {
+    let store = load_atomic_store(workspace_root, None)?;
+    Ok(store
         .inventory_entries
         .iter()
         .map(|(id, e)| InventoryEntryView {
@@ -188,7 +188,7 @@ pub fn list_inventory(workspace_root: &Path) -> Vec<InventoryEntryView> {
             source: e.source.clone(),
             reason: e.reason.clone(),
         })
-        .collect()
+        .collect())
 }
 
 /// Single inventory entry lookup.
@@ -196,7 +196,7 @@ pub fn query_inventory(
     workspace_root: &Path,
     inventory_id: &str,
 ) -> Result<InventoryEntryView, OpError> {
-    let store = load_atomic_store(workspace_root, None);
+    let store = load_atomic_store(workspace_root, None)?;
     let entry = store.inventory(inventory_id).ok_or_else(|| {
         OpError::Other(format!(
             "inventory_id `{}` not present in atomic store",

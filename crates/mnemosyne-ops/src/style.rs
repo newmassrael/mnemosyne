@@ -47,7 +47,7 @@ pub fn style_check(
         loaded.config.terminology.as_ref(),
     );
     let sidecar_path = resolve_sidecar(workspace_root, None);
-    let atomic = AtomicStore::load(&sidecar_path).unwrap_or_default();
+    let atomic = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
 
     let mut all: Vec<StyleViolation> = Vec::new();
     for (path, parsed) in &ws.docs {

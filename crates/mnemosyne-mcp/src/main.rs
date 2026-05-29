@@ -384,14 +384,14 @@ pub struct MnemosyneServer {
 }
 
 impl MnemosyneServer {
-    pub fn new(workspace: PathBuf) -> Self {
-        let atomic = ops::load_atomic_store(&workspace, None);
+    pub fn new(workspace: PathBuf) -> Result<Self, ops::OpError> {
+        let atomic = ops::load_atomic_store(&workspace, None)?;
         let projection = ProjectionService::build(&atomic, atomic::MAIN_BRANCH_ID);
-        Self {
+        Ok(Self {
             workspace: Arc::new(workspace),
             projection: Arc::new(Mutex::new(projection)),
             tool_router: Self::tool_router(),
-        }
+        })
     }
 
     fn tool_text(s: String) -> CallToolResult {
@@ -435,7 +435,19 @@ impl MnemosyneServer {
     /// A poisoned lock is recovered (the projection is a rebuildable cache, not
     /// authoritative state), so a notify never blocks the write path.
     fn notify_projection(&self) {
-        let atomic = ops::load_atomic_store(&self.workspace, None);
+        // A corrupt / unreadable store must NOT silently wipe the warm
+        // projection to empty — keep the last good projection and surface the
+        // error instead (the write itself already succeeded).
+        let atomic = match ops::load_atomic_store(&self.workspace, None) {
+            Ok(atomic) => atomic,
+            Err(e) => {
+                eprintln!(
+                    "[mnemosyne] projection notify skipped (store load failed): {}",
+                    e
+                );
+                return;
+            }
+        };
         let mut svc = self
             .projection
             .lock()
@@ -530,8 +542,10 @@ impl MnemosyneServer {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if args.0.refresh {
-                let atomic = ops::load_atomic_store(&self.workspace, None);
-                svc.reload(&atomic);
+                match ops::load_atomic_store(&self.workspace, None) {
+                    Ok(atomic) => svc.reload(&atomic),
+                    Err(e) => return self.op_error(e),
+                }
             }
             render_projection_validation(&svc.validate())
         };
@@ -1060,8 +1074,10 @@ impl MnemosyneServer {
         description = "List every inventory entry in the atomic store (id, status, section_ref). Phase 1A 5th-entity surface (Round 273). Walks AtomicStore.inventory_entries in BTreeMap order."
     )]
     async fn list_inventory(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        let entries = ops::list_inventory(&self.workspace);
-        self.tool_json(&entries)
+        match ops::list_inventory(&self.workspace) {
+            Ok(entries) => self.tool_json(&entries),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
@@ -1282,7 +1298,7 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("workspace path does not exist: {}", workspace.display());
     }
 
-    let server = MnemosyneServer::new(workspace);
+    let server = MnemosyneServer::new(workspace)?;
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
