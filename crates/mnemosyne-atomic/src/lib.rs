@@ -504,27 +504,6 @@ impl AtomicStore {
         Ok(())
     }
 
-    /// Round 287 — fail-loud Section lookup.
-    ///
-    /// Returns `None` if `section_id` is absent. Replaces the pre-287
-    /// silent-create variant (`entry(...).or_default()`) which let any
-    /// caller materialize an outline-less Section by typo. Creation now
-    /// routes exclusively through [`add_section`].
-    pub fn section_mut(&mut self, section_id: &str) -> Option<&mut AtomicSection> {
-        self.sections.get_mut(section_id)
-    }
-
-    /// Get / create-default changelog atomic entry.
-    ///
-    /// ChangelogEntry creation path differs from Section: `append_changelog_entry`
-    /// is the explicit primitive, and this getter remains create-on-miss until
-    /// a parallel fail-loud refactor (out of scope for Round 287's Section axis).
-    pub fn entry_mut(&mut self, entry_id: &str) -> &mut AtomicChangelogEntry {
-        self.changelog_entries
-            .entry(entry_id.to_string())
-            .or_default()
-    }
-
     pub fn section(&self, section_id: &str) -> Option<&AtomicSection> {
         self.sections.get(section_id)
     }
@@ -875,7 +854,7 @@ fn save_with_receipt(
 
 /// Round 287 — fail-loud Section lookup for mutate primitives.
 ///
-/// Returns `NotFound` when `section_id` is absent. Closes the `section_mut()`
+/// Returns `NotFound` when `section_id` is absent. Closes the pre-R287
 /// silent-create footgun: every set_section_* / add_section_* primitive now
 /// requires the Section to exist (created via `add_section`). Creation and
 /// population are explicitly separated — matches the rest of the atomic API.
@@ -1105,8 +1084,8 @@ pub fn remove_section(
 /// - `parent_doc` non-empty after trim
 /// - `title` non-empty after trim
 /// - `section_id` not already present in store (uniqueness — fail loud over
-///   silent overwrite; the `section_mut().or_default()` silent-create
-///   footgun is closed in a follow-on phase)
+///   silent overwrite; the pre-R287 silent-create footgun is closed by
+///   routing all creation through this primitive)
 /// - `parent_section`, when `Some(_)`, must be non-empty and exist in store
 ///   (referential integrity at write time)
 ///
@@ -1719,10 +1698,9 @@ pub fn append_changelog_entry(
 // `[[publishable_override_ledger]]`, calling these setters without an
 // accompanying ledger entry will surface as a validate-workspace reject.
 //
-// `entry_mut_strict` is the strict variant of `AtomicStore::entry_mut`
-// (which create-on-miss for back-compat with the v1 path); the publishable
-// setters require the entry to exist first because they cannot author the
-// audit half.
+// `entry_mut_strict` is the fail-loud changelog-entry lookup for the
+// publishable setters: they require the entry to exist first (created via
+// `append_changelog_entry`) because they cannot author the audit half.
 // ============================================================================
 
 fn entry_mut_strict<'a>(

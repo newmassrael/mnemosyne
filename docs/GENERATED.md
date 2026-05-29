@@ -3138,3 +3138,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 354 — Delete the caller-less unvalidated AtomicStore::entry_mut and section_mut accessors (mutate-API safety / no-legacy-carry). entry_mut was a create-on-miss &mut accessor whose own docstring flagged it a deferred carry ("remains create-on-miss until a parallel fail-loud refactor") and whose sibling comment called it "back-compat with the v1 path" — exactly the legacy-carry signal CLAUDE.md says to remove in place. It granted write authority to changelog_entries under a strictly weaker invariant set than append_changelog_entry (the half-enforced-invariant anti-pattern: a typo'd entry_id would silently materialize an empty entry, bypassing the R298 required-field gate). section_mut was already fail-loud (R287) but equally caller-less, superseded by section_mut_strict. Both had zero callers in production and tests — the strict variants delegate to get_mut directly, not to the bare accessors. Deleted both and reworded the three comments (add_section docstring + both _strict variants) that named them. No behavior change.
+
+**Changes**:
+- delete pub AtomicStore::entry_mut (create-on-miss, unvalidated) + section_mut
+- reword 3 comments that named the deleted accessors (add_section, both _strict)
+
+
+
+**Verification**:
+- grep confirms zero callers — strict variants call get_mut directly, not bare fns
+- cargo test -p mnemosyne-atomic 114 pass; clippy --workspace -D warnings clean; fmt clean
+- validate-workspace green; caller-less deletion, no behavior change
+
+
+
+
+**Carry forward**:
+- S2 DEFERRED YAGNI: no canonical DecisionStatus::from_str (single prod parse site)
+- Review#2 carry still open: facts codec edge tests + 47 dormant #[ignore] tests
+- Next epic = render projection Step 2a (R345) — large, fresh budget, do not half-start
+
+
+
