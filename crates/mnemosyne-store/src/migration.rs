@@ -4,10 +4,8 @@
 //! Key layout: `MIGRATION_META_KEY_PREFIX` (4 B `"smv:"` literal) || cf_name
 //! (variable). Value: u32 BE schema_version.
 //!
-//! Bench prototype `bench/codegen-prototype/src/cf_wrapper.rs::emit_migration_stub`
-//! emitted three helpers (`cf_versions`, `scaffold_new_cf`, `bump_version`) as a
-//! source-string scaffold. The production binding actually persists those
-//! versions to a CF and exposes the same operations against a live DB.
+//! This binding persists per-CF schema versions to the `migration_meta` CF and
+//! exposes `cf_versions` / `scaffold_new_cf` / `bump_version` against a live DB.
 
 use crate::cf_layout::{CfId, ALL_CFS};
 use crate::error::{Result, StoreError};

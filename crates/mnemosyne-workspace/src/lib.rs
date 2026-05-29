@@ -1,11 +1,10 @@
-//! Workspace-level config — mapping table row 12 lookup priority step (2)
-//! source. OPTION H-2 adoption (workspace default cross-doc target binding,
-//! (mnemosyne workspace = DESIGN.md) carry.
+//! Workspace-level config — the multi-doc lookup's default cross-doc target.
 //!
-//! ops-tuning param-spec / decision-surface separation pattern equivalent — for the workspace
-//! the default cross-doc target itself is not part of the spec-decision surface (it's workspace-level
-//! config); other design_doc workspaces are free to choose their own self-default — mnemosyne
-//! Only this production crate binds the workspace default to DESIGN.md.
+//! The default cross-doc target is workspace-level config, not part of the
+//! spec-decision surface; other design_doc workspaces choose their own. The
+//! mnemosyne workspace binds its default to `docs/GENERATED.md` (the sole
+//! readable artifact post MD-DELETION-RATIFY; pre-deletion this was
+//! `docs/DESIGN.md`), sourced from `mnemosyne.toml` via [`Workspace::from_config`].
 
 use mnemosyne_config::LoadedConfig;
 use mnemosyne_schema::ParsedDoc;
@@ -52,9 +51,9 @@ impl Workspace {
         Self::default()
     }
 
-    /// Workspace with mnemosyne default (`docs/DESIGN.md`). Fallback factory
-    /// retained for tests and callers without config access — production
-    /// callers should prefer [`Workspace::from_config`].
+    /// Workspace pre-set to the mnemosyne default ([`Self::MNEMOSYNE_DEFAULT_DOC`]
+    /// = `docs/GENERATED.md`). Config-free constructor for test setups; production
+    /// callers load the default from `mnemosyne.toml` via [`Workspace::from_config`].
     pub fn mnemosyne() -> Self {
         Self {
             docs: BTreeMap::new(),

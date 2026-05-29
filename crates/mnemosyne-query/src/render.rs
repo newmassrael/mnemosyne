@@ -44,10 +44,10 @@ fn engine() -> &'static Tera {
 
 /// Render a Section's atomic fields to markdown.
 ///
-/// `section_id` / `title` / `decision_status` are not part of the atomic
-/// store (they remain on the legacy `Section` struct, reframe
-/// carry — those 5 fields are stable; the atomic 8 fields are *additive*).
-/// Caller threads them in alongside the atomic block.
+/// `title` / `decision_status` live in `AtomicSection.skeleton` (the canonical
+/// `SectionSkeleton`, R325) and `section_id` is the store's map key. The caller
+/// extracts and threads them in as Tera context alongside the atomic block, so
+/// this renderer stays a pure context-over-template function.
 pub fn render_section(
     section_id: &str,
     title: &str,

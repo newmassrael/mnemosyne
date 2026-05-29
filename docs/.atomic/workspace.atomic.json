@@ -4770,6 +4770,40 @@
         "Live query-routing through the RocksDB index remains (convergence B, scale-gated until flat-scan insufficient)",
         "Stale code docstrings (render.rs legacy-Section, workspace DESIGN.md ×4, migration.rs dangling bench ref) → R349 sweep"
       ]
+    },
+    "Round 349 — sweep three stale code docstrings to the post-R325 / post-deletion state": {
+      "decision_summary": "Three production docstrings asserted claims that drifted from the code, the same audit-trail-correctness debt-class R348 fixed in ARCHITECTURE.md but at the code-comment level. (1) mnemosyne-query render_section's doc said section_id/title/decision_status 'are not part of the atomic store (they remain on the legacy Section struct)' — false since R325: title and decision_status live in AtomicSection.skeleton (the canonical SectionSkeleton) and section_id is the store's map key; the 'legacy Section struct' no longer exists. The doc now states they are skeleton/key fields the caller threads in as Tera context, keeping the renderer a pure context-over-template function. (2) mnemosyne-workspace's module doc and Workspace::mnemosyne() doc named the default cross-doc target docs/DESIGN.md in four places — DESIGN.md was deleted at MD-DELETION-RATIFY and the live MNEMOSYNE_DEFAULT_DOC constant is docs/GENERATED.md; the docs are rewritten to name GENERATED.md and the constructor's 'retained for' carry framing is dropped in favor of an honest 'config-free constructor for test setups' description (the fn is pub because it is used cross-crate by cli/tests, so it is a live test helper, not a superseded production path, and stays outside no-legacy-carry scope). (3) mnemosyne-store migration.rs referenced bench/codegen-prototype/src/cf_wrapper.rs, a path that no longer exists; the dangling reference is removed and the substantive description of the live-DB schema-version binding kept. Comment-only; no behavior change. Citations verified against the ledger (R325/R287 present); MD-DELETION-RATIFY cited by name since it is off-main and not round-numbered.",
+      "changes_bullets": [
+        "render.rs render_section doc: \"not part of atomic store / legacy Section struct\" → title+decision_status live in AtomicSection.skeleton (R325), section_id is the map key",
+        "workspace/lib.rs module + mnemosyne() doc: DESIGN.md (×4 stale refs) → docs/GENERATED.md default post MD-DELETION-RATIFY; drop \"retained for\" carry framing",
+        "migration.rs module doc: drop dangling bench/codegen-prototype/src/cf_wrapper.rs ref (path removed); keep the live-DB binding description"
+      ],
+      "verification_bullets": [
+        "cargo build -p mnemosyne-query -p mnemosyne-workspace -p mnemosyne-store clean",
+        "ls bench/codegen-prototype/src/cf_wrapper.rs → MISSING (dangling ref confirmed)",
+        "citation hygiene: R325/R287 present in ledger; R251 absent (off-main, named MD-DELETION-RATIFY) so cited by name not round number",
+        "no behavior change — comment-only edits; validate-code-refs + clippy gates enforce on commit"
+      ],
+      "carry_forward_bullets": [
+        "Workspace::mnemosyne() stays pub: a config-free test constructor used cross-crate (cli/tests), not a superseded production path — outside no-legacy-carry scope",
+        "Next: validate-workspace SSOT smell (orphan/round-trip computed from derived GENERATED.md) — R350 assessment"
+      ],
+      "publishable_decision_summary": "Three production docstrings asserted claims that drifted from the code, the same audit-trail-correctness debt-class R348 fixed in ARCHITECTURE.md but at the code-comment level. (1) mnemosyne-query render_section's doc said section_id/title/decision_status 'are not part of the atomic store (they remain on the legacy Section struct)' — false since R325: title and decision_status live in AtomicSection.skeleton (the canonical SectionSkeleton) and section_id is the store's map key; the 'legacy Section struct' no longer exists. The doc now states they are skeleton/key fields the caller threads in as Tera context, keeping the renderer a pure context-over-template function. (2) mnemosyne-workspace's module doc and Workspace::mnemosyne() doc named the default cross-doc target docs/DESIGN.md in four places — DESIGN.md was deleted at MD-DELETION-RATIFY and the live MNEMOSYNE_DEFAULT_DOC constant is docs/GENERATED.md; the docs are rewritten to name GENERATED.md and the constructor's 'retained for' carry framing is dropped in favor of an honest 'config-free constructor for test setups' description (the fn is pub because it is used cross-crate by cli/tests, so it is a live test helper, not a superseded production path, and stays outside no-legacy-carry scope). (3) mnemosyne-store migration.rs referenced bench/codegen-prototype/src/cf_wrapper.rs, a path that no longer exists; the dangling reference is removed and the substantive description of the live-DB schema-version binding kept. Comment-only; no behavior change. Citations verified against the ledger (R325/R287 present); MD-DELETION-RATIFY cited by name since it is off-main and not round-numbered.",
+      "publishable_changes_bullets": [
+        "render.rs render_section doc: \"not part of atomic store / legacy Section struct\" → title+decision_status live in AtomicSection.skeleton (R325), section_id is the map key",
+        "workspace/lib.rs module + mnemosyne() doc: DESIGN.md (×4 stale refs) → docs/GENERATED.md default post MD-DELETION-RATIFY; drop \"retained for\" carry framing",
+        "migration.rs module doc: drop dangling bench/codegen-prototype/src/cf_wrapper.rs ref (path removed); keep the live-DB binding description"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build -p mnemosyne-query -p mnemosyne-workspace -p mnemosyne-store clean",
+        "ls bench/codegen-prototype/src/cf_wrapper.rs → MISSING (dangling ref confirmed)",
+        "citation hygiene: R325/R287 present in ledger; R251 absent (off-main, named MD-DELETION-RATIFY) so cited by name not round number",
+        "no behavior change — comment-only edits; validate-code-refs + clippy gates enforce on commit"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Workspace::mnemosyne() stays pub: a config-free test constructor used cross-crate (cli/tests), not a superseded production path — outside no-legacy-carry scope",
+        "Next: validate-workspace SSOT smell (orphan/round-trip computed from derived GENERATED.md) — R350 assessment"
+      ]
     }
   },
   "inventory_entries": {},
