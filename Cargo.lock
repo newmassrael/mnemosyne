@@ -1085,7 +1085,7 @@ dependencies = [
 name = "mnemosyne-cascade"
 version = "0.1.0"
 dependencies = [
- "mnemosyne-facts",
+ "mnemosyne-core",
  "salsa",
 ]
 

@@ -32,7 +32,7 @@ use mnemosyne_cascade::{
  section_decision_status_aggregated, BranchSnapshotData, CascadeBranch, CrossRefRecord,
  FineCascadeDb, MnemosyneCascadeDb, SectionRecord,
 };
-use mnemosyne_facts::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
+use mnemosyne_core::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use salsa::Setter;

@@ -1,10 +1,11 @@
 //! Integration test — `TypedFactStore` against actual `mnemosyne-store` RocksDB,
 //! deterministic composite-key encoding.
 
-use mnemosyne_facts::{
+use mnemosyne_core::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
-    SectionSkeleton, TypedFactStore,
+    SectionSkeleton,
 };
+use mnemosyne_facts::TypedFactStore;
 use mnemosyne_store::{encode_composite_key, MnemosyneStore};
 use tempfile::TempDir;
 

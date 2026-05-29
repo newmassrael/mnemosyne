@@ -10,7 +10,13 @@ license.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-mnemosyne-facts = { path = "../mnemosyne-facts" }
+# Layer-0 canonical fact structs (SectionFact / ChangelogEntryFact /
+# CrossRefFact / FrozenListFact + DecisionStatus / FactKey / SectionSkeleton).
+# cascade is a pure in-memory Salsa engine: it consumes the structs only, never
+# the RocksDB-coupled persistence binding in `mnemosyne-facts`. Depending on
+# `core` (not `facts`) keeps the engine — and its read-side projection host —
+# RocksDB-free at link time (CQRS invariant, ARCHITECTURE.md sections 4-5).
+mnemosyne-core = { path = "../mnemosyne-core" }
 
 salsa.workspace = true
 

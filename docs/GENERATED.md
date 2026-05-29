@@ -2959,3 +2959,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 346 — sever the cascade→facts re-export edge so the Salsa engine and its read-side projection host are RocksDB-free at link time — Make the CQRS RocksDB-free invariant (R328/R337/R338, ARCHITECTURE.md sections 4-5) true structurally, not just behaviorally. The mcp binary still linked librocksdb-sys via the sole chain mnemosyne-store(rocksdb) → facts → cascade → projection → mcp. Root cause: cascade imported the 5 canonical fact structs from mnemosyne-facts, but R328 MOVED those structs to mnemosyne-core (facts only re-exported them) and cascade uses none of facts's RocksDB-coupled API — so cascade→facts was pure pre-R328 re-export residue. Fix: cascade depends on mnemosyne-core (not facts) and imports the structs from there; the now-dead public struct re-export is removed from facts (facts publicly exports only its own codec/persist binding, matching its crate doc); facts persist.rs imports the structs from core directly. Severs the sole chain — cascade/projection/mcp are now RocksDB-free at link time, store confined to the facts/index/server write subgraph. server/store/facts/index stay orphaned-but-kept (convergence substrate, invariant #1) — unchanged.
+
+**Changes**:
+- cascade now imports the canonical fact structs from mnemosyne-core (Layer 0) instead of mnemosyne-facts; cascade's only prod dep is mnemosyne-core (facts dropped)
+- cascade uses none of the facts RocksDB-coupled API (IndexCodec/TypedFactStore/persist) — the facts edge was pure pre-R328 re-export residue dragging mnemosyne-store(rocksdb) into the pure Salsa engine and its read-side projection host
+- facts no longer re-exports the core structs (the dead vocabulary-hub block removed); facts publicly exports only its own index side (IndexCodec/FactCodecError/PersistError/TypedFactStore), matching its crate doc; persist.rs imports the structs from core directly
+- the closed Phase -1A bench/cascade-measurement struct import was repointed to core too (already stale-broken against the R326/R335/R338 engine evolution — not revived here)
+
+
+
+**Verification**:
+- cargo tree -p mnemosyne-mcp -i mnemosyne-store now reports no path — mcp/projection/cascade are RocksDB-free at link time; store's reverse-dep tree is confined to facts/index/server (the index/write subgraph)
+- cargo build/test --workspace, clippy -D warnings, cargo fmt --check, validate-workspace all green (ledger pre-append 92; T3 reject 0)
+- two integration-test files (cascade phase_1_5_measurement, facts entity_persist) repointed to core; facts test keeps TypedFactStore from facts
+
+
+
+
+**Carry forward**:
+- bench/cascade-measurement has been stale-broken since R326/R335/R338 (typed DecisionStatus + deleted coarse MnemosyneCascadeDb engine) — 19 pre-existing compile errors, outside main CI; decide revive-vs-delete in a future round, do not silently delete a historical artifact
+- Index relation-key still omits ref_kind (R343 carry) — future index-layer round
+- Render projection Step 2a (RenderDb + Tier-1/2 + byte-identity + one warm consumer) remains the large next epic per R345 design
+
+
+

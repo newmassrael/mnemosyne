@@ -18,7 +18,7 @@ use mnemosyne_cascade::{
     build_branch_index, frozen_list_membership_aggregated, reconcile_branch_index,
     section_decision_status_aggregated, BranchIndex, FineCascadeDb, ValidationResult,
 };
-use mnemosyne_facts::{
+use mnemosyne_core::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
     SectionSkeleton,
 };

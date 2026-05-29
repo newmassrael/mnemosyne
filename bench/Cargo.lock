@@ -219,7 +219,7 @@ dependencies = [
  "criterion",
  "hdrhistogram",
  "mnemosyne-cascade",
- "mnemosyne-core",
+ "mnemosyne-facts",
  "rand 0.8.6",
  "rand_chacha 0.3.1",
  "salsa",
@@ -1449,28 +1449,27 @@ dependencies = [
 name = "mnemosyne-cascade"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "mnemosyne-core",
- "mnemosyne-store",
+ "mnemosyne-facts",
  "salsa",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
 name = "mnemosyne-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "byteorder",
- "mnemosyne-store",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 1.0.69",
- "tracing",
+]
+
+[[package]]
+name = "mnemosyne-facts"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "mnemosyne-core",
+ "mnemosyne-store",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

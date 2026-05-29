@@ -47,7 +47,7 @@
 //! through Changelog entries only.
 
 use crate::ValidationResult;
-use mnemosyne_facts::{
+use mnemosyne_core::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FrozenListFact, SectionFact,
 };
 use salsa::Setter;
@@ -757,7 +757,7 @@ fn reconcile_frozen_lists(db: &mut FineCascadeDb, index: BranchIndex, facts: &[F
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_facts::{DecisionStatus, FactKey, SectionFact, SectionSkeleton};
+    use mnemosyne_core::{DecisionStatus, FactKey, SectionFact, SectionSkeleton};
 
     fn make_section(branch: u64, entity: u64, status: &str) -> SectionFact {
         let decision_status = match status.to_ascii_lowercase().as_str() {

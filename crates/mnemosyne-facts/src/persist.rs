@@ -21,9 +21,8 @@
 //! the relation key by `ref_kind` is a future index-key round (the composite
 //! key is a fixed 3×u64; `ref_kind` is a String, so it needs its own design).
 
-use crate::{
-    ChangelogEntryFact, CrossRefFact, FactCodecError, FrozenListFact, IndexCodec, SectionFact,
-};
+use crate::{FactCodecError, IndexCodec};
+use mnemosyne_core::{ChangelogEntryFact, CrossRefFact, FrozenListFact, SectionFact};
 use mnemosyne_store::{CfId, MnemosyneStore, StoreError};
 use thiserror::Error;
 

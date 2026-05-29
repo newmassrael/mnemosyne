@@ -17,12 +17,8 @@
 pub mod facts;
 pub mod persist;
 
+// The canonical fact structs are owned by `mnemosyne-core` (Layer 0); consumers
+// import them from there directly. This crate exports only the *index* side of
+// the substrate — the byte codec and the typed put/get persistence binding.
 pub use facts::{FactCodecError, IndexCodec};
-// The canonical fact structs live in `mnemosyne-core` (Layer 0); re-exported
-// here so existing consumers (`cascade`, `server`) keep importing the whole
-// fact vocabulary — structs + the index codec — from one place.
-pub use mnemosyne_core::{
-    ChangelogEntryFact, CrossRefFact, DecisionStatus, FactKey, FrozenListFact, SectionFact,
-    SectionSkeleton,
-};
 pub use persist::{PersistError, TypedFactStore};
