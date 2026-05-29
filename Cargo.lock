@@ -1220,6 +1220,8 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-cascade",
  "mnemosyne-core",
+ "mnemosyne-query",
+ "salsa",
 ]
 
 [[package]]

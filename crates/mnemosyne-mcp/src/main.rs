@@ -28,7 +28,7 @@ use mnemosyne_ops::{
     self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
     RedactTermInput, StyleCheckInput,
 };
-use mnemosyne_projection::{ProjectionService, ProjectionValidation};
+use mnemosyne_projection::{ProjectionService, ProjectionValidation, RenderProjectionService};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
@@ -54,6 +54,16 @@ pub struct ValidateProjectionArgs {
     /// tool (Round 341), so the default (false) is current; pass true only to
     /// pick up an out-of-band log change (e.g. a manual JSON edit or a CLI
     /// mutate run against the same workspace).
+    #[serde(default)]
+    pub refresh: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RenderProjectionArgs {
+    /// Force a re-sync from the current log before rendering. 2a does NOT wire
+    /// the warm render projection to the mutate notify seam, so after a mutate
+    /// the default (false) is stale until you pass true (or until 2b wires the
+    /// write path). Pass true to pick up the current log.
     #[serde(default)]
     pub refresh: bool,
 }
@@ -379,6 +389,12 @@ pub struct MnemosyneServer {
     /// from the in-process Salsa memo cache. Shared (not duplicated) across the
     /// router's handler clones.
     projection: Arc<Mutex<ProjectionService>>,
+    /// Warm read-side render projection (convergence C/D Step 2a, R345). Built
+    /// from the same log at startup; serves `render_projection` from the warm
+    /// `RenderDb` Salsa memo cache, byte-identical to the cold `generate-docs`.
+    /// Read-only in 2a (NOT wired to the mutate notify seam — `refresh=true`
+    /// picks up changes); superseding `auto_regenerate` on the write path is 2b.
+    render: Arc<Mutex<RenderProjectionService>>,
     #[allow(dead_code)] // populated by #[tool_router] expansion
     tool_router: ToolRouter<Self>,
 }
@@ -387,9 +403,19 @@ impl MnemosyneServer {
     pub fn new(workspace: PathBuf) -> Result<Self, ops::OpError> {
         let atomic = ops::load_atomic_store(&workspace, None)?;
         let projection = ProjectionService::build(&atomic, atomic::MAIN_BRANCH_ID);
+        // `Source:` line value, computed exactly as the cold render does
+        // (sidecar path relative to the workspace root).
+        let sidecar = ops::cascade::resolve_sidecar(&workspace, None)?;
+        let source_rel =
+            sidecar
+                .display()
+                .to_string()
+                .replacen(&format!("{}/", workspace.display()), "", 1);
+        let render = RenderProjectionService::build(&atomic, &source_rel);
         Ok(Self {
             workspace: Arc::new(workspace),
             projection: Arc::new(Mutex::new(projection)),
+            render: Arc::new(Mutex::new(render)),
             tool_router: Self::tool_router(),
         })
     }
@@ -536,6 +562,26 @@ impl MnemosyneServer {
             render_projection_validation(&svc.validate())
         };
         Self::tool_text(report)
+    }
+
+    #[tool(
+        description = "Render docs/GENERATED.md through the WARM in-process render projection (R345 Step 2a) — the read-side RenderDb Salsa engine that memoizes per-section / per-entry Tera renders and composes them via the single-source builder, byte-identical to the cold generate-docs. Read-only: this returns the rendered markdown and does NOT write it. The warm render is NOT yet wired to the mutate notify seam (that is 2b), so pass refresh=true to pick up the current log after a mutate or out-of-band edit."
+    )]
+    async fn render_projection(&self, args: Parameters<RenderProjectionArgs>) -> CallToolResult {
+        let rendered = {
+            let mut svc = self
+                .render
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if args.0.refresh {
+                match ops::load_atomic_store(&self.workspace, None) {
+                    Ok(atomic) => svc.reload(&atomic),
+                    Err(e) => return self.op_error(e),
+                }
+            }
+            svc.render()
+        };
+        Self::tool_text(rendered)
     }
 
     #[tool(

@@ -146,6 +146,62 @@ pub fn render_changelog_entry(
     Ok(engine().render(CHANGELOG_ENTRY_TPL_NAME, &ctx)?)
 }
 
+/// Single-source the `GENERATED.md` document format (R345 Decision 4).
+///
+/// Assembles the fixed scaffolding (title preamble, `Source:` line, `---`,
+/// `## Sections` with the `## §`→`### §` demotion, `## Changelog (atomic
+/// ledger)`, the empty-changelog fallback) around already-rendered per-unit
+/// blocks, in store order. Both the cold full-render
+/// (`mnemosyne-ops::render_atomic_store_to_md`) and the warm incremental
+/// render (the projection-layer `RenderDb` Tier-2 composition) call this one
+/// builder, so the byte-exact format has a single definition and cannot drift
+/// against the `round-trip 1/1` + `GENERATED.md = sync` gates.
+///
+/// `section_blocks` are the *raw* `render_section` outputs (the `## §`→`### §`
+/// demotion is applied here, so it too is single-sourced); `entry_blocks` are
+/// the raw `render_changelog_entry` outputs.
+pub fn compose_generated_md(
+    source_rel: &str,
+    section_blocks: &[String],
+    entry_blocks: &[String],
+) -> String {
+    let mut out = String::new();
+    out.push_str("# GENERATED.md — atomic store derived view\n\n");
+    out.push_str(
+        "this file `mnemosyne-cli generate-docs` output — direct no edit. \
+  atomic store (`docs/.atomic/workspace.atomic.json`) in mutate \
+  primitive (`set-section-*` / `append-changelog-entry`) pass and then \
+  re-generate.\n\n",
+    );
+    out.push_str(&format!("Source: `{}`\n\n", source_rel));
+    out.push_str("---\n\n");
+
+    if !section_blocks.is_empty() {
+        out.push_str("## Sections\n\n");
+        for raw in section_blocks {
+            // render_section emits `## §N. title` at top-level depth; under the
+            // doc's `## Sections` heading these demote one level so the outline
+            // stays coherent.
+            let demoted = raw.replacen("## §", "### §", 1);
+            out.push_str(&demoted);
+            out.push('\n');
+        }
+    }
+
+    if !entry_blocks.is_empty() {
+        out.push_str("## Changelog (atomic ledger)\n\n");
+        for raw in entry_blocks {
+            out.push_str(raw);
+            out.push('\n');
+        }
+    } else {
+        out.push_str("## Changelog (atomic ledger)\n\n");
+        out.push_str("(empty — first atomic entry will populate this section.)\n\n");
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

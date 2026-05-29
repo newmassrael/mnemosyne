@@ -3340,3 +3340,24 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 365 — render projection Step 2a: warm RenderDb skeleton + byte-identity + MCP render_projection — Implement the R345 render projection Step 2a walking skeleton: single-source the GENERATED.md format builder, stand up a separate RenderDb Salsa engine in the projection layer with two memo tiers, prove byte-identity against the cold render, and wire a warm read-only MCP render_projection consumer — without touching the write path (2b).
+
+**Changes**:
+- single-sourced the GENERATED.md format into mnemosyne-query::compose_generated_md (R345 Decision 4); render_atomic_store_to_md now renders per-unit blocks and delegates to it (verify-generated OK sync = byte-identical), and the warm Tier-2 calls the SAME builder so the format has one definition and cannot drift against the round-trip/sync gates
+- new mnemosyne-projection::render — a separate RenderDb Salsa engine (R345 Decision 1: its own database, NOT a widened validation SectionRecord, so a Layer-1 content edit cannot invalidate a validation memo); lives in the projection layer where it may dep mnemosyne-query's Tera renderers, keeping the cascade engine pure core+salsa (Decision 2)
+- core is L0 zero-dep so its types cannot derive salsa::Update → the projection lowers each AtomicSection/ChangelogEntry to a primitive-field render-input record (Decision 2 medium-specific extraction); Tier-1 reconstructs the atomic view to call the shared renderer; two memo tiers (Decision 3): Tier-1 per-unit render + Tier-2 document compose
+- RenderProjectionService (warm build/render/reload, mirrors ProjectionService) + a read-only MCP render_projection tool (refresh arg) held warm in MnemosyneServer; NOT wired to the mutate notify seam — that + superseding auto_regenerate in the warm host is 2b; the cold CLI/CI auto_regenerate is kept (Decision 4)
+- byte-identity proven two ways: warm render == cold compose (unit test), and the MCP render_projection output == on-disk GENERATED.md byte-for-byte (321053 B) via stdio dogfood against the live repo store
+
+
+
+**Verification**:
+- 683 workspace tests pass / 0 fail (+3 render: byte-identity full-shape, empty-store fallback, warm-cache no-re-exec); clippy --workspace --all-targets -D warnings + fmt clean
+- verify-generated OK (sync) — the cold builder extraction is byte-identical; validate-workspace green, GENERATED.md sync, round-trip 1/1, T3 reject 0
+- MCP stdio dogfood: render_projection result == docs/GENERATED.md byte-for-byte (321053 B) against the live repo store
+- both R345 impl spikes resolved: salsa 0.26 permits a fresh RenderDb in the projection crate; render-input context = typed projection-local record of primitive/tuple fields (no core→salsa coupling)
+
+
+
+
+

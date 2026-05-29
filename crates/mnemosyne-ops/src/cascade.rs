@@ -17,7 +17,7 @@ use anyhow::{anyhow, Context, Result};
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::discover_config;
 use mnemosyne_core::DecisionStatus;
-use mnemosyne_query::{render_changelog_entry, render_section};
+use mnemosyne_query::{compose_generated_md, render_changelog_entry, render_section};
 
 /// Resolve sidecar path with the Round 279 precedence chain:
 /// 1. Explicit `--sidecar` CLI flag wins absolutely.
@@ -104,65 +104,43 @@ pub fn render_atomic_store_to_md(
 ) -> Result<(String, AtomicStore)> {
     let store = AtomicStore::load(sidecar_path).map_err(|e| anyhow!("{}", e))?;
 
-    let mut out = String::new();
-    out.push_str("# GENERATED.md — atomic store derived view\n\n");
-    out.push_str(
-        "this file `mnemosyne-cli generate-docs` output — direct no edit. \
-  atomic store (`docs/.atomic/workspace.atomic.json`) in mutate \
-  primitive (`set-section-*` / `append-changelog-entry`) pass and then \
-  re-generate.\n\n",
-    );
     let workspace_prefix = format!("{}/", workspace_root.display());
     let source_rel = sidecar_path
         .display()
         .to_string()
         .replacen(&workspace_prefix, "", 1);
-    out.push_str(&format!("Source: `{}`\n\n", source_rel));
-    out.push_str("---\n\n");
 
-    // Sections — Round 287 outline lift retires the placeholder header.
-    // atomic.title / decision_status come from the atomic store directly;
-    // full body is synthesized via render_section (intent, rationale, etc.).
-    // Pre-backfill sections (empty title) fall back to the section_id as
-    // heading text so the surface stays human-parseable.
-    if !store.sections.is_empty() {
-        out.push_str("## Sections\n\n");
-        for (section_id, atomic) in &store.sections {
-            let title = if atomic.skeleton.title.is_empty() {
-                section_id.as_str()
-            } else {
-                atomic.skeleton.title.as_str()
-            };
-            let status = atomic
-                .skeleton
-                .decision_status
-                .unwrap_or(DecisionStatus::Active)
-                .as_str();
-            let rendered = render_section(section_id, title, status, atomic)
-                .map_err(|e| anyhow!("render section {}: {}", section_id, e))?;
-            // render_section emits `## §N. title` for top-level depth. The
-            // atomic-only sections live under the doc's `## Sections` heading,
-            // so demote one level (`##` → `###`) to keep the outline coherent.
-            let demoted = rendered.replacen("## §", "### §", 1);
-            out.push_str(&demoted);
-            out.push('\n');
-        }
+    // Render each unit, then hand the raw blocks to the single-source document
+    // composer (R345 Decision 4 — the warm `RenderDb` Tier-2 composition calls
+    // the same builder, so the format cannot drift). Sections: title /
+    // decision_status come from the skeleton; pre-backfill sections (empty
+    // title) fall back to the section_id so the heading stays parseable.
+    let mut section_blocks = Vec::with_capacity(store.sections.len());
+    for (section_id, atomic) in &store.sections {
+        let title = if atomic.skeleton.title.is_empty() {
+            section_id.as_str()
+        } else {
+            atomic.skeleton.title.as_str()
+        };
+        let status = atomic
+            .skeleton
+            .decision_status
+            .unwrap_or(DecisionStatus::Active)
+            .as_str();
+        section_blocks.push(
+            render_section(section_id, title, status, atomic)
+                .map_err(|e| anyhow!("render section {}: {}", section_id, e))?,
+        );
+    }
+    let mut entry_blocks = Vec::with_capacity(store.changelog_entries.len());
+    for (entry_id, entry) in &store.changelog_entries {
+        entry_blocks.push(
+            render_changelog_entry(entry_id, entry)
+                .map_err(|e| anyhow!("render entry {}: {}", entry_id, e))?,
+        );
     }
 
-    // Changelog entries — atomic first carry scope.
-    if !store.changelog_entries.is_empty() {
-        out.push_str("## Changelog (atomic ledger)\n\n");
-        for (entry_id, entry) in &store.changelog_entries {
-            let rendered = render_changelog_entry(entry_id, entry)
-                .map_err(|e| anyhow!("render entry {}: {}", entry_id, e))?;
-            out.push_str(&rendered);
-            out.push('\n');
-        }
-    } else {
-        out.push_str("## Changelog (atomic ledger)\n\n");
-        out.push_str("(empty — first atomic entry will populate this section.)\n\n");
-    }
-
+    let out = compose_generated_md(&source_rel, &section_blocks, &entry_blocks);
     Ok((out, store))
 }
 

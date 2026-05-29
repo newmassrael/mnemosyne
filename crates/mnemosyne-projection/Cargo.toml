@@ -12,9 +12,9 @@ path = "src/lib.rs"
 [dependencies]
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-cascade = { path = "../mnemosyne-cascade" }
-
-[dev-dependencies]
 mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-query = { path = "../mnemosyne-query" }
+salsa.workspace = true
 
 [lints]
 workspace = true
