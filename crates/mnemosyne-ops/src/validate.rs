@@ -162,7 +162,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         loaded.config.style.as_ref(),
         loaded.config.terminology.as_ref(),
     );
-    let sidecar_path = resolve_sidecar(workspace_root, None);
+    let sidecar_path = resolve_sidecar(workspace_root, None)?;
     let atomic_for_style =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let mut style_violations: Vec<StyleViolation> = Vec::new();

@@ -179,7 +179,7 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let intent = intent.ok_or_else(|| anyhow!("--intent arg required"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -253,7 +253,7 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
     let parent_doc = parent_doc.ok_or_else(|| anyhow!("--parent-doc arg required"))?;
     let title = title.ok_or_else(|| anyhow!("--title arg required"))?;
     let parent_stripped = parent.as_deref().map(strip_section_prefix);
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -310,7 +310,7 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let title = title.ok_or_else(|| anyhow!("--title arg required"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -359,7 +359,7 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let parent_doc = parent_doc.ok_or_else(|| anyhow!("--parent-doc arg required"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -418,7 +418,7 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
         bail!("exactly one of --parent <id> or --no-parent required");
     }
     let parent_stripped = parent.as_deref().map(strip_section_prefix);
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -573,7 +573,7 @@ pub fn cmd_emit_publishable_override_ledger_draft(
     let entry = entry.ok_or_else(|| anyhow!("--entry arg required"))?;
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required"))?;
     let applied_in = applied_in.ok_or_else(|| anyhow!("--applied-in arg required"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let draft = mnemosyne_atomic::emit_publishable_override_ledger_draft(
         &store,
@@ -655,7 +655,7 @@ fn cmd_set_changelog_publishable_string(
     }
     let entry = entry.ok_or_else(|| anyhow!("--entry arg required ({} scope)", field))?;
     let value = value.ok_or_else(|| anyhow!("--value arg required ({} scope)", field))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -715,7 +715,7 @@ fn cmd_set_changelog_publishable_bullets(
     let bullets_path =
         bullets_file.ok_or_else(|| anyhow!("--bullets-file arg required ({} scope)", field))?;
     let bullets = parse_bullets_file(&bullets_path)?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -775,7 +775,7 @@ fn cmd_set_section_bullets(
     let bullets_path =
         bullets_file.ok_or_else(|| anyhow!("--bullets-file arg required ({} scope)", field))?;
     let bullets = parse_bullets_file(&bullets_path)?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -823,7 +823,7 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let bullet = bullet.ok_or_else(|| anyhow!("--bullet arg required"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -872,7 +872,7 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let path = alternatives_file.ok_or_else(|| anyhow!("--alternatives-file arg required"))?;
     let alts = parse_alternatives_file(&path)?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -926,7 +926,7 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
         .map(|r| strip_section_prefix(r.trim()))
         .filter(|r| !r.is_empty())
         .collect();
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -986,7 +986,7 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
     let code = fs::read_to_string(&code_file)
         .with_context(|| format!("code-file recovery failed: {}", code_file))?;
     let example = ExampleBlock { language, code };
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1051,7 +1051,7 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let file =
         file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1133,7 +1133,7 @@ pub fn cmd_remove_section_implementation(workspace_root: &Path, args: &[String])
     let file =
         file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1195,7 +1195,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1278,7 +1278,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
         );
     }
     let superseding_strip = superseding.as_deref().map(strip_section_prefix);
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = set_section_decision_status(
         &mut store,
@@ -1379,7 +1379,7 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
         source_revision.ok_or_else(|| anyhow!("--source-revision arg required"))?;
     let text = fs::read_to_string(&text_file)
         .with_context(|| format!("text-file recovery failed: {}", text_file))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1548,8 +1548,8 @@ pub fn cmd_generate_docs(workspace_root: &Path, args: &[String]) -> Result<()> {
             other => bail!("unknown flag `{}`", other),
         }
     }
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
-    let output_path = resolve_output(workspace_root, output.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let output_path = resolve_output(workspace_root, output.as_deref())?;
 
     let (content, store) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
     write_generated_md(&output_path, &content)?;
@@ -1595,8 +1595,8 @@ pub fn cmd_verify_generated(workspace_root: &Path, args: &[String]) -> Result<()
             other => bail!("unknown flag `{}`", other),
         }
     }
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
-    let output_path = resolve_output(workspace_root, output.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let output_path = resolve_output(workspace_root, output.as_deref())?;
 
     let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
     let actual = fs::read_to_string(&output_path)
@@ -1728,7 +1728,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 .collect()
         })
         .unwrap_or_default();
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -1824,7 +1824,7 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
             .ok_or_else(|| anyhow!("--status arg required (active|deprecated|reserved)"))?,
     )?;
     let section_ref_clean = section_ref.as_deref().map(strip_section_prefix);
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = add_inventory_entry(
         &mut store,
@@ -1903,7 +1903,7 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
             .as_deref()
             .ok_or_else(|| anyhow!("--status arg required (active|deprecated|reserved)"))?,
     )?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = set_inventory_status(
         &mut store,
@@ -1972,7 +1972,7 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
         bail!("exactly one of --section or --clear must be supplied");
     }
     let cleaned: Option<String> = section_ref.as_deref().map(strip_section_prefix);
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
@@ -2017,7 +2017,7 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
     }
     let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = remove_inventory_entry(&mut store, &sidecar_path, &inventory_id, &reason);
 
@@ -2148,7 +2148,7 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
         applied_in: applied_in.ok_or_else(|| anyhow!("--applied-in arg required"))?,
         kind,
     };
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref());
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let report = mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req)
         .map_err(|e| anyhow!("{}", e))?;
@@ -2228,7 +2228,7 @@ default_doc = "docs/GENERATED.md"
 sidecar_path = "from-config.json"
 "#,
         );
-        let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json"));
+        let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json")).unwrap();
         assert_eq!(resolved, tmp.path().join("from-cli.json"));
     }
 
@@ -2246,14 +2246,14 @@ default_doc = "docs/GENERATED.md"
 sidecar_path = "altdir/custom.atomic.json"
 "#,
         );
-        let resolved = resolve_sidecar(tmp.path(), None);
+        let resolved = resolve_sidecar(tmp.path(), None).unwrap();
         assert_eq!(resolved, tmp.path().join("altdir/custom.atomic.json"));
     }
 
     #[test]
     fn resolve_sidecar_built_in_default_without_config() {
         let tmp = TempDir::new().unwrap();
-        let resolved = resolve_sidecar(tmp.path(), None);
+        let resolved = resolve_sidecar(tmp.path(), None).unwrap();
         assert_eq!(
             resolved,
             tmp.path().join("docs/.atomic/workspace.atomic.json")
@@ -2264,7 +2264,7 @@ sidecar_path = "altdir/custom.atomic.json"
     fn resolve_sidecar_absolute_path_passthrough() {
         let tmp = TempDir::new().unwrap();
         let abs = tmp.path().join("absolute/here.json");
-        let resolved = resolve_sidecar(tmp.path(), Some(abs.to_str().unwrap()));
+        let resolved = resolve_sidecar(tmp.path(), Some(abs.to_str().unwrap())).unwrap();
         assert_eq!(resolved, abs);
     }
 
@@ -2284,7 +2284,7 @@ default_doc = "docs/coverage/X.md"
 output_path = "ignored-by-cli.md"
 "#,
         );
-        let resolved = resolve_output(tmp.path(), Some("manual/output.md"));
+        let resolved = resolve_output(tmp.path(), Some("manual/output.md")).unwrap();
         assert_eq!(resolved, tmp.path().join("manual/output.md"));
     }
 
@@ -2302,7 +2302,7 @@ default_doc = "docs/coverage/SPEC_COVERAGE.md"
 output_path = "docs/coverage/SPEC_COVERAGE.md"
 "#,
         );
-        let resolved = resolve_output(tmp.path(), None);
+        let resolved = resolve_output(tmp.path(), None).unwrap();
         assert_eq!(resolved, tmp.path().join("docs/coverage/SPEC_COVERAGE.md"));
     }
 
@@ -2321,14 +2321,35 @@ docs = ["docs/HAND_AUTHORED.md"]
 default_doc = "docs/HAND_AUTHORED.md"
 "#,
         );
-        let resolved = resolve_output(tmp.path(), None);
+        let resolved = resolve_output(tmp.path(), None).unwrap();
         assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
     }
 
     #[test]
     fn resolve_output_built_in_default_without_config() {
         let tmp = TempDir::new().unwrap();
-        let resolved = resolve_output(tmp.path(), None);
+        let resolved = resolve_output(tmp.path(), None).unwrap();
         assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
+    }
+
+    // Round 362 — a malformed `mnemosyne.toml` fails loud instead of
+    // silently falling back to the built-in default path (the prior
+    // `if let Ok(Some(..)) = discover_config(..)` swallowed the parse Err).
+    #[test]
+    fn resolve_sidecar_malformed_config_fails_loud() {
+        let tmp = TempDir::new().unwrap();
+        write_toml(tmp.path(), "[atomic\nsidecar_path = \"x.json\"\n");
+        assert!(resolve_sidecar(tmp.path(), None).is_err());
+        assert!(resolve_output(tmp.path(), None).is_err());
+    }
+
+    #[test]
+    fn resolve_sidecar_explicit_override_ignores_malformed_config() {
+        // The explicit override short-circuits before config discovery, so a
+        // malformed config must not block an explicitly-pathed resolve.
+        let tmp = TempDir::new().unwrap();
+        write_toml(tmp.path(), "[atomic\nsidecar_path = \"x.json\"\n");
+        let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json")).unwrap();
+        assert_eq!(resolved, tmp.path().join("from-cli.json"));
     }
 }

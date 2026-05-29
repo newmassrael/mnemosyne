@@ -3285,3 +3285,22 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 362 — resolve_sidecar/resolve_output fail loud on malformed config (R356/R359 class) — resolve_sidecar/resolve_output silently fell back to the built-in default path on a malformed mnemosyne.toml (the if-let-Ok-Some swallowed the parse Err), reachable via MCP startup which does no upfront config validation; both now return Result and propagate, extending the R356/R359 fail-fast sweep to config resolution.
+
+**Changes**:
+- cascade::resolve_sidecar + resolve_output: the `if let Ok(Some(loaded)) = discover_config(..)` swallow → `discover_config(..)?` — a malformed mnemosyne.toml now fails loud instead of silently resolving to the built-in default path (Ok(None) = no config file = legit default, preserved); both now return anyhow::Result<PathBuf>
+- reachability confirmed via MCP: MnemosyneServer::new → load_atomic_store → resolve_sidecar with NO upfront config validation, so a malformed config silently pointed the warm server at the default-path store; the CLI shadowed it (workspace_config fails fast first) but the pub ops resolver was the wrong contract for any non-CLI consumer
+- ripple threaded through ~40 call sites — ops::resolve_sidecar wrapper → Result, cascade auto_regenerate/validate_atomic_store, docs/validate/style ops, ~28 atomic_cli sites, 6 cli/main sites — all via ? (From<anyhow::Error> for OpError auto-converts the ops-side callers)
+- extends the R356/R359 corrupt-store fail-fast sweep to config resolution; same fail-loud-over-silent-fallback principle
+
+
+
+**Verification**:
+- 674 workspace tests pass / 0 fail (+2 regression: malformed config → resolve_sidecar/resolve_output Err; explicit override short-circuits before discovery → Ok); clippy --workspace --all-targets -D warnings + fmt clean
+- workspace-wide grep confirms zero `if let Ok(Some(loaded)) = discover_config` swallow remains in production
+- validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0
+
+
+
+
+

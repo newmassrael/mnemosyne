@@ -85,10 +85,10 @@ pub struct RedactTermInput {
 /// Resolve the sidecar path with the same precedence chain the CLI uses:
 /// explicit override → `[atomic] sidecar_path` config → built-in
 /// `<workspace>/docs/.atomic/workspace.atomic.json`.
-pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&Path>) -> PathBuf {
+pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&Path>) -> anyhow::Result<PathBuf> {
     match sidecar {
-        Some(p) if p.is_absolute() => p.to_path_buf(),
-        Some(p) => workspace_root.join(p),
+        Some(p) if p.is_absolute() => Ok(p.to_path_buf()),
+        Some(p) => Ok(workspace_root.join(p)),
         None => cascade::resolve_sidecar(workspace_root, None),
     }
 }
@@ -106,7 +106,7 @@ pub fn run_atomic_mutate<F>(
 where
     F: FnOnce(&mut AtomicStore, &Path) -> Result<AtomicMutateReceipt, AtomicMutateError>,
 {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     let mut store =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let receipt = primitive(&mut store, &sidecar_path)?;
@@ -131,7 +131,7 @@ pub fn load_atomic_store(
     workspace_root: &Path,
     sidecar: Option<&Path>,
 ) -> Result<AtomicStore, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
@@ -187,7 +187,7 @@ pub fn redact_term(
             .clone()
             .unwrap_or_else(|| "redaction".to_string()),
     };
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     let mut store =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let report = mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req)?;
@@ -246,7 +246,7 @@ pub fn emit_publishable_override_ledger_draft(
     applied_in: &str,
     kind: Option<&str>,
 ) -> Result<Option<String>, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     let store = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let draft = mnemosyne_atomic::emit_publishable_override_ledger_draft(
         &store,

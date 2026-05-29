@@ -24,16 +24,20 @@ use mnemosyne_query::{render_changelog_entry, render_section};
 /// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative
 ///    or absolute) when discoverable.
 /// 3. Default `<workspace_root>/docs/.atomic/workspace.atomic.json`.
-pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf {
+pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> Result<PathBuf> {
     if let Some(p) = sidecar {
         let pb = PathBuf::from(p);
-        return if pb.is_absolute() {
+        return Ok(if pb.is_absolute() {
             pb
         } else {
             workspace_root.join(pb)
-        };
+        });
     }
-    if let Ok(Some(loaded)) = discover_config(workspace_root) {
+    // A malformed `mnemosyne.toml` propagates loud instead of silently
+    // falling back to the built-in default path — `?` here is the fail-fast
+    // the R356/R359 corrupt-store sweep extended to config (Ok(None) = no
+    // config file = legit default).
+    if let Some(loaded) = discover_config(workspace_root)? {
         if let Some(cfg_path) = loaded
             .config
             .atomic
@@ -41,14 +45,14 @@ pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf 
             .and_then(|a| a.sidecar_path.as_deref())
         {
             let pb = PathBuf::from(cfg_path);
-            return if pb.is_absolute() {
+            return Ok(if pb.is_absolute() {
                 pb
             } else {
                 workspace_root.join(pb)
-            };
+            });
         }
     }
-    AtomicStore::default_sidecar_path(workspace_root)
+    Ok(AtomicStore::default_sidecar_path(workspace_root))
 }
 
 /// Resolve cascade output path with the Round 279 precedence chain:
@@ -60,16 +64,18 @@ pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> PathBuf 
 /// (markdown the validator reads), while this is the cascade write target
 /// (atomic store → md). Keeping them independent prevents a first mutate
 /// from clobbering hand-authored content in docs[0].
-pub fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
+pub fn resolve_output(workspace_root: &Path, output: Option<&str>) -> Result<PathBuf> {
     if let Some(p) = output {
         let pb = PathBuf::from(p);
-        return if pb.is_absolute() {
+        return Ok(if pb.is_absolute() {
             pb
         } else {
             workspace_root.join(pb)
-        };
+        });
     }
-    if let Ok(Some(loaded)) = discover_config(workspace_root) {
+    // Fail loud on malformed config rather than silently writing to the
+    // built-in default (see `resolve_sidecar`).
+    if let Some(loaded) = discover_config(workspace_root)? {
         if let Some(cfg_path) = loaded
             .config
             .atomic
@@ -77,14 +83,14 @@ pub fn resolve_output(workspace_root: &Path, output: Option<&str>) -> PathBuf {
             .and_then(|a| a.output_path.as_deref())
         {
             let pb = PathBuf::from(cfg_path);
-            return if pb.is_absolute() {
+            return Ok(if pb.is_absolute() {
                 pb
             } else {
                 workspace_root.join(pb)
-            };
+            });
         }
     }
-    workspace_root.join("docs/GENERATED.md")
+    Ok(workspace_root.join("docs/GENERATED.md"))
 }
 
 /// Render the atomic store at `sidecar_path` to a deterministic markdown
@@ -184,8 +190,8 @@ pub fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
 /// a regenerate failure after a successful mutate signals the cascade is in
 /// an inconsistent state and needs manual intervention.
 pub fn auto_regenerate(workspace_root: &Path, sidecar: Option<&str>) -> Result<()> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
-    let output_path = resolve_output(workspace_root, None);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
+    let output_path = resolve_output(workspace_root, None)?;
     let (content, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
     write_generated_md(&output_path, &content)?;
     Ok(())
@@ -216,7 +222,7 @@ pub fn validate_atomic_store(
 ) -> Result<AtomicValidationSummary> {
     // Honor `[atomic].sidecar_path` config so the read / validation path
     // sees the same store the mutate path wrote to.
-    let sidecar_path = resolve_sidecar(workspace_root, None);
+    let sidecar_path = resolve_sidecar(workspace_root, None)?;
     let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
 
     let mut orphan_entry_refs = Vec::new();
@@ -246,7 +252,7 @@ pub fn validate_atomic_store(
         }
     }
 
-    let output_path = resolve_output(workspace_root, None);
+    let output_path = resolve_output(workspace_root, None)?;
     let generated_in_sync = if output_path.exists() {
         let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
         let actual = fs::read_to_string(&output_path)

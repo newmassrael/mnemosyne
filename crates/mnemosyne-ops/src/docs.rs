@@ -31,11 +31,11 @@ pub fn generate_docs(
     sidecar: Option<&Path>,
     output: Option<&Path>,
 ) -> Result<GenerateDocsReport, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     let output_path = match output {
         Some(p) if p.is_absolute() => p.to_path_buf(),
         Some(p) => workspace_root.join(p),
-        None => resolve_output(workspace_root, None),
+        None => resolve_output(workspace_root, None)?,
     };
     let (content, store) = render_atomic_store_to_md(workspace_root, &sidecar_path)
         .map_err(|e| OpError::Other(format!("{:#}", e)))?;
@@ -57,11 +57,11 @@ pub fn verify_generated(
     sidecar: Option<&Path>,
     output: Option<&Path>,
 ) -> Result<VerifyGeneratedReport, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar);
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     let output_path = match output {
         Some(p) if p.is_absolute() => p.to_path_buf(),
         Some(p) => workspace_root.join(p),
-        None => resolve_output(workspace_root, None),
+        None => resolve_output(workspace_root, None)?,
     };
     let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)
         .map_err(|e| OpError::Other(format!("{:#}", e)))?;
