@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
-use mnemosyne_core::InventoryStatus;
+use mnemosyne_core::{strip_section_marker, InventoryStatus};
 use mnemosyne_ops::{
     self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
     RedactTermInput, StyleCheckInput,
@@ -512,10 +512,6 @@ impl MnemosyneServer {
     }
 }
 
-fn strip_section(section_id: &str) -> &str {
-    section_id.strip_prefix('§').unwrap_or(section_id)
-}
-
 /// Render a warm-projection validation result as a plain-text summary.
 fn render_projection_validation(v: &ProjectionValidation) -> String {
     let status = |ok: bool| if ok { "ok" } else { "VIOLATIONS" };
@@ -702,14 +698,14 @@ impl MnemosyneServer {
         description = "Create a new Section in the atomic store (Round 287/289). Outline fields only — `section_id` (no `§` prefix), `parent_doc`, `title`, and optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`. Pairs with remove_section."
     )]
     async fn add_section(&self, args: Parameters<AddSectionArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let parent_doc = args.0.parent_doc.clone();
         let title = args.0.title.clone();
         let parent = args
             .0
             .parent_section
             .as_deref()
-            .map(|p| strip_section(p).to_string());
+            .map(|p| strip_section_marker(p).to_string());
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::add_section(
                 store,
@@ -727,7 +723,7 @@ impl MnemosyneServer {
         description = "Set Section.title (heading text). Section must exist (use add_section to create first)."
     )]
     async fn set_section_title(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let title = args.0.text.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_title(store, path, &section, &title)
@@ -739,7 +735,7 @@ impl MnemosyneServer {
         description = "Set Section.parent_doc (re-bind section to a different owning doc). Section must exist."
     )]
     async fn set_section_parent_doc(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let parent_doc = args.0.text.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_parent_doc(store, path, &section, &parent_doc)
@@ -754,12 +750,12 @@ impl MnemosyneServer {
         &self,
         args: Parameters<SetSectionParentSectionArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let parent = args
             .0
             .parent_section
             .as_deref()
-            .map(|p| strip_section(p).to_string());
+            .map(|p| strip_section_marker(p).to_string());
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_parent_section(store, path, &section, parent.as_deref())
         });
@@ -770,7 +766,7 @@ impl MnemosyneServer {
         description = "Set Section.intent atomic field. The intent is a one-sentence statement of what the section is for. Replaces any previous intent. T1+T2 run pre-write."
     )]
     async fn set_section_intent(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let intent = args.0.text.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_intent(store, path, &section, &intent)
@@ -785,7 +781,7 @@ impl MnemosyneServer {
         &self,
         args: Parameters<SetSectionBulletsArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_rationale(store, path, &section, &bullets)
@@ -795,7 +791,7 @@ impl MnemosyneServer {
 
     #[tool(description = "Set Section.inputs_bullets. Replaces existing.")]
     async fn set_section_inputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_inputs(store, path, &section, &bullets)
@@ -805,7 +801,7 @@ impl MnemosyneServer {
 
     #[tool(description = "Set Section.outputs_bullets. Replaces existing.")]
     async fn set_section_outputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_outputs(store, path, &section, &bullets)
@@ -817,7 +813,7 @@ impl MnemosyneServer {
         description = "Append a single caveat bullet to Section.caveats_bullets. Append-only — does not replace existing caveats."
     )]
     async fn add_section_caveat(&self, args: Parameters<AddSectionCaveatArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let bullet = args.0.bullet.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::add_section_caveat(store, path, &section, &bullet)
@@ -832,7 +828,7 @@ impl MnemosyneServer {
         &self,
         args: Parameters<SetSectionBulletsArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let alternatives = match parse_alternatives(&args.0.bullets) {
             Ok(a) => a,
             Err(e) => return Self::tool_error(e),
@@ -850,12 +846,12 @@ impl MnemosyneServer {
         &self,
         args: Parameters<SetImpactScopeArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let refs: Vec<String> = args
             .0
             .refs
             .iter()
-            .map(|r| strip_section(r).to_string())
+            .map(|r| strip_section_marker(r).to_string())
             .collect();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_section_impact_scope(store, path, &section, &refs)
@@ -867,7 +863,7 @@ impl MnemosyneServer {
         description = "Append a code-fenced example to Section.examples. The code block is rendered with the supplied language tag."
     )]
     async fn add_section_example(&self, args: Parameters<AddSectionExampleArgs>) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let example = ExampleBlock {
             language: args.0.language.clone(),
             code: args.0.code.clone(),
@@ -885,7 +881,7 @@ impl MnemosyneServer {
         &self,
         args: Parameters<SetSectionNormativeExcerptArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let text = args.0.text.clone();
         let anchor_url = args.0.anchor_url.clone();
         let source_revision = args.0.source_revision.clone();
@@ -909,7 +905,7 @@ impl MnemosyneServer {
         &self,
         args: Parameters<AddSectionImplementationArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
@@ -925,7 +921,7 @@ impl MnemosyneServer {
         &self,
         args: Parameters<RemoveSectionImplementationArgs>,
     ) -> CallToolResult {
-        let section = strip_section(&args.0.section_id).to_string();
+        let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
         let reason = args.0.reason.clone();
@@ -957,7 +953,7 @@ impl MnemosyneServer {
             .0
             .impact_refs
             .iter()
-            .map(|r| strip_section(r).to_string())
+            .map(|r| strip_section_marker(r).to_string())
             .collect();
         let carry = args.0.carry_forward_bullets.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
@@ -1041,7 +1037,7 @@ impl MnemosyneServer {
             .0
             .bullets
             .iter()
-            .map(|r| strip_section(r).to_string())
+            .map(|r| strip_section_marker(r).to_string())
             .collect();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
             atomic::set_changelog_publishable_impact_refs(store, path, &entry_id, &bullets)
@@ -1174,7 +1170,7 @@ impl MnemosyneServer {
             .0
             .section_ref
             .as_deref()
-            .map(|s| strip_section(s).to_string());
+            .map(|s| strip_section_marker(s).to_string());
         let source = args.0.source.clone();
         let reason = args.0.reason.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
@@ -1226,7 +1222,7 @@ impl MnemosyneServer {
         args: Parameters<SetInventorySectionRefArgs>,
     ) -> CallToolResult {
         let cleaned: Option<String> = match (&args.0.section_ref, args.0.clear) {
-            (Some(s), false) => Some(strip_section(s).to_string()),
+            (Some(s), false) => Some(strip_section_marker(s).to_string()),
             (None, true) => None,
             _ => {
                 return Self::tool_error(

@@ -43,7 +43,7 @@ use mnemosyne_atomic::{
     AtomicMutateReceipt, AtomicStore, ChangelogEntryDraft, ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
-use mnemosyne_core::{DecisionStatus, InventoryStatus};
+use mnemosyne_core::{strip_section_marker, DecisionStatus, InventoryStatus};
 use mnemosyne_ops::cascade::{
     auto_regenerate, render_atomic_store_to_md, resolve_output, resolve_sidecar, write_generated_md,
 };
@@ -133,9 +133,11 @@ fn parse_alternatives_file(path: &str) -> Result<Vec<RejectedAlternative>> {
     Ok(out)
 }
 
-/// Parse `--section` or `--section 43` → "43".
+/// Parse `--section` or `--section 43` → "43". Owned-`String` adapter over
+/// the canonical [`strip_section_marker`] for CLI arg-parse ergonomics
+/// (stored in arg structs, used as a `.map(..)` fn pointer).
 fn strip_section_prefix(s: &str) -> String {
-    s.strip_prefix('§').unwrap_or(s).to_string()
+    strip_section_marker(s).to_string()
 }
 
 // ============================================================================

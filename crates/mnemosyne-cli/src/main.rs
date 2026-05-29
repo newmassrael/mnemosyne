@@ -647,7 +647,7 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
                 if let Some(existing) = &out.section_id {
                     bail!("section_id argument duplicate (already `{}`)", existing);
                 }
-                let stripped = other.strip_prefix('§').unwrap_or(other).to_string();
+                let stripped = mnemosyne_core::strip_section_marker(other).to_string();
                 out.section_id = Some(stripped);
             }
         }

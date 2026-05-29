@@ -110,7 +110,7 @@ pub fn query_section(
     mode: QuerySectionMode,
 ) -> Result<QuerySectionPayload, OpError> {
     let (ws, _, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
-    let id = section_id.strip_prefix('§').unwrap_or(section_id);
+    let id = mnemosyne_core::strip_section_marker(section_id);
     match mode {
         QuerySectionMode::Brief => {
             let view = section_by_id(&ws, &atomic_store, id).ok_or_else(|| {

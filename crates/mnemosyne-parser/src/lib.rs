@@ -358,7 +358,7 @@ fn extract_atomic_section_id(s: &str) -> Option<String> {
 /// `39. Graph schema codegen` → (Some("39"), "Graph schema codegen").
 /// Also accepts a leading `§` prefix: `Framing overview` → (Some("1"), "Framing overview").
 fn split_section_number(s: &str) -> (Option<String>, String) {
-    let scan_from = s.strip_prefix('§').unwrap_or(s);
+    let scan_from = mnemosyne_core::strip_section_marker(s);
     let bytes = scan_from.as_bytes();
     let mut idx = 0usize;
     let mut saw_digit = false;

@@ -35,6 +35,9 @@ pub use fact::{
     ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, SectionSkeleton,
 };
 
+mod section_ref;
+pub use section_ref::strip_section_marker;
+
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 

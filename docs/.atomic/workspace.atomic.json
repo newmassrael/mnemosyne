@@ -5310,6 +5310,48 @@
         "redact_term dry_run/non-dry MCP branching and finish_inventory_mutate's sync remain integration-untested; the write seam they share is now covered by the strengthened integration test and the branching is a simple !dry_run guard, so deferring is acceptable (not a correctness risk).",
         "47/32 dormant #[ignore] tests still carry (pre-R252 corpus): re-verify non-re-anchorable per-test and obtain explicit user confirmation before any deletion."
       ]
+    },
+    "Round 369 — strip_section_marker canonical in core: DRY the §-marker normalize idiom": {
+      "decision_summary": "strip_section_marker canonical in mnemosyne-core — DRY 5 verbatim §-marker normalize sites (two private helpers + 3 inline copies), the R353/R357/R358 canonical-converter class",
+      "changes_bullets": [
+        "Added `mnemosyne-core::strip_section_marker(&str) -> &str` — the canonical normalizer that strips a section id's optional leading `§` reference marker (`§43` -> `43`, bare ids pass through). The marker-strip operation and its `'§'` literal now live in one L0 place instead of being re-derived per call site.",
+        "Three crates had independently re-derived the identical idiom `s.strip_prefix('§').unwrap_or(s)`: `mnemosyne-mcp::strip_section` (23 callers) and `mnemosyne-cli::strip_section_prefix` (22 callers) were verbatim private helpers, plus inline copies in ops/query.rs, cli/main.rs arg-parse, and parser/lib.rs split_section_number. Two crates writing the same private helper is the canonical-converter DRY class of Round 353 / Round 357 / Round 358.",
+        "Deleted mcp's `strip_section` wrapper as pure redundancy — every one of its 23 callers was a `.to_string()` closure with no fn-pointer use — and routed them to the imported canonical via rename.",
+        "Kept cli's `strip_section_prefix` as a thin owned-`String` adapter that delegates to the canonical: it has genuine ergonomics an `&str`-returning fn lacks (its result is stored in arg structs and it is used as a `.map(strip_section_prefix)` fn pointer in four places). The strip logic is single-sourced; only the owned-return adaptation is local.",
+        "The 3 inline normalize sites (ops query, cli main arg-parse, parser split_section_number) now call the canonical directly.",
+        "Deliberately left untouched the 3 conditional-parse sites that branch on marker presence — parser:338 (`strip_prefix('§')?`), parser:577 (`if let Some` + `'§'.len_utf8()` byte advance), query:331 (`if let Some`): those test or extract conditioned on the marker, a different operation than normalize, and a `&str -> &str` helper cannot express the presence test. Also left the ~30 `format!(\"§{}\")` display/error sites: prepending the sigil in human-facing strings is not the strip operation, and routing them through a const would harm readability for no behavior benefit."
+      ],
+      "verification_bullets": [
+        "5 new core unit tests for strip_section_marker: leading marker stripped, bare id passthrough, empty string, marker-only -> empty, doubled marker strips only the first.",
+        "696 workspace tests pass / 0 fail / 47 ignored (+5 vs the prior 691, all in core).",
+        "clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "Behavior byte-identical: the canonical body is the exact idiom it replaced, so GENERATED.md is unchanged and validate-workspace round-trip 1/1 + verify-generated stay green (T3 reject 0, GENERATED.md=sync)."
+      ],
+      "carry_forward_bullets": [
+        "`AtomicSection.normative_excerpt` is write-only today (CLI + MCP setter, zero read consumers) — deferred RFC-002 spec-citation substrate. A persisted schema field with a frozen-once-set invariant; NOT autonomously deletable (data-loss + frozen-ledger risk). Surfaced by the SSOT audit; flagged for user decision, not removed.",
+        "`mnemosyne-index` and `mnemosyne-server` remain built-but-unwired into the live cli/mcp path (convergence B index-materialization / D write-side txn service). Intentional convergence substrate per ARCHITECTURE.md §3; YAGNI re-justification candidates only if those stages stay deferred — never delete.",
+        "47 dormant `#[ignore]` tests (pre-Round 252 corpus) — re-verify non-re-anchorable per-test and obtain explicit user confirmation before any deletion."
+      ],
+      "publishable_decision_summary": "strip_section_marker canonical in mnemosyne-core — DRY 5 verbatim §-marker normalize sites (two private helpers + 3 inline copies), the R353/R357/R358 canonical-converter class",
+      "publishable_changes_bullets": [
+        "Added `mnemosyne-core::strip_section_marker(&str) -> &str` — the canonical normalizer that strips a section id's optional leading `§` reference marker (`§43` -> `43`, bare ids pass through). The marker-strip operation and its `'§'` literal now live in one L0 place instead of being re-derived per call site.",
+        "Three crates had independently re-derived the identical idiom `s.strip_prefix('§').unwrap_or(s)`: `mnemosyne-mcp::strip_section` (23 callers) and `mnemosyne-cli::strip_section_prefix` (22 callers) were verbatim private helpers, plus inline copies in ops/query.rs, cli/main.rs arg-parse, and parser/lib.rs split_section_number. Two crates writing the same private helper is the canonical-converter DRY class of Round 353 / Round 357 / Round 358.",
+        "Deleted mcp's `strip_section` wrapper as pure redundancy — every one of its 23 callers was a `.to_string()` closure with no fn-pointer use — and routed them to the imported canonical via rename.",
+        "Kept cli's `strip_section_prefix` as a thin owned-`String` adapter that delegates to the canonical: it has genuine ergonomics an `&str`-returning fn lacks (its result is stored in arg structs and it is used as a `.map(strip_section_prefix)` fn pointer in four places). The strip logic is single-sourced; only the owned-return adaptation is local.",
+        "The 3 inline normalize sites (ops query, cli main arg-parse, parser split_section_number) now call the canonical directly.",
+        "Deliberately left untouched the 3 conditional-parse sites that branch on marker presence — parser:338 (`strip_prefix('§')?`), parser:577 (`if let Some` + `'§'.len_utf8()` byte advance), query:331 (`if let Some`): those test or extract conditioned on the marker, a different operation than normalize, and a `&str -> &str` helper cannot express the presence test. Also left the ~30 `format!(\"§{}\")` display/error sites: prepending the sigil in human-facing strings is not the strip operation, and routing them through a const would harm readability for no behavior benefit."
+      ],
+      "publishable_verification_bullets": [
+        "5 new core unit tests for strip_section_marker: leading marker stripped, bare id passthrough, empty string, marker-only -> empty, doubled marker strips only the first.",
+        "696 workspace tests pass / 0 fail / 47 ignored (+5 vs the prior 691, all in core).",
+        "clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "Behavior byte-identical: the canonical body is the exact idiom it replaced, so GENERATED.md is unchanged and validate-workspace round-trip 1/1 + verify-generated stay green (T3 reject 0, GENERATED.md=sync)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "`AtomicSection.normative_excerpt` is write-only today (CLI + MCP setter, zero read consumers) — deferred RFC-002 spec-citation substrate. A persisted schema field with a frozen-once-set invariant; NOT autonomously deletable (data-loss + frozen-ledger risk). Surfaced by the SSOT audit; flagged for user decision, not removed.",
+        "`mnemosyne-index` and `mnemosyne-server` remain built-but-unwired into the live cli/mcp path (convergence B index-materialization / D write-side txn service). Intentional convergence substrate per ARCHITECTURE.md §3; YAGNI re-justification candidates only if those stages stay deferred — never delete.",
+        "47 dormant `#[ignore]` tests (pre-Round 252 corpus) — re-verify non-re-anchorable per-test and obtain explicit user confirmation before any deletion."
+      ]
     }
   },
   "inventory_entries": {},
