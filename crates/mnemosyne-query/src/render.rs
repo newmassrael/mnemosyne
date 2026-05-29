@@ -11,6 +11,7 @@
 //! Re-import path () is multi-session migration scope.
 
 use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection};
+use mnemosyne_core::DecisionStatus;
 use serde_json::json;
 use std::sync::OnceLock;
 use tera::{Context, Tera};
@@ -40,6 +41,29 @@ fn engine() -> &'static Tera {
             .expect("changelog_entry.md.tera compile-time template must parse");
         t
     })
+}
+
+/// Resolve a Section's `GENERATED.md` heading inputs from its atomic record:
+/// the id-fallback title (the `section_id` when the skeleton title is empty)
+/// and the `decision_status` string. Single-sourced (R366) so the cold render
+/// (`mnemosyne-ops::render_atomic_store_to_md`) and the warm `RenderDb`
+/// projection cannot drift on this per-unit extraction — the same reason the
+/// document format was single-sourced into [`compose_generated_md`].
+pub fn section_heading<'a>(
+    section_id: &'a str,
+    atomic: &'a AtomicSection,
+) -> (&'a str, &'static str) {
+    let title = if atomic.skeleton.title.is_empty() {
+        section_id
+    } else {
+        atomic.skeleton.title.as_str()
+    };
+    let status = atomic
+        .skeleton
+        .decision_status
+        .unwrap_or(DecisionStatus::Active)
+        .as_str();
+    (title, status)
 }
 
 /// Render a Section's atomic fields to markdown.

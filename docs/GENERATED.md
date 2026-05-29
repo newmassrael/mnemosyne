@@ -3361,3 +3361,22 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 366 — render Step 2a review fixes: drop premature order field, single-source section_heading, +reload test — Post-R365 adversarial review confirmed byte-identity-complete reconstruction + clean layering but flagged 3 same-class issues: a write-only order Salsa field (premature substrate for 2b), the per-unit title/status extraction duplicated 3x (builder single-sourced but this left half-done), and an untested reload() path — all fixed.
+
+**Changes**:
+- post-R365 review (3 adversarial reviewers) confirmed the Tier-1 reconstruction byte-identity-complete (every renderer-read field captured; normative_excerpt/parent_* are inert) and layering clean (projection RocksDB-free, cascade still pure core+salsa), but flagged 3 same-class issues in R365 — all fixed here
+- removed the write-only `order: u64` field from RenderSectionInput + RenderEntryInput: grep `.order(` = 0 reads (Salsa generates the getter so the compiler could not flag it), ordering is carried by the RenderIndex Vec position — premature substrate for the 2b reconcile, removed until 2b actually keys on it
+- single-sourced the per-unit title-fallback + decision_status.as_str() extraction into mnemosyne-query::section_heading; it was duplicated 3× (ops render_atomic_store_to_md, projection project_section_input, the test) — the same SSOT discipline compose_generated_md applied, left half-done in R365. cold path verify-generated still byte-identical
+- added reload_re_syncs_and_stays_byte_identical test (reload() was untested production code reachable via the MCP render_projection refresh=true path) + a symbol:None Implementation arm to the byte-identity fixture (the one untested tuple-lowering path)
+
+
+
+**Verification**:
+- 684 workspace tests pass / 0 fail (+1 reload regression); clippy --workspace --all-targets -D warnings + fmt clean
+- verify-generated OK (sync) — the section_heading single-sourcing is byte-identical on the cold path; validate-workspace green, round-trip 1/1, T3 reject 0
+- grep confirms zero `.order(` reads remain and section_heading is the sole title/status extraction (cold + warm + test all call it)
+
+
+
+
+

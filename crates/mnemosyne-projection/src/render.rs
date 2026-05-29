@@ -35,8 +35,9 @@ use mnemosyne_atomic::{
     AtomicChangelogEntry, AtomicSection, AtomicStore, ExampleBlock, Implementation,
     RejectedAlternative,
 };
-use mnemosyne_core::DecisionStatus;
-use mnemosyne_query::{compose_generated_md, render_changelog_entry, render_section};
+use mnemosyne_query::{
+    compose_generated_md, render_changelog_entry, render_section, section_heading,
+};
 
 // --- per-unit Salsa inputs (Tier-1 keys) -----------------------------------
 //
@@ -45,12 +46,11 @@ use mnemosyne_query::{compose_generated_md, render_changelog_entry, render_secti
 // medium-specific extraction lowers the renderable content to String / Vec /
 // tuple fields salsa accepts. The Tier-1 query reconstructs the atomic view.
 
-/// One Section's renderable content, keyed by store order. `title` /
-/// `decision_status` are already resolved (id-fallback + `as_str`) by the
+/// One Section's renderable content. `title` / `decision_status` are already
+/// resolved (id-fallback + `as_str`, via the shared `section_heading`) by the
 /// projection so the Tier-1 query is a pure render.
 #[salsa::input]
 pub struct RenderSectionInput {
-    pub order: u64,
     pub section_id: String,
     pub title: String,
     pub decision_status: String,
@@ -69,10 +69,9 @@ pub struct RenderSectionInput {
     pub implementations: Vec<(String, Option<String>)>,
 }
 
-/// One ChangelogEntry's renderable (publishable) content, keyed by store order.
+/// One ChangelogEntry's renderable (publishable) content.
 #[salsa::input]
 pub struct RenderEntryInput {
-    pub order: u64,
     pub entry_id: String,
     pub decision_summary: Option<String>,
     pub changes_bullets: Vec<String>,
@@ -235,29 +234,17 @@ impl RenderDb for RenderDbImpl {}
 
 fn project_section_input(
     db: &RenderDbImpl,
-    order: u64,
     section_id: &str,
     atomic: &AtomicSection,
 ) -> RenderSectionInput {
-    // id-fallback + status resolution live here (the medium-specific
-    // extraction), matching the cold `render_atomic_store_to_md`.
-    let title = if atomic.skeleton.title.is_empty() {
-        section_id.to_string()
-    } else {
-        atomic.skeleton.title.clone()
-    };
-    let decision_status = atomic
-        .skeleton
-        .decision_status
-        .unwrap_or(DecisionStatus::Active)
-        .as_str()
-        .to_string();
+    // id-fallback + status resolution come from the shared `section_heading`
+    // (R366) so the cold and warm paths cannot drift on this extraction.
+    let (title, decision_status) = section_heading(section_id, atomic);
     RenderSectionInput::new(
         db,
-        order,
         section_id.to_string(),
-        title,
-        decision_status,
+        title.to_string(),
+        decision_status.to_string(),
         atomic.superseded_by.clone(),
         atomic.intent.clone(),
         atomic.rationale_bullets.clone(),
@@ -285,13 +272,11 @@ fn project_section_input(
 
 fn project_entry_input(
     db: &RenderDbImpl,
-    order: u64,
     entry_id: &str,
     atomic: &AtomicChangelogEntry,
 ) -> RenderEntryInput {
     RenderEntryInput::new(
         db,
-        order,
         entry_id.to_string(),
         atomic.publishable_decision_summary.clone(),
         atomic.publishable_changes_bullets.clone(),
@@ -305,14 +290,12 @@ fn project_index(db: &RenderDbImpl, atomic: &AtomicStore, source_rel: &str) -> R
     let sections: Vec<RenderSectionInput> = atomic
         .sections
         .iter()
-        .enumerate()
-        .map(|(i, (section_id, s))| project_section_input(db, i as u64, section_id, s))
+        .map(|(section_id, s)| project_section_input(db, section_id, s))
         .collect();
     let entries: Vec<RenderEntryInput> = atomic
         .changelog_entries
         .iter()
-        .enumerate()
-        .map(|(i, (entry_id, e))| project_entry_input(db, i as u64, entry_id, e))
+        .map(|(entry_id, e)| project_entry_input(db, entry_id, e))
         .collect();
     RenderIndex::new(db, source_rel.to_string(), sections, entries)
 }
@@ -370,7 +353,7 @@ impl RenderProjectionService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_core::SectionSkeleton;
+    use mnemosyne_core::{DecisionStatus, SectionSkeleton};
 
     fn full_section() -> AtomicSection {
         AtomicSection {
@@ -395,10 +378,17 @@ mod tests {
                 language: "rust".to_string(),
                 code: "fn main() {}".to_string(),
             }],
-            implementations: vec![Implementation {
-                file: "crates/mnemosyne-atomic/src/lib.rs".to_string(),
-                symbol: Some("AtomicSection".to_string()),
-            }],
+            implementations: vec![
+                Implementation {
+                    file: "crates/mnemosyne-atomic/src/lib.rs".to_string(),
+                    symbol: Some("AtomicSection".to_string()),
+                },
+                // symbol: None exercises the Option arm of the tuple lowering.
+                Implementation {
+                    file: "crates/mnemosyne-cli/src/atomic_cli.rs".to_string(),
+                    symbol: None,
+                },
+            ],
             ..Default::default()
         }
     }
@@ -426,16 +416,7 @@ mod tests {
             .sections
             .iter()
             .map(|(id, atomic)| {
-                let title = if atomic.skeleton.title.is_empty() {
-                    id.as_str()
-                } else {
-                    atomic.skeleton.title.as_str()
-                };
-                let status = atomic
-                    .skeleton
-                    .decision_status
-                    .unwrap_or(DecisionStatus::Active)
-                    .as_str();
+                let (title, status) = section_heading(id, atomic);
                 render_section(id, title, status, atomic).unwrap()
             })
             .collect();
@@ -476,6 +457,34 @@ mod tests {
         // The empty-changelog fallback is present, no Sections heading.
         assert!(out.contains("(empty — first atomic entry will populate this section.)"));
         assert!(!out.contains("## Sections"));
+    }
+
+    #[test]
+    fn reload_re_syncs_and_stays_byte_identical() {
+        // reload() is reachable from the live MCP render_projection tool
+        // (refresh=true); pin that a re-sync over the warm db reflects the new
+        // store AND still byte-matches the cold compose.
+        let mut store = AtomicStore::new();
+        store.sections.insert("43".to_string(), full_section());
+        let src = "docs/.atomic/workspace.atomic.json";
+        let mut svc = RenderProjectionService::build(&store, src);
+        assert_eq!(svc.render(), cold_compose(&store, src));
+
+        // Out-of-band change: add an entry + a second section.
+        store.sections.insert(
+            "7".to_string(),
+            AtomicSection {
+                intent: Some("added".to_string()),
+                ..Default::default()
+            },
+        );
+        store
+            .changelog_entries
+            .insert("Round 162".to_string(), entry());
+        // Stale until reload.
+        assert_ne!(svc.render(), cold_compose(&store, src));
+        svc.reload(&store);
+        assert_eq!(svc.render(), cold_compose(&store, src));
     }
 
     #[test]

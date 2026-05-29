@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::discover_config;
-use mnemosyne_core::DecisionStatus;
-use mnemosyne_query::{compose_generated_md, render_changelog_entry, render_section};
+use mnemosyne_query::{
+    compose_generated_md, render_changelog_entry, render_section, section_heading,
+};
 
 /// Resolve sidecar path with the Round 279 precedence chain:
 /// 1. Explicit `--sidecar` CLI flag wins absolutely.
@@ -117,16 +118,7 @@ pub fn render_atomic_store_to_md(
     // title) fall back to the section_id so the heading stays parseable.
     let mut section_blocks = Vec::with_capacity(store.sections.len());
     for (section_id, atomic) in &store.sections {
-        let title = if atomic.skeleton.title.is_empty() {
-            section_id.as_str()
-        } else {
-            atomic.skeleton.title.as_str()
-        };
-        let status = atomic
-            .skeleton
-            .decision_status
-            .unwrap_or(DecisionStatus::Active)
-            .as_str();
+        let (title, status) = section_heading(section_id, atomic);
         section_blocks.push(
             render_section(section_id, title, status, atomic)
                 .map_err(|e| anyhow!("render section {}: {}", section_id, e))?,
