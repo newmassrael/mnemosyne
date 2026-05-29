@@ -387,7 +387,13 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
                     .map(|c| c.is_alphanumeric() || c == '_')
                     .unwrap_or(false);
             if !prev_ok {
-                start = i + 1;
+                // Advance past the matched char by its full UTF-8 width, never
+                // a hardcoded +1: a non-ASCII `entry_id_prefix` puts `i` at a
+                // multibyte boundary, and `i + 1` would land mid-codepoint so
+                // the next `line[start..]` slice panics (same class as the
+                // Round 279 Bug #1 fix in extract_inventory_citations_with_tail).
+                let advance = line[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                start = i + advance;
                 continue;
             }
             let after = &line[i + prefix.len()..];
@@ -568,6 +574,20 @@ pub fn extract_section_citations(
 /// Multi-token prefixes (e.g., `"ETSI TS"`) match on only the last
 /// non-whitespace token before the trigger. Workaround:
 /// register the trailing token (`"TS"`) as a slightly looser match.
+/// Byte offset of the start of the last whitespace-delimited token in `s`.
+/// Splits on the last Unicode-whitespace char and advances past its full
+/// UTF-8 width (not a hardcoded +1): `char::is_whitespace` matches multibyte
+/// whitespace (U+00A0, U+2028, …), so `rfind(..).map(|i| i + 1)` could land
+/// mid-codepoint and panic the following slice. Returns 0 when `s` has no
+/// whitespace.
+fn last_whitespace_token_start(s: &str) -> usize {
+    s.char_indices()
+        .rev()
+        .find(|(_, c)| c.is_whitespace())
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0)
+}
+
 fn is_external_section_cite(
     line_before_sigil: &str,
     prefixes_numeric: &[String],
@@ -580,10 +600,7 @@ fn is_external_section_cite(
     if trimmed.len() == line_before_sigil.len() {
         return false;
     }
-    let last_token_start = trimmed
-        .rfind(char::is_whitespace)
-        .map(|i| i + 1)
-        .unwrap_or(0);
+    let last_token_start = last_whitespace_token_start(trimmed);
     let last_token = &trimmed[last_token_start..];
     if last_token.is_empty() {
         return false;
@@ -600,10 +617,7 @@ fn is_external_section_cite(
         if before_last.is_empty() {
             return false;
         }
-        let prev_token_start = before_last
-            .rfind(char::is_whitespace)
-            .map(|i| i + 1)
-            .unwrap_or(0);
+        let prev_token_start = last_whitespace_token_start(before_last);
         let prev_token = &before_last[prev_token_start..];
         let prev_clean = prev_token.trim_start_matches(|c: char| !c.is_alphanumeric());
         prefixes_numeric.iter().any(|p| p == prev_clean)
@@ -1755,6 +1769,38 @@ mod tests {
     #[test]
     fn extract_citations_empty_prefix_yields_empty() {
         assert!(extract_citations("", "Round 254\n").is_empty());
+    }
+
+    #[test]
+    fn extract_citations_non_ascii_prefix_no_panic() {
+        // A non-ASCII `entry_id_prefix` (no config rule forbids one) puts the
+        // match offset `i` on a multibyte boundary. When the prefix is
+        // preceded by an alphanumeric (word-boundary reject), the old
+        // `start = i + 1` advance landed mid-codepoint and the next slice
+        // panicked. The first occurrence is a clean citation; the second is
+        // glued to `x` and must be skipped — without panicking.
+        let src = "라운드 254 and x라운드 7\n";
+        let out = extract_citations("라운드 ", src);
+        assert_eq!(out, vec![(1, "라운드 254".to_string())]);
+    }
+
+    #[test]
+    fn is_external_section_cite_numeric_multibyte_whitespace_no_panic() {
+        // U+2028 LINE SEPARATOR is Unicode whitespace (3 bytes). The old
+        // `rfind(char::is_whitespace).map(|i| i + 1)` landed mid-codepoint and
+        // panicked. The token after it ("791") is numeric and "RFC" precedes
+        // it, so the numeric axis must still match across the multibyte gap.
+        let prefixes = vec!["RFC".to_string()];
+        assert!(is_external_section_cite("RFC\u{2028}791 ", &prefixes, &[]));
+    }
+
+    #[test]
+    fn is_external_section_cite_bare_multibyte_whitespace_no_panic() {
+        // U+00A0 NO-BREAK SPACE is Unicode whitespace (2 bytes). The bare axis
+        // splits on the last whitespace to isolate the trailing token; the
+        // advance must clear the full multibyte width, not +1.
+        let bare = vec!["TR_SOMEIP".to_string()];
+        assert!(is_external_section_cite("x\u{00A0}TR_SOMEIP ", &[], &bare));
     }
 
     // ============ §<id> extractor unit tests ============

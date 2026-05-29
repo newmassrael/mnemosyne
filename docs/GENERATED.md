@@ -3079,3 +3079,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 351 — Fix two latent UTF-8 mid-codepoint panic defects in the validate-code-refs citation extractors (mnemosyne-validate/code_refs.rs), surfaced by an independent robustness review. Both used a hardcoded +1 byte advance at an offset that can sit on a multibyte char boundary: (1) extract_citations's word-boundary-reject branch did start = i + 1 — with a non-ASCII entry_id_prefix, i is at a multibyte boundary and the next line[start..] slice panics; (2) is_external_section_cite computed the last whitespace-delimited token via rfind(char::is_whitespace).map(|i| i + 1) in two places — char::is_whitespace matches multibyte Unicode whitespace (U+00A0, U+2028), so +1 lands mid-codepoint and the token slice panics. Both are the SAME bug class already fixed in the sibling extract_inventory_citations_with_tail (Round 279 Bug #1, char_indices-driven) but never propagated to these two functions. Fix (1) advances by the matched char's len_utf8; fix (2) routes both whitespace-split sites through one new last_whitespace_token_start helper that advances by len_utf8 — a single helper so the fix cannot be half-applied to one site and missed at the other, the very omission this round closes. Reachable only via non-default config (non-ASCII entry_id_prefix / configured external_section prefixes), so no default-path crash, but a general-purpose validator must not panic on adversarial source content. Code-only; no atomic store or GENERATED.md change; R279 audit anchor verified present.
+
+**Changes**:
+- extract_citations word-boundary skip: `start = i + 1` → advance by matched char len_utf8 (non-ASCII entry_id_prefix safe)
+- new last_whitespace_token_start helper (char_indices().rev() + len_utf8) replaces two `rfind(ws).map(|i| i+1)` sites in is_external_section_cite
+- 3 regression tests: non-ASCII prefix skip, multibyte-whitespace numeric + bare external cite
+
+
+
+**Verification**:
+- cargo test -p mnemosyne-validate: 143 pass incl. 3 new regression tests; cargo test --workspace green
+- clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean
+- fix mirrors the proven Round 279 Bug #1 char_indices pattern already in the sibling extract_inventory_citations_with_tail
+- config-gated reachability (non-ASCII entry_id_prefix / external_section prefixes) — no default-path crash; R279 citation verified present
+
+
+
+
+**Carry forward**:
+- Remaining review items NOT done this round (review #2/#3/#5): facts codec edge-case tests (InvalidUtf8/UnknownDiscriminator/empty/unicode/Removed); 47 dormant #[ignore] tests (re-anchor or retire); ARCHITECTURE.md:324 "91 entries" → 97 (or drop the hard count)
+- notify_projection unwrap_or_default silent empty-reset + resolve_sidecar corrupt-toml silent fallback: optional robustness, surface errors explicitly
+- Next epic remains render projection Step 2a (R345 design) — large, fresh full budget, do not half-start
+
+
+
