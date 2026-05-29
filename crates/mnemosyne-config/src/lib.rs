@@ -86,6 +86,12 @@ pub struct WorkspaceConfig {
     /// `doc/.atomic/workspace.atomic.json`) to avoid directory collisions.
     #[serde(default)]
     pub atomic: Option<AtomicConfigSection>,
+    /// `[spec_drift]` table — severity policy for the spec-revision
+    /// drift scan (RFC-001 UC-1 "B2"). Absent → the scan still runs
+    /// whenever `[workspace.spec_source]` is present, at the default
+    /// `warn` severity.
+    #[serde(default)]
+    pub spec_drift: Option<SpecDriftSection>,
 }
 
 /// `[atomic]` table — atomic store path overrides (Round 279).
@@ -441,6 +447,10 @@ fn default_severity_reject() -> String {
     "reject".to_string()
 }
 
+fn default_severity_warn() -> String {
+    "warn".to_string()
+}
+
 fn default_comment_only() -> bool {
     true
 }
@@ -658,6 +668,34 @@ pub struct SpecSource {
     pub fetched_at: Option<String>,
 }
 
+/// `[spec_drift]` table — policy for the spec-revision drift scan
+/// (RFC-001 UC-1 "B2"). Governs the `validate-spec-drift` subcommand,
+/// which flags `Active` Sections whose `normative_excerpt.source_revision`
+/// trails the workspace `[workspace.spec_source].revision`.
+///
+/// Drift severity is its own axis, configurable like the code-ref axes
+/// (`set_equality_validator.severity_*`). It defaults to `warn` rather
+/// than `reject` because partial migration — old-rev `Superseded` +
+/// new-rev `Active` Sections coexisting during a rev bump — is a
+/// legitimate intermediate state; the consumer escalates to `reject`
+/// (CI gate) once migration is meant to be complete.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SpecDriftSection {
+    /// `reject` | `warn` | `info`. Default `warn`. Validated at config
+    /// load. The `validate-spec-drift --severity` flag overrides it per
+    /// run.
+    #[serde(default = "default_severity_warn")]
+    pub severity: String,
+}
+
+impl Default for SpecDriftSection {
+    fn default() -> Self {
+        Self {
+            severity: default_severity_warn(),
+        }
+    }
+}
+
 /// Config discovery + load result.
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
@@ -721,6 +759,14 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
   hash
   );
             }
+        }
+    }
+    if let Some(sd) = &cfg.spec_drift {
+        if !matches!(sd.severity.as_str(), "reject" | "warn" | "info") {
+            bail!(
+                "mnemosyne.toml: `spec_drift.severity = {:?}` must be one of: reject | warn | info",
+                sd.severity
+            );
         }
     }
     Ok(())
@@ -912,6 +958,36 @@ fetched_sha256 = "ABC123"
         assert!(
             err.to_string().contains("fetched_sha256"),
             "expected sha-validation error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spec_drift_severity_defaults_to_warn() {
+        // [spec_drift] absent → None; present with no severity → warn.
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[spec_drift]
+"#;
+        let cfg = parse_config(content).unwrap();
+        assert_eq!(cfg.spec_drift.unwrap().severity, "warn");
+    }
+
+    #[test]
+    fn spec_drift_rejects_invalid_severity() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[spec_drift]
+severity = "block"
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            err.to_string().contains("spec_drift.severity"),
+            "expected spec_drift severity error, got: {}",
             err
         );
     }

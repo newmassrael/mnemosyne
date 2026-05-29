@@ -247,6 +247,7 @@ fn run(args: &[String]) -> Result<()> {
         // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
         // rule, carry).
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
+        "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
             Ok(())
@@ -439,6 +440,18 @@ fn print_help(prog: &str) {
     println!(
  "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
  );
+    println!();
+    println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
+    println!(
+        " {} validate-spec-drift [--severity reject|warn|info] [--json]",
+        prog
+    );
+    println!("   flag Active Sections whose normative_excerpt.source_revision trails");
+    println!("   [workspace.spec_source].revision; Superseded/Removed exempt (partial-migration).");
+    println!(
+        "   --severity overrides [spec_drift].severity (default warn); reject => exit 1 on drift."
+    );
+    println!("   no-op (exit 0) when [workspace.spec_source] is absent.");
     println!();
     println!(" --- meta (Round 286) ---");
     println!(
@@ -1556,6 +1569,128 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     }
     if !reject_msgs.is_empty() {
         bail!("{}", reject_msgs.join("; "));
+    }
+    Ok(())
+}
+
+// ============================================================================
+// validate-spec-drift — RFC-001 UC-1 "B2" spec-revision label-drift scan.
+// ============================================================================
+fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut severity_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--severity" => {
+                severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity missing value"))?
+                        .clone(),
+                );
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+
+    let loaded = workspace_config()?;
+    // The scan only applies to external-spec mirror workspaces. Absent
+    // [workspace.spec_source] => no current rev to diff against => no-op
+    // exit 0 (mirrors validate-code-refs' skip-when-unconfigured contract).
+    let spec_source = match &loaded.config.workspace.spec_source {
+        Some(s) => s,
+        None => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                    "primitive": "validate-spec-drift",
+                    "status": "skipped",
+                    "reason": "[workspace.spec_source] not configured in mnemosyne.toml",
+                    })
+                );
+            } else {
+                println!("=== mnemosyne-cli validate-spec-drift ===");
+                println!(
+                    "skipped — [workspace.spec_source] not configured (no external spec mirror)"
+                );
+            }
+            return Ok(());
+        }
+    };
+
+    // Severity: --severity flag overrides [spec_drift].severity, which
+    // defaults to warn when the table is absent.
+    let configured = loaded
+        .config
+        .spec_drift
+        .as_ref()
+        .map(|s| s.severity.clone())
+        .unwrap_or_else(|| "warn".to_string());
+    let severity = severity_override
+        .as_deref()
+        .unwrap_or(&configured)
+        .to_string();
+    if !matches!(severity.as_str(), "reject" | "warn" | "info") {
+        bail!(
+            "invalid --severity `{}` — expected one of: reject | warn | info",
+            severity
+        );
+    }
+
+    let workspace_revision = spec_source.revision.clone();
+    let root = loaded.workspace_root.clone();
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+
+    let violations = mnemosyne_validate::scan_spec_drift(&store, &workspace_revision);
+
+    if json {
+        let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
+        println!(
+            "{}",
+            serde_json::json!({
+            "primitive": "validate-spec-drift",
+            "spec_url": spec_source.url,
+            "workspace_revision": workspace_revision,
+            "valid_section_count": store.sections.len(),
+            "drift_count": violations.len(),
+            "severity": severity,
+            "violations": view,
+            })
+        );
+    } else {
+        println!("=== mnemosyne-cli validate-spec-drift ===");
+        println!(
+            "spec_url={:?} workspace_revision={:?} sections={} severity={}",
+            spec_source.url,
+            workspace_revision,
+            store.sections.len(),
+            severity,
+        );
+        println!("drift: total={}", violations.len());
+        // Bare section_id (no `§` sigil) — the CLI never renders a literal
+        // section citation the R255 pre-commit hook would scan.
+        for v in &violations {
+            println!(
+                " [drift] {} anchored_rev={:?} workspace_rev={:?}",
+                v.section_id, v.section_revision, v.workspace_revision
+            );
+        }
+    }
+
+    // Single configurable axis: reject => exit 1 on any drift. warn/info
+    // print the findings and exit 0 (CI decides gating; partial migration
+    // is a legitimate intermediate state).
+    if !violations.is_empty() && severity == "reject" {
+        bail!(
+            "{} spec-revision drift violation(s) — Active Section(s) trailing workspace \
+ revision {:?} (severity=reject)",
+            violations.len(),
+            workspace_revision,
+        );
     }
     Ok(())
 }

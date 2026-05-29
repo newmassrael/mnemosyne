@@ -3456,3 +3456,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 370 — spec-revision drift scan (validate-spec-drift, RFC-001 UC-1 B2) — Add validate-spec-drift: flag Active Sections whose normative_excerpt.source_revision trails the workspace spec_source.revision; configurable severity (default warn), Superseded/Removed exempt.
+
+**Changes**:
+- New mnemosyne-validate::spec_drift — scan_spec_drift(&AtomicStore, workspace_rev) pure offline label-diff; only Active/unset Sections with a normative_excerpt drift, Superseded/Removed exempt (partial-migration pattern); BTreeMap-key-ordered output; SpecDriftViolation::to_cli_json flat shape.
+- config [spec_drift].severity (default warn, validated reject|warn|info at config-load fail-loud); the fetched_sha256 ^[0-9a-f]{64}$ config-load enforcement pre-existed as RFC-002 substrate.
+- CLI validate-spec-drift subcommand — --json + --severity override (flag > [spec_drift].severity > warn); skip exit 0 when [workspace.spec_source] absent (mirrors validate-code-refs skip-when-unconfigured); reject => exit 1 on any drift; bare section_id in TTY output (no literal section sigil the R255 hook scans).
+- MCP tool deliberately omitted — sibling axis validate-code-refs is CLI-only and SCE consumes via CI CLI; no warm-host drift consumer exists yet (YAGNI, no speculative substrate).
+
+
+
+**Verification**:
+- 8 validate unit tests (matching/active-stale/unset/superseded/removed/no-excerpt/ordering/json) + 2 config tests (default-warn / invalid-severity reject) + 7 CLI smoke tests (skip / clean / warn-json / reject-flag / superseded-exempt / config-severity-reject / no-excerpt) all green.
+- full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean; validate-workspace docs 1/1 round-trip 1/1 T3 reject 0 GENERATED.md=sync orphan 0+0 divergence 10/10.
+- dogfood: own workspace (no spec_source) => skip exit 0 in both --json and TTY form.
+
+
+
+
+**Carry forward**:
+- SCE adoption sequencing: B2 done; next A2 (persistence-boundary refactor — separate mutate from save so bulk = N in-memory mutate + 1 save_with_receipt, one section-write-path), then C2 (route dispatch through PluginRegistry + ext->lang config-driven, landed WITH SCE cpp-resolver PR). Both still PoC-gated discipline; build each its own round on byte-identity + validate-workspace green.
+- Open decision raised by SCE PoC §4: normative_excerpt has no read-path (query/projection/ops = 0 reads, write-only frozen anchor) — B2 does not need it (rev-label diff only), but the compliance-ledger "show the reviewer the normative text" half is unmet; recommend Mnemosyne-side getter/render (atomic store is SSOT, consumer-side raw JSON read = 2nd read-path) as a separate round, user decision pending.
+
+
+
