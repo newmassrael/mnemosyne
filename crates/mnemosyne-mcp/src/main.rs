@@ -487,20 +487,13 @@ fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, St
         if trimmed.is_empty() {
             continue;
         }
-        let stripped = trimmed.strip_prefix("- ").unwrap_or(trimmed);
-        let (alt, reason) = stripped
-            .split_once(" — ")
-            .or_else(|| stripped.split_once(" -- "))
-            .ok_or_else(|| {
-                format!(
-                    "alternative[{}]: expected `<alternative> -- <reason>` (or ` — ` separator)",
-                    i
-                )
-            })?;
-        out.push(RejectedAlternative {
-            alternative: alt.trim().to_string(),
-            reason: reason.trim().to_string(),
-        });
+        let parsed = RejectedAlternative::parse_line(trimmed).ok_or_else(|| {
+            format!(
+                "alternative[{}]: expected `<alternative> -- <reason>` (or ` — ` separator)",
+                i
+            )
+        })?;
+        out.push(parsed);
     }
     Ok(out)
 }

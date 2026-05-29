@@ -170,6 +170,27 @@ pub struct RejectedAlternative {
     pub reason: String,
 }
 
+impl RejectedAlternative {
+    /// Parse one `<alternative> -- <reason>` line (or the ` — ` em-dash
+    /// separator). A leading `- ` bullet marker and surrounding whitespace are
+    /// trimmed. Returns `None` when no recognized separator is present — the
+    /// caller supplies the contextual error (bullet index vs file line number).
+    ///
+    /// Sole parser shared by the CLI `--alternatives-file` and MCP bullet
+    /// surfaces (Round 358 DRY).
+    pub fn parse_line(raw: &str) -> Option<RejectedAlternative> {
+        let trimmed = raw.trim();
+        let stripped = trimmed.strip_prefix("- ").unwrap_or(trimmed);
+        let (alt, reason) = stripped
+            .split_once(" — ")
+            .or_else(|| stripped.split_once(" -- "))?;
+        Some(RejectedAlternative {
+            alternative: alt.trim().to_string(),
+            reason: reason.trim().to_string(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExampleBlock {
     /// Language tag for fenced code block (`rust` / `toml` / `markdown` / etc).
@@ -2070,6 +2091,18 @@ pub fn remove_inventory_entry(
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn rejected_alternative_parse_line_separators_and_bullet() {
+        // Em-dash and double-hyphen separators, with/without a bullet marker.
+        let em = RejectedAlternative::parse_line("- foo — because bar").unwrap();
+        assert_eq!(em.alternative, "foo");
+        assert_eq!(em.reason, "because bar");
+        let dh = RejectedAlternative::parse_line("foo -- because bar").unwrap();
+        assert_eq!(dh, em);
+        // No recognized separator → None (caller supplies the contextual error).
+        assert!(RejectedAlternative::parse_line("no separator here").is_none());
+    }
 
     /// Round 287 — test fixture helper. Direct sections.insert (bypasses
     /// audit-receipt path) to seed a Section so content-axis primitives can

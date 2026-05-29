@@ -5018,6 +5018,30 @@
         "671 workspace tests pass (+2); clippy --all-targets -D warnings + fmt clean",
         "validate-workspace green: GENERATED.md sync, T3 reject 0; status strings byte-identical (same labels)"
       ]
+    },
+    "Round 358": {
+      "decision_summary": "RejectedAlternative::parse_line canonical in atomic — DRY the duplicated CLI/MCP alternative parser (R357 follow-through)",
+      "changes_bullets": [
+        "add RejectedAlternative::parse_line to mnemosyne-atomic as the sole rejected-alternative line parser (strip `- ` marker, split on ` — ` or ` -- `)",
+        "mcp parse_alternatives + cli parse_alternatives_file delegate to it, each keeping its own error context (bullet index vs file line number)",
+        "removes the duplicated strip/split/construct kernel the mcp comment already flagged as mirroring the CLI"
+      ],
+      "verification_bullets": [
+        "new atomic test: em-dash + double-hyphen separators with/without bullet marker, no-separator returns None",
+        "672 workspace tests pass (+1); clippy --all-targets -D warnings + fmt clean",
+        "validate-workspace green: GENERATED.md sync, T3 reject 0; parsing behavior byte-identical"
+      ],
+      "publishable_decision_summary": "RejectedAlternative::parse_line canonical in atomic — DRY the duplicated CLI/MCP alternative parser (R357 follow-through)",
+      "publishable_changes_bullets": [
+        "add RejectedAlternative::parse_line to mnemosyne-atomic as the sole rejected-alternative line parser (strip `- ` marker, split on ` — ` or ` -- `)",
+        "mcp parse_alternatives + cli parse_alternatives_file delegate to it, each keeping its own error context (bullet index vs file line number)",
+        "removes the duplicated strip/split/construct kernel the mcp comment already flagged as mirroring the CLI"
+      ],
+      "publishable_verification_bullets": [
+        "new atomic test: em-dash + double-hyphen separators with/without bullet marker, no-separator returns None",
+        "672 workspace tests pass (+1); clippy --all-targets -D warnings + fmt clean",
+        "validate-workspace green: GENERATED.md sync, T3 reject 0; parsing behavior byte-identical"
+      ]
     }
   },
   "inventory_entries": {},

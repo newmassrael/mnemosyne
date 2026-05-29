@@ -121,21 +121,14 @@ fn parse_alternatives_file(path: &str) -> Result<Vec<RejectedAlternative>> {
         if trimmed.is_empty() {
             continue;
         }
-        let stripped = trimmed.strip_prefix("- ").unwrap_or(trimmed);
         // Format: `<alternative> -- <reason>` or `<alternative> — <reason>`.
-        let (alt, reason) = stripped
- .split_once(" — ")
- .or_else(|| stripped.split_once(" -- "))
- .ok_or_else(|| {
-  anyhow!(
-  "alternatives-file:{}: line format violation — `<alternative> -- <reason>` or ` — ` separator required",
-  lineno + 1
-  )
- })?;
-        out.push(RejectedAlternative {
-            alternative: alt.trim().to_string(),
-            reason: reason.trim().to_string(),
-        });
+        let parsed = RejectedAlternative::parse_line(trimmed).ok_or_else(|| {
+            anyhow!(
+                "alternatives-file:{}: line format violation — `<alternative> -- <reason>` or ` — ` separator required",
+                lineno + 1
+            )
+        })?;
+        out.push(parsed);
     }
     Ok(out)
 }

@@ -3214,3 +3214,21 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 358 — RejectedAlternative::parse_line canonical in atomic — DRY the duplicated CLI/MCP alternative parser (R357 follow-through)
+
+**Changes**:
+- add RejectedAlternative::parse_line to mnemosyne-atomic as the sole rejected-alternative line parser (strip `- ` marker, split on ` — ` or ` -- `)
+- mcp parse_alternatives + cli parse_alternatives_file delegate to it, each keeping its own error context (bullet index vs file line number)
+- removes the duplicated strip/split/construct kernel the mcp comment already flagged as mirroring the CLI
+
+
+
+**Verification**:
+- new atomic test: em-dash + double-hyphen separators with/without bullet marker, no-separator returns None
+- 672 workspace tests pass (+1); clippy --all-targets -D warnings + fmt clean
+- validate-workspace green: GENERATED.md sync, T3 reject 0; parsing behavior byte-identical
+
+
+
+
+
