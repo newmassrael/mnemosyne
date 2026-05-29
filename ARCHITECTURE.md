@@ -298,6 +298,103 @@ deferred as YAGNI — supersession is the only divergent ref with a live consume
 and a cardinality-1 lifecycle-coupled pointer does not need a general relation
 collection. `impact_scope` keeps its own field; supersession keeps its own.
 
+### Render projection (Step 2 design, R345)
+
+R337 chose render as convergence C's target and sequenced it after a validation
+walking skeleton; R339–R341 delivered that skeleton — a warm `ProjectionService`
+that folds the log into Layer-0 Salsa inputs, reconciles the minimal delta on
+mutate (R340), and is notified from the MCP mutate finishers (R341). What R337
+left open is render's *implementation* architecture, and the gap it closes is
+concrete: `auto_regenerate` re-renders the **entire** `GENERATED.md` — every
+section and every changelog entry back through Tera — on every mutate, so a
+one-field edit pays O(N) template work (today N = 5 sections + 91 entries). The
+four questions below are answered before any render code lands, because render
+adds Layer-1 content to a projection engine the validation skeleton deliberately
+kept Layer-0-only.
+
+**Decision 1 — render owns a separate Salsa database (`RenderDb`), not a
+widened validation engine.** Validation needs only the Layer-0 skeleton
+(`SectionRecord` = `title`/parents/`decision_status`); render needs the Layer-1
+design_doc content (`intent`/`rationale`/`inputs`/`outputs`/`caveats`/
+`alternatives`/`examples`/`normative_excerpt`/`implementations`/`publishable_*`).
+Putting Layer-1 fields on the validation `SectionRecord` would couple the two:
+a `rationale` edit would dirty the validation sub-queries even though validation
+never reads it. Instead render gets its own `#[salsa::input]` vocabulary in its
+own database, keyed by the same `entity_id`. The two projections then have
+independent memo tables and independent inputs — a render-only content edit is
+not even an *input* to the validation db, so it cannot invalidate a validation
+memo. This dissolves the "do we widen `SectionRecord`?" question: no.
+
+**Decision 2 — the render Salsa engine lives one layer up, never inside the
+pure cascade engine.** R338 reduced `mnemosyne-cascade` to deps `facts + salsa`
+on purpose (the CQRS read side stays RocksDB-free and dependency-light). Render
+requires the Tera per-unit renderers, which already live in `mnemosyne-query`
+(`render_section`/`render_changelog_entry`, reading `templates/*.md.tera`). So
+the `RenderDb` + its tracked queries live in the projection layer (extending
+`mnemosyne-projection`, which already composes adapter + engine), where it may
+depend on `mnemosyne-query` — `tera`, template I/O, and design_doc-medium
+knowledge never enter the validation engine. The composition layer projects each
+`AtomicSection` into a render-input context (the medium-specific extraction,
+adapter knowledge) and sets the Salsa input; the engine stays a generic
+template-over-context memoizer.
+
+**Decision 3 — two memoization tiers.** *Tier 1*: one memoized render query per
+Section and per ChangelogEntry, keyed by `entity_id`/`round_number`, body = the
+existing Tera render of that unit. This is where the per-unit template cost is
+paid — once per *changed* unit. *Tier 2*: one memoized document-composition
+query that emits the fixed scaffolding (title preamble, `Source:` line, `---`,
+`## Sections`, the `## §`→`### §` demotion, `## Changelog (atomic ledger)`, the
+empty-changelog fallback) and concatenates the Tier-1 strings in store order.
+The reconcile path (R340) gates re-execution by Salsa input-equality: an
+unchanged unit's context is backdated, so its Tier-1 render stays memoized and
+Tier-2 re-runs only the cheap concatenation. A single-field mutate thus re-runs
+one Tier-1 render, not N.
+
+**Decision 4 — single-source the render format; supersede `auto_regenerate`
+only in the warm host.** The incremental output must stay byte-identical to
+`render_atomic_store_to_md` (the `round-trip 1/1` + `GENERATED.md = sync` gates
+are hard). Rather than re-implement the format in the incremental path (two
+definitions = drift against those gates — the half-enforced-invariant
+anti-pattern), the scaffolding + per-unit invocation is extracted out of
+`render_atomic_store_to_md` into one shared pure builder that **both** the cold
+full-render and the warm Tier-2 composition call. `auto_regenerate` is *not*
+deleted: it remains the cold one-shot renderer for the CLI/CI path, which is
+warm-Salsa-free and gains nothing from memoization (R337 — `cli` keeps its
+full-rebuild). In the warm MCP host the incremental render supersedes it on the
+existing notify seam (R341): mutate → append log → notify → reconcile render
+inputs → recompute `generated_md` incrementally → `write_generated_md`
+(unchanged atomic temp+rename).
+
+**Sequencing (no half-finished), mirroring Step 1.** *(2a)* single-source the
+format builder, stand up `RenderDb` + the two tiers in the projection layer
+served warm, prove byte-identity against `render_atomic_store_to_md` (dogfood +
+randomized stores), and wire one warm consumer (an MCP render-projection tool,
+mirroring `validate_projection`) — *without* yet touching the live write path.
+This is the render walking skeleton. *(2b)* wire the warm incremental render into
+the mutate write path, superseding `auto_regenerate` in the warm host; the cold
+path keeps `auto_regenerate`. Each step is independently green and
+byte-verifiable.
+
+**Open impl spikes (deliberately not pre-solved).** Whether the new Salsa
+permits the render tracked queries over a fresh `RenderDb` defined in the
+projection crate (expected: yes — a self-contained database in one crate); and
+the render-input context shape (a generic `field → value` map vs. a typed
+Layer-1 record) — decided at 2a against the actual templates, since the template
+variable set is the only thing that fixes it.
+
+**Rejected alternatives.** *(A) Widen the validation `SectionRecord`/
+`FineCascadeDb` with Layer-1 fields* — couples validation invalidation to
+render-only content and bloats the Layer-0 validation input with medium-shaped
+data; a separate `RenderDb` keeps both projections independent. *(B) Move the
+Tera render into `mnemosyne-cascade`* — re-pollutes the pure `facts + salsa`
+engine (R338) with `tera`, template I/O, and medium knowledge; keep render one
+layer up. *(C) Re-implement the `GENERATED.md` format in the incremental path* —
+two format definitions drift against the round-trip/sync gates; single-source the
+builder instead. *(D) Delete `auto_regenerate` / force the CLI onto the warm
+path* — the one-shot CLI rebuilds cold every invocation (warm Salsa buys it
+nothing) and it would drag the render engine's deps into the RocksDB-free
+authoring path; supersede `auto_regenerate` only where a warm process exists.
+
 ## 6. Anti-drift invariants
 
 1. **Never delete the bitemporal foundation** (`store / facts / cascade /

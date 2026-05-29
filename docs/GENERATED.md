@@ -2934,3 +2934,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 345 — render projection Step 2 implementation design — design-only round resolving the four open implementation questions R337 left for the render projection: (1) render owns a separate RenderDb rather than a widened validation engine, so a Layer-1 content edit cannot invalidate Layer-0 validation memo; (2) the render Salsa engine lives in the projection layer where it may depend on the mnemosyne-query Tera renderers, keeping the facts+salsa cascade engine pure (R338); (3) two memoization tiers (per-unit render plus document composition) so a single-field mutate re-runs one Tera render not N; (4) the GENERATED.md format is single-sourced into one shared builder that both the cold full-render and the warm composition call, and auto_regenerate is superseded only in the warm host on the R341 notify seam while staying the cold CLI renderer. Sequenced as 2a walking skeleton plus byte-identity proof then 2b write-path wiring. No code change. — design-only round resolving the four open implementation questions R337 left for the render projection: separate RenderDb (not a widened validation engine), the render Salsa engine in the projection layer (cascade stays facts+salsa-only, R338), two memoization tiers (per-unit render plus document composition), and a single-sourced GENERATED.md format builder with auto_regenerate superseded only in the warm host (R341 seam) and kept as the cold CLI renderer. No code change.
+
+**Changes**:
+- RenderDb is a separate Salsa database from FineCascadeDb — Layer-1 render inputs keyed by entity_id with independent memo tables, so a content-only edit cannot invalidate Layer-0 validation
+- the render Salsa engine is placed in the projection layer where it may depend on the mnemosyne-query Tera renderers; the cascade engine stays facts+salsa-only (R338)
+- two memoization tiers — Tier-1 per-unit Tera render, Tier-2 document composition (fixed scaffolding plus ordered concat) — so a single-field mutate re-runs one render not N
+- the GENERATED.md format is single-sourced into one shared builder that both the cold full-render and the warm composition call; auto_regenerate is superseded only in the warm host and kept as the cold CLI/CI renderer
+
+
+
+**Verification**:
+- design-only round — no production code changed; ARCHITECTURE.md convergence section gained the "Render projection (Step 2 design, R345)" subsection
+- green baseline re-verified at session start: cargo test --workspace, clippy -D warnings, fmt --check, validate-workspace all clean
+- every cited round (R327, R337, R338, R339, R340, R341) verified present in the atomic store before writing the citation
+
+
+
+
+**Carry forward**:
+- 2a next: single-source the render builder, stand up RenderDb plus the two tiers in the projection layer, prove byte-identity against render_atomic_store_to_md, and wire one warm consumer (an MCP render-projection tool) — the render walking skeleton
+- 2b: wire the warm incremental render into the mutate write path, superseding auto_regenerate in the warm host while the cold path keeps it
+- index relation-key still omits ref_kind (R343 carry) — deferred YAGNI index-layer round
+
+
+
