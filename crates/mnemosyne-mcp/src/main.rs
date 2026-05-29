@@ -60,10 +60,11 @@ pub struct ValidateProjectionArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RenderProjectionArgs {
-    /// Force a re-sync from the current log before rendering. 2a does NOT wire
-    /// the warm render projection to the mutate notify seam, so after a mutate
-    /// the default (false) is stale until you pass true (or until 2b wires the
-    /// write path). Pass true to pick up the current log.
+    /// Force a re-sync from the current log before rendering. Since R367 Step 2b
+    /// the warm render projection re-syncs after every successful mutate (and
+    /// owns the GENERATED.md write), so the default (false) already reflects the
+    /// current log. Pass true only to pick up an out-of-band edit (a manual JSON
+    /// edit or a separate CLI mutate that did not go through this host).
     #[serde(default)]
     pub refresh: bool,
 }
@@ -1485,5 +1486,58 @@ mod tests {
             "warm-host write path must match cold render byte-for-byte"
         );
         assert!(on_disk.contains("warm write path"));
+
+        // Second cycle: a REAL change through the host, so the incremental
+        // reconcile (not a no-op) drives the write. The warm host must pick up
+        // the new content AND stay byte-identical to a cold render of the
+        // mutated store — proving the host-driven incremental path, not just the
+        // write seam.
+        store.sections.get_mut("1").unwrap().intent = Some("edited intent v2".to_string());
+        store.save(&sidecar).unwrap();
+        server.sync_read_models_after_mutate().unwrap();
+        let on_disk_2 = fs::read_to_string(&output).unwrap();
+        let (cold_2, _) = ops::render_atomic_store_to_md(&ws, &sidecar).unwrap();
+        assert_eq!(
+            on_disk_2, cold_2,
+            "incremental warm write after a change must still match cold render"
+        );
+        assert!(on_disk_2.contains("edited intent v2"));
+        assert!(!on_disk_2.contains("warm write path"));
+    }
+
+    /// R367 fail-loud contract: when the GENERATED.md write fails after a
+    /// successful store mutate, `sync_read_models_after_mutate` surfaces the
+    /// error (it does NOT silently leave a desynced cascade). Injected by making
+    /// the resolved output path a directory, so the temp→rename write fails.
+    #[test]
+    fn warm_host_write_failure_is_fail_loud() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().to_path_buf();
+
+        let sidecar = ops::cascade::resolve_sidecar(&ws, None).unwrap();
+        if let Some(parent) = sidecar.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let mut store = AtomicStore::new();
+        store.sections.insert(
+            "1".to_string(),
+            AtomicSection {
+                intent: Some("fail loud".to_string()),
+                ..Default::default()
+            },
+        );
+        store.save(&sidecar).unwrap();
+
+        // Make the GENERATED.md output path a directory → the atomic
+        // temp+rename write cannot succeed.
+        let output = ops::resolve_output(&ws, None).unwrap();
+        fs::create_dir_all(&output).unwrap();
+
+        let server = MnemosyneServer::new(ws.clone()).unwrap();
+        let result = server.sync_read_models_after_mutate();
+        assert!(
+            result.is_err(),
+            "a GENERATED.md write failure after a mutate must fail loud, not silently desync"
+        );
     }
 }

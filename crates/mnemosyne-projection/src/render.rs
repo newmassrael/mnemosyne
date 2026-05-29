@@ -596,6 +596,55 @@ mod tests {
         e
     }
 
+    /// A Section with *every* renderable field set to a value distinct from
+    /// [`full_section`], so replacing one with the other exercises every
+    /// `reconcile_sections` `sync!` set-arm (the field-parity test).
+    fn section_v2() -> AtomicSection {
+        AtomicSection {
+            skeleton: SectionSkeleton {
+                title: "Different heading".to_string(),
+                parent_doc: "docs/GENERATED.md".to_string(),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Active),
+            },
+            superseded_by: None,
+            intent: Some("v2 intent".to_string()),
+            rationale_bullets: vec!["v2 reason".to_string()],
+            inputs_bullets: vec!["v2 input".to_string()],
+            outputs_bullets: vec!["v2 output".to_string()],
+            caveats_bullets: vec!["v2 caveat".to_string()],
+            alternatives_rejected: vec![RejectedAlternative {
+                alternative: "v2 alternative".to_string(),
+                reason: "v2 rejection reason".to_string(),
+            }],
+            impact_scope: vec!["7".to_string()],
+            examples: vec![ExampleBlock {
+                language: "python".to_string(),
+                code: "print(1)".to_string(),
+            }],
+            implementations: vec![Implementation {
+                file: "crates/mnemosyne-query/src/lib.rs".to_string(),
+                symbol: Some("compose_generated_md".to_string()),
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// A ChangelogEntry whose publishable half differs from [`entry`] in every
+    /// field, to exercise every `reconcile_entries` `sync!` set-arm.
+    fn entry_v2() -> AtomicChangelogEntry {
+        let mut e = AtomicChangelogEntry {
+            decision_summary: Some("v2 decision".to_string()),
+            changes_bullets: vec!["v2 change".to_string()],
+            verification_bullets: vec!["v2 verify".to_string()],
+            impact_refs: vec!["7".to_string()],
+            carry_forward_bullets: vec!["v2 carry".to_string()],
+            ..Default::default()
+        };
+        e.clone_audit_into_publishable();
+        e
+    }
+
     /// The store the warm engine renders from, plus the cold-path block render
     /// for the same store, so the test compares warm output to a direct
     /// `compose_generated_md` call (the exact builder the cold
@@ -766,6 +815,71 @@ mod tests {
         let out = svc.render();
         assert_eq!(out, cold_compose(&store, src));
         assert!(!out.contains("seven"));
+    }
+
+    /// Field-invariant parity (CLAUDE.md multi-write-path rule, R368): editing
+    /// EVERY renderable field on both a Section and a ChangelogEntry, then
+    /// reloading, must still byte-match a cold compose. `project_section_input`
+    /// (compiler-checked positional `::new`) and `reconcile_sections` (per-field
+    /// `sync!`) are two write paths to the same input; a field added to one and
+    /// forgotten in the other would compile clean and silently serve stale bytes
+    /// on a warm mutate. This test fires every `sync!` set-arm, so the omission
+    /// fails here instead of in production.
+    #[test]
+    fn reconcile_every_renderable_field_change_propagates() {
+        let mut store = AtomicStore::new();
+        store.sections.insert("43".to_string(), full_section());
+        store
+            .changelog_entries
+            .insert("Round 162".to_string(), entry());
+        let src = "src.json";
+        let mut svc = RenderProjectionService::build(&store, src);
+        assert_eq!(svc.render(), cold_compose(&store, src));
+
+        // Replace both units with fully-different content (membership unchanged,
+        // so the field deltas alone must carry through every sync! set-arm).
+        store.sections.insert("43".to_string(), section_v2());
+        store
+            .changelog_entries
+            .insert("Round 162".to_string(), entry_v2());
+        svc.reload(&store);
+        assert_eq!(
+            svc.render(),
+            cold_compose(&store, src),
+            "every renderable field must propagate through reconcile (sync! parity)"
+        );
+    }
+
+    /// Count-stable membership change: remove one unit and add a different one
+    /// in the same reload. The unit count is unchanged, so the change is caught
+    /// only by the new-key (`None`) arm, not the `len()` guard — pin that the
+    /// Vec is rebuilt and the result stays byte-identical to cold.
+    #[test]
+    fn reconcile_count_stable_membership_change_stays_byte_identical() {
+        let mut store = AtomicStore::new();
+        store.sections.insert(
+            "7".to_string(),
+            AtomicSection {
+                intent: Some("seven".to_string()),
+                ..Default::default()
+            },
+        );
+        let src = "src.json";
+        let mut svc = RenderProjectionService::build(&store, src);
+        assert_eq!(svc.render(), cold_compose(&store, src));
+
+        store.sections.remove("7");
+        store.sections.insert(
+            "8".to_string(),
+            AtomicSection {
+                intent: Some("eight".to_string()),
+                ..Default::default()
+            },
+        );
+        svc.reload(&store);
+        let out = svc.render();
+        assert_eq!(out, cold_compose(&store, src));
+        assert!(out.contains("eight") && !out.contains("seven"));
     }
 
     #[test]

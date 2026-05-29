@@ -3403,3 +3403,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 368 — render Step 2b review fixes: field-parity test, integration coverage, doc-drift — Three adversarial reviewers confirmed R367 structurally textbook-clean; this round closes the verification gaps they surfaced — the CLAUDE.md-mandated field-parity test for the two RenderSectionInput write paths, a real change-through-host integration cycle (the prior test was a no-op reconcile), a fail-loud write-failure test, and a count-stable membership test — plus one stale refresh-arg doc the R367 sweep missed.
+
+**Changes**:
+- Fixed a stale doc leftover the R367 sweep missed: RenderProjectionArgs::refresh still said "2a does NOT wire the warm render projection ... until 2b wires the write path", contradicting the already-updated tool description. R367 is 2b; the default now reflects the current log after a mutate, and refresh=true is only for out-of-band edits. Updated to match.
+- No production-logic change: 3 fresh adversarial reviewers (told to distrust the carry) re-derived R367 from code and confirmed it textbook-clean — every mutate regenerates (25/25 route through a regenerating finisher), single GENERATED.md write-path, warm render byte-identical to cold by the shared compose_generated_md builder, fail-loud regenerate contract preserved, projection/cascade still RocksDB-free at link, incrementality real (compare-then-set necessary and correct), and the add+remove-net-to-same-count membership edge correctly caught by the new-key arm.
+
+
+
+**Verification**:
+- Field-invariant parity test (CLAUDE.md multi-write-path rule): reconcile_every_renderable_field_change_propagates edits every renderable Section and ChangelogEntry field, reloads, and asserts byte-identity to a cold compose. project_section_input (compiler-checked positional ::new) and reconcile_sections (per-field sync!) are two write paths to one RenderSectionInput; a field added to one and forgotten in the other would compile clean and silently serve stale bytes — this test fires every sync! set-arm so the omission fails in CI, not production.
+- Count-stable membership test: remove one section and add a different one in the same reload (unit count unchanged), caught only by the None-arm rather than the len() guard — pins the Vec rebuild and byte-identity.
+- MCP integration test strengthened: it was a no-op reconcile (build and sync loaded the same store, proving only the write seam); added a second real change-through-host cycle asserting the incremental warm write picks up the change AND stays byte-identical to cold render of the mutated store.
+- Fail-loud test: with the GENERATED.md output path made a directory, a post-mutate write fails and sync_read_models_after_mutate returns Err (the 2b cascade-output safety contract, never a silent desync).
+- 691 workspace tests green (+3 this round); clippy --workspace --all-targets -D warnings plus fmt clean; validate-workspace green (T3 reject 0, GENERATED.md sync).
+
+
+
+
+**Carry forward**:
+- Field parity is now TEST-enforced but not COMPILER-enforced (Salsa generates independent per-field setters; a custom derive to force the field list into both write paths is YAGNI for 13+5 fields — the parity test is the proportionate guard).
+- redact_term dry_run/non-dry MCP branching and finish_inventory_mutate's sync remain integration-untested; the write seam they share is now covered by the strengthened integration test and the branching is a simple !dry_run guard, so deferring is acceptable (not a correctness risk).
+- 47/32 dormant #[ignore] tests still carry (pre-R252 corpus): re-verify non-re-anchorable per-test and obtain explicit user confirmation before any deletion.
+
+
+
