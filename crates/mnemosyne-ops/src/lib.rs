@@ -208,9 +208,11 @@ pub fn redact_term(
 pub fn inventory_decay_scan(
     workspace_root: &Path,
     inventory_id: &str,
-) -> Vec<mnemosyne_validate::code_refs::Citation> {
-    let Ok(Some(loaded)) = mnemosyne_config::discover_config(workspace_root) else {
-        return Vec::new();
+) -> anyhow::Result<Vec<mnemosyne_validate::code_refs::Citation>> {
+    // A malformed mnemosyne.toml fails loud (matches the R362 resolver
+    // fail-fast); Ok(None) = no config file = nothing to scan.
+    let Some(loaded) = mnemosyne_config::discover_config(workspace_root)? else {
+        return Ok(Vec::new());
     };
     let Some(cfg) = loaded
         .config
@@ -218,22 +220,24 @@ pub fn inventory_decay_scan(
         .as_ref()
         .and_then(|p| p.set_equality_validator.as_ref())
     else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     if cfg.paths.is_empty()
         || (cfg.inventory_prefixes.is_empty() && cfg.inventory_path_prefixes.is_empty())
     {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    mnemosyne_validate::code_refs::scan_inventory_decay(
+    // An unreadable scan path fails loud rather than reporting "no decay" —
+    // the `scan_section_decay` sibling the R360 fail-loud sweep missed.
+    let hits = mnemosyne_validate::code_refs::scan_inventory_decay(
         workspace_root,
         &cfg.paths,
         inventory_id,
         &cfg.inventory_prefixes,
         &cfg.inventory_path_prefixes,
         cfg.comment_only,
-    )
-    .unwrap_or_default()
+    )?;
+    Ok(hits)
 }
 
 /// Emit a `[[publishable_override_ledger]]` draft for an entry whose
@@ -285,6 +289,27 @@ mod tests {
         assert!(
             load_atomic_store(tmp.path(), None).is_err(),
             "corrupt sidecar must fail loud, not silently empty"
+        );
+    }
+
+    /// No config file = nothing to scan = an empty hit set, not an error.
+    #[test]
+    fn inventory_decay_scan_missing_config_is_empty_not_error() {
+        let tmp = TempDir::new().unwrap();
+        let hits = inventory_decay_scan(tmp.path(), "X").expect("missing config = empty");
+        assert!(hits.is_empty());
+    }
+
+    /// A malformed mnemosyne.toml fails loud instead of silently reporting
+    /// "no decay" — regression for the R360/R362 sibling swallows the R364
+    /// sweep closed (`let Ok(Some) = discover_config` + `unwrap_or_default`).
+    #[test]
+    fn inventory_decay_scan_malformed_config_fails_loud() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("mnemosyne.toml"), "[plugins\nbad = ").unwrap();
+        assert!(
+            inventory_decay_scan(tmp.path(), "X").is_err(),
+            "malformed config must fail loud, not silently empty"
         );
     }
 }

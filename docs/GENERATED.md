@@ -3321,3 +3321,22 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 364 — complete R360/R362 fail-loud sweep: inventory_decay_scan sibling swallows — inventory_decay_scan carried both defect classes this session swept — a let-Ok-Some discover_config swallow (R362 class, evaded the if-let grep) and a scan_inventory_decay unwrap_or_default (R360 class, the scan_section_decay twin) — making R360's no-masking-remains claim false; both now propagate via Result, the sole MCP caller surfaces an explicit cascade_decay_error instead of silently-empty decay.
+
+**Changes**:
+- 3 fresh adversarial reviewers (R362-ripple / test-quality / doc-accuracy+residual-smell) confirmed R362 ripple correct+complete, R361 docs accurate, the 6 new tests solid — but 2 independently flagged inventory_decay_scan (ops/lib.rs) as carrying BOTH defect classes this session swept, making R360's "no error-masking unwrap_or_default left on any read path" claim false
+- inventory_decay_scan → anyhow::Result<Vec<Citation>>: the `let Ok(Some) = discover_config else` swallow → discover_config(..)? (R362 class; the let-else form evaded R362's if-let grep), and scan_inventory_decay(..).unwrap_or_default() → ? (R360 class; the scan_section_decay twin R360 fixed in the CLI but missed in ops). Ok(None)=no-config=empty preserved
+- sole caller finish_inventory_mutate (MCP) now reports an explicit cascade_decay_error in the success payload on scan failure instead of a misleading empty decay set — the mutate receipt is still returned (fail-loud without falsely failing the already-persisted mutate)
+- 2 regression tests (missing config → Ok empty; malformed config → Err)
+
+
+
+**Verification**:
+- 680 workspace tests pass / 0 fail (+2 inventory_decay_scan regression); clippy --workspace --all-targets -D warnings + fmt clean
+- grep confirms zero unwrap_or_default on decay scans + zero Ok(Some) discover_config swallow remaining in production
+- validate-workspace green after append; GENERATED.md sync, round-trip 1/1, T3 reject 0
+
+
+
+
+

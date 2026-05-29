@@ -1187,16 +1187,29 @@ impl MnemosyneServer {
             Ok(o) => {
                 self.notify_projection();
                 let decay = if run_cascade {
-                    ops::inventory_decay_scan(&self.workspace, inventory_id)
-                        .into_iter()
-                        .map(|c| {
-                            serde_json::json!({
-                                "file": c.file.display().to_string(),
-                                "line": c.line,
-                                "entry_id": c.entry_id,
+                    match ops::inventory_decay_scan(&self.workspace, inventory_id) {
+                        Ok(hits) => hits
+                            .into_iter()
+                            .map(|c| {
+                                serde_json::json!({
+                                    "file": c.file.display().to_string(),
+                                    "line": c.line,
+                                    "entry_id": c.entry_id,
+                                })
                             })
-                        })
-                        .collect::<Vec<_>>()
+                            .collect::<Vec<_>>(),
+                        // The mutate already persisted; surface the scan
+                        // failure explicitly rather than a misleading empty
+                        // decay set (fail-loud without falsely failing the
+                        // mutate).
+                        Err(e) => {
+                            return self.tool_json(&serde_json::json!({
+                                "receipt": o.receipt,
+                                "regenerated": o.regenerated,
+                                "cascade_decay_error": format!("{:#}", e),
+                            }));
+                        }
+                    }
                 } else {
                     Vec::new()
                 };
