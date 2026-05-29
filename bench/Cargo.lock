@@ -211,23 +211,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cascade-measurement"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "criterion",
- "hdrhistogram",
- "mnemosyne-cascade",
- "mnemosyne-facts",
- "rand 0.8.6",
- "rand_chacha 0.3.1",
- "salsa",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1443,47 +1426,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mnemosyne-cascade"
-version = "0.1.0"
-dependencies = [
- "mnemosyne-facts",
- "salsa",
-]
-
-[[package]]
-name = "mnemosyne-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mnemosyne-facts"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "mnemosyne-core",
- "mnemosyne-store",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mnemosyne-store"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "byteorder",
- "rocksdb",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]

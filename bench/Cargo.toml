@@ -8,7 +8,6 @@ members = [
  "crates/sled-baseline",
  "crates/lmdb-baseline",
  "crates/codegen-prototype",
- "crates/cascade-measurement",
  "crates/closure-measurement",
  "crates/audit-broadcast-bench",
 ]

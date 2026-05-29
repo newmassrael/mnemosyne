@@ -2984,3 +2984,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 347 — delete the stale Phase -1A bench cascade-measurement spike (no-legacy-carry) — Remove bench/crates/cascade-measurement, a closed Phase -1A measurement spike that has been broken since the engine evolved (R326/R335 typed DecisionStatus + R338 deleted the coarse MnemosyneCascadeDb). It compiled against neither the current cascade API nor types, sat outside main CI, and had no consumers. R346 only repointed its struct import to keep it at its pre-existing error count; this round removes it outright per no-legacy-carry (code lives in code; the empirical findings it produced live in the audit-trail changelog). Other bench crates are left as historical reference. The store/facts/cascade/server foundation is untouched — this is excising a dead measurement spike, not the convergence substrate (invariant #1).
+
+**Changes**:
+- deleted bench/crates/cascade-measurement (the crate dir + its bench/Cargo.toml members entry); refreshed bench/Cargo.lock
+- the crate had been stale-broken since R326/R335 (typed Option<DecisionStatus>) and R338 (deleted coarse MnemosyneCascadeDb engine) — 19 compile errors against current cascade, outside main CI, no consumers in or out of the bench workspace
+
+
+
+**Verification**:
+- no other bench crate or main manifest referenced cascade-measurement (grep clean); only the bench members entry pointed at it
+- bench workspace cargo metadata resolves OK after removal; cascade-measurement gone from bench/Cargo.lock
+- main workspace unaffected — build/test --workspace, clippy -D, fmt --check, validate-workspace all green (ledger 94)
+
+
+
+
+**Carry forward**:
+- empirical findings the spike informed live in the audit-trail changelog, not in the spike code (code lives in code, audit history lives in the atomic store)
+- other bench/ crates remain as historical reference; revisit per-crate only if they obstruct a live concern
+- Render projection Step 2a remains the large next epic (R345 design); index-key ref_kind stays YAGNI
+
+
+
