@@ -202,3 +202,12 @@ reason = "R305 forward-coherence pass: R302 rename mirrored into past entries' p
 applied_in = "Round 305"
 content_hash_before = "032dd010bd28c95c77f3ceec80c1a3bfe8fbf90dead1995bcf0a3be7436edbe9"
 content_hash_after = "9eaad476dbeb97154ee2c4df4354a1fd6b0c3da0513e24bb7dd92728d862064a"
+
+[[publishable_override_ledger]]
+kind = "redaction"
+target_id = "Round 367 — render Step 2b: warm incremental render wired into the mutate write path"
+fields = ["publishable_verification_bullets"]
+reason = "Correct test-count delta +5 to +4 (authoring miscount: 3 new projection tests + 1 MCP test; the membership-change byte-identity test pre-existed in R366). Audit half preserves the original."
+applied_in = "Round 367"
+content_hash_before = "8d79c9763269da07d37544fa07f05d474db607b69d0b9f02c14969fa8c0820d9"
+content_hash_after = "be7da27ce93b7cd057299e9947b02a74a6319978de529d7a29040aca96bdcd60"

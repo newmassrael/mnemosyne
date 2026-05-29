@@ -5242,6 +5242,38 @@
         "verify-generated OK (sync) — the section_heading single-sourcing is byte-identical on the cold path; validate-workspace green, round-trip 1/1, T3 reject 0",
         "grep confirms zero `.order(` reads remain and section_heading is the sole title/status extraction (cold + warm + test all call it)"
       ]
+    },
+    "Round 367 — render Step 2b: warm incremental render wired into the mutate write path": {
+      "decision_summary": "The warm MCP host now owns GENERATED.md regeneration: every successful mutate incrementally reconciles the render projection (R340 analogue — only changed units re-render) and writes the recomposed doc, superseding the cold full-render auto_regenerate; the cold CLI/CI keeps auto_regenerate.",
+      "changes_bullets": [
+        "RenderProjectionService::reload is now incremental (reconcile_render_index, the render analogue of R340 reconcile_branch_index): Section keyed by section_id, ChangelogEntry by entry_id; unchanged Salsa input handles are reused and only changed fields are set (Salsa bumps an input revision on every set, so compare-then-set is required for incrementality), and the sections/entries Vec is reset only on a membership change. A single-field mutate re-runs only that unit's Tier-1 render plus the cheap Tier-2 concat, not all N — size-independent invalidation.",
+        "MCP mutate tools run the primitive with regenerate=false (the cold CLI/CI keeps auto_regenerate). New MnemosyneServer::sync_read_models_after_mutate recomposes and atomic-writes GENERATED.md through the warm render projection (fail-loud — the cascade-output contract the cold auto_regenerate held), then re-syncs the validation projection from the same in-memory store snapshot (best-effort cache, infallible on the already-loaded store). Store is loaded once and shared by both read models.",
+        "notify_projection removed (superseded by sync_read_models_after_mutate); finish_mutate, finish_inventory_mutate, and the redact_term handler all route through it and set regenerated=true (redact only when not dry_run). render-projection field doc and the render_projection tool description updated from 2a read-only to 2b write-path-owning."
+      ],
+      "verification_bullets": [
+        "688 workspace tests green (+5 this round): 4 projection reconcile tests (single-field edit re-runs exactly +2 bodies proving size-independence, no-op reload fully memoized, section removal byte-identical, plus the pre-existing membership-change byte-identity test); 1 MCP integration test.",
+        "New MCP integration test builds a warm MnemosyneServer over a temp-workspace store and asserts the 2b write path (load to incremental reconcile to recompose to atomic-write) produces GENERATED.md byte-identical to the cold render_atomic_store_to_md the validate gates compare against.",
+        "clippy --workspace --all-targets -D warnings plus fmt clean; cold verify-generated still OK (sync); validate-workspace green (T3 reject 0)."
+      ],
+      "carry_forward_bullets": [
+        "The order:u64 render-input field is intentionally NOT re-added (R366 removed it as premature 2b substrate); reconcile keys by section_id/entry_id and ordering is carried by BTreeMap Vec position, stable across re-syncs since a field-only edit never changes a key.",
+        "32 dormant #[ignore] tests still carry (pre-R252 corpus): re-verify the non-re-anchorable claim per-test and obtain explicit user confirmation before any deletion."
+      ],
+      "publishable_decision_summary": "The warm MCP host now owns GENERATED.md regeneration: every successful mutate incrementally reconciles the render projection (R340 analogue — only changed units re-render) and writes the recomposed doc, superseding the cold full-render auto_regenerate; the cold CLI/CI keeps auto_regenerate.",
+      "publishable_changes_bullets": [
+        "RenderProjectionService::reload is now incremental (reconcile_render_index, the render analogue of R340 reconcile_branch_index): Section keyed by section_id, ChangelogEntry by entry_id; unchanged Salsa input handles are reused and only changed fields are set (Salsa bumps an input revision on every set, so compare-then-set is required for incrementality), and the sections/entries Vec is reset only on a membership change. A single-field mutate re-runs only that unit's Tier-1 render plus the cheap Tier-2 concat, not all N — size-independent invalidation.",
+        "MCP mutate tools run the primitive with regenerate=false (the cold CLI/CI keeps auto_regenerate). New MnemosyneServer::sync_read_models_after_mutate recomposes and atomic-writes GENERATED.md through the warm render projection (fail-loud — the cascade-output contract the cold auto_regenerate held), then re-syncs the validation projection from the same in-memory store snapshot (best-effort cache, infallible on the already-loaded store). Store is loaded once and shared by both read models.",
+        "notify_projection removed (superseded by sync_read_models_after_mutate); finish_mutate, finish_inventory_mutate, and the redact_term handler all route through it and set regenerated=true (redact only when not dry_run). render-projection field doc and the render_projection tool description updated from 2a read-only to 2b write-path-owning."
+      ],
+      "publishable_verification_bullets": [
+        "688 workspace tests green (+4 this round): 3 new projection reconcile tests (single-field edit re-runs exactly +2 tracked bodies, proving size-independent invalidation; no-op reload fully memoized; section removal byte-identical) joining the pre-existing membership-change byte-identity test, plus 1 new MCP integration test.",
+        "New MCP integration test builds a warm MnemosyneServer over a temp-workspace store and asserts the 2b write path (load to incremental reconcile to recompose to atomic-write) produces GENERATED.md byte-identical to the cold render_atomic_store_to_md the validate gates compare against.",
+        "clippy --workspace --all-targets -D warnings plus fmt clean; cold verify-generated still OK (sync); validate-workspace green (T3 reject 0)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The order:u64 render-input field is intentionally NOT re-added (R366 removed it as premature 2b substrate); reconcile keys by section_id/entry_id and ordering is carried by BTreeMap Vec position, stable across re-syncs since a field-only edit never changes a key.",
+        "32 dormant #[ignore] tests still carry (pre-R252 corpus): re-verify the non-re-anchorable claim per-test and obtain explicit user confirmation before any deletion."
+      ]
     }
   },
   "inventory_entries": {},

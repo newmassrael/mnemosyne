@@ -22,11 +22,14 @@
 //! single-source `compose_generated_md` builder (R345 Decision 4) so the warm
 //! output stays byte-identical to the cold `render_atomic_store_to_md`.
 //!
-//! Scope (2a): warm wholesale build + byte-identity proof + one warm consumer
-//! (the MCP `render_projection` tool), *without* touching the live write path.
-//! Incremental delta-apply on mutate (the render analogue of R340's
-//! `reconcile_branch_index`) and superseding `auto_regenerate` in the warm host
-//! are 2b.
+//! Scope: 2a stood up the warm wholesale build + byte-identity proof + one warm
+//! consumer (the MCP `render_projection` tool). 2b (R367) made the re-sync
+//! incremental — [`RenderProjectionService::reload`] now applies the minimal
+//! Salsa-input delta (the render analogue of R340's `reconcile_branch_index`),
+//! so a single-field mutate re-runs only that unit's Tier-1 render plus the
+//! cheap Tier-2 concat — and wired the warm render into the mutate write path
+//! (the MCP host recomposes + writes `GENERATED.md` through this service,
+//! superseding the cold full-render `auto_regenerate`; the cold CLI/CI keeps it).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -38,6 +41,7 @@ use mnemosyne_atomic::{
 use mnemosyne_query::{
     compose_generated_md, render_changelog_entry, render_section, section_heading,
 };
+use salsa::Setter;
 
 // --- per-unit Salsa inputs (Tier-1 keys) -----------------------------------
 //
@@ -340,13 +344,199 @@ impl RenderProjectionService {
         self.db.exec_counter()
     }
 
-    /// Re-sync from the current log (reusing the retained `source_rel`). 2a
-    /// re-projects wholesale (a fresh index over the warm db); the incremental
-    /// delta-apply that keeps unchanged Tier-1 renders memoized across a
-    /// re-sync is the render analogue of R340's `reconcile_branch_index` and
-    /// lands in 2b.
+    /// Re-sync from the current log (reusing the retained `source_rel`),
+    /// applying the minimal Salsa-input delta against the live index (R367 Step
+    /// 2b — the render analogue of R340's `reconcile_branch_index`): unchanged
+    /// units keep their input handles, so their memoized Tier-1 renders carry
+    /// across the re-sync and only the units that actually changed re-execute on
+    /// the next [`render`](Self::render). The `RenderIndex` handle itself is
+    /// preserved, so the Tier-2 composition stays memoized when no unit changed.
     pub fn reload(&mut self, atomic: &AtomicStore) {
-        self.index = project_index(&self.db, atomic, &self.source_rel);
+        reconcile_render_index(&mut self.db, self.index, atomic, &self.source_rel);
+    }
+}
+
+// --- incremental reconcile (R367 Step 2b) ----------------------------------
+
+/// Reconcile the live `RenderIndex` to `atomic` by applying the minimal set of
+/// Salsa-input deltas, reusing unchanged per-unit input handles so the memo
+/// cache survives the re-sync. The render analogue of R340's
+/// `reconcile_branch_index`: the 2a `build` re-projects wholesale (fresh handle
+/// identities → cold cache), whereas this keeps the same `RenderIndex` and every
+/// unchanged unit handle and mutates only the fields that changed, so a
+/// single-field mutate re-runs only that unit's Tier-1 render plus the cheap
+/// Tier-2 concat (size-independent invalidation).
+///
+/// Keying: Section by `section_id`, ChangelogEntry by `entry_id` — both
+/// `BTreeMap`-ordered in the store, so order is stable across re-syncs and a
+/// field-only edit never reorders the lists. The `sections` / `entries` Vecs are
+/// reset only when *membership* changes; a field-only edit leaves them
+/// bit-identical (the same mutated handles), so the Tier-2 composition's
+/// dependency on the list is not invalidated.
+fn reconcile_render_index(
+    db: &mut RenderDbImpl,
+    index: RenderIndex,
+    atomic: &AtomicStore,
+    source_rel: &str,
+) {
+    reconcile_sections(db, index, atomic);
+    reconcile_entries(db, index, atomic);
+    if index.source_rel(db) != source_rel {
+        index.set_source_rel(db).to(source_rel.to_string());
+    }
+}
+
+/// Field-level Section reconcile keyed by `section_id`. Reuses the handle for a
+/// matching key (setting only changed fields — Salsa bumps an input's revision
+/// on every `set`, so an unconditional set would defeat incrementality),
+/// allocates for a new key, and resets the `sections` Vec only on a membership
+/// change.
+fn reconcile_sections(db: &mut RenderDbImpl, index: RenderIndex, atomic: &AtomicStore) {
+    let old: std::collections::BTreeMap<String, RenderSectionInput> = index
+        .sections(db)
+        .into_iter()
+        .map(|s| (s.section_id(db), s))
+        .collect();
+    let mut membership_changed = atomic.sections.len() != old.len();
+    let mut new_records: Vec<RenderSectionInput> = Vec::with_capacity(atomic.sections.len());
+    for (section_id, sec) in &atomic.sections {
+        let record = match old.get(section_id) {
+            Some(&existing) => {
+                // `section_id` is the key (equal by construction), so it is not
+                // re-synced; everything the renderer reads is.
+                let (title, decision_status) = section_heading(section_id, sec);
+                macro_rules! sync {
+                    ($get:ident, $set:ident, $val:expr) => {{
+                        let v = $val;
+                        if existing.$get(db) != v {
+                            existing.$set(db).to(v);
+                        }
+                    }};
+                }
+                sync!(title, set_title, title.to_string());
+                sync!(
+                    decision_status,
+                    set_decision_status,
+                    decision_status.to_string()
+                );
+                sync!(superseded_by, set_superseded_by, sec.superseded_by.clone());
+                sync!(intent, set_intent, sec.intent.clone());
+                sync!(
+                    rationale_bullets,
+                    set_rationale_bullets,
+                    sec.rationale_bullets.clone()
+                );
+                sync!(
+                    inputs_bullets,
+                    set_inputs_bullets,
+                    sec.inputs_bullets.clone()
+                );
+                sync!(
+                    outputs_bullets,
+                    set_outputs_bullets,
+                    sec.outputs_bullets.clone()
+                );
+                sync!(
+                    caveats_bullets,
+                    set_caveats_bullets,
+                    sec.caveats_bullets.clone()
+                );
+                sync!(
+                    alternatives,
+                    set_alternatives,
+                    sec.alternatives_rejected
+                        .iter()
+                        .map(|a| (a.alternative.clone(), a.reason.clone()))
+                        .collect::<Vec<_>>()
+                );
+                sync!(impact_scope, set_impact_scope, sec.impact_scope.clone());
+                sync!(
+                    examples,
+                    set_examples,
+                    sec.examples
+                        .iter()
+                        .map(|e| (e.language.clone(), e.code.clone()))
+                        .collect::<Vec<_>>()
+                );
+                sync!(
+                    implementations,
+                    set_implementations,
+                    sec.implementations
+                        .iter()
+                        .map(|i| (i.file.clone(), i.symbol.clone()))
+                        .collect::<Vec<_>>()
+                );
+                existing
+            }
+            None => {
+                membership_changed = true;
+                project_section_input(db, section_id, sec)
+            }
+        };
+        new_records.push(record);
+    }
+    if membership_changed {
+        index.set_sections(db).to(new_records);
+    }
+}
+
+/// Field-level ChangelogEntry reconcile keyed by `entry_id` (its entity
+/// identity). Mirrors [`reconcile_sections`] for the publishable half.
+fn reconcile_entries(db: &mut RenderDbImpl, index: RenderIndex, atomic: &AtomicStore) {
+    let old: std::collections::BTreeMap<String, RenderEntryInput> = index
+        .entries(db)
+        .into_iter()
+        .map(|e| (e.entry_id(db), e))
+        .collect();
+    let mut membership_changed = atomic.changelog_entries.len() != old.len();
+    let mut new_records: Vec<RenderEntryInput> = Vec::with_capacity(atomic.changelog_entries.len());
+    for (entry_id, e) in &atomic.changelog_entries {
+        let record = match old.get(entry_id) {
+            Some(&existing) => {
+                macro_rules! sync {
+                    ($get:ident, $set:ident, $val:expr) => {{
+                        let v = $val;
+                        if existing.$get(db) != v {
+                            existing.$set(db).to(v);
+                        }
+                    }};
+                }
+                sync!(
+                    decision_summary,
+                    set_decision_summary,
+                    e.publishable_decision_summary.clone()
+                );
+                sync!(
+                    changes_bullets,
+                    set_changes_bullets,
+                    e.publishable_changes_bullets.clone()
+                );
+                sync!(
+                    verification_bullets,
+                    set_verification_bullets,
+                    e.publishable_verification_bullets.clone()
+                );
+                sync!(
+                    impact_refs,
+                    set_impact_refs,
+                    e.publishable_impact_refs.clone()
+                );
+                sync!(
+                    carry_forward_bullets,
+                    set_carry_forward_bullets,
+                    e.publishable_carry_forward_bullets.clone()
+                );
+                existing
+            }
+            None => {
+                membership_changed = true;
+                project_entry_input(db, entry_id, e)
+            }
+        };
+        new_records.push(record);
+    }
+    if membership_changed {
+        index.set_entries(db).to(new_records);
     }
 }
 
@@ -485,6 +675,97 @@ mod tests {
         assert_ne!(svc.render(), cold_compose(&store, src));
         svc.reload(&store);
         assert_eq!(svc.render(), cold_compose(&store, src));
+    }
+
+    /// The 2b incrementality contract: after a single Section field edit,
+    /// `reload` + `render` re-executes only that unit's Tier-1 render plus the
+    /// Tier-2 compose (+2), regardless of how many other units exist
+    /// (size-independent invalidation). A wholesale re-project would re-run all.
+    #[test]
+    fn reconcile_single_field_edit_reruns_only_changed_tier1() {
+        let mut store = AtomicStore::new();
+        store.sections.insert("43".to_string(), full_section());
+        store.sections.insert(
+            "7".to_string(),
+            AtomicSection {
+                intent: Some("seven".to_string()),
+                ..Default::default()
+            },
+        );
+        store.sections.insert(
+            "9".to_string(),
+            AtomicSection {
+                intent: Some("nine".to_string()),
+                ..Default::default()
+            },
+        );
+        store
+            .changelog_entries
+            .insert("Round 162".to_string(), entry());
+        let src = "src.json";
+        let mut svc = RenderProjectionService::build(&store, src);
+        let _ = svc.render();
+        let warm = svc.exec_counter();
+
+        // Edit exactly one section's content; membership unchanged.
+        store.sections.get_mut("7").unwrap().intent = Some("seven edited".to_string());
+        svc.reload(&store);
+        let out = svc.render();
+
+        // Only the edited section's Tier-1 render + the Tier-2 compose re-run.
+        assert_eq!(
+            svc.exec_counter() - warm,
+            2,
+            "a single-field edit re-runs one Tier-1 render + Tier-2 compose, not all units"
+        );
+        // ...and the output still byte-matches a cold compose of the new store.
+        assert_eq!(out, cold_compose(&store, src));
+    }
+
+    /// Unchanged Section content across a reload re-executes nothing on render
+    /// (the reconcile sets no input field, so every Tier-1 + the Tier-2 compose
+    /// stay memoized).
+    #[test]
+    fn reconcile_no_change_is_fully_memoized() {
+        let mut store = AtomicStore::new();
+        store.sections.insert("43".to_string(), full_section());
+        store
+            .changelog_entries
+            .insert("Round 162".to_string(), entry());
+        let mut svc = RenderProjectionService::build(&store, "src.json");
+        let _ = svc.render();
+        let warm = svc.exec_counter();
+        svc.reload(&store); // identical store
+        let _ = svc.render();
+        assert_eq!(
+            svc.exec_counter(),
+            warm,
+            "a no-op reload runs no tracked bodies on the next render"
+        );
+    }
+
+    /// Removing a unit drops it from the output and only re-runs the Tier-2
+    /// compose (the surviving units' Tier-1 renders stay memoized).
+    #[test]
+    fn reconcile_section_removal_stays_byte_identical() {
+        let mut store = AtomicStore::new();
+        store.sections.insert("43".to_string(), full_section());
+        store.sections.insert(
+            "7".to_string(),
+            AtomicSection {
+                intent: Some("seven".to_string()),
+                ..Default::default()
+            },
+        );
+        let src = "src.json";
+        let mut svc = RenderProjectionService::build(&store, src);
+        assert_eq!(svc.render(), cold_compose(&store, src));
+
+        store.sections.remove("7");
+        svc.reload(&store);
+        let out = svc.render();
+        assert_eq!(out, cold_compose(&store, src));
+        assert!(!out.contains("seven"));
     }
 
     #[test]
