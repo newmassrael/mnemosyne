@@ -107,15 +107,19 @@ append-only fact log            ──→   materialized index keyed by
 
 ## 5. Current state vs target — the debt to converge
 
-The fact model exists as **two unreconciled type definitions** — one for the
-live JSON authoring store (`mnemosyne-atomic`), one for the RocksDB index codec
-(`mnemosyne-facts`) — that **nothing connects yet**: no production code projects
-the atomic store into the fact structs (every `*Fact` construction lives in
-tests, the persist substrate, or cascade fixtures). So this is a *type*-level
-deviation, not a live-data duplication. (A third, Salsa per-entity face —
-`SectionInput` / `ChangelogEntryInput` / `FrozenListInput` — was removed in R322;
-cascade now consumes facts through `BranchSnapshotData` rather than redefining
-them.)
+The fact model began as **two type definitions** — one for the live JSON
+authoring store (`mnemosyne-atomic`), one for the RocksDB index codec
+(`mnemosyne-facts`; the structs themselves moved to `mnemosyne-core` in R328).
+They are now **connected in production**: `mnemosyne-atomic::project` (R329) folds
+the live store into the canonical `*Fact` vocabulary, and that projection has two
+real consumers — the warm read-side validation service (`mnemosyne-projection`,
+R339) and the RocksDB materialized index (`mnemosyne-index::rebuild_index`,
+R332). So the earlier *type*-level deviation is resolved for every projected
+entity; what remains is routing live point queries through the index (convergence
+B, below). (A third, Salsa per-entity face — `SectionInput` /
+`ChangelogEntryInput` / `FrozenListInput` — was removed in R322; the coarse
+snapshot engine that briefly succeeded it was itself retired in R338, leaving
+`fine_grained.rs` as the sole cascade engine, consuming `*Fact` values directly.)
 
 The two faces overlap far less than a "modeled twice" framing suggests, and the
 right convergence differs per entity (R327 corrected this from an earlier
@@ -125,7 +129,7 @@ over-statement):
 |---|---|---|---|
 | Section | `AtomicSection` = `SectionSkeleton` + design_doc content | `SectionFact` embeds `SectionSkeleton` | **done** (R325/R326): one shared skeleton |
 | CrossRef | inline `AtomicSection.impact_scope` | first-class `CrossRefFact` relation rows | adapter-divergent by design (R326); projected at index build |
-| ChangelogEntry | `AtomicChangelogEntry` — audit + publishable bullet halves, keyed by prose `entry_id` | `ChangelogEntryFact` — scalar `round_number` / `summary` / `appended_at` | **B-driven**: the two share *no* fields; the canonical scalar shape is settled by the projection, not a pre-emptive shared struct |
+| ChangelogEntry | `AtomicChangelogEntry` — audit + publishable bullet halves, keyed by prose `entry_id` | `ChangelogEntryFact` — scalar `round_number` / `summary` | **settled (R329/R330)**: `project_changelog_entry_facts` parses `round_number` from the prose key and takes `summary` from the audit `decision_summary`; R330 dropped the unsourced `appended_at`. The two still share *no* struct — the canonical scalar shape was defined by the projection consumer, as planned |
 | FrozenList | *none* — frozen-ledger is a behavioral semantic (the `FrozenLedger` mutate-reject), not a stored entity | `FrozenListFact` + cascade `FrozenListRecord` | forward-looking substrate; no live counterpart to unify (YAGNI until a real consumer) |
 
 So **convergence A (unify the fact model) is complete for the only entity that
@@ -138,14 +142,18 @@ that defines the right shape. That consumer is **convergence B** (the
 projection). FrozenList has no atomic representation at all, so there is nothing
 to reconcile until a real frozen-list consumer exists.
 
-Other consequences today: the RocksDB store is built-but-orphaned (the bitemporal
-substrate is correct and kept, just unwired), and a tier-gate concept exists both
-in `validate-workspace` (real) and `mnemosyne-server` (stub). The write path that
-once bridged them through a broken `commit` hashing stub was removed in R321.
+Other consequences today: the RocksDB index is materialized from the atomic log
+by `mnemosyne-index` (R332) and exercised through its admin binary, but the live
+`query` / `validate` / `ops` read paths still scan the JSON store / in-memory
+projection rather than routing point queries through the index — that routing is
+convergence B's remaining half. A tier-gate concept exists both in
+`validate-workspace` (real) and `mnemosyne-server` (Phase-0 stub); the write path
+that once bridged them through a broken `commit` hashing stub was removed in R321.
 
-The substrate components are **well-built and kept** — `store` is a correct
-bitemporal/branch KV; `cascade` is a correct incremental-projection seed. They
-are not dead code; they are *not yet wired*.
+The substrate components are **well-built**, and the read side is now **wired**:
+`store` is a correct bitemporal/branch KV; `cascade` (the `fine_grained` Salsa
+engine since R338) drives the warm validation projection (R339). They are not
+dead code.
 
 ### Convergence sequence (each step independently verifiable)
 - **A — unify the fact model. _Done._** One canonical skeleton carrying both
@@ -156,12 +164,18 @@ are not dead code; they are *not yet wired*.
   share no fields and FrozenList has no atomic face, so their reconciliation is
   owned by B (the projection that defines the canonical shape), not a
   pre-emptive shared struct (R327).
-- **B — RocksDB as materialized index. _Active keystone._** Write the missing
-  projection: fold the atomic log into `*Fact` values, persist them under the
-  composite key, and route queries through the index instead of a full-JSON
-  scan. This is where ChangelogEntry's scalar fact shape is settled by a real
-  consumer, and where the orphaned bitemporal substrate is finally wired. The
-  index stays a *derived, rebuildable* view — never a second authoritative store.
+- **B — RocksDB as materialized index. _Projection + materialization landed
+  (R329/R330/R332); live query-routing scale-gated._** The projection is written:
+  `project_*_facts` folds the atomic log into `*Fact` values (R329) and
+  `mnemosyne-index::rebuild_index` persists them under the composite key (R332);
+  ChangelogEntry's scalar shape was settled by that consumer (R330), and the
+  bitemporal substrate is now exercised end-to-end (rebuild → point query) by the
+  index admin binary. The index is **not yet the live query source** — the
+  `query` / `validate` paths still scan the JSON store, which the warm in-memory
+  projection (C) already serves at dogfood scale. Routing point queries through
+  the durable index is the remaining half, deferred until corpus scale needs the
+  composite-key lookup a flat scan cannot give (§4, invariant #3). The index
+  stays a *derived, rebuildable* view — never a second authoritative store.
 - **C — cascade as incremental projection.** _Status half done (R335);
   architecture decided (R337)._ `SectionRecord` already carries the typed
   `Option<DecisionStatus>`. The remaining incremental half is a **read-side

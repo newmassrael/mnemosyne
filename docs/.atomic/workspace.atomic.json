@@ -4734,6 +4734,42 @@
         "other bench/ crates remain as historical reference; revisit per-crate only if they obstruct a live concern",
         "Render projection Step 2a remains the large next epic (R345 design); index-key ref_kind stays YAGNI"
       ]
+    },
+    "Round 348 — reconcile ARCHITECTURE.md §5 with the landed R329/R330/R332/R338 convergence-B state": {
+      "decision_summary": "ARCHITECTURE.md §5 (current state vs target) had drifted behind the code across four landed rounds — an SSOT-of-intent break in the North Star doc itself. It claimed the atomic and fact faces 'nothing connects yet — no production code projects the atomic store into the fact structs,' but R329 mnemosyne-atomic::project folds the live store into the canonical *Fact vocabulary and has two production consumers: the warm validation projection (mnemosyne-projection, R339) and the RocksDB materialized index (mnemosyne-index::rebuild_index, R332). It referenced a Salsa per-entity face superseded by BranchSnapshotData, but R338 retired that coarse snapshot engine, leaving fine_grained.rs as the sole cascade engine consuming *Fact directly. It called RocksDB 'built-but-orphaned / not yet wired,' but R332 materializes it from the log via the index crate and its admin binary. And convergence B was labeled 'Active keystone — write the missing projection,' though the projection, the composite-key persist, and ChangelogEntry's scalar-shape settlement all landed (R329/R330/R332); only routing live queries through the durable index remains, and that is scale-gated YAGNI — the warm in-memory projection serves dogfood scale, and the composite-key index is reserved for the corpus size a flat JSON scan cannot serve (§4 / invariant #3). This round corrects the §5 opening paragraph, the ChangelogEntry convergence-table row, the 'other consequences today' block, and the convergence-B sequence bullet to describe the actual landed state. ARCHITECTURE.md is a forward-looking human-facing artifact (not a frozen atomic-store entry); its header rule 'code is the debt, update the doc' applies in reverse here — the code advanced past the doc, so the doc is corrected to match. Documentation correctness only; no code change.",
+      "changes_bullets": [
+        "§5 opening: \"nothing connects yet / no production code projects\" corrected — R329 project.rs folds store→*Fact, consumed by projection (R339) + index (R332)",
+        "§5 parenthetical: drop retired BranchSnapshotData; fine_grained.rs is the sole cascade engine since R338, consuming *Fact directly",
+        "§5 ChangelogEntry table row + \"other consequences\": RocksDB materialized from log (R332), read side wired; appended_at dropped (R330)",
+        "Convergence B bullet: \"Active keystone (unwritten)\" → \"projection+materialization landed (R329/R330/R332); live query-routing scale-gated YAGNI\""
+      ],
+      "verification_bullets": [
+        "grep: project.rs project_*_facts consumed by mnemosyne-projection (warm validation) + mnemosyne-index::rebuild_index in production, not just tests",
+        "grep: BranchSnapshotData absent; cascade modules = fine_grained/lib/metadata/result/spec (coarse engine gone R338)",
+        "grep: no IndexReader/rebuild_index in query/validate/ops/cli/mcp live paths — query-routing genuinely remaining, framing accurate",
+        "citation hygiene: rounds 322/325/326/328/329/330/332/338/339 all present in ledger via list-sections prefix-match"
+      ],
+      "carry_forward_bullets": [
+        "Live query-routing through the RocksDB index remains (convergence B, scale-gated until flat-scan insufficient)",
+        "Stale code docstrings (render.rs legacy-Section, workspace DESIGN.md ×4, migration.rs dangling bench ref) → R349 sweep"
+      ],
+      "publishable_decision_summary": "ARCHITECTURE.md §5 (current state vs target) had drifted behind the code across four landed rounds — an SSOT-of-intent break in the North Star doc itself. It claimed the atomic and fact faces 'nothing connects yet — no production code projects the atomic store into the fact structs,' but R329 mnemosyne-atomic::project folds the live store into the canonical *Fact vocabulary and has two production consumers: the warm validation projection (mnemosyne-projection, R339) and the RocksDB materialized index (mnemosyne-index::rebuild_index, R332). It referenced a Salsa per-entity face superseded by BranchSnapshotData, but R338 retired that coarse snapshot engine, leaving fine_grained.rs as the sole cascade engine consuming *Fact directly. It called RocksDB 'built-but-orphaned / not yet wired,' but R332 materializes it from the log via the index crate and its admin binary. And convergence B was labeled 'Active keystone — write the missing projection,' though the projection, the composite-key persist, and ChangelogEntry's scalar-shape settlement all landed (R329/R330/R332); only routing live queries through the durable index remains, and that is scale-gated YAGNI — the warm in-memory projection serves dogfood scale, and the composite-key index is reserved for the corpus size a flat JSON scan cannot serve (§4 / invariant #3). This round corrects the §5 opening paragraph, the ChangelogEntry convergence-table row, the 'other consequences today' block, and the convergence-B sequence bullet to describe the actual landed state. ARCHITECTURE.md is a forward-looking human-facing artifact (not a frozen atomic-store entry); its header rule 'code is the debt, update the doc' applies in reverse here — the code advanced past the doc, so the doc is corrected to match. Documentation correctness only; no code change.",
+      "publishable_changes_bullets": [
+        "§5 opening: \"nothing connects yet / no production code projects\" corrected — R329 project.rs folds store→*Fact, consumed by projection (R339) + index (R332)",
+        "§5 parenthetical: drop retired BranchSnapshotData; fine_grained.rs is the sole cascade engine since R338, consuming *Fact directly",
+        "§5 ChangelogEntry table row + \"other consequences\": RocksDB materialized from log (R332), read side wired; appended_at dropped (R330)",
+        "Convergence B bullet: \"Active keystone (unwritten)\" → \"projection+materialization landed (R329/R330/R332); live query-routing scale-gated YAGNI\""
+      ],
+      "publishable_verification_bullets": [
+        "grep: project.rs project_*_facts consumed by mnemosyne-projection (warm validation) + mnemosyne-index::rebuild_index in production, not just tests",
+        "grep: BranchSnapshotData absent; cascade modules = fine_grained/lib/metadata/result/spec (coarse engine gone R338)",
+        "grep: no IndexReader/rebuild_index in query/validate/ops/cli/mcp live paths — query-routing genuinely remaining, framing accurate",
+        "citation hygiene: rounds 322/325/326/328/329/330/332/338/339 all present in ledger via list-sections prefix-match"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Live query-routing through the RocksDB index remains (convergence B, scale-gated until flat-scan insufficient)",
+        "Stale code docstrings (render.rs legacy-Section, workspace DESIGN.md ×4, migration.rs dangling bench ref) → R349 sweep"
+      ]
     }
   },
   "inventory_entries": {},
