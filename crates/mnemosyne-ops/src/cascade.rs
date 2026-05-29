@@ -127,15 +127,11 @@ pub fn render_atomic_store_to_md(
             } else {
                 atomic.skeleton.title.as_str()
             };
-            let status = match atomic
+            let status = atomic
                 .skeleton
                 .decision_status
                 .unwrap_or(DecisionStatus::Active)
-            {
-                DecisionStatus::Active => "active",
-                DecisionStatus::Superseded => "superseded",
-                DecisionStatus::Removed => "removed",
-            };
+                .as_str();
             let rendered = render_section(section_id, title, status, atomic)
                 .map_err(|e| anyhow!("render section {}: {}", section_id, e))?;
             // render_section emits `## §N. title` for top-level depth. The

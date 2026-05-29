@@ -1447,11 +1447,7 @@ fn print_section_decay_trigger(
             return;
         }
     };
-    let status_label = match new_status {
-        DecisionStatus::Active => "active",
-        DecisionStatus::Superseded => "superseded",
-        DecisionStatus::Removed => "removed",
-    };
+    let status_label = new_status.as_str();
     eprintln!(
         "[cascade] §{} → {} — {} citing location(s) in [plugins.set_equality_validator].paths",
         section_id,

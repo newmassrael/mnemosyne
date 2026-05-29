@@ -3121,3 +3121,20 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 353 — Route the two verbatim re-implementations of DecisionStatus::as_str() through the canonical converter (DRY). mnemosyne-core's DecisionStatus::as_str() is the single source for the lowercase active/superseded/removed labels, documented as the adapter string-boundary converter; mnemosyne-ops/cascade.rs (render_section status arg) and mnemosyne-cli/atomic_cli.rs (decay-trigger eprintln label) each open-coded the identical exhaustive 3-arm match against it. Both now call .as_str(). Behavior-identical (the converter emits byte-identical strings, so GENERATED.md is unchanged); net -10 lines and one fewer drift seam if a fourth DecisionStatus variant is ever added.
+
+**Changes**:
+- ops/cascade.rs: render status via decision_status.unwrap_or(Active).as_str()
+- cli/atomic_cli.rs: decay-trigger label via new_status.as_str()
+
+
+
+**Verification**:
+- as_str() returns identical "active"/"superseded"/"removed" — behavior-preserving
+- cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean
+- GENERATED.md byte-identical (render status output unchanged), validate-workspace green
+
+
+
+
+
