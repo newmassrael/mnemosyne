@@ -465,6 +465,29 @@ separate `mnemosyne.toml` trees (e.g. `docs/spec/scxml/`,
 per tree. Single-`mnemosyne.toml` multi-namespace bundling is *not*
 supported — `[workspace.spec_source]` is single-valued by design.
 
+**Commit↔ledger drift gate in a multi-workspace repo.**
+`validate-workspace` includes a commit↔ledger drift gate (Round
+293/301): it scans recent commit subjects for Mnemosyne changelog round
+labels `(R<n>)` / `(Round <n>)` and rejects when a cited round has no
+backfilled atomic-store entry. In a multi-workspace mono-repo the scan
+is **path-scoped to each workspace's own subtree** (Round 377), so a
+round label on a commit that only touched a *sibling* workspace does not
+false-flag this one. If your repo's commit convention uses `(R<n>)` to
+mean something *other* than a Mnemosyne changelog round (e.g. an
+adoption-round counter), downgrade the gate per workspace:
+
+```toml
+[commit_ledger]
+severity = "warn"   # | "info" | "reject" (default)
+```
+
+`reject` (the default) fails the exit code on any missing cited round —
+correct when the workspace authors its own `append-changelog-entry`
+ledger. `warn` / `info` still print the drift line but do not gate the
+exit code, for a pure consumer ledger whose `(R<n>)` labels are not
+Mnemosyne changelog rounds. The diagnostic is never silenced; only the
+gating changes.
+
 **Atomic store populated from the upstream spec.** Each spec section
 becomes an `AtomicSection`; each test case in a conformance catalog
 becomes an `InventoryEntry` (Phase 1A) when the id shape fits. Use

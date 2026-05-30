@@ -3642,3 +3642,19 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 378 — document [commit_ledger] severity in SCHEMA_GUIDE external-spec mirror section — R377 added the [commit_ledger].severity opt-out (SCE multi-workspace gate fix) but left it undocumented for adopters. Documented it in SCHEMA_GUIDE.md External-spec mirror section — the multi-workspace context where it applies — parallel to the per-workspace mnemosyne.toml shape already covered there. Explains the commit-ledger drift gate (R293/301), R377 path-scoping, and the reject(default)/warn/info severity choice for a pure consumer ledger whose (R<n>) labels are not Mnemosyne changelog rounds. SCHEMA_GUIDE.md is a hand-maintained human-facing artifact (not a round-trip/parsed doc), so direct edit is the correct path (R374 precedent).
+
+**Changes**:
+- docs/SCHEMA_GUIDE.md: add "Commit↔ledger drift gate in a multi-workspace repo" note to the External-spec mirror pattern
+- documents the gate (R293/301), R377 path-scoping, and [commit_ledger].severity reject(default)/warn/info opt-out
+
+
+
+**Verification**:
+- SCHEMA_GUIDE.md is hand-maintained, not in workspace.docs (not parsed/round-trip) — validate-workspace unaffected
+- additive prose only; no config/code change (the knob itself landed in R377)
+
+
+
+
+
