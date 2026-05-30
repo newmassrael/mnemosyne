@@ -301,6 +301,27 @@ citation whose prose actually *ends with* that exact prefix, so
 `SCSS 3 §` does not match `"CSS"` and `random Color 4 §` does not match
 `"CSS Color"` — prefer the most specific full name.
 
+**Citation scope — chains and comment wraps (Round 380).** The prefix
+need not sit immediately before *every* sigil in a group:
+
+- **Chained list** — `UAX #9 §6.6.8 / §6.6.9 / §6.6.10`: the first cite
+  carries the prefix; the rest inherit when separated only by `/` or
+  whitespace. A comma, `and`, or any other token breaks the chain, so a
+  genuinely distinct internal cite (`UAX #9 §3.3, §5.16`) is still
+  validated.
+- **Comment-block wrap** — a sigil that is the first content on its line
+  inherits the prefix from the immediately preceding comment line when
+  that line *ends with* the prefix:
+
+  ```rust
+  /// WAI-ARIA 1.2
+  /// §6.6.6   // inherits WAI-ARIA — not flagged as a missing section
+  ```
+
+  Only the immediately previous line carries (an intervening prose line
+  breaks it), and the prefix must be the line's trailing content — both
+  guards keep an internal citation from being skipped by accident.
+
 **Pick the right axis.** The two-axis design exists so generic-sounding
 tokens (e.g., `"AUTOSAR"`) don't silently skip *internal* `§<id>`
 citations on prose lines that happen to mention the standard name.

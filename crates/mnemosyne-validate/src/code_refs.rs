@@ -444,12 +444,28 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// Empty slices = the corresponding axis disabled. Both empty = no
 /// external skip, every `§<id>` is treated as internal to this
 /// workspace's atomic store.
+///
+/// Round 380 — external context also propagates across two citation
+/// scopes wider than a single immediately-preceding prefix: (c) same-line
+/// chains (`<prefix> §A / §B / §C` — cites after the first inherit when
+/// separated only by `/` or whitespace; a comma or word breaks the chain)
+/// and (d) comment-block wraps (a sigil that is the first content on its
+/// line inherits when the previous comment line *ends with* the prefix,
+/// e.g. `/// WAI-ARIA 1.2` then `/// §6.6.6`). Both still require a
+/// registered prefix verbatim, so a citation never skips without one.
 pub fn extract_section_citations(
     content: &str,
     external_prefixes_numeric: &[String],
     external_prefixes_bare: &[String],
 ) -> Vec<(usize, String)> {
+    let external_enabled =
+        !external_prefixes_numeric.is_empty() || !external_prefixes_bare.is_empty();
     let mut out = Vec::new();
+    // R380 — previous physical line, for the comment-block-wrap carry (d).
+    // In comment-only mode `strip_to_comments` preserves line numbers (code
+    // lines become spaces), so this is the previous *comment* line whenever
+    // the carry could legitimately fire.
+    let mut prev_line = "";
     for (line_idx, line) in content.lines().enumerate() {
         // — single-line backtick state. `` inside a code-span
         // is documentation example, not a citation. Toggled on each backtick
@@ -458,6 +474,9 @@ pub fn extract_section_citations(
         // most source files, and inline backtick spans cover the doc-comment
         // example case that survives stripping).
         let mut in_backtick = false;
+        // R380 — line-local chain state for `<prefix> §A / §B / §C` (c).
+        let mut chain_external = false;
+        let mut last_cite_end = 0usize;
         let mut chars = line.char_indices().peekable();
         while let Some((i, c)) = chars.next() {
             if c == '`' {
@@ -470,24 +489,13 @@ pub fn extract_section_citations(
             if c != '§' {
                 continue;
             }
-            // Round 277/284 — external-standard context check. Skip if
-            // the § is preceded (same line) by either numeric-mode
-            // `<prefix> <numeric>` or bare-mode `<prefix>` (with leading
-            // punctuation strip from R281).
-            if (!external_prefixes_numeric.is_empty() || !external_prefixes_bare.is_empty())
-                && is_external_section_cite(
-                    &line[..i],
-                    external_prefixes_numeric,
-                    external_prefixes_bare,
-                )
-            {
-                continue;
-            }
             // Tail: read [A-Za-z0-9._/-]+ starting at the byte after `§`.
             // `.` is constrained to digit-digit boundaries so
             // `.implementations` parses as `39` (the prose-style field
             // reference suffix is not part of the section_id) while
-            // `` (fractional id) remains intact.
+            // `` (fractional id) remains intact. Parsed first (before the
+            // external verdict) so the chain bookkeeping (c) always has the
+            // cite's byte extent.
             let tail_start = i + c.len_utf8();
             let tail = &line[tail_start..];
             let tail_chars: Vec<(usize, char)> = tail.char_indices().collect();
@@ -521,6 +529,28 @@ pub fn extract_section_citations(
                 continue;
             }
             let id = tail[..end].to_string();
+            let cite_end = tail_start + end;
+
+            // External-standard verdict — three context paths (R277/284 +
+            // R380), all still gated on a verbatim-registered prefix:
+            //  - direct: `<prefix>` immediately precedes the sigil (R277/284)
+            //  - chained (c): the previous same-line cite was external and
+            //    only chain separators (`/`, whitespace) sit between
+            //  - carried (d): the sigil is the first content on its line and
+            //    the previous comment line ends with the prefix (wrapped)
+            let is_external = external_enabled
+                && (is_external_section_cite(
+                    &line[..i],
+                    external_prefixes_numeric,
+                    external_prefixes_bare,
+                ) || (chain_external && gap_is_chain_only(&line[last_cite_end..i]))
+                    || (line_prose_is_marker_only(&line[..i])
+                        && prev_line_ends_with_prefix(
+                            prev_line,
+                            external_prefixes_numeric,
+                            external_prefixes_bare,
+                        )));
+
             // skip metavariable placeholders like `§N`, `§X`,
             // `§Y` used in doc-comments to mean "any section id". A real
             // section_id is either multi-char or starts with lowercase /
@@ -531,23 +561,66 @@ pub fn extract_section_citations(
                     .next()
                     .map(|c| c.is_ascii_uppercase())
                     .unwrap_or(false);
-            if !is_metavar {
+            if !is_metavar && !is_external {
                 out.push((line_idx + 1, id));
             }
+            // A metavar carries no external context forward; an internal
+            // cite breaks the chain; an external cite continues it.
+            chain_external = is_external && !is_metavar;
+            last_cite_end = cite_end;
+
             // Advance the outer iterator past what we consumed.
             // (peekable / char_indices doesn't have skip-to-byte, so we
-            // re-seek by consuming until we pass `tail_start + end`.)
-            let consumed_until = tail_start + end;
+            // re-seek by consuming until we pass `cite_end`.)
             while let Some(&(k, _)) = chars.peek() {
-                if k < consumed_until {
+                if k < cite_end {
                     chars.next();
                 } else {
                     break;
                 }
             }
         }
+        prev_line = line;
     }
     out
+}
+
+/// Round 380 — is `gap` (the text between two same-line `§` cites) made of
+/// only chain separators? `/` and whitespace chain (`§A / §B`, `§A/§B`);
+/// a comma, word, or any other char breaks the chain so a distinct cite
+/// after `, ` / ` and ` is still validated as internal.
+fn gap_is_chain_only(gap: &str) -> bool {
+    !gap.is_empty() && gap.chars().all(|c| c.is_whitespace() || c == '/')
+}
+
+/// Round 380 — is the text before a `§` only a comment marker (leading
+/// whitespace + a run of `/` or `#`) with no prose? Such a sigil is the
+/// first content on its line and may be a wrapped-citation continuation.
+fn line_prose_is_marker_only(before: &str) -> bool {
+    before
+        .trim_start()
+        .trim_start_matches(['/', '#'])
+        .trim()
+        .is_empty()
+}
+
+/// Round 380 — does the previous comment line *end with* an external
+/// prefix (so a wrapped `/// <prefix>\n/// §id` continuation inherits it)?
+/// Reuses [`is_external_section_cite`] by appending a space, so the same
+/// numeric/bare/multi-word matching applies; only fires when the prefix is
+/// the literal trailing content of the line.
+fn prev_line_ends_with_prefix(
+    prev_line: &str,
+    prefixes_numeric: &[String],
+    prefixes_bare: &[String],
+) -> bool {
+    if prev_line.trim().is_empty() {
+        return false;
+    }
+    let mut ctx = String::with_capacity(prev_line.len() + 1);
+    ctx.push_str(prev_line);
+    ctx.push(' ');
+    is_external_section_cite(&ctx, prefixes_numeric, prefixes_bare)
 }
 
 /// Round 277 + 284 — detect external-standard context preceding a `§`
@@ -3497,6 +3570,68 @@ mod tests {
             "only the internal cite should remain; got: {:?}",
             out
         );
+    }
+
+    #[test]
+    fn extract_chains_multi_cite_same_line_r380() {
+        // R380 (c): `UAX #9 §6.6.8 / §6.6.9 / §6.6.10` — only the first cite
+        // carries the prefix; the rest inherit across `/` separators.
+        let numeric = vec!["UAX".to_string()];
+        let content = "// UAX #9 \u{00a7}6.6.8 / \u{00a7}6.6.9 / \u{00a7}6.6.10\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert!(
+            out.is_empty(),
+            "chained external cites must skip; got: {:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn extract_chain_breaks_on_comma_r380() {
+        // R380 (c) over-skip guard: a comma is NOT a chain separator, so a
+        // distinct internal cite after `, ` is still validated.
+        let numeric = vec!["UAX".to_string()];
+        let content = "// UAX #9 \u{00a7}3.3, \u{00a7}5.16 internal\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert_eq!(
+            out,
+            vec![(1usize, "5.16".to_string())],
+            "comma must break the chain; got: {:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn extract_carries_wrapped_prefix_across_comment_lines_r380() {
+        // R380 (d): `/// WAI-ARIA 1.2` then `/// §6.6.6` — the sigil is the
+        // first content on its line and inherits the prior line's prefix.
+        let numeric = vec!["WAI-ARIA".to_string()];
+        let content = "/// WAI-ARIA 1.2\n/// \u{00a7}6.6.6\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert!(out.is_empty(), "wrapped prefix must carry; got: {:?}", out);
+        // Composes with the chain: continuation line may itself chain.
+        let chained = "/// WAI-ARIA 1.2\n/// \u{00a7}6.6.6 / \u{00a7}6.6.7\n";
+        assert!(extract_section_citations(chained, &numeric, &[]).is_empty());
+    }
+
+    #[test]
+    fn extract_wrap_carry_requires_prefix_at_line_tail_r380() {
+        // R380 (d) over-skip guard #1: the previous line must *end with* the
+        // prefix. Trailing prose after it ⇒ no carry, cite stays internal.
+        let numeric = vec!["WAI-ARIA".to_string()];
+        let content = "/// implements WAI-ARIA 1.2 fully\n/// \u{00a7}6.6.6\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert_eq!(out, vec![(2usize, "6.6.6".to_string())], "got: {:?}", out);
+    }
+
+    #[test]
+    fn extract_wrap_carry_only_immediate_previous_line_r380() {
+        // R380 (d) over-skip guard #2: only the immediately previous line
+        // carries; an intervening prose line breaks it.
+        let numeric = vec!["WAI-ARIA".to_string()];
+        let content = "/// WAI-ARIA 1.2\n/// unrelated note\n/// \u{00a7}6.6.6\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert_eq!(out, vec![(3usize, "6.6.6".to_string())], "got: {:?}", out);
     }
 
     #[test]

@@ -3684,3 +3684,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 380 — external code-ref matcher: same-line chains + comment-block-wrap carry (MNEMO-GAP-001 c+d) — pinion MNEMO-GAP-001 PoC measured two citation-SCOPE shapes R379 token-shape fix did not cover: (c) same-line multi-cite chaining (UAX #9 sectionA / sectionB — only the first sigil has the prefix immediately before it) and (d) comment-block wrap (a standard-name prefix on one /// line, the sigil on the next). R380 widens the scope inside extract_section_citations: a line-local chain inherits external context across /+whitespace separators from a prior external cite, and a marker-only sigil inherits when the immediately previous comment line ends with the prefix. Over-skip (silently not validating a real internal cite) is the dangerous direction, so it is bounded four ways: the verbatim-prefix gate is preserved, a comma or word breaks the chain, only the immediately previous line carries, and the prefix must be that line trailing content. Closes pinion (c)+(d); with R379 (a)+(b) all four measured false-positive classes are covered, so pinion can promote severity=reject and wire the pre-commit gate.
+
+**Changes**:
+- extract_section_citations: line-local chain_external + last_cite_end (chaining c); prev_line one-line lookback (wrap d); tail-parse now precedes the external verdict so chain bookkeeping has each cite extent
+- helpers gap_is_chain_only (/ + whitespace only), line_prose_is_marker_only (//|# marker), prev_line_ends_with_prefix (reuses is_external_section_cite)
+- SCHEMA_GUIDE external-standard-prefix section: chain + comment-block-wrap scope documented with the over-skip guards
+
+
+
+**Verification**:
+- +5 code_refs tests (chain / comma-breaks-chain / wrap-carry+chain-compose / wrap-requires-line-tail / wrap-immediate-prev-only); 118 code_refs green, zero regression
+- over-skip bounded by negatives: comma breaks chain, prefix must be previous-line tail, only the immediate previous line carries, verbatim-prefix gate preserved
+- clippy --all-targets clean, fmt clean
+
+
+
+**Impact**: §code-citation-defense
+
+
+**Carry forward**:
+- (d) carries one line only, not through consecutive bare-sigil list lines (multi-line lists not in pinion measured set); revisit if re-measurement surfaces them
+- LOW still unbatched: cli/main.rs cmd_validate_workspace comment wrongly says commit-ledger surface never gates (R377 made it gate at reject)
+- pinion: re-measure with R379+R380 on main, register prefixes, then promote severity=reject + wire pre-commit; adjective/prose cites remain pinion authoring
+
+
+
