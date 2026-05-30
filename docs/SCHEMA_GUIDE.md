@@ -277,6 +277,30 @@ appropriate axis. Leading punctuation (`(`, `[`, `"`, `«`) is stripped
 in both modes (Round 281), so `(RFC 791 §3.1)` and `(TR_SOMEIP §X.Y)`
 both match.
 
+**Multi-word names and W3C document forms (Round 379).** A registered
+prefix may be **multi-word** — it is matched as a token-boundary suffix
+of the prose before the document number (numeric mode) or before the
+sigil (bare mode). The document-number token may carry a leading `#`
+(Unicode Annex form) or trailing letters (versioned standards). So
+W3C-family citations are covered by registering the full standard name:
+
+```toml
+external_section_prefixes = [          # <PREFIX> <doc-number> §<id>
+  "UAX", "UTS", "UTR",                 # UAX #9 §3.3, UTS #51 §16
+  "CSS Color", "CSS Fonts",            # CSS Color 4 §8.1  (multi-word)
+  "WAI-ARIA", "WCAG", "IEEE",          # IEEE 802.11ax §… (letter-suffixed)
+]
+external_section_prefixes_bare = [     # <PREFIX> §<id>
+  "Unicode Standard", "Web IDL",       # Unicode Standard §3.12 (multi-word)
+  "UCD", "WAI-ARIA",                   # WAI-ARIA cited both ways → both axes
+]
+```
+
+The verbatim token-boundary match means a registered prefix only skips a
+citation whose prose actually *ends with* that exact prefix, so
+`SCSS 3 §` does not match `"CSS"` and `random Color 4 §` does not match
+`"CSS Color"` — prefer the most specific full name.
+
 **Pick the right axis.** The two-axis design exists so generic-sounding
 tokens (e.g., `"AUTOSAR"`) don't silently skip *internal* `§<id>`
 citations on prose lines that happen to mention the standard name.

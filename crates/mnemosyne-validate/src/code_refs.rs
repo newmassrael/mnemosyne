@@ -571,9 +571,11 @@ pub fn extract_section_citations(
 /// registered in both if the standard supports both forms; matching
 /// tries the relevant axis.
 ///
-/// Multi-token prefixes (e.g., `"ETSI TS"`) match on only the last
-/// non-whitespace token before the trigger. Workaround:
-/// register the trailing token (`"TS"`) as a slightly looser match.
+/// Round 379 — prefixes may be multi-word (`"CSS Color"`, `"Unicode
+/// Standard"`): the prose before the document-number (numeric mode) or
+/// before the sigil (bare mode) is matched against each registered
+/// prefix as a token-boundary *suffix*. Document-number tokens may carry
+/// a leading `#` (`UAX #9`) or trailing letters (`802.11ax`).
 /// Byte offset of the start of the last whitespace-delimited token in `s`.
 /// Splits on the last Unicode-whitespace char and advances past its full
 /// UTF-8 width (not a hardcoded +1): `char::is_whitespace` matches multibyte
@@ -605,30 +607,72 @@ fn is_external_section_cite(
     if last_token.is_empty() {
         return false;
     }
-    let last_is_numeric = last_token.chars().all(|c| c.is_ascii_digit() || c == '.')
-        && last_token.chars().any(|c| c.is_ascii_digit());
-
-    if last_is_numeric {
-        // Numeric mode (R277). Prev token must match prefixes_numeric.
+    if is_document_number_token(last_token) {
+        // Numeric mode (R277, widened R379). The document-number token may
+        // carry a leading `#` (`UAX #9`) or trailing letters (`802.11ax`);
+        // the prose *before* it must end with a registered numeric prefix
+        // (which may itself be multi-word, e.g. `CSS Color`).
         if prefixes_numeric.is_empty() {
             return false;
         }
-        let before_last = trimmed[..last_token_start].trim_end();
-        if before_last.is_empty() {
+        let before_num = trimmed[..last_token_start].trim_end();
+        if before_num.is_empty() {
             return false;
         }
-        let prev_token_start = last_whitespace_token_start(before_last);
-        let prev_token = &before_last[prev_token_start..];
-        let prev_clean = prev_token.trim_start_matches(|c: char| !c.is_alphanumeric());
-        prefixes_numeric.iter().any(|p| p == prev_clean)
+        prose_ends_with_prefix(before_num, prefixes_numeric)
     } else {
-        // Bare mode (R284). Last token itself must match prefixes_bare.
+        // Bare mode (R284, widened R379). The prose must end with a
+        // registered bare prefix (which may be multi-word, e.g.
+        // `Unicode Standard`).
         if prefixes_bare.is_empty() {
             return false;
         }
-        let last_clean = last_token.trim_start_matches(|c: char| !c.is_alphanumeric());
-        prefixes_bare.iter().any(|p| p == last_clean)
+        prose_ends_with_prefix(trimmed, prefixes_bare)
     }
+}
+
+/// Round 379 — does `tok` look like a standard's *document-number* token?
+///
+/// Accepts an optional leading `#` (Unicode Annex form `UAX #9`), then
+/// requires a leading ASCII digit and an all-alphanumeric-or-dot body
+/// (`791`, `802.3`, `1.2`, `9`, `802.11ax`). Rejects names (`Color`,
+/// `Standard`) and hyphenated tokens (`WAI-ARIA`), which select bare mode.
+fn is_document_number_token(tok: &str) -> bool {
+    let body = tok.strip_prefix('#').unwrap_or(tok);
+    let mut chars = body.chars();
+    if !matches!(chars.next(), Some(c) if c.is_ascii_digit()) {
+        return false;
+    }
+    body.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+}
+
+/// Round 379 — does `prose` end with one of `prefixes` on a token
+/// boundary? A prefix may be multi-word (`"CSS Color"`, `"Unicode
+/// Standard"`); the char before the match must be a non-alphanumeric
+/// boundary, so `(RFC` / `[RFC` / a leading whitespace all match but
+/// `FOORFC` does not. Verbatim suffix match — no domain knowledge, the
+/// engine never learns what any prefix means.
+fn prose_ends_with_prefix(prose: &str, prefixes: &[String]) -> bool {
+    let prose = prose.trim();
+    for p in prefixes {
+        if p.is_empty() || !prose.ends_with(p.as_str()) {
+            continue;
+        }
+        let idx = prose.len() - p.len();
+        if !prose.is_char_boundary(idx) {
+            continue;
+        }
+        let boundary_ok = idx == 0
+            || !prose[..idx]
+                .chars()
+                .next_back()
+                .map(|c| c.is_alphanumeric())
+                .unwrap_or(false);
+        if boundary_ok {
+            return true;
+        }
+    }
+    false
 }
 
 /// The namespace segment of a `§<id>` citation: the part before the first
@@ -3404,6 +3448,55 @@ mod tests {
         assert!(!is_external_section_cite("// FOO ", &[], &bare));
         // Negative: numeric mode trigger with empty numeric axis.
         assert!(!is_external_section_cite("RFC 791 ", &[], &bare));
+    }
+
+    #[test]
+    fn is_external_section_cite_hash_document_number_r379() {
+        // R379 (a): a hash-prefixed document number (UAX #9, UAX #15)
+        // selects numeric mode and reads UAX as the prefix.
+        let numeric = vec!["UAX".to_string()];
+        assert!(is_external_section_cite("// UAX #9 ", &numeric, &[]));
+        assert!(is_external_section_cite("per UAX #15 ", &numeric, &[]));
+        // Letter-suffixed document number (802.11ax) also classifies.
+        let ieee = vec!["IEEE".to_string()];
+        assert!(is_external_section_cite("IEEE 802.11ax ", &ieee, &[]));
+        // Negative: a hash number with no registered prefix must not skip.
+        assert!(!is_external_section_cite("// see #9 ", &numeric, &[]));
+    }
+
+    #[test]
+    fn is_external_section_cite_multi_word_prefix_r379() {
+        // R379 (b): multi-word prefixes match as a token-boundary suffix.
+        let numeric = vec!["CSS Color".to_string()];
+        assert!(is_external_section_cite("// CSS Color 4 ", &numeric, &[]));
+        // Bare multi-word: Unicode Standard.
+        let bare = vec!["Unicode Standard".to_string()];
+        assert!(is_external_section_cite("// Unicode Standard ", &[], &bare));
+        // Negative: a different leading word must not skip (no over-reach).
+        assert!(!is_external_section_cite(
+            "// random Color 4 ",
+            &numeric,
+            &[]
+        ));
+        // Negative: suffix must match on a token boundary (SCSS is not CSS).
+        let css = vec!["CSS".to_string()];
+        assert!(!is_external_section_cite("// SCSS 3 ", &css, &[]));
+    }
+
+    #[test]
+    fn extract_skips_w3c_shapes_r379() {
+        // End-to-end: UAX #9 and CSS Color 4 citations no longer surface
+        // as internal once the prefix is registered; a bare internal cite
+        // (5.16) still does.
+        let numeric = vec!["UAX".to_string(), "CSS Color".to_string()];
+        let content = "// UAX #9 \u{00a7}3.3.1 reorder\n// CSS Color 4 \u{00a7}8.1 oklch\n// \u{00a7}5.16 internal\n";
+        let out = extract_section_citations(content, &numeric, &[]);
+        assert_eq!(
+            out,
+            vec![(3usize, "5.16".to_string())],
+            "only the internal cite should remain; got: {:?}",
+            out
+        );
     }
 
     #[test]

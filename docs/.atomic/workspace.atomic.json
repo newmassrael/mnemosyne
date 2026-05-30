@@ -5628,6 +5628,46 @@
         "SCHEMA_GUIDE.md is hand-maintained, not in workspace.docs (not parsed/round-trip) — validate-workspace unaffected",
         "additive prose only; no config/code change (the knob itself landed in R377)"
       ]
+    },
+    "Round 379 — external code-ref matcher: multi-word prefixes + #N/letter-suffixed document numbers (MNEMO-GAP-001 a+b)": {
+      "decision_summary": "pinion (W3C-citing Rust GUI, MNEMO-GAP-001) adopted validate-code-refs (Mnemosyne change 0, confirming un-adopted-not-un-served) and PoC-measured the residual false-positives. The external-standard skip matcher (is_external_section_cite, R277/281/284) only covered single-token prefix + pure-numeric document token, so W3C forms fell through: UAX #9 (# breaks numeric detection) and CSS Color 4 (multi-word name; only Color was read). R379 widens the matcher in-paradigm — document-number recognizer accepts leading # and trailing letters; prefix match becomes a multi-word token-boundary suffix. Verbatim-prefix gate preserved, so over-skip stays bounded to registered prefixes (no internal cite silently skipped). Config schema unchanged. Closes (a)+(b) (~38 of pinion measured cases); the pinion-discovered (c) multi-cite chaining + (d) comment-block-scope shapes are deferred to a follow-up round (extraction context-model change, separate over-skip surface).",
+      "changes_bullets": [
+        "is_external_section_cite: new is_document_number_token (leading # + trailing-letter doc numbers: UAX #9, 802.11ax) + prose_ends_with_prefix (multi-word prefix matched as token-boundary suffix)",
+        "covers UAX/UTS/UTR #N, CSS Color 4 (numeric multi-word), Unicode Standard (bare multi-word); config schema unchanged (Vec<String> values may now contain spaces)",
+        "SCHEMA_GUIDE external-standard-prefix section: multi-word + #N documented; stale \"register trailing token\" workaround removed"
+      ],
+      "verification_bullets": [
+        "+3 code_refs tests (hash doc-number / multi-word / e2e W3C skip) + all 113 code_refs tests green, zero regression on RFC/IEEE/ISO/WCAG/WAI-ARIA paths",
+        "negatives lock no over-skip: SCSS != CSS, \"random Color 4\" != \"CSS Color\", unregistered #9 not skipped, internal 5.16 still extracted",
+        "clippy --all-targets clean, fmt clean"
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "follow-up round = (c) multi-cite chaining + (d) comment-block-scope wrapped prefix (pinion-measured ~19 cases); extraction context-model change, over-skip risk needs care; pinion holds severity=warn until both land",
+        "LOW unbatched: cli/main.rs cmd_validate_workspace comment wrongly says commit-ledger surface never gates the exit code (R377 made it gate at severity=reject)",
+        "pinion-side (not Mnemosyne): adjective forms (5.13-style) + bare prose cites = pinion authoring cleanup"
+      ],
+      "publishable_decision_summary": "pinion (W3C-citing Rust GUI, MNEMO-GAP-001) adopted validate-code-refs (Mnemosyne change 0, confirming un-adopted-not-un-served) and PoC-measured the residual false-positives. The external-standard skip matcher (is_external_section_cite, R277/281/284) only covered single-token prefix + pure-numeric document token, so W3C forms fell through: UAX #9 (# breaks numeric detection) and CSS Color 4 (multi-word name; only Color was read). R379 widens the matcher in-paradigm — document-number recognizer accepts leading # and trailing letters; prefix match becomes a multi-word token-boundary suffix. Verbatim-prefix gate preserved, so over-skip stays bounded to registered prefixes (no internal cite silently skipped). Config schema unchanged. Closes (a)+(b) (~38 of pinion measured cases); the pinion-discovered (c) multi-cite chaining + (d) comment-block-scope shapes are deferred to a follow-up round (extraction context-model change, separate over-skip surface).",
+      "publishable_changes_bullets": [
+        "is_external_section_cite: new is_document_number_token (leading # + trailing-letter doc numbers: UAX #9, 802.11ax) + prose_ends_with_prefix (multi-word prefix matched as token-boundary suffix)",
+        "covers UAX/UTS/UTR #N, CSS Color 4 (numeric multi-word), Unicode Standard (bare multi-word); config schema unchanged (Vec<String> values may now contain spaces)",
+        "SCHEMA_GUIDE external-standard-prefix section: multi-word + #N documented; stale \"register trailing token\" workaround removed"
+      ],
+      "publishable_verification_bullets": [
+        "+3 code_refs tests (hash doc-number / multi-word / e2e W3C skip) + all 113 code_refs tests green, zero regression on RFC/IEEE/ISO/WCAG/WAI-ARIA paths",
+        "negatives lock no over-skip: SCSS != CSS, \"random Color 4\" != \"CSS Color\", unregistered #9 not skipped, internal 5.16 still extracted",
+        "clippy --all-targets clean, fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "follow-up round = (c) multi-cite chaining + (d) comment-block-scope wrapped prefix (pinion-measured ~19 cases); extraction context-model change, over-skip risk needs care; pinion holds severity=warn until both land",
+        "LOW unbatched: cli/main.rs cmd_validate_workspace comment wrongly says commit-ledger surface never gates the exit code (R377 made it gate at severity=reject)",
+        "pinion-side (not Mnemosyne): adjective forms (5.13-style) + bare prose cites = pinion authoring cleanup"
+      ]
     }
   },
   "inventory_entries": {},
