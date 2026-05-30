@@ -906,8 +906,10 @@ fn cmd_validate_workspace() -> Result<()> {
     // Single-sourced through mnemosyne-ops (R320): the full T1 / round-trip
     // / style / atomic-ledger / supersede / publishable-divergence pipeline
     // lives in ops::validate_workspace. The CLI keeps only its own stdout
-    // rendering + the two informational surfaces (atomic decay, commit-ledger
-    // drift) that are display-only and never gate the exit code.
+    // rendering + two extra surfaces: atomic decay (display-only) and
+    // commit-ledger drift, which gates the exit code at
+    // `[commit_ledger].severity = reject` (the R301 default) and is
+    // display-only at warn/info (R377).
     let root = repo_root()?;
     let report = mnemosyne_ops::validate_workspace(&root).map_err(|e| anyhow!("{}", e))?;
     print!("{}", report.render_plain());
