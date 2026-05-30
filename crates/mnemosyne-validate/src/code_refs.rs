@@ -2876,7 +2876,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v5_section_path_inventory_missing() {
+    fn scan_section_path_inventory_missing() {
         // Full-scanner path: a path-shape cite (`W3C SCXML 3.13`) with
         // no matching atomic store entry must surface as InventoryMissing
         // via the section-path axis axis, not silently pass.
@@ -2915,7 +2915,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v5_section_path_inventory_active_silent() {
+    fn scan_section_path_inventory_active_silent() {
         // Registered InventoryEntry with Active status — cite passes
         // silently on the section-path axis axis, same policy as R275.
         use mnemosyne_atomic::{AtomicStore, InventoryEntry};
@@ -2956,7 +2956,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v5_both_inventory_axes_dedup() {
+    fn scan_both_inventory_axes_dedup() {
         // A prefix registered in BOTH axes (e.g., legacy `ARP_` carried
         // into section-path axis for migration reasons) must surface a matching cite
         // once, not twice. Dedup on (line, id).
@@ -3346,7 +3346,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_v4_bare_external_skips_section_missing() {
+    fn scan_bare_external_skips_section_missing() {
         use mnemosyne_atomic::AtomicStore;
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();

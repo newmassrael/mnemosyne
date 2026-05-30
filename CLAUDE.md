@@ -61,6 +61,19 @@ recommendation.
  function signature, struct, or enum: *modify the existing definition
  in place and update all callers in the same change*. Pre-release
  means no external compat to preserve.
+- **The ban covers EVERY `vN` version-postfix identifier (`_v2`, `_v3`,
+ `_v4`, `…`, snake `foo_v2`, camel `FooV2`), in ALL code — not just
+ production API. Test fixtures, test function names, test data labels,
+ local variables, modules: none may carry a `vN` version postfix.**
+ The right name describes *what differs* (`section_alt` / `mutated_entry`
+ / `bare_external_case`), never *which iteration* (`section_v2`). A
+ pre-commit gate (`.githooks/pre-commit` Gate 6) scans staged `.rs`
+ added lines for the `[A-Za-z0-9]_v[0-9]` / `[a-z0-9]V[0-9]` patterns and
+ rejects the commit; do not bypass it with `--no-verify`.
+- NOT banned (these are real version *numbers* in data, not identifier
+ postfixes): `schema_version` / `CURRENT_SCHEMA_VERSION` (store schema
+ generation), upstream spec revision strings, RFC numbers. The gate's
+ `_v[0-9]` pattern deliberately does not match `_version`.
 - The legacy `_v2`/`_v3` wrappers that existed in `code_refs.rs` were
  cleaned up in the same change that introduced this rule — keep the
  cleanup, don't recreate the pattern.

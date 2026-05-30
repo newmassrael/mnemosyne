@@ -5418,6 +5418,34 @@
         "B2 rev-label drift (R370) still reads only source_revision, not the excerpt text; this read-path is the separate compliance-ledger reviewer surface (RFC-001 UC-1 §4 closed on both query + generate-docs surfaces).",
         "Next SCE-scoped Mnemosyne rounds remain A2 (persistence-boundary refactor: separate in-memory mutate from the single save_with_receipt) then C2 (resolver wiring with SCE cpp plugin PR), both PoC-discipline."
       ]
+    },
+    "Round 372 — ban vN version-postfix naming (codify + pre-commit gate)": {
+      "decision_summary": "Broaden the no-postfix-versioning rule to ALL identifiers (production + test fixtures/names/data) and enforce it with a pre-commit gate that scans staged .rs added lines for foo_v2 / BarV3 patterns.",
+      "changes_bullets": [
+        "CLAUDE.md anti-pattern broadened: the vN version-postfix ban now explicitly covers EVERY identifier (production fn/struct/enum AND test fixtures, test function names, test data labels, locals, modules), not just production API. The right name describes what differs (section_alt), never which iteration (section_v2). Carve-out spelled out: real version numbers (schema_version, CURRENT_SCHEMA_VERSION, upstream spec revisions) are not identifier postfixes and are not banned.",
+        ".githooks/pre-commit Gate 6 added: scans staged .rs added lines for the [A-Za-z0-9]_v[0-9] and [a-z0-9]V[0-9] patterns and rejects the commit on a hit; the _v[0-9] form deliberately does not match _version, so schema_version and friends pass.",
+        "swept the remaining vN test names in code_refs.rs (four scan_v4_/scan_v5_ helpers renamed to their descriptive form); R371 already renamed the projection parity fixtures (section_alt/entry_alt) and one generate_docs test in the files it touched."
+      ],
+      "verification_bullets": [
+        "Gate 6 regex validated by hand: rejects section_v2 / fooV2 / BarV3 / scan_v4_test; passes schema_version / CURRENT_SCHEMA_VERSION / a \"/v2/\" URL literal / source_revision / fetched_sha256. Workspace-wide vN identifier scan = 0 remaining.",
+        "full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean; the gate fired live on the R371 commit (passed, clean fixtures)."
+      ],
+      "carry_forward_bullets": [
+        "Gate 6 scans .rs only by design — GENERATED.md and changelog prose may legitimately mention v2/v3 when discussing the rule itself, so the audit trail is not falsely tripped. Comment text in .rs containing a literal vN token would trip it; reword such mentions (the gate treats strictness over comment convenience as correct)."
+      ],
+      "publishable_decision_summary": "Broaden the no-postfix-versioning rule to ALL identifiers (production + test fixtures/names/data) and enforce it with a pre-commit gate that scans staged .rs added lines for foo_v2 / BarV3 patterns.",
+      "publishable_changes_bullets": [
+        "CLAUDE.md anti-pattern broadened: the vN version-postfix ban now explicitly covers EVERY identifier (production fn/struct/enum AND test fixtures, test function names, test data labels, locals, modules), not just production API. The right name describes what differs (section_alt), never which iteration (section_v2). Carve-out spelled out: real version numbers (schema_version, CURRENT_SCHEMA_VERSION, upstream spec revisions) are not identifier postfixes and are not banned.",
+        ".githooks/pre-commit Gate 6 added: scans staged .rs added lines for the [A-Za-z0-9]_v[0-9] and [a-z0-9]V[0-9] patterns and rejects the commit on a hit; the _v[0-9] form deliberately does not match _version, so schema_version and friends pass.",
+        "swept the remaining vN test names in code_refs.rs (four scan_v4_/scan_v5_ helpers renamed to their descriptive form); R371 already renamed the projection parity fixtures (section_alt/entry_alt) and one generate_docs test in the files it touched."
+      ],
+      "publishable_verification_bullets": [
+        "Gate 6 regex validated by hand: rejects section_v2 / fooV2 / BarV3 / scan_v4_test; passes schema_version / CURRENT_SCHEMA_VERSION / a \"/v2/\" URL literal / source_revision / fetched_sha256. Workspace-wide vN identifier scan = 0 remaining.",
+        "full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean; the gate fired live on the R371 commit (passed, clean fixtures)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Gate 6 scans .rs only by design — GENERATED.md and changelog prose may legitimately mention v2/v3 when discussing the rule itself, so the audit trail is not falsely tripped. Comment text in .rs containing a literal vN token would trip it; reword such mentions (the gate treats strictness over comment convenience as correct)."
+      ]
     }
   },
   "inventory_entries": {},
