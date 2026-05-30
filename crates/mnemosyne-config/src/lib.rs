@@ -441,6 +441,34 @@ pub struct SetEqualityValidatorConfig {
     /// each axis is preserved).
     #[serde(default)]
     pub inventory_path_prefixes: Vec<String>,
+
+    /// Section-ID namespace scope for this workspace's `§<id>` axis.
+    ///
+    /// A `§<id>` citation's namespace is the segment of `<id>` before the
+    /// first `-` (or the whole id when it has no `-`). When this field is
+    /// set, only citations whose namespace segment is *exactly* equal to it
+    /// are validated against the atomic section-id set; citations in any
+    /// other namespace are treated as out of this workspace's jurisdiction
+    /// and skipped entirely (neither `SectionMissing` nor `CitationUnbound`,
+    /// and no bidirectional binding record).
+    ///
+    /// This is what lets a single source file cite more than one external
+    /// spec — `§scxml-6.4` (W3C SCXML) and `§mesh-16.7` (a different
+    /// ledger) in the same comment — with each workspace gating only its
+    /// own namespace. The namespace lives in the citation token itself, not
+    /// in surrounding prose, so it is independent of the R277/R284
+    /// preceding-word external-skip axes (which still apply on top).
+    ///
+    /// `None` (omitted) = no scoping: every `§<id>` is checked, exactly as
+    /// before this field existed (100% back-compatible — workspaces with
+    /// kebab/slash ids like `§atomic-store/changelog-…` are unaffected).
+    ///
+    /// Exact-segment match, not prefix: namespace `"scxml"` validates
+    /// `§scxml-6.4` and skips `§scxmlfoo-1` (segment `scxmlfoo` ≠ `scxml`)
+    /// and `§mesh-16.7`. An empty string is rejected at config load — an
+    /// empty namespace is almost certainly an authoring error.
+    #[serde(default)]
+    pub section_namespace: Option<String>,
 }
 
 fn default_severity_reject() -> String {
@@ -767,6 +795,22 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
                 "mnemosyne.toml: `spec_drift.severity = {:?}` must be one of: reject | warn | info",
                 sd.severity
             );
+        }
+    }
+    if let Some(sev) = cfg
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+    {
+        if let Some(ns) = &sev.section_namespace {
+            // An empty namespace is almost certainly an authoring error —
+            // fail fast rather than silently scoping every citation out
+            // (the `fetched_sha256` load-time strictness precedent).
+            if ns.trim().is_empty() {
+                bail!(
+  "mnemosyne.toml: `plugins.set_equality_validator.section_namespace` must be non-empty when set"
+ );
+            }
         }
     }
     Ok(())
@@ -1293,5 +1337,39 @@ since = "2026-05-08"
             loaded.workspace_root.canonicalize().unwrap(),
             tmp.path().canonicalize().unwrap()
         );
+    }
+
+    #[test]
+    fn set_equality_validator_empty_namespace_rejected() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec/scxml.md"]
+
+[plugins.set_equality_validator]
+section_namespace = ""
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            err.to_string().contains("section_namespace"),
+            "expected section_namespace-validation error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn set_equality_validator_namespace_accepted() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec/scxml.md"]
+
+[plugins.set_equality_validator]
+section_namespace = "scxml"
+"#;
+        let cfg = parse_config(content).unwrap();
+        let sev = cfg
+            .plugins
+            .and_then(|p| p.set_equality_validator)
+            .expect("set_equality_validator missing");
+        assert_eq!(sev.section_namespace.as_deref(), Some("scxml"));
     }
 }

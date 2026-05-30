@@ -631,6 +631,21 @@ fn is_external_section_cite(
     }
 }
 
+/// The namespace segment of a `§<id>` citation: the part before the first
+/// `-`, or the whole id when it has no `-`. Pure, offline, no domain
+/// knowledge — the engine never learns what any particular namespace means.
+///
+/// `scxml-6.4` → `scxml` · `mesh-16.7` → `mesh` · `D` → `D` ·
+/// `scxml-D-interpret` → `scxml`. Used by the workspace `section_namespace`
+/// scope to decide whether a citation falls under this ledger's jurisdiction.
+fn citation_namespace(section_id: &str) -> &str {
+    // `split_once` makes the no-hyphen case explicit (the whole id is its own
+    // namespace) instead of an unreachable `split('-').next()` fallback.
+    section_id
+        .split_once('-')
+        .map_or(section_id, |(namespace, _)| namespace)
+}
+
 fn is_section_id_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '.' || c == '/' || c == '-' || c == '_'
 }
@@ -1162,6 +1177,7 @@ impl SetEqualityValidator {
         let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
         let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
         let inventory_path_prefixes = self.config.inventory_path_prefixes.as_slice();
+        let section_namespace = self.config.section_namespace.as_deref();
         // Empty resolver map = symbol axis silently skipped; identical
         // semantic to the pre-R307 `Option<&BTreeMap>` shape where None
         // bypassed lookup entirely.
@@ -1292,6 +1308,17 @@ impl SetEqualityValidator {
                 external_section_prefixes_numeric,
                 external_section_prefixes_bare,
             ) {
+                // Namespace scope — when this workspace declares a
+                // `section_namespace`, a citation whose namespace segment
+                // (the part before the first `-`) is not exactly that value
+                // belongs to a different ledger. Skip it entirely: no
+                // SectionMissing, no `cited_by` binding record (step 3 must
+                // not treat a foreign cite as this workspace's binding).
+                if let Some(ns) = section_namespace {
+                    if citation_namespace(&section_id) != ns {
+                        continue;
+                    }
+                }
                 // Ledger suppression — if (file, id) is explicitly registered as a
                 // known-stale code citation, treat as if the binding were correct
                 // (record in `cited_by` so step 3 doesn't double-fire).
@@ -1675,6 +1702,39 @@ mod tests {
         external_section_prefixes_bare: &[String],
         inventory_path_prefixes: &[String],
     ) -> std::io::Result<Vec<CodeRefViolation>> {
+        // The common case carries no namespace scope; `_ns` is the single
+        // implementation, so the existing call sites stay untouched.
+        scan_paths_no_resolvers_ns(
+            workspace_root,
+            paths,
+            prefix,
+            store,
+            orphan_ledger,
+            filter_id,
+            comment_only,
+            inventory_prefixes,
+            external_section_prefixes_numeric,
+            external_section_prefixes_bare,
+            inventory_path_prefixes,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn scan_paths_no_resolvers_ns(
+        workspace_root: &Path,
+        paths: &[String],
+        prefix: &str,
+        store: &AtomicStore,
+        orphan_ledger: &[OrphanLedgerEntry],
+        filter_id: Option<&str>,
+        comment_only: bool,
+        inventory_prefixes: &[String],
+        external_section_prefixes_numeric: &[String],
+        external_section_prefixes_bare: &[String],
+        inventory_path_prefixes: &[String],
+        section_namespace: Option<&str>,
+    ) -> std::io::Result<Vec<CodeRefViolation>> {
         use mnemosyne_core::AtomicStoreView;
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
@@ -1687,6 +1747,7 @@ mod tests {
                 external_section_prefixes: external_section_prefixes_numeric.to_vec(),
                 external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
+                section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
             orphan_ledger: orphan_ledger.to_vec(),
@@ -3857,5 +3918,197 @@ mod tests {
             }
             other => panic!("unexpected variant: {:?}", other),
         }
+    }
+
+    // ============ section_namespace scope tests ============
+
+    #[test]
+    fn citation_namespace_segments() {
+        assert_eq!(citation_namespace("scxml-6.4"), "scxml");
+        assert_eq!(citation_namespace("mesh-16.7"), "mesh");
+        assert_eq!(citation_namespace("scxml-D-interpret"), "scxml");
+        // no hyphen → whole id is its own namespace segment
+        assert_eq!(citation_namespace("D"), "D");
+        assert_eq!(citation_namespace("39"), "39");
+    }
+
+    #[test]
+    fn namespace_scopes_out_foreign_cite() {
+        // A `mesh-16.7` cite under section_namespace="scxml" belongs to a
+        // different ledger — skip it, no SectionMissing despite empty store.
+        use mnemosyne_atomic::AtomicStore;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// dedup per \u{00a7}mesh-16.7 elsewhere\n",
+        )
+        .unwrap();
+        let store = AtomicStore::new();
+        let v = scan_paths_no_resolvers_ns(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+            Some("scxml"),
+        )
+        .unwrap();
+        assert!(
+            v.is_empty(),
+            "foreign-namespace cite must be skipped: {:?}",
+            v
+        );
+    }
+
+    #[test]
+    fn namespace_keeps_matching_cite_in_scope() {
+        // A `scxml-9.99` cite under section_namespace="scxml" is in scope, so
+        // its absence from the (empty) store fires SectionMissing.
+        use mnemosyne_atomic::AtomicStore;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// see \u{00a7}scxml-9.99 hallucinated\n",
+        )
+        .unwrap();
+        let store = AtomicStore::new();
+        let v = scan_paths_no_resolvers_ns(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+            Some("scxml"),
+        )
+        .unwrap();
+        assert_eq!(v.len(), 1, "in-namespace unknown id must fire: {:?}", v);
+        match &v[0] {
+            CodeRefViolation::Citation { kind, citation } => {
+                assert_eq!(*kind, ViolationKind::SectionMissing);
+                assert!(citation.entry_id.contains("scxml-9.99"));
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn namespace_unset_checks_every_cite() {
+        // Back-compat: with no section_namespace, a `mesh-16.7` cite is
+        // treated as internal and fires SectionMissing against the store.
+        use mnemosyne_atomic::AtomicStore;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// dedup per \u{00a7}mesh-16.7 elsewhere\n",
+        )
+        .unwrap();
+        let store = AtomicStore::new();
+        let v = scan_paths_no_resolvers_ns(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+            None,
+        )
+        .unwrap();
+        assert_eq!(v.len(), 1, "unset namespace must check all cites: {:?}", v);
+    }
+
+    #[test]
+    fn namespace_exact_segment_not_prefix() {
+        // `scxmlfoo` is a different segment than `scxml`, so `scxmlfoo-1` is
+        // foreign and skipped; `scxml-D-interpret` is in scope and fires.
+        use mnemosyne_atomic::AtomicStore;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// \u{00a7}scxmlfoo-1 foreign; \u{00a7}scxml-D-interpret in-scope\n",
+        )
+        .unwrap();
+        let store = AtomicStore::new();
+        let v = scan_paths_no_resolvers_ns(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+            Some("scxml"),
+        )
+        .unwrap();
+        assert_eq!(
+            v.len(),
+            1,
+            "only the exact-segment cite is in scope: {:?}",
+            v
+        );
+        match &v[0] {
+            CodeRefViolation::Citation { citation, .. } => {
+                assert!(citation.entry_id.contains("scxml-D-interpret"));
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn namespace_no_hyphen_id_is_foreign() {
+        // A bare `D` cite (no hyphen) has namespace segment "D" ≠ "scxml" → skipped.
+        use mnemosyne_atomic::AtomicStore;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// appendix \u{00a7}D root reference\n",
+        )
+        .unwrap();
+        let store = AtomicStore::new();
+        let v = scan_paths_no_resolvers_ns(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+            Some("scxml"),
+        )
+        .unwrap();
+        assert!(
+            v.is_empty(),
+            "no-hyphen foreign id must be skipped: {:?}",
+            v
+        );
     }
 }

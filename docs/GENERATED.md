@@ -3592,3 +3592,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 376 — Add section_namespace scope to set_equality_validator so a file may cite multiple specs, each gated by its own workspace
+
+**Changes**:
+- Add SetEqualityValidatorConfig.section_namespace: when set, only §<id> whose pre-hyphen segment equals it are validated; foreign-namespace cites skip (no SectionMissing, no binding).
+- Empty section_namespace rejected at config load (fetched_sha256 strictness precedent); unset preserves prior behaviour byte-for-byte.
+- Independent of R277/R284 external-prefix axes; lets one source file cite multiple specs, each gated by its own workspace ledger.
+
+
+
+**Verification**:
+- +6 validate tests (namespace scope: foreign skip, in-scope fire, unset back-compat, exact-segment not prefix, no-hyphen foreign) + 2 config tests (empty reject / accepted).
+- Full workspace suite 0 fail; clippy --workspace -D warnings + fmt clean. Pure addition (no deletions).
+
+
+
+**Impact**: §code-citation-defense, §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- SCE (named consumer) is the live driver: docs/sce-ledger/{mesh,wire} workspaces will set section_namespace=mesh/wire so §mesh-* and §wire-* cites gate against their own ledgers while §scxml-* stays under docs/spec/scxml.
+- Test helper uses a default-delegating wrapper (scan_paths_no_resolvers -> _ns) so existing call sites are untouched; matches the per-site too_many_arguments allow already noted in pre-commit gate 5.
+
+
+

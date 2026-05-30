@@ -36,6 +36,7 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
             external_section_prefixes: vec![],
             external_section_prefixes_bare: vec![],
             inventory_path_prefixes: vec![],
+            section_namespace: None,
         },
         entry_id_prefix: "Round ".to_string(),
         orphan_ledger: vec![],

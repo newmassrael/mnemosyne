@@ -5530,6 +5530,44 @@
       "publishable_carry_forward_bullets": [
         "Normalization for the section-create path now lives in one place (build_candidate_section). The CLI/MCP § strips for the set_section_* primitives remain — those do not route through build_candidate_section (they call section_mut_strict directly), so the CLI boundary is still their input-normalization point; for add_section the CLI strip is now redundant-but-idempotent, not divergent. SCE's PoC #1 also flagged the SCHEMA_GUIDE [code_refs] drift (closed by R374)."
       ]
+    },
+    "Round 376": {
+      "decision_summary": "Add section_namespace scope to set_equality_validator so a file may cite multiple specs, each gated by its own workspace",
+      "changes_bullets": [
+        "Add SetEqualityValidatorConfig.section_namespace: when set, only §<id> whose pre-hyphen segment equals it are validated; foreign-namespace cites skip (no SectionMissing, no binding).",
+        "Empty section_namespace rejected at config load (fetched_sha256 strictness precedent); unset preserves prior behaviour byte-for-byte.",
+        "Independent of R277/R284 external-prefix axes; lets one source file cite multiple specs, each gated by its own workspace ledger."
+      ],
+      "verification_bullets": [
+        "+6 validate tests (namespace scope: foreign skip, in-scope fire, unset back-compat, exact-segment not prefix, no-hyphen foreign) + 2 config tests (empty reject / accepted).",
+        "Full workspace suite 0 fail; clippy --workspace -D warnings + fmt clean. Pure addition (no deletions)."
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "SCE (named consumer) is the live driver: docs/sce-ledger/{mesh,wire} workspaces will set section_namespace=mesh/wire so §mesh-* and §wire-* cites gate against their own ledgers while §scxml-* stays under docs/spec/scxml.",
+        "Test helper uses a default-delegating wrapper (scan_paths_no_resolvers -> _ns) so existing call sites are untouched; matches the per-site too_many_arguments allow already noted in pre-commit gate 5."
+      ],
+      "publishable_decision_summary": "Add section_namespace scope to set_equality_validator so a file may cite multiple specs, each gated by its own workspace",
+      "publishable_changes_bullets": [
+        "Add SetEqualityValidatorConfig.section_namespace: when set, only §<id> whose pre-hyphen segment equals it are validated; foreign-namespace cites skip (no SectionMissing, no binding).",
+        "Empty section_namespace rejected at config load (fetched_sha256 strictness precedent); unset preserves prior behaviour byte-for-byte.",
+        "Independent of R277/R284 external-prefix axes; lets one source file cite multiple specs, each gated by its own workspace ledger."
+      ],
+      "publishable_verification_bullets": [
+        "+6 validate tests (namespace scope: foreign skip, in-scope fire, unset back-compat, exact-segment not prefix, no-hyphen foreign) + 2 config tests (empty reject / accepted).",
+        "Full workspace suite 0 fail; clippy --workspace -D warnings + fmt clean. Pure addition (no deletions)."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "SCE (named consumer) is the live driver: docs/sce-ledger/{mesh,wire} workspaces will set section_namespace=mesh/wire so §mesh-* and §wire-* cites gate against their own ledgers while §scxml-* stays under docs/spec/scxml.",
+        "Test helper uses a default-delegating wrapper (scan_paths_no_resolvers -> _ns) so existing call sites are untouched; matches the per-site too_many_arguments allow already noted in pre-commit gate 5."
+      ]
     }
   },
   "inventory_entries": {},
