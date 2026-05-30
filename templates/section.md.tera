@@ -49,3 +49,8 @@
 {% for i in implementations %}- {{ i.file }}{% if i.symbol %}:{{ i.symbol }}{% endif %}
 {% endfor %}
 {% endif %}
+{% if normative_excerpt %}
+**Normative excerpt** ({{ normative_excerpt.source_revision }}):
+{{ normative_excerpt.text }}
+**Source**: {{ normative_excerpt.anchor_url }}
+{% endif %}

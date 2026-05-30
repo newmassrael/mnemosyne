@@ -127,6 +127,16 @@ pub fn render_section(
             .collect();
         ctx.insert("implementations", &impls);
     }
+    if let Some(ne) = &atomic.normative_excerpt {
+        ctx.insert(
+            "normative_excerpt",
+            &json!({
+                "text": ne.text,
+                "anchor_url": ne.anchor_url,
+                "source_revision": ne.source_revision,
+            }),
+        );
+    }
     Ok(engine().render(SECTION_TPL_NAME, &ctx)?)
 }
 

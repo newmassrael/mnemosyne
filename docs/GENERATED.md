@@ -26,6 +26,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 ### §code-citation-defense. Code Citation Defense
 
 
@@ -41,6 +42,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 **Implementations**:
 - crates/mnemosyne-cli/src/main.rs
 - crates/mnemosyne-validate/src/code_refs.rs
+
 
 
 
@@ -62,6 +64,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 ### §markdown-parser. Markdown Parser
 
 
@@ -79,6 +82,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+
 ### §orphan-ledger. Orphan Ledger
 
 
@@ -93,6 +97,7 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 **Implementations**:
 - crates/mnemosyne-config/src/lib.rs
+
 
 
 
@@ -3477,6 +3482,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 **Carry forward**:
 - SCE adoption sequencing: B2 done; next A2 (persistence-boundary refactor — separate mutate from save so bulk = N in-memory mutate + 1 save_with_receipt, one section-write-path), then C2 (route dispatch through PluginRegistry + ext->lang config-driven, landed WITH SCE cpp-resolver PR). Both still PoC-gated discipline; build each its own round on byte-identity + validate-workspace green.
 - Open decision raised by SCE PoC §4: normative_excerpt has no read-path (query/projection/ops = 0 reads, write-only frozen anchor) — B2 does not need it (rev-label diff only), but the compliance-ledger "show the reviewer the normative text" half is unmet; recommend Mnemosyne-side getter/render (atomic store is SSOT, consumer-side raw JSON read = 2nd read-path) as a separate round, user decision pending.
+
+
+
+### Round 371 — normative_excerpt read-path (query view + generate-docs render) — Surface the write-only normative_excerpt on both read surfaces — query SectionView (structured) and GENERATED.md render — so an agent/reviewer can verify code against the exact spec text the workspace was built against.
+
+**Changes**:
+- query SectionView gains normative_excerpt (reusing atomic::NormativeExcerpt); build_section_view populates it from the resolved AtomicSection; CLI cmd_query prints an excerpt block; MCP query_section auto-surfaces it via SectionView serialization. The write-only field (B2 substrate, R370) now has its agent/reviewer read-path.
+- generate-docs renders an 11th optional section block (source_revision + verbatim text + source URL): templates/section.md.tera + cold render_section ctx. Dogfood GENERATED.md gains one structural blank line per section — the same blank-when-absent convention the existing ten optional blocks follow (no parser change; round-trip is byte-equality, not re-parse).
+- warm render projection mirrors the field for dual-write byte-parity: RenderSectionInput normative_excerpt tuple + render_section_block rebuild + project_section_input + reconcile sync!; the R368 field-parity test fixtures extended so the new sync! arm fires.
+- renamed the parity fixtures and one generate_docs test to drop the vN version-postfix (section_alt / entry_alt) — clean naming ahead of the naming ban codified + enforced in the follow-up round.
+
+
+
+**Verification**:
+- warm==cold byte-identity parity test passes WITH a normative_excerpt set (extended R368 fixtures); generate-docs render smoke asserts the rendered block; query end-to-end smoke (dotted id scxml-3.13, --json) surfaces the structured excerpt text/anchor_url/source_revision.
+- full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean; validate-workspace docs 1/1 round-trip 1/1 T3 reject 0 GENERATED.md=sync; validate-code-refs 0 violations.
+
+
+
+
+**Carry forward**:
+- B2 rev-label drift (R370) still reads only source_revision, not the excerpt text; this read-path is the separate compliance-ledger reviewer surface (RFC-001 UC-1 §4 closed on both query + generate-docs surfaces).
+- Next SCE-scoped Mnemosyne rounds remain A2 (persistence-boundary refactor: separate in-memory mutate from the single save_with_receipt) then C2 (resolver wiring with SCE cpp plugin PR), both PoC-discipline.
 
 
 

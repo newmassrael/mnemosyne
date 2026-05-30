@@ -833,6 +833,13 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     if let Some(parent) = &view.parent_section {
         println!("parent_section: §{}", parent);
     }
+    if let Some(ne) = &view.normative_excerpt {
+        println!();
+        println!("--- normative excerpt ({}) ---", ne.source_revision);
+        println!("source: {}", ne.anchor_url);
+        println!("{}", ne.text);
+        println!("--- end normative excerpt ---");
+    }
     if !view.body.is_empty() {
         println!();
         println!("--- body ---");

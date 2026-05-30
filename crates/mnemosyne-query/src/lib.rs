@@ -36,6 +36,7 @@ pub use render::*;
 
 use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
+    NormativeExcerpt,
 };
 use mnemosyne_core::DecisionStatus;
 use mnemosyne_schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
@@ -58,6 +59,13 @@ pub struct SectionView {
     pub decision_status: String,
     pub body: String,
     pub line_anchor: usize,
+    /// External-spec mirror anchor (RFC-002 FR-1). `Some` only when this
+    /// Section vendors a normative excerpt; the read-path that lets an
+    /// agent/reviewer verify code against the exact spec text the
+    /// workspace was built against (RFC-001 UC-1 read-path). Omitted from JSON
+    /// for ordinary (non-mirror) Sections.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub normative_excerpt: Option<NormativeExcerpt>,
 }
 
 /// RelatedSections — `related_sections` carry form. 1-hop traversal result.
@@ -219,6 +227,7 @@ fn build_section_view(
         decision_status: resolved_status.as_str().to_string(),
         body,
         line_anchor,
+        normative_excerpt: atomic.and_then(|a| a.normative_excerpt.clone()),
     }
 }
 

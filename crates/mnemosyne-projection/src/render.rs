@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use mnemosyne_atomic::{
     AtomicChangelogEntry, AtomicSection, AtomicStore, ExampleBlock, Implementation,
-    RejectedAlternative,
+    NormativeExcerpt, RejectedAlternative,
 };
 use mnemosyne_query::{
     compose_generated_md, render_changelog_entry, render_section, section_heading,
@@ -71,6 +71,11 @@ pub struct RenderSectionInput {
     pub examples: Vec<(String, String)>,
     /// `(file, symbol)` pairs.
     pub implementations: Vec<(String, Option<String>)>,
+    /// `(text, anchor_url, source_revision)` of the external-spec mirror
+    /// excerpt (RFC-002 FR-1). `None` for ordinary Sections. Lowered to a
+    /// primitive tuple because `RenderSectionInput` is a Salsa input over
+    /// primitive fields (core is L0 zero-dep, cannot derive `salsa::Update`).
+    pub normative_excerpt: Option<(String, String, String)>,
 }
 
 /// One ChangelogEntry's renderable (publishable) content.
@@ -128,6 +133,13 @@ pub fn render_section_block<'db>(db: &'db dyn RenderDb, input: RenderSectionInpu
             .map(|(file, symbol)| Implementation { file, symbol })
             .collect(),
         superseded_by: input.superseded_by(db),
+        normative_excerpt: input.normative_excerpt(db).map(
+            |(text, anchor_url, source_revision)| NormativeExcerpt {
+                text,
+                anchor_url,
+                source_revision,
+            },
+        ),
         ..Default::default()
     };
     render_section(
@@ -271,6 +283,13 @@ fn project_section_input(
             .iter()
             .map(|i| (i.file.clone(), i.symbol.clone()))
             .collect(),
+        atomic.normative_excerpt.as_ref().map(|ne| {
+            (
+                ne.text.clone(),
+                ne.anchor_url.clone(),
+                ne.source_revision.clone(),
+            )
+        }),
     )
 }
 
@@ -466,6 +485,17 @@ fn reconcile_sections(db: &mut RenderDbImpl, index: RenderIndex, atomic: &Atomic
                         .map(|i| (i.file.clone(), i.symbol.clone()))
                         .collect::<Vec<_>>()
                 );
+                sync!(
+                    normative_excerpt,
+                    set_normative_excerpt,
+                    sec.normative_excerpt.as_ref().map(|ne| {
+                        (
+                            ne.text.clone(),
+                            ne.anchor_url.clone(),
+                            ne.source_revision.clone(),
+                        )
+                    })
+                );
                 existing
             }
             None => {
@@ -579,7 +609,11 @@ mod tests {
                     symbol: None,
                 },
             ],
-            ..Default::default()
+            normative_excerpt: Some(NormativeExcerpt {
+                text: "the event descriptor is matched verbatim".to_string(),
+                anchor_url: "https://www.w3.org/TR/scxml/#event".to_string(),
+                source_revision: "2024-rec".to_string(),
+            }),
         }
     }
 
@@ -599,7 +633,7 @@ mod tests {
     /// A Section with *every* renderable field set to a value distinct from
     /// [`full_section`], so replacing one with the other exercises every
     /// `reconcile_sections` `sync!` set-arm (the field-parity test).
-    fn section_v2() -> AtomicSection {
+    fn section_alt() -> AtomicSection {
         AtomicSection {
             skeleton: SectionSkeleton {
                 title: "Different heading".to_string(),
@@ -608,14 +642,14 @@ mod tests {
                 decision_status: Some(DecisionStatus::Active),
             },
             superseded_by: None,
-            intent: Some("v2 intent".to_string()),
-            rationale_bullets: vec!["v2 reason".to_string()],
-            inputs_bullets: vec!["v2 input".to_string()],
-            outputs_bullets: vec!["v2 output".to_string()],
-            caveats_bullets: vec!["v2 caveat".to_string()],
+            intent: Some("alt intent".to_string()),
+            rationale_bullets: vec!["alt reason".to_string()],
+            inputs_bullets: vec!["alt input".to_string()],
+            outputs_bullets: vec!["alt output".to_string()],
+            caveats_bullets: vec!["alt caveat".to_string()],
             alternatives_rejected: vec![RejectedAlternative {
-                alternative: "v2 alternative".to_string(),
-                reason: "v2 rejection reason".to_string(),
+                alternative: "alt alternative".to_string(),
+                reason: "alt rejection reason".to_string(),
             }],
             impact_scope: vec!["7".to_string()],
             examples: vec![ExampleBlock {
@@ -626,19 +660,23 @@ mod tests {
                 file: "crates/mnemosyne-query/src/lib.rs".to_string(),
                 symbol: Some("compose_generated_md".to_string()),
             }],
-            ..Default::default()
+            normative_excerpt: Some(NormativeExcerpt {
+                text: "alt normative wording".to_string(),
+                anchor_url: "https://www.w3.org/TR/scxml/#datamodel".to_string(),
+                source_revision: "2020-rec".to_string(),
+            }),
         }
     }
 
     /// A ChangelogEntry whose publishable half differs from [`entry`] in every
     /// field, to exercise every `reconcile_entries` `sync!` set-arm.
-    fn entry_v2() -> AtomicChangelogEntry {
+    fn entry_alt() -> AtomicChangelogEntry {
         let mut e = AtomicChangelogEntry {
-            decision_summary: Some("v2 decision".to_string()),
-            changes_bullets: vec!["v2 change".to_string()],
-            verification_bullets: vec!["v2 verify".to_string()],
+            decision_summary: Some("alt decision".to_string()),
+            changes_bullets: vec!["alt change".to_string()],
+            verification_bullets: vec!["alt verify".to_string()],
             impact_refs: vec!["7".to_string()],
-            carry_forward_bullets: vec!["v2 carry".to_string()],
+            carry_forward_bullets: vec!["alt carry".to_string()],
             ..Default::default()
         };
         e.clone_audit_into_publishable();
@@ -838,10 +876,10 @@ mod tests {
 
         // Replace both units with fully-different content (membership unchanged,
         // so the field deltas alone must carry through every sync! set-arm).
-        store.sections.insert("43".to_string(), section_v2());
+        store.sections.insert("43".to_string(), section_alt());
         store
             .changelog_entries
-            .insert("Round 162".to_string(), entry_v2());
+            .insert("Round 162".to_string(), entry_alt());
         svc.reload(&store);
         assert_eq!(
             svc.render(),

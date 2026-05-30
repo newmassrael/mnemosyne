@@ -50,7 +50,7 @@ fn generate_docs_emits_minimal_artifact_when_atomic_store_empty() {
 }
 
 #[test]
-fn generate_docs_emits_changelog_entry_after_append_v2() {
+fn generate_docs_emits_changelog_entry_after_append() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());
 
@@ -160,5 +160,63 @@ fn append_changelog_entry_rejects_duplicate() {
         stderr.contains("frozen") || stderr.contains("FrozenLedger"),
         "expected frozen-ledger error, got: {}",
         stderr
+    );
+}
+
+#[test]
+fn generate_docs_renders_normative_excerpt_block() {
+    // RFC-001 UC-1 §4 read-path — a Section carrying a normative_excerpt
+    // renders the excerpt block (rev + verbatim text + source URL) into
+    // GENERATED.md. Cold render path.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+    fs::create_dir_all(tmp.path().join("docs/.atomic")).unwrap();
+    let atomic = serde_json::json!({
+    "schema_version": 4,
+    "sections": {
+    "scxml-3.13": {
+    "title": "Event Descriptors",
+    "parent_doc": "docs/GENERATED.md",
+    "decision_status": "active",
+    "normative_excerpt": {
+    "text": "An event descriptor matches the event name verbatim.",
+    "anchor_url": "https://www.w3.org/TR/scxml/#event",
+    "source_revision": "2024-rec"
+    }
+    }
+    },
+    "changelog_entries": {}
+    });
+    fs::write(
+        tmp.path().join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+
+    let out = Command::new(cli_binary())
+        .arg("generate-docs")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run generate-docs");
+    assert!(
+        out.status.success(),
+        "generate-docs failed: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let generated = fs::read_to_string(tmp.path().join("docs/GENERATED.md")).unwrap();
+    assert!(
+        generated.contains("**Normative excerpt** (2024-rec):"),
+        "missing excerpt heading; got:\n{}",
+        generated
+    );
+    assert!(
+        generated.contains("An event descriptor matches the event name verbatim."),
+        "missing verbatim excerpt text; got:\n{}",
+        generated
+    );
+    assert!(
+        generated.contains("**Source**: https://www.w3.org/TR/scxml/#event"),
+        "missing source anchor; got:\n{}",
+        generated
     );
 }

@@ -8,7 +8,9 @@
 //! Uses the `std::process::Command` + `env!("CARGO_BIN_EXE_mnemosyne-cli")` pattern
 //! (Cargo auto-set; missing dev-dependency added).
 
+use std::fs;
 use std::process::Command;
+use tempfile::TempDir;
 
 fn cli_bin() -> String {
     env!("CARGO_BIN_EXE_mnemosyne-cli").to_string()
@@ -179,4 +181,71 @@ fn query_cross_doc_reclassify_inbound() {
     // envelope mode 3 flag all required — this test plain JSON SectionView.
     let view: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
     assert_eq!(view["section_id"], "39");
+}
+
+#[test]
+fn query_surfaces_normative_excerpt_for_spec_section() {
+    // RFC-001 UC-1 §4 read-path — a Section carrying a normative_excerpt
+    // surfaces it (structured) in `query <id> --json`, end-to-end through
+    // generate-docs (so the workspace parses it) + the atomic resolve. Also
+    // exercises a dotted section_id (`scxml-3.13`, the SCE naming convention).
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("docs/.atomic")).unwrap();
+    let cfg = "[workspace]\ndocs = [\"docs/GENERATED.md\"]\n\
+ default_doc = \"docs/GENERATED.md\"\n";
+    fs::write(tmp.path().join("mnemosyne.toml"), cfg).unwrap();
+    let atomic = serde_json::json!({
+    "schema_version": 4,
+    "sections": {
+    "scxml-3.13": {
+    "title": "Event Descriptors",
+    "parent_doc": "docs/GENERATED.md",
+    "decision_status": "active",
+    "normative_excerpt": {
+    "text": "An event descriptor matches the event name verbatim.",
+    "anchor_url": "https://www.w3.org/TR/scxml/#event",
+    "source_revision": "2024-rec"
+    }
+    }
+    },
+    "changelog_entries": {}
+    });
+    fs::write(
+        tmp.path().join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+
+    // Render GENERATED.md so the workspace parse finds the section.
+    let gen = Command::new(cli_bin())
+        .arg("generate-docs")
+        .current_dir(tmp.path())
+        .output()
+        .expect("generate-docs");
+    assert!(
+        gen.status.success(),
+        "generate-docs failed: {}",
+        String::from_utf8_lossy(&gen.stderr)
+    );
+
+    let out = Command::new(cli_bin())
+        .args(["query", "scxml-3.13", "--json"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("query");
+    assert!(
+        out.status.success(),
+        "query failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let view: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid JSON");
+    assert_eq!(view["section_id"], "scxml-3.13");
+    let ne = &view["normative_excerpt"];
+    assert_eq!(
+        ne["text"], "An event descriptor matches the event name verbatim.",
+        "query --json must surface normative_excerpt; got: {view}"
+    );
+    assert_eq!(ne["anchor_url"], "https://www.w3.org/TR/scxml/#event");
+    assert_eq!(ne["source_revision"], "2024-rec");
 }
