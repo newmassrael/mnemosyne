@@ -92,6 +92,14 @@ pub struct WorkspaceConfig {
     /// `warn` severity.
     #[serde(default)]
     pub spec_drift: Option<SpecDriftSection>,
+    /// `[commit_ledger]` table — severity policy for the commit↔ledger
+    /// drift gate (Round 293/301; `validate-workspace`'s commit-subject
+    /// round-label scan). Absent → the gate runs at the default `reject`
+    /// severity (the R301 dogfood hard-reject). An external consumer
+    /// workspace whose `(R<n>)` commit labels are not Mnemosyne changelog
+    /// rounds downgrades to `warn`/`info` (Round 377).
+    #[serde(default)]
+    pub commit_ledger: Option<CommitLedgerSection>,
 }
 
 /// `[atomic]` table — atomic store path overrides (Round 279).
@@ -724,6 +732,35 @@ impl Default for SpecDriftSection {
     }
 }
 
+/// `[commit_ledger]` table — policy for the commit↔ledger drift gate
+/// (Round 293/301; the commit-subject round-label scan in
+/// `validate-workspace`).
+///
+/// Mirrors [`SpecDriftSection`] but defaults to `reject` rather than
+/// `warn`: the gate is a Mnemosyne self-development invariant — every
+/// commit citing a changelog round must have a backfilled atomic-store
+/// entry (Round 293 trigger, Round 301 hard-reject) — so the dogfood
+/// keeps the hard reject. A multi-workspace consumer whose `(R<n>)`
+/// commit labels mean something other than a Mnemosyne changelog round
+/// (e.g. an adoption-round counter) downgrades to `warn`/`info`; the
+/// drift line still prints, it just stops gating the exit code
+/// (Round 377).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitLedgerSection {
+    /// `reject` | `warn` | `info`. Default `reject`. Validated at config
+    /// load.
+    #[serde(default = "default_severity_reject")]
+    pub severity: String,
+}
+
+impl Default for CommitLedgerSection {
+    fn default() -> Self {
+        Self {
+            severity: default_severity_reject(),
+        }
+    }
+}
+
 /// Config discovery + load result.
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
@@ -794,6 +831,14 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             bail!(
                 "mnemosyne.toml: `spec_drift.severity = {:?}` must be one of: reject | warn | info",
                 sd.severity
+            );
+        }
+    }
+    if let Some(cl) = &cfg.commit_ledger {
+        if !matches!(cl.severity.as_str(), "reject" | "warn" | "info") {
+            bail!(
+                "mnemosyne.toml: `commit_ledger.severity = {:?}` must be one of: reject | warn | info",
+                cl.severity
             );
         }
     }
@@ -1032,6 +1077,58 @@ severity = "block"
         assert!(
             err.to_string().contains("spec_drift.severity"),
             "expected spec_drift severity error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn commit_ledger_severity_defaults_to_reject() {
+        // [commit_ledger] absent → None; present with no severity → reject
+        // (preserves the R301 dogfood hard-reject when the table is omitted
+        // or present-but-bare).
+        let absent = r#"
+[workspace]
+docs = ["docs/spec.md"]
+"#;
+        assert!(parse_config(absent).unwrap().commit_ledger.is_none());
+
+        let bare = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[commit_ledger]
+"#;
+        let cfg = parse_config(bare).unwrap();
+        assert_eq!(cfg.commit_ledger.unwrap().severity, "reject");
+    }
+
+    #[test]
+    fn commit_ledger_accepts_warn_opt_out() {
+        // A consumer workspace downgrades the gate to warn.
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[commit_ledger]
+severity = "warn"
+"#;
+        let cfg = parse_config(content).unwrap();
+        assert_eq!(cfg.commit_ledger.unwrap().severity, "warn");
+    }
+
+    #[test]
+    fn commit_ledger_rejects_invalid_severity() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[commit_ledger]
+severity = "block"
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            err.to_string().contains("commit_ledger.severity"),
+            "expected commit_ledger severity error, got: {}",
             err
         );
     }

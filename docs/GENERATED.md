@@ -3616,3 +3616,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 377 — commit↔ledger gate multi-workspace awareness: path-scope scan + [commit_ledger] severity opt-out — commit↔ledger drift gate (R293/R301) assumed a single-workspace repo: it scanned repo-global commit subjects for (R<n>) labels and diffed against one workspace ledger, so in a multi-workspace mono-repo a sibling workspace round label false-flagged every workspace (SCE adoption report). Two-part fix, same class as R376 citation-namespace. D1: path-scope the git-log scan to the workspace subtree (git log -- .) so a sibling-only label no longer bleeds in. D2: [commit_ledger].severity (default reject, preserving the R301 dogfood hard-reject) lets a consumer workspace whose (R<n>) labels are not Mnemosyne changelog rounds downgrade to warn/info — the drift line still prints, the exit code is not gated. Round-namespace relabeling deferred YAGNI: the gate is a Mnemosyne self-development invariant that does not apply to a pure consumer ledger.
+
+**Changes**:
+- collect_recent_commit_round_labels: git log scoped `-- .` to workspace subtree (cli/main.rs)
+- print_commit_ledger_drift_surface: [commit_ledger].severity gates exit — reject bails (R301), warn/info print-only
+- config: CommitLedgerSection / [commit_ledger].severity, default reject, validated reject|warn|info at load
+- dogfood unaffected: workspace root = git root, so `-- .` = whole repo (cited=35, drift still 0)
+
+
+
+**Verification**:
+- mnemosyne-config: 3 unit tests (default reject / warn opt-out / invalid severity rejected)
+- mnemosyne-cli: 3 commit_ledger_gate smoke tests — default reject gates, warn opts out (drift line still printed), path-scope no sibling bleed (ws_b passes, ws_a gated)
+- clippy --all-targets clean, fmt clean, dogfood validate-workspace green (cited=35 / missing=0)
+
+
+
+**Impact**: §atomic-store-mutate-api
+
+
+**Carry forward**:
+- D2 round-namespace ([commit_ledger] round_label, R376-parallel) deferred YAGNI — add only if a consumer needs an active drift gate under a foreign label
+- SCE consumer mitigation: set [commit_ledger] severity = "warn" in each of its 3 workspaces' mnemosyne.toml
+
+
+

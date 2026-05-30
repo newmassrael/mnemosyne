@@ -1004,7 +1004,14 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
 /// hole catch — R291 was the trigger (commit `76581f6` landed without an
 /// atomic-store entry between R290 and R292; backfilled in R293). Under
 /// R301 the gate refuses to pass when any cited round has no atomic-store
-/// entry; the fix is to backfill the entry, not silence the gate.
+/// entry; the dogfood fix is to backfill the entry, not silence the gate.
+///
+/// Round 377 makes the scan multi-workspace-aware: the commit scan is
+/// path-scoped to the workspace subtree (see
+/// `collect_recent_commit_round_labels`) so a sibling workspace's labels
+/// no longer bleed in, and `[commit_ledger].severity` (default `reject`)
+/// lets a consumer workspace whose `(R<n>)` labels are not Mnemosyne
+/// changelog rounds downgrade the gate to `warn`/`info`.
 ///
 /// Silent when not in a git repo, when git is missing, or when no labeled
 /// commits exist in the scan window.
@@ -1034,27 +1041,52 @@ fn print_commit_ledger_drift_surface(
                 n
             );
         }
-        println!(
+        // Round 377 — `[commit_ledger].severity` gates the exit code.
+        // Default `reject` (table absent) preserves the R301 dogfood
+        // hard-reject. A multi-workspace consumer whose `(R<n>)` labels are
+        // not Mnemosyne changelog rounds sets `warn`/`info`: the missing
+        // lines above still print (no silent suppression), but the gate
+        // stops failing the exit code. `workspace_config()` is cached and
+        // already validated severity ∈ {reject,warn,info} at load.
+        let severity = workspace_config()?
+            .config
+            .commit_ledger
+            .as_ref()
+            .map(|cl| cl.severity.as_str())
+            .unwrap_or("reject");
+        if severity == "reject" {
+            println!(
  "  hint: backfill via `mnemosyne-cli append-changelog-entry --entry-id \"Round <N> — ...\" \
   --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B \
   --carry-file <path>` (Round 293 backfill flow)"
  );
-        // Round 301 — hard reject. The line + per-round missing prints
-        // above remain so the diagnostic is preserved before the bail.
-        bail!(
-            "commit↔ledger drift gate: {} cited round(s) missing from atomic store (Round 301)",
-            report.missing.len()
+            bail!(
+                "commit↔ledger drift gate: {} cited round(s) missing from atomic store (Round 301)",
+                report.missing.len()
+            );
+        }
+        println!(
+            "  severity={} — commit↔ledger drift surfaced, not gating this workspace (Round 377)",
+            severity
         );
     }
     Ok(())
 }
 
 fn collect_recent_commit_round_labels(root: &std::path::Path, max_commits: usize) -> BTreeSet<u32> {
+    // Round 377 — path-scope the scan to this workspace's subtree (`-- .`,
+    // relative to `root` = the workspace root). In a single-workspace repo
+    // the workspace root is the git root, so `.` matches the whole repo and
+    // behaviour is unchanged. In a multi-workspace mono-repo a `(R<n>)`
+    // label on a commit that only touched a *sibling* workspace no longer
+    // bleeds in and false-flags this workspace's ledger as missing it.
     let output = std::process::Command::new("git")
         .args([
             "log",
             &format!("--max-count={}", max_commits),
             "--pretty=%s",
+            "--",
+            ".",
         ])
         .current_dir(root)
         .output();
