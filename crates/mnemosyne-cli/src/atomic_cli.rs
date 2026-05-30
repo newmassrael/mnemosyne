@@ -273,6 +273,61 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// RFC-001 UC-1 "A2" — bulk section-create from a JSON manifest, as one
+/// atomic transaction. Manifest = a JSON array of
+/// `{section_id, parent_doc, title, parent_section?, normative_excerpt?}`.
+/// Per-entry 3-way: absent → create / byte-identical → no-op / divergent →
+/// reject the WHOLE manifest. One save + one regenerate for the batch (no-op
+/// entries don't count; an all-no-op manifest writes nothing). Reuses
+/// `add_section`'s in-memory core — the same single section-create write-path.
+pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut manifest: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut regenerate = true;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--manifest" => {
+                manifest = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--manifest missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            "--no-regenerate" => regenerate = false,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let manifest_path = manifest.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
+    let raw = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read manifest {}", manifest_path))?;
+    let entries: Vec<mnemosyne_atomic::SectionImport> =
+        serde_json::from_str(&raw).with_context(|| {
+            format!(
+                "parse manifest {} (JSON array of section imports)",
+                manifest_path
+            )
+        })?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        workspace_root,
+        mnemosyne_atomic::import_sections(&mut store, &sidecar_path, &entries),
+        sidecar.as_deref(),
+        regenerate,
+        json,
+    )
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<()> {

@@ -151,7 +151,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -166,6 +166,7 @@ fn run(args: &[String]) -> Result<()> {
         "validate-workspace" => cmd_validate_workspace(),
         "query" => cmd_query(prog, &args[2..]),
         "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
+        "import-sections" => atomic_cli::cmd_import_sections(&repo_root()?, &args[2..]),
         "style-check" => cmd_style_check(prog, &args[2..]),
         "list-docs" => cmd_list_docs(),
         // atomic mutate API surface.
@@ -321,6 +322,12 @@ fn print_help(prog: &str) {
         "   intent: max 200 chars; each bullet (rationale/inputs/outputs/caveats): max 100 chars"
     );
     println!(" {} add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]", prog);
+    println!(
+        " {} import-sections --manifest <path.json> [--sidecar <path>] [--no-regenerate] [--json]",
+        prog
+    );
+    println!("   bulk create from a JSON array of {{section_id,parent_doc,title,parent_section?,normative_excerpt?}};");
+    println!("   3-way per entry: absent=create / byte-identical=no-op / divergent=reject whole manifest (atomic)");
     println!(
         "   pairs with remove-section (R267); content fields populate via set-section-* afterwards"
     );

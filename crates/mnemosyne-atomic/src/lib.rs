@@ -1120,6 +1120,86 @@ pub fn remove_section(
 /// are *explicitly* Active, distinct from Round 269's `None = parser default`
 /// case which only applies to pre-251 carry sections. Subsequent transitions
 /// route through `set_section_decision_status`.
+/// Validate + construct a new `AtomicSection` candidate WITHOUT inserting or
+/// saving. The single section-create write-path: [`add_section`] (single,
+/// + 1 save) and [`import_sections`] (bulk, N inserts + 1 save) both shape a
+/// new Section here, so the validation + field-construction invariants live
+/// in exactly one place (CLAUDE.md single-write-path rule). Returns the
+/// trimmed `section_id` plus the constructed Section.
+///
+/// Does NOT check for a pre-existing `section_id` — duplicate handling is the
+/// caller's policy (`add_section` hard-rejects; `import_sections` runs the
+/// 3-way absent/identical/divergent classification). `store` is read-only
+/// here (the parent-section existence check), so the bulk caller may insert
+/// earlier manifest entries before building a later child that parents to one.
+///
+/// `normative_excerpt` (`(text, anchor_url, source_revision)`) anchors the
+/// excerpt INLINE at create — frozen from birth — via the shared
+/// [`build_normative_excerpt`] validator (same invariants as the post-create
+/// setter).
+fn build_candidate_section(
+    store: &AtomicStore,
+    section_id: &str,
+    parent_doc: &str,
+    title: &str,
+    parent_section: Option<&str>,
+    normative_excerpt: Option<(&str, &str, &str)>,
+) -> Result<(String, AtomicSection), AtomicMutateError> {
+    let section_id_t = section_id.trim();
+    let parent_doc_t = parent_doc.trim();
+    let title_t = title.trim();
+
+    if section_id_t.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "section_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    if parent_doc_t.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "parent_doc mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    if title_t.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "title mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    let parent_section_norm = if let Some(parent) = parent_section {
+        let parent_t = parent.trim();
+        if parent_t.is_empty() {
+            return Err(AtomicMutateError::Validation(
+                "parent_section must be None or non-empty".to_string(),
+            ));
+        }
+        if !store.sections.contains_key(parent_t) {
+            return Err(AtomicMutateError::NotFound(format!(
+                "parent_section `{}` not present in atomic store",
+                parent_t
+            )));
+        }
+        Some(parent_t.to_string())
+    } else {
+        None
+    };
+    let excerpt = match normative_excerpt {
+        Some((text, anchor_url, source_revision)) => {
+            Some(build_normative_excerpt(text, anchor_url, source_revision)?)
+        }
+        None => None,
+    };
+    let section = AtomicSection {
+        skeleton: mnemosyne_core::SectionSkeleton {
+            title: title_t.to_string(),
+            parent_doc: parent_doc_t.to_string(),
+            parent_section: parent_section_norm,
+            decision_status: Some(DecisionStatus::Active),
+        },
+        normative_excerpt: excerpt,
+        ..Default::default()
+    };
+    Ok((section_id_t.to_string(), section))
+}
+
 pub fn add_section(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -1128,61 +1208,112 @@ pub fn add_section(
     title: &str,
     parent_section: Option<&str>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let section_id_t = section_id.trim();
-    let parent_doc_t = parent_doc.trim();
-    let title_t = title.trim();
-
-    if section_id_t.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_section: section_id mandatory (non-empty after trim)".to_string(),
-        ));
-    }
-    if parent_doc_t.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_section: parent_doc mandatory (non-empty after trim)".to_string(),
-        ));
-    }
-    if title_t.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_section: title mandatory (non-empty after trim)".to_string(),
-        ));
-    }
-    if store.sections.contains_key(section_id_t) {
+    let (section_id_t, section) =
+        build_candidate_section(store, section_id, parent_doc, title, parent_section, None)?;
+    if store.sections.contains_key(&section_id_t) {
         return Err(AtomicMutateError::Validation(format!(
  "add_section: section_id `{}` already exists in atomic store (use set_section_* primitives to mutate)",
  section_id_t
  )));
     }
-    let parent_section_norm = if let Some(parent) = parent_section {
-        let parent_t = parent.trim();
-        if parent_t.is_empty() {
-            return Err(AtomicMutateError::Validation(
-                "add_section: parent_section must be None or non-empty".to_string(),
-            ));
-        }
-        if !store.sections.contains_key(parent_t) {
-            return Err(AtomicMutateError::NotFound(format!(
-                "add_section: parent_section `{}` not present in atomic store",
-                parent_t
-            )));
-        }
-        Some(parent_t.to_string())
-    } else {
-        None
-    };
+    store.sections.insert(section_id_t.clone(), section);
+    save_with_receipt(store, sidecar_path, "add_section", "section", &section_id_t)
+}
 
-    let section = AtomicSection {
-        skeleton: mnemosyne_core::SectionSkeleton {
-            title: title_t.to_string(),
-            parent_doc: parent_doc_t.to_string(),
-            parent_section: parent_section_norm,
-            decision_status: Some(DecisionStatus::Active),
-        },
-        ..Default::default()
-    };
-    store.sections.insert(section_id_t.to_string(), section);
+/// One manifest entry for the bulk [`import_sections`] primitive. Deserialized
+/// from a JSON array. `normative_excerpt` (optional) anchors the excerpt
+/// inline at create — the bulk path's reason to exist (a section's
+/// frozen-anchor moment IS its creation, per RFC-002 FR-1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SectionImport {
+    pub section_id: String,
+    pub parent_doc: String,
+    pub title: String,
+    #[serde(default)]
+    pub parent_section: Option<String>,
+    #[serde(default)]
+    pub normative_excerpt: Option<NormativeExcerpt>,
+}
 
-    save_with_receipt(store, sidecar_path, "add_section", "section", section_id_t)
+/// Bulk section-create from a manifest, as one atomic transaction (RFC-001
+/// UC-1 "A2"). Reuses [`build_candidate_section`] per entry — the SAME
+/// section-create write-path as [`add_section`], never a bespoke second one
+/// (CLAUDE.md half-enforced-invariant rule).
+///
+/// Per-entry 3-way classification:
+/// - **absent** (`section_id` not yet in the store) → create;
+/// - **byte-identical** (the would-be section equals the existing one) →
+///   no-op skip (idempotent re-run);
+/// - **divergent** (present but different) → reject the WHOLE manifest (no
+///   silent overwrite — supersede + re-create to revise).
+///
+/// **Atomicity**: all in-memory mutations happen first; the single
+/// `save_with_receipt` runs only after every entry classifies cleanly. Any
+/// rejection returns `Err` before the save, so the caller's
+/// `run_atomic_mutate` never persists a partially-applied manifest (it loaded
+/// the store fresh and discards it on error). Manifest order matters: a child
+/// that parents to an earlier manifest entry must follow it (the parent is
+/// inserted by then).
+///
+/// A no-op-only manifest (nothing absent) does NOT save — `written_bytes` is
+/// 0 and the receipt reports `0 created`.
+pub fn import_sections(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    manifest: &[SectionImport],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let mut created = 0usize;
+    let mut no_op = 0usize;
+    for (idx, entry) in manifest.iter().enumerate() {
+        let excerpt = entry.normative_excerpt.as_ref().map(|n| {
+            (
+                n.text.as_str(),
+                n.anchor_url.as_str(),
+                n.source_revision.as_str(),
+            )
+        });
+        let (section_id_t, candidate) = build_candidate_section(
+            store,
+            &entry.section_id,
+            &entry.parent_doc,
+            &entry.title,
+            entry.parent_section.as_deref(),
+            excerpt,
+        )
+        .map_err(|e| {
+            AtomicMutateError::Validation(format!("import_sections: manifest entry {idx}: {e}"))
+        })?;
+        // Compute the 3-way verdict without holding a borrow across the insert.
+        let verdict = store
+            .sections
+            .get(&section_id_t)
+            .map(|existing| *existing == candidate);
+        match verdict {
+            None => {
+                store.sections.insert(section_id_t, candidate);
+                created += 1;
+            }
+            Some(true) => no_op += 1,
+            Some(false) => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_sections: manifest entry {idx} section_id `{section_id_t}` already \
+ exists with DIVERGENT content — refusing silent overwrite (supersede + re-create to revise)"
+                )));
+            }
+        }
+    }
+    let summary = format!("{created} created, {no_op} no-op");
+    if created == 0 {
+        // Idempotent no-op: nothing absent → nothing to persist.
+        return Ok(AtomicMutateReceipt {
+            primitive: "import_sections".to_string(),
+            target_kind: "section",
+            target_id: summary,
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        });
+    }
+    save_with_receipt(store, sidecar_path, "import_sections", "section", &summary)
 }
 
 /// Round 287 — Section.title setter (outline mutate axis).
@@ -1369,14 +1500,19 @@ pub fn set_section_decision_status(
 /// - Target Section exists.
 /// - Target Section's `normative_excerpt` is currently `None` (frozen
 ///   reject otherwise).
-pub fn set_section_normative_excerpt(
-    store: &mut AtomicStore,
-    sidecar_path: &Path,
-    section_id: &str,
+/// Validate the three normative-excerpt fields and build the value.
+///
+/// The single validator + constructor for a `NormativeExcerpt`. Both write
+/// paths route through it — [`set_section_normative_excerpt`] (post-create
+/// anchor) and the bulk [`import_sections`] inline-at-create path — so the
+/// two paths cannot drift on the invariant set (CLAUDE.md half-enforced-
+/// invariant rule; the R305 paste-error class). A field-parity test feeds
+/// the same edge inputs through both paths.
+fn build_normative_excerpt(
     text: &str,
     anchor_url: &str,
     source_revision: &str,
-) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+) -> Result<NormativeExcerpt, AtomicMutateError> {
     if text.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
             "normative_excerpt text blank or whitespace-only".to_string(),
@@ -1403,6 +1539,22 @@ pub fn set_section_normative_excerpt(
             anchor_url
         )));
     }
+    Ok(NormativeExcerpt {
+        text: text.trim_end_matches('\n').to_string(),
+        anchor_url: anchor_url.to_string(),
+        source_revision: source_revision.to_string(),
+    })
+}
+
+pub fn set_section_normative_excerpt(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    section_id: &str,
+    text: &str,
+    anchor_url: &str,
+    source_revision: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let excerpt = build_normative_excerpt(text, anchor_url, source_revision)?;
     let section = section_mut_strict(store, section_id)?;
     if section.normative_excerpt.is_some() {
         return Err(AtomicMutateError::FrozenLedger(format!(
@@ -1411,11 +1563,7 @@ pub fn set_section_normative_excerpt(
             section_id
         )));
     }
-    section.normative_excerpt = Some(NormativeExcerpt {
-        text: text.trim_end_matches('\n').to_string(),
-        anchor_url: anchor_url.to_string(),
-        source_revision: source_revision.to_string(),
-    });
+    section.normative_excerpt = Some(excerpt);
     save_with_receipt(
         store,
         sidecar_path,
@@ -4191,5 +4339,193 @@ mod tests {
             excerpt.text, "spec text",
             "trailing newlines should be trimmed for stable round-trip render"
         );
+    }
+
+    // ---- A2: import_sections (bulk create) ----
+
+    fn imp(section_id: &str, parent_doc: &str, title: &str) -> SectionImport {
+        SectionImport {
+            section_id: section_id.to_string(),
+            parent_doc: parent_doc.to_string(),
+            title: title.to_string(),
+            parent_section: None,
+            normative_excerpt: None,
+        }
+    }
+
+    #[test]
+    fn import_sections_creates_absent() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let manifest = vec![
+            imp("scxml-3.13", "docs/GENERATED.md", "Event Descriptors"),
+            imp("scxml-5.10", "docs/GENERATED.md", "Datamodel"),
+        ];
+        let receipt = import_sections(&mut store, &path, &manifest).unwrap();
+        assert_eq!(store.sections.len(), 2);
+        assert!(store.sections.contains_key("scxml-3.13"));
+        assert!(
+            receipt.target_id.contains("2 created"),
+            "{}",
+            receipt.target_id
+        );
+        assert!(receipt.written_bytes > 0);
+    }
+
+    #[test]
+    fn import_sections_idempotent_noop_second_run() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let manifest = vec![imp("scxml-3.13", "docs/GENERATED.md", "Event Descriptors")];
+        import_sections(&mut store, &path, &manifest).unwrap();
+        let receipt2 = import_sections(&mut store, &path, &manifest).unwrap();
+        assert_eq!(store.sections.len(), 1);
+        assert!(
+            receipt2.target_id.contains("0 created"),
+            "{}",
+            receipt2.target_id
+        );
+        assert_eq!(receipt2.written_bytes, 0, "no-op manifest must not save");
+    }
+
+    #[test]
+    fn import_sections_rejects_divergent() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        import_sections(
+            &mut store,
+            &path,
+            &[imp("scxml-3.13", "docs/GENERATED.md", "Original")],
+        )
+        .unwrap();
+        let err = import_sections(
+            &mut store,
+            &path,
+            &[imp("scxml-3.13", "docs/GENERATED.md", "Changed Title")],
+        )
+        .unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+        assert!(format!("{err}").contains("DIVERGENT"), "{err}");
+    }
+
+    #[test]
+    fn import_sections_inline_excerpt_anchored_at_create() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let mut e = imp("scxml-3.13", "docs/GENERATED.md", "Event Descriptors");
+        e.normative_excerpt = Some(NormativeExcerpt {
+            text: "verbatim spec".to_string(),
+            anchor_url: "https://www.w3.org/TR/scxml/#event".to_string(),
+            source_revision: "2024-rec".to_string(),
+        });
+        import_sections(&mut store, &path, &[e]).unwrap();
+        let ne = store
+            .section("scxml-3.13")
+            .unwrap()
+            .normative_excerpt
+            .as_ref()
+            .unwrap();
+        assert_eq!(ne.text, "verbatim spec");
+        assert_eq!(ne.source_revision, "2024-rec");
+    }
+
+    #[test]
+    fn import_sections_parent_within_manifest_ordered() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let mut child = imp("scxml-D-2-func", "docs/GENERATED.md", "func helper");
+        child.parent_section = Some("scxml-D".to_string());
+        // Parent first, child second → the child's parent_section resolves.
+        let manifest = vec![imp("scxml-D", "docs/GENERATED.md", "Appendix D"), child];
+        import_sections(&mut store, &path, &manifest).unwrap();
+        assert_eq!(
+            store
+                .section("scxml-D-2-func")
+                .unwrap()
+                .skeleton
+                .parent_section
+                .as_deref(),
+            Some("scxml-D")
+        );
+    }
+
+    #[test]
+    fn import_sections_rejects_invalid_excerpt() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let mut e = imp("scxml-3.13", "docs/GENERATED.md", "X");
+        e.normative_excerpt = Some(NormativeExcerpt {
+            text: "   ".to_string(),
+            anchor_url: "https://example.com/s".to_string(),
+            source_revision: "rev".to_string(),
+        });
+        let err = import_sections(&mut store, &path, &[e]).unwrap_err();
+        assert!(
+            format!("{err}").contains("normative_excerpt text blank"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn import_sections_intra_manifest_divergent_rejected_no_save() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let manifest = vec![
+            imp("scxml-3.13", "docs/GENERATED.md", "First"),
+            imp("scxml-3.13", "docs/GENERATED.md", "Second"),
+        ];
+        let err = import_sections(&mut store, &path, &manifest).unwrap_err();
+        assert!(format!("{err}").contains("DIVERGENT"), "{err}");
+        assert!(
+            !path.exists(),
+            "a rejected manifest must not persist anything"
+        );
+    }
+
+    #[test]
+    fn normative_excerpt_write_path_parity() {
+        // CLAUDE.md half-enforced-invariant rule: the post-create setter and
+        // the import_sections inline-at-create path are TWO write paths to the
+        // same field; both must enforce the identical invariant set. Feed the
+        // same edge inputs through each and assert the accept/reject verdicts
+        // match. (Both route through build_normative_excerpt — this test locks
+        // it so a future bypass on one path is caught.)
+        let cases: &[(&str, &str, &str)] = &[
+            ("valid text", "https://example.com/s", "rev"),
+            ("   ", "https://example.com/s", "rev"),
+            ("text", "ftp://example.com/s", "rev"),
+            ("text", "https://", "rev"),
+            ("text", "https://example.com/s", "   "),
+        ];
+        for (text, url, rev) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join(".atomic/workspace.atomic.json");
+
+            let mut s1 = AtomicStore::new();
+            seed_section(&mut s1, "x");
+            let setter_ok =
+                set_section_normative_excerpt(&mut s1, &path, "x", text, url, rev).is_ok();
+
+            let mut s2 = AtomicStore::new();
+            let mut e = imp("x", "docs/GENERATED.md", "T");
+            e.normative_excerpt = Some(NormativeExcerpt {
+                text: text.to_string(),
+                anchor_url: url.to_string(),
+                source_revision: rev.to_string(),
+            });
+            let import_ok = import_sections(&mut s2, &path, &[e]).is_ok();
+
+            assert_eq!(
+                setter_ok, import_ok,
+                "write-path parity broken for ({text:?}, {url:?}, {rev:?}): setter={setter_ok} import={import_ok}"
+            );
+        }
     }
 }

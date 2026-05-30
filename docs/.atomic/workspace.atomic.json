@@ -5446,6 +5446,38 @@
       "publishable_carry_forward_bullets": [
         "Gate 6 scans .rs only by design — GENERATED.md and changelog prose may legitimately mention v2/v3 when discussing the rule itself, so the audit trail is not falsely tripped. Comment text in .rs containing a literal vN token would trip it; reword such mentions (the gate treats strictness over comment convenience as correct)."
       ]
+    },
+    "Round 373 — import-sections bulk section-create (A2 persistence-boundary extraction)": {
+      "decision_summary": "Add import_sections: bulk section-create from a JSON manifest as one atomic transaction (3-way idempotency: absent=create / identical=no-op / divergent=reject), reusing add_section's extracted in-memory core so there is exactly one section-create write-path.",
+      "changes_bullets": [
+        "Extracted add_section's validate+construct into build_candidate_section (shared in-memory core, no insert/no save); add_section now = build + dup-reject + insert + 1 save, and the bulk import_sections = N build/classify + 1 save. Both shape a new Section through the one core → a single section-create write-path, NOT a bespoke second writer (CLAUDE.md half-enforced-invariant rule).",
+        "Extracted normative_excerpt validation into build_normative_excerpt, now shared by the post-create setter AND the inline-at-create path; manifest entries anchor the excerpt frozen-at-create (RFC-002 FR-1). Added a field-invariant parity test that feeds the same edge inputs through both write paths and asserts identical accept/reject verdicts.",
+        "import_sections runs a 3-way classification per entry: absent->create / byte-identical->no-op (idempotent re-run) / divergent->reject the WHOLE manifest. Atomicity is free via run_atomic_mutate: any reject returns Err before the single save, so the freshly-loaded store is discarded and the disk is untouched; an all-no-op manifest writes nothing (written_bytes 0). Manifest order = parents before children (a child resolves a parent inserted earlier in the same batch).",
+        "CLI import-sections --manifest <path.json> wired (dispatch + help + usage). MCP tool deliberately deferred: the immediate named consumer is SCE's CI via the CLI; the fiction-adapter warm path is the YAGNI-gated future consumer (same discipline as B2 CLI-only)."
+      ],
+      "verification_bullets": [
+        "+7 atomic unit tests (create-absent / idempotent-no-op-no-save / divergent-reject / inline-excerpt-at-create / in-manifest-parent-ordered / invalid-excerpt-reject / intra-manifest-divergent-no-save) + the write-path parity test + 3 CLI smoke tests (create+excerpt-render / idempotent re-run / divergent exit-1). Full workspace suite 0 fail.",
+        "clippy --workspace --all-targets -D warnings + fmt clean; validate-workspace docs 1/1 round-trip 1/1 T3 reject 0 GENERATED.md=sync; validate-code-refs 0 violations."
+      ],
+      "carry_forward_bullets": [
+        "SCOPE: A2 landed as a SECTION-scoped mutate-from-save extraction (build_candidate_section), NOT the full ~28-primitive Unit-of-Work the S17 plan sketched — verified that is all bulk-section-import needs to avoid a second write-path. The full UoW (move save to the run_atomic_mutate boundary for every primitive) and the redact_term 1-5 multi-save fix stay deferred: no named consumer beyond a hypothetical second bulk path = speculative substrate.",
+        "Next SCE-scoped Mnemosyne round = C2 (route resolver dispatch through PluginRegistry + ext->lang config-driven), which lands WITH SCE's tree-sitter-cpp plugin PR (not before — speculative otherwise). A1 (W3C TOC->manifest) and B1 (CI fetch->sha256) are SCE-side, no Mnemosyne land."
+      ],
+      "publishable_decision_summary": "Add import_sections: bulk section-create from a JSON manifest as one atomic transaction (3-way idempotency: absent=create / identical=no-op / divergent=reject), reusing add_section's extracted in-memory core so there is exactly one section-create write-path.",
+      "publishable_changes_bullets": [
+        "Extracted add_section's validate+construct into build_candidate_section (shared in-memory core, no insert/no save); add_section now = build + dup-reject + insert + 1 save, and the bulk import_sections = N build/classify + 1 save. Both shape a new Section through the one core → a single section-create write-path, NOT a bespoke second writer (CLAUDE.md half-enforced-invariant rule).",
+        "Extracted normative_excerpt validation into build_normative_excerpt, now shared by the post-create setter AND the inline-at-create path; manifest entries anchor the excerpt frozen-at-create (RFC-002 FR-1). Added a field-invariant parity test that feeds the same edge inputs through both write paths and asserts identical accept/reject verdicts.",
+        "import_sections runs a 3-way classification per entry: absent->create / byte-identical->no-op (idempotent re-run) / divergent->reject the WHOLE manifest. Atomicity is free via run_atomic_mutate: any reject returns Err before the single save, so the freshly-loaded store is discarded and the disk is untouched; an all-no-op manifest writes nothing (written_bytes 0). Manifest order = parents before children (a child resolves a parent inserted earlier in the same batch).",
+        "CLI import-sections --manifest <path.json> wired (dispatch + help + usage). MCP tool deliberately deferred: the immediate named consumer is SCE's CI via the CLI; the fiction-adapter warm path is the YAGNI-gated future consumer (same discipline as B2 CLI-only)."
+      ],
+      "publishable_verification_bullets": [
+        "+7 atomic unit tests (create-absent / idempotent-no-op-no-save / divergent-reject / inline-excerpt-at-create / in-manifest-parent-ordered / invalid-excerpt-reject / intra-manifest-divergent-no-save) + the write-path parity test + 3 CLI smoke tests (create+excerpt-render / idempotent re-run / divergent exit-1). Full workspace suite 0 fail.",
+        "clippy --workspace --all-targets -D warnings + fmt clean; validate-workspace docs 1/1 round-trip 1/1 T3 reject 0 GENERATED.md=sync; validate-code-refs 0 violations."
+      ],
+      "publishable_carry_forward_bullets": [
+        "SCOPE: A2 landed as a SECTION-scoped mutate-from-save extraction (build_candidate_section), NOT the full ~28-primitive Unit-of-Work the S17 plan sketched — verified that is all bulk-section-import needs to avoid a second write-path. The full UoW (move save to the run_atomic_mutate boundary for every primitive) and the redact_term 1-5 multi-save fix stay deferred: no named consumer beyond a hypothetical second bulk path = speculative substrate.",
+        "Next SCE-scoped Mnemosyne round = C2 (route resolver dispatch through PluginRegistry + ext->lang config-driven), which lands WITH SCE's tree-sitter-cpp plugin PR (not before — speculative otherwise). A1 (W3C TOC->manifest) and B1 (CI fetch->sha256) are SCE-side, no Mnemosyne land."
+      ]
     }
   },
   "inventory_entries": {},
