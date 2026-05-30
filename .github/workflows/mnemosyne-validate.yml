@@ -1,7 +1,9 @@
 name: mnemosyne-validate
 
-# Phase 0 self-application — DESIGN §66, Round 79 OPTION C carry.
-# design_doc change on cargo test + mnemosyne-cli validate-workspace auto validation.
+# Phase 0 self-application (Round 79 OPTION C carry). Mnemosyne dogfoods
+# its own validate-workspace + validate-code-refs on every push / PR.
+# (The atomic store + GENERATED.md are the workspace docs; DESIGN.md was
+# retired in Round 251.)
 
 on:
  push:
@@ -40,7 +42,7 @@ jobs:
  run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
 
  - name: mnemosyne-cli validate-code-refs (Round 257 Stage 2)
- # Subcommand internally skips when [code_refs] is unconfigured;
- # when configured with severity_missing = "reject", missing
- # citations fail the build.
+ # Subcommand skips when [plugins.set_equality_validator] is
+ # unconfigured; when configured with severity_missing = "reject",
+ # missing citations fail the build.
  run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs

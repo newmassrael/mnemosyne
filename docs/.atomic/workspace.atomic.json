@@ -5708,6 +5708,44 @@
         "LOW still unbatched: cli/main.rs cmd_validate_workspace comment wrongly says commit-ledger surface never gates (R377 made it gate at reject)",
         "pinion: re-measure with R379+R380 on main, register prefixes, then promote severity=reject + wire pre-commit; adjective/prose cites remain pinion authoring"
       ]
+    },
+    "Round 381 — adopter docs: validate-code-refs CI deployment + citation-token grammar + R379/380 reconcile": {
+      "decision_summary": "SCE (named live consumer) asked how an external consumer runs validate-code-refs as a CI gate — Mnemosyne ships no prebuilt binaries and had no consumer CI docs. Decision: cargo install --git --rev <pinned-sha> --locked mnemosyne-cli — lightest, reproducible (rev-pin freezes the citation grammar until a visible bump, which a compliance ledger wants), zero new release infra for a pre-release project whose consumers already run cargo. Prebuilt release binaries and a packaged GitHub Action are deferred until a non-Rust consumer or a measured CI-compile cost appears. Documented with a per-workspace consumer CI job. Same round also documents the citation-token id-boundary grammar edges SCE reported (hyphen-glue over-extension; dot continues only between digits), reconciles the now-stale self-contained-citation-rule section with R379/380, and fixes the dogfood workflow stale [code_refs]/DESIGN references (the R374-class silent-skip footgun in a copyable example). Doc and comment only.",
+      "changes_bullets": [
+        "SCHEMA_GUIDE code-citation-defense: CI deployment subsection — cargo install --git --rev <sha> --locked mnemosyne-cli + per-workspace consumer CI job; prebuilt-release/Action deferred",
+        "SCHEMA_GUIDE new \"Citation token grammar (id boundaries)\": hyphen-glue over-extension (16.5-L3500) + dot-only-between-digits truncation (scxml-D.2.func), with space-separation guidance",
+        "SCHEMA_GUIDE self-contained-citation-rule: reconciled with R379/380 (multi-word/#-number + same-line chain + prev-line-tail wrap now recognized; failing forms clarified)",
+        ".github/workflows/mnemosyne-validate.yml: stale [code_refs] to [plugins.set_equality_validator]; dropped deleted-DESIGN reference (R374-class footgun in a copyable example)"
+      ],
+      "verification_bullets": [
+        "doc/comment only, no code or behaviour change; validate-workspace green (SCHEMA_GUIDE + workflow are not round-trip docs)",
+        "cargo install path verified mechanically: Cargo.lock tracked, package = mnemosyne-cli, MSRV 1.94, consumers are Rust projects with the toolchain present"
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "prebuilt release binaries / packaged GitHub Action deferred; trigger to revisit = a non-Rust consumer appears OR CI compile time becomes a measured cost",
+        "SCE confirmed R377/R378 verified end-to-end in the real 3-workspace deployment (mesh path-scope silent, scxml R2 warn non-gating, all three exit 0)"
+      ],
+      "publishable_decision_summary": "SCE (named live consumer) asked how an external consumer runs validate-code-refs as a CI gate — Mnemosyne ships no prebuilt binaries and had no consumer CI docs. Decision: cargo install --git --rev <pinned-sha> --locked mnemosyne-cli — lightest, reproducible (rev-pin freezes the citation grammar until a visible bump, which a compliance ledger wants), zero new release infra for a pre-release project whose consumers already run cargo. Prebuilt release binaries and a packaged GitHub Action are deferred until a non-Rust consumer or a measured CI-compile cost appears. Documented with a per-workspace consumer CI job. Same round also documents the citation-token id-boundary grammar edges SCE reported (hyphen-glue over-extension; dot continues only between digits), reconciles the now-stale self-contained-citation-rule section with R379/380, and fixes the dogfood workflow stale [code_refs]/DESIGN references (the R374-class silent-skip footgun in a copyable example). Doc and comment only.",
+      "publishable_changes_bullets": [
+        "SCHEMA_GUIDE code-citation-defense: CI deployment subsection — cargo install --git --rev <sha> --locked mnemosyne-cli + per-workspace consumer CI job; prebuilt-release/Action deferred",
+        "SCHEMA_GUIDE new \"Citation token grammar (id boundaries)\": hyphen-glue over-extension (16.5-L3500) + dot-only-between-digits truncation (scxml-D.2.func), with space-separation guidance",
+        "SCHEMA_GUIDE self-contained-citation-rule: reconciled with R379/380 (multi-word/#-number + same-line chain + prev-line-tail wrap now recognized; failing forms clarified)",
+        ".github/workflows/mnemosyne-validate.yml: stale [code_refs] to [plugins.set_equality_validator]; dropped deleted-DESIGN reference (R374-class footgun in a copyable example)"
+      ],
+      "publishable_verification_bullets": [
+        "doc/comment only, no code or behaviour change; validate-workspace green (SCHEMA_GUIDE + workflow are not round-trip docs)",
+        "cargo install path verified mechanically: Cargo.lock tracked, package = mnemosyne-cli, MSRV 1.94, consumers are Rust projects with the toolchain present"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "prebuilt release binaries / packaged GitHub Action deferred; trigger to revisit = a non-Rust consumer appears OR CI compile time becomes a measured cost",
+        "SCE confirmed R377/R378 verified end-to-end in the real 3-workspace deployment (mesh path-scope silent, scxml R2 warn non-gating, all three exit 0)"
+      ]
     }
   },
   "inventory_entries": {},

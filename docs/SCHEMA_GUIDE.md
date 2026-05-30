@@ -213,22 +213,25 @@ or move detail into a separate atomic field (`examples`, `rationale`).
 
 ## Self-contained citation rule
 
-`validate-code-refs` matches citations on a **single line** with **one
-explicit prefix token** in scope. Citations must be self-contained at
-their use site:
+`validate-code-refs` resolves a citation's external-standard prefix from
+a **narrow, explicit scope** — never prose inference. As of Round
+379/380 the recognized forms are:
 
-- ✓ `// RFC 2131 §3.5 client retransmits` — RFC token + section on the same line
+- ✓ `// RFC 2131 §3.5 client retransmits` — prefix + section, same line
 - ✓ `// (RFC 791 §3.1) — fragmentation fields` — surrounding `()` stripped (Round 281)
-- ✗ `// see RFC 3927 above\n// §2.2.1 says ...` — multi-line context;
- the second line has no RFC token on it
-- ✗ `// 2131 §3.1 lease renew` — RFC numeric only, prefix word missing
+- ✓ `// CSS Color 4 §8.1` / `// UAX #9 §3.3` — multi-word and `#`-number prefixes (Round 379)
+- ✓ `// UAX #9 §6.6.8 / §6.6.9 / §6.6.10` — same-line chain, `/`-separated (Round 380)
+- ✓ `/// WAI-ARIA 1.2` then `/// §6.6.6` — wrap: prefix at the *end* of the previous comment line (Round 380)
+- ✗ `// see RFC 3927 above` then `// §2.2.1 says ...` — prefix is mid-prose, not the previous line's tail, so it does not carry
+- ✗ `// 2131 §3.1 lease renew` — numeric only, prefix word missing
 
-The two failing forms are *not* fixed by the scanner — broadening
-either pattern would push the layer into prose inference and create
-false-skips on internal citations (a `§4.2.4` adjacent to a stray
-numeric would silently bypass the spec-side reject gate). The
-architectural rule is: prefer rewriting the comment to canonical
-`RFC NNN §X.Y` form. When mass-rewriting isn't practical (legacy
+The failing forms stay unskipped by design: the wrap carry fires only
+when the previous comment line *ends with* the prefix, and the chain
+only across `/`-or-whitespace separators (a comma or word breaks it) —
+broadening past that would be prose inference and risk false-skips on
+internal citations (a `§4.2.4` adjacent to a stray numeric silently
+bypassing the spec-side reject gate). Prefer rewriting to canonical
+`<PREFIX> §X.Y` form. When mass-rewriting isn't practical (legacy
 codebase carry), register the (file, §id) pair in
 `[[orphan_ledger]] kind = "code_citation"`:
 
@@ -260,6 +263,29 @@ Both axes are independent — a `code_citation` row does not suppress an
 the ledger entry under `ledger=N` (silent unless the orphan later
 resolves), and the audit-trail records *why* the citation is unmatched
 rather than silencing it.
+
+## Citation token grammar (id boundaries)
+
+The `§<id>` extractor reads the id as the run of section-id characters
+after the sigil — alphanumerics plus `. - _ /`. Two deterministic
+boundary rules are worth knowing when authoring citations (both are
+grammar edges, not parser bugs):
+
+- **A `.` continues the id only between two digits.** `§39.implementations`
+  parses as id `39` (the `.implementations` prose suffix is dropped),
+  while `§3.13` stays whole. A double-dot Appendix form like
+  `§scxml-D.2.func` therefore truncates at `§scxml-D` (`.func` is not
+  digit-bounded) — use an all-hyphen form (`§scxml-D-2-func`) when the id
+  must carry letters after a dot.
+- **`-` is an id character, so a glued suffix over-extends.** `§16.5-L3500`
+  (a section glued to a line-ref by `-`) parses as the single id
+  `16.5-L3500`, not `16.5`. Space-separate a non-id suffix —
+  `§16.5 L3500` or `§16.5 (L3500)`. `-` must stay an id char for
+  namespaced ids (`scxml-3.13`, `scxml-D-interpret`), so the extractor
+  cannot guess the boundary; the author marks it with a space.
+
+Author citations so the id ends where you intend; the orphan_ledger is
+the escape hatch when a non-conforming citation must stay.
 
 ## External standard prefix kinds
 
@@ -400,7 +426,39 @@ comment_only = true
 
 Run `mnemosyne-cli validate-code-refs` to scan; wire that command into
 your project's own pre-commit hook to gate every commit. Promote
-`severity_*` from `warn` to `reject` once the baseline is clean. To bind a section to its
+`severity_*` from `warn` to `reject` once the baseline is clean.
+
+**CI deployment (Round 381).** Mnemosyne ships no prebuilt binaries; an
+external consumer installs the CLI from a **pinned revision** so the
+validator's behaviour is frozen until you deliberately bump it — a
+compliance ledger wants exactly that (a citation grammar that does not
+shift under CI without a visible commit). The consumers are Rust
+projects, so the toolchain is already present:
+
+```yaml
+# consumer-side: .github/workflows/spec-citations.yml
+jobs:
+  citations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mnemosyne-cli (pinned revision)
+        run: cargo install --git https://github.com/newmassrael/mnemosyne --rev <PINNED_SHA> --locked mnemosyne-cli
+      - name: Validate spec citations (per workspace)
+        run: |
+          for ws in docs/spec/scxml docs/spec/irp docs/sce-ledger; do
+            ( cd "$ws" && mnemosyne-cli validate-code-refs )
+          done
+```
+
+Pin `--rev` to a commit, not a branch; `--locked` builds against
+Mnemosyne's committed `Cargo.lock` for a reproducible install, and
+`cargo install` caches the built binary by rev. Prebuilt release
+binaries and a packaged GitHub Action are intentionally deferred — add
+them only when a non-Rust consumer appears or CI compile time becomes a
+measured cost.
+
+To bind a section to its
 implementation file (so the binding axis recognizes it as backed), use:
 
 ```bash
