@@ -3552,3 +3552,22 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 374 — SCHEMA_GUIDE config-key drift fix ([code_refs] -> [plugins.set_equality_validator]); resolves SCE PoC §6 — Fix the SCHEMA_GUIDE.md code-citation config-key drift: the table is [plugins.set_equality_validator] (R306 in-place rename, no [code_refs] alias), so adopters copying the stale [code_refs] examples silently got no citation defense. Also drop the retired install-hooks.sh reference. Resolves SCE PoC #1 §6.
+
+**Changes**:
+- SCHEMA_GUIDE.md: 13 `[code_refs]` table headers + prose field references rewritten to `[plugins.set_equality_validator]` — the R306 in-place rename of that table, which parses NO `[code_refs]` alias. An external adopter copying the old examples into mnemosyne.toml would get a silently-ignored table → validate-code-refs skips with "not configured" → zero citation defense. The "External-spec mirror" example SCE cited in its PoC #1 §6 now shows the working key.
+- Same code-citation-defense section: the retired `scripts/install-hooks.sh` reference (the copy-based hook flow removed in R306+ in favour of tracked `.githooks/` + `git config core.hooksPath`) rewritten to adopter-appropriate guidance — "wire `mnemosyne-cli validate-code-refs` into your project's own pre-commit hook". Mnemosyne's internal hook installer was never an external-adopter step.
+
+
+
+**Verification**:
+- rg confirms 0 residual `[code_refs]` / `install-hooks` in SCHEMA_GUIDE.md; the citation config struct (mnemosyne-config) parses only `[plugins.set_equality_validator]` (grep finds no `[code_refs]` rename/alias). SCHEMA_GUIDE.md is not a parsed workspace doc (list-docs = docs/GENERATED.md only) so round-trip is unaffected. validate-workspace green; doc-only change, no code touched.
+
+
+
+
+**Carry forward**:
+- Resolves the sole open question (§6) in SCE's PoC #1 + A1 + B1 reply (2026-05-30). The three Mnemosyne-scoped rounds it confirms are already landed: B2 = R370, A2 = R373 (A1's 196-section manifest is now importable via import-sections), B3 = §4 read-path R371. C1 (SCE cpp resolver) + C2 (Mnemosyne cpp wiring) stay deferred per SCE's own "C1 별도 트랙, 우선순위 낮음" call. Bounded fix: only the two verified drifts in SCHEMA_GUIDE were touched, not a full doc audit (cleanup-hard-limit).
+
+
+

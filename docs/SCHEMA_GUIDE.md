@@ -55,7 +55,7 @@ max_section_body_length = 5000
 sidecar_path = "doc/.atomic/store.json"  # default: docs/.atomic/workspace.atomic.json
 output_path = "docs/coverage/SPEC.md"  # default: docs/GENERATED.md
 
-[code_refs]   # optional — opt into code-citation defense
+[plugins.set_equality_validator]   # optional — opt into code-citation defense
 paths = ["src/"]
 severity_missing = "warn"   # | "reject"
 severity_binding = "warn"   # | "reject"
@@ -116,24 +116,24 @@ when the project never numbers its history rows.
 - **`terminology.glossary`** — canonical → variants map. The
  `terminology_consistency` rule rejects (T3) when a non-canonical
  variant appears in any doc body.
-- **`[code_refs].paths`** — production source paths to scan for spec
+- **`[plugins.set_equality_validator].paths`** — production source paths to scan for spec
  citations (`Round NNN`, `§<id>`). Test paths intentionally excluded —
  traceability anchors in tests carry a different policy contract than
  rationale in production source. Typically `["src/"]` or
  per-crate `["crates/foo/src/", "crates/bar/src/"]`.
-- **`[code_refs].severity_missing`** — `warn` or `reject`. Fires when a
+- **`[plugins.set_equality_validator].severity_missing`** — `warn` or `reject`. Fires when a
  citation's target id is absent from the atomic store (hallucination).
  Start at `warn` to surface the baseline, promote to `reject` once
  clean.
-- **`[code_refs].severity_binding`** — `warn` or `reject`. Fires when a
+- **`[plugins.set_equality_validator].severity_binding`** — `warn` or `reject`. Fires when a
  citation appears in a file that the section's
  `implementations` (Path B Spec ↔ Code binding) does *not* list as a
  backing implementation, *or* when an Active section has zero
  implementations recorded. Bidirectional binding integrity.
-- **`[code_refs].comment_only`** — `true` strips string literals before
+- **`[plugins.set_equality_validator].comment_only`** — `true` strips string literals before
  scanning so only comment citations count. Default `true`; flip only if
  your project deliberately puts §id references in user-visible strings.
-- **`[code_refs].inventory_prefixes`** — multi-prefix list for the
+- **`[plugins.set_equality_validator].inventory_prefixes`** — multi-prefix list for the
  *opaque-ID* inventory citation axis (Phase 1A, Round 275). Each entry
  is an ASCII word (`"ARP_"`, `"TCP_"`, `"SOMEIP_ETS_"`); the scanner
  walks `<prefix>[A-Z0-9_]+` tokens whose tail ends in a digit (the
@@ -141,7 +141,7 @@ when the project never numbers its history rows.
  `TCP_BUFFER_SIZE`). Empty list = axis disabled. Longest-prefix-first
  matching: when both `"SOMEIP_"` and `"SOMEIP_ETS_"` are registered,
  `SOMEIP_ETS_BASICS_01` reports once under the more specific prefix.
-- **`[code_refs].inventory_path_prefixes`** — companion axis with
+- **`[plugins.set_equality_validator].inventory_path_prefixes`** — companion axis with
  *section-path* tail shape (`[A-Za-z0-9./-_]+`, no digit-terminus
  requirement). Each entry is a prefix that may include spaces
  (`"W3C SCXML "`, `"IRP "`); the scanner walks
@@ -154,7 +154,7 @@ when the project never numbers its history rows.
  same lifecycle (active / deprecated / reserved). A prefix may be
  registered in both axes if both citation shapes coexist; the
  scanner dedups so a matching cite surfaces once.
-- **`[code_refs].external_section_prefixes`** — single-token prefix
+- **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:
  `<prefix> <numeric> §<id>` — same line, with surrounding punctuation
@@ -163,7 +163,7 @@ when the project never numbers its history rows.
  `external_section_prefixes_bare` below. Multi-token prefixes
  (e.g., `"ETSI TS"`) are not v1 — register the trailing token as a
  looser workaround.
-- **`[code_refs].external_section_prefixes_bare`** — single-token
+- **`[plugins.set_equality_validator].external_section_prefixes_bare`** — single-token
  prefix list for the *doc-name* form of external-standard `§` skip
  (Round 284). Citation form: `<prefix> §<id>` — prefix directly
  before sigil, no numeric between them. Used by AUTOSAR family
@@ -171,7 +171,7 @@ when the project never numbers its history rows.
  Kept distinct from `external_section_prefixes` so registration is
  an *explicit opt-in* per prefix — see *External standard prefix
  kinds* below for the FP risk on generic-sounding tokens.
-- **`[code_refs].severity_inventory`** — `warn` / `reject` / `info`.
+- **`[plugins.set_equality_validator].severity_inventory`** — `warn` / `reject` / `info`.
  Fires when an inventory citation's id is absent from the atomic store
  (`InventoryMissing`) or its registered status is `Deprecated`
  (`InventoryDeprecated`). `Active` / `Reserved` ids pass silently.
@@ -343,7 +343,7 @@ canonical form is the only valid spelling.
 ### Code-citation defense (multi-crate workspace)
 
 ```toml
-[code_refs]
+[plugins.set_equality_validator]
 paths = [
  "crates/foo/src/",
  "crates/bar/src/",
@@ -353,9 +353,9 @@ severity_binding = "reject"
 comment_only = true
 ```
 
-Run `mnemosyne-cli validate-code-refs` to scan; wire into pre-commit
-via `scripts/install-hooks.sh`. Promote `severity_*` from `warn` to
-`reject` once the baseline is clean. To bind a section to its
+Run `mnemosyne-cli validate-code-refs` to scan; wire that command into
+your project's own pre-commit hook to gate every commit. Promote
+`severity_*` from `warn` to `reject` once the baseline is clean. To bind a section to its
 implementation file (so the binding axis recognizes it as backed), use:
 
 ```bash
@@ -371,7 +371,7 @@ the prefix family and let the inventory axis check existence + status
 at cite time:
 
 ```toml
-[code_refs]
+[plugins.set_equality_validator]
 paths = ["src/", "tests/"]
 inventory_prefixes = [
  "ARP_", "TCP_", "UDP_", "IPV4_",
@@ -451,7 +451,7 @@ entry_id_prefix = "Rev "               # spec rev bump → ChangelogEntry append
 anchor_convention = "section_number"
 medium_name = "spec_mirror"
 
-[code_refs]
+[plugins.set_equality_validator]
 paths = ["src/", "include/"]
 severity_missing = "reject"
 severity_binding = "reject"
