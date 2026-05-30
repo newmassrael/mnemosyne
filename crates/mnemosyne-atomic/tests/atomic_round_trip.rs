@@ -209,7 +209,7 @@ fn atomic_section_legacy_carry_unaffected() {
 }
 
 #[test]
-fn atomic_changelog_v2_frozen_after_append() {
+fn atomic_changelog_entry_frozen_on_duplicate_append() {
     let tmp = TempDir::new().unwrap();
     let sidecar = tmp.path().join("workspace.atomic.json");
     let mut store = AtomicStore::new();

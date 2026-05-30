@@ -28,7 +28,7 @@ default_doc = "docs/STUB.md"
 }
 
 #[test]
-fn append_v2_auto_regenerates_generated_md() {
+fn append_changelog_auto_regenerates_generated_md() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());
 
@@ -81,7 +81,7 @@ fn append_v2_auto_regenerates_generated_md() {
 }
 
 #[test]
-fn append_v2_no_regenerate_skips_generated_md() {
+fn append_changelog_no_regenerate_skips_generated_md() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());
 

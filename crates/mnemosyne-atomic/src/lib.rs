@@ -2391,7 +2391,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let legacy_v2_json = r#"{
+        let schema_version_2_json = r#"{
  "sections": {
  "39": {
  "intent": "old-shape section without outline"
@@ -2401,7 +2401,7 @@ mod tests {
  "inventory_entries": {},
  "schema_version": 2
  }"#;
-        std::fs::write(&path, legacy_v2_json).unwrap();
+        std::fs::write(&path, schema_version_2_json).unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
         let s = loaded.sections.get("39").expect("§39 present");
         assert_eq!(s.skeleton.title, "", "title defaults to empty pre-backfill");
@@ -2430,7 +2430,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let legacy_v3_json = r#"{
+        let schema_version_3_json = r#"{
  "sections": {},
  "changelog_entries": {
  "Round 200": {
@@ -2444,7 +2444,7 @@ mod tests {
  "inventory_entries": {},
  "schema_version": 3
 }"#;
-        std::fs::write(&path, legacy_v3_json).unwrap();
+        std::fs::write(&path, schema_version_3_json).unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
         let entry = loaded
             .changelog_entries
