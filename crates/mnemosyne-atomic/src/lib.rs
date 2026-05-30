@@ -35,7 +35,7 @@ pub mod redact;
 pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
-use mnemosyne_core::{DecisionStatus, InventoryStatus};
+use mnemosyne_core::{strip_section_marker, DecisionStatus, InventoryStatus};
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -1145,7 +1145,13 @@ fn build_candidate_section(
     parent_section: Option<&str>,
     normative_excerpt: Option<(&str, &str, &str)>,
 ) -> Result<(String, AtomicSection), AtomicMutateError> {
-    let section_id_t = section_id.trim();
+    // Strip a leading `§` citation sigil so store keys stay bare, regardless of
+    // caller. The CLI/MCP boundaries already strip for the set_section_* paths;
+    // doing it here in the one shared section-create core makes `add_section`
+    // AND `import_sections` symmetric — a citation-form manifest entry (a
+    // section_id carrying a leading sigil) can no longer slip through
+    // `import_sections` and render with a doubled sigil.
+    let section_id_t = strip_section_marker(section_id.trim()).trim();
     let parent_doc_t = parent_doc.trim();
     let title_t = title.trim();
 
@@ -1165,7 +1171,7 @@ fn build_candidate_section(
         ));
     }
     let parent_section_norm = if let Some(parent) = parent_section {
-        let parent_t = parent.trim();
+        let parent_t = strip_section_marker(parent.trim()).trim();
         if parent_t.is_empty() {
             return Err(AtomicMutateError::Validation(
                 "parent_section must be None or non-empty".to_string(),
@@ -4487,6 +4493,53 @@ mod tests {
             !path.exists(),
             "a rejected manifest must not persist anything"
         );
+    }
+
+    #[test]
+    fn import_sections_strips_section_and_parent_sigil() {
+        // SCE-found footgun: a citation-form manifest (section_ids with a
+        // leading sigil) must store BARE keys (render must not double the
+        // sigil), symmetric with add_section.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let mut child = imp("§scxml-D-2", "docs/GENERATED.md", "child");
+        child.parent_section = Some("§scxml-D".to_string());
+        let manifest = vec![imp("§scxml-D", "docs/GENERATED.md", "Appendix D"), child];
+        import_sections(&mut store, &path, &manifest).unwrap();
+        assert!(store.sections.contains_key("scxml-D"));
+        assert!(store.sections.contains_key("scxml-D-2"));
+        assert!(
+            !store.sections.contains_key("§scxml-D"),
+            "sigil leaked into key"
+        );
+        // Parent ref resolved against the bare key.
+        assert_eq!(
+            store
+                .section("scxml-D-2")
+                .unwrap()
+                .skeleton
+                .parent_section
+                .as_deref(),
+            Some("scxml-D")
+        );
+    }
+
+    #[test]
+    fn add_section_and_import_sections_normalize_sigil_identically() {
+        // Both section-create ingestion paths route through build_candidate_section,
+        // so a sigil-prefixed id stores the same bare key either way.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut s1 = AtomicStore::new();
+        add_section(&mut s1, &path, "§scxml-1", "docs/GENERATED.md", "A", None).unwrap();
+        let mut s2 = AtomicStore::new();
+        import_sections(&mut s2, &path, &[imp("§scxml-1", "docs/GENERATED.md", "A")]).unwrap();
+        assert_eq!(
+            s1.sections.keys().collect::<Vec<_>>(),
+            s2.sections.keys().collect::<Vec<_>>()
+        );
+        assert!(s1.sections.contains_key("scxml-1"));
     }
 
     #[test]

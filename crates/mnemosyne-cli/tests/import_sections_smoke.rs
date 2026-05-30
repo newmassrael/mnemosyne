@@ -111,6 +111,30 @@ fn import_is_idempotent_on_rerun() {
 }
 
 #[test]
+fn import_strips_section_sigil_no_double() {
+    // SCE-found bug: a citation-form manifest (`§scxml-1`) must NOT render `§§`.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let manifest = write_manifest(
+        tmp.path(),
+        serde_json::json!([
+        { "section_id": "§scxml-1", "parent_doc": "docs/GENERATED.md", "title": "A" }
+        ]),
+    );
+    assert!(
+        run(tmp.path(), &["import-sections", "--manifest", &manifest])
+            .status
+            .success()
+    );
+    let gen = fs::read_to_string(tmp.path().join("docs/GENERATED.md")).unwrap();
+    assert!(gen.contains("§scxml-1"), "section heading missing; {gen}");
+    assert!(
+        !gen.contains("§§"),
+        "double sigil leaked into render: {gen}"
+    );
+}
+
+#[test]
 fn import_rejects_divergent_section() {
     let tmp = TempDir::new().unwrap();
     write_workspace(tmp.path());

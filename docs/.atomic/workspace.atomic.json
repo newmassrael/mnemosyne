@@ -5502,6 +5502,34 @@
       "publishable_carry_forward_bullets": [
         "Resolves the sole open question (§6) in SCE's PoC #1 + A1 + B1 reply (2026-05-30). The three Mnemosyne-scoped rounds it confirms are already landed: B2 = R370, A2 = R373 (A1's 196-section manifest is now importable via import-sections), B3 = §4 read-path R371. C1 (SCE cpp resolver) + C2 (Mnemosyne cpp wiring) stay deferred per SCE's own \"C1 별도 트랙, 우선순위 낮음\" call. Bounded fix: only the two verified drifts in SCHEMA_GUIDE were touched, not a full doc audit (cleanup-hard-limit)."
       ]
+    },
+    "Round 375 — strip § sigil in import-sections (SCE-found A2 footgun)": {
+      "decision_summary": "Fix import_sections leaking the § citation sigil into store keys (a §-form manifest rendered §§ double-sigil, silently): strip § in the shared build_candidate_section so add_section and import_sections normalize section_id + parent_section identically for every caller.",
+      "changes_bullets": [
+        "build_candidate_section (the one shared section-create core) now strips a leading `§` citation sigil from section_id AND parent_section via mnemosyne_core::strip_section_marker (trim-strip-trim). add_section and import_sections both route through it, so a citation-form manifest entry (`\"§scxml-1\"`) stores the bare key `scxml-1` regardless of caller — symmetric with the CLI/MCP add_section paths that already stripped. Also fixes parent_section lookup for §-form manifests (now matches the bare stored keys).",
+        "The bug (SCE-found, R373 regression): import_sections' CLI handler did not strip §, unlike cmd_add_section, so a §-form manifest stored `§scxml-1` and generate-docs rendered `### §§scxml-1` (double sigil). validate-workspace round-trips fine (store internally self-consistent) so it was SILENT corruption. Fixing in the shared core (not just the CLI handler) closes the footgun for every caller — direct primitive, CLI, and any future MCP import tool.",
+        "Chose strip (lenient, accept §-or-bare) over reject-at-parse, to match add_section's established normalization behavior."
+      ],
+      "verification_bullets": [
+        "+2 atomic unit tests (import strips section + parent sigil with parent-ref resolution; add_section vs import_sections store the identical bare key for a §-form id) + 1 CLI smoke (a §-form manifest renders no `§§` in GENERATED.md). The add_section behavior change (now strips via the core) broke no existing test — full atomic suite 116 pass.",
+        "full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean."
+      ],
+      "carry_forward_bullets": [
+        "Normalization for the section-create path now lives in one place (build_candidate_section). The CLI/MCP § strips for the set_section_* primitives remain — those do not route through build_candidate_section (they call section_mut_strict directly), so the CLI boundary is still their input-normalization point; for add_section the CLI strip is now redundant-but-idempotent, not divergent. SCE's PoC #1 also flagged the SCHEMA_GUIDE [code_refs] drift (closed by R374)."
+      ],
+      "publishable_decision_summary": "Fix import_sections leaking the § citation sigil into store keys (a §-form manifest rendered §§ double-sigil, silently): strip § in the shared build_candidate_section so add_section and import_sections normalize section_id + parent_section identically for every caller.",
+      "publishable_changes_bullets": [
+        "build_candidate_section (the one shared section-create core) now strips a leading `§` citation sigil from section_id AND parent_section via mnemosyne_core::strip_section_marker (trim-strip-trim). add_section and import_sections both route through it, so a citation-form manifest entry (`\"§scxml-1\"`) stores the bare key `scxml-1` regardless of caller — symmetric with the CLI/MCP add_section paths that already stripped. Also fixes parent_section lookup for §-form manifests (now matches the bare stored keys).",
+        "The bug (SCE-found, R373 regression): import_sections' CLI handler did not strip §, unlike cmd_add_section, so a §-form manifest stored `§scxml-1` and generate-docs rendered `### §§scxml-1` (double sigil). validate-workspace round-trips fine (store internally self-consistent) so it was SILENT corruption. Fixing in the shared core (not just the CLI handler) closes the footgun for every caller — direct primitive, CLI, and any future MCP import tool.",
+        "Chose strip (lenient, accept §-or-bare) over reject-at-parse, to match add_section's established normalization behavior."
+      ],
+      "publishable_verification_bullets": [
+        "+2 atomic unit tests (import strips section + parent sigil with parent-ref resolution; add_section vs import_sections store the identical bare key for a §-form id) + 1 CLI smoke (a §-form manifest renders no `§§` in GENERATED.md). The add_section behavior change (now strips via the core) broke no existing test — full atomic suite 116 pass.",
+        "full workspace suite 0 fail; clippy --workspace --all-targets -D warnings + fmt clean."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Normalization for the section-create path now lives in one place (build_candidate_section). The CLI/MCP § strips for the set_section_* primitives remain — those do not route through build_candidate_section (they call section_mut_strict directly), so the CLI boundary is still their input-normalization point; for add_section the CLI strip is now redundant-but-idempotent, not divergent. SCE's PoC #1 also flagged the SCHEMA_GUIDE [code_refs] drift (closed by R374)."
+      ]
     }
   },
   "inventory_entries": {},
