@@ -335,8 +335,8 @@ pub struct SetEqualityValidatorConfig {
 
     /// severity for binding-class violations (Path B Spec ↔
     /// Code bidirectional set-equality):
-    /// - `CitationUnbound` — code cites §X but file not in §X.implementations
-    /// - `ImplementationUnbacked` — §X.implementations names file F but F
+    /// - `CitationUnbound` — code cites §X but file not in §X.bindings
+    /// - `ImplementationUnbacked` — §X.bindings names file F but F
     /// has no §X citation
     /// - `SymbolMismatch` — a cite's resolved symbol is not in §X's
     /// registered symbol set for that file

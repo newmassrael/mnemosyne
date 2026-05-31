@@ -151,14 +151,51 @@ pub struct AtomicSnapshot {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SectionView {
-    pub implementations: Vec<ImplementationRef>,
+    pub bindings: Vec<BindingRef>,
     pub decision_status: Option<DecisionStatus>,
 }
 
+/// Trace-link claim strength on a Path B binding (code → spec section).
+/// Canonical substrate enum (lives here in L0 core, mirroring
+/// [`DecisionStatus`], so atomic / validate / plugins share one type with
+/// no adapter). `Implements` = SysML «satisfy» (fulfills the requirement;
+/// the only kind that counts as coverage); `References` = SysML «trace»
+/// (related to, no fulfillment claim). `verifies`/`refines` are named in
+/// the closed taxonomy but deferred (YAGNI; load-time migration makes a new
+/// variant a free single-step change).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BindingKind {
+    Implements,
+    References,
+}
+
+impl BindingKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BindingKind::Implements => "implements",
+            BindingKind::References => "references",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a kind.
+    /// `None` for any other string. Used to round-trip the kind through the
+    /// projection layer's primitive salsa inputs (core is L0 zero-dep and
+    /// cannot derive `salsa::Update`, so the enum is lowered to its tag).
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "implements" => Some(BindingKind::Implements),
+            "references" => Some(BindingKind::References),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImplementationRef {
+pub struct BindingRef {
     pub file: String,
     pub symbol: Option<String>,
+    pub kind: BindingKind,
 }
 
 /// Section.decision_status lifecycle vocabulary — substrate-canonical

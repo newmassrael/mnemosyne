@@ -450,9 +450,11 @@ integrity gaps:
 - Code-citation defense reject mode (`severity_missing` /
   `severity_binding` = `reject`) gating pre-commit on hallucinated
   spec references.
-- Bidirectional Spec ↔ Code binding via `Section.implementations` and
-  three-edged set-equality detection
-  (`CitationUnbound` + `ImplementationUnbacked` + `ImplementationMissing`).
+- Bidirectional Spec ↔ Code binding via `Section.bindings` (typed
+  trace-link edges: `kind = implements` «satisfy» / `references` «trace»)
+  and three-edged set-equality detection
+  (`CitationUnbound` + `ImplementationUnbacked` + `ImplementationMissing`,
+  the last counting only `implements` as coverage).
 - Atomic ChangelogEntry mutate API with auto-cascade regeneration of
   `GENERATED.md` on every successful write.
 

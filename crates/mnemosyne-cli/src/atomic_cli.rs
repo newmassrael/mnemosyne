@@ -12,7 +12,7 @@
 //! - `set-section-alternatives` — set Section.alternatives_rejected
 //! - `set-section-impact-scope` — set Section.impact_scope (cross-ref list)
 //! - `add-section-example` — append to Section.examples (code block)
-//! - `add-section-implementation` — append to Section.implementations
+//! - `add-section-binding` — append to Section.bindings
 //!
 //! - `append-changelog-entry` — atomic-aware changelog append
 //! (decision_summary + changes + verification + impact + carry_forward)
@@ -34,13 +34,14 @@ use std::path::Path;
 use anyhow::{anyhow, bail, Context, Result};
 
 use mnemosyne_atomic::{
-    add_inventory_entry, add_section_caveat, add_section_example, add_section_implementation,
-    append_changelog_entry, remove_inventory_entry, remove_section, remove_section_implementation,
+    add_inventory_entry, add_section_binding, add_section_caveat, add_section_example,
+    append_changelog_entry, remove_inventory_entry, remove_section, remove_section_binding,
     set_inventory_section_ref, set_inventory_status, set_section_alternatives,
-    set_section_decision_status, set_section_impact_scope, set_section_inputs, set_section_intent,
-    set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
-    set_section_parent_section, set_section_rationale, set_section_title, AtomicMutateError,
-    AtomicMutateReceipt, AtomicStore, ChangelogEntryDraft, ExampleBlock, RejectedAlternative,
+    set_section_binding_kind, set_section_decision_status, set_section_impact_scope,
+    set_section_inputs, set_section_intent, set_section_normative_excerpt, set_section_outputs,
+    set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title,
+    AtomicMutateError, AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft,
+    ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
 use mnemosyne_core::{strip_section_marker, DecisionStatus, InventoryStatus};
@@ -1056,16 +1057,27 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
 
 /// Path B (Spec ↔ Code bidirectional binding) substrate.
 ///
-/// Append a `(file, symbol?)` binding entry to `Section.implementations`.
-/// File path is workspace-relative POSIX shape; symbol is opaque (no
-/// language grammar regex). Set semantics: duplicate `(file, symbol)`
-/// rejected at write time.
-///
-/// Validator extension and section seeding are deferred to +.
-pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) -> Result<()> {
+/// Parse a `--kind` flag value into a [`BindingKind`].
+fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
+    BindingKind::from_tag(raw.trim()).ok_or_else(|| {
+        anyhow!(
+            "--kind must be `implements` or `references` (got `{}`)",
+            raw
+        )
+    })
+}
+
+/// Append a `(file, symbol?, kind)` typed trace-link binding to
+/// `Section.bindings`. File path is workspace-relative POSIX shape; symbol
+/// is opaque (no language grammar regex); `--kind` is required and explicit
+/// (`implements` = «satisfy» / `references` = «trace»). Set semantics:
+/// duplicate `(file, symbol)` rejected at write time regardless of kind
+/// (use `set-section-binding-kind` to change an existing binding's kind).
+pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
+    let mut kind: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut regenerate = true;
@@ -1093,6 +1105,13 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
                         .clone(),
                 )
             }
+            "--kind" => {
+                kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
             "--sidecar" => {
                 sidecar = Some(
                     iter.next()
@@ -1108,16 +1127,20 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let file =
         file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
+    let kind = parse_binding_kind(
+        &kind.ok_or_else(|| anyhow!("--kind arg required (`implements` or `references`)"))?,
+    )?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
-        add_section_implementation(
+        add_section_binding(
             &mut store,
             &sidecar_path,
             &section,
             &file,
             symbol.as_deref(),
+            kind,
         ),
         sidecar.as_deref(),
         regenerate,
@@ -1125,17 +1148,16 @@ pub fn cmd_add_section_implementation(workspace_root: &Path, args: &[String]) ->
     )
 }
 
-/// Round 283 — `remove-section-implementation` CLI surface.
+/// `remove-section-binding` CLI surface.
 ///
 /// `--section §<id> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]`
 ///
-/// Removes one `(file, symbol?)` binding from `Section.implementations`.
-/// Errors with NotFound when the section or the specific binding is
-/// absent (exact set-element match; pass `--symbol` to target a
-/// symbol-narrowed row, omit it for a file-only row). `--reason`
-/// mandatory — recorded on the mutate receipt for audit symmetry with
-/// `remove-section` (R267) / `remove-inventory-entry` (R274).
-pub fn cmd_remove_section_implementation(workspace_root: &Path, args: &[String]) -> Result<()> {
+/// Removes one `(file, symbol?)` binding from `Section.bindings` (matches on
+/// the identity pair regardless of kind). Errors with NotFound when the
+/// section or the specific binding is absent. `--reason` mandatory —
+/// recorded on the mutate receipt for audit symmetry with `remove-section`
+/// (R267) / `remove-inventory-entry` (R274).
+pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
@@ -1194,12 +1216,105 @@ pub fn cmd_remove_section_implementation(workspace_root: &Path, args: &[String])
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         workspace_root,
-        remove_section_implementation(
+        remove_section_binding(
             &mut store,
             &sidecar_path,
             &section,
             &file,
             symbol.as_deref(),
+            &reason,
+        ),
+        sidecar.as_deref(),
+        regenerate,
+        json,
+    )
+}
+
+/// `set-section-binding-kind` CLI surface — reclassify an existing binding.
+///
+/// `--section §<id> --file <path> [--symbol <name>] --kind implements|references --reason <text> [--sidecar <path>] [--json]`
+///
+/// Second write path to `Binding.kind` (alongside `add-section-binding
+/// --kind`); the binding must already exist. `--reason` mandatory
+/// (auditable reclassification). This is the Stage-B reclassification verb
+/// (`implements → references` for data/DTO fields).
+pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut section: Option<String> = None;
+    let mut file: Option<String> = None;
+    let mut symbol: Option<String> = None;
+    let mut kind: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut regenerate = true;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--section" => {
+                section = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--section missing"))?
+                        .clone(),
+                )
+            }
+            "--file" => {
+                file = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--file missing"))?
+                        .clone(),
+                )
+            }
+            "--symbol" => {
+                symbol = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--symbol missing"))?
+                        .clone(),
+                )
+            }
+            "--kind" => {
+                kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" => {
+                reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            "--no-regenerate" => regenerate = false,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+    let file =
+        file.ok_or_else(|| anyhow!("--file arg required (workspace-relative POSIX path)"))?;
+    let kind = parse_binding_kind(
+        &kind.ok_or_else(|| anyhow!("--kind arg required (`implements` or `references`)"))?,
+    )?;
+    let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        workspace_root,
+        set_section_binding_kind(
+            &mut store,
+            &sidecar_path,
+            &section,
+            &file,
+            symbol.as_deref(),
+            kind,
             &reason,
         ),
         sidecar.as_deref(),

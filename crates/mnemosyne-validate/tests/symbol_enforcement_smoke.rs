@@ -5,7 +5,7 @@
 //! 1. **Happy path** — `Implementation.symbol` matches the resolver's
 //!    `resolve_symbol_at(file, citation_line)` answer; 0 SymbolMismatch.
 //! 2. **Mismatch path** — resolver returns a different symbol from the
-//!    one recorded in `§<id>.implementations[file=...]`; one
+//!    one recorded in `§<id>.bindings[file=...]`; one
 //!    `CodeRefViolation::Citation { kind: SymbolMismatch }` surfaces.
 //! 3. **Opt-out path** — no resolver registered for the file's language
 //!    (or no `SymbolResolver` at all); file-only set-equality applies,
@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_atomic::{add_section, add_section_implementation, AtomicStore};
+use mnemosyne_atomic::{add_section, add_section_binding, AtomicStore, BindingKind};
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
@@ -53,12 +53,13 @@ fn stand_up(
         None,
     )
     .unwrap();
-    add_section_implementation(
+    add_section_binding(
         &mut store,
         &sidecar,
         "sec1",
         "src/foo.rs",
         expected_symbol_in_spec,
+        BindingKind::Implements,
     )
     .unwrap();
 
@@ -226,8 +227,24 @@ fn set_membership_multiple_symbols_one_file() {
         None,
     )
     .unwrap();
-    add_section_implementation(&mut store, &sidecar, "sec1", "src/foo.rs", Some("alpha")).unwrap();
-    add_section_implementation(&mut store, &sidecar, "sec1", "src/foo.rs", Some("beta")).unwrap();
+    add_section_binding(
+        &mut store,
+        &sidecar,
+        "sec1",
+        "src/foo.rs",
+        Some("alpha"),
+        BindingKind::Implements,
+    )
+    .unwrap();
+    add_section_binding(
+        &mut store,
+        &sidecar,
+        "sec1",
+        "src/foo.rs",
+        Some("beta"),
+        BindingKind::Implements,
+    )
+    .unwrap();
 
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
     // Cites sit on lines 2 (alpha), 5 (beta), 8 (gamma).

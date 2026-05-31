@@ -119,13 +119,13 @@ pub fn render_section(
             .collect();
         ctx.insert("examples", &examples);
     }
-    if !atomic.implementations.is_empty() {
-        let impls: Vec<_> = atomic
-            .implementations
+    if !atomic.bindings.is_empty() {
+        let bindings: Vec<_> = atomic
+            .bindings
             .iter()
-            .map(|i| json!({ "file": i.file, "symbol": i.symbol }))
+            .map(|b| json!({ "file": b.file, "symbol": b.symbol, "kind": b.kind.as_str() }))
             .collect();
-        ctx.insert("implementations", &impls);
+        ctx.insert("bindings", &bindings);
     }
     if let Some(ne) = &atomic.normative_excerpt {
         ctx.insert(
@@ -239,7 +239,7 @@ pub fn compose_generated_md(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_atomic::{ExampleBlock, Implementation, RejectedAlternative};
+    use mnemosyne_atomic::{Binding, BindingKind, ExampleBlock, RejectedAlternative};
 
     #[test]
     fn render_section_minimal_intent_only() {
@@ -271,12 +271,14 @@ mod tests {
                 language: "rust".into(),
                 code: "fn main() {}".into(),
             }],
-            implementations: vec![
-                Implementation {
+            bindings: vec![
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "crates/mnemosyne-atomic/src/lib.rs".into(),
                     symbol: Some("AtomicSection".into()),
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "crates/mnemosyne-cli/src/atomic_cli.rs".into(),
                     symbol: None,
                 },
@@ -294,9 +296,9 @@ mod tests {
         assert!(out.contains("**Impact scope**: §15, §39"));
         assert!(out.contains("```rust"));
         assert!(out.contains("fn main() {}"));
-        assert!(out.contains("**Implementations**"));
-        assert!(out.contains("- crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
-        assert!(out.contains("- crates/mnemosyne-cli/src/atomic_cli.rs"));
+        assert!(out.contains("**Bindings**"));
+        assert!(out.contains("- [implements] crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
+        assert!(out.contains("- [implements] crates/mnemosyne-cli/src/atomic_cli.rs"));
     }
 
     #[test]

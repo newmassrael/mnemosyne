@@ -19,10 +19,10 @@
 //! - Section atomic: `set_section_intent` / `set_section_rationale` /
 //! `set_section_inputs` / `set_section_outputs` / `add_section_caveat` /
 //! `set_section_alternatives` / `set_section_impact_scope` /
-//! `add_section_example` / `add_section_implementation`
+//! `add_section_example` / `add_section_binding`
 //! - ChangelogEntry atomic: `append_changelog_entry`
 //!
-//! `Section.implementations` lands as the substrate for Path B
+//! `Section.bindings` lands as the substrate for Path B
 //! of the code-citation defense (Spec ↔ Code bidirectional binding). The
 //! atomic store records "this section is implemented at file:symbol";
 //! cross-checks code citations against the spec's authoritative
@@ -107,12 +107,24 @@ pub struct AtomicSection {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
     /// Path B (Spec ↔ Code bidirectional binding) substrate.
-    /// Set of `(file, symbol?)` bindings that authoritatively own "this
-    /// section is implemented here". cross-checks code citations
-    /// against this set. Append-only (no replace/remove primitive); duplicate
-    /// `(file, symbol)` rejected at write time (set semantics).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub implementations: Vec<Implementation>,
+    /// Set of `(file, symbol?, kind)` typed trace-link edges. The
+    /// bidirectional cross-check defends code citations against this set
+    /// (presence, any kind); coverage counts only `kind == Implements`.
+    /// Duplicate `(file, symbol)` rejected at write time (set semantics on
+    /// the identity pair; `kind` is a mutable attribute via
+    /// [`set_section_binding_kind`], not part of the identity).
+    ///
+    /// `#[serde(alias = "implementations")]` is the transitional migration
+    /// reader for pre-v5 stores, whose JSON key was `implementations`; the
+    /// next save rewrites it as `bindings`. (Pre-release: removable once no
+    /// pre-v5 store exists; kept only as the load-migration substrate, not a
+    /// live-compat carry.)
+    #[serde(
+        default,
+        alias = "implementations",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub bindings: Vec<Binding>,
 
     /// External-spec mirror — vendored normative quote anchored to this
     /// Section (RFC-002 FR-1). When `Some`, the Section represents a
@@ -198,20 +210,60 @@ pub struct ExampleBlock {
     pub code: String,
 }
 
-/// Path B binding entry (Spec → Code).
+// Trace-link claim strength on a Path B binding. Canonical enum lives in
+// L0 core (mirrors DecisionStatus); re-exported here so the on-disk
+// `Binding.kind` field and the mutate primitives share one type with the
+// validator/view layer — no adapter, no duplicate enum (R309 pattern).
+pub use mnemosyne_core::BindingKind;
+
+/// serde default for [`Binding::kind`]: pre-v5 stores have no `kind` field;
+/// every legacy binding was an implicit implementation claim (coverage
+/// counted all bindings before the split), so defaulting to `Implements`
+/// is behavior-preserving. The `schema_version < 5` migration in
+/// [`AtomicStore::load`] records every such defaulted binding in the
+/// migration report so the inherited claim is never *silently* blessed.
+fn binding_kind_implements_default() -> BindingKind {
+    BindingKind::Implements
+}
+
+/// Path B binding entry (Spec → Code), a typed trace-link edge.
 ///
 /// `file` = workspace-relative POSIX path (no leading `/`, no `..` segment,
-/// no backslash; validated at write time by [`add_section_implementation`]).
+/// no backslash; validated at write time by [`add_section_binding`]).
 /// `symbol` = optional opaque language-agnostic identifier (function /
 /// type / qualified path); when present, narrows the binding from "this
 /// file" to "this symbol within this file". Stored opaquely — the spec
-/// layer does not encode language grammar; 's bidirectional
-/// cross-check operates on the strings as-is.
+/// layer does not encode language grammar; the bidirectional cross-check
+/// operates on the strings as-is.
+/// `kind` = the trace-link claim strength ([`BindingKind`]); always written
+/// explicitly. `#[serde(default)]` only so pre-v5 stores (which have no
+/// `kind`) still deserialize during the load migration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Implementation {
+pub struct Binding {
     pub file: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    #[serde(default = "binding_kind_implements_default")]
+    pub kind: BindingKind,
+}
+
+/// One row of the v4→v5 [`AtomicStore::kind_migration_report`]: a binding
+/// that inherited `kind = Implements` from a pre-v5 store, pending Stage-B
+/// classification (`implements` vs `references`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KindMigrationRow {
+    pub section_id: String,
+    pub file: String,
+    pub symbol: Option<String>,
+    pub defaulted_kind: BindingKind,
+}
+
+/// The v4→v5 migration work-list (see [`AtomicStore::kind_migration_report`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KindMigrationReport {
+    /// On-disk schema version the store was loaded from (< 5).
+    pub from_schema_version: u32,
+    pub rows: Vec<KindMigrationRow>,
 }
 
 /// ChangelogEntry atomic typed fields.
@@ -467,10 +519,23 @@ pub enum AtomicStoreError {
 // fields via #[serde(default)]; the v3→v4 migration in `AtomicStore::load`
 // clones audit_* into publishable_* per entry so the default render shape
 // stays byte-identical until R295 setters explicitly diverge them.
+//
+// Schema version 5: Path B `Section.bindings[] = {file, symbol}`
+// became `Section.bindings[] = {file, symbol, kind}` (typed trace-link
+// edge; BindingKind = Implements | References). Pre-v5 stores migrate at
+// load with ZERO code: the renamed `bindings` field reads the old
+// `implementations` JSON key via #[serde(alias)], and each legacy binding
+// (which carried no `kind`) defaults to `Implements` via #[serde(default)]
+// — behavior-preserving, because coverage counted every binding before the
+// split. `AtomicStore::kind_migration_report` surfaces those defaulted
+// bindings (detectable while schema_version < 5, before the first save
+// rewrites it) so the inherited claim is a reviewable work-list, never a
+// silent blessing.
+//
 // Load is back-compat across all versions ≤ CURRENT: version-N stores
 // deserialize with newer fields defaulted; the next save rewrites
 // schema_version to CURRENT.
-const CURRENT_SCHEMA_VERSION: u32 = 4;
+const CURRENT_SCHEMA_VERSION: u32 = 5;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -508,6 +573,43 @@ impl AtomicStore {
             }
         }
         Ok(store)
+    }
+
+    /// v4→v5 migration report: when the store was loaded from a pre-v5
+    /// schema, every binding inherited `kind = Implements` by default (no
+    /// `kind` existed on disk). This lists each such binding so the inherited
+    /// claim is a reviewable work-list — the Stage-B reclassification input —
+    /// rather than a silent blessing of unverified `implements`.
+    ///
+    /// Returns `None` once the store is at the current schema (the first save
+    /// rewrites `schema_version` to CURRENT), so this must be read in the same
+    /// session that loads the pre-v5 store. Ordered by `(section_id, file,
+    /// symbol)` for stable output.
+    pub fn kind_migration_report(&self) -> Option<KindMigrationReport> {
+        if self.schema_version >= 5 {
+            return None;
+        }
+        let mut rows: Vec<KindMigrationRow> = Vec::new();
+        for (section_id, section) in &self.sections {
+            for binding in &section.bindings {
+                rows.push(KindMigrationRow {
+                    section_id: section_id.clone(),
+                    file: binding.file.clone(),
+                    symbol: binding.symbol.clone(),
+                    defaulted_kind: binding.kind,
+                });
+            }
+        }
+        rows.sort_by(|a, b| {
+            a.section_id
+                .cmp(&b.section_id)
+                .then_with(|| a.file.cmp(&b.file))
+                .then_with(|| a.symbol.cmp(&b.symbol))
+        });
+        Some(KindMigrationReport {
+            from_schema_version: self.schema_version,
+            rows,
+        })
     }
 
     /// Atomic save (temp + rename). Creates parent dir as needed.
@@ -633,18 +735,19 @@ impl mnemosyne_core::AtomicStoreView for AtomicStore {
             .sections
             .iter()
             .map(|(sid, sec)| {
-                let implementations = sec
-                    .implementations
+                let bindings = sec
+                    .bindings
                     .iter()
-                    .map(|i| mnemosyne_core::ImplementationRef {
-                        file: i.file.clone(),
-                        symbol: i.symbol.clone(),
+                    .map(|b| mnemosyne_core::BindingRef {
+                        file: b.file.clone(),
+                        symbol: b.symbol.clone(),
+                        kind: b.kind,
                     })
                     .collect();
                 (
                     sid.clone(),
                     mnemosyne_core::SectionView {
-                        implementations,
+                        bindings,
                         decision_status: sec.skeleton.decision_status,
                     },
                 )
@@ -739,13 +842,13 @@ fn synthesize_section_body_inner(atomic: &AtomicSection, include_implementations
             .collect();
         parts.push(block.join("\n"));
     }
-    if include_implementations && !atomic.implementations.is_empty() {
+    if include_implementations && !atomic.bindings.is_empty() {
         let block: Vec<String> = atomic
-            .implementations
+            .bindings
             .iter()
-            .map(|i| match &i.symbol {
-                Some(s) => format!("- {}:{}", i.file, s),
-                None => format!("- {}", i.file),
+            .map(|b| match &b.symbol {
+                Some(s) => format!("- {}:{}", b.file, s),
+                None => format!("- {}", b.file),
             })
             .collect();
         parts.push(block.join("\n"));
@@ -1579,26 +1682,35 @@ pub fn set_section_normative_excerpt(
     )
 }
 
-pub fn add_section_implementation(
+pub fn add_section_binding(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     section_id: &str,
     file: &str,
     symbol: Option<&str>,
+    kind: BindingKind,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let file_clean = validate_implementation_file(file)?;
+    let file_clean = validate_binding_file(file)?;
     let symbol_clean = match symbol {
-        Some(s) => Some(validate_implementation_symbol(s)?),
+        Some(s) => Some(validate_binding_symbol(s)?),
         None => None,
     };
-    let candidate = Implementation {
+    let candidate = Binding {
         file: file_clean,
         symbol: symbol_clean,
+        kind,
     };
     let section = section_mut_strict(store, section_id)?;
-    if section.implementations.contains(&candidate) {
+    // Identity is the (file, symbol) pair; `kind` is a mutable attribute
+    // (set_section_binding_kind), so a duplicate is detected on identity
+    // regardless of kind.
+    if section
+        .bindings
+        .iter()
+        .any(|b| b.file == candidate.file && b.symbol == candidate.symbol)
+    {
         return Err(AtomicMutateError::Validation(format!(
- "implementation `{}{}` already present on §{} (set semantics — duplicates rejected at write time)",
+ "binding `{}{}` already present on §{} (set semantics on (file, symbol) — use set_section_binding_kind to change its kind)",
  candidate.file,
  candidate
  .symbol
@@ -1608,11 +1720,11 @@ pub fn add_section_implementation(
  section_id,
  )));
     }
-    section.implementations.push(candidate);
+    section.bindings.push(candidate);
     save_with_receipt(
         store,
         sidecar_path,
-        "add_section_implementation",
+        "add_section_binding",
         "section",
         section_id,
     )
@@ -1621,7 +1733,7 @@ pub fn add_section_implementation(
 /// Round 283 — remove one (file, symbol?) implementation binding from a
 /// Section.
 ///
-/// Section.implementations carries current-truth semantics (R259
+/// Section.bindings carries current-truth semantics (R259
 /// bidirectional binding + R269 ImplementationMissing axiom), so stale
 /// rows from code refactor / citation cleanup must be removable. The
 /// long-term audit trail lives in (a) the `reason` recorded on the
@@ -1635,15 +1747,16 @@ pub fn add_section_implementation(
 ///
 /// Errors:
 /// - `Validation`: `file` shape violation, empty `reason`, or other
-/// input validation (mirrors `add_section_implementation`).
+/// input validation (mirrors `add_section_binding`).
 /// - `NotFound`: `section_id` absent, or the `(file, symbol)` tuple
 /// is not registered on the section (no silent no-op — caller asked
 /// to remove a specific binding).
 ///
-/// Symmetric with [`add_section_implementation`]; `--reason` mandatory
+/// Symmetric with [`add_section_binding`]; `--reason` mandatory
 /// mirrors [`remove_section`] (Round 267) and `remove_inventory_entry`
-/// (Round 274).
-pub fn remove_section_implementation(
+/// (Round 274). Matches on the `(file, symbol)` identity pair regardless of
+/// `kind`.
+pub fn remove_section_binding(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     section_id: &str,
@@ -1653,12 +1766,12 @@ pub fn remove_section_implementation(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     if reason.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
-            "remove_section_implementation: --reason mandatory (audit-trail safeguard)".to_string(),
+            "remove_section_binding: --reason mandatory (audit-trail safeguard)".to_string(),
         ));
     }
-    let file_clean = validate_implementation_file(file)?;
+    let file_clean = validate_binding_file(file)?;
     let symbol_clean = match symbol {
-        Some(s) => Some(validate_implementation_symbol(s)?),
+        Some(s) => Some(validate_binding_symbol(s)?),
         None => None,
     };
     let section = match store.sections.get_mut(section_id) {
@@ -1670,18 +1783,17 @@ pub fn remove_section_implementation(
             )));
         }
     };
-    let target = Implementation {
-        file: file_clean,
-        symbol: symbol_clean,
-    };
-    let pos = match section.implementations.iter().position(|i| i == &target) {
+    let pos = match section
+        .bindings
+        .iter()
+        .position(|b| b.file == file_clean && b.symbol == symbol_clean)
+    {
         Some(p) => p,
         None => {
             return Err(AtomicMutateError::NotFound(format!(
-                "implementation `{}{}` not registered on §{}",
-                target.file,
-                target
-                    .symbol
+                "binding `{}{}` not registered on §{}",
+                file_clean,
+                symbol_clean
                     .as_deref()
                     .map(|s| format!(":{}", s))
                     .unwrap_or_default(),
@@ -1689,86 +1801,152 @@ pub fn remove_section_implementation(
             )));
         }
     };
-    section.implementations.remove(pos);
+    section.bindings.remove(pos);
     save_with_receipt(
         store,
         sidecar_path,
-        "remove_section_implementation",
+        "remove_section_binding",
         "section",
         section_id,
     )
 }
 
-fn validate_implementation_file(raw: &str) -> Result<String, AtomicMutateError> {
+/// Reclassify the `kind` of an existing binding (R295/R305 pattern: a second
+/// write path to the same atomic field). Identity is the `(file, symbol)`
+/// pair; the binding must already exist (NotFound otherwise — no silent
+/// create). `--reason` mandatory (auditable reclassification, mirrors
+/// `remove_section_binding`).
+///
+/// Invariant parity: this and [`add_section_binding`] are the two write
+/// paths to `Binding.kind`. `BindingKind` is a closed enum, so both accept
+/// exactly the same kind set by construction; the parity test in this crate
+/// pins that they never diverge (CLAUDE.md half-enforced-invariant rule).
+pub fn set_section_binding_kind(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    section_id: &str,
+    file: &str,
+    symbol: Option<&str>,
+    kind: BindingKind,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "set_section_binding_kind: --reason mandatory (audit-trail safeguard)".to_string(),
+        ));
+    }
+    let file_clean = validate_binding_file(file)?;
+    let symbol_clean = match symbol {
+        Some(s) => Some(validate_binding_symbol(s)?),
+        None => None,
+    };
+    let section = match store.sections.get_mut(section_id) {
+        Some(s) => s,
+        None => {
+            return Err(AtomicMutateError::NotFound(format!(
+                "section_id `{}` not present in atomic store",
+                section_id
+            )));
+        }
+    };
+    let binding = match section
+        .bindings
+        .iter_mut()
+        .find(|b| b.file == file_clean && b.symbol == symbol_clean)
+    {
+        Some(b) => b,
+        None => {
+            return Err(AtomicMutateError::NotFound(format!(
+                "binding `{}{}` not registered on §{}",
+                file_clean,
+                symbol_clean
+                    .as_deref()
+                    .map(|s| format!(":{}", s))
+                    .unwrap_or_default(),
+                section_id
+            )));
+        }
+    };
+    binding.kind = kind;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_section_binding_kind",
+        "section",
+        section_id,
+    )
+}
+
+fn validate_binding_file(raw: &str) -> Result<String, AtomicMutateError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(AtomicMutateError::Validation(
-            "implementation file: must be non-empty".to_string(),
+            "binding file: must be non-empty".to_string(),
         ));
     }
     if trimmed != raw {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: leading or trailing whitespace not allowed (`{}`)",
+            "binding file: leading or trailing whitespace not allowed (`{}`)",
             raw
         )));
     }
     if trimmed.starts_with('/') {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: must be workspace-relative (no leading `/`): `{}`",
+            "binding file: must be workspace-relative (no leading `/`): `{}`",
             trimmed
         )));
     }
     if trimmed.starts_with("./") {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: drop leading `./` for canonical form (`{}`)",
+            "binding file: drop leading `./` for canonical form (`{}`)",
             trimmed
         )));
     }
     if trimmed.contains('\\') {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: backslash not allowed (workspace paths are POSIX): `{}`",
+            "binding file: backslash not allowed (workspace paths are POSIX): `{}`",
             trimmed
         )));
     }
     if trimmed.contains("//") {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: collapse internal `//` (`{}`)",
+            "binding file: collapse internal `//` (`{}`)",
             trimmed
         )));
     }
     if trimmed.ends_with('/') {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation file: trailing `/` not allowed (must point at a file, not a dir): `{}`",
+            "binding file: trailing `/` not allowed (must point at a file, not a dir): `{}`",
             trimmed
         )));
     }
     for seg in trimmed.split('/') {
         if seg == ".." {
             return Err(AtomicMutateError::Validation(format!(
- "implementation file: `..` segment not allowed (no traversal in normalized paths): `{}`",
- trimmed
- )));
+                "binding file: `..` segment not allowed (no traversal in normalized paths): `{}`",
+                trimmed
+            )));
         }
     }
     Ok(trimmed.to_string())
 }
 
-fn validate_implementation_symbol(raw: &str) -> Result<String, AtomicMutateError> {
+fn validate_binding_symbol(raw: &str) -> Result<String, AtomicMutateError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(AtomicMutateError::Validation(
- "implementation symbol: must be non-empty when supplied (omit the field for file-level binding)".to_string(),
+ "binding symbol: must be non-empty when supplied (omit the field for file-level binding)".to_string(),
  ));
     }
     if trimmed != raw {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation symbol: leading or trailing whitespace not allowed (`{}`)",
+            "binding symbol: leading or trailing whitespace not allowed (`{}`)",
             raw
         )));
     }
     if trimmed.contains('\n') || trimmed.contains('\r') {
         return Err(AtomicMutateError::Validation(format!(
-            "implementation symbol: newline not allowed (`{:?}`)",
+            "binding symbol: newline not allowed (`{:?}`)",
             raw
         )));
     }
@@ -2380,7 +2558,7 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 4);
+        assert_eq!(reloaded.schema_version, 5);
     }
 
     #[test]
@@ -2419,7 +2597,7 @@ mod tests {
         );
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 4);
+        assert_eq!(reloaded.schema_version, 5);
     }
 
     #[test]
@@ -2472,10 +2650,10 @@ mod tests {
             entry.publishable_matches_audit(),
             "post-migration default: publishable matches audit"
         );
-        // Save then reload: publishable_* now persisted, schema bumps to 4.
+        // Save then reload: publishable_* now persisted, schema bumps to 5.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 4);
+        assert_eq!(reloaded.schema_version, 5);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
     }
@@ -3116,29 +3294,31 @@ mod tests {
     }
 
     #[test]
-    fn add_section_implementation_basic_round_trip() {
+    fn add_section_binding_basic_round_trip() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "39");
-        add_section_implementation(
+        add_section_binding(
             &mut store,
             &path,
             "39",
             "crates/mnemosyne-atomic/src/lib.rs",
             Some("AtomicSection"),
+            BindingKind::Implements,
         )
         .unwrap();
-        add_section_implementation(
+        add_section_binding(
             &mut store,
             &path,
             "39",
             "crates/mnemosyne-cli/src/atomic_cli.rs",
             None,
+            BindingKind::Implements,
         )
         .unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
-        let impls = &loaded.section("39").unwrap().implementations;
+        let impls = &loaded.section("39").unwrap().bindings;
         assert_eq!(impls.len(), 2);
         assert_eq!(impls[0].file, "crates/mnemosyne-atomic/src/lib.rs");
         assert_eq!(impls[0].symbol.as_deref(), Some("AtomicSection"));
@@ -3147,25 +3327,48 @@ mod tests {
     }
 
     #[test]
-    fn add_section_implementation_rejects_duplicate() {
+    fn add_section_binding_rejects_duplicate() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "39");
-        add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar")).unwrap();
-        let err = add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some("bar"))
-            .unwrap_err();
+        add_section_binding(
+            &mut store,
+            &path,
+            "39",
+            "src/foo.rs",
+            Some("bar"),
+            BindingKind::Implements,
+        )
+        .unwrap();
+        let err = add_section_binding(
+            &mut store,
+            &path,
+            "39",
+            "src/foo.rs",
+            Some("bar"),
+            BindingKind::Implements,
+        )
+        .unwrap_err();
         match err {
             AtomicMutateError::Validation(msg) => assert!(msg.contains("already present")),
             other => panic!("expected Validation, got {:?}", other),
         }
         // file-only vs symbol-qualified are distinct entries.
-        add_section_implementation(&mut store, &path, "39", "src/foo.rs", None).unwrap();
-        assert_eq!(store.section("39").unwrap().implementations.len(), 2);
+        add_section_binding(
+            &mut store,
+            &path,
+            "39",
+            "src/foo.rs",
+            None,
+            BindingKind::Implements,
+        )
+        .unwrap();
+        assert_eq!(store.section("39").unwrap().bindings.len(), 2);
     }
 
     #[test]
-    fn add_section_implementation_rejects_malformed_file() {
+    fn add_section_binding_rejects_malformed_file() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
@@ -3182,7 +3385,9 @@ mod tests {
             "trailing.rs ",
         ];
         for bad in cases {
-            let err = add_section_implementation(&mut store, &path, "39", bad, None).unwrap_err();
+            let err =
+                add_section_binding(&mut store, &path, "39", bad, None, BindingKind::Implements)
+                    .unwrap_err();
             assert!(
                 matches!(err, AtomicMutateError::Validation(_)),
                 "expected Validation for `{}`, got {:?}",
@@ -3193,14 +3398,21 @@ mod tests {
     }
 
     #[test]
-    fn add_section_implementation_rejects_malformed_symbol() {
+    fn add_section_binding_rejects_malformed_symbol() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         // empty / whitespace symbol.
         for bad in ["", "   ", " sym", "sym ", "sym\nname"] {
-            let err = add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(bad))
-                .unwrap_err();
+            let err = add_section_binding(
+                &mut store,
+                &path,
+                "39",
+                "src/foo.rs",
+                Some(bad),
+                BindingKind::Implements,
+            )
+            .unwrap_err();
             assert!(
                 matches!(err, AtomicMutateError::Validation(_)),
                 "expected Validation for symbol `{:?}`, got {:?}",
@@ -3211,7 +3423,7 @@ mod tests {
     }
 
     #[test]
-    fn add_section_implementation_accepts_opaque_qualified_symbols() {
+    fn add_section_binding_accepts_opaque_qualified_symbols() {
         // Symbol is opaque — language-agnostic. No grammar regex; any
         // non-empty trimmed string with no internal newline is accepted.
         let tmp = TempDir::new().unwrap();
@@ -3226,89 +3438,325 @@ mod tests {
             "pkg/Type#method",
             "ns.sub.fn",
         ] {
-            add_section_implementation(&mut store, &path, "39", "src/foo.rs", Some(sym)).unwrap();
+            add_section_binding(
+                &mut store,
+                &path,
+                "39",
+                "src/foo.rs",
+                Some(sym),
+                BindingKind::Implements,
+            )
+            .unwrap();
         }
-        assert_eq!(store.section("39").unwrap().implementations.len(), 6);
+        assert_eq!(store.section("39").unwrap().bindings.len(), 6);
     }
 
-    // Round 283 — remove_section_implementation tests.
+    // Round 283 — remove_section_binding tests.
 
     #[test]
-    fn remove_section_implementation_basic_round_trip() {
+    fn remove_section_binding_basic_round_trip() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "X");
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
-        assert_eq!(store.section("X").unwrap().implementations.len(), 1);
-        remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "code moved")
-            .unwrap();
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            None,
+            BindingKind::Implements,
+        )
+        .unwrap();
+        assert_eq!(store.section("X").unwrap().bindings.len(), 1);
+        remove_section_binding(&mut store, &path, "X", "src/foo.rs", None, "code moved").unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(loaded.section("X").unwrap().implementations.len(), 0);
+        assert_eq!(loaded.section("X").unwrap().bindings.len(), 0);
     }
 
     #[test]
-    fn remove_section_implementation_symbol_aware_match() {
+    fn remove_section_binding_symbol_aware_match() {
         // (file, None) vs (file, Some("sym")) are distinct set elements;
         // removing the file-only row must NOT touch the symbol-narrowed row.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "X");
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_a")).unwrap();
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", Some("fn_b")).unwrap();
-        remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "cleanup")
-            .unwrap();
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            None,
+            BindingKind::Implements,
+        )
+        .unwrap();
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            Some("fn_a"),
+            BindingKind::Implements,
+        )
+        .unwrap();
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            Some("fn_b"),
+            BindingKind::Implements,
+        )
+        .unwrap();
+        remove_section_binding(&mut store, &path, "X", "src/foo.rs", None, "cleanup").unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
-        let impls = &loaded.section("X").unwrap().implementations;
+        let impls = &loaded.section("X").unwrap().bindings;
         assert_eq!(impls.len(), 2, "only the file-only row should be removed");
         assert!(impls.iter().any(|i| i.symbol.as_deref() == Some("fn_a")));
         assert!(impls.iter().any(|i| i.symbol.as_deref() == Some("fn_b")));
     }
 
     #[test]
-    fn remove_section_implementation_section_not_found() {
+    fn remove_section_binding_section_not_found() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        let err =
-            remove_section_implementation(&mut store, &path, "ghost", "src/foo.rs", None, "x")
-                .unwrap_err();
+        let err = remove_section_binding(&mut store, &path, "ghost", "src/foo.rs", None, "x")
+            .unwrap_err();
         assert!(matches!(err, AtomicMutateError::NotFound(_)));
     }
 
     #[test]
-    fn remove_section_implementation_impl_not_found() {
+    fn remove_section_binding_impl_not_found() {
         // Section exists, but the (file, symbol) tuple does not — fail-loud
         // (no silent no-op).
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "X");
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
-        let err = remove_section_implementation(
+        add_section_binding(
             &mut store,
             &path,
             "X",
-            "src/other.rs",
+            "src/foo.rs",
             None,
-            "wrong file",
+            BindingKind::Implements,
+        )
+        .unwrap();
+        let err =
+            remove_section_binding(&mut store, &path, "X", "src/other.rs", None, "wrong file")
+                .unwrap_err();
+        assert!(matches!(err, AtomicMutateError::NotFound(_)));
+    }
+
+    #[test]
+    fn remove_section_binding_rejects_empty_reason() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "X");
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            None,
+            BindingKind::Implements,
+        )
+        .unwrap();
+        let err =
+            remove_section_binding(&mut store, &path, "X", "src/foo.rs", None, "  ").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+    }
+
+    // ---- BindingKind tests (schema v5) ----
+
+    #[test]
+    fn add_section_binding_round_trips_kind() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "X");
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/scheduler.rs",
+            Some("dispatch"),
+            BindingKind::Implements,
+        )
+        .unwrap();
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/snapshot.rs",
+            Some("delay_field"),
+            BindingKind::References,
+        )
+        .unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        let bindings = &loaded.section("X").unwrap().bindings;
+        assert_eq!(bindings.len(), 2);
+        let implements = bindings
+            .iter()
+            .find(|b| b.file == "src/scheduler.rs")
+            .unwrap();
+        assert_eq!(implements.kind, BindingKind::Implements);
+        let references = bindings
+            .iter()
+            .find(|b| b.file == "src/snapshot.rs")
+            .unwrap();
+        assert_eq!(references.kind, BindingKind::References);
+    }
+
+    #[test]
+    fn set_section_binding_kind_reclassifies_in_place() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "X");
+        add_section_binding(
+            &mut store,
+            &path,
+            "X",
+            "src/snapshot.rs",
+            Some("delay_field"),
+            BindingKind::Implements,
+        )
+        .unwrap();
+        // Stage-B reclassification: a DTO field is «trace», not «satisfy».
+        set_section_binding_kind(
+            &mut store,
+            &path,
+            "X",
+            "src/snapshot.rs",
+            Some("delay_field"),
+            BindingKind::References,
+            "DTO field stores the delay; §6.2.3 satisfied by the scheduler",
+        )
+        .unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        let bindings = &loaded.section("X").unwrap().bindings;
+        assert_eq!(
+            bindings.len(),
+            1,
+            "reclassify mutates in place, no duplicate"
+        );
+        assert_eq!(bindings[0].kind, BindingKind::References);
+    }
+
+    #[test]
+    fn set_section_binding_kind_rejects_empty_reason_and_missing_binding() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "X");
+        // empty reason
+        let err = set_section_binding_kind(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            None,
+            BindingKind::References,
+            "   ",
+        )
+        .unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+        // binding absent → NotFound (no silent create)
+        let err = set_section_binding_kind(
+            &mut store,
+            &path,
+            "X",
+            "src/foo.rs",
+            None,
+            BindingKind::References,
+            "real reason",
         )
         .unwrap_err();
         assert!(matches!(err, AtomicMutateError::NotFound(_)));
     }
 
+    /// CLAUDE.md half-enforced-invariant mandate (R295/R305): `add_section_binding`
+    /// and `set_section_binding_kind` are two write paths to `Binding.kind`. Feed
+    /// both every closed-enum value and assert both accept it (the kind set never
+    /// diverges between the two paths).
     #[test]
-    fn remove_section_implementation_rejects_empty_reason() {
+    fn binding_kind_write_path_parity() {
+        for kind in [BindingKind::Implements, BindingKind::References] {
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join(".atomic/workspace.atomic.json");
+            // Path A: add with this kind.
+            let mut store_a = AtomicStore::new();
+            seed_section(&mut store_a, "X");
+            let add = add_section_binding(&mut store_a, &path, "X", "src/f.rs", None, kind);
+            // Path B: add with the other kind, then set to this kind.
+            let other = match kind {
+                BindingKind::Implements => BindingKind::References,
+                BindingKind::References => BindingKind::Implements,
+            };
+            let path_b = tmp.path().join(".atomic/b.atomic.json");
+            let mut store_b = AtomicStore::new();
+            seed_section(&mut store_b, "X");
+            add_section_binding(&mut store_b, &path_b, "X", "src/f.rs", None, other).unwrap();
+            let set =
+                set_section_binding_kind(&mut store_b, &path_b, "X", "src/f.rs", None, kind, "r");
+            assert_eq!(
+                add.is_ok(),
+                set.is_ok(),
+                "add and set must agree on accepting kind {:?}",
+                kind
+            );
+            assert!(add.is_ok(), "closed enum value must be accepted by both");
+            assert_eq!(store_a.section("X").unwrap().bindings[0].kind, kind);
+            assert_eq!(store_b.section("X").unwrap().bindings[0].kind, kind);
+        }
+    }
+
+    #[test]
+    fn kind_migration_report_lists_legacy_bindings_then_none_after_save() {
+        // A store deserialized from the pre-v5 JSON shape (field `implementations`,
+        // no `kind`) migrates every binding to Implements and reports them.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "X");
-        add_section_implementation(&mut store, &path, "X", "src/foo.rs", None).unwrap();
-        let err = remove_section_implementation(&mut store, &path, "X", "src/foo.rs", None, "  ")
-            .unwrap_err();
-        assert!(matches!(err, AtomicMutateError::Validation(_)));
+        let v4_json = r#"{
+            "schema_version": 4,
+            "sections": {
+                "X": {
+                    "skeleton": { "title": "X", "parent_doc": "d", "parent_section": null, "decision_status": "Active" },
+                    "implementations": [
+                        { "file": "src/a.rs", "symbol": "foo" },
+                        { "file": "src/b.rs" }
+                    ]
+                }
+            },
+            "changelog_entries": {},
+            "inventory_entries": {}
+        }"#;
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, v4_json).unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        // bindings migrated (alias) + defaulted to Implements (serde default).
+        let bindings = &loaded.section("X").unwrap().bindings;
+        assert_eq!(bindings.len(), 2);
+        assert!(bindings.iter().all(|b| b.kind == BindingKind::Implements));
+        // report present while schema_version < 5.
+        let report = loaded
+            .kind_migration_report()
+            .expect("pre-v5 store reports");
+        assert_eq!(report.from_schema_version, 4);
+        assert_eq!(report.rows.len(), 2);
+        assert!(report
+            .rows
+            .iter()
+            .all(|r| r.defaulted_kind == BindingKind::Implements));
+        // After save (bumps to v5) the report is gone — migration is one-time.
+        loaded.save(&path).unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.schema_version, 5);
+        assert!(reloaded.kind_migration_report().is_none());
     }
 
     #[test]
@@ -3928,7 +4376,7 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 4);
+        assert_eq!(reloaded.schema_version, 5);
         let entry = reloaded.changelog_entries.get("Round 999").unwrap();
         assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
         assert_eq!(

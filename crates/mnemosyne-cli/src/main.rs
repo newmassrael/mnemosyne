@@ -156,7 +156,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-implementation|remove-section-implementation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -207,13 +207,18 @@ fn run(args: &[String]) -> Result<()> {
         "add-section-example" => {
             atomic_cli::cmd_add_section_example(&workspace_anchor()?, &args[2..])
         }
-        // Path B (Spec ↔ Code bidirectional binding) substrate.
-        "add-section-implementation" => {
-            atomic_cli::cmd_add_section_implementation(&workspace_anchor()?, &args[2..])
+        // Path B (Spec ↔ Code bidirectional binding) substrate — typed
+        // trace-link edges (Binding{file, symbol?, kind}).
+        "add-section-binding" => {
+            atomic_cli::cmd_add_section_binding(&workspace_anchor()?, &args[2..])
         }
-        // Round 283 — Section.implementations remove primitive (set-element granularity).
-        "remove-section-implementation" => {
-            atomic_cli::cmd_remove_section_implementation(&workspace_anchor()?, &args[2..])
+        // Section.bindings remove primitive (set-element granularity, kind-agnostic match).
+        "remove-section-binding" => {
+            atomic_cli::cmd_remove_section_binding(&workspace_anchor()?, &args[2..])
+        }
+        // Reclassify an existing binding's kind (Stage-B implements→references).
+        "set-section-binding-kind" => {
+            atomic_cli::cmd_set_section_binding_kind(&workspace_anchor()?, &args[2..])
         }
         // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
         // dropped; legacy markdown-surgical variant retired with the rest of
@@ -383,18 +388,25 @@ fn print_help(prog: &str) {
  prog
  );
     println!(
- " {} add-section-implementation --section §<N> --file <workspace-relative-path> [--symbol <name>] [--sidecar <path>] [--json]",
+ " {} add-section-binding --section §<N> --file <workspace-relative-path> [--symbol <name>] --kind implements|references [--sidecar <path>] [--json]",
  prog
  );
     println!(
-        "   Round 259 Path B substrate (Spec ↔ Code binding); validator cross-check is Round 260+"
+        "   Path B typed trace-link binding (implements=«satisfy» / references=«trace»); coverage counts only implements"
     );
     println!(
- " {} remove-section-implementation --section §<N> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]",
+ " {} remove-section-binding --section §<N> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]",
  prog
  );
     println!(
- "   Round 283 Section.implementations remove primitive (exact (file, symbol) match; --reason mandatory)"
+ "   Section.bindings remove primitive (exact (file, symbol) match, kind-agnostic; --reason mandatory)"
+ );
+    println!(
+ " {} set-section-binding-kind --section §<N> --file <path> [--symbol <name>] --kind implements|references --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ "   Reclassify an existing binding's kind (Stage-B implements→references; --reason mandatory)"
  );
     println!(
  " {} set-section-normative-excerpt --section §<N> --text-file <path> --anchor-url <url> --source-revision <rev> [--sidecar <path>] [--json]",
@@ -468,7 +480,7 @@ fn print_help(prog: &str) {
  "   Round 256: scan [plugins.set_equality_validator].paths for <entry_id_prefix><digits> citations,"
  );
     println!("   reject those whose entry_id is missing from atomic store changelog_entries");
-    println!("   Round 260: §<id> citations cross-checked against AtomicSection.implementations");
+    println!("   Round 260: §<id> citations cross-checked against AtomicSection.bindings");
     println!("   --severity-missing: Missing + SectionMissing (hallucination class)");
     println!(
  "   --severity-binding (Round 260): CitationUnbound + ImplementationUnbacked + SymbolMismatch (edge class)"
@@ -487,9 +499,7 @@ fn print_help(prog: &str) {
     println!(
         "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and"
     );
-    println!(
- "   emit proposed §<id>.implementations sets + add-section-implementation commands (read-only)"
- );
+    println!("   emit proposed §<id> binding sets + add-section-binding commands (read-only)");
     println!();
     println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
     println!(
@@ -1383,10 +1393,10 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 ///
 /// `[plugins.set_equality_validator]` omission ⇒ skip (exit 0 with log line) — 5-min setup
 /// promise carry for external users who don't cite spec entries in code.
-/// Path B curation support: emit the proposed `§<id>.implementations`
+/// Path B curation support: emit the proposed `§<id>.bindings`
 /// symbol sets derived from current code citations, for maintainer
 /// ratification. Read-only — never mutates the store. Pair with
-/// `add-section-implementation` to register the ratified sets.
+/// `add-section-binding` to register the ratified sets.
 fn cmd_propose_implementations(args: &[String]) -> Result<()> {
     let mut json = false;
     let mut section_filter: Option<String> = None;
@@ -1467,13 +1477,13 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
         );
         if p.symbols.is_empty() {
             println!(
-                "  mnemosyne-cli add-section-implementation --section §{} --file {}",
+                "  mnemosyne-cli add-section-binding --section §{} --file {} --kind implements",
                 p.section_id, p.file
             );
         }
         for s in &p.symbols {
             println!(
-                "  mnemosyne-cli add-section-implementation --section §{} --file {} --symbol {}",
+                "  mnemosyne-cli add-section-binding --section §{} --file {} --kind implements --symbol {}",
                 p.section_id, p.file, s
             );
         }

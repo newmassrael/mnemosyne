@@ -35,7 +35,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use mnemosyne_atomic::{
-    AtomicChangelogEntry, AtomicSection, AtomicStore, ExampleBlock, Implementation,
+    AtomicChangelogEntry, AtomicSection, AtomicStore, Binding, BindingKind, ExampleBlock,
     NormativeExcerpt, RejectedAlternative,
 };
 use mnemosyne_query::{
@@ -69,8 +69,11 @@ pub struct RenderSectionInput {
     pub impact_scope: Vec<String>,
     /// `(language, code)` pairs.
     pub examples: Vec<(String, String)>,
-    /// `(file, symbol)` pairs.
-    pub implementations: Vec<(String, Option<String>)>,
+    /// `(file, symbol, kind-tag)` triples. `kind` is lowered to its
+    /// canonical tag string because `RenderSectionInput` is a Salsa input
+    /// over primitive fields (core's `BindingKind` cannot derive
+    /// `salsa::Update`); reconstructed via `BindingKind::from_tag`.
+    pub bindings: Vec<(String, Option<String>, String)>,
     /// `(text, anchor_url, source_revision)` of the external-spec mirror
     /// excerpt (RFC-002 FR-1). `None` for ordinary Sections. Lowered to a
     /// primitive tuple because `RenderSectionInput` is a Salsa input over
@@ -127,10 +130,14 @@ pub fn render_section_block<'db>(db: &'db dyn RenderDb, input: RenderSectionInpu
             .into_iter()
             .map(|(language, code)| ExampleBlock { language, code })
             .collect(),
-        implementations: input
-            .implementations(db)
+        bindings: input
+            .bindings(db)
             .into_iter()
-            .map(|(file, symbol)| Implementation { file, symbol })
+            .map(|(file, symbol, kind)| Binding {
+                file,
+                symbol,
+                kind: BindingKind::from_tag(&kind).unwrap_or(BindingKind::Implements),
+            })
             .collect(),
         superseded_by: input.superseded_by(db),
         normative_excerpt: input.normative_excerpt(db).map(
@@ -279,9 +286,15 @@ fn project_section_input(
             .map(|e| (e.language.clone(), e.code.clone()))
             .collect(),
         atomic
-            .implementations
+            .bindings
             .iter()
-            .map(|i| (i.file.clone(), i.symbol.clone()))
+            .map(|b| {
+                (
+                    b.file.clone(),
+                    b.symbol.clone(),
+                    b.kind.as_str().to_string(),
+                )
+            })
             .collect(),
         atomic.normative_excerpt.as_ref().map(|ne| {
             (
@@ -478,11 +491,15 @@ fn reconcile_sections(db: &mut RenderDbImpl, index: RenderIndex, atomic: &Atomic
                         .collect::<Vec<_>>()
                 );
                 sync!(
-                    implementations,
-                    set_implementations,
-                    sec.implementations
+                    bindings,
+                    set_bindings,
+                    sec.bindings
                         .iter()
-                        .map(|i| (i.file.clone(), i.symbol.clone()))
+                        .map(|b| (
+                            b.file.clone(),
+                            b.symbol.clone(),
+                            b.kind.as_str().to_string()
+                        ))
                         .collect::<Vec<_>>()
                 );
                 sync!(
@@ -598,15 +615,17 @@ mod tests {
                 language: "rust".to_string(),
                 code: "fn main() {}".to_string(),
             }],
-            implementations: vec![
-                Implementation {
+            bindings: vec![
+                Binding {
                     file: "crates/mnemosyne-atomic/src/lib.rs".to_string(),
                     symbol: Some("AtomicSection".to_string()),
+                    kind: BindingKind::Implements,
                 },
                 // symbol: None exercises the Option arm of the tuple lowering.
-                Implementation {
+                Binding {
                     file: "crates/mnemosyne-cli/src/atomic_cli.rs".to_string(),
                     symbol: None,
+                    kind: BindingKind::Implements,
                 },
             ],
             normative_excerpt: Some(NormativeExcerpt {
@@ -656,9 +675,12 @@ mod tests {
                 language: "python".to_string(),
                 code: "print(1)".to_string(),
             }],
-            implementations: vec![Implementation {
+            // Distinct kind (References) from full_section's Implements, so
+            // the field-parity test exercises the `kind` arm of the lowering.
+            bindings: vec![Binding {
                 file: "crates/mnemosyne-query/src/lib.rs".to_string(),
                 symbol: Some("compose_generated_md".to_string()),
+                kind: BindingKind::References,
             }],
             normative_excerpt: Some(NormativeExcerpt {
                 text: "alt normative wording".to_string(),

@@ -420,9 +420,10 @@ typed invariants 가 필요하다* — 는 디자인 문서를 훌쩍 넘어서 
 - Code-citation defense reject 모드 (`severity_missing` /
   `severity_binding` = `reject`) — pre-commit 단에서 hallucinated spec
   참조 차단.
-- 양방향 Spec ↔ Code binding — `Section.implementations` + 세 edge
+- 양방향 Spec ↔ Code binding — `Section.bindings` (타입 있는 trace-link
+  edge: `kind = implements` «satisfy» / `references` «trace») + 세 edge
   set-equality 검출 (`CitationUnbound` + `ImplementationUnbacked` +
-  `ImplementationMissing`).
+  `ImplementationMissing`; 마지막은 `implements`만 coverage 로 카운트).
 - Atomic ChangelogEntry mutate API + 모든 성공 write 후 `GENERATED.md`
   auto-cascade 재생성.
 

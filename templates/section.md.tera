@@ -44,9 +44,9 @@
 ```
 {% endfor %}
 {% endif %}
-{% if implementations %}
-**Implementations**:
-{% for i in implementations %}- {{ i.file }}{% if i.symbol %}:{{ i.symbol }}{% endif %}
+{% if bindings %}
+**Bindings**:
+{% for b in bindings %}- [{{ b.kind }}] {{ b.file }}{% if b.symbol %}:{{ b.symbol }}{% endif %}
 {% endfor %}
 {% endif %}
 {% if normative_excerpt %}

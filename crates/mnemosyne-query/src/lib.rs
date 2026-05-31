@@ -591,7 +591,7 @@ pub struct TermHit {
     pub target_id: String,
     /// Field path inside the entity. Examples: `"intent"`,
     /// `"rationale_bullets[2]"`, `"alternatives_rejected[0].reason"`,
-    /// `"examples[1].code"`, `"implementations[0].file"`.
+    /// `"examples[1].code"`, `"bindings[0].file"`.
     pub field_path: String,
     /// Full text of the matched field (or bullet / struct sub-field).
     /// Not truncated — the caller decides how to display.
@@ -834,13 +834,13 @@ fn scan_section(
             }
         }
     }
-    if field_allowed(filter, "implementations") {
-        for (i, im) in s.implementations.iter().enumerate() {
+    if field_allowed(filter, "bindings") {
+        for (i, im) in s.bindings.iter().enumerate() {
             if m.is_match(&im.file) {
                 out.push(TermHit {
                     target_kind: TermTargetKind::Section,
                     target_id: section_id.to_string(),
-                    field_path: format!("implementations[{}].file", i),
+                    field_path: format!("bindings[{}].file", i),
                     line_context: im.file.clone(),
                 });
             }
@@ -849,7 +849,7 @@ fn scan_section(
                     out.push(TermHit {
                         target_kind: TermTargetKind::Section,
                         target_id: section_id.to_string(),
-                        field_path: format!("implementations[{}].symbol", i),
+                        field_path: format!("bindings[{}].symbol", i),
                         line_context: sym.to_string(),
                     });
                 }
@@ -1366,7 +1366,7 @@ mod tests {
     // ========================================================================
 
     use mnemosyne_atomic::{
-        AtomicChangelogEntry, AtomicSection, ExampleBlock, Implementation, InventoryEntry,
+        AtomicChangelogEntry, AtomicSection, Binding, BindingKind, ExampleBlock, InventoryEntry,
         RejectedAlternative,
     };
     use mnemosyne_core::InventoryStatus;
@@ -1515,9 +1515,10 @@ mod tests {
     }
 
     #[test]
-    fn query_term_scans_implementations() {
+    fn query_term_scans_bindings() {
         let section = AtomicSection {
-            implementations: vec![Implementation {
+            bindings: vec![Binding {
+                kind: BindingKind::Implements,
                 file: "src/secret/handler.rs".to_string(),
                 symbol: Some("fn redact_secret".to_string()),
             }],
@@ -1526,8 +1527,8 @@ mod tests {
         let store = store_with_one_section("42", section);
         let hits = query_term(&store, &literal_q("secret")).expect("ok");
         assert_eq!(hits.len(), 2);
-        assert_eq!(hits[0].field_path, "implementations[0].file");
-        assert_eq!(hits[1].field_path, "implementations[0].symbol");
+        assert_eq!(hits[0].field_path, "bindings[0].file");
+        assert_eq!(hits[1].field_path, "bindings[0].symbol");
     }
 
     #[test]

@@ -180,7 +180,7 @@ pub struct SetSectionNormativeExcerptArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct AddSectionImplementationArgs {
+pub struct AddSectionBindingArgs {
     /// Section ID without the `§` prefix.
     pub section_id: String,
     /// Workspace-relative POSIX file path. No leading `/`, no leading
@@ -192,6 +192,11 @@ pub struct AddSectionImplementationArgs {
     /// Omit for file-level binding.
     #[serde(default)]
     pub symbol: Option<String>,
+    /// Trace-link kind: `"implements"` (= SysML «satisfy»; the symbol
+    /// fulfills the section's normative requirement; the only kind counted
+    /// as coverage) or `"references"` (= SysML «trace»; the symbol relates
+    /// to / draws meaning from the section without claiming fulfillment).
+    pub kind: String,
 }
 
 // Round 287/289 — Section creation + outline setter MCP arg structs.
@@ -223,15 +228,31 @@ pub struct SetSectionParentSectionArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct RemoveSectionImplementationArgs {
+pub struct RemoveSectionBindingArgs {
     /// Section ID without the `§` prefix.
     pub section_id: String,
     /// Workspace-relative POSIX file path to remove from the binding set.
     pub file: String,
     /// Optional symbol — must exact-match the row to remove. Omit to
-    /// target a file-only binding (a row with `symbol = None`).
+    /// target a file-only binding (a row with `symbol = None`). Matching is
+    /// kind-agnostic (identity is the `(file, symbol)` pair).
     #[serde(default)]
     pub symbol: Option<String>,
+    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionBindingKindArgs {
+    /// Section ID without the `§` prefix.
+    pub section_id: String,
+    /// Workspace-relative POSIX file path of the existing binding.
+    pub file: String,
+    /// Optional symbol identifying the binding (omit for a file-only row).
+    #[serde(default)]
+    pub symbol: Option<String>,
+    /// New kind: `"implements"` or `"references"`.
+    pub kind: String,
     /// Mandatory rationale recorded on the receipt (audit safeguard).
     pub reason: String,
 }
@@ -899,39 +920,68 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Round 259 — Path B (Spec ↔ Code bidirectional binding) substrate. Append a (file, symbol?) implementation binding to Section.implementations. file = workspace-relative POSIX path (no leading `/`, no `..`, no `\\`); symbol = optional opaque identifier (function/type/qualified path; language-agnostic, no grammar regex). Set semantics — duplicate (file, symbol) rejected at write time. The schema records intent; file existence is not checked here (Round 260+ cross-checks code citations against this set)."
+        description = "Path B (Spec ↔ Code bidirectional binding) substrate. Append a (file, symbol?, kind) typed trace-link binding to Section.bindings. file = workspace-relative POSIX path (no leading `/`, no `..`, no `\\`); symbol = optional opaque identifier (function/type/qualified path; language-agnostic, no grammar regex). kind = `implements` (SysML «satisfy»: the symbol fulfills the section's normative requirement; the only kind counted as coverage) or `references` (SysML «trace»: related to / draws meaning from the section, no fulfillment claim). Set semantics — duplicate (file, symbol) rejected at write time regardless of kind (use set_section_binding_kind to change an existing binding's kind). The schema records intent; file existence is not checked here (validate-code-refs cross-checks code citations against this set)."
     )]
-    async fn add_section_implementation(
-        &self,
-        args: Parameters<AddSectionImplementationArgs>,
-    ) -> CallToolResult {
+    async fn add_section_binding(&self, args: Parameters<AddSectionBindingArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
+        let kind_raw = args.0.kind.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
-            atomic::add_section_implementation(store, path, &section, &file, symbol.as_deref())
+            let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
+                atomic::AtomicMutateError::Validation(format!(
+                    "kind must be `implements` or `references` (got `{}`)",
+                    kind_raw
+                ))
+            })?;
+            atomic::add_section_binding(store, path, &section, &file, symbol.as_deref(), kind)
         });
         self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Round 283 — remove one `(file, symbol?)` binding from `Section.implementations`. Exact set-element match: pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt for audit symmetry with remove-section / remove-inventory-entry. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as impl_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
+        description = "Remove one `(file, symbol?)` binding from `Section.bindings` (matches on the identity pair regardless of kind). Pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as impl_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
     )]
-    async fn remove_section_implementation(
+    async fn remove_section_binding(
         &self,
-        args: Parameters<RemoveSectionImplementationArgs>,
+        args: Parameters<RemoveSectionBindingArgs>,
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
         let reason = args.0.reason.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
-            atomic::remove_section_implementation(
+            atomic::remove_section_binding(store, path, &section, &file, symbol.as_deref(), &reason)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Reclassify an existing binding's kind (`implements` ⇄ `references`). Identity is the `(file, symbol?)` pair; the binding must already exist (NotFound otherwise — no silent create). `reason` mandatory. This is the Stage-B reclassification path: flip a data-member / DTO-field binding from the migration default `implements` to `references` («trace»). Second write path to Binding.kind alongside add_section_binding; both enforce the same closed kind set."
+    )]
+    async fn set_section_binding_kind(
+        &self,
+        args: Parameters<SetSectionBindingKindArgs>,
+    ) -> CallToolResult {
+        let section = strip_section_marker(&args.0.section_id).to_string();
+        let file = args.0.file.clone();
+        let symbol = args.0.symbol.clone();
+        let kind_raw = args.0.kind.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
+            let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
+                atomic::AtomicMutateError::Validation(format!(
+                    "kind must be `implements` or `references` (got `{}`)",
+                    kind_raw
+                ))
+            })?;
+            atomic::set_section_binding_kind(
                 store,
                 path,
                 &section,
                 &file,
                 symbol.as_deref(),
+                kind,
                 &reason,
             )
         });

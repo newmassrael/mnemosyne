@@ -9,7 +9,7 @@
 //! consumes).
 
 use mnemosyne_atomic::{
-    AtomicChangelogEntry, AtomicSection, AtomicStore, Implementation, InventoryEntry,
+    AtomicChangelogEntry, AtomicSection, AtomicStore, Binding, BindingKind, InventoryEntry,
 };
 use mnemosyne_core::{AtomicStoreView, DecisionStatus, InventoryStatus};
 
@@ -24,7 +24,8 @@ fn build_store() -> AtomicStore {
             parent_doc: "docs/GENERATED.md".into(),
             ..Default::default()
         },
-        implementations: vec![Implementation {
+        bindings: vec![Binding {
+            kind: BindingKind::Implements,
             file: "src/foo.rs".into(),
             symbol: Some("foo_symbol".into()),
         }],
@@ -105,18 +106,15 @@ fn snapshot_section_view_carries_implementations_and_status() {
     let snapshot = store.snapshot();
 
     let sec1 = snapshot.sections.get("sec1").expect("sec1 present");
-    assert_eq!(sec1.implementations.len(), 1);
-    assert_eq!(sec1.implementations[0].file, "src/foo.rs");
-    assert_eq!(
-        sec1.implementations[0].symbol.as_deref(),
-        Some("foo_symbol")
-    );
+    assert_eq!(sec1.bindings.len(), 1);
+    assert_eq!(sec1.bindings[0].file, "src/foo.rs");
+    assert_eq!(sec1.bindings[0].symbol.as_deref(), Some("foo_symbol"));
     // No explicit decision_status set on sec1 → None (consumer applies
     // default-Active fallback at use site).
     assert_eq!(sec1.decision_status, None);
 
     let sec2 = snapshot.sections.get("sec2/sub").expect("sec2/sub present");
-    assert!(sec2.implementations.is_empty());
+    assert!(sec2.bindings.is_empty());
     assert_eq!(sec2.decision_status, Some(DecisionStatus::Superseded));
 }
 

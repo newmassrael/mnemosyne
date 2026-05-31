@@ -319,7 +319,7 @@ fn case_viii_section_missing_rejected_under_default_severity() {
 
 #[test]
 fn case_ix_citation_unbound_rejected_under_default_binding_severity() {
-    // §39.implementations = [src/bar.rs] but src/foo.rs cites §39.
+    // §39.bindings = [src/bar.rs] but src/foo.rs cites §39.
     let tmp = TempDir::new().unwrap();
     write_workspace_with_section(tmp.path(), true, "39", &[("src/bar.rs", None)]);
     fs::write(
@@ -348,7 +348,7 @@ fn case_ix_citation_unbound_rejected_under_default_binding_severity() {
 
 #[test]
 fn case_x_implementation_unbacked_rejected_under_default_binding_severity() {
-    // §39.implementations = [src/foo.rs] but src/foo.rs has no §39 cite.
+    // §39.bindings = [src/foo.rs] but src/foo.rs has no §39 cite.
     let tmp = TempDir::new().unwrap();
     write_workspace_with_section(tmp.path(), true, "39", &[("src/foo.rs", Some("Foo"))]);
     fs::write(

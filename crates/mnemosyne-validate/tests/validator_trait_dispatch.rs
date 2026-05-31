@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
+use mnemosyne_atomic::{AtomicSection, AtomicStore, Binding, BindingKind};
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, PluginRegistry, ValidationContext, Validator};
 use mnemosyne_validate::code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind};
@@ -60,7 +60,8 @@ fn seed_workspace_for_unbacked_and_missing() -> (TempDir, AtomicStore) {
             parent_doc: "docs/GENERATED.md".into(),
             ..Default::default()
         },
-        implementations: vec![Implementation {
+        bindings: vec![Binding {
+            kind: BindingKind::Implements,
             file: "src/missing.rs".into(),
             symbol: Some("expected_symbol".into()),
         }],

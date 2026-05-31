@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use mnemosyne_atomic::{add_section, add_section_implementation, AtomicStore};
+use mnemosyne_atomic::{add_section, add_section_binding, AtomicStore, BindingKind};
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver;
@@ -48,12 +48,13 @@ fn stand_up(
         None,
     )
     .unwrap();
-    add_section_implementation(
+    add_section_binding(
         &mut store,
         &sidecar,
         "sec1",
         "src/foo.cpp",
         expected_symbol_in_spec,
+        BindingKind::Implements,
     )
     .unwrap();
 

@@ -7,7 +7,7 @@
 //!
 //! extends the scanner with the spec ↔ code bidirectional
 //! binding check (Path B substrate from 's
-//! `AtomicSection.implementations`). The scanner now also extracts
+//! `AtomicSection.bindings`). The scanner now also extracts
 //! `§<id>` citations and applies set-equality against each section's
 //! `implementations` set (OPTION D pattern lifted from the
 //! cross-ref orphan ledger).
@@ -93,7 +93,7 @@ pub enum CodeRefViolation {
         kind: ViolationKind,
     },
     /// Spec-side violation — the atomic store records
-    /// `§section_id.implementations` containing (file, symbol?), but the
+    /// `§section_id.bindings` containing (file, symbol?), but the
     /// file has no `§section_id` citation. The spec claims an
     /// implementation that the code does not witness.
     ImplementationUnbacked {
@@ -298,7 +298,7 @@ pub enum ViolationKind {
     SectionMissing,
     /// `§<id>` citation where `<id>` exists in the atomic
     /// store but the citing file is not registered in
-    /// `§<id>.implementations`. The code-side half of the bidirectional
+    /// `§<id>.bindings`. The code-side half of the bidirectional
     /// set-equality violation (spec disagrees with code).
     CitationUnbound,
     /// Round 275 — Inventory ID citation where the cited id is not in
@@ -493,7 +493,7 @@ pub fn extract_section_citations(
             }
             // Tail: read [A-Za-z0-9._/-]+ starting at the byte after `§`.
             // `.` is constrained to digit-digit boundaries so
-            // `.implementations` parses as `39` (the prose-style field
+            // `.bindings` parses as `39` (the prose-style field
             // reference suffix is not part of the section_id) while
             // `` (fractional id) remains intact. Parsed first (before the
             // external verdict) so the chain bookkeeping (c) always has the
@@ -1180,11 +1180,11 @@ fn scan_round_number(s: &str) -> Option<String> {
 /// `filter_id`) using existing /258 path.
 /// 2. Extract `§<id>` citations:
 /// - `<id>` not in `store.atomic_section_id_set()` → `SectionMissing`
-/// - `<id>` exists but F not in `§<id>.implementations` files →
+/// - `<id>` exists but F not in `§<id>.bindings` files →
 /// `CitationUnbound`
 /// - else OK (record F in `cited_by[<id>]` for step 3)
 /// 3. After all files scanned, walk `store.sections`. For each §X, for
-/// each `Implementation { file, symbol }` in `§X.implementations`:
+/// each `Binding { file, symbol, kind }` in `§X.bindings`:
 /// if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
 /// 4. Same walk: for each §X with `decision_status != Removed` and
 /// empty `implementations` → `ImplementationMissing` (spec-side
@@ -1221,7 +1221,7 @@ fn scan_round_number(s: &str) -> Option<String> {
 ///    and *section-path* (`<prefix><[A-Za-z0-9./-_]+>`) via
 ///    `inventory_path_prefixes`. Both feed the same `InventoryEntry`
 ///    store and share `severity_inventory`.
-/// 4. Bidirectional set-equality (Path B) — `§X.implementations` files
+/// 4. Bidirectional set-equality (Path B) — `§X.bindings` files
 ///    vs cited-by sets — surfaces `CitationUnbound`,
 ///    `ImplementationUnbacked`, and `ImplementationMissing` (R269
 ///    coverage axiom).
@@ -1326,17 +1326,15 @@ impl SetEqualityValidator {
             .collect();
         let section_id_set = &snapshot.section_ids_with_implied_parents;
 
-        // Pre-index §X.implementations by section_id for O(log n) per-cite
-        // membership check + step 3 universe enumeration.
+        // Pre-index §X.bindings files by section_id for O(log n) per-cite
+        // membership check + step 3 universe enumeration. Presence is
+        // kind-agnostic: a binding of ANY kind (implements OR references)
+        // defends a citation against `citation_unbound`.
         let impl_files_by_section: BTreeMap<&str, BTreeSet<&str>> = snapshot
             .sections
             .iter()
             .map(|(sid, sec)| {
-                let files: BTreeSet<&str> = sec
-                    .implementations
-                    .iter()
-                    .map(|i| i.file.as_str())
-                    .collect();
+                let files: BTreeSet<&str> = sec.bindings.iter().map(|b| b.file.as_str()).collect();
                 (sid.as_str(), files)
             })
             .collect();
@@ -1354,9 +1352,9 @@ impl SetEqualityValidator {
             .iter()
             .map(|(sid, sec)| {
                 let mut m: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-                for i in &sec.implementations {
-                    if let Some(s) = i.symbol.as_deref() {
-                        m.entry(i.file.as_str()).or_default().insert(s);
+                for b in &sec.bindings {
+                    if let Some(s) = b.symbol.as_deref() {
+                        m.entry(b.file.as_str()).or_default().insert(s);
                     }
                 }
                 (sid.as_str(), m)
@@ -1467,7 +1465,7 @@ impl SetEqualityValidator {
                     continue;
                 }
                 // Section exists — check spec-side membership of (file in
-                // §<id>.implementations files). Matching is by `file` string only;
+                // §<id>.bindings files). Matching is by `file` string only;
                 // symbol is opaque metadata not in the bidirectional set-equality.
                 let bound = impl_files_by_section
                     .get(section_id.as_str())
@@ -1558,7 +1556,9 @@ impl SetEqualityValidator {
         // Skip under decay-filter mode.
         if filter_id.is_none() {
             for (section_id, section) in &snapshot.sections {
-                for impl_entry in &section.implementations {
+                // Any-kind binding (implements OR references) asserts a
+                // code↔spec edge and so must be witnessed by a citation.
+                for impl_entry in &section.bindings {
                     let suppressed =
                         ledger_index.contains(&(impl_entry.file.as_str(), section_id.as_str()));
                     if suppressed {
@@ -1588,7 +1588,14 @@ impl SetEqualityValidator {
         // with `CodeRefViolation::ImplementationMissing`'s shape).
         if filter_id.is_none() {
             for (section_id, section) in &snapshot.sections {
-                if !section.implementations.is_empty() {
+                // Coverage counts ONLY `implements` («satisfy») bindings;
+                // `references` («trace») links do not satisfy the
+                // "Active = backed by code" axiom.
+                let has_implements = section
+                    .bindings
+                    .iter()
+                    .any(|b| b.kind == mnemosyne_core::BindingKind::Implements);
+                if has_implements {
                     continue;
                 }
                 // R309 textbook unification: SectionView.decision_status now IS
@@ -1599,6 +1606,12 @@ impl SetEqualityValidator {
                 if resolved == DecisionStatus::Removed {
                     continue;
                 }
+                // A section with zero `implements` coverage is the coverage
+                // gap, whether it has 0 bindings or only `references`
+                // («trace») links. (A distinct info-level `reference_only`
+                // surface — separating "documented but not implemented here"
+                // from truly-undocumented — is a deferred follow-up; see the
+                // binding-kind proposal section 5.3.)
                 violations.push(CodeRefViolation::ImplementationMissing {
                     section_id: section_id.clone(),
                     decision_status: section.decision_status,
@@ -1620,7 +1633,7 @@ impl SetEqualityValidator {
     /// latter are hallucinations for `scan` to flag, not bindings).
     ///
     /// The result is a *proposal* reflecting the current code state. The
-    /// maintainer ratifies it into `§X.implementations` as design intent —
+    /// maintainer ratifies it into `§X.bindings` as design intent —
     /// the act of review is also an audit of where each section is cited.
     pub fn propose_implementations(
         &self,
@@ -1703,7 +1716,7 @@ impl SetEqualityValidator {
     }
 }
 
-/// A proposed `§<section_id>.implementations` entry derived from the
+/// A proposed `§<section_id>.bindings` entry derived from the
 /// current code citations, for maintainer ratification (Path B curation).
 /// `symbols` is the set of resolved enclosing symbols across every cite of
 /// the section in `file`; `unresolved_citations` counts cites whose symbol
@@ -1912,7 +1925,7 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_atomic::{add_section_implementation, AtomicStore};
+    use mnemosyne_atomic::{add_section_binding, AtomicStore, BindingKind};
     use tempfile::TempDir;
 
     /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
@@ -2173,13 +2186,21 @@ mod tests {
             section_id.to_string(),
             mnemosyne_atomic::AtomicSection::default(),
         );
-        add_section_implementation(&mut store, path, section_id, impl_file, symbol).unwrap();
+        add_section_binding(
+            &mut store,
+            path,
+            section_id,
+            impl_file,
+            symbol,
+            BindingKind::Implements,
+        )
+        .unwrap();
         store
     }
 
     #[test]
     fn bidirectional_clean_codebase_no_violations() {
-        // cite in src/foo.rs +.implementations contains src/foo.rs.
+        // cite in src/foo.rs +.bindings contains src/foo.rs.
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
         let store = build_store_with_impl(&store_path, "39", "src/foo.rs", Some("Foo"));
@@ -2204,6 +2225,64 @@ mod tests {
         )
         .unwrap();
         assert!(v.is_empty(), "unexpected violations: {:?}", v);
+    }
+
+    #[test]
+    fn references_binding_satisfies_citation_but_not_coverage() {
+        // A section bound ONLY by a `references` («trace») binding: the cite is
+        // defended (no citation_unbound — presence is kind-agnostic) and the
+        // binding's file is cited (no impl_unbacked), but coverage counts only
+        // `implements`, so the section still trips impl_missing.
+        let tmp = TempDir::new().unwrap();
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        store
+            .sections
+            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+        add_section_binding(
+            &mut store,
+            &store_path,
+            "39",
+            "src/foo.rs",
+            Some("Foo"),
+            BindingKind::References,
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// §39 — Foo references here\nfn main() {}\n",
+        )
+        .unwrap();
+        let v = scan_paths_no_resolvers(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(
+            !v.iter().any(|x| x.kind_tag() == "citation_unbound"),
+            "references binding must defend the citation: {:?}",
+            v
+        );
+        assert!(
+            !v.iter().any(|x| x.kind_tag() == "impl_unbacked"),
+            "the cited references binding must not be impl_unbacked: {:?}",
+            v
+        );
+        assert!(
+            v.iter().any(|x| x.kind_tag() == "impl_missing"),
+            "references-only section has no implements coverage → impl_missing: {:?}",
+            v
+        );
     }
 
     #[test]
@@ -2277,7 +2356,7 @@ mod tests {
 
     #[test]
     fn bidirectional_implementation_unbacked_when_impl_file_lacks_cite() {
-        //.implementations contains src/foo.rs:Foo, but src/foo.rs has
+        //.bindings contains src/foo.rs:Foo, but src/foo.rs has
         // no citation.
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
@@ -2319,7 +2398,7 @@ mod tests {
 
     #[test]
     fn bidirectional_orphan_ledger_suppresses_citation_unbound() {
-        //.implementations names src/bar.rs only; src/foo.rs cites
+        //.bindings names src/bar.rs only; src/foo.rs cites
         // but is registered in the orphan ledger as a known-stale code
         // citation. Suppressed.
         let tmp = TempDir::new().unwrap();
@@ -2355,7 +2434,7 @@ mod tests {
 
     #[test]
     fn bidirectional_orphan_ledger_suppresses_implementation_unbacked() {
-        //.implementations names src/foo.rs, src/foo.rs has no cite,
+        //.bindings names src/foo.rs, src/foo.rs has no cite,
         // but ledger registers (src/foo.rs, 39) as known-stale. Suppressed.
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");

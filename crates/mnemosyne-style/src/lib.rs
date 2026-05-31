@@ -363,7 +363,7 @@ fn resolve_section_body(
 }
 
 // Style-check body synthesizer. Uses the prose-only variant so that
-// mechanical citation blocks (Section.implementations file paths) do not
+// mechanical citation blocks (Section.bindings file paths) do not
 // participate in prose rules like `terminology_consistency`. Path-shaped
 // identifiers follow Unix/C filesystem conventions (lowercase) regardless
 // of the canonical prose form of the same concept (e.g. `dut/...` vs the
@@ -1048,7 +1048,7 @@ mod tests {
     }
 
     /// Regression — `terminology_consistency` MUST NOT fire on file paths
-    /// in `Section.implementations`. Filesystem paths are mechanical
+    /// in `Section.bindings`. Filesystem paths are mechanical
     /// citations (lowercase by Unix/C convention), not authored prose.
     ///
     /// Scenario mirrors a TC8-style workspace: glossary lists lowercase
@@ -1058,7 +1058,7 @@ mod tests {
     /// fix: 0.
     #[test]
     fn terminology_consistency_ignores_implementation_paths() {
-        use mnemosyne_atomic::{AtomicSection, Implementation};
+        use mnemosyne_atomic::{AtomicSection, Binding, BindingKind};
         let mut glossary = BTreeMap::new();
         for (canon, variants) in [
             ("TC8", &["tc8", "Tc8"][..]),
@@ -1103,20 +1103,24 @@ mod tests {
             intent: Some(
                 "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
             ),
-            implementations: vec![
-                Implementation {
+            bindings: vec![
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "dut/env/smoke-test.sh".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "include/tc8/bpf_group.h".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "src/sce_integration/cases/someip_ets_084.h".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "src/proto/dhcpv4_common.h".into(),
                     symbol: None,
                 },
@@ -1198,7 +1202,7 @@ mod tests {
     /// and `synthesize_section_prose_body` correctly excludes the impl block.
     #[test]
     fn terminology_consistency_roundtrip_excludes_impl_paths_in_nested_layout() {
-        use mnemosyne_atomic::{AtomicSection, AtomicStore, Implementation};
+        use mnemosyne_atomic::{AtomicSection, AtomicStore, Binding, BindingKind};
         use mnemosyne_parser::parse_markdown;
         use mnemosyne_query::render::render_section;
 
@@ -1234,20 +1238,24 @@ mod tests {
             intent: Some(
                 "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
             ),
-            implementations: vec![
-                Implementation {
+            bindings: vec![
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "dut/env/smoke-test.sh".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "include/tc8/bpf_group.h".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "src/sce_integration/cases/someip_ets_084.h".into(),
                     symbol: None,
                 },
-                Implementation {
+                Binding {
+                    kind: BindingKind::Implements,
                     file: "src/proto/dhcpv4_common.h".into(),
                     symbol: None,
                 },

@@ -127,9 +127,16 @@ when the project never numbers its history rows.
  clean.
 - **`[plugins.set_equality_validator].severity_binding`** — `warn` or `reject`. Fires when a
  citation appears in a file that the section's
- `implementations` (Path B Spec ↔ Code binding) does *not* list as a
- backing implementation, *or* when an Active section has zero
- implementations recorded. Bidirectional binding integrity.
+ `bindings` (Path B Spec ↔ Code) does *not* list (`citation_unbound`),
+ or when a binding's file carries no citation (`impl_unbacked`), or on a
+ symbol-set mismatch (`symbol_mismatch`). Presence is **kind-agnostic** —
+ a binding of *any* `kind` (`implements` or `references`) defends a cite.
+ Bidirectional binding integrity.
+- **`[plugins.set_equality_validator].severity_coverage`** — `warn`/`reject`/`info`;
+ inherits `severity_binding` when unset. Fires (`impl_missing`) when an
+ Active section has **zero `implements` bindings**. Coverage counts only
+ `kind = "implements"` (SysML «satisfy»); `references` («trace») links
+ satisfy citations but do **not** count as implementation coverage.
 - **`[plugins.set_equality_validator].comment_only`** — `true` strips string literals before
  scanning so only comment citations count. Default `true`; flip only if
  your project deliberately puts §id references in user-visible strings.
@@ -271,8 +278,8 @@ after the sigil — alphanumerics plus `. - _ /`. Two deterministic
 boundary rules are worth knowing when authoring citations (both are
 grammar edges, not parser bugs):
 
-- **A `.` continues the id only between two digits.** `§39.implementations`
-  parses as id `39` (the `.implementations` prose suffix is dropped),
+- **A `.` continues the id only between two digits.** `§39.bindings`
+  parses as id `39` (the `.bindings` prose suffix is dropped),
   while `§3.13` stays whole. A double-dot Appendix form like
   `§scxml-D.2.func` therefore truncates at `§scxml-D` (`.func` is not
   digit-bounded) — use an all-hyphen form (`§scxml-D-2-func`) when the id
@@ -458,13 +465,27 @@ binaries and a packaged GitHub Action are intentionally deferred — add
 them only when a non-Rust consumer appears or CI compile time becomes a
 measured cost.
 
-To bind a section to its
-implementation file (so the binding axis recognizes it as backed), use:
+To bind a section to a code file (so the binding axis recognizes the cite
+as backed), use `add-section-binding` with an explicit `--kind`:
 
 ```bash
-mnemosyne-cli add-section-implementation \
- --section §3 --file crates/foo/src/auth.rs --symbol Session::validate
+# implements (= SysML «satisfy»): the symbol fulfills the requirement;
+# counts as implementation coverage.
+mnemosyne-cli add-section-binding \
+ --section §3 --file crates/foo/src/auth.rs --symbol Session::validate \
+ --kind implements
+
+# references (= SysML «trace»): the symbol relates to / draws meaning from
+# the section (a DTO field, a read of a spec concept) without claiming
+# fulfillment. Defends the citation; does NOT count as coverage.
+mnemosyne-cli add-section-binding \
+ --section §3 --file crates/foo/src/dto.rs --symbol Session::token \
+ --kind references
 ```
+
+Reclassify an existing binding (e.g. a data field wrongly recorded as
+`implements`) with `set-section-binding-kind --section … --file … --kind
+references --reason "<why>"`; remove one with `remove-section-binding`.
 
 ### Inventory citation defense (test cases / requirement ids, Phase 1A)
 
@@ -639,7 +660,7 @@ revs; per-Section excerpts capture *what* the section said at the rev
 it was anchored at. T2 frozen-ledger semantics apply to the entry
 audit half — rev-bump records are permanent.
 
-**Symbol-level binding (record-only).** `Implementation.symbol` accepts
+**Symbol-level binding (record-only).** `Binding.symbol` accepts
 an opaque language-agnostic identifier and is preserved in the store
 for project-side audit tooling. The validator's set-equality check is
 file-only (RFC-002 FR-3 deferred — language-aware enforcement requires

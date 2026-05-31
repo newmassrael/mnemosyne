@@ -5,10 +5,10 @@
 //! reframe ratify): same input always produces same output (deterministic).
 
 use mnemosyne_atomic::{
-    add_section_caveat, add_section_example, add_section_implementation, append_changelog_entry,
+    add_section_binding, add_section_caveat, add_section_example, append_changelog_entry,
     set_section_alternatives, set_section_impact_scope, set_section_inputs, set_section_intent,
-    set_section_outputs, set_section_rationale, AtomicStore, ChangelogEntryDraft, ExampleBlock,
-    RejectedAlternative,
+    set_section_outputs, set_section_rationale, AtomicStore, BindingKind, ChangelogEntryDraft,
+    ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_query::{render_changelog_entry, render_section};
 use tempfile::TempDir;
@@ -62,20 +62,22 @@ fn atomic_section_round_trip_full_shape() {
     )
     .unwrap();
     // Round 259 — Path B binding entries (file + file:symbol shape).
-    add_section_implementation(
+    add_section_binding(
         &mut store,
         &sidecar,
         "43",
         "crates/mnemosyne-atomic/src/lib.rs",
         Some("AtomicSection"),
+        BindingKind::Implements,
     )
     .unwrap();
-    add_section_implementation(
+    add_section_binding(
         &mut store,
         &sidecar,
         "43",
         "crates/mnemosyne-cli/src/atomic_cli.rs",
         None,
+        BindingKind::Implements,
     )
     .unwrap();
 
@@ -95,9 +97,9 @@ fn atomic_section_round_trip_full_shape() {
     assert!(md.contains("**Impact scope**: §15, §39"));
     assert!(md.contains("```rust"));
     assert!(md.contains("fn main() {}"));
-    assert!(md.contains("**Implementations**"));
-    assert!(md.contains("- crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
-    assert!(md.contains("- crates/mnemosyne-cli/src/atomic_cli.rs"));
+    assert!(md.contains("**Bindings**"));
+    assert!(md.contains("- [implements] crates/mnemosyne-atomic/src/lib.rs:AtomicSection"));
+    assert!(md.contains("- [implements] crates/mnemosyne-cli/src/atomic_cli.rs"));
 }
 
 #[test]

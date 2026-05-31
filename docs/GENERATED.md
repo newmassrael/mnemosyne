@@ -20,9 +20,9 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
-**Implementations**:
-- crates/mnemosyne-cli/src/atomic_cli.rs
-- crates/mnemosyne-atomic/src/lib.rs
+**Bindings**:
+- [implements] crates/mnemosyne-cli/src/atomic_cli.rs
+- [implements] crates/mnemosyne-atomic/src/lib.rs
 
 
 
@@ -39,9 +39,9 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
-**Implementations**:
-- crates/mnemosyne-cli/src/main.rs
-- crates/mnemosyne-validate/src/code_refs.rs
+**Bindings**:
+- [implements] crates/mnemosyne-cli/src/main.rs
+- [implements] crates/mnemosyne-validate/src/code_refs.rs
 
 
 
@@ -58,9 +58,9 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
-**Implementations**:
-- crates/mnemosyne-atomic/src/lib.rs
-- crates/mnemosyne-validate/src/code_refs.rs
+**Bindings**:
+- [implements] crates/mnemosyne-atomic/src/lib.rs
+- [implements] crates/mnemosyne-validate/src/code_refs.rs
 
 
 
@@ -77,8 +77,8 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
-**Implementations**:
-- crates/mnemosyne-parser/src/lib.rs
+**Bindings**:
+- [implements] crates/mnemosyne-parser/src/lib.rs
 
 
 
@@ -95,8 +95,8 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
-**Implementations**:
-- crates/mnemosyne-config/src/lib.rs
+**Bindings**:
+- [implements] crates/mnemosyne-config/src/lib.rs
 
 
 
@@ -3858,6 +3858,35 @@ Source: `docs/.atomic/workspace.atomic.json`
 **Carry forward**:
 - anchor-from-config_path.parent() computed inline in 3 cmd_* (propose/validate-code-refs/validate-spec-drift) + workspace_anchor() — minor 4-site idiom, below DRY-extract threshold (each has loaded in scope differently); revisit if a 5th appears
 - consumer (SCE 3-workspace): a subdir ledger sets [workspace] root = "../../.." so add-section-implementation --file sce/... resolves repo-relative (no .. traversal); section_missing 58 -> 0 after re-root
+
+
+
+### Round 387 — Binding kind (implements/references): typed Path B trace-link edges — Section.implementations becomes Section.bindings with a required kind (Implements = SysML satisfy, the only kind counted as coverage; References = SysML trace, related-to with no fulfillment claim), grounded in the standard requirements-traceability taxonomy. Presence checks stay kind-agnostic; coverage counts only Implements. Schema v4 to v5 migrates at load with zero code and a non-silent migration report. No legacy alias (pre-release no-compat).
+
+**Changes**:
+- Section.implementations renamed to Section.bindings; new Binding { file, symbol, kind }; canonical BindingKind { Implements, References } lifted to L0 core (mirrors DecisionStatus) and re-exported by atomic
+- schema_version 4 to 5; pre-v5 stores migrate at load with zero code (serde alias=implementations on the renamed field + kind default=Implements, behavior-preserving); kind_migration_report() lists the defaulted bindings so the inherited claim is a reviewable Stage-B work-list, never silently blessed
+- validate-code-refs: presence (citation_unbound/symbol_mismatch) is kind-agnostic (any binding defends a cite); coverage (impl_missing) counts only Implements bindings (references are SysML trace, not satisfy)
+- mutate primitives renamed add_section_binding / remove_section_binding + new set_section_binding_kind (reclassification, reason mandatory); no legacy alias kept (pre-release no-compat); CLI verbs add/remove/set-section-binding with required --kind; MCP add/remove/set tools
+- GENERATED.md renders Bindings: - [kind] file:symbol (template + cold render + warm salsa projection; field-parity preserved, fixtures differ by kind)
+
+
+
+**Verification**:
+- 783 workspace tests pass (0 fail), including the add-vs-set kind write-path parity test (half-enforced-invariant mandate), the v4 to v5 migration-report test, and the references-satisfies-citation-but-not-coverage behavior test
+- clippy --workspace --all-targets clean; cargo fmt --check clean; validate-code-refs total=0
+- validate-workspace green: docs 1/1, round-trip 1/1, T3 reject 0, GENERATED.md=sync; dogfood v4 to v5 migration verified end-to-end
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- reference_only info class deferred: references-only sections currently surface as impl_missing on the coverage axis; SCE controls severity_coverage. Add the distinct info surface when a consumer needs it
+- ImplementationMissing/impl_missing and ImplementationUnbacked/impl_unbacked variant + tag names kept (stable CLI/JSON contract); only the firing semantics changed
+- propose-implementations curation command name kept (separate read-only tool, not the schema)
+- SCE Stage-B reclassification (implements to references for DTO/data-member fields) + MNEMOSYNE_REV bump are SCE-side; resolver decl-kind (field vs method) for auto-triage is unverified, so manual classification from the migration report otherwise
 
 
 

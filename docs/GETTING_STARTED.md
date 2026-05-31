@@ -121,9 +121,12 @@ cargo run -p mnemosyne-cli -- set-section-rationale \
  --section §3 --bullet "Cookie-based session preferred over JWT for SSR." \
  --bullet "Refresh-token rotation handled server-side."
 
-# Bind §3 to an implementation file (code-citation defense Path B).
-cargo run -p mnemosyne-cli -- add-section-implementation \
- --section §3 --file src/auth/session.rs --symbol Session::validate
+# Bind §3 to a code file (code-citation defense Path B). --kind is
+# explicit: `implements` (= «satisfy», counts as coverage) or
+# `references` (= «trace», defends the cite without a fulfillment claim).
+cargo run -p mnemosyne-cli -- add-section-binding \
+ --section §3 --file src/auth/session.rs --symbol Session::validate \
+ --kind implements
 
 # Mark a section Superseded — `--superseding` is mandatory (T1 rule 4).
 cargo run -p mnemosyne-cli -- set-section-decision-status \
