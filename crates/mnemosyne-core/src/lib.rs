@@ -530,6 +530,24 @@ output_parser = "gopls_v0_15""#;
     }
 
     #[test]
+    fn binding_kind_as_str_from_tag_round_trip() {
+        // Pins the as_str <-> from_tag round-trip the projection layer relies
+        // on (it lowers kind to a tag for Salsa, then reconstructs via
+        // from_tag().expect(...)). A typo in either arm would break this test
+        // instead of silently mis-rendering a binding's kind.
+        for k in [BindingKind::Implements, BindingKind::References] {
+            assert_eq!(BindingKind::from_tag(k.as_str()), Some(k));
+        }
+        // Tags equal the serde lowercase representation.
+        assert_eq!(BindingKind::Implements.as_str(), "implements");
+        assert_eq!(BindingKind::References.as_str(), "references");
+        // Unknown / wrong-case tags do not parse (no silent default).
+        assert_eq!(BindingKind::from_tag("IMPLEMENTS"), None);
+        assert_eq!(BindingKind::from_tag("satisfies"), None);
+        assert_eq!(BindingKind::from_tag(""), None);
+    }
+
+    #[test]
     fn inventory_status_from_str_rejects_unknown() {
         use std::str::FromStr;
         let err = InventoryStatus::from_str("retired").unwrap_err();

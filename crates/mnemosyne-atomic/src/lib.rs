@@ -114,11 +114,19 @@ pub struct AtomicSection {
     /// the identity pair; `kind` is a mutable attribute via
     /// [`set_section_binding_kind`], not part of the identity).
     ///
-    /// `#[serde(alias = "implementations")]` is the transitional migration
-    /// reader for pre-v5 stores, whose JSON key was `implementations`; the
-    /// next save rewrites it as `bindings`. (Pre-release: removable once no
-    /// pre-v5 store exists; kept only as the load-migration substrate, not a
-    /// live-compat carry.)
+    /// `#[serde(alias = "implementations")]` is the v4→v5 migration reader:
+    /// a pre-v5 store's JSON key was `implementations`, and this alias maps
+    /// it onto `bindings` at load; the next save rewrites the key. This is
+    /// migration substrate (permitted by no-legacy-carry, which bans
+    /// *compat* carries, not migration code), and it is **load-bearing for
+    /// data safety** — without it a v4 store's entire binding set would
+    /// deserialize empty (the field `#[serde(default)]`s to `[]`) and the
+    /// next save would erase it. It is the sole guard because `AtomicSection`
+    /// uses `#[serde(flatten)]`, which is incompatible with
+    /// `deny_unknown_fields`; the happy-path migration test pins that the
+    /// alias fires. Keep until a v4 store cannot exist anywhere (not provable
+    /// while external consumers hold old stores), then drop with a tracked
+    /// round — do not remove on aesthetic grounds.
     #[serde(
         default,
         alias = "implementations",
@@ -219,9 +227,11 @@ pub use mnemosyne_core::BindingKind;
 /// serde default for [`Binding::kind`]: pre-v5 stores have no `kind` field;
 /// every legacy binding was an implicit implementation claim (coverage
 /// counted all bindings before the split), so defaulting to `Implements`
-/// is behavior-preserving. The `schema_version < 5` migration in
-/// [`AtomicStore::load`] records every such defaulted binding in the
-/// migration report so the inherited claim is never *silently* blessed.
+/// is behavior-preserving. The defaulted bindings are surfaced (not
+/// silently blessed) by [`AtomicStore::kind_migration_report`], which the
+/// CLI `report-binding-migration` verb prints; it is readable only while
+/// `schema_version < 5` (before the first save bumps the version), so an
+/// operator upgrading a v4 store runs that verb before/around the upgrade.
 fn binding_kind_implements_default() -> BindingKind {
     BindingKind::Implements
 }
@@ -520,17 +530,19 @@ pub enum AtomicStoreError {
 // clones audit_* into publishable_* per entry so the default render shape
 // stays byte-identical until R295 setters explicitly diverge them.
 //
-// Schema version 5: Path B `Section.bindings[] = {file, symbol}`
+// Schema version 5: Path B `Section.implementations[] = {file, symbol}`
 // became `Section.bindings[] = {file, symbol, kind}` (typed trace-link
-// edge; BindingKind = Implements | References). Pre-v5 stores migrate at
-// load with ZERO code: the renamed `bindings` field reads the old
-// `implementations` JSON key via #[serde(alias)], and each legacy binding
-// (which carried no `kind`) defaults to `Implements` via #[serde(default)]
-// — behavior-preserving, because coverage counted every binding before the
-// split. `AtomicStore::kind_migration_report` surfaces those defaulted
-// bindings (detectable while schema_version < 5, before the first save
-// rewrites it) so the inherited claim is a reviewable work-list, never a
-// silent blessing.
+// edge; BindingKind = Implements | References). Unlike v3→v4 (a *content
+// transform* that must run imperatively in `load`), v4→v5 is a pure
+// field-rename + new-field-default, which serde expresses idiomatically and
+// declaratively — so there is deliberately NO `schema_version < 5` arm in
+// `load`: the renamed `bindings` field reads the old `implementations` JSON
+// key via #[serde(alias)] and each legacy binding (no `kind` on disk)
+// defaults to `Implements` via #[serde(default)]. Behavior-preserving,
+// because coverage counted every binding before the split. The inferred
+// defaults are NOT silently blessed: `AtomicStore::kind_migration_report`
+// (surfaced by the CLI `report-binding-migration` verb) lists them while
+// `schema_version < 5`, i.e. before the first save bumps the version.
 //
 // Load is back-compat across all versions ≤ CURRENT: version-N stores
 // deserialize with newer fields defaulted; the next save rewrites

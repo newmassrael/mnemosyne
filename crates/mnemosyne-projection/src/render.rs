@@ -136,7 +136,14 @@ pub fn render_section_block<'db>(db: &'db dyn RenderDb, input: RenderSectionInpu
             .map(|(file, symbol, kind)| Binding {
                 file,
                 symbol,
-                kind: BindingKind::from_tag(&kind).unwrap_or(BindingKind::Implements),
+                // The tag was produced one render ago by `BindingKind::as_str`
+                // (project_section_input / reconcile_sections), so a parse
+                // miss is an internal round-trip break, not bad input — fail
+                // loud (R356–R364 discipline) rather than silently coercing to
+                // a kind, which on a compliance ledger would be the wrong
+                // default in either direction.
+                kind: BindingKind::from_tag(&kind)
+                    .expect("BindingKind tag round-trips through as_str/from_tag"),
             })
             .collect(),
         superseded_by: input.superseded_by(db),

@@ -281,6 +281,7 @@ fn run(args: &[String]) -> Result<()> {
         // rule, carry).
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
         "propose-implementations" => cmd_propose_implementations(&args[2..]),
+        "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
@@ -483,7 +484,7 @@ fn print_help(prog: &str) {
     println!("   Round 260: §<id> citations cross-checked against AtomicSection.bindings");
     println!("   --severity-missing: Missing + SectionMissing (hallucination class)");
     println!(
- "   --severity-binding (Round 260): CitationUnbound + ImplementationUnbacked + SymbolMismatch (edge class)"
+ "   --severity-binding (Round 260): CitationUnbound + BindingUnbacked + SymbolMismatch (edge class)"
  );
     println!(
  "   --severity-coverage (Round 385): ImplementationMissing (Active section uncited); inherits --severity-binding when unset"
@@ -500,6 +501,11 @@ fn print_help(prog: &str) {
         "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and"
     );
     println!("   emit proposed §<id> binding sets + add-section-binding commands (read-only)");
+    println!(" {} report-binding-migration [--json]", prog);
+    println!(
+        "   v4→v5 surface: list bindings that inherited kind=implements by default (read-only;"
+    );
+    println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
     println!();
     println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
     println!(
@@ -1393,6 +1399,85 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 ///
 /// `[plugins.set_equality_validator]` omission ⇒ skip (exit 0 with log line) — 5-min setup
 /// promise carry for external users who don't cite spec entries in code.
+/// v4→v5 migration surface (read-only): when the atomic store on disk is
+/// pre-v5 (its bindings carried no `kind` and all defaulted to `implements`
+/// at load), print the inferred-default work-list so the migration is NOT a
+/// silent blessing — each row is a Stage-B reclassification candidate
+/// (flip data/DTO fields to `references` via `set-section-binding-kind`).
+/// Returns nothing to review once the store is at v5 (the first save bumps
+/// the version and the signal is gone), so run this before/around upgrading
+/// a v4 store. Never mutates.
+fn cmd_report_binding_migration(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    match store.kind_migration_report() {
+        None => {
+            if json {
+                println!("{{\"from_schema_version\":null,\"rows\":[]}}");
+            } else {
+                println!(
+                    "store already at current schema (>= v5); no binding-kind migration pending"
+                );
+            }
+        }
+        Some(report) => {
+            if json {
+                let rows: Vec<_> = report
+                    .rows
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "section_id": r.section_id,
+                            "file": r.file,
+                            "symbol": r.symbol,
+                            "defaulted_kind": r.defaulted_kind.as_str(),
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "from_schema_version": report.from_schema_version,
+                        "rows": rows,
+                    })
+                );
+            } else {
+                println!(
+                    "=== binding-kind migration report (store schema v{} → v5) ===",
+                    report.from_schema_version
+                );
+                println!(
+                    "{} binding(s) inherited kind=implements by default — review and reclassify",
+                    report.rows.len()
+                );
+                println!("(flip data/DTO fields to references: set-section-binding-kind --kind references --reason …)");
+                for r in &report.rows {
+                    match &r.symbol {
+                        Some(s) => println!("  §{}  {}:{}", r.section_id, r.file, s),
+                        None => println!("  §{}  {}", r.section_id, r.file),
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Path B curation support: emit the proposed `§<id>.bindings`
 /// symbol sets derived from current code citations, for maintainer
 /// ratification. Read-only — never mutates the store. Pair with
@@ -1675,7 +1760,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let missing_count = get("missing");
     let section_missing_count = get("section_missing");
     let citation_unbound_count = get("citation_unbound");
-    let impl_unbacked_count = get("impl_unbacked");
+    let binding_unbacked_count = get("binding_unbacked");
     let decay_count = get("decay");
     let impl_missing_count = get("impl_missing");
     let inventory_missing_count = get("inventory_missing");
@@ -1684,13 +1769,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let inventory_count = inventory_missing_count + inventory_deprecated_count;
     let hallucination_count = missing_count + section_missing_count;
     // Round 385 — coverage split. The binding bucket is the per-edge axis:
-    // CitationUnbound + ImplementationUnbacked (cite ↔ file) + SymbolMismatch
+    // CitationUnbound + BindingUnbacked (cite ↔ file) + SymbolMismatch
     // (cite ↔ symbol). ImplementationMissing (an Active section with zero
     // implementations) is a *coverage* claim about the section, not an edge,
     // and moves to its own `severity_coverage` axis — spec-mirror sections are
     // mostly prose and legitimately uncited, so coverage must be downgradable
     // independently of binding (the Round 269 deferred split).
-    let binding_count = citation_unbound_count + impl_unbacked_count + symbol_mismatch_count;
+    let binding_count = citation_unbound_count + binding_unbacked_count + symbol_mismatch_count;
     let coverage_count = impl_missing_count;
 
     if json {
@@ -1716,7 +1801,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "missing_count": missing_count,
             "section_missing_count": section_missing_count,
             "citation_unbound_count": citation_unbound_count,
-            "impl_unbacked_count": impl_unbacked_count,
+            "binding_unbacked_count": binding_unbacked_count,
             "impl_missing_count": impl_missing_count,
             "decay_count": decay_count,
             "inventory_missing_count": inventory_missing_count,
@@ -1768,14 +1853,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         }
         println!(
             "violations: total={} missing={} section_missing={} \
- citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
+ citation_unbound={} binding_unbacked={} impl_missing={} decay={} \
  inv_missing={} inv_deprecated={} \
  (severity_missing={} severity_binding={} severity_coverage={} severity_inventory={})",
             violations.len(),
             missing_count,
             section_missing_count,
             citation_unbound_count,
-            impl_unbacked_count,
+            binding_unbacked_count,
             impl_missing_count,
             decay_count,
             inventory_missing_count,
@@ -1804,9 +1889,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     }
     if binding_count > 0 && severity_binding == "reject" {
         reject_msgs.push(format!(
-            "{} binding-class violation(s) — CitationUnbound={} ImplementationUnbacked={} \
+            "{} binding-class violation(s) — CitationUnbound={} BindingUnbacked={} \
  SymbolMismatch={} (severity_binding=reject)",
-            binding_count, citation_unbound_count, impl_unbacked_count, symbol_mismatch_count,
+            binding_count, citation_unbound_count, binding_unbacked_count, symbol_mismatch_count,
         ));
     }
     if coverage_count > 0 && severity_coverage == "reject" {

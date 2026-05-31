@@ -9,7 +9,7 @@
 //! binding check (Path B substrate from 's
 //! `AtomicSection.bindings`). The scanner now also extracts
 //! `§<id>` citations and applies set-equality against each section's
-//! `implementations` set (OPTION D pattern lifted from the
+//! `bindings` set (OPTION D pattern lifted from the
 //! cross-ref orphan ledger).
 //!
 //! ## Pattern derivation
@@ -40,19 +40,19 @@
 //! `§<id>` axis:
 //! - `SectionMissing` — §<id> not in `atomic_section_id_set`
 //! - `CitationUnbound` — §<id> exists but citing file F not in
-//! §<id>.`implementations` (code-side; spec doesn't agree)
-//! - `ImplementationUnbacked` — (file F, sym?) in
-//! §<id>.`implementations` but F has no §<id> citation (spec-side;
+//! §<id>.`bindings` (code-side; spec doesn't agree)
+//! - `BindingUnbacked` — (file F, sym?) in
+//! §<id>.`bindings` but F has no §<id> citation (spec-side;
 //! code doesn't agree)
 //! - `ImplementationMissing` — §<id> exists with non-`Removed`
-//! `decision_status` but `implementations` is empty (spec-side
+//! `decision_status` but has zero `implements` bindings (spec-side
 //! coverage axiom: "Active = backed by code"). Third edge of the
 //! Path B set-equality, complementing the two file-grained binding
 //! directions above.
 //!
 //! The binding directions are *asymmetric in shape*: code-side
 //! violations have a concrete (file, line, entry_id); the
-//! `ImplementationUnbacked` spec-side variant has no line and carries
+//! `BindingUnbacked` spec-side variant has no line and carries
 //! the impl-entry symbol; the `ImplementationMissing` spec-side variant
 //! has neither file nor symbol (it is a section-level absence). This is
 //! modeled as a 3-variant `CodeRefViolation` enum rather than collapsing
@@ -79,7 +79,7 @@ pub struct Citation {
 /// One verification failure surfaced to the caller.
 ///
 /// Three variants — code-side citations (`Citation`), file-grained
-/// spec-side claims (`ImplementationUnbacked`), and section-level
+/// spec-side claims (`BindingUnbacked`), and section-level
 /// spec-side absences (`ImplementationMissing`) have structurally
 /// different evidence (a concrete file:line vs an impl-entry without a
 /// code witness vs a section with no impl entries at all), so the enum
@@ -92,19 +92,22 @@ pub enum CodeRefViolation {
         citation: Citation,
         kind: ViolationKind,
     },
-    /// Spec-side violation — the atomic store records
-    /// `§section_id.bindings` containing (file, symbol?), but the
-    /// file has no `§section_id` citation. The spec claims an
-    /// implementation that the code does not witness.
-    ImplementationUnbacked {
+    /// Spec-side violation — the atomic store records a binding (of ANY
+    /// kind) in `§section_id.bindings` naming (file, symbol?), but the file
+    /// has no `§section_id` citation. The spec asserts a code↔spec edge the
+    /// code does not witness — for an `implements` binding that is an
+    /// unwitnessed implementation claim, for a `references` binding an
+    /// unwitnessed trace link; either way the binding is unbacked.
+    BindingUnbacked {
         section_id: String,
         file: PathBuf,
         symbol: Option<String>,
     },
     /// Spec-side coverage axiom — `§section_id` exists in the atomic
-    /// store with a non-`Removed` `decision_status` but its
-    /// `implementations` list is empty: the section asserts a decision
-    /// without naming any code that realizes it.
+    /// store with a non-`Removed` `decision_status` but has zero
+    /// `implements` bindings (a `references`-only section counts as
+    /// uncovered): the section asserts a decision without naming any code
+    /// that *satisfies* it.
     ///
     /// `decision_status` is kept as the raw `Option<DecisionStatus>`
     /// (not pre-resolved to `Active`) so the audit-trail consumer can
@@ -116,6 +119,18 @@ pub enum CodeRefViolation {
         section_id: String,
         decision_status: Option<DecisionStatus>,
     },
+}
+
+/// Whether a binding `kind` satisfies the coverage axiom (`ImplementationMissing`).
+/// Only «satisfy» counts; «trace» does not. Written as an exhaustive `match`
+/// (not `== Implements`) so adding a `BindingKind` variant (e.g. `verifies`,
+/// `refines`) is a compile error here until its coverage semantics is decided
+/// — the "free single-step" extension claim's one non-obvious touch-point.
+fn counts_as_coverage(kind: mnemosyne_core::BindingKind) -> bool {
+    match kind {
+        mnemosyne_core::BindingKind::Implements => true,
+        mnemosyne_core::BindingKind::References => false,
+    }
 }
 
 impl CodeRefViolation {
@@ -133,7 +148,7 @@ impl CodeRefViolation {
                 ViolationKind::InventoryDeprecated => "inventory_deprecated",
                 ViolationKind::SymbolMismatch => "symbol_mismatch",
             },
-            CodeRefViolation::ImplementationUnbacked { .. } => "impl_unbacked",
+            CodeRefViolation::BindingUnbacked { .. } => "binding_unbacked",
             CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
         }
     }
@@ -141,7 +156,7 @@ impl CodeRefViolation {
     /// Defect class — drives `--severity-missing` vs
     /// `--severity-binding` bucketing. Hallucination-class = cited
     /// identifier doesn't exist (Missing, SectionMissing). Binding-class
-    /// = set-equality violation (CitationUnbound, ImplementationUnbacked,
+    /// = set-equality violation (CitationUnbound, BindingUnbacked,
     /// ImplementationMissing — all three edges of the Path B
     /// bidirectional binding). Decay is its own informational class —
     /// never reject-bucketed.
@@ -159,7 +174,7 @@ impl CodeRefViolation {
                     DefectClass::Inventory
                 }
             },
-            CodeRefViolation::ImplementationUnbacked { .. } => DefectClass::Binding,
+            CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
             CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
         }
     }
@@ -186,7 +201,7 @@ impl CodeRefViolation {
                 obj.insert("line".into(), Value::Number(citation.line.into()));
                 obj.insert("entry_id".into(), Value::String(citation.entry_id.clone()));
             }
-            CodeRefViolation::ImplementationUnbacked {
+            CodeRefViolation::BindingUnbacked {
                 section_id,
                 file,
                 symbol,
@@ -234,7 +249,7 @@ impl std::fmt::Display for CodeRefViolation {
                 citation.line,
                 citation.entry_id
             ),
-            CodeRefViolation::ImplementationUnbacked {
+            CodeRefViolation::BindingUnbacked {
                 section_id,
                 file,
                 symbol,
@@ -268,7 +283,7 @@ impl std::fmt::Display for CodeRefViolation {
 pub enum DefectClass {
     /// Cited identifier doesn't exist (Missing, SectionMissing).
     Hallucination,
-    /// Set-equality violation (CitationUnbound, ImplementationUnbacked,
+    /// Set-equality violation (CitationUnbound, BindingUnbacked,
     /// ImplementationMissing — all three edges of the Path B
     /// bidirectional binding).
     Binding,
@@ -1185,9 +1200,9 @@ fn scan_round_number(s: &str) -> Option<String> {
 /// - else OK (record F in `cited_by[<id>]` for step 3)
 /// 3. After all files scanned, walk `store.sections`. For each §X, for
 /// each `Binding { file, symbol, kind }` in `§X.bindings`:
-/// if `file` ∉ `cited_by[X]` → `ImplementationUnbacked`.
+/// if `file` ∉ `cited_by[X]` → `BindingUnbacked`.
 /// 4. Same walk: for each §X with `decision_status != Removed` and
-/// empty `implementations` → `ImplementationMissing` (spec-side
+/// zero `implements` bindings → `ImplementationMissing` (spec-side
 /// coverage axiom — Round 269).
 ///
 /// `filter_id` is the decay-scan toggle. When `Some`, only
@@ -1223,7 +1238,7 @@ fn scan_round_number(s: &str) -> Option<String> {
 ///    store and share `severity_inventory`.
 /// 4. Bidirectional set-equality (Path B) — `§X.bindings` files
 ///    vs cited-by sets — surfaces `CitationUnbound`,
-///    `ImplementationUnbacked`, and `ImplementationMissing` (R269
+///    `BindingUnbacked`, and `ImplementationMissing` (R269
 ///    coverage axiom).
 ///
 /// `orphan_ledger` rows with `kind = CodeCitation` suppress
@@ -1569,7 +1584,7 @@ impl SetEqualityValidator {
                         .map(|set| set.contains(section_id))
                         .unwrap_or(false);
                     if !cited {
-                        violations.push(CodeRefViolation::ImplementationUnbacked {
+                        violations.push(CodeRefViolation::BindingUnbacked {
                             section_id: section_id.clone(),
                             file: PathBuf::from(&impl_entry.file),
                             symbol: impl_entry.symbol.clone(),
@@ -1581,7 +1596,7 @@ impl SetEqualityValidator {
 
         // ---- Step 4: spec-side coverage axiom ----
         // Workspace-wide: a section with non-Removed decision_status and
-        // zero implementations is the "Active = backed by code" axiom
+        // zero `implements` bindings is the "Active = backed by code" axiom
         // violation. Removed is tombstone-exempt. None → Active fallback
         // used for the trigger only; the raw Option is preserved on the
         // emitted variant (carried as schema DecisionStatus for back-compat
@@ -1590,12 +1605,12 @@ impl SetEqualityValidator {
             for (section_id, section) in &snapshot.sections {
                 // Coverage counts ONLY `implements` («satisfy») bindings;
                 // `references` («trace») links do not satisfy the
-                // "Active = backed by code" axiom.
-                let has_implements = section
-                    .bindings
-                    .iter()
-                    .any(|b| b.kind == mnemosyne_core::BindingKind::Implements);
-                if has_implements {
+                // "Active = backed by code" axiom. `counts_as_coverage` is an
+                // exhaustive match (not `== Implements`) so a future
+                // BindingKind variant forces an explicit coverage decision at
+                // compile time instead of silently not-counting.
+                let has_coverage = section.bindings.iter().any(|b| counts_as_coverage(b.kind));
+                if has_coverage {
                     continue;
                 }
                 // R309 textbook unification: SectionView.decision_status now IS
@@ -1875,9 +1890,9 @@ pub fn scan_inventory_decay(
 }
 
 /// Deterministic ordering — Citation variants sort by (file, line, entry_id);
-/// ImplementationUnbacked variants sort by (file, section_id, symbol);
+/// BindingUnbacked variants sort by (file, section_id, symbol);
 /// ImplementationMissing variants sort by section_id. The variant order is
-/// Citation < ImplementationUnbacked < ImplementationMissing so existing
+/// Citation < BindingUnbacked < ImplementationMissing so existing
 /// reports keep their relative diff stability when the third edge surfaces.
 fn sort_violations(violations: &mut [CodeRefViolation]) {
     violations.sort_by(|a, b| {
@@ -1886,7 +1901,7 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
         fn rank(v: &CodeRefViolation) -> u8 {
             match v {
                 Citation { .. } => 0,
-                ImplementationUnbacked { .. } => 1,
+                BindingUnbacked { .. } => 1,
                 ImplementationMissing { .. } => 2,
             }
         }
@@ -1901,12 +1916,12 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
                 .then(c1.line.cmp(&c2.line))
                 .then(c1.entry_id.cmp(&c2.entry_id)),
             (
-                ImplementationUnbacked {
+                BindingUnbacked {
                     file: f1,
                     section_id: s1,
                     symbol: y1,
                 },
-                ImplementationUnbacked {
+                BindingUnbacked {
                     file: f2,
                     section_id: s2,
                     symbol: y2,
@@ -2180,7 +2195,7 @@ mod tests {
         symbol: Option<&str>,
     ) -> AtomicStore {
         let mut store = AtomicStore::new();
-        // Round 287 fail-loud: seed Section before add_section_implementation
+        // Round 287 fail-loud: seed Section before add_section_binding
         // (test fixture path — direct insert bypasses audit-receipt overhead).
         store.sections.insert(
             section_id.to_string(),
@@ -2231,7 +2246,7 @@ mod tests {
     fn references_binding_satisfies_citation_but_not_coverage() {
         // A section bound ONLY by a `references` («trace») binding: the cite is
         // defended (no citation_unbound — presence is kind-agnostic) and the
-        // binding's file is cited (no impl_unbacked), but coverage counts only
+        // binding's file is cited (no binding_unbacked), but coverage counts only
         // `implements`, so the section still trips impl_missing.
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
@@ -2274,8 +2289,8 @@ mod tests {
             v
         );
         assert!(
-            !v.iter().any(|x| x.kind_tag() == "impl_unbacked"),
-            "the cited references binding must not be impl_unbacked: {:?}",
+            !v.iter().any(|x| x.kind_tag() == "binding_unbacked"),
+            "the cited references binding must not be binding_unbacked: {:?}",
             v
         );
         assert!(
@@ -2383,7 +2398,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1, "got: {:?}", v);
         match &v[0] {
-            CodeRefViolation::ImplementationUnbacked {
+            CodeRefViolation::BindingUnbacked {
                 section_id,
                 file,
                 symbol,
@@ -2798,7 +2813,7 @@ mod tests {
     // ============ Round 269: ImplementationMissing (spec-side coverage axiom) ============
 
     /// Builds an empty workspace dir + a store whose `section_id` exists
-    /// but has no implementations. `decision_status` lets the test pin
+    /// but has no `implements` bindings. `decision_status` lets the test pin
     /// the atomic override; pass `None` to exercise the parser-default
     /// fallback path.
     fn build_store_with_empty_section(
@@ -2818,7 +2833,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        // implementations stays at Vec::default() = []
+        // bindings stays at Vec::default() = []
         store
     }
 
@@ -2951,7 +2966,7 @@ mod tests {
     fn coverage_axiom_non_empty_impls_does_not_trigger() {
         // Section with at least one implementation is exempt from the
         // coverage axiom regardless of citation match status (which is
-        // the ImplementationUnbacked axis's job).
+        // the BindingUnbacked axis's job).
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
         let store = build_store_with_impl(&store_path, "39", "src/foo.rs", None);

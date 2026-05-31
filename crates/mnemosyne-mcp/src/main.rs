@@ -940,7 +940,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Remove one `(file, symbol?)` binding from `Section.bindings` (matches on the identity pair regardless of kind). Pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as impl_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
+        description = "Remove one `(file, symbol?)` binding from `Section.bindings` (matches on the identity pair regardless of kind). Pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as binding_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
     )]
     async fn remove_section_binding(
         &self,

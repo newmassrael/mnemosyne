@@ -128,7 +128,7 @@ when the project never numbers its history rows.
 - **`[plugins.set_equality_validator].severity_binding`** — `warn` or `reject`. Fires when a
  citation appears in a file that the section's
  `bindings` (Path B Spec ↔ Code) does *not* list (`citation_unbound`),
- or when a binding's file carries no citation (`impl_unbacked`), or on a
+ or when a binding's file carries no citation (`binding_unbacked`), or on a
  symbol-set mismatch (`symbol_mismatch`). Presence is **kind-agnostic** —
  a binding of *any* `kind` (`implements` or `references`) defends a cite.
  Bidirectional binding integrity.

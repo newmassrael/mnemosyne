@@ -51,7 +51,7 @@ fn seed_workspace_for_unbacked_and_missing() -> (TempDir, AtomicStore) {
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
     let mut store = AtomicStore::new();
     // sec1 declares an impl at src/missing.rs (no §sec1 cite in that file
-    // — but a Round 999 hallucinated cite — triggers ImplementationUnbacked
+    // — but a Round 999 hallucinated cite — triggers BindingUnbacked
     // ... actually src/missing.rs DOES cite §sec1, so binding holds for
     // sec1; the unbacked variant covers the other-section case below).
     let sec1 = AtomicSection {

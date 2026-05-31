@@ -169,7 +169,7 @@ pub enum OrphanKind {
     /// `to` = section_id without leading `§` (or `entry_id` for
     /// Round NNN-shaped suppression, deferred to bulk
     /// register); `doc` = `"<code-citation>"` by convention. Suppresses
-    /// `SectionMissing` / `CitationUnbound` / `ImplementationUnbacked`
+    /// `SectionMissing` / `CitationUnbound` / `BindingUnbacked`
     /// when the (from, to) pair matches.
     CodeCitation,
     /// Round 285 — code-side inventory-citation suppression.
@@ -336,7 +336,7 @@ pub struct SetEqualityValidatorConfig {
     /// severity for binding-class violations (Path B Spec ↔
     /// Code bidirectional set-equality):
     /// - `CitationUnbound` — code cites §X but file not in §X.bindings
-    /// - `ImplementationUnbacked` — §X.bindings names file F but F
+    /// - `BindingUnbacked` — §X.bindings names file F but F
     /// has no §X citation
     /// - `SymbolMismatch` — a cite's resolved symbol is not in §X's
     /// registered symbol set for that file

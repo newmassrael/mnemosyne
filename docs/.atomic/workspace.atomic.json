@@ -5992,6 +5992,54 @@
         "propose-implementations curation command name kept (separate read-only tool, not the schema)",
         "SCE Stage-B reclassification (implements to references for DTO/data-member fields) + MNEMOSYNE_REV bump are SCE-side; resolver decl-kind (field vs method) for auto-triage is unverified, so manual classification from the migration report otherwise"
       ]
+    },
+    "Round 388 — binding-kind remediation: wire migration report, fail-loud, BindingUnbacked rename": {
+      "decision_summary": "Remediate the R387 adversarial-review findings. Wire kind_migration_report to a read-only CLI verb so the migration's anti-silent-blessing guarantee is actually delivered (R387 shipped it unwired). Projection reconstruction fails loud instead of unwrap_or-defaulting. Rename ImplementationUnbacked/impl_unbacked to BindingUnbacked/binding_unbacked (it fires for any-kind binding, so Implementation was inaccurate; pre-release no-compat). Coverage uses an exhaustive match so a new kind forces the decision. Fix false/stale migration comments; add a BindingKind round-trip test. F8 (stale schema_max) was a false positive (resolver protocol version, not store schema).",
+      "changes_bullets": [
+        "wire kind_migration_report -> read-only CLI `report-binding-migration` (JSON+TTY): R387 left it test-only/unwired, so the \"non-silent blessing\" guarantee was undelivered; now an operator upgrading a v4 store sees the inferred-implements work-list before the first save bumps the version",
+        "projection render reconstruction: from_tag().unwrap_or(Implements) -> .expect(round-trip) — fail-loud (R356-R364) instead of silently coercing an internal round-trip break to a kind",
+        "rename ImplementationUnbacked -> BindingUnbacked and tag impl_unbacked -> binding_unbacked: the variant fires for ANY-kind binding (references too), so \"Implementation\" was inaccurate; frozen changelog history retains the old tag (correct — historical)",
+        "coverage via exhaustive `counts_as_coverage` match, not `== Implements`: a future BindingKind variant (verifies/refines) is now a compile error here until its coverage semantics is decided",
+        "fix false comment claiming a `schema_version < 5` branch in load(): v4->v5 is a declarative serde rename+default (deliberately NOT an imperative load arm, unlike v3->v4's content transform); honest serde-alias framing (migration substrate, data-safety load-bearing, deny_unknown_fields blocked by AtomicSection flatten)",
+        "+BindingKind as_str/from_tag round-trip test (core, mirrors InventoryStatus); stale comment sweep in code_refs (field/fn/coverage-prose)"
+      ],
+      "verification_bullets": [
+        "784 tests / 0 fail (+1 round-trip); clippy --workspace --all-targets 0; fmt clean; validate-code-refs total=0; validate-workspace green",
+        "report-binding-migration on the v5 dogfood prints \"already at v5\" (window closed at R387); the 8 R387-defaulted bindings reviewed = all legitimately implements (self-Path-B section->crate bindings), no reclassification needed",
+        "review finding F8 (stale schema_max:4) confirmed FALSE POSITIVE: that field is the SymbolResolver plugin VersionSurface protocol version, a different axis from the atomic store schema_version"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "R387 audit half is frozen; its \"non-silent report\" wording is now actually delivered by this round (was unwired at R387 time), and \"no legacy alias\" referred to the CLI/API (no add-section-implementation alias) — the serde field alias is migration substrate, clarified in code comments",
+        "serde alias=\"implementations\" kept deliberately: its absence would silently drop a v4 store's entire binding set on load; drop only when v4 stores are provably extinct, via a tracked round",
+        "reference_only info class still deferred (unchanged from R387): references-only sections surface as impl_missing on the coverage axis",
+        "SCE follow-up: violation tag impl_unbacked -> binding_unbacked (pre-release no-compat); any SCE CI parsing validate-code-refs JSON must update the key binding_unbacked_count"
+      ],
+      "publishable_decision_summary": "Remediate the R387 adversarial-review findings. Wire kind_migration_report to a read-only CLI verb so the migration's anti-silent-blessing guarantee is actually delivered (R387 shipped it unwired). Projection reconstruction fails loud instead of unwrap_or-defaulting. Rename ImplementationUnbacked/impl_unbacked to BindingUnbacked/binding_unbacked (it fires for any-kind binding, so Implementation was inaccurate; pre-release no-compat). Coverage uses an exhaustive match so a new kind forces the decision. Fix false/stale migration comments; add a BindingKind round-trip test. F8 (stale schema_max) was a false positive (resolver protocol version, not store schema).",
+      "publishable_changes_bullets": [
+        "wire kind_migration_report -> read-only CLI `report-binding-migration` (JSON+TTY): R387 left it test-only/unwired, so the \"non-silent blessing\" guarantee was undelivered; now an operator upgrading a v4 store sees the inferred-implements work-list before the first save bumps the version",
+        "projection render reconstruction: from_tag().unwrap_or(Implements) -> .expect(round-trip) — fail-loud (R356-R364) instead of silently coercing an internal round-trip break to a kind",
+        "rename ImplementationUnbacked -> BindingUnbacked and tag impl_unbacked -> binding_unbacked: the variant fires for ANY-kind binding (references too), so \"Implementation\" was inaccurate; frozen changelog history retains the old tag (correct — historical)",
+        "coverage via exhaustive `counts_as_coverage` match, not `== Implements`: a future BindingKind variant (verifies/refines) is now a compile error here until its coverage semantics is decided",
+        "fix false comment claiming a `schema_version < 5` branch in load(): v4->v5 is a declarative serde rename+default (deliberately NOT an imperative load arm, unlike v3->v4's content transform); honest serde-alias framing (migration substrate, data-safety load-bearing, deny_unknown_fields blocked by AtomicSection flatten)",
+        "+BindingKind as_str/from_tag round-trip test (core, mirrors InventoryStatus); stale comment sweep in code_refs (field/fn/coverage-prose)"
+      ],
+      "publishable_verification_bullets": [
+        "784 tests / 0 fail (+1 round-trip); clippy --workspace --all-targets 0; fmt clean; validate-code-refs total=0; validate-workspace green",
+        "report-binding-migration on the v5 dogfood prints \"already at v5\" (window closed at R387); the 8 R387-defaulted bindings reviewed = all legitimately implements (self-Path-B section->crate bindings), no reclassification needed",
+        "review finding F8 (stale schema_max:4) confirmed FALSE POSITIVE: that field is the SymbolResolver plugin VersionSurface protocol version, a different axis from the atomic store schema_version"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R387 audit half is frozen; its \"non-silent report\" wording is now actually delivered by this round (was unwired at R387 time), and \"no legacy alias\" referred to the CLI/API (no add-section-implementation alias) — the serde field alias is migration substrate, clarified in code comments",
+        "serde alias=\"implementations\" kept deliberately: its absence would silently drop a v4 store's entire binding set on load; drop only when v4 stores are provably extinct, via a tracked round",
+        "reference_only info class still deferred (unchanged from R387): references-only sections surface as impl_missing on the coverage axis",
+        "SCE follow-up: violation tag impl_unbacked -> binding_unbacked (pre-release no-compat); any SCE CI parsing validate-code-refs JSON must update the key binding_unbacked_count"
+      ]
     }
   },
   "inventory_entries": {},

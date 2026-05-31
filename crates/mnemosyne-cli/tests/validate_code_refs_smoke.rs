@@ -11,7 +11,7 @@
 //! (vii) `--filter-id` decay scan (Round 258)
 //! (viii) Round 260 — `§<id>` hallucination → SectionMissing (reject)
 //! (ix) Round 260 — `§<id>` cite without matching impl entry → CitationUnbound
-//! (x) Round 260 — impl entry without code cite → ImplementationUnbacked
+//! (x) Round 260 — impl entry without code cite → BindingUnbacked
 //! (xi) Round 260 — `--severity-binding warn` keeps exit 0 on binding violations
 
 use std::fs;
@@ -238,7 +238,7 @@ fn case_vi_json_output_shape() {
     // Round 260 — new count fields present in JSON shape.
     assert!(parsed.get("section_missing_count").is_some());
     assert!(parsed.get("citation_unbound_count").is_some());
-    assert!(parsed.get("impl_unbacked_count").is_some());
+    assert!(parsed.get("binding_unbacked_count").is_some());
     assert!(parsed.get("severity_binding").is_some());
     let violations = parsed["violations"].as_array().expect("violations array");
     assert_eq!(violations.len(), 1);
@@ -364,7 +364,7 @@ fn case_x_implementation_unbacked_rejected_under_default_binding_severity() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("binding") || stderr.contains("ImplementationUnbacked"),
+        stderr.contains("binding") || stderr.contains("BindingUnbacked"),
         "stderr should mention binding class; got: {}",
         stderr
     );
@@ -386,11 +386,11 @@ fn case_xi_severity_binding_warn_keeps_exit_zero() {
     );
     let parsed: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid JSON");
-    assert_eq!(parsed["impl_unbacked_count"], 1);
+    assert_eq!(parsed["binding_unbacked_count"], 1);
     assert_eq!(parsed["severity_binding"], "warn");
     let violations = parsed["violations"].as_array().expect("violations array");
     assert_eq!(violations.len(), 1);
-    assert_eq!(violations[0]["kind"], "impl_unbacked");
+    assert_eq!(violations[0]["kind"], "binding_unbacked");
     assert_eq!(violations[0]["section_id"], "39");
 }
 
