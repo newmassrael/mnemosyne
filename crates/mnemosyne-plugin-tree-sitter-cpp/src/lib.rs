@@ -23,7 +23,7 @@ use std::fs;
 use std::path::Path;
 
 use mnemosyne_core::{PluginRegistry, ResolverError, SymbolResolver, VersionSurface};
-use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator};
 
 pub const BACKEND_KEY: &str = "tree-sitter-cpp";
 
@@ -57,6 +57,19 @@ impl SymbolResolver for TreesitterCppResolver {
             return Ok(None);
         }
         let row = (line - 1) as usize;
+
+        // Documented-symbol semantics first: a `§<id>` citation in source is a
+        // doc comment, conventionally placed *above* the declaration it
+        // documents. In C++ that comment is lexically a preceding sibling of
+        // the declaration, so the smallest *enclosing* node is the outer scope
+        // (namespace / class), not the documented symbol. If the cited line is
+        // a comment that — with no intervening blank line — immediately
+        // precedes a declaration, bind to that declaration. A file-header /
+        // taxonomy comment not adjacent to a declaration falls through to the
+        // enclosing scope (correctly coarse).
+        if let Some(name) = documented_symbol(root, &source, row) {
+            return Ok(Some(name));
+        }
 
         let lang: tree_sitter::Language = tree_sitter_cpp::LANGUAGE.into();
         // Captures the declaration node itself, not the name node: C++ names
@@ -115,6 +128,57 @@ const NAME_KINDS: &[&str] = &[
     "operator_cast",
     "type_identifier",
 ];
+
+/// Declaration node kinds a doc comment may document. Mirrors the enclosing
+/// query set minus `namespace_definition` — a comment is never "documenting"
+/// the namespace it sits in, and `declaration` is excluded so a comment above
+/// a function-body local binds to the enclosing function, not the local.
+const DECL_KINDS: &[&str] = &[
+    "function_definition",
+    "field_declaration",
+    "class_specifier",
+    "struct_specifier",
+    "union_specifier",
+    "enum_specifier",
+];
+
+/// If `row` (0-indexed) falls on a comment that — through a contiguous run of
+/// comment lines with no intervening blank line — immediately precedes a
+/// declaration in [`DECL_KINDS`], return that declaration's symbol name. This
+/// is the doc-comment convention: `// doc` above `class Foo {}` documents
+/// `Foo`, even though `Foo` is not the comment's enclosing scope. A blank line
+/// (or a non-declaration sibling) breaks the association and yields `None`,
+/// so file-header comments fall through to enclosing-scope resolution.
+fn documented_symbol(root: Node, source: &str, row: usize) -> Option<String> {
+    let line = source.split('\n').nth(row)?;
+    // Byte column of the first non-whitespace char; comments are ASCII-led
+    // (`//` or `/*`), so byte == char offset here.
+    let col = line.len() - line.trim_start().len();
+    let pt = Point::new(row, col);
+    let node = root.descendant_for_point_range(pt, pt)?;
+    if node.kind() != "comment" {
+        return None;
+    }
+    let mut last = node;
+    let mut sib = node.next_named_sibling();
+    while let Some(s) = sib {
+        // Adjacency: the next sibling must begin on the line immediately after
+        // the previous comment ends — a blank line breaks the doc association.
+        if s.start_position().row != last.end_position().row + 1 {
+            return None;
+        }
+        if s.kind() == "comment" {
+            last = s;
+            sib = s.next_named_sibling();
+            continue;
+        }
+        if DECL_KINDS.contains(&s.kind()) {
+            return symbol_name(s, source.as_bytes());
+        }
+        return None;
+    }
+    None
+}
 
 /// Extract the declared symbol name from a captured declaration node.
 /// Type-like and namespace nodes read the `name` field directly; function
@@ -251,6 +315,45 @@ mod tests {
         assert_eq!(resolve(src, 1), None);
         assert_eq!(resolve(src, 2), None);
         assert_eq!(resolve(src, 3).as_deref(), Some("theta"));
+    }
+
+    #[test]
+    fn doc_comment_above_class_binds_to_class() {
+        // The cite sits in a doc comment above the class it documents; the
+        // enclosing scope is `ns`, but documented-symbol semantics bind it to
+        // `Widget`.
+        let src = "namespace ns {\n// documents Widget §X\nclass Widget {};\n}\n";
+        assert_eq!(resolve(src, 2).as_deref(), Some("Widget"));
+    }
+
+    #[test]
+    fn doc_comment_above_method_binds_to_method() {
+        let src = "class C {\n    // documents m §X\n    void m();\n};\n";
+        assert_eq!(resolve(src, 2).as_deref(), Some("m"));
+    }
+
+    #[test]
+    fn multiline_doc_block_binds_every_line_to_following_decl() {
+        let src = "// line one §X\n// line two\nclass Zeta {};\n";
+        assert_eq!(resolve(src, 1).as_deref(), Some("Zeta"));
+        assert_eq!(resolve(src, 2).as_deref(), Some("Zeta"));
+    }
+
+    #[test]
+    fn blank_line_breaks_doc_association() {
+        // A standalone comment separated by a blank line does NOT document the
+        // class; it falls through to enclosing scope (none here).
+        let src = "// standalone §X\n\nclass Q {};\n";
+        assert_eq!(resolve(src, 1), None);
+    }
+
+    #[test]
+    fn comment_in_body_binds_to_enclosing_function_not_local() {
+        // The cite is a comment inside a function body, immediately above a
+        // local declaration. The local is not a documentable decl, so it binds
+        // to the enclosing function.
+        let src = "void f() {\n    // note §X\n    int x = 1;\n}\n";
+        assert_eq!(resolve(src, 2).as_deref(), Some("f"));
     }
 
     #[test]

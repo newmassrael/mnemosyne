@@ -253,6 +253,7 @@ fn run(args: &[String]) -> Result<()> {
         // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
         // rule, carry).
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
+        "propose-implementations" => cmd_propose_implementations(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
@@ -451,6 +452,17 @@ fn print_help(prog: &str) {
  );
     println!(
  "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
+ );
+    println!();
+    println!(
+        " {} propose-implementations [--section §<id>] [--json]",
+        prog
+    );
+    println!(
+        "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and"
+    );
+    println!(
+ "   emit proposed §<id>.implementations sets + add-section-implementation commands (read-only)"
  );
     println!();
     println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
@@ -1331,6 +1343,97 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
 ///
 /// `[plugins.set_equality_validator]` omission ⇒ skip (exit 0 with log line) — 5-min setup
 /// promise carry for external users who don't cite spec entries in code.
+/// Path B curation support: emit the proposed `§<id>.implementations`
+/// symbol sets derived from current code citations, for maintainer
+/// ratification. Read-only — never mutates the store. Pair with
+/// `add-section-implementation` to register the ratified sets.
+fn cmd_propose_implementations(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut section_filter: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--section" => {
+                section_filter = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--section missing value"))?
+                        .clone(),
+                );
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    // Accept both the sigil-prefixed and bare form for --section.
+    let section_filter = section_filter.map(|s| s.trim_start_matches('§').to_string());
+
+    let loaded = workspace_config()?;
+    let cfg = match loaded
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+    {
+        Some(c) => c,
+        None => bail!("[plugins.set_equality_validator] not configured in mnemosyne.toml"),
+    };
+
+    let prefix = cli_schema()?.entry_id_prefix.clone();
+    let root = loaded.workspace_root.clone();
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
+    let validator = SetEqualityValidator {
+        config: cfg.clone(),
+        entry_id_prefix: prefix,
+        orphan_ledger: loaded.config.orphan_ledger.clone(),
+        symbol_resolvers,
+        filter_id: None,
+    };
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    let mut proposals = validator.propose_implementations(&root, &snapshot)?;
+    if let Some(ref sec) = section_filter {
+        proposals.retain(|p| p.section_id == *sec);
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&proposals)?);
+        return Ok(());
+    }
+
+    println!("=== mnemosyne-cli propose-implementations ===");
+    println!(
+        "{} (section,file) proposal(s){}",
+        proposals.len(),
+        section_filter
+            .as_ref()
+            .map(|s| format!(" for §{}", s))
+            .unwrap_or_default()
+    );
+    println!("# Review each set as design intent, then run the registration commands below.");
+    for p in &proposals {
+        let syms: Vec<&str> = p.symbols.iter().map(String::as_str).collect();
+        println!(
+            "\n§{}  {}  symbols={:?}  unresolved_cites={}",
+            p.section_id, p.file, syms, p.unresolved_citations
+        );
+        if p.symbols.is_empty() {
+            println!(
+                "  mnemosyne-cli add-section-implementation --section §{} --file {}",
+                p.section_id, p.file
+            );
+        }
+        for s in &p.symbols {
+            println!(
+                "  mnemosyne-cli add-section-implementation --section §{} --file {} --symbol {}",
+                p.section_id, p.file, s
+            );
+        }
+    }
+    Ok(())
+}
+
 fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let mut json = false;
     let mut severity_missing_override: Option<String> = None;

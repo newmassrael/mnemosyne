@@ -1609,6 +1609,112 @@ impl SetEqualityValidator {
         sort_violations(&mut violations);
         Ok(violations)
     }
+
+    /// Curation support for Path B adoption. Scans the configured paths for
+    /// `§<id>` citations and, per `(section_id, file)`, resolves each
+    /// citation's enclosing symbol via the file's language `SymbolResolver`,
+    /// returning the proposed implementation symbol set plus a count of
+    /// citations whose symbol could not be resolved (file-only fallback).
+    /// Honors `comment_only` and `section_namespace` exactly as [`Self::scan`];
+    /// foreign-namespace and unknown-section citations are skipped (the
+    /// latter are hallucinations for `scan` to flag, not bindings).
+    ///
+    /// The result is a *proposal* reflecting the current code state. The
+    /// maintainer ratifies it into `§X.implementations` as design intent —
+    /// the act of review is also an audit of where each section is cited.
+    pub fn propose_implementations(
+        &self,
+        workspace_root: &Path,
+        snapshot: &mnemosyne_core::AtomicSnapshot,
+    ) -> std::io::Result<Vec<ProposedImplementation>> {
+        let comment_only = self.config.comment_only;
+        let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
+        let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
+        let section_namespace = self.config.section_namespace.as_deref();
+        let known_section = &snapshot.section_ids_with_implied_parents;
+
+        // (section_id, file) -> (resolved symbols, unresolved cite count)
+        let mut acc: BTreeMap<(String, String), (BTreeSet<String>, usize)> = BTreeMap::new();
+
+        let files = walk_paths(workspace_root, &self.config.paths)?;
+        for abs in files {
+            let raw = match std::fs::read_to_string(&abs) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let content = if comment_only {
+                strip_to_comments(&raw, comment_syntax_for(&abs))
+            } else {
+                raw
+            };
+            let rel = abs
+                .strip_prefix(workspace_root)
+                .map(|p| p.to_path_buf())
+                .unwrap_or(abs.clone());
+            let rel_str = rel.to_string_lossy().to_string();
+
+            for (line, section_id) in extract_section_citations(
+                &content,
+                external_section_prefixes_numeric,
+                external_section_prefixes_bare,
+            ) {
+                if let Some(ns) = section_namespace {
+                    if citation_namespace(&section_id) != ns {
+                        continue;
+                    }
+                }
+                if !known_section.contains(section_id.as_str()) {
+                    continue;
+                }
+                let entry = acc
+                    .entry((section_id.clone(), rel_str.clone()))
+                    .or_default();
+                let mut resolved_here = false;
+                if let Some(lang) = lang_for_file(&rel) {
+                    if let Some(resolver) = self.symbol_resolvers.get(lang) {
+                        let abs_for_resolve = workspace_root.join(&rel);
+                        if let Ok(Some(sym)) =
+                            resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
+                        {
+                            entry.0.insert(sym);
+                            resolved_here = true;
+                        }
+                    }
+                }
+                if !resolved_here {
+                    entry.1 += 1;
+                }
+            }
+        }
+
+        let mut out: Vec<ProposedImplementation> = acc
+            .into_iter()
+            .map(
+                |((section_id, file), (symbols, unresolved))| ProposedImplementation {
+                    section_id,
+                    file,
+                    symbols,
+                    unresolved_citations: unresolved,
+                },
+            )
+            .collect();
+        out.sort();
+        Ok(out)
+    }
+}
+
+/// A proposed `§<section_id>.implementations` entry derived from the
+/// current code citations, for maintainer ratification (Path B curation).
+/// `symbols` is the set of resolved enclosing symbols across every cite of
+/// the section in `file`; `unresolved_citations` counts cites whose symbol
+/// the resolver could not name (no resolver for the language, or a cite
+/// sitting outside any declaration) — those bind at file granularity only.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct ProposedImplementation {
+    pub section_id: String,
+    pub file: String,
+    pub symbols: BTreeSet<String>,
+    pub unresolved_citations: usize,
 }
 
 impl mnemosyne_core::Validator for SetEqualityValidator {

@@ -3785,3 +3785,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 384 — Path B curation tooling (propose-implementations) + cpp documented-symbol resolution — Path B (code->section binding) adoption needs a curation path: an external consumer with thousands of existing citations cannot hand-author every section->file->symbol implementation entry. R384 adds propose-implementations, a read-only tool that scans the cited code, resolves each citations enclosing symbol via the language SymbolResolver, and emits the proposed implementation sets (plus ready-to-run add-section-implementation commands) for maintainer ratification — the review doubles as an audit of where each section is cited. Paired with it, the cpp resolver gains documented-symbol semantics: a section citation in source is conventionally a doc comment ABOVE the declaration it documents, but tree-sitters smallest-enclosing-node would bind it to the outer namespace/class; documented_symbol detects a comment that (with no intervening blank line) immediately precedes a declaration and binds to that declaration instead, falling through to enclosing scope for file-header/taxonomy comments. Both additive and read-only; no severity or scan behaviour changes.
+
+**Changes**:
+- new propose-implementations CLI command + SetEqualityValidator::propose_implementations: scan cites, resolve each enclosing symbol, emit proposed section->file->{symbols} sets + add-section-implementation commands (read-only; maintainer ratifies)
+- cpp resolver: documented_symbol — a doc-comment cite immediately above a declaration binds to that decl, not the enclosing scope; blank line or non-decl sibling breaks the association (falls through to enclosing scope)
+- reuses extract_section_citations + namespace/comment_only filtering; ProposedImplementation carries unresolved_citations (file-only-fallback count)
+
+
+
+**Verification**:
+- 5 new cpp resolver tests (doc-comment above class/method, multiline block, blank-line-breaks, body-local binds-to-enclosing-fn); cpp 15 unit green
+- no regression: R382 cpp smoke 3 + rust smoke 5 green (body-comment cite still resolves to enclosing fn — next sibling is a statement, not a decl)
+- clippy --workspace --all-targets clean, fmt clean, build --workspace clean
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- propose-implementations is a proposal reflecting current code; ratification into §X.implementations is a deliberate maintainer act (also audits where each section is cited)
+- documented-symbol semantics added to cpp resolver only; rust resolver unchanged (rust doc-comment binding deferred until a consumer needs it)
+
+
+
