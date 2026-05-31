@@ -26,6 +26,7 @@ sha2.workspace = true
 tempfile.workspace = true
 mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
+mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
 
 [lints]
 workspace = true

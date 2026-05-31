@@ -3735,3 +3735,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 382 — C2: in-tree tree-sitter-cpp SymbolResolver plugin + cpp resolver wiring (SCE contribution) — C2 (resolver wiring) was gated on SCE contributing an in-tree tree-sitter-cpp plugin; the PR arrived. Landed SCE the in-tree mnemosyne-plugin-tree-sitter-cpp crate (TreesitterCppResolver implementing the core SymbolResolver port via tree-sitter-cpp, smallest-covering-declaration like the rust backend, with C++ declarator-nesting handled: out-of-line definitions resolve to the qualified Foo::bar form, inline members to the bare name) and wired it into build_symbol_resolver_map (cpp BACKEND_KEY branch) + lang_for_file (C/C++ header+source extensions). RFC-002 FR-3 symbol-level enforcement (the SymbolMismatch axis) now works for C++. Reviewed and verified before land (build/tests/clippy/fmt). Kept the existing hardcoded dispatch + ext map, consistent with the rust backend; the C2 contract broader refactor (route through PluginRegistry + config-driven ext->lang) is deferred as YAGNI at two in-process backends, to revisit when a 3rd or out-of-process resolver appears.
+
+**Changes**:
+- new crate mnemosyne-plugin-tree-sitter-cpp: TreesitterCppResolver (SymbolResolver via tree-sitter-cpp 0.23); query captures declaration nodes, bounded declarator descent extracts the name; qualified Foo::bar out-of-line, bare member inline; mirrors the rust plugin shape
+- wiring: build_symbol_resolver_map cpp BACKEND_KEY branch (cli/main.rs); lang_for_file += h/hh/hpp/hxx/cpp/cc/cxx -> cpp (code_refs.rs); validate + cli dep the crate
+- tests: 10 plugin unit + symbol_enforcement_cpp_smoke (happy / mismatch / opt-out, mirrors the rust FR-3 smoke)
+- fmt: applied a one match-arm reflow on land (contribution was otherwise clean)
+
+
+
+**Verification**:
+- cargo build --workspace clean; cpp 10 unit + cpp-smoke 3 + rust-smoke 4 regression all green (no regression); clippy --workspace --all-targets -D warnings clean; fmt clean
+- reviewed: structure parity with rust plugin, C++ declarator-descent correctness, fail-loud (no swallow), bounded 64-depth descent guard, no vN
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- DEFERRED refactor (C2 contract): route build_symbol_resolver_map through PluginRegistry + make lang_for_file ext->lang config-driven; YAGNI at 2 in-process backends, trigger = a 3rd / external / out-of-process (Transport) resolver
+- HEADS-UP: lang_for_file maps .h but not .c (C++-only; confirm for any C consumer); template<...> parameter line resolves to None (best-effort)
+- NEXT (consumer): SCE reinstalls mnemosyne-cli at the R382 rev so cpp symbol citations enforce
+
+
+

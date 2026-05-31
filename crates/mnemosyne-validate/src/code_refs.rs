@@ -1240,6 +1240,7 @@ fn lang_for_file(path: &Path) -> Option<&'static str> {
         Some("rs") => Some("rust"),
         Some("py") => Some("python"),
         Some("go") => Some("go"),
+        Some("h" | "hh" | "hpp" | "hxx" | "cpp" | "cc" | "cxx") => Some("cpp"),
         _ => None,
     }
 }

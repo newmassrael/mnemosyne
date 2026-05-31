@@ -9,6 +9,7 @@ members = [
  "crates/mnemosyne-mcp",
  "crates/mnemosyne-core",
  "crates/mnemosyne-plugin-tree-sitter-rust",
+ "crates/mnemosyne-plugin-tree-sitter-cpp",
  "crates/mnemosyne-schema",
  "crates/mnemosyne-config",
  "crates/mnemosyne-parser",

@@ -99,6 +99,11 @@ fn build_symbol_resolver_map(
                         lang.clone(),
                         Box::new(mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver),
                     );
+                } else if backend == mnemosyne_plugin_tree_sitter_cpp::BACKEND_KEY {
+                    out.insert(
+                        lang.clone(),
+                        Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),
+                    );
                 } else {
                     eprintln!(
                         "[plugins.symbol_resolver.{}] unknown in-process backend `{}` — skipped",
