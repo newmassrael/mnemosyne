@@ -3761,3 +3761,27 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 383 — set-membership symbol binding (multi-symbol per file) — RFC-002 FR-3 symbol enforcement under-represented the store. The validator indexed Implementation.symbol as section->file->symbol via an iterator .collect() into BTreeMap, so when a section recorded more than one symbol in the same file (which add_section_implementation explicitly allows — set semantics, only exact (file,symbol) dups rejected) the collect kept only the last, and a legitimate cite inside any earlier symbol falsely surfaced as SymbolMismatch. R383 makes the index set-valued (section->file->{symbols}); a cite is bound at symbol granularity iff its resolved enclosing symbol is a MEMBER of the registered set. Backward compatible (a set of one reproduces the prior single-symbol check). This is a correctness fix aligning the validator index with the store invariant, not a new capability.
+
+**Changes**:
+- impl symbol index changed section->file->symbol (last-wins map) to section->file->{symbols} (BTreeSet); a cite binds iff its resolved enclosing symbol is a member
+- old .collect() into BTreeMap silently dropped all-but-last symbol on duplicate file keys -> false SymbolMismatch when a section had >1 symbol in one file; the store already allowed it (set semantics)
+- SymbolMismatch docstring + binding-site comments updated to set-membership semantics
+
+
+
+**Verification**:
+- new smoke set_membership_multiple_symbols_one_file: alpha/beta bound, unregistered gamma = exactly 1 mismatch (line 8)
+- validate symbol_enforcement_smoke 5 + cpp smoke 3 green; clippy --workspace --all-targets -D warnings clean; fmt clean; test --workspace --locked 0-fail
+- backward compatible: set-of-one reproduces prior single-symbol behaviour
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- prerequisite confirmed: add_section_implementation permits multiple (file, symbol) entries (rejects only exact dup); index now matches that store invariant
+
+
+

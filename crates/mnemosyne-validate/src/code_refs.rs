@@ -315,11 +315,13 @@ pub enum ViolationKind {
     ///
     /// At a `§<id>` citation site (`file`:`line` carrying the cite), the
     /// `SymbolResolver` plugin's `resolve_symbol_at(file, line)` returns a
-    /// name that does NOT match the `Implementation.symbol` recorded for
-    /// the cited section's implementation entry whose `file` matches the
-    /// citing file. The binding exists at file granularity (R260) but the
-    /// symbol granularity disagrees — code drifted under the spec's claim,
-    /// or the symbol field is stale.
+    /// name that is NOT a member of the set of `Implementation.symbol`
+    /// values the cited section records for the citing file. A section may
+    /// be implemented by several symbols in one file, so the registered
+    /// symbols form a set and the cite is bound iff its enclosing symbol is
+    /// one of them. The binding exists at file granularity (R260) but no
+    /// registered symbol covers this line — code drifted under the spec's
+    /// claim, or the symbol set is stale.
     SymbolMismatch,
 }
 
@@ -1340,18 +1342,23 @@ impl SetEqualityValidator {
             .collect();
 
         // RFC-002 FR-3 symbol-level enforcement index — section_id → file →
-        // symbol (when Implementation.symbol is Some). Drives SymbolMismatch
-        // checks at each cite where the file IS bound — file-granularity
-        // (R260) passes but symbol granularity may disagree.
-        let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, &str>> = snapshot
+        // {symbols} (every Implementation.symbol that is Some). A section is
+        // legitimately realized by more than one symbol in a file (e.g. a
+        // typed-throw contract spread across parse entry points), so the
+        // index is set-valued: a cite is bound at symbol granularity iff its
+        // resolved enclosing symbol is a MEMBER of the registered set. Drives
+        // SymbolMismatch where the file IS bound (R260) but no registered
+        // symbol covers the cited line.
+        let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = snapshot
             .sections
             .iter()
             .map(|(sid, sec)| {
-                let m: BTreeMap<&str, &str> = sec
-                    .implementations
-                    .iter()
-                    .filter_map(|i| i.symbol.as_deref().map(|s| (i.file.as_str(), s)))
-                    .collect();
+                let mut m: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+                for i in &sec.implementations {
+                    if let Some(s) = i.symbol.as_deref() {
+                        m.entry(i.file.as_str()).or_default().insert(s);
+                    }
+                }
                 (sid.as_str(), m)
             })
             .collect();
@@ -1477,11 +1484,12 @@ impl SetEqualityValidator {
                     });
                 } else if let Some(resolvers) = symbol_resolvers_opt {
                     // RFC-002 FR-3 symbol-level enforcement. File-level binding
-                    // passed; if the cited section's impl entry for this file carries
-                    // a `symbol`, the resolver for the file's language is consulted.
-                    // Mismatch surfaces as SymbolMismatch (Binding-class). Resolver
-                    // returning None/Err is silent.
-                    if let Some(expected_sym) = impl_symbols_by_section_file
+                    // passed; if the cited section records any `symbol` for this
+                    // file, the resolver for the file's language is consulted and
+                    // the resolved enclosing symbol must be a member of that set.
+                    // A non-member surfaces as SymbolMismatch (Binding-class).
+                    // Resolver returning None/Err is silent.
+                    if let Some(expected_syms) = impl_symbols_by_section_file
                         .get(section_id.as_str())
                         .and_then(|m| m.get(rel_str.as_str()))
                     {
@@ -1491,7 +1499,7 @@ impl SetEqualityValidator {
                                 if let Ok(Some(resolved)) =
                                     resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
                                 {
-                                    if resolved.as_str() != *expected_sym {
+                                    if !expected_syms.contains(resolved.as_str()) {
                                         violations.push(CodeRefViolation::Citation {
                                             citation: Citation {
                                                 file: rel.clone(),

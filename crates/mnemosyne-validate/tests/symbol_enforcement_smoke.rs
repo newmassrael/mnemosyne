@@ -204,3 +204,57 @@ fn no_symbol_in_impl_skips_axis_even_with_resolver() {
         }
     )));
 }
+
+#[test]
+fn set_membership_multiple_symbols_one_file() {
+    // A section legitimately realized by more than one symbol in a file:
+    // §sec1 records implementation symbols `alpha` and `beta` (two entries,
+    // same file). The file cites §sec1 inside `alpha`, `beta`, and an
+    // unregistered `gamma`. Set-membership: the alpha/beta cites are bound
+    // (member of {alpha, beta}); only the gamma cite drifts → 1 mismatch.
+    let tmp = TempDir::new().unwrap();
+    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    let mut store = AtomicStore::new();
+    add_section(
+        &mut store,
+        &sidecar,
+        "sec1",
+        "docs/GENERATED.md",
+        "Sec One",
+        None,
+    )
+    .unwrap();
+    add_section_implementation(&mut store, &sidecar, "sec1", "src/foo.rs", Some("alpha")).unwrap();
+    add_section_implementation(&mut store, &sidecar, "sec1", "src/foo.rs", Some("beta")).unwrap();
+
+    std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+    // Cites sit on lines 2 (alpha), 5 (beta), 8 (gamma).
+    let src = "fn alpha() {\n    // see §sec1\n}\nfn beta() {\n    // see §sec1\n}\nfn gamma() {\n    // see §sec1\n}\n";
+    std::fs::write(tmp.path().join("src/foo.rs"), src).unwrap();
+
+    let validator = build_validator(rust_resolver_map());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let mismatches: Vec<_> = v
+        .iter()
+        .filter(|x| {
+            matches!(
+                x,
+                CodeRefViolation::Citation {
+                    kind: ViolationKind::SymbolMismatch,
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(
+        mismatches.len(),
+        1,
+        "only the unregistered `gamma` cite should mismatch; got: {:?}",
+        v
+    );
+    if let Some(CodeRefViolation::Citation { citation, .. }) = mismatches.first() {
+        assert_eq!(citation.line, 8, "the gamma cite is on line 8");
+    }
+}
