@@ -76,6 +76,7 @@ fn build_validator(
             paths: vec!["src/".to_string()],
             severity_missing: "reject".into(),
             severity_binding: "reject".into(),
+            severity_coverage: None,
             severity_inventory: "reject".into(),
             comment_only: true,
             inventory_prefixes: vec![],

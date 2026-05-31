@@ -338,9 +338,25 @@ pub struct SetEqualityValidatorConfig {
     /// - `CitationUnbound` — code cites §X but file not in §X.implementations
     /// - `ImplementationUnbacked` — §X.implementations names file F but F
     /// has no §X citation
+    /// - `SymbolMismatch` — a cite's resolved symbol is not in §X's
+    /// registered symbol set for that file
     /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
     #[serde(default = "default_severity_reject")]
     pub severity_binding: String,
+
+    /// severity for the coverage-class violation, split out from
+    /// `severity_binding`. Round 269 added `ImplementationMissing` but
+    /// bucketed it under `severity_binding` (C1, YAGNI) and carried the
+    /// split decision pending empirical evidence from external workspace
+    /// adoption; spec-mirror adoption — where most sections are prose and
+    /// legitimately uncited, so coverage enforcement is inappropriate — is
+    /// that evidence:
+    /// - `ImplementationMissing` — an Active section has zero implementations
+    /// When unset (`None`), inherits `severity_binding` so pre-split
+    /// configs and the implementation-ledger default are unchanged.
+    /// Recognized values: `"reject"` / `"warn"` / `"info"`.
+    #[serde(default)]
+    pub severity_coverage: Option<String>,
 
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments

@@ -3810,3 +3810,29 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 385 — split severity_coverage from severity_binding (ImplementationMissing coverage axis) — Round 269 added the ImplementationMissing edge but bucketed it under severity_binding (C1, YAGNI) and carried the severity_coverage split decision pending empirical evidence from external workspace adoption. SCE spec-mirror adoption is that evidence: spec-mirror sections are mostly normative prose that is legitimately uncited, so coverage (an Active section having zero implementations) must be downgradable independently of binding (the per-edge cite/symbol checks). R385 realizes the split: ImplementationMissing moves from binding_count to its own coverage_count gated by a new severity_coverage axis; the binding bucket is now CitationUnbound + ImplementationUnbacked + SymbolMismatch. severity_coverage inherits severity_binding when unset (flag > config > binding), so the dogfood and every pre-split config are unchanged. Validated at the CLI use site like the sibling severities. A consumer downgrades coverage to warn/info while keeping binding reject — previously impossible.
+
+**Changes**:
+- config: severity_coverage: Option<String> on SetEqualityValidatorConfig (rationale cites the Round 269 deferral, not a non-existent round)
+- main.rs cmd_validate_code_refs: ImplementationMissing moved out of binding_count into its own coverage_count, gated by severity_coverage; binding bucket = CitationUnbound + ImplementationUnbacked + SymbolMismatch (cite/symbol edges)
+- severity_coverage precedence: --severity-coverage flag > config.severity_coverage > resolved severity_binding (inherits when unset; dogfood unchanged)
+- --severity-coverage override flag + usage text + JSON/TTY severity_coverage field
+
+
+
+**Verification**:
+- +2 CLI smoke (coverage=warn downgrades impl_missing while binding stays reject — the split proof; unset inherits binding=reject and rejects as coverage-class not binding); 13 code-refs smoke green
+- config field threaded to all SetEqualityValidatorConfig literals (3 test fixtures + the code_refs test helper); clippy --workspace clean, fmt clean
+- dogfood validate-workspace exit 0 (severity_coverage inherits reject, impl_missing=0, behaviour unchanged)
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- severity_coverage validated at the CLI use site (matching the sibling set_equality_validator severities), not config load; spec_drift/commit_ledger validate at load — different section, different established pattern
+- consumer (SCE spec-mirror): set [plugins.set_equality_validator] severity_coverage = "warn" so prose-only Active sections do not gate while binding stays reject
+
+
+

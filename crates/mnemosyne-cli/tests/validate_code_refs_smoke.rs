@@ -393,3 +393,56 @@ fn case_xi_severity_binding_warn_keeps_exit_zero() {
     assert_eq!(violations[0]["kind"], "impl_unbacked");
     assert_eq!(violations[0]["section_id"], "39");
 }
+
+#[test]
+fn case_xii_coverage_split_downgrades_independently_of_binding() {
+    // Round 385 — §39 exists (Active) with ZERO implementations =
+    // ImplementationMissing (coverage class). `--severity-coverage warn`
+    // downgrades it while `--severity-binding` stays reject (default): the
+    // split makes this possible — previously impl_missing was in the binding
+    // bucket and could not be downgraded without also downgrading binding.
+    let tmp = TempDir::new().unwrap();
+    write_workspace_with_section(tmp.path(), true, "39", &[]);
+    fs::write(tmp.path().join("src/foo.rs"), "// no cite\n").unwrap();
+    let out = run_cli(
+        tmp.path(),
+        &[
+            "validate-code-refs",
+            "--severity-coverage",
+            "warn",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "coverage=warn must exit 0 even with binding=reject; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let parsed: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid JSON");
+    assert_eq!(parsed["impl_missing_count"], 1);
+    assert_eq!(parsed["severity_binding"], "reject");
+    assert_eq!(parsed["severity_coverage"], "warn");
+}
+
+#[test]
+fn case_xiii_coverage_inherits_binding_and_rejects_as_coverage_class() {
+    // Round 385 — no severity_coverage set: it inherits severity_binding
+    // (reject by default), so §39 with zero implementations still rejects —
+    // but as a *coverage*-class violation, not binding (proving the move).
+    let tmp = TempDir::new().unwrap();
+    write_workspace_with_section(tmp.path(), true, "39", &[]);
+    fs::write(tmp.path().join("src/foo.rs"), "// no cite\n").unwrap();
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    assert!(
+        !out.status.success(),
+        "coverage inherits binding=reject → must reject; stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("coverage-class") && stderr.contains("ImplementationMissing"),
+        "must reject as coverage-class, not binding; got: {}",
+        stderr
+    );
+}

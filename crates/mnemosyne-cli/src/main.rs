@@ -438,6 +438,7 @@ fn print_help(prog: &str) {
     println!(
         " {} validate-code-refs [--severity-missing reject|warn|info]\n\
  \x20                       [--severity-binding reject|warn|info]\n\
+ \x20                       [--severity-coverage reject|warn|info]\n\
  \x20                       [--filter-id <entry_id>] [--json]",
         prog
     );
@@ -448,7 +449,10 @@ fn print_help(prog: &str) {
     println!("   Round 260: §<id> citations cross-checked against AtomicSection.implementations");
     println!("   --severity-missing: Missing + SectionMissing (hallucination class)");
     println!(
- "   --severity-binding (Round 260): CitationUnbound + ImplementationUnbacked (set-equality class)"
+ "   --severity-binding (Round 260): CitationUnbound + ImplementationUnbacked + SymbolMismatch (edge class)"
+ );
+    println!(
+ "   --severity-coverage (Round 385): ImplementationMissing (Active section uncited); inherits --severity-binding when unset"
  );
     println!(
  "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
@@ -1438,6 +1442,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let mut json = false;
     let mut severity_missing_override: Option<String> = None;
     let mut severity_binding_override: Option<String> = None;
+    let mut severity_coverage_override: Option<String> = None;
     let mut severity_inventory_override: Option<String> = None;
     // explicit decay filter (cascade caller restricts the scan
     // to citations of one entry_id, e.g. an entry that just transitioned
@@ -1458,6 +1463,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 severity_binding_override = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--severity-binding missing value"))?
+                        .clone(),
+                );
+            }
+            "--severity-coverage" => {
+                severity_coverage_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity-coverage missing value"))?
                         .clone(),
                 );
             }
@@ -1528,6 +1540,22 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             severity_binding
         );
     }
+    // severity_coverage (Round 385) inherits severity_binding when unset, so
+    // the dogfood (no [plugins.set_equality_validator].severity_coverage) keeps
+    // the Round 269 behaviour of coverage gating with the binding severity.
+    // Precedence: --severity-coverage flag > config.severity_coverage >
+    // resolved severity_binding.
+    let severity_coverage = severity_coverage_override
+        .as_deref()
+        .or(cfg.severity_coverage.as_deref())
+        .unwrap_or(&severity_binding)
+        .to_string();
+    if !matches!(severity_coverage.as_str(), "reject" | "warn" | "info") {
+        bail!(
+            "invalid --severity-coverage `{}` — expected one of: reject | warn | info",
+            severity_coverage
+        );
+    }
     let severity_inventory = severity_inventory_override
         .as_deref()
         .unwrap_or(&cfg.severity_inventory)
@@ -1595,12 +1623,15 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let symbol_mismatch_count = get("symbol_mismatch");
     let inventory_count = inventory_missing_count + inventory_deprecated_count;
     let hallucination_count = missing_count + section_missing_count;
-    // impl_missing bucketed into severity_binding (defect_class = Binding
-    // for all three Path B edges). RFC-002 FR-3 SymbolMismatch joins the
-    // binding bucket so the existing severity flag governs symbol-axis
-    // policy without a new knob.
-    let binding_count =
-        citation_unbound_count + impl_unbacked_count + impl_missing_count + symbol_mismatch_count;
+    // Round 385 — coverage split. The binding bucket is the per-edge axis:
+    // CitationUnbound + ImplementationUnbacked (cite ↔ file) + SymbolMismatch
+    // (cite ↔ symbol). ImplementationMissing (an Active section with zero
+    // implementations) is a *coverage* claim about the section, not an edge,
+    // and moves to its own `severity_coverage` axis — spec-mirror sections are
+    // mostly prose and legitimately uncited, so coverage must be downgradable
+    // independently of binding (the Round 269 deferred split).
+    let binding_count = citation_unbound_count + impl_unbacked_count + symbol_mismatch_count;
+    let coverage_count = impl_missing_count;
 
     if json {
         // Flat per-violation shape via `CodeRefViolation::to_cli_json` —
@@ -1632,6 +1663,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "inventory_deprecated_count": inventory_deprecated_count,
             "severity_missing": severity_missing,
             "severity_binding": severity_binding,
+            "severity_coverage": severity_coverage,
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "violations": view,
@@ -1678,7 +1710,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "violations: total={} missing={} section_missing={} \
  citation_unbound={} impl_unbacked={} impl_missing={} decay={} \
  inv_missing={} inv_deprecated={} \
- (severity_missing={} severity_binding={} severity_inventory={})",
+ (severity_missing={} severity_binding={} severity_coverage={} severity_inventory={})",
             violations.len(),
             missing_count,
             section_missing_count,
@@ -1690,6 +1722,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             inventory_deprecated_count,
             severity_missing,
             severity_binding,
+            severity_coverage,
             severity_inventory,
         );
         // `CodeRefViolation: Display` renders the legacy TTY shape
@@ -1712,8 +1745,15 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     if binding_count > 0 && severity_binding == "reject" {
         reject_msgs.push(format!(
             "{} binding-class violation(s) — CitationUnbound={} ImplementationUnbacked={} \
- ImplementationMissing={} (severity_binding=reject)",
-            binding_count, citation_unbound_count, impl_unbacked_count, impl_missing_count,
+ SymbolMismatch={} (severity_binding=reject)",
+            binding_count, citation_unbound_count, impl_unbacked_count, symbol_mismatch_count,
+        ));
+    }
+    if coverage_count > 0 && severity_coverage == "reject" {
+        reject_msgs.push(format!(
+            "{} coverage-class violation(s) — ImplementationMissing={} \
+ (severity_coverage=reject)",
+            coverage_count, impl_missing_count,
         ));
     }
     if inventory_count > 0 && severity_inventory == "reject" {

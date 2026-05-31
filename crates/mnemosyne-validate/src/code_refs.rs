@@ -1973,6 +1973,7 @@ mod tests {
                 paths: paths.to_vec(),
                 severity_missing: "reject".into(),
                 severity_binding: "reject".into(),
+                severity_coverage: None,
                 severity_inventory: "reject".into(),
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),

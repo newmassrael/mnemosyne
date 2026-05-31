@@ -30,6 +30,7 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
             paths: vec!["src/".into()],
             severity_missing: "reject".into(),
             severity_binding: "reject".into(),
+            severity_coverage: None,
             severity_inventory: "reject".into(),
             comment_only: true,
             inventory_prefixes: vec![],
