@@ -66,16 +66,20 @@ pub struct QueryTermInput {
 /// Load the markdown workspace + the atomic store. Mirrors
 /// `cli::load_workspace` but lives in the lib so MCP can call it
 /// without spawning the bin.
-pub fn load_workspace(workspace_root: &Path) -> Result<(Workspace, LoadedConfig, AtomicStore)> {
-    let loaded = discover_config(workspace_root)
+pub fn load_workspace(anchor: &Path) -> Result<(Workspace, LoadedConfig, AtomicStore)> {
+    let loaded = discover_config(anchor)
         .map_err(|e| anyhow!("mnemosyne.toml load failed: {}", e))?
-        .ok_or_else(|| anyhow!("mnemosyne.toml not found in {}", workspace_root.display()))?;
+        .ok_or_else(|| anyhow!("mnemosyne.toml not found in {}", anchor.display()))?;
     let schema = loaded
         .config
         .schema
         .clone()
         .unwrap_or_else(SchemaSection::mnemosyne_preset);
-    let atomic_store = load_atomic_store(workspace_root, None)?;
+    // Doc / scan / impl paths resolve against the config-declared
+    // `[workspace] root`, not `anchor` (the discovery start), so a
+    // subdir-located ledger still reads code repo-relative.
+    let workspace_root = loaded.workspace_root.clone();
+    let atomic_store = load_atomic_store(anchor, None)?;
     let mut ws = Workspace::from_config(&loaded);
     ws.set_atomic_id_set(atomic_store.atomic_section_id_set());
     let docs: Vec<String> = loaded.doc_paths().map(|s| s.to_string()).collect();

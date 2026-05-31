@@ -5900,6 +5900,44 @@
         "severity_coverage validated at the CLI use site (matching the sibling set_equality_validator severities), not config load; spec_drift/commit_ledger validate at load — different section, different established pattern",
         "consumer (SCE spec-mirror): set [plugins.set_equality_validator] severity_coverage = \"warn\" so prose-only Active sections do not gate while binding stays reject"
       ]
+    },
+    "Round 386 — complete [workspace] root: ops resolve via anchor (subdir-rooted ledgers)": {
+      "decision_summary": "The [workspace] root override was only half-wired: repo_root() returned the RESOLVED root, then ops called discover_config(resolved_root), which walks UP and misses a subdir-located mnemosyne.toml — so a ledger rooted in a subdirectory (the SCE 3-workspace layout) silently fell back to the default sidecar, loading an empty store (section_missing 58). R386 completes it: ops take an anchor (the toml dir) and resolve the declared [workspace] root themselves via workspace_root_from; workspace-relative sidecar/output/doc/code paths join the declared root, while an explicit --sidecar/--output override short-circuits discovery and joins the anchor. The CLI splits repo_root() into workspace_anchor() (passed to every ops/mutate call) and workspace_root() (the resolved root, for abs->repo-relative normalization). A subdir ledger now resolves code paths repo-relative with no .. traversal. Dogfood unchanged: with [workspace] root unset the anchor equals the resolved root.",
+      "changes_bullets": [
+        "cascade: new workspace_root_from(anchor) — discover config from anchor, return declared [workspace] root (anchor when no config); resolve_sidecar/output take anchor and join the declared root, explicit override short-circuits before discovery and joins anchor",
+        "ops resolve_sidecar + load_workspace + validate_atomic_store: take anchor, resolve declared root internally (subdir-located ledger reads code repo-relative)",
+        "cli: repo_root() split into workspace_anchor() (toml dir, for ops calls) + workspace_root() (resolved root, for path normalization); all mutate/query/validate dispatch passes the anchor"
+      ],
+      "verification_bullets": [
+        "+5 cascade unit tests (declared-root resolution / sidecar joins declared root not anchor / explicit override joins anchor / [atomic] relative joins declared root / no-config anchor fallback) — cascade.rs had zero tests before",
+        "clippy --workspace --all-targets -D clean; test --workspace --locked 0-fail; fmt clean (wrapped contributor long match-arms)",
+        "dogfood unchanged: [workspace] root unset → anchor == root; validate-workspace exit 0, GENERATED.md=sync, code-refs total=0"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "anchor-from-config_path.parent() computed inline in 3 cmd_* (propose/validate-code-refs/validate-spec-drift) + workspace_anchor() — minor 4-site idiom, below DRY-extract threshold (each has loaded in scope differently); revisit if a 5th appears",
+        "consumer (SCE 3-workspace): a subdir ledger sets [workspace] root = \"../../..\" so add-section-implementation --file sce/... resolves repo-relative (no .. traversal); section_missing 58 -> 0 after re-root"
+      ],
+      "publishable_decision_summary": "The [workspace] root override was only half-wired: repo_root() returned the RESOLVED root, then ops called discover_config(resolved_root), which walks UP and misses a subdir-located mnemosyne.toml — so a ledger rooted in a subdirectory (the SCE 3-workspace layout) silently fell back to the default sidecar, loading an empty store (section_missing 58). R386 completes it: ops take an anchor (the toml dir) and resolve the declared [workspace] root themselves via workspace_root_from; workspace-relative sidecar/output/doc/code paths join the declared root, while an explicit --sidecar/--output override short-circuits discovery and joins the anchor. The CLI splits repo_root() into workspace_anchor() (passed to every ops/mutate call) and workspace_root() (the resolved root, for abs->repo-relative normalization). A subdir ledger now resolves code paths repo-relative with no .. traversal. Dogfood unchanged: with [workspace] root unset the anchor equals the resolved root.",
+      "publishable_changes_bullets": [
+        "cascade: new workspace_root_from(anchor) — discover config from anchor, return declared [workspace] root (anchor when no config); resolve_sidecar/output take anchor and join the declared root, explicit override short-circuits before discovery and joins anchor",
+        "ops resolve_sidecar + load_workspace + validate_atomic_store: take anchor, resolve declared root internally (subdir-located ledger reads code repo-relative)",
+        "cli: repo_root() split into workspace_anchor() (toml dir, for ops calls) + workspace_root() (resolved root, for path normalization); all mutate/query/validate dispatch passes the anchor"
+      ],
+      "publishable_verification_bullets": [
+        "+5 cascade unit tests (declared-root resolution / sidecar joins declared root not anchor / explicit override joins anchor / [atomic] relative joins declared root / no-config anchor fallback) — cascade.rs had zero tests before",
+        "clippy --workspace --all-targets -D clean; test --workspace --locked 0-fail; fmt clean (wrapped contributor long match-arms)",
+        "dogfood unchanged: [workspace] root unset → anchor == root; validate-workspace exit 0, GENERATED.md=sync, code-refs total=0"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "anchor-from-config_path.parent() computed inline in 3 cmd_* (propose/validate-code-refs/validate-spec-drift) + workspace_anchor() — minor 4-site idiom, below DRY-extract threshold (each has loaded in scope differently); revisit if a 5th appears",
+        "consumer (SCE 3-workspace): a subdir ledger sets [workspace] root = \"../../..\" so add-section-implementation --file sce/... resolves repo-relative (no .. traversal); section_missing 58 -> 0 after re-root"
+      ]
     }
   },
   "inventory_entries": {},

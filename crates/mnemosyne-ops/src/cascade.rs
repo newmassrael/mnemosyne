@@ -20,40 +20,60 @@ use mnemosyne_query::{
     compose_generated_md, render_changelog_entry, render_section, section_heading,
 };
 
+/// Resolve the workspace root from any directory inside the workspace.
+///
+/// `anchor` is a discovery start (the directory a command was invoked from,
+/// or the directory holding `mnemosyne.toml`); the returned path is the
+/// config-declared `[workspace] root` (or the config dir when unset). All
+/// workspace-relative paths — sidecar, output, doc, citation, implementation
+/// — resolve against THIS root, never against `anchor`, so a ledger rooted
+/// in a subdirectory (`[workspace] root = "../../.."`) still resolves code
+/// paths repo-relative. When no config is discoverable the anchor itself is
+/// the root (the built-in-default / test path); a malformed config fails loud.
+pub fn workspace_root_from(anchor: &Path) -> Result<PathBuf> {
+    Ok(discover_config(anchor)?
+        .map(|l| l.workspace_root)
+        .unwrap_or_else(|| anchor.to_path_buf()))
+}
+
 /// Resolve sidecar path with the Round 279 precedence chain:
 /// 1. Explicit `--sidecar` CLI flag wins absolutely.
 /// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative
 ///    or absolute) when discoverable.
 /// 3. Default `<workspace_root>/docs/.atomic/workspace.atomic.json`.
-pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> Result<PathBuf> {
+///
+/// Workspace-relative paths join the config-declared `[workspace] root`, not
+/// `anchor` — see [`workspace_root_from`].
+pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&str>) -> Result<PathBuf> {
+    // Explicit override short-circuits before discovery — a malformed
+    // `mnemosyne.toml` must not block an explicitly-pathed resolve. A
+    // relative override joins the anchor directly (the dir the command was
+    // invoked against).
     if let Some(p) = sidecar {
         let pb = PathBuf::from(p);
         return Ok(if pb.is_absolute() {
             pb
         } else {
-            workspace_root.join(pb)
+            anchor.join(pb)
         });
     }
-    // A malformed `mnemosyne.toml` propagates loud instead of silently
-    // falling back to the built-in default path — `?` here is the fail-fast
-    // the R356/R359 corrupt-store sweep extended to config (Ok(None) = no
-    // config file = legit default).
-    if let Some(loaded) = discover_config(workspace_root)? {
-        if let Some(cfg_path) = loaded
-            .config
-            .atomic
-            .as_ref()
-            .and_then(|a| a.sidecar_path.as_deref())
-        {
-            let pb = PathBuf::from(cfg_path);
-            return Ok(if pb.is_absolute() {
-                pb
-            } else {
-                workspace_root.join(pb)
-            });
-        }
+    // No override: a malformed config propagates loud rather than silently
+    // falling back to the default (R356/R359 corrupt-store sweep). The
+    // `[atomic]` / default paths join the config-declared root, not anchor.
+    let loaded = discover_config(anchor)?;
+    let root = loaded
+        .as_ref()
+        .map(|l| l.workspace_root.as_path())
+        .unwrap_or(anchor);
+    if let Some(cfg_path) = loaded
+        .as_ref()
+        .and_then(|l| l.config.atomic.as_ref())
+        .and_then(|a| a.sidecar_path.as_deref())
+    {
+        let pb = PathBuf::from(cfg_path);
+        return Ok(if pb.is_absolute() { pb } else { root.join(pb) });
     }
-    Ok(AtomicStore::default_sidecar_path(workspace_root))
+    Ok(AtomicStore::default_sidecar_path(root))
 }
 
 /// Resolve cascade output path with the Round 279 precedence chain:
@@ -65,33 +85,33 @@ pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&str>) -> Result<P
 /// (markdown the validator reads), while this is the cascade write target
 /// (atomic store → md). Keeping them independent prevents a first mutate
 /// from clobbering hand-authored content in docs[0].
-pub fn resolve_output(workspace_root: &Path, output: Option<&str>) -> Result<PathBuf> {
+pub fn resolve_output(anchor: &Path, output: Option<&str>) -> Result<PathBuf> {
+    // Explicit override short-circuits before discovery (see resolve_sidecar);
+    // relative override joins the anchor.
     if let Some(p) = output {
         let pb = PathBuf::from(p);
         return Ok(if pb.is_absolute() {
             pb
         } else {
-            workspace_root.join(pb)
+            anchor.join(pb)
         });
     }
-    // Fail loud on malformed config rather than silently writing to the
-    // built-in default (see `resolve_sidecar`).
-    if let Some(loaded) = discover_config(workspace_root)? {
-        if let Some(cfg_path) = loaded
-            .config
-            .atomic
-            .as_ref()
-            .and_then(|a| a.output_path.as_deref())
-        {
-            let pb = PathBuf::from(cfg_path);
-            return Ok(if pb.is_absolute() {
-                pb
-            } else {
-                workspace_root.join(pb)
-            });
-        }
+    // No override: fail loud on malformed config; `[atomic]` / default paths
+    // join the config-declared root, not `anchor` (see workspace_root_from).
+    let loaded = discover_config(anchor)?;
+    let root = loaded
+        .as_ref()
+        .map(|l| l.workspace_root.as_path())
+        .unwrap_or(anchor);
+    if let Some(cfg_path) = loaded
+        .as_ref()
+        .and_then(|l| l.config.atomic.as_ref())
+        .and_then(|a| a.output_path.as_deref())
+    {
+        let pb = PathBuf::from(cfg_path);
+        return Ok(if pb.is_absolute() { pb } else { root.join(pb) });
     }
-    Ok(workspace_root.join("docs/GENERATED.md"))
+    Ok(root.join("docs/GENERATED.md"))
 }
 
 /// Render the atomic store at `sidecar_path` to a deterministic markdown
@@ -159,10 +179,11 @@ pub fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
 /// behavior of every atomic mutate (overridable). Errors are propagated —
 /// a regenerate failure after a successful mutate signals the cascade is in
 /// an inconsistent state and needs manual intervention.
-pub fn auto_regenerate(workspace_root: &Path, sidecar: Option<&str>) -> Result<()> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
-    let output_path = resolve_output(workspace_root, None)?;
-    let (content, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
+pub fn auto_regenerate(anchor: &Path, sidecar: Option<&str>) -> Result<()> {
+    let root = workspace_root_from(anchor)?;
+    let sidecar_path = resolve_sidecar(anchor, sidecar)?;
+    let output_path = resolve_output(anchor, None)?;
+    let (content, _) = render_atomic_store_to_md(&root, &sidecar_path)?;
     write_generated_md(&output_path, &content)?;
     Ok(())
 }
@@ -187,12 +208,15 @@ pub struct AtomicValidationSummary {
 /// Pure read — no file writes, side effect free. Shared by
 /// validate-workspace and audit ledgers as the single audit definition.
 pub fn validate_atomic_store(
-    workspace_root: &Path,
+    anchor: &Path,
     section_id_set: &BTreeSet<String>,
 ) -> Result<AtomicValidationSummary> {
     // Honor `[atomic].sidecar_path` config so the read / validation path
-    // sees the same store the mutate path wrote to.
-    let sidecar_path = resolve_sidecar(workspace_root, None)?;
+    // sees the same store the mutate path wrote to. `anchor` is a discovery
+    // start; render below uses the config-declared root so the rendered
+    // `Source:` line matches the committed GENERATED.md (sync comparison).
+    let workspace_root = workspace_root_from(anchor)?;
+    let sidecar_path = resolve_sidecar(anchor, None)?;
     let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
 
     let mut orphan_entry_refs = Vec::new();
@@ -222,9 +246,9 @@ pub fn validate_atomic_store(
         }
     }
 
-    let output_path = resolve_output(workspace_root, None)?;
+    let output_path = resolve_output(anchor, None)?;
     let generated_in_sync = if output_path.exists() {
-        let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
+        let (expected, _) = render_atomic_store_to_md(&workspace_root, &sidecar_path)?;
         let actual = fs::read_to_string(&output_path)
             .with_context(|| format!("read {}", output_path.display()))?;
         expected == actual
@@ -240,4 +264,93 @@ pub fn validate_atomic_store(
         orphan_section_refs,
         generated_in_sync,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Write a workspace whose `mnemosyne.toml` lives in a subdirectory and
+    /// declares `[workspace] root = ".."`, so the discovery anchor (the
+    /// toml's dir) differs from the resolved root (its parent). Returns
+    /// `(tempdir, subdir_anchor, canonical_declared_root)`.
+    fn subdir_rooted_workspace(atomic_table: &str) -> (TempDir, PathBuf, PathBuf) {
+        let tmp = TempDir::new().unwrap();
+        let anchor = tmp.path().join("ledger");
+        fs::create_dir_all(&anchor).unwrap();
+        fs::write(
+            anchor.join("mnemosyne.toml"),
+            format!(
+                "[workspace]\ndocs = [\"a.md\"]\nroot = \"..\"\n{}",
+                atomic_table
+            ),
+        )
+        .unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        (tmp, anchor, root)
+    }
+
+    #[test]
+    fn workspace_root_from_resolves_declared_root_not_anchor() {
+        // R386 — the anchor is the subdir holding the toml; the resolved
+        // root is its parent (`root = ".."`). Discovery must walk from the
+        // anchor, not the resolved root (which would miss the subdir toml).
+        let (_tmp, anchor, root) = subdir_rooted_workspace("");
+        let got = workspace_root_from(&anchor).unwrap();
+        assert_eq!(got.canonicalize().unwrap(), root);
+    }
+
+    #[test]
+    fn resolve_sidecar_joins_declared_root_not_anchor() {
+        // R386 regression — a workspace-relative sidecar resolves against the
+        // config-declared `[workspace] root` (the parent), NOT the discovery
+        // anchor (the subdir). Pre-R386 this joined the anchor, so a
+        // subdir-rooted ledger read the wrong (empty) store.
+        let (_tmp, anchor, root) = subdir_rooted_workspace("");
+        let got = resolve_sidecar(&anchor, None).unwrap();
+        // No [atomic] table → default sidecar under the DECLARED root.
+        let expected = AtomicStore::default_sidecar_path(&root);
+        assert_eq!(
+            got.canonicalize().unwrap_or(got.clone()),
+            expected.canonicalize().unwrap_or(expected.clone()),
+            "got {} expected under declared root {}",
+            got.display(),
+            root.display()
+        );
+        // The resolved sidecar must NOT live under the subdir anchor.
+        assert!(
+            !got.starts_with(&anchor),
+            "sidecar wrongly resolved under the anchor: {}",
+            got.display()
+        );
+    }
+
+    #[test]
+    fn resolve_sidecar_explicit_relative_override_joins_anchor() {
+        // An explicit `--sidecar` relative override short-circuits discovery
+        // and joins the anchor directly (the dir the command ran against).
+        let (_tmp, anchor, _root) = subdir_rooted_workspace("");
+        let got = resolve_sidecar(&anchor, Some("custom/store.json")).unwrap();
+        assert_eq!(got, anchor.join("custom/store.json"));
+    }
+
+    #[test]
+    fn resolve_sidecar_atomic_relative_joins_declared_root() {
+        // `[atomic] sidecar_path` (relative) also joins the declared root.
+        let (_tmp, anchor, root) =
+            subdir_rooted_workspace("[atomic]\nsidecar_path = \"store/x.json\"\n");
+        let got = resolve_sidecar(&anchor, None).unwrap();
+        assert_eq!(got, root.join("store/x.json"));
+    }
+
+    #[test]
+    fn workspace_root_from_no_config_is_anchor() {
+        // No discoverable config → the anchor itself is the root (built-in
+        // default / test path).
+        let tmp = TempDir::new().unwrap();
+        let got = workspace_root_from(tmp.path()).unwrap();
+        assert_eq!(got, tmp.path());
+    }
 }

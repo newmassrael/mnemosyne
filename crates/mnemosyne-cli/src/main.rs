@@ -170,86 +170,108 @@ fn run(args: &[String]) -> Result<()> {
         }
         "validate-workspace" => cmd_validate_workspace(),
         "query" => cmd_query(prog, &args[2..]),
-        "add-section" => atomic_cli::cmd_add_section(&repo_root()?, &args[2..]),
-        "import-sections" => atomic_cli::cmd_import_sections(&repo_root()?, &args[2..]),
+        "add-section" => atomic_cli::cmd_add_section(&workspace_anchor()?, &args[2..]),
+        "import-sections" => atomic_cli::cmd_import_sections(&workspace_anchor()?, &args[2..]),
         "style-check" => cmd_style_check(prog, &args[2..]),
         "list-docs" => cmd_list_docs(),
         // atomic mutate API surface.
-        "set-section-intent" => atomic_cli::cmd_set_section_intent(&repo_root()?, &args[2..]),
-        "set-section-rationale" => atomic_cli::cmd_set_section_rationale(&repo_root()?, &args[2..]),
-        "set-section-inputs" => atomic_cli::cmd_set_section_inputs(&repo_root()?, &args[2..]),
-        "set-section-outputs" => atomic_cli::cmd_set_section_outputs(&repo_root()?, &args[2..]),
+        "set-section-intent" => {
+            atomic_cli::cmd_set_section_intent(&workspace_anchor()?, &args[2..])
+        }
+        "set-section-rationale" => {
+            atomic_cli::cmd_set_section_rationale(&workspace_anchor()?, &args[2..])
+        }
+        "set-section-inputs" => {
+            atomic_cli::cmd_set_section_inputs(&workspace_anchor()?, &args[2..])
+        }
+        "set-section-outputs" => {
+            atomic_cli::cmd_set_section_outputs(&workspace_anchor()?, &args[2..])
+        }
         // Round 287 — outline setter surface (Phase C).
-        "set-section-title" => atomic_cli::cmd_set_section_title(&repo_root()?, &args[2..]),
+        "set-section-title" => atomic_cli::cmd_set_section_title(&workspace_anchor()?, &args[2..]),
         "set-section-parent-doc" => {
-            atomic_cli::cmd_set_section_parent_doc(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_parent_doc(&workspace_anchor()?, &args[2..])
         }
         "set-section-parent-section" => {
-            atomic_cli::cmd_set_section_parent_section(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_parent_section(&workspace_anchor()?, &args[2..])
         }
-        "add-section-caveat" => atomic_cli::cmd_add_section_caveat(&repo_root()?, &args[2..]),
+        "add-section-caveat" => {
+            atomic_cli::cmd_add_section_caveat(&workspace_anchor()?, &args[2..])
+        }
         "set-section-alternatives" => {
-            atomic_cli::cmd_set_section_alternatives(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_alternatives(&workspace_anchor()?, &args[2..])
         }
         "set-section-impact-scope" => {
-            atomic_cli::cmd_set_section_impact_scope(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_impact_scope(&workspace_anchor()?, &args[2..])
         }
-        "add-section-example" => atomic_cli::cmd_add_section_example(&repo_root()?, &args[2..]),
+        "add-section-example" => {
+            atomic_cli::cmd_add_section_example(&workspace_anchor()?, &args[2..])
+        }
         // Path B (Spec ↔ Code bidirectional binding) substrate.
         "add-section-implementation" => {
-            atomic_cli::cmd_add_section_implementation(&repo_root()?, &args[2..])
+            atomic_cli::cmd_add_section_implementation(&workspace_anchor()?, &args[2..])
         }
         // Round 283 — Section.implementations remove primitive (set-element granularity).
         "remove-section-implementation" => {
-            atomic_cli::cmd_remove_section_implementation(&repo_root()?, &args[2..])
+            atomic_cli::cmd_remove_section_implementation(&workspace_anchor()?, &args[2..])
         }
         // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
         // dropped; legacy markdown-surgical variant retired with the rest of
         // `mutate.rs`.)
         "set-section-decision-status" => {
-            atomic_cli::cmd_set_section_decision_status(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_decision_status(&workspace_anchor()?, &args[2..])
         }
         "set-section-normative-excerpt" => {
-            atomic_cli::cmd_set_section_normative_excerpt(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_section_normative_excerpt(&workspace_anchor()?, &args[2..])
         }
         // Round 267 — section removal (closes Round 266 carry gap).
-        "remove-section" => atomic_cli::cmd_remove_section(&repo_root()?, &args[2..]),
+        "remove-section" => atomic_cli::cmd_remove_section(&workspace_anchor()?, &args[2..]),
         "append-changelog-entry" => {
-            atomic_cli::cmd_append_changelog_entry(&repo_root()?, &args[2..])
+            atomic_cli::cmd_append_changelog_entry(&workspace_anchor()?, &args[2..])
         }
         // Round 295 — publishable-half setters (audit half stays frozen).
         "set-changelog-publishable-decision-summary" => {
-            atomic_cli::cmd_set_changelog_publishable_decision_summary(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_changelog_publishable_decision_summary(
+                &workspace_anchor()?,
+                &args[2..],
+            )
         }
         "set-changelog-publishable-changes" => {
-            atomic_cli::cmd_set_changelog_publishable_changes(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_changelog_publishable_changes(&workspace_anchor()?, &args[2..])
         }
         "set-changelog-publishable-verification" => {
-            atomic_cli::cmd_set_changelog_publishable_verification(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_changelog_publishable_verification(&workspace_anchor()?, &args[2..])
         }
         "set-changelog-publishable-impact-refs" => {
-            atomic_cli::cmd_set_changelog_publishable_impact_refs(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_changelog_publishable_impact_refs(&workspace_anchor()?, &args[2..])
         }
         "set-changelog-publishable-carry-forward" => {
-            atomic_cli::cmd_set_changelog_publishable_carry_forward(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_changelog_publishable_carry_forward(
+                &workspace_anchor()?,
+                &args[2..],
+            )
         }
         // Round 297 — RFC P1 redact_term convenience primitive.
-        "redact-term" => atomic_cli::cmd_redact_term(&repo_root()?, &args[2..]),
+        "redact-term" => atomic_cli::cmd_redact_term(&workspace_anchor()?, &args[2..]),
         // Round 300 — bare-setter ledger draft companion.
         "emit-publishable-override-ledger-draft" => {
-            atomic_cli::cmd_emit_publishable_override_ledger_draft(&repo_root()?, &args[2..])
+            atomic_cli::cmd_emit_publishable_override_ledger_draft(&workspace_anchor()?, &args[2..])
         }
         // Round 274 — Phase 1A inventory mutate primitives.
-        "add-inventory-entry" => atomic_cli::cmd_add_inventory_entry(&repo_root()?, &args[2..]),
-        "set-inventory-status" => atomic_cli::cmd_set_inventory_status(&repo_root()?, &args[2..]),
+        "add-inventory-entry" => {
+            atomic_cli::cmd_add_inventory_entry(&workspace_anchor()?, &args[2..])
+        }
+        "set-inventory-status" => {
+            atomic_cli::cmd_set_inventory_status(&workspace_anchor()?, &args[2..])
+        }
         "set-inventory-section-ref" => {
-            atomic_cli::cmd_set_inventory_section_ref(&repo_root()?, &args[2..])
+            atomic_cli::cmd_set_inventory_section_ref(&workspace_anchor()?, &args[2..])
         }
         "remove-inventory-entry" => {
-            atomic_cli::cmd_remove_inventory_entry(&repo_root()?, &args[2..])
+            atomic_cli::cmd_remove_inventory_entry(&workspace_anchor()?, &args[2..])
         }
-        "generate-docs" => atomic_cli::cmd_generate_docs(&repo_root()?, &args[2..]),
-        "verify-generated" => atomic_cli::cmd_verify_generated(&repo_root()?, &args[2..]),
+        "generate-docs" => atomic_cli::cmd_generate_docs(&workspace_anchor()?, &args[2..]),
+        "verify-generated" => atomic_cli::cmd_verify_generated(&workspace_anchor()?, &args[2..]),
         // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
         // rule, carry).
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
@@ -698,7 +720,7 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
 
 fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     let qargs = parse_query_args(args)?;
-    let root = repo_root()?;
+    let root = workspace_anchor()?;
     let (ws, _parsed_docs) = load_workspace(&root)?;
     // cascade B — atomic-first citation surface in atomic store load.
     let atomic_store = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
@@ -931,7 +953,7 @@ fn cmd_validate_workspace() -> Result<()> {
     // commit-ledger drift, which gates the exit code at
     // `[commit_ledger].severity = reject` (the R301 default) and is
     // display-only at warn/info (R377).
-    let root = repo_root()?;
+    let root = workspace_anchor()?;
     let report = mnemosyne_ops::validate_workspace(&root).map_err(|e| anyhow!("{}", e))?;
     print!("{}", report.render_plain());
 
@@ -1154,16 +1176,30 @@ fn collect_ledger_round_numbers(atomic: &mnemosyne_atomic::AtomicStore) -> BTree
 // helpers
 // ============================================================================
 
-fn repo_root() -> Result<PathBuf> {
-    // repo root = workspace_root from discovered mnemosyne.toml.
-    // The legacy `.git + docs/DESIGN.md` heuristic is replaced by the explicit
-    // config-driven workspace root (the config file's dir, or the
-    // `[workspace] root` override).
+/// Discovery anchor for ops / mutate / sidecar calls: the directory holding
+/// `mnemosyne.toml`. Equal to the resolved workspace root when `[workspace]
+/// root` is unset; when set (a ledger rooted above its own directory), ops
+/// re-discover the config from this anchor and resolve the true root
+/// themselves, so every ops call must receive the anchor, not the resolved
+/// root (discovery walks UP and would miss the subdir config otherwise).
+fn workspace_anchor() -> Result<PathBuf> {
+    let loaded = workspace_config()?;
+    Ok(loaded
+        .config_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| loaded.workspace_root.clone()))
+}
+
+/// The resolved `[workspace] root` — what workspace-relative doc / code
+/// paths join against. Use for path normalization (abs → repo-relative) and
+/// citation / scan roots, NOT for ops calls (those take the anchor).
+fn workspace_root() -> Result<PathBuf> {
     Ok(workspace_config()?.workspace_root.clone())
 }
 
 fn repo_relative_path(abs: &Path) -> Result<String> {
-    let root = repo_root()?;
+    let root = workspace_root()?;
     let rel = abs
         .strip_prefix(&root)
         .with_context(|| format!("{} repo {} external", abs.display(), root.display()))?;
@@ -1247,7 +1283,7 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
         }
     }
 
-    let root = repo_root()?;
+    let root = workspace_anchor()?;
     let (_ws, parsed_docs) = load_workspace(&root)?;
     let style_check_cfg = workspace_config()?;
     let ruleset = default_ruleset_with_config(
@@ -1384,7 +1420,14 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
 
     let prefix = cli_schema()?.entry_id_prefix.clone();
     let root = loaded.workspace_root.clone();
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None)?;
+    // Sidecar resolution discovers config from the anchor (the toml's dir),
+    // not the resolved root, so a subdir-rooted ledger finds its [atomic].
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
     let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
@@ -1569,8 +1612,15 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
 
     let prefix = cli_schema()?.entry_id_prefix.clone();
     let root = loaded.workspace_root.clone();
+    // Sidecar resolution discovers config from the anchor (the toml's dir),
+    // not the resolved root, so a subdir-rooted ledger finds its [atomic].
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
 
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None)?;
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
@@ -1837,7 +1887,14 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
 
     let workspace_revision = spec_source.revision.clone();
     let root = loaded.workspace_root.clone();
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&root, None)?;
+    // Sidecar resolution discovers config from the anchor (the toml's dir),
+    // not the resolved root, so a subdir-rooted ledger finds its [atomic].
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 

@@ -84,13 +84,13 @@ pub struct RedactTermInput {
 
 /// Resolve the sidecar path with the same precedence chain the CLI uses:
 /// explicit override → `[atomic] sidecar_path` config → built-in
-/// `<workspace>/docs/.atomic/workspace.atomic.json`.
-pub fn resolve_sidecar(workspace_root: &Path, sidecar: Option<&Path>) -> anyhow::Result<PathBuf> {
-    match sidecar {
-        Some(p) if p.is_absolute() => Ok(p.to_path_buf()),
-        Some(p) => Ok(workspace_root.join(p)),
-        None => cascade::resolve_sidecar(workspace_root, None),
-    }
+/// `<workspace>/docs/.atomic/workspace.atomic.json`. `anchor` is a discovery
+/// start; workspace-relative paths join the config-declared `[workspace]
+/// root` (see [`cascade::workspace_root_from`]), so this delegates fully to
+/// the anchor-aware cascade resolver rather than joining to `anchor`.
+pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&Path>) -> anyhow::Result<PathBuf> {
+    let s = sidecar.map(|p| p.to_string_lossy().into_owned());
+    cascade::resolve_sidecar(anchor, s.as_deref())
 }
 
 /// Run an atomic mutate primitive in-process: load the store, invoke the
