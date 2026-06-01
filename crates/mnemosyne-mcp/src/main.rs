@@ -579,7 +579,7 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
 #[tool_router]
 impl MnemosyneServer {
     #[tool(
-        description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + round-trip validation across the entire workspace. Returns the metric summary (orphan total / round-trip mandatory / T3 warn / T4 info). Run this at session start to surface the baseline, and after every mutation to confirm no new violations."
+        description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + round-trip validation across the entire workspace. Returns the metric summary (orphan total / round-trip mandatory / T3 warn / T4 info). Call at session start for the baseline and after every mutation."
     )]
     async fn validate_workspace(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::validate_workspace(&self.workspace) {
@@ -589,7 +589,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Validate the Layer-0 cascade invariants (Section supersession refs + FrozenList membership) through the WARM in-process Salsa projection — the read-side service that folds the log into a fine-grained cascade index and serves validation incrementally, RocksDB-free. The projection auto-re-syncs after every successful mutate tool (incrementally — only changed entities re-execute), so the default reflects the current log and repeated calls hit the memo cache. Pass refresh=true only to pick up an out-of-band log change (manual JSON edit or a separate CLI mutate). This is the incremental read model; `validate_workspace` remains the authoritative cold validator."
+        description = "Validate Layer-0 cascade invariants (Section supersession refs + FrozenList membership) via the warm incremental read model. Auto-resyncs after every successful mutate; pass refresh=true only to pick up an out-of-band log change (manual JSON edit or separate CLI mutate). `validate_workspace` is the authoritative cold validator."
     )]
     async fn validate_projection(
         &self,
@@ -612,7 +612,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Render docs/GENERATED.md through the WARM in-process render projection (R345 / R365 Step 2a) — the read-side RenderDb Salsa engine that memoizes per-section / per-entry Tera renders and composes them via the single-source builder, byte-identical to the cold generate-docs. Read-only: this returns the rendered markdown and does NOT write it. Since R367 Step 2b the warm render auto-re-syncs after every successful mutate (incrementally — only changed units re-render) and owns the GENERATED.md write, so the default reflects the current log; pass refresh=true only to pick up an out-of-band edit (manual JSON edit or a separate CLI mutate)."
+        description = "Render docs/GENERATED.md via the warm render model and return the markdown (read-only; does NOT write). Byte-identical to generate_docs. Auto-resyncs after every successful mutate; pass refresh=true only to pick up an out-of-band edit (manual JSON edit or separate CLI mutate)."
     )]
     async fn render_projection(&self, args: Parameters<RenderProjectionArgs>) -> CallToolResult {
         let rendered = {
@@ -661,7 +661,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`, `alternatives_rejected[0].reason`), line_context (full field/bullet text). Pure read. Use this before redact_term or before mutating prose, to know which entries cite a term."
+        description = "Literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`), line_context. Read-only. Use before redact_term or before mutating prose, to know which entries cite a term."
     )]
     async fn query_term(&self, args: Parameters<QueryTermArgs>) -> CallToolResult {
         let input = QueryTermInput {
@@ -716,7 +716,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Create a new Section in the atomic store (Round 287/289). Outline fields only — `section_id` (no `§` prefix), `parent_doc`, `title`, and optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`. Pairs with remove_section."
+        description = "Create a new Section (outline fields only): `section_id` (no `§` prefix), `parent_doc`, `title`, optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`."
     )]
     async fn add_section(&self, args: Parameters<AddSectionArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
@@ -920,7 +920,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Path B (Spec ↔ Code bidirectional binding) substrate. Append a (file, symbol?, kind) typed trace-link binding to Section.bindings. file = workspace-relative POSIX path (no leading `/`, no `..`, no `\\`); symbol = optional opaque identifier (function/type/qualified path; language-agnostic, no grammar regex). kind = `implements` (SysML «satisfy»: the symbol fulfills the section's normative requirement; the only kind counted as coverage) or `references` (SysML «trace»: related to / draws meaning from the section, no fulfillment claim). Set semantics — duplicate (file, symbol) rejected at write time regardless of kind (use set_section_binding_kind to change an existing binding's kind). The schema records intent; file existence is not checked here (validate-code-refs cross-checks code citations against this set)."
+        description = "Append a typed (file, symbol?, kind) trace-link binding to Section.bindings. file = workspace-relative POSIX path (no leading `/`, `..`, or `\\`); symbol = optional opaque identifier (function/type/qualified path). kind = `implements` (the symbol fulfills the section's requirement — the only kind counted as coverage) or `references` (related, no fulfillment claim). Duplicate (file, symbol) rejected regardless of kind (use set_section_binding_kind to change kind). File existence not checked here (validate-code-refs does that)."
     )]
     async fn add_section_binding(&self, args: Parameters<AddSectionBindingArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
@@ -940,7 +940,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Remove one `(file, symbol?)` binding from `Section.bindings` (matches on the identity pair regardless of kind). Pass `symbol` to target a symbol-narrowed row, omit it to target a file-only row. NotFound when the section or the binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt. Use when code refactor (or citation hygiene cleanup) leaves stale bindings: validate-code-refs surfaces them as binding_unbacked, and this primitive is the typed-API cleanup path (don't edit the sidecar JSON directly)."
+        description = "Remove one `(file, symbol?)` binding from Section.bindings (matches the identity pair regardless of kind). Pass `symbol` to target a symbol-narrowed row, omit it for a file-only row. NotFound when section or binding is absent (no silent no-op). `reason` mandatory — recorded on the receipt. Use to clean stale bindings that validate-code-refs flags as binding_unbacked (don't edit the sidecar JSON directly)."
     )]
     async fn remove_section_binding(
         &self,
@@ -957,7 +957,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Reclassify an existing binding's kind (`implements` ⇄ `references`). Identity is the `(file, symbol?)` pair; the binding must already exist (NotFound otherwise — no silent create). `reason` mandatory. This is the Stage-B reclassification path: flip a data-member / DTO-field binding from the migration default `implements` to `references` («trace»). Second write path to Binding.kind alongside add_section_binding; both enforce the same closed kind set."
+        description = "Reclassify an existing binding's kind (`implements` ⇄ `references`). Identity is the `(file, symbol?)` pair; the binding must already exist (NotFound otherwise — no silent create). `reason` mandatory. Second write path to Binding.kind alongside add_section_binding; both enforce the same closed kind set."
     )]
     async fn set_section_binding_kind(
         &self,
@@ -989,7 +989,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Append a new ChangelogEntry to the atomic store. entry_id must be strictly monotonic (greater than the last entry's id under the configured schema.entry_id_prefix). All five atomic fields are required for proper audit shape."
+        description = "Append a new ChangelogEntry to the atomic store. entry_id must be strictly monotonic (greater than the last entry's id under the configured schema.entry_id_prefix). All five atomic fields are required."
     )]
     async fn append_changelog_entry(
         &self,
@@ -1031,7 +1031,7 @@ impl MnemosyneServer {
     // to author the row separately.
 
     #[tool(
-        description = "Replace the publishable_decision_summary of an existing entry (R295). Mutates the publishable half only — audit_decision_summary stays frozen and cannot be damaged by this primitive. Use cases: typo fix, prefix-format correction, header-style normalization, redaction. Pair with a [[publishable_override_ledger]] row (R296 gate) or use redact_term for an automated ledger draft. NotFound if entry_id has not been appended."
+        description = "Replace the publishable_decision_summary of an existing entry. Mutates the publishable half only — the audit half stays frozen. Pair with a [[publishable_override_ledger]] row, or use redact_term for an automated ledger draft. NotFound if entry_id has not been appended."
     )]
     async fn set_changelog_publishable_decision_summary(
         &self,
@@ -1046,7 +1046,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_changes_bullets of an existing entry (R295). Mutates publishable half only — audit_changes_bullets stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_changes_bullets of an existing entry. Publishable half only — audit half stays frozen. Pair with a [[publishable_override_ledger]] row, or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_changes(
         &self,
@@ -1061,7 +1061,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_verification_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_verification_bullets of an existing entry. Publishable half only — audit half stays frozen. Pair with a [[publishable_override_ledger]] row, or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_verification(
         &self,
@@ -1076,7 +1076,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_impact_refs of an existing entry (R295). Bullets are bare section ids without `§`. Mutates publishable half only — audit half stays frozen. Use cases: scope refinement, cross-ref correction, post-hoc impact rescoping. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_impact_refs of an existing entry (bare section ids, no `§`). Publishable half only — audit half stays frozen. Pair with a [[publishable_override_ledger]] row, or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_impact_refs(
         &self,
@@ -1096,7 +1096,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Replace the publishable_carry_forward_bullets of an existing entry (R295). Mutates publishable half only — audit half stays frozen. Use cases: typo fix, bullet rewording, redaction, post-hoc clarification. Pair with [[publishable_override_ledger]] (R296) or use redact_term for an automated ledger draft."
+        description = "Replace the publishable_carry_forward_bullets of an existing entry. Publishable half only — audit half stays frozen. Pair with a [[publishable_override_ledger]] row, or use redact_term for an automated ledger draft."
     )]
     async fn set_changelog_publishable_carry_forward(
         &self,
@@ -1113,7 +1113,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the R296 publishable_override_ledger gate accepts the result (R297, RFC P1). Audit half is never read or written. mode = literal (default) or regex (`regex` crate); set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in are required for audit; kind defaults to \"redaction\". The returned ledger drafts paste directly into mnemosyne.toml `[[publishable_override_ledger]]`."
+        description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the publishable_override_ledger gate accepts the result. Audit half is never read or written. mode = literal (default) or regex; set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in required; kind defaults to \"redaction\". Drafts paste directly into mnemosyne.toml `[[publishable_override_ledger]]`."
     )]
     async fn redact_term(&self, args: Parameters<RedactTermArgs>) -> CallToolResult {
         let input = RedactTermInput {
@@ -1162,7 +1162,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Read-only companion to the R295 bare publishable setters (R300). Renders a `[[publishable_override_ledger]]` block for an entry whose publishable half currently diverges from the audit half, computing the SHA256 anchor against the current publishable state so the resulting row clears the R296 gate. Returns `in_sync: true` with `ledger_draft: null` when nothing has diverged. NotFound if entry_id is absent. Pair with redact_term when authoring redactions; this tool is for callers who already mutated via the bare setters and need a draft to paste."
+        description = "Read-only: render a `[[publishable_override_ledger]]` block for an entry whose publishable half diverges from the audit half, computing the SHA256 anchor against the current publishable state so the row clears the gate. Returns `in_sync: true` / `ledger_draft: null` when nothing has diverged. NotFound if entry_id is absent. Use after mutating via the bare publishable setters when you need a draft to paste."
     )]
     async fn emit_publishable_override_ledger_draft(
         &self,
@@ -1188,7 +1188,7 @@ impl MnemosyneServer {
     // Round 278 — Phase 1A inventory tool surface.
 
     #[tool(
-        description = "List every inventory entry in the atomic store (id, status, section_ref). Phase 1A 5th-entity surface (Round 273). Walks AtomicStore.inventory_entries in BTreeMap order."
+        description = "List every inventory entry in the atomic store (id, status, section_ref), in id order."
     )]
     async fn list_inventory(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::list_inventory(&self.workspace) {
@@ -1198,7 +1198,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Look up a single inventory entry (status / section_ref / source / reason). Phase 1A 5th-entity (Round 273). Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite; cite-time reject is the validator's job, but author-time check is cheap)."
+        description = "Look up a single inventory entry (status / section_ref / source / reason). Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite)."
     )]
     async fn query_inventory(&self, args: Parameters<InventoryIdArgs>) -> CallToolResult {
         match ops::query_inventory(&self.workspace, &args.0.inventory_id) {
@@ -1208,7 +1208,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register a new inventory entry (Phase 1A, Round 274). Duplicate inventory_id rejects. status = active|deprecated|reserved. Pass status=deprecated to register an already-retired upstream id; the mutate-time cascade (Round 276) then surfaces any pre-existing cite-sites. section_ref omits the leading §."
+        description = "Register a new inventory entry. Duplicate inventory_id rejects. status = active|deprecated|reserved. Registering as deprecated surfaces any pre-existing cite-sites via the mutate-time cascade. section_ref omits the leading §."
     )]
     async fn add_inventory_entry(&self, args: Parameters<AddInventoryEntryArgs>) -> CallToolResult {
         let inventory_id = args.0.inventory_id.clone();
@@ -1242,7 +1242,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Update an inventory entry's status (Round 274). Returns NotFound if the id is not registered. reason: omit to preserve existing; pass empty string to clear; pass non-empty to overwrite. Active→Deprecated transitions invoke the cascade scan (Round 276)."
+        description = "Update an inventory entry's status. Returns NotFound if the id is not registered. reason: omit to preserve existing; pass empty string to clear; pass non-empty to overwrite. Active→Deprecated transitions invoke the cascade scan."
     )]
     async fn set_inventory_status(
         &self,
@@ -1265,7 +1265,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Update an inventory entry's section_ref binding (Round 274). Exactly one of section_ref or clear must be supplied. section_ref omits the leading §. NotFound on unregistered ids."
+        description = "Update an inventory entry's section_ref binding. Exactly one of section_ref or clear must be supplied. section_ref omits the leading §. NotFound on unregistered ids."
     )]
     async fn set_inventory_section_ref(
         &self,
@@ -1288,7 +1288,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Remove an inventory entry (Round 274). reason is mandatory (audit safeguard recorded in the receipt). Triggers the cascade scan (Round 276) so any pre-existing cite-sites surface mutate-time as `removed` cascade lines."
+        description = "Remove an inventory entry. reason is mandatory (audit safeguard recorded in the receipt). Triggers the cascade scan so any pre-existing cite-sites surface mutate-time as `removed` cascade lines."
     )]
     async fn remove_inventory_entry(
         &self,
