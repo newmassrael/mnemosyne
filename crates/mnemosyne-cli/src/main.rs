@@ -287,6 +287,7 @@ fn run(args: &[String]) -> Result<()> {
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
         "propose-implementations" => cmd_propose_implementations(&args[2..]),
         "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
+        "report-coverage" => cmd_report_coverage(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
@@ -518,6 +519,10 @@ fn print_help(prog: &str) {
         "   v4→v5 surface: list bindings that inherited kind=implements by default (read-only;"
     );
     println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
+    println!(" {} report-coverage [--json]", prog);
+    println!(
+        "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
+    );
     println!();
     println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
     println!(
@@ -1484,6 +1489,73 @@ fn cmd_report_binding_migration(args: &[String]) -> Result<()> {
                         None => println!("  §{}  {}", r.section_id, r.file),
                     }
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Positive coverage projection (Round 390): the 3-way breakdown of every
+/// section — implemented / normative-gap / informative-exempt — plus the
+/// `Removed` tombstones excluded from the denominator, and the coverage
+/// ratio. Read-only (no authoritative state of its own); the positive
+/// counterpart of the `validate-code-refs` coverage axis, which emits the
+/// precise gap list. Mirrors `report-binding-migration`.
+fn cmd_report_coverage(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    let report = mnemosyne_validate::code_refs::classify_coverage(&snapshot);
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "applicable": report.applicable(),
+                "implemented_count": report.implemented.len(),
+                "normative_gap_count": report.normative_gap.len(),
+                "informative_exempt_count": report.informative_exempt.len(),
+                "removed_excluded_count": report.removed_excluded.len(),
+                "coverage_ratio": report.coverage_ratio(),
+                "implemented": report.implemented,
+                "normative_gap": report.normative_gap,
+                "informative_exempt": report.informative_exempt,
+                "removed_excluded": report.removed_excluded,
+            })
+        );
+    } else {
+        println!("=== coverage report ===");
+        println!("  implemented:        {}", report.implemented.len());
+        println!("  normative gap:      {}", report.normative_gap.len());
+        println!("  informative exempt: {}", report.informative_exempt.len());
+        println!("  removed (excluded): {}", report.removed_excluded.len());
+        match report.coverage_ratio() {
+            Some(ratio) => println!(
+                "  coverage: {:.1}% ({}/{} applicable)",
+                ratio * 100.0,
+                report.implemented.len(),
+                report.applicable()
+            ),
+            None => println!("  coverage: n/a (0 applicable sections)"),
+        }
+        if !report.normative_gap.is_empty() {
+            println!("normative-gap sections (same set as validate-code-refs impl_missing):");
+            for id in &report.normative_gap {
+                println!("  §{}", id);
             }
         }
     }

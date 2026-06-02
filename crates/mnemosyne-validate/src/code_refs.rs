@@ -133,6 +133,114 @@ fn counts_as_coverage(kind: mnemosyne_core::BindingKind) -> bool {
     }
 }
 
+/// Coverage classification of a single section (Round 390). This is the
+/// single source of truth for "what counts as a coverage gap": both the
+/// Step-4 axiom (which emits [`CodeRefViolation::ImplementationMissing`]) and
+/// the positive `report-coverage` projection ([`classify_coverage`]) route
+/// through [`classify_section_coverage`], so the negative finding and the
+/// positive aggregate can never drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverageClass {
+    /// `Normative`, non-`Removed`, with at least one `implements` binding.
+    Implemented,
+    /// `Normative`, non-`Removed`, with zero `implements` coverage — exactly
+    /// the set the Step-4 axiom emits as `ImplementationMissing`.
+    NormativeGap,
+    /// `Informative` and live — prose-only, exempt from the coverage axiom.
+    InformativeExempt,
+    /// `Removed` tombstone — excluded from the coverage denominator entirely.
+    RemovedExcluded,
+}
+
+/// Classify one section against the Round 269 coverage axiom (refined by the
+/// Round 389 applicability gate). The `Informative` check comes first — it is
+/// the section's declared nature, exactly as the Step-4 axiom gates on it
+/// before the `Removed` lifecycle check. A `Removed` section is a tombstone
+/// for reporting regardless of expectation; `NormativeGap` is the only class
+/// the axiom flags, and it is `{Normative, !Removed, no implements coverage}`
+/// under either ordering.
+fn classify_section_coverage(section: &mnemosyne_core::SectionView) -> CoverageClass {
+    let removed =
+        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
+    match section.coverage_expectation {
+        mnemosyne_core::CoverageExpectation::Informative => {
+            if removed {
+                CoverageClass::RemovedExcluded
+            } else {
+                CoverageClass::InformativeExempt
+            }
+        }
+        mnemosyne_core::CoverageExpectation::Normative => {
+            if removed {
+                CoverageClass::RemovedExcluded
+            } else if section.bindings.iter().any(|b| counts_as_coverage(b.kind)) {
+                CoverageClass::Implemented
+            } else {
+                CoverageClass::NormativeGap
+            }
+        }
+    }
+}
+
+/// The positive coverage projection (Round 390): the 3-way breakdown of every
+/// section into implemented / normative-gap / informative-exempt, plus the
+/// `Removed` tombstones excluded from the denominator. Read-only — derived
+/// from an [`AtomicSnapshot`] with no authoritative state of its own (an L3
+/// view, mirroring `report-binding-migration`). The `validate-code-refs`
+/// coverage axis already emits the precise gap list; this is its positive
+/// aggregate counterpart, so a maintainer can read coverage as a ratio rather
+/// than infer it from the absence of findings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CoverageReport {
+    /// Section ids classified [`CoverageClass::Implemented`], sorted.
+    pub implemented: Vec<String>,
+    /// Section ids classified [`CoverageClass::NormativeGap`], sorted — the
+    /// same set `validate-code-refs` reports as `impl_missing`.
+    pub normative_gap: Vec<String>,
+    /// Section ids classified [`CoverageClass::InformativeExempt`], sorted.
+    pub informative_exempt: Vec<String>,
+    /// Section ids classified [`CoverageClass::RemovedExcluded`], sorted.
+    pub removed_excluded: Vec<String>,
+}
+
+impl CoverageReport {
+    /// Sections subject to the coverage axiom (the ratio denominator):
+    /// implemented + normative gap.
+    pub fn applicable(&self) -> usize {
+        self.implemented.len() + self.normative_gap.len()
+    }
+
+    /// Coverage ratio over the applicable set, in `[0.0, 1.0]`. `None` when no
+    /// section is applicable (0/0 — an empty or all-`Informative` ledger has
+    /// no coverage obligation to express as a percentage).
+    pub fn coverage_ratio(&self) -> Option<f64> {
+        let applicable = self.applicable();
+        if applicable == 0 {
+            None
+        } else {
+            Some(self.implemented.len() as f64 / applicable as f64)
+        }
+    }
+}
+
+/// Build the positive [`CoverageReport`] from a snapshot. Pure projection over
+/// `snapshot.sections`; no file scan (a section's coverage class is a function
+/// of its own decision_status / coverage_expectation / bindings only).
+/// `BTreeMap` iteration yields section ids already sorted within each bucket.
+pub fn classify_coverage(snapshot: &mnemosyne_core::AtomicSnapshot) -> CoverageReport {
+    let mut report = CoverageReport::default();
+    for (section_id, section) in &snapshot.sections {
+        let bucket = match classify_section_coverage(section) {
+            CoverageClass::Implemented => &mut report.implemented,
+            CoverageClass::NormativeGap => &mut report.normative_gap,
+            CoverageClass::InformativeExempt => &mut report.informative_exempt,
+            CoverageClass::RemovedExcluded => &mut report.removed_excluded,
+        };
+        bucket.push(section_id.clone());
+    }
+    report
+}
+
 impl CodeRefViolation {
     /// Stable kind tag for JSON output / CLI rendering. Citation
     /// violations carry their `ViolationKind` tag; the spec-side
@@ -1595,57 +1703,26 @@ impl SetEqualityValidator {
         }
 
         // ---- Step 4: spec-side coverage axiom ----
-        // Workspace-wide: a section with non-Removed decision_status and
-        // zero `implements` bindings is the "Active = backed by code" axiom
-        // violation. Removed is tombstone-exempt. None → Active fallback
-        // used for the trigger only; the raw Option is preserved on the
-        // emitted variant (carried as schema DecisionStatus for back-compat
-        // with `CodeRefViolation::ImplementationMissing`'s shape).
+        // Workspace-wide: a `Normative`, non-`Removed` section with zero
+        // `implements` coverage is the "Active = backed by code" axiom
+        // violation. `Informative` sections (terminology / overview /
+        // references) are prose-only and exempt (Round 389); `Removed` is a
+        // lifecycle tombstone, also exempt. The gap definition lives in the
+        // single source of truth `classify_section_coverage` (Round 390), so
+        // this negative finding and the positive `report-coverage` projection
+        // cannot drift; both bottom out in the exhaustive `counts_as_coverage`
+        // / `coverage_expectation` matches that force a compile-time decision
+        // for any future variant. decision_status is preserved as the raw
+        // `Option` on the emitted variant (None → Active is a consumer-side
+        // convention, Round 265).
         if filter_id.is_none() {
             for (section_id, section) in &snapshot.sections {
-                // Applicability gate: `Informative` sections (terminology /
-                // overview / references) are prose-only with nothing to
-                // implement here, so the coverage axiom does not apply to them
-                // at all. Exhaustive match (not `== Informative`) so a future
-                // CoverageExpectation variant forces an explicit decision at
-                // compile time, mirroring `counts_as_coverage`.
-                let axiom_applies = match section.coverage_expectation {
-                    mnemosyne_core::CoverageExpectation::Normative => true,
-                    mnemosyne_core::CoverageExpectation::Informative => false,
-                };
-                if !axiom_applies {
-                    continue;
+                if classify_section_coverage(section) == CoverageClass::NormativeGap {
+                    violations.push(CodeRefViolation::ImplementationMissing {
+                        section_id: section_id.clone(),
+                        decision_status: section.decision_status,
+                    });
                 }
-                // Coverage counts ONLY `implements` («satisfy») bindings;
-                // `references` («trace») links do not satisfy the
-                // "Active = backed by code" axiom. `counts_as_coverage` is an
-                // exhaustive match (not `== Implements`) so a future
-                // BindingKind variant forces an explicit coverage decision at
-                // compile time instead of silently not-counting.
-                let has_coverage = section.bindings.iter().any(|b| counts_as_coverage(b.kind));
-                if has_coverage {
-                    continue;
-                }
-                // R309 textbook unification: SectionView.decision_status now IS
-                // DecisionStatus (canonical, lifted to mnemosyne-core). Step 4
-                // axiom + emitted ImplementationMissing variant share the same enum
-                // — no adapter layer.
-                let resolved = section.decision_status.unwrap_or(DecisionStatus::Active);
-                if resolved == DecisionStatus::Removed {
-                    continue;
-                }
-                // A `Normative` section with zero `implements` coverage is the
-                // coverage gap, whether it has 0 bindings or only `references`
-                // («trace») links. Sections with genuinely nothing to implement
-                // are excluded by the `Informative` applicability gate above
-                // (Round 389). A distinct info-level `reference_only` finding —
-                // separating "documented but not implemented here" (references
-                // present) from truly-undocumented (zero bindings) — remains a
-                // deferred follow-up; the coverage axiom treats both as a gap.
-                violations.push(CodeRefViolation::ImplementationMissing {
-                    section_id: section_id.clone(),
-                    decision_status: section.decision_status,
-                });
             }
         }
 
@@ -2376,6 +2453,163 @@ mod tests {
             "Informative section is exempt from the coverage axiom: {:?}",
             v
         );
+    }
+
+    // ============ Round 390: report-coverage positive projection ============
+
+    #[test]
+    fn classify_coverage_partitions_all_four_classes() {
+        // The positive projection assigns every section to exactly one of the
+        // four coverage classes, and the ratio is over the applicable
+        // (Normative, non-Removed) set only.
+        use mnemosyne_core::{
+            AtomicSnapshot, BindingKind as Bk, BindingRef, CoverageExpectation as Ce,
+            DecisionStatus, SectionView,
+        };
+        let view = |status: Option<DecisionStatus>, exp: Ce, kinds: &[Bk]| SectionView {
+            bindings: kinds
+                .iter()
+                .map(|&k| BindingRef {
+                    file: "f.rs".to_string(),
+                    symbol: None,
+                    kind: k,
+                })
+                .collect(),
+            decision_status: status,
+            coverage_expectation: exp,
+        };
+        let mut snap = AtomicSnapshot::default();
+        // Normative + an implements binding → implemented.
+        snap.sections.insert(
+            "impl".to_string(),
+            view(
+                Some(DecisionStatus::Active),
+                Ce::Normative,
+                &[Bk::Implements],
+            ),
+        );
+        // Normative, references-only (no implements) → normative gap.
+        snap.sections.insert(
+            "gap".to_string(),
+            view(None, Ce::Normative, &[Bk::References]),
+        );
+        // Informative + live → exempt.
+        snap.sections
+            .insert("info".to_string(), view(None, Ce::Informative, &[]));
+        // Removed Normative with no coverage → excluded, NOT a gap.
+        snap.sections.insert(
+            "dead".to_string(),
+            view(Some(DecisionStatus::Removed), Ce::Normative, &[]),
+        );
+        let r = classify_coverage(&snap);
+        assert_eq!(r.implemented, vec!["impl".to_string()]);
+        assert_eq!(r.normative_gap, vec!["gap".to_string()]);
+        assert_eq!(r.informative_exempt, vec!["info".to_string()]);
+        assert_eq!(r.removed_excluded, vec!["dead".to_string()]);
+        assert_eq!(r.applicable(), 2);
+        assert_eq!(r.coverage_ratio(), Some(0.5));
+    }
+
+    #[test]
+    fn classify_coverage_ratio_none_when_no_applicable_section() {
+        // An empty or all-Informative ledger has no coverage obligation to
+        // express as a percentage → ratio is None (not a 0/0 panic or 100%).
+        use mnemosyne_core::{AtomicSnapshot, CoverageExpectation, SectionView};
+        let mut snap = AtomicSnapshot::default();
+        snap.sections.insert(
+            "info".to_string(),
+            SectionView {
+                bindings: Vec::new(),
+                decision_status: None,
+                coverage_expectation: CoverageExpectation::Informative,
+            },
+        );
+        let r = classify_coverage(&snap);
+        assert_eq!(r.applicable(), 0);
+        assert_eq!(r.coverage_ratio(), None);
+    }
+
+    #[test]
+    fn report_coverage_normative_gap_matches_impl_missing() {
+        // Single-source guarantee: the positive projection's normative_gap set
+        // is byte-for-byte the same section ids the scan emits as impl_missing.
+        // Both route through `classify_section_coverage`, so this locks them
+        // against drift. Mix all four classes in one store.
+        let tmp = TempDir::new().unwrap();
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        // implemented: Normative + implements binding.
+        let mut store = build_store_with_impl(&store_path, "bound", "src/foo.rs", Some("Foo"));
+        // normative gap: Normative, zero bindings.
+        store.sections.insert(
+            "gap".to_string(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        // informative exempt.
+        store.sections.insert(
+            "info".to_string(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        set_section_coverage_expectation(
+            &mut store,
+            &store_path,
+            "info",
+            mnemosyne_core::CoverageExpectation::Informative,
+            "terminology — nothing to implement here",
+        )
+        .unwrap();
+        // removed: Normative, zero bindings, but tombstoned → excluded.
+        store.sections.insert(
+            "dead".to_string(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        mnemosyne_atomic::set_section_decision_status(
+            &mut store,
+            &store_path,
+            "dead",
+            mnemosyne_core::DecisionStatus::Removed,
+            None,
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// §bound — Foo binds here\nfn main() {}\n",
+        )
+        .unwrap();
+        let v = scan_paths_no_resolvers(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let mut scan_gap: Vec<String> = v
+            .iter()
+            .filter_map(|x| match x {
+                CodeRefViolation::ImplementationMissing { section_id, .. } => {
+                    Some(section_id.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        scan_gap.sort();
+        let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+        let report = classify_coverage(&snapshot);
+        assert_eq!(
+            report.normative_gap, scan_gap,
+            "positive projection gap set must equal scan impl_missing set"
+        );
+        assert_eq!(report.normative_gap, vec!["gap".to_string()]);
+        assert_eq!(report.implemented, vec!["bound".to_string()]);
+        assert_eq!(report.informative_exempt, vec!["info".to_string()]);
+        assert_eq!(report.removed_excluded, vec!["dead".to_string()]);
     }
 
     #[test]

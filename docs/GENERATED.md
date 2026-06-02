@@ -3950,3 +3950,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 390 — report-coverage positive projection — Adds the read-only report-coverage CLI verb (TTY + --json): the positive 3-way coverage breakdown — implemented / normative-gap / informative-exempt — plus the Removed tombstones excluded from the denominator and a coverage ratio over the applicable (Normative, non-Removed) set. The positive counterpart of the Round 269 / validate-code-refs coverage axis, which already emits the precise impl_missing gap list; report-coverage gives the aggregate view a maintainer would otherwise infer from the absence of findings. Single-sourced against that axis: both the Step-4 axiom and classify_coverage route through one classify_section_coverage predicate, so the negative finding and the positive aggregate cannot drift (a consistency test locks normative_gap equal to the scan impl_missing set). Pure projection over the snapshot with no authoritative state of its own (an L3 view mirroring report-binding-migration); CLI-only, since SCE CI consumes JSON (MCP tool deferred, YAGNI).
+
+**Changes**:
+- cli: report-coverage verb (TTY + --json), read-only projection
+- validate: classify_coverage + CoverageReport (L3 view over snapshot)
+- validate: classify_section_coverage single-sources the gap axiom
+
+
+
+**Verification**:
+- 793 workspace tests pass / 0 fail (+6: 3 validate unit, 3 cli smoke)
+- normative_gap proven byte-equal to scan impl_missing (consistency)
+- clippy -D warnings + fmt clean; validate-workspace green (136)
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- reference_only distinct info-class still deferred (no consumer yet)
+- MCP report-coverage tool deferred (CLI/CI consumer only, YAGNI)
+
+
+
