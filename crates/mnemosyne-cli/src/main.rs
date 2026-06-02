@@ -288,6 +288,7 @@ fn run(args: &[String]) -> Result<()> {
         "propose-implementations" => cmd_propose_implementations(&args[2..]),
         "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
         "report-coverage" => cmd_report_coverage(&args[2..]),
+        "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
@@ -522,6 +523,13 @@ fn print_help(prog: &str) {
     println!(" {} report-coverage [--json]", prog);
     println!(
         "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
+    );
+    println!(" {} report-spec-map [--json]", prog);
+    println!(
+        "   unified spec<->fact<->code projection per section: coverage class + spec provenance"
+    );
+    println!(
+        "   (anchor_url/revision) + bindings + drift flag + reverse citation count (read-only L3 view)"
     );
     println!();
     println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
@@ -1558,6 +1566,210 @@ fn cmd_report_coverage(args: &[String]) -> Result<()> {
                 println!("  §{}", id);
             }
         }
+    }
+    Ok(())
+}
+
+/// Unified spec ↔ fact ↔ code projection (read-only L3 view). Joins, per
+/// section: the coverage class (single-sourced through
+/// [`mnemosyne_validate::code_refs::classify_coverage`] so the map never drifts
+/// from `report-coverage` / `validate-code-refs`), the external-spec provenance
+/// (`normative_excerpt` anchor_url + source_revision), the Path B bindings, the
+/// spec-revision drift flag (`validate-spec-drift`), and the reverse citation
+/// count (how many code sites cite the section). No authoritative state of its
+/// own — every field is projected from the atomic store plus a code-citation
+/// scan. Feeds spec-map visualization (ToC overlay / coverage / citation
+/// density / drift in one graph). Citation data requires
+/// `[plugins.set_equality_validator]`; when absent, the rest of the map still
+/// projects with zero citation counts.
+fn cmd_report_spec_map(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+
+    // Coverage class per section — single-sourced through `classify_coverage`.
+    let coverage = mnemosyne_validate::code_refs::classify_coverage(&snapshot);
+    let mut class_of: std::collections::HashMap<&str, &'static str> =
+        std::collections::HashMap::new();
+    for id in &coverage.implemented {
+        class_of.insert(id.as_str(), "implemented");
+    }
+    for id in &coverage.normative_gap {
+        class_of.insert(id.as_str(), "normative_gap");
+    }
+    for id in &coverage.informative_exempt {
+        class_of.insert(id.as_str(), "informative_exempt");
+    }
+    for id in &coverage.removed_excluded {
+        class_of.insert(id.as_str(), "removed_excluded");
+    }
+
+    // Spec-revision drift set — only for external-spec mirror workspaces
+    // ([workspace.spec_source] present); absent => no current rev to diff.
+    let spec_source = loaded.config.workspace.spec_source.as_ref();
+    let drift_ids: BTreeSet<String> = match spec_source {
+        Some(s) => mnemosyne_validate::scan_spec_drift(&store, &s.revision)
+            .into_iter()
+            .map(|v| v.section_id)
+            .collect(),
+        None => BTreeSet::new(),
+    };
+
+    // Reverse citation index (citation density). Optional: requires the
+    // set-equality validator plugin; absent => empty index, the rest projects.
+    let citation_index = match loaded
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+    {
+        Some(cfg) => {
+            let validator = SetEqualityValidator {
+                config: cfg.clone(),
+                entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
+                orphan_ledger: loaded.config.orphan_ledger.clone(),
+                symbol_resolvers: build_symbol_resolver_map(&loaded.config),
+                filter_id: None,
+            };
+            validator.citation_index(&root, &snapshot)?
+        }
+        None => std::collections::BTreeMap::new(),
+    };
+
+    // Project per-section rows in BTreeMap (section-id sorted) order.
+    let mut sections_json: Vec<serde_json::Value> = Vec::with_capacity(store.sections.len());
+    for (section_id, sec) in &store.sections {
+        let class = class_of
+            .get(section_id.as_str())
+            .copied()
+            .unwrap_or("unknown");
+        let status = sec
+            .skeleton
+            .decision_status
+            .map(|s| format!("{:?}", s).to_lowercase())
+            .unwrap_or_else(|| "active".to_string());
+        let spec = sec.normative_excerpt.as_ref().map(|e| {
+            serde_json::json!({
+                "anchor_url": e.anchor_url,
+                "source_revision": e.source_revision,
+            })
+        });
+        let bindings: Vec<serde_json::Value> = sec
+            .bindings
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "file": b.file,
+                    "symbol": b.symbol,
+                    "kind": b.kind.as_str(),
+                })
+            })
+            .collect();
+        let sites = citation_index.get(section_id);
+        let citation_count = sites.map(Vec::len).unwrap_or(0);
+        let cited_from: Vec<serde_json::Value> = sites
+            .map(|v| {
+                v.iter()
+                    .map(|c| serde_json::json!({ "file": c.file, "line": c.line }))
+                    .collect()
+            })
+            .unwrap_or_default();
+        sections_json.push(serde_json::json!({
+            "section_id": section_id,
+            "title": sec.skeleton.title,
+            "parent_doc": sec.skeleton.parent_doc,
+            "parent_section": sec.skeleton.parent_section,
+            "decision_status": status,
+            "coverage_class": class,
+            "drift": drift_ids.contains(section_id),
+            "spec": spec,
+            "bindings": bindings,
+            "citation_count": citation_count,
+            "cited_from": cited_from,
+        }));
+    }
+
+    let with_excerpt = store
+        .sections
+        .values()
+        .filter(|s| s.normative_excerpt.is_some())
+        .count();
+    let total_cites: usize = citation_index.values().map(Vec::len).sum();
+
+    if json {
+        let spec_source_json = spec_source.map(|s| {
+            serde_json::json!({
+                "url": s.url,
+                "revision": s.revision,
+                "fetched_sha256": s.fetched_sha256,
+                "fetched_at": s.fetched_at,
+            })
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "spec_source": spec_source_json,
+                "summary": {
+                    "total_sections": store.sections.len(),
+                    "with_excerpt": with_excerpt,
+                    "coverage_ratio": coverage.coverage_ratio(),
+                    "by_class": {
+                        "implemented": coverage.implemented.len(),
+                        "normative_gap": coverage.normative_gap.len(),
+                        "informative_exempt": coverage.informative_exempt.len(),
+                        "removed_excluded": coverage.removed_excluded.len(),
+                    },
+                    "drifted": drift_ids.len(),
+                    "total_citations": total_cites,
+                },
+                "sections": sections_json,
+            }))?
+        );
+    } else {
+        println!("=== spec map ===");
+        println!(
+            "  sections: {} (with spec excerpt: {})",
+            store.sections.len(),
+            with_excerpt
+        );
+        match coverage.coverage_ratio() {
+            Some(ratio) => println!(
+                "  coverage: {:.1}% ({}/{} applicable)",
+                ratio * 100.0,
+                coverage.implemented.len(),
+                coverage.applicable()
+            ),
+            None => println!("  coverage: n/a (0 applicable sections)"),
+        }
+        println!(
+            "  by class: implemented={} gap={} informative={} removed={}",
+            coverage.implemented.len(),
+            coverage.normative_gap.len(),
+            coverage.informative_exempt.len(),
+            coverage.removed_excluded.len(),
+        );
+        println!("  spec-revision drift: {}", drift_ids.len());
+        println!(
+            "  citations: {} across {} section(s)",
+            total_cites,
+            citation_index.len()
+        );
+        println!("  (run with --json for the full per-section spec↔fact↔code map)");
     }
     Ok(())
 }

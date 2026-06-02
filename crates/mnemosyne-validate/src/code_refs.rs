@@ -1821,6 +1821,83 @@ impl SetEqualityValidator {
         out.sort();
         Ok(out)
     }
+
+    /// Reverse citation index for citation-density reporting (the
+    /// `report-spec-map` projection): `section_id -> [{file, line}]` for every
+    /// code site that cites the section. Reuses the same file walk, comment
+    /// strip, and namespace / known-section filtering as
+    /// [`Self::propose_implementations`], but aggregates the raw cite locations
+    /// per section without symbol resolution. Read-only — an L3 view substrate,
+    /// never a mutation.
+    ///
+    /// Only sections present in `snapshot.section_ids_with_implied_parents` are
+    /// counted: a cite to a non-existent section is a hallucination
+    /// (`validate-code-refs` flags it as `section_missing`), not a density data
+    /// point. Result is stably ordered — `BTreeMap` by section id, and each
+    /// site list sorted by `(file, line)`.
+    pub fn citation_index(
+        &self,
+        workspace_root: &Path,
+        snapshot: &mnemosyne_core::AtomicSnapshot,
+    ) -> std::io::Result<BTreeMap<String, Vec<CitationSite>>> {
+        let comment_only = self.config.comment_only;
+        let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
+        let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
+        let section_namespace = self.config.section_namespace.as_deref();
+        let known_section = &snapshot.section_ids_with_implied_parents;
+
+        let mut index: BTreeMap<String, Vec<CitationSite>> = BTreeMap::new();
+        let files = walk_paths(workspace_root, &self.config.paths)?;
+        for abs in files {
+            let raw = match std::fs::read_to_string(&abs) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let content = if comment_only {
+                strip_to_comments(&raw, comment_syntax_for(&abs))
+            } else {
+                raw
+            };
+            let rel = abs
+                .strip_prefix(workspace_root)
+                .map(|p| p.to_path_buf())
+                .unwrap_or(abs.clone());
+            let rel_str = rel.to_string_lossy().to_string();
+
+            for (line, section_id) in extract_section_citations(
+                &content,
+                external_section_prefixes_numeric,
+                external_section_prefixes_bare,
+            ) {
+                if let Some(ns) = section_namespace {
+                    if citation_namespace(&section_id) != ns {
+                        continue;
+                    }
+                }
+                if !known_section.contains(section_id.as_str()) {
+                    continue;
+                }
+                index.entry(section_id).or_default().push(CitationSite {
+                    file: rel_str.clone(),
+                    line,
+                });
+            }
+        }
+        for sites in index.values_mut() {
+            sites.sort();
+        }
+        Ok(index)
+    }
+}
+
+/// One code site citing a spec section, for the reverse citation index
+/// ([`SetEqualityValidator::citation_index`], the `report-spec-map`
+/// citation-density dimension). `file` is workspace-relative; `line` is
+/// 1-indexed. `Ord` sorts by `(file, line)` for stable output.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct CitationSite {
+    pub file: String,
+    pub line: usize,
 }
 
 /// A proposed `§<section_id>.bindings` entry derived from the
@@ -2305,6 +2382,74 @@ mod tests {
         )
         .unwrap();
         store
+    }
+
+    #[test]
+    fn citation_index_groups_by_section_excludes_hallucinations() {
+        use mnemosyne_core::AtomicStoreView;
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(
+            tmp.path().join("src/foo.rs"),
+            "// §39 first cite\n// §39 second cite\n// §999 not a section\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("src/bar.rs"), "// §39 cite in bar\n").unwrap();
+
+        // Only section id 39 exists in the store; id 999 is hallucinated.
+        let mut store = AtomicStore::new();
+        store
+            .sections
+            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+
+        let validator = SetEqualityValidator {
+            config: SetEqualityValidatorConfig {
+                paths: vec!["src/".to_string()],
+                severity_missing: "reject".into(),
+                severity_binding: "reject".into(),
+                severity_coverage: None,
+                severity_inventory: "reject".into(),
+                comment_only: true,
+                inventory_prefixes: vec![],
+                external_section_prefixes: vec![],
+                external_section_prefixes_bare: vec![],
+                inventory_path_prefixes: vec![],
+                section_namespace: None,
+            },
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: BTreeMap::new(),
+            filter_id: None,
+        };
+        let snapshot = store.snapshot();
+        let index = validator.citation_index(tmp.path(), &snapshot).unwrap();
+
+        // id 999 not in the store: excluded (hallucination, not density).
+        assert_eq!(index.len(), 1, "got: {:?}", index);
+        let sites = &index["39"];
+        assert_eq!(sites.len(), 3);
+        // Sorted by (file, line): bar before foo, then foo lines ascending.
+        assert_eq!(
+            sites[0],
+            CitationSite {
+                file: "src/bar.rs".into(),
+                line: 1
+            }
+        );
+        assert_eq!(
+            sites[1],
+            CitationSite {
+                file: "src/foo.rs".into(),
+                line: 1
+            }
+        );
+        assert_eq!(
+            sites[2],
+            CitationSite {
+                file: "src/foo.rs".into(),
+                line: 2
+            }
+        );
     }
 
     #[test]
