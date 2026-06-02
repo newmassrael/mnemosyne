@@ -4000,3 +4000,32 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 392 — report-spec-map unified spec-fact-code projection verb — Adds the read-only report-spec-map CLI verb (TTY + --json): a unified per-section spec-fact-code projection joining the coverage class (single-sourced through classify_coverage so the map never drifts from report-coverage / validate-code-refs), the external-spec provenance (normative_excerpt anchor_url + source_revision), the Path B bindings, the spec-revision drift flag (validate-spec-drift), and a reverse citation count from a new SetEqualityValidator::citation_index aggregation (section to citing code sites). No authoritative state of its own — every field is projected from the atomic store plus a code-citation scan, an L3 view mirroring report-coverage / report-binding-migration. Citation density requires the set_equality_validator plugin; when absent the rest of the map still projects with zero counts. Feeds future spec-map visualization (ToC overlay / coverage / citation density / drift in one graph). CLI-only; MCP tool deferred (SCE CI consumes JSON, YAGNI). Backfilled entry: the feature shipped at commit f78f458 as an un-numbered feature commit with no atomic-store entry; this restores the round to the single source of truth.
+
+**Changes**:
+- cli: report-spec-map verb (TTY + --json), read-only L3 projection
+- validate: SetEqualityValidator::citation_index reverse aggregation
+- validate: CitationSite{file,line}, section to citing-sites, stable order
+- joins coverage class + spec provenance + bindings + drift + cite count
+- single-sourced via classify_coverage; no authoritative state of its own
+
+
+
+**Verification**:
+- feature shipped at f78f458 (un-numbered commit); entry backfilled to SSOT
+- +1 validate unit test: citation_index excludes hallucinated cites
+- validate + cli crate tests pass / 0 fail; clippy -D + fmt clean
+- validate-workspace green after the entry append (139)
+
+
+
+**Impact**: §code-citation-defense/bidirectional-binding
+
+
+**Carry forward**:
+- report-spec-map verb has no CLI smoke test (only citation_index unit)
+- add the verb smoke test when the spec-map visualization consumer lands
+- MCP report-spec-map tool deferred (CLI/CI consumer only, YAGNI)
+
+
+
