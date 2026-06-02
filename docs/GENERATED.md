@@ -3975,3 +3975,28 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 391 — North Star clarified: spec is one instance of narrative — Clarifies the ARCHITECTURE North Star (section 1) so its model is not re-derived. A specification is one instance of a narrative (spec subset narrative), not a coordinate second pillar: spec-compliance is the tractable beachhead, a game-engine narrative manager is the encompassing target, and the North Star does not change as the medium widens. Facts are multi-axis: the actual/historical fact and each agent's understood fact are distinct facts on distinct axes, both true; frames are never cross-validated for agreement, and an actor's behaviour derives from its own frame. branch is therefore the epistemic-frame mechanism (coexisting perspectival truths, never merged), which is the deep reason the bitemporal/branch foundation is load-bearing, not speculative. Validation is frame-scoped: strict within a frame, cross-frame disagreement is data not a violation. Adds section 1.1 and tweaks the North Star blockquote to mark the subset relation. Doc-only; ARCHITECTURE is hand-maintained (not round-trip).
+
+**Changes**:
+- North Star blockquote: a specification is itself one kind of narrative
+- add section 1.1: spec subset narrative, multi-axis facts, branch as frame
+- multi-axis: agent understood-fact vs ground truth are two facts, both true
+- branch = epistemic-frame engine, so bitemporal foundation is load-bearing
+- validation is frame-scoped: strict within a frame, cross-frame is data
+
+
+
+**Verification**:
+- doc-only; ARCHITECTURE is hand-maintained, not a round-trip doc
+- validate-workspace green after the entry append
+
+
+
+
+**Carry forward**:
+- forward-validation (frame-driven behaviour, frame-scoped validation,
+- per-frame prose-to-fact extraction) proven when a game-engine narrative
+- consumer arrives, the way SCE proved the spec instance
+
+
+

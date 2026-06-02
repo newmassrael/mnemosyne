@@ -11,12 +11,12 @@
 
 ## 1. North Star
 
-> **AI and humans co-author knowledge — specifications *and* narratives — on a
-> single bitemporal · branchable · auditable typed-fact substrate. Media are
-> swapped via adapters (design_doc / spec / ADR / fiction); domain meaning is
-> plugged in (logic = SCE/SCXML, code = tree-sitter); and every artifact —
-> readable docs, executable SCXML logic IR, generated code — is a *projection*
-> of that one fact substrate.**
+> **AI and humans co-author knowledge — specifications *and* narratives, where a
+> specification is itself one kind of narrative — on a single bitemporal ·
+> branchable · auditable typed-fact substrate. Media are swapped via adapters
+> (design_doc / spec / ADR / fiction); domain meaning is plugged in (logic =
+> SCE/SCXML, code = tree-sitter); and every artifact — readable docs, executable
+> SCXML logic IR, generated code — is a *projection* of that one fact substrate.**
 
 Mnemosyne is not a markdown tool. It is the **management / memory / version-
 control layer** for evolving knowledge. Its sibling project
@@ -26,6 +26,31 @@ AOT codegen + the NL↔IR meta-layer between AI and humans. Together they form a
 **AI–human co-authoring substrate**: SCE = "what the system *does*" (formal,
 verifiable, executable); Mnemosyne = "what is *true when*, what *changed*, and
 *why*" (versioned, branchable, auditable).
+
+### 1.1 What "one substrate" means (stated so it is not re-derived)
+
+- **A specification is one *instance* of a narrative, not a coordinate sibling.**
+  Both are a consistency-managed, evolving fact-base whose artifacts must
+  conform. "Does code match spec?" is the most tractable instance — the
+  beachhead the substrate is hardened on first. A narrative manager embedded in
+  a game engine is the encompassing target. **spec ⊂ narrative**; the North Star
+  does not change as the medium widens.
+
+- **Facts are multi-axis.** There is the actual / historical fact, and there is
+  each agent's *understood* fact — distinct facts on distinct axes, **both
+  true**. "A believes the king lives" and "the king is dead" is not a
+  contradiction; it is two facts. Frames are never cross-validated for
+  agreement, and an agent's behaviour derives from *its own* frame, not from
+  ground truth.
+
+- **`branch` is the epistemic-frame mechanism**, not version control: coexisting
+  perspectival truths (agent A / agent B / ground truth), each internally
+  consistent, never merged into one. This is why the bitemporal / branch
+  foundation is load-bearing (§6 invariant 1), not speculative.
+
+- **Validation is frame-scoped.** Within a frame, consistency is strict
+  (violations reject). Across frames, disagreement is *data*, not a violation.
+  The cross-frame invariant is: every actor's action derives from its own frame.
 
 ## 2. The three models are one system
 
