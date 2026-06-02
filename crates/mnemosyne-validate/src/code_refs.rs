@@ -1603,6 +1603,19 @@ impl SetEqualityValidator {
         // with `CodeRefViolation::ImplementationMissing`'s shape).
         if filter_id.is_none() {
             for (section_id, section) in &snapshot.sections {
+                // Applicability gate: `Informative` sections (terminology /
+                // overview / references) are prose-only with nothing to
+                // implement here, so the coverage axiom does not apply to them
+                // at all. Exhaustive match (not `== Informative`) so a future
+                // CoverageExpectation variant forces an explicit decision at
+                // compile time, mirroring `counts_as_coverage`.
+                let axiom_applies = match section.coverage_expectation {
+                    mnemosyne_core::CoverageExpectation::Normative => true,
+                    mnemosyne_core::CoverageExpectation::Informative => false,
+                };
+                if !axiom_applies {
+                    continue;
+                }
                 // Coverage counts ONLY `implements` («satisfy») bindings;
                 // `references` («trace») links do not satisfy the
                 // "Active = backed by code" axiom. `counts_as_coverage` is an
@@ -1621,12 +1634,14 @@ impl SetEqualityValidator {
                 if resolved == DecisionStatus::Removed {
                     continue;
                 }
-                // A section with zero `implements` coverage is the coverage
-                // gap, whether it has 0 bindings or only `references`
-                // («trace») links. (A distinct info-level `reference_only`
-                // surface — separating "documented but not implemented here"
-                // from truly-undocumented — is a deferred follow-up; see the
-                // binding-kind proposal section 5.3.)
+                // A `Normative` section with zero `implements` coverage is the
+                // coverage gap, whether it has 0 bindings or only `references`
+                // («trace») links. Sections with genuinely nothing to implement
+                // are excluded by the `Informative` applicability gate above
+                // (Round 389). A distinct info-level `reference_only` finding —
+                // separating "documented but not implemented here" (references
+                // present) from truly-undocumented (zero bindings) — remains a
+                // deferred follow-up; the coverage axiom treats both as a gap.
                 violations.push(CodeRefViolation::ImplementationMissing {
                     section_id: section_id.clone(),
                     decision_status: section.decision_status,
@@ -1940,7 +1955,9 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_atomic::{add_section_binding, AtomicStore, BindingKind};
+    use mnemosyne_atomic::{
+        add_section_binding, set_section_coverage_expectation, AtomicStore, BindingKind,
+    };
     use tempfile::TempDir;
 
     /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
@@ -2296,6 +2313,67 @@ mod tests {
         assert!(
             v.iter().any(|x| x.kind_tag() == "impl_missing"),
             "references-only section has no implements coverage → impl_missing: {:?}",
+            v
+        );
+    }
+
+    #[test]
+    fn informative_section_exempt_from_coverage_axiom() {
+        // Round 389: a Normative section with zero implements bindings trips
+        // impl_missing (the R269 axiom); an Informative section (prose-only,
+        // nothing to implement here) is exempt — no impl_missing for it.
+        let tmp = TempDir::new().unwrap();
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        store.sections.insert(
+            "norm".to_string(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        store.sections.insert(
+            "info".to_string(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        set_section_coverage_expectation(
+            &mut store,
+            &store_path,
+            "info",
+            mnemosyne_core::CoverageExpectation::Informative,
+            "terminology — nothing to implement here",
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/foo.rs"), "fn main() {}\n").unwrap();
+        let v = scan_paths_no_resolvers(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let impl_missing_ids: Vec<&str> = v
+            .iter()
+            .filter_map(|x| match x {
+                CodeRefViolation::ImplementationMissing { section_id, .. } => {
+                    Some(section_id.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            impl_missing_ids.contains(&"norm"),
+            "Normative section with zero implements trips impl_missing: {:?}",
+            v
+        );
+        assert!(
+            !impl_missing_ids.contains(&"info"),
+            "Informative section is exempt from the coverage axiom: {:?}",
             v
         );
     }

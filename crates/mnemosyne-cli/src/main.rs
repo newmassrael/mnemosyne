@@ -156,7 +156,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
  prog
  )
  })?;
@@ -219,6 +219,11 @@ fn run(args: &[String]) -> Result<()> {
         // Reclassify an existing binding's kind (Stage-B implements→references).
         "set-section-binding-kind" => {
             atomic_cli::cmd_set_section_binding_kind(&workspace_anchor()?, &args[2..])
+        }
+        // Classify a section's coverage applicability (normative | informative);
+        // informative exempts it from the coverage axiom (Round 389).
+        "set-section-coverage-expectation" => {
+            atomic_cli::cmd_set_section_coverage_expectation(&workspace_anchor()?, &args[2..])
         }
         // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
         // dropped; legacy markdown-surgical variant retired with the rest of
@@ -408,6 +413,13 @@ fn print_help(prog: &str) {
  );
     println!(
  "   Reclassify an existing binding's kind (Stage-B implements→references; --reason mandatory)"
+ );
+    println!(
+ " {} set-section-coverage-expectation --section §<N> --expectation normative|informative --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ "   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"
  );
     println!(
  " {} set-section-normative-excerpt --section §<N> --text-file <path> --anchor-url <url> --source-revision <rev> [--sidecar <path>] [--json]",

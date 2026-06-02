@@ -35,8 +35,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use mnemosyne_atomic::{
-    AtomicChangelogEntry, AtomicSection, AtomicStore, Binding, BindingKind, ExampleBlock,
-    NormativeExcerpt, RejectedAlternative,
+    AtomicChangelogEntry, AtomicSection, AtomicStore, Binding, BindingKind, CoverageExpectation,
+    ExampleBlock, NormativeExcerpt, RejectedAlternative,
 };
 use mnemosyne_query::{
     compose_generated_md, render_changelog_entry, render_section, section_heading,
@@ -74,6 +74,12 @@ pub struct RenderSectionInput {
     /// over primitive fields (core's `BindingKind` cannot derive
     /// `salsa::Update`); reconstructed via `BindingKind::from_tag`.
     pub bindings: Vec<(String, Option<String>, String)>,
+    /// Canonical tag of the section's coverage applicability
+    /// (`CoverageExpectation::as_str`). Lowered to a primitive string because
+    /// `RenderSectionInput` is a Salsa input over primitive fields (core is L0
+    /// zero-dep, cannot derive `salsa::Update`); reconstructed via
+    /// `CoverageExpectation::from_tag`.
+    pub coverage_expectation: String,
     /// `(text, anchor_url, source_revision)` of the external-spec mirror
     /// excerpt (RFC-002 FR-1). `None` for ordinary Sections. Lowered to a
     /// primitive tuple because `RenderSectionInput` is a Salsa input over
@@ -146,6 +152,11 @@ pub fn render_section_block<'db>(db: &'db dyn RenderDb, input: RenderSectionInpu
                     .expect("BindingKind tag round-trips through as_str/from_tag"),
             })
             .collect(),
+        // Same round-trip discipline as bindings: the tag was produced by
+        // CoverageExpectation::as_str one render ago, so a parse miss is an
+        // internal break — fail loud rather than default to Normative.
+        coverage_expectation: CoverageExpectation::from_tag(&input.coverage_expectation(db))
+            .expect("CoverageExpectation tag round-trips through as_str/from_tag"),
         superseded_by: input.superseded_by(db),
         normative_excerpt: input.normative_excerpt(db).map(
             |(text, anchor_url, source_revision)| NormativeExcerpt {
@@ -303,6 +314,7 @@ fn project_section_input(
                 )
             })
             .collect(),
+        atomic.coverage_expectation.as_str().to_string(),
         atomic.normative_excerpt.as_ref().map(|ne| {
             (
                 ne.text.clone(),
@@ -510,6 +522,11 @@ fn reconcile_sections(db: &mut RenderDbImpl, index: RenderIndex, atomic: &Atomic
                         .collect::<Vec<_>>()
                 );
                 sync!(
+                    coverage_expectation,
+                    set_coverage_expectation,
+                    sec.coverage_expectation.as_str().to_string()
+                );
+                sync!(
                     normative_excerpt,
                     set_normative_excerpt,
                     sec.normative_excerpt.as_ref().map(|ne| {
@@ -635,6 +652,9 @@ mod tests {
                     kind: BindingKind::Implements,
                 },
             ],
+            // Informative exercises the coverage_expectation render arm in the
+            // warm==cold parity test (R368 mandate: edit every renderable field).
+            coverage_expectation: CoverageExpectation::Informative,
             normative_excerpt: Some(NormativeExcerpt {
                 text: "the event descriptor is matched verbatim".to_string(),
                 anchor_url: "https://www.w3.org/TR/scxml/#event".to_string(),
@@ -689,6 +709,10 @@ mod tests {
                 symbol: Some("compose_generated_md".to_string()),
                 kind: BindingKind::References,
             }],
+            // Normative differs from full_section's Informative, so reconcile
+            // (full_section → section_alt) exercises the coverage_expectation
+            // sync! set-arm (R368 every-field-differs mandate).
+            coverage_expectation: CoverageExpectation::Normative,
             normative_excerpt: Some(NormativeExcerpt {
                 text: "alt normative wording".to_string(),
                 anchor_url: "https://www.w3.org/TR/scxml/#datamodel".to_string(),

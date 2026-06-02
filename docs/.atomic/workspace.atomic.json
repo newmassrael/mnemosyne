@@ -6040,8 +6040,44 @@
         "reference_only info class still deferred (unchanged from R387): references-only sections surface as impl_missing on the coverage axis",
         "SCE follow-up: violation tag impl_unbacked -> binding_unbacked (pre-release no-compat); any SCE CI parsing validate-code-refs JSON must update the key binding_unbacked_count"
       ]
+    },
+    "Round 389 — coverage applicability classification (normative | informative)": {
+      "decision_summary": "Adds AtomicSection.coverage_expectation (normative | informative), a per-section classification that makes the Round 269 coverage axiom precise. Normative (default) keeps the axiom; Informative exempts prose-only sections (terminology / overview / references) that have nothing to implement here, so an external-spec ledger's meta sections no longer drown real gaps in false impl_missing. The enum is canonical in mnemosyne-core beside BindingKind (not the medium-neutral skeleton); the field is adapter-local on AtomicSection beside bindings, skipped from JSON when default so unclassified stores stay byte-identical. schema_version 5 to 6 migrates declaratively (serde default, no load arm); the default is the conservative no-op so no migration report is needed. Two write paths (setter + import-sections field) enforce one closed value set, pinned by a parity test. Rendered deviation-only in GENERATED.md and surfaced on the query read view. The positive coverage report is deferred to R390.",
+      "changes_bullets": [
+        "core: CoverageExpectation enum (normative|informative) + SectionView field",
+        "atomic: AtomicSection.coverage_expectation, schema_version 5 to 6, snapshot",
+        "validate: Informative exempts the Round 269 coverage axiom (exhaustive match)",
+        "cli/mcp: set-section-coverage-expectation verb + tool; import-sections field",
+        "render: deviation-only block, cold + warm parity; query read-view field"
+      ],
+      "verification_bullets": [
+        "787 workspace tests pass / 0 fail (+3: parity, default, exemption)",
+        "clippy --workspace --all-targets -D warnings clean; fmt clean",
+        "render warm==cold byte-identity holds with the new coverage line"
+      ],
+      "carry_forward_bullets": [
+        "R390: report-coverage read-only projection (covered/gap/exempt 3-way)",
+        "reference_only distinct info-class still deferred (no consumer yet)"
+      ],
+      "publishable_decision_summary": "Adds AtomicSection.coverage_expectation (normative | informative), a per-section classification that makes the Round 269 coverage axiom precise. Normative (default) keeps the axiom; Informative exempts prose-only sections (terminology / overview / references) that have nothing to implement here, so an external-spec ledger's meta sections no longer drown real gaps in false impl_missing. The enum is canonical in mnemosyne-core beside BindingKind (not the medium-neutral skeleton); the field is adapter-local on AtomicSection beside bindings, skipped from JSON when default so unclassified stores stay byte-identical. schema_version 5 to 6 migrates declaratively (serde default, no load arm); the default is the conservative no-op so no migration report is needed. Two write paths (setter + import-sections field) enforce one closed value set, pinned by a parity test. Rendered deviation-only in GENERATED.md and surfaced on the query read view. The positive coverage report is deferred to R390.",
+      "publishable_changes_bullets": [
+        "core: CoverageExpectation enum (normative|informative) + SectionView field",
+        "atomic: AtomicSection.coverage_expectation, schema_version 5 to 6, snapshot",
+        "validate: Informative exempts the Round 269 coverage axiom (exhaustive match)",
+        "cli/mcp: set-section-coverage-expectation verb + tool; import-sections field",
+        "render: deviation-only block, cold + warm parity; query read-view field"
+      ],
+      "publishable_verification_bullets": [
+        "787 workspace tests pass / 0 fail (+3: parity, default, exemption)",
+        "clippy --workspace --all-targets -D warnings clean; fmt clean",
+        "render warm==cold byte-identity holds with the new coverage line"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R390: report-coverage read-only projection (covered/gap/exempt 3-way)",
+        "reference_only distinct info-class still deferred (no consumer yet)"
+      ]
     }
   },
   "inventory_entries": {},
-  "schema_version": 5
+  "schema_version": 6
 }

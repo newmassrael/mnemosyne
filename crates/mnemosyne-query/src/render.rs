@@ -127,6 +127,15 @@ pub fn render_section(
             .collect();
         ctx.insert("bindings", &bindings);
     }
+    // Deviation-only: render the classification only when it departs from the
+    // default `Normative`, so an unclassified store's GENERATED.md is
+    // unchanged (matches the skip-when-default convention of the fields above).
+    if matches!(
+        atomic.coverage_expectation,
+        mnemosyne_core::CoverageExpectation::Informative
+    ) {
+        ctx.insert("coverage_expectation", atomic.coverage_expectation.as_str());
+    }
     if let Some(ne) = &atomic.normative_excerpt {
         ctx.insert(
             "normative_excerpt",

@@ -257,6 +257,17 @@ pub struct SetSectionBindingKindArgs {
     pub reason: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionCoverageExpectationArgs {
+    /// Section ID without the `§` prefix.
+    pub section_id: String,
+    /// `"normative"` (expects an implements binding) or `"informative"`
+    /// (prose-only, exempt from the coverage axiom).
+    pub expectation: String,
+    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    pub reason: String,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -984,6 +995,29 @@ impl MnemosyneServer {
                 kind,
                 &reason,
             )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Classify a section's coverage applicability. `normative` (default) keeps the coverage axiom — a non-removed normative section with zero `implements` bindings is a gap. `informative` exempts the section (prose-only: terminology / overview / references — nothing to implement here). Second write path to Section.coverage_expectation alongside import_sections; both enforce the same closed value set. `reason` mandatory."
+    )]
+    async fn set_section_coverage_expectation(
+        &self,
+        args: Parameters<SetSectionCoverageExpectationArgs>,
+    ) -> CallToolResult {
+        let section = strip_section_marker(&args.0.section_id).to_string();
+        let expectation_raw = args.0.expectation.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, false, |store, path| {
+            let expectation = atomic::CoverageExpectation::from_tag(expectation_raw.trim())
+                .ok_or_else(|| {
+                    atomic::AtomicMutateError::Validation(format!(
+                        "expectation must be `normative` or `informative` (got `{}`)",
+                        expectation_raw
+                    ))
+                })?;
+            atomic::set_section_coverage_expectation(store, path, &section, expectation, &reason)
         });
         self.finish_mutate(outcome)
     }

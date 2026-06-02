@@ -66,6 +66,12 @@ pub struct SectionView {
     /// for ordinary (non-mirror) Sections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub normative_excerpt: Option<NormativeExcerpt>,
+    /// Coverage applicability (Round 389). `Some("informative")` only when the
+    /// section is exempt from the coverage axiom (prose-only); omitted from
+    /// JSON for ordinary `Normative` sections (the default), so the read
+    /// surface stays unchanged for unclassified stores.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage_expectation: Option<String>,
 }
 
 /// RelatedSections — `related_sections` carry form. 1-hop traversal result.
@@ -228,6 +234,12 @@ fn build_section_view(
         body,
         line_anchor,
         normative_excerpt: atomic.and_then(|a| a.normative_excerpt.clone()),
+        coverage_expectation: atomic.and_then(|a| {
+            // Surface only the `Informative` deviation; ordinary Normative
+            // sections omit the field so the JSON stays unchanged.
+            let tag = a.coverage_expectation.as_str();
+            (tag != "normative").then(|| tag.to_string())
+        }),
     }
 }
 

@@ -37,14 +37,15 @@ use mnemosyne_atomic::{
     add_inventory_entry, add_section_binding, add_section_caveat, add_section_example,
     append_changelog_entry, remove_inventory_entry, remove_section, remove_section_binding,
     set_inventory_section_ref, set_inventory_status, set_section_alternatives,
-    set_section_binding_kind, set_section_decision_status, set_section_impact_scope,
-    set_section_inputs, set_section_intent, set_section_normative_excerpt, set_section_outputs,
-    set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title,
-    AtomicMutateError, AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft,
-    ExampleBlock, RejectedAlternative,
+    set_section_binding_kind, set_section_coverage_expectation, set_section_decision_status,
+    set_section_impact_scope, set_section_inputs, set_section_intent,
+    set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
+    set_section_parent_section, set_section_rationale, set_section_title, AtomicMutateError,
+    AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft, ExampleBlock,
+    RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
-use mnemosyne_core::{strip_section_marker, DecisionStatus, InventoryStatus};
+use mnemosyne_core::{strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus};
 use mnemosyne_ops::cascade::{
     auto_regenerate, render_atomic_store_to_md, resolve_output, resolve_sidecar, write_generated_md,
 };
@@ -1067,6 +1068,15 @@ fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
     })
 }
 
+fn parse_coverage_expectation(raw: &str) -> Result<CoverageExpectation> {
+    CoverageExpectation::from_tag(raw.trim()).ok_or_else(|| {
+        anyhow!(
+            "--expectation must be `normative` or `informative` (got `{}`)",
+            raw
+        )
+    })
+}
+
 /// Append a `(file, symbol?, kind)` typed trace-link binding to
 /// `Section.bindings`. File path is workspace-relative POSIX shape; symbol
 /// is opaque (no language grammar regex); `--kind` is required and explicit
@@ -1317,6 +1327,66 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
             kind,
             &reason,
         ),
+        sidecar.as_deref(),
+        regenerate,
+        json,
+    )
+}
+
+pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut section: Option<String> = None;
+    let mut expectation: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut regenerate = true;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--section" => {
+                section = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--section missing"))?
+                        .clone(),
+                )
+            }
+            "--expectation" => {
+                expectation = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--expectation missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" => {
+                reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            "--no-regenerate" => regenerate = false,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+    let expectation =
+        parse_coverage_expectation(&expectation.ok_or_else(|| {
+            anyhow!("--expectation arg required (`normative` or `informative`)")
+        })?)?;
+    let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        workspace_root,
+        set_section_coverage_expectation(&mut store, &sidecar_path, &section, expectation, &reason),
         sidecar.as_deref(),
         regenerate,
         json,

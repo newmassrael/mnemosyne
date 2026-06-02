@@ -49,6 +49,9 @@
 {% for b in bindings %}- [{{ b.kind }}] {{ b.file }}{% if b.symbol %}:{{ b.symbol }}{% endif %}
 {% endfor %}
 {% endif %}
+{% if coverage_expectation %}
+**Coverage**: {{ coverage_expectation }}
+{% endif %}
 {% if normative_excerpt %}
 **Normative excerpt** ({{ normative_excerpt.source_revision }}):
 {{ normative_excerpt.text }}

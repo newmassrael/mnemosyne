@@ -153,6 +153,7 @@ pub struct AtomicSnapshot {
 pub struct SectionView {
     pub bindings: Vec<BindingRef>,
     pub decision_status: Option<DecisionStatus>,
+    pub coverage_expectation: CoverageExpectation,
 }
 
 /// Trace-link claim strength on a Path B binding (code → spec section).
@@ -196,6 +197,50 @@ pub struct BindingRef {
     pub file: String,
     pub symbol: Option<String>,
     pub kind: BindingKind,
+}
+
+/// Whether a section's coverage axiom applies. A `Normative` section is a
+/// requirement that expects an `implements` binding — a non-`Removed`
+/// `Normative` section with zero `implements` bindings is the coverage gap
+/// (the Round 269 axiom). An `Informative` section is prose-only (terminology
+/// / overview / references) with nothing to implement here, and is exempt from
+/// the axiom. Canonical substrate enum (L0 core, mirroring [`BindingKind`] /
+/// [`DecisionStatus`]) so atomic / validate / render share one type with no
+/// adapter. Not lifted into [`SectionSkeleton`]: coverage applicability is not
+/// medium-neutral (meaningless for a non-code medium), so it lives with the
+/// adapter-local binding capability, exactly as [`BindingKind`] does.
+/// `Normative` is the default — it preserves the pre-classification behavior
+/// (every section expects coverage), so a store with no classification gates
+/// identically to before.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CoverageExpectation {
+    #[default]
+    Normative,
+    Informative,
+}
+
+impl CoverageExpectation {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CoverageExpectation::Normative => "normative",
+            CoverageExpectation::Informative => "informative",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
+    /// `None` for any other string. Used to round-trip the classification
+    /// through the projection layer's primitive salsa inputs (core is L0
+    /// zero-dep and cannot derive `salsa::Update`, so the enum is lowered to
+    /// its tag), mirroring [`BindingKind::from_tag`].
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "normative" => Some(CoverageExpectation::Normative),
+            "informative" => Some(CoverageExpectation::Informative),
+            _ => None,
+        }
+    }
 }
 
 /// Section.decision_status lifecycle vocabulary — substrate-canonical

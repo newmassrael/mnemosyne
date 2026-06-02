@@ -134,6 +134,18 @@ pub struct AtomicSection {
     )]
     pub bindings: Vec<Binding>,
 
+    /// Coverage applicability (Path B). `Normative` (default) keeps the
+    /// Round 269 coverage axiom — a non-`Removed` `Normative` section with
+    /// zero `implements` bindings is a coverage gap. `Informative` exempts
+    /// this section: it is prose-only (terminology / overview / references)
+    /// with nothing to implement here. Adapter-local beside `bindings` rather
+    /// than in the L0 skeleton because coverage applicability is not
+    /// medium-neutral. Skipped from JSON when `Normative` so an unclassified
+    /// store is byte-identical on disk and renders only the `Informative`
+    /// deviation.
+    #[serde(default, skip_serializing_if = "is_normative_coverage")]
+    pub coverage_expectation: mnemosyne_core::CoverageExpectation,
+
     /// External-spec mirror — vendored normative quote anchored to this
     /// Section (RFC-002 FR-1). When `Some`, the Section represents a
     /// section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR /
@@ -157,6 +169,13 @@ pub struct AtomicSection {
     /// rev side-by-side via `Active` + `Superseded` Sections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normative_excerpt: Option<NormativeExcerpt>,
+}
+
+/// serde `skip_serializing_if` predicate for [`AtomicSection::coverage_expectation`]:
+/// the default `Normative` is omitted from the JSON log so unclassified stores
+/// stay byte-identical and only the `Informative` deviation is persisted.
+fn is_normative_coverage(c: &mnemosyne_core::CoverageExpectation) -> bool {
+    matches!(c, mnemosyne_core::CoverageExpectation::Normative)
 }
 
 /// Vendored quote from an external normative source — embedded into an
@@ -223,6 +242,7 @@ pub struct ExampleBlock {
 // `Binding.kind` field and the mutate primitives share one type with the
 // validator/view layer — no adapter, no duplicate enum (R309 pattern).
 pub use mnemosyne_core::BindingKind;
+pub use mnemosyne_core::CoverageExpectation;
 
 /// serde default for [`Binding::kind`]: pre-v5 stores have no `kind` field;
 /// every legacy binding was an implicit implementation claim (coverage
@@ -547,7 +567,16 @@ pub enum AtomicStoreError {
 // Load is back-compat across all versions ≤ CURRENT: version-N stores
 // deserialize with newer fields defaulted; the next save rewrites
 // schema_version to CURRENT.
-const CURRENT_SCHEMA_VERSION: u32 = 5;
+// v5→v6 adds `AtomicSection.coverage_expectation` (Normative | Informative).
+// Like v4→v5 (and unlike v3→v4's content transform), this is a pure new-field
+// default, expressed declaratively: a pre-v6 store has no `coverage_expectation`
+// key, so serde `#[serde(default)]` fills `Normative` — which preserves the
+// Round 269 coverage axiom exactly (every section expected coverage before the
+// split). So there is deliberately NO `schema_version < 6` arm in `load`. The
+// default is the conservative no-op, not a silently-blessed claim, so it needs
+// no migration report (contrast v4→v5's `kind = Implements` default, which was
+// a reviewable claim surfaced by `report-binding-migration`).
+const CURRENT_SCHEMA_VERSION: u32 = 6;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -761,6 +790,7 @@ impl mnemosyne_core::AtomicStoreView for AtomicStore {
                     mnemosyne_core::SectionView {
                         bindings,
                         decision_status: sec.skeleton.decision_status,
+                        coverage_expectation: sec.coverage_expectation,
                     },
                 )
             })
@@ -1259,6 +1289,7 @@ fn build_candidate_section(
     title: &str,
     parent_section: Option<&str>,
     normative_excerpt: Option<(&str, &str, &str)>,
+    coverage_expectation: mnemosyne_core::CoverageExpectation,
 ) -> Result<(String, AtomicSection), AtomicMutateError> {
     // Strip a leading `§` citation sigil so store keys stay bare, regardless of
     // caller. The CLI/MCP boundaries already strip for the set_section_* paths;
@@ -1316,6 +1347,7 @@ fn build_candidate_section(
             decision_status: Some(DecisionStatus::Active),
         },
         normative_excerpt: excerpt,
+        coverage_expectation,
         ..Default::default()
     };
     Ok((section_id_t.to_string(), section))
@@ -1329,8 +1361,18 @@ pub fn add_section(
     title: &str,
     parent_section: Option<&str>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let (section_id_t, section) =
-        build_candidate_section(store, section_id, parent_doc, title, parent_section, None)?;
+    let (section_id_t, section) = build_candidate_section(
+        store,
+        section_id,
+        parent_doc,
+        title,
+        parent_section,
+        None,
+        // add_section creates Normative (the default); classification is a
+        // post-create concern via set_section_coverage_expectation. Only the
+        // bulk import path takes a per-entry classification.
+        mnemosyne_core::CoverageExpectation::Normative,
+    )?;
     if store.sections.contains_key(&section_id_t) {
         return Err(AtomicMutateError::Validation(format!(
  "add_section: section_id `{}` already exists in atomic store (use set_section_* primitives to mutate)",
@@ -1354,6 +1396,12 @@ pub struct SectionImport {
     pub parent_section: Option<String>,
     #[serde(default)]
     pub normative_excerpt: Option<NormativeExcerpt>,
+    /// Coverage applicability at create (default `Normative`). Lets a bulk
+    /// import classify prose-only sections (`Informative`) in the same
+    /// manifest that creates them — e.g. an external-spec mirror marking its
+    /// terminology / overview sections exempt from the coverage axiom.
+    #[serde(default)]
+    pub coverage_expectation: mnemosyne_core::CoverageExpectation,
 }
 
 /// Bulk section-create from a manifest, as one atomic transaction (RFC-001
@@ -1400,6 +1448,7 @@ pub fn import_sections(
             &entry.title,
             entry.parent_section.as_deref(),
             excerpt,
+            entry.coverage_expectation,
         )
         .map_err(|e| {
             AtomicMutateError::Validation(format!("import_sections: manifest entry {idx}: {e}"))
@@ -1884,6 +1933,49 @@ pub fn set_section_binding_kind(
         store,
         sidecar_path,
         "set_section_binding_kind",
+        "section",
+        section_id,
+    )
+}
+
+/// Set a Section's coverage applicability (`Normative` | `Informative`) in
+/// place. `Informative` exempts the section from the Round 269 coverage axiom
+/// (terminology / overview / references — prose-only, nothing to implement
+/// here); `Normative` (the default) keeps the axiom. `reason` is a mandatory
+/// audit-trail safeguard, mirroring [`set_section_binding_kind`].
+///
+/// Invariant parity: this and [`import_sections`] are the two write paths to
+/// `AtomicSection.coverage_expectation`. `CoverageExpectation` is a closed
+/// enum, so both accept exactly the same value set by construction; the parity
+/// test in this crate pins that they never diverge (CLAUDE.md
+/// half-enforced-invariant rule).
+pub fn set_section_coverage_expectation(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    section_id: &str,
+    expectation: mnemosyne_core::CoverageExpectation,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "set_section_coverage_expectation: --reason mandatory (audit-trail safeguard)"
+                .to_string(),
+        ));
+    }
+    let section = match store.sections.get_mut(section_id) {
+        Some(s) => s,
+        None => {
+            return Err(AtomicMutateError::NotFound(format!(
+                "section_id `{}` not present in atomic store",
+                section_id
+            )));
+        }
+    };
+    section.coverage_expectation = expectation;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_section_coverage_expectation",
         "section",
         section_id,
     )
@@ -2570,7 +2662,7 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 5);
+        assert_eq!(reloaded.schema_version, 6);
     }
 
     #[test]
@@ -2609,7 +2701,7 @@ mod tests {
         );
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 5);
+        assert_eq!(reloaded.schema_version, 6);
     }
 
     #[test]
@@ -2662,10 +2754,10 @@ mod tests {
             entry.publishable_matches_audit(),
             "post-migration default: publishable matches audit"
         );
-        // Save then reload: publishable_* now persisted, schema bumps to 5.
+        // Save then reload: publishable_* now persisted, schema bumps to CURRENT.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 5);
+        assert_eq!(reloaded.schema_version, 6);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
     }
@@ -3659,6 +3751,89 @@ mod tests {
         assert_eq!(bindings[0].kind, BindingKind::References);
     }
 
+    // ---- CoverageExpectation tests (schema v6, Round 389) ----
+
+    #[test]
+    fn coverage_expectation_write_path_parity_setter_vs_import() {
+        // The two write paths to AtomicSection.coverage_expectation —
+        // set_section_coverage_expectation and import_sections — must accept the
+        // same value set and store it identically (CLAUDE.md
+        // half-enforced-invariant rule). CoverageExpectation is a closed enum, so
+        // both accept every value by construction; this pins they never diverge.
+        let tmp = TempDir::new().unwrap();
+        // Path A: seed (Normative default) then setter to Informative.
+        let path_a = tmp.path().join(".atomic/a.atomic.json");
+        let mut a = AtomicStore::new();
+        seed_section(&mut a, "X");
+        set_section_coverage_expectation(
+            &mut a,
+            &path_a,
+            "X",
+            mnemosyne_core::CoverageExpectation::Informative,
+            "terminology section, nothing to implement",
+        )
+        .unwrap();
+        // Path B: import with the classification inline.
+        let path_b = tmp.path().join(".atomic/b.atomic.json");
+        let mut b = AtomicStore::new();
+        import_sections(
+            &mut b,
+            &path_b,
+            &[SectionImport {
+                section_id: "X".to_string(),
+                parent_doc: "docs/GENERATED.md".to_string(),
+                title: "X".to_string(),
+                parent_section: None,
+                normative_excerpt: None,
+                coverage_expectation: mnemosyne_core::CoverageExpectation::Informative,
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            a.section("X").unwrap().coverage_expectation,
+            mnemosyne_core::CoverageExpectation::Informative,
+        );
+        assert_eq!(
+            a.section("X").unwrap().coverage_expectation,
+            b.section("X").unwrap().coverage_expectation,
+        );
+    }
+
+    #[test]
+    fn coverage_expectation_defaults_normative_and_round_trips() {
+        // A section with no coverage_expectation on disk (the pre-v6 / default
+        // shape) loads as Normative — the behavior-preserving migration. An
+        // Informative classification persists and round-trips.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/ws.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "Norm");
+        seed_section(&mut store, "Info");
+        set_section_coverage_expectation(
+            &mut store,
+            &path,
+            "Info",
+            mnemosyne_core::CoverageExpectation::Informative,
+            "overview prose",
+        )
+        .unwrap();
+        let json = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            json.contains("\"informative\""),
+            "Informative deviation is persisted"
+        );
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.section("Norm").unwrap().coverage_expectation,
+            mnemosyne_core::CoverageExpectation::Normative,
+            "unclassified section defaults Normative"
+        );
+        assert_eq!(
+            reloaded.section("Info").unwrap().coverage_expectation,
+            mnemosyne_core::CoverageExpectation::Informative,
+        );
+    }
+
     #[test]
     fn set_section_binding_kind_rejects_empty_reason_and_missing_binding() {
         let tmp = TempDir::new().unwrap();
@@ -3764,10 +3939,10 @@ mod tests {
             .rows
             .iter()
             .all(|r| r.defaulted_kind == BindingKind::Implements));
-        // After save (bumps to v5) the report is gone — migration is one-time.
+        // After save (bumps to CURRENT) the report is gone — migration is one-time.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 5);
+        assert_eq!(reloaded.schema_version, 6);
         assert!(reloaded.kind_migration_report().is_none());
     }
 
@@ -4388,7 +4563,7 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 5);
+        assert_eq!(reloaded.schema_version, 6);
         let entry = reloaded.changelog_entries.get("Round 999").unwrap();
         assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
         assert_eq!(
@@ -4816,6 +4991,7 @@ mod tests {
             title: title.to_string(),
             parent_section: None,
             normative_excerpt: None,
+            coverage_expectation: mnemosyne_core::CoverageExpectation::Normative,
         }
     }
 
