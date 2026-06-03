@@ -9,9 +9,6 @@ use std::path::Path;
 use anyhow::Context;
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::OrphanKind;
-use mnemosyne_parser::{
-    compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema,
-};
 use mnemosyne_query::workspace_section_id_set;
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
@@ -30,9 +27,6 @@ pub struct ValidateWorkspaceReport {
     pub orphan_ledger: Vec<OrphanRef>,
     pub orphan_new: Vec<OrphanRef>,
     pub orphan_resolved: Vec<OrphanRef>,
-    pub round_trip_pass: usize,
-    pub round_trip_total: usize,
-    pub round_trip_failures: Vec<String>,
     pub atomic_entries: usize,
     pub atomic_sections: usize,
     pub atomic_orphan_entry_refs: usize,
@@ -67,11 +61,6 @@ pub struct OrphanRef {
 /// ledger entry, T3 reject).
 pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceReport, OpError> {
     let (ws, loaded, _) = load_workspace(workspace_root).map_err(OpError::from)?;
-    let schema = loaded
-        .config
-        .schema
-        .clone()
-        .unwrap_or_else(mnemosyne_config::SchemaSection::mnemosyne_preset);
     let parsed_docs: Vec<(String, mnemosyne_schema::ParsedDoc)> = ws
         .docs
         .iter()
@@ -94,32 +83,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let mut actual_orphan_keys: BTreeSet<(String, String, String)> = BTreeSet::new();
     for (from_section, to_target) in scan_store_prose_cross_ref_orphans(&atomic_store, &ws) {
         actual_orphan_keys.insert((orphan_doc_label.clone(), from_section, to_target));
-    }
-
-    let default_doc_for_emit = loaded.config.workspace.default_doc.as_deref();
-    let mut round_trip_pass = 0usize;
-    let mut round_trip_failures: Vec<String> = Vec::new();
-    for (path, original) in &parsed_docs {
-        let reclassified = ws.reclassify_cross_refs(path).ok_or_else(|| {
-            OpError::Other(format!("workspace doc `{}` not loaded — invariant", path))
-        })?;
-        let emitted = emit_markdown_with_default(&reclassified, default_doc_for_emit);
-        let reparsed = parse_markdown_with_schema(&emitted, path, &schema);
-        let diff = compare_typed_facts(original, &reparsed);
-        if diff.mandatory_preserved {
-            round_trip_pass += 1;
-        } else {
-            round_trip_failures.push(format!(
-                "{}: section={}/{} changelog={}/{} cross_ref={}/{}",
-                path,
-                diff.section_count_a,
-                diff.section_count_b,
-                diff.changelog_entry_count_a,
-                diff.changelog_entry_count_b,
-                diff.cross_ref_count_a,
-                diff.cross_ref_count_b,
-            ));
-        }
     }
 
     let mut known_orphan_keys: BTreeSet<(String, String, String)> = BTreeSet::new();
@@ -279,13 +242,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
 
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
-    if round_trip_pass != parsed_docs.len() {
-        failure_reasons.push(format!(
-            "round-trip mandatory preserved break ({}/{} PASS)",
-            round_trip_pass,
-            parsed_docs.len()
-        ));
-    }
     if !orphan_new.is_empty() {
         failure_reasons.push(format!(
             "new orphan {} cases — register in [[orphan_ledger]] or fix",
@@ -342,9 +298,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         orphan_ledger: orphan_ledger_view,
         orphan_new,
         orphan_resolved,
-        round_trip_pass,
-        round_trip_total: parsed_docs.len(),
-        round_trip_failures,
         atomic_entries: atomic.entries,
         atomic_sections: atomic.sections,
         atomic_orphan_entry_refs: atomic.orphan_entry_refs.len(),
@@ -411,14 +364,6 @@ impl ValidateWorkspaceReport {
                     o.doc, o.from_section, o.to_target
                 );
             }
-        }
-        let _ = writeln!(
-            out,
-            "round-trip mandatory={}/{}",
-            self.round_trip_pass, self.round_trip_total
-        );
-        for line in &self.round_trip_failures {
-            let _ = writeln!(out, "  {}", line);
         }
         let _ = writeln!(
             out,

@@ -590,7 +590,7 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
 #[tool_router]
 impl MnemosyneServer {
     #[tool(
-        description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + round-trip validation across the entire workspace. Returns the metric summary (orphan total / round-trip mandatory / T3 warn / T4 info). Call at session start for the baseline and after every mutation."
+        description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + store-direct validation across the entire workspace. Returns the metric summary (orphan total / T3 warn / T4 info / GENERATED.md sync). Call at session start for the baseline and after every mutation."
     )]
     async fn validate_workspace(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::validate_workspace(&self.workspace) {

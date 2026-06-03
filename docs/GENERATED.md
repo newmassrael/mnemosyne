@@ -4115,3 +4115,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 397 — remove round-trip gate from validate-workspace — Remove the markdown round-trip gate from validate-workspace. With T1 orphan and T3/T4 style now store-direct (R395/R396), the parse-emit-reparse-compare round-trip no longer gates correctness — the store is validated directly. Dropped the round-trip loop, the round_trip_pass/total/failures report fields with their CLI print and the failure condition, and updated the MCP validate_workspace tool description. The parser emitter and the single-doc validate-file command still use the emitter and are removed in the markdown-model teardown round.
+
+**Changes**:
+- validate-workspace round-trip loop + round_trip_* report fields + CLI print removed
+- failure aggregation no longer includes round-trip; MCP tool description updated
+- store is now validated directly; no parse to emit to reparse compare cycle
+
+
+
+**Verification**:
+- workspace 100 test binaries 0 fail; clippy -D + fmt clean
+- validate-workspace green store-direct: T1 orphan 0, T3 reject 0, GENERATED sync
+- round-trip self_validation tests already ignored (R252); none broke
+
+
+
+
+**Carry forward**:
+- emit_markdown_with_default/compare_typed_facts + validate-file cmd removed with the markdown model
+
+
+
