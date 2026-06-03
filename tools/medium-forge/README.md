@@ -32,7 +32,7 @@ packages a universal EPUB plus a JSON map of `id → EPUB locator`.
 4. **Sanitise** — drop `<script>/<link>/<style>`, external images, `on*`
    handlers, obsolete/presentational attributes (`summary`, `border`, `name`, …);
    insert a `<dt>` before any dt-less `<dl>` (XHTML5 requires it).
-5. **Emit** — `spec.epub` (valid EPUB 3) + `anchors.json` (`epub-anchor-map/v1`).
+5. **Emit** — `spec.epub` (valid EPUB 3) + `anchors.json` (`epub-anchor-map/v2`).
 
 ## Usage
 
@@ -71,16 +71,24 @@ python3 convert.py --html "$SNAP" --anchor-map out/scxml-anchor-map.json --out o
 | File | What |
 |---|---|
 | `out/spec.epub` | standard EPUB 3 (epubcheck-clean) — a universal artifact |
-| `out/anchors.json` | `epub-anchor-map/v1` — `id ↔ EPUB locator` (href + fragment + CFI) |
+| `out/anchors.json` | `epub-anchor-map/v2` — per id: EPUB locator (href + fragment + CFI) + verbatim section `text` + `text_sha256` |
 
 `anchors.json` shape:
 ```jsonc
-{ "schema": "epub-anchor-map/v1",
+{ "schema": "epub-anchor-map/v2",
   "epub": { "path": "spec.epub", "revision": "…", "source": { "kind": "html", "url": "…" } },
   "anchors": [ { "id": "…", "locator": { "spine_href": "OEBPS/spec.xhtml",
                  "fragment": "…", "cfi": "epubcfi(…)" },
+                "text": "verbatim section text (whitespace-collapsed)",
+                "text_sha256": "…",
                 "confidence": 1.0, "needs_review": false } ] }
 ```
+
+`text` is the section's published text content, whitespace-collapsed for
+determinism — the normative excerpt the Mnemosyne store caches. `text_sha256`
+lets the store re-hash the cached string and detect drift offline without
+re-extracting. The v2 map stays backward-compatible with the locator-only
+importer (extra fields are ignored).
 
 ## Roadmap
 

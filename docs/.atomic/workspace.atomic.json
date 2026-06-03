@@ -6451,6 +6451,36 @@
         "The markdown-doc generic mode is abandoned for the store-plus-EPUB model; external markdown-doc adopters are no longer supported (pre-release, no external compat)",
         "Project B (R401+) extracts normative_excerpt.text from a committed EPUB via medium-forge with an offline revalidation hash"
       ]
+    },
+    "Round 401": {
+      "decision_summary": "medium-forge v2: emit per-section verbatim text + text_sha256 into the anchor map (epub-anchor-map/v2), the offline-revalidatable normative-excerpt source for the EPUB-as-content-SSOT projection (Project B step 1). Backward-compatible with the locator-only import-epub-anchors importer.",
+      "changes_bullets": [
+        "convert.py extracts each located section's published text (whitespace-collapsed text_content) and its sha256",
+        "each anchors[] entry gains text + text_sha256; contract string bumped to epub-anchor-map/v2",
+        "README + module docstring document the v2 shape and the offline re-hash drift-detection role"
+      ],
+      "verification_bullets": [
+        "smoke run on a 2-section HTML fixture emits schema epub-anchor-map/v2 with self-consistent sha256 per section",
+        "v2 map stays backward-compatible with import-epub-anchors (AnchorMap/AnchorEntry ignore the extra fields, no schema-string check)"
+      ],
+      "carry_forward_bullets": [
+        "R402 adds NormativeExcerpt.text_sha256 (schema v7 to v8) so the store caches text + hash; import_epub_excerpts (R403) verifies sha256(text)==text_sha256 on ingest",
+        "extraction stays Python-side (medium-forge); the Rust core re-hashes the cached string only, never re-extracts (hexagonal, core zero-dep)"
+      ],
+      "publishable_decision_summary": "medium-forge v2: emit per-section verbatim text + text_sha256 into the anchor map (epub-anchor-map/v2), the offline-revalidatable normative-excerpt source for the EPUB-as-content-SSOT projection (Project B step 1). Backward-compatible with the locator-only import-epub-anchors importer.",
+      "publishable_changes_bullets": [
+        "convert.py extracts each located section's published text (whitespace-collapsed text_content) and its sha256",
+        "each anchors[] entry gains text + text_sha256; contract string bumped to epub-anchor-map/v2",
+        "README + module docstring document the v2 shape and the offline re-hash drift-detection role"
+      ],
+      "publishable_verification_bullets": [
+        "smoke run on a 2-section HTML fixture emits schema epub-anchor-map/v2 with self-consistent sha256 per section",
+        "v2 map stays backward-compatible with import-epub-anchors (AnchorMap/AnchorEntry ignore the extra fields, no schema-string check)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R402 adds NormativeExcerpt.text_sha256 (schema v7 to v8) so the store caches text + hash; import_epub_excerpts (R403) verifies sha256(text)==text_sha256 on ingest",
+        "extraction stays Python-side (medium-forge); the Rust core re-hashes the cached string only, never re-extracts (hexagonal, core zero-dep)"
+      ]
     }
   },
   "inventory_entries": {},

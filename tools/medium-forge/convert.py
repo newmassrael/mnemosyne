@@ -18,7 +18,8 @@ and choose, if the defaults don't fit your HTML:
 
 Output:
   <out>/spec.epub       standard EPUB 3 (epubcheck-clean)
-  <out>/anchors.json    epub-anchor-map/v1  ( id <-> EPUB locator: href+fragment+cfi )
+  <out>/anchors.json    epub-anchor-map/v2  ( per id: EPUB locator (href+fragment
+                        +cfi) + verbatim section text + its sha256 )
 
 The EPUB is a universal artifact (any reader). The anchor map is a thin, neutral
 JSON contract any system can consume.
@@ -28,7 +29,7 @@ Usage:
              [--content-xpath '//div[@class="body"]'] \\
              [--title T] [--revision R] [--source-url U]
 """
-import argparse, json, os, zipfile
+import argparse, hashlib, json, os, zipfile
 from urllib.parse import urldefrag
 from lxml import html as L, etree
 
@@ -197,13 +198,24 @@ def main():
     write_epub(os.path.join(a.out, "spec.epub"), spec_bytes, a.title,
                a.revision, a.source_url)
 
-    anchors = [{
-        "id": sid,
-        "locator": {"spine_href": "OEBPS/spec.xhtml", "fragment": sid,
-                    "cfi": f"epubcfi(/6/4!/4/*[@id='{sid}'])"},
-        "confidence": 1.0, "needs_review": False,
-    } for sid in amap if sid in located]
-    json.dump({"schema": "epub-anchor-map/v1",
+    anchors = []
+    for sid in amap:
+        if sid not in located:
+            continue
+        # Verbatim section text as published in the EPUB, whitespace-collapsed
+        # for determinism. This is the normative excerpt the Rust store caches
+        # (NormativeExcerpt.text); text_sha256 lets the store re-hash and detect
+        # drift offline without re-extracting (epub-anchor-map/v2).
+        text = " ".join(located[sid].text_content().split())
+        anchors.append({
+            "id": sid,
+            "locator": {"spine_href": "OEBPS/spec.xhtml", "fragment": sid,
+                        "cfi": f"epubcfi(/6/4!/4/*[@id='{sid}'])"},
+            "text": text,
+            "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "confidence": 1.0, "needs_review": False,
+        })
+    json.dump({"schema": "epub-anchor-map/v2",
                "epub": {"path": "spec.epub", "revision": a.revision,
                         "source": {"kind": "html", "url": a.source_url}},
                "anchors": anchors},
