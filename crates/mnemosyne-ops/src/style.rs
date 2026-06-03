@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
+use mnemosyne_style::{
+    check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
+};
 use serde::Serialize;
 
 use crate::{query::load_workspace, resolve_sidecar, OpError};
@@ -49,14 +51,17 @@ pub fn style_check(
     let sidecar_path = resolve_sidecar(workspace_root, None)?;
     let atomic = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
 
+    // Store-direct: style findings come from the atomic store (SSOT), labelled
+    // with the configured doc path. The `--doc` filter still selects which
+    // configured doc label to report under.
     let mut all: Vec<StyleViolation> = Vec::new();
-    for (path, parsed) in &ws.docs {
+    for path in ws.docs.keys() {
         if let Some(ref filter) = input.doc {
             if filter != path {
                 continue;
             }
         }
-        let mut v = check_style(path, parsed, &atomic, &ruleset);
+        let mut v = check_style_atomic(path, &atomic, &ruleset);
         all.append(&mut v);
     }
 

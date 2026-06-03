@@ -13,7 +13,9 @@ use mnemosyne_parser::{
     compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema,
 };
 use mnemosyne_query::workspace_section_id_set;
-use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
+use mnemosyne_style::{
+    check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
+};
 use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace, ValidationError};
 use serde::Serialize;
 
@@ -165,11 +167,15 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let sidecar_path = resolve_sidecar(workspace_root, None)?;
     let atomic_for_style =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
-    let mut style_violations: Vec<StyleViolation> = Vec::new();
-    for (path, parsed) in &parsed_docs {
-        let mut v = check_style(path, parsed, &atomic_for_style, &ruleset);
-        style_violations.append(&mut v);
-    }
+    // Store-direct style: iterate the atomic store (the SSOT) rather than the
+    // parsed markdown. Label violations with the configured doc path so output
+    // is unchanged from the parsed-markdown era.
+    let style_doc_label = parsed_docs
+        .first()
+        .map(|(p, _)| p.as_str())
+        .unwrap_or("atomic-store");
+    let style_violations: Vec<StyleViolation> =
+        check_style_atomic(style_doc_label, &atomic_for_style, &ruleset);
     let terminology_violations: Vec<&StyleViolation> = style_violations
         .iter()
         .filter(|v| v.rule_id == "terminology_consistency")

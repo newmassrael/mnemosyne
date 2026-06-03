@@ -4069,3 +4069,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 395 — store-direct T3/T4 style validation — Rewrite the T3/T4 style validator to read the atomic store (the SSOT) directly via synthesize_section_prose_body instead of parsing rendered GENERATED.md. Rules apply per declared scope: design-section bodies get body rules, changelog entries get boilerplate-jaccard only. The gate (terminology / T3 reject) and the design sections' findings are unchanged; the prior 34 non-gating T3-warn/T4-info findings were artifacts of re-linting the rendered audit-trail ledger as section prose on frozen entries that cannot be fixed, and are correctly dropped. First step of retiring GENERATED.md as the validation substrate.
+
+**Changes**:
+- check_style_atomic iterates AtomicStore sections + changelog entries directly (no parsed markdown)
+- rule helpers take section_id/entry_id; validate + style-check switch to the store-direct path
+- changelog audit entries linted by boilerplate-jaccard scope only, not section-body prose rules
+
+
+
+**Verification**:
+- +1 style parity unit test: engine identical on matched section + changelog input
+- workspace 100 test binaries 0 fail; clippy -D + fmt clean
+- validate-workspace T3 reject 0 unchanged; 5 design sections identical findings
+
+
+
+
+**Carry forward**:
+- parsed-markdown check_style + full-scale tests removed in the GENERATED.md teardown round
+- T3 warn/T4 info now 0: 34 prior findings were re-lint of the frozen audit ledger as prose
+
+
+

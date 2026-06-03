@@ -33,7 +33,9 @@ use mnemosyne_query::{
     section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
 };
 use mnemosyne_schema::ParsedDoc;
-use mnemosyne_style::{check_style, default_ruleset_with_config, StyleSeverity, StyleViolation};
+use mnemosyne_style::{
+    check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
+};
 use mnemosyne_validate::{code_refs::SetEqualityValidator, ValidationError};
 use mnemosyne_workspace::Workspace;
 
@@ -1343,13 +1345,13 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
         AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
             .map_err(|e| anyhow!("atomic store load: {}", e))?;
     let mut all_violations: Vec<StyleViolation> = Vec::new();
-    for (path, parsed) in &parsed_docs {
+    for (path, _) in &parsed_docs {
         if let Some(filter) = &doc_filter {
             if path != filter {
                 continue;
             }
         }
-        let mut v = check_style(path, parsed, &style_check_atomic, &ruleset);
+        let mut v = check_style_atomic(path, &style_check_atomic, &ruleset);
         all_violations.append(&mut v);
     }
 

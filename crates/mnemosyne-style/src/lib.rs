@@ -26,7 +26,7 @@
 //! - `bullet_list_preference` — enumeration pattern detection in run-on paragraphs
 
 use mnemosyne_atomic::{AtomicSection, AtomicStore};
-use mnemosyne_schema::{ChangelogEntry, ParsedDoc, Section};
+use mnemosyne_schema::{ParsedDoc, Section};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,7 +314,7 @@ pub fn check_style(
                     if let Some(body) = body {
                         check_section_body_rule(
                             doc_path,
-                            section,
+                            &section.section_id,
                             &body,
                             parsed.line_anchors.get(&section.section_id).copied(),
                             rule,
@@ -325,7 +325,58 @@ pub fn check_style(
             }
             StyleScope::ChangelogSubBullets => {
                 for entry in &parsed.changelog_entries {
-                    check_changelog_entry_rule(doc_path, entry, atomic_store, rule, &mut out);
+                    check_changelog_entry_rule(
+                        doc_path,
+                        &entry.entry_id,
+                        &entry.sub_bullets,
+                        atomic_store,
+                        rule,
+                        &mut out,
+                    );
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Store-direct style check — the SSOT-native counterpart of [`check_style`].
+/// Iterates the atomic store's sections and changelog entries directly (no
+/// parsed-markdown substrate), synthesizing each section's prose body via
+/// [`mnemosyne_atomic::synthesize_section_prose_body`] (the same prose-only
+/// source [`check_style`] resolves through `resolve_section_body`). Findings
+/// are identical to the parsed-markdown path for a workspace whose GENERATED.md
+/// is rendered from this store — the only difference is `line_anchor`, which is
+/// `None` here (the section_id is the locator; there is no rendered file with
+/// line numbers). `doc_label` is the value stamped into each violation's
+/// `doc_path` (pass the workspace's configured doc path to preserve output).
+pub fn check_style_atomic(
+    doc_label: &str,
+    store: &AtomicStore,
+    ruleset: &[StyleRule],
+) -> Vec<StyleViolation> {
+    let mut out = Vec::new();
+    for rule in ruleset {
+        match rule.scope {
+            StyleScope::SectionBody | StyleScope::FullDoc => {
+                for (section_id, atomic) in &store.sections {
+                    if rule_skips_strong_carry(&rule.rule_id) && is_strong_carry_section(section_id)
+                    {
+                        continue;
+                    }
+                    if rule_skips_changelog_area(&rule.rule_id)
+                        && is_changelog_area_section(section_id)
+                    {
+                        continue;
+                    }
+                    let body = mnemosyne_atomic::synthesize_section_prose_body(atomic);
+                    check_section_body_rule(doc_label, section_id, &body, None, rule, &mut out);
+                }
+            }
+            StyleScope::ChangelogSubBullets => {
+                for entry_id in store.changelog_entries.keys() {
+                    // Store is authoritative — no parsed sub_bullets fallback.
+                    check_changelog_entry_rule(doc_label, entry_id, &[], store, rule, &mut out);
                 }
             }
         }
@@ -376,7 +427,7 @@ fn synthesize_atomic_body(atomic: &AtomicSection) -> String {
 
 fn check_section_body_rule(
     doc_path: &str,
-    section: &Section,
+    section_id: &str,
     body: &str,
     line_anchor: Option<usize>,
     rule: &StyleRule,
@@ -390,7 +441,7 @@ fn check_section_body_rule(
                     out.push(make_violation(
                         rule,
                         doc_path,
-                        &section.section_id,
+                        section_id,
                         line_anchor,
                         format!(
    "paragraph length {} > {} (run-on detected — split into bullets or shorter paragraphs)",
@@ -408,7 +459,7 @@ fn check_section_body_rule(
                     out.push(make_violation(
   rule,
   doc_path,
-  &section.section_id,
+  section_id,
   line_anchor,
   format!(
    "sentence effective length {} > {} (split required — em-dash subclause counted independently)",
@@ -425,7 +476,7 @@ fn check_section_body_rule(
                 out.push(make_violation(
                     rule,
                     doc_path,
-                    &section.section_id,
+                    section_id,
                     line_anchor,
                     format!(
                         "section body length {} > {} (consider splitting into sub-sections)",
@@ -443,7 +494,7 @@ fn check_section_body_rule(
                             out.push(make_violation(
                                 rule,
                                 doc_path,
-                                &section.section_id,
+                                section_id,
                                 line_anchor,
                                 format!(
                                     "terminology variant `{}` found — use canonical `{}`",
@@ -461,7 +512,7 @@ fn check_section_body_rule(
                 out.push(make_violation(
                     rule,
                     doc_path,
-                    &section.section_id,
+                    section_id,
                     line_anchor,
                     format!(
                         "implicit cross-doc reference `{}` — use `{{doc}}#§N` or `§N` form",
@@ -477,7 +528,7 @@ fn check_section_body_rule(
                     out.push(make_violation(
                         rule,
                         doc_path,
-                        &section.section_id,
+                        section_id,
                         line_anchor,
                         "enumeration pattern detected in paragraph — convert to bullet list".into(),
                         Some(
@@ -494,7 +545,8 @@ fn check_section_body_rule(
 
 fn check_changelog_entry_rule(
     doc_path: &str,
-    entry: &ChangelogEntry,
+    entry_id: &str,
+    fallback_sub_bullets: &[String],
     atomic_store: &AtomicStore,
     rule: &StyleRule,
     out: &mut Vec<StyleViolation>,
@@ -502,17 +554,17 @@ fn check_changelog_entry_rule(
     if let (StyleThreshold::Jaccard(cap), "boilerplate_repetition_jaccard") =
         (&rule.threshold, rule.rule_id.as_str())
     {
-        // atomic-first source: atomic ChangelogEntry changes_bullets
-        // existswhen atomic source in jaccard check. atomic entry missing or
-        // changes_bullets when empty legacy `entry.sub_bullets` fallback (LEGACY-
-        // FIELD-REMOVAL round 2 carry; sub_bullets field self-carries stable
-        // until round 3 explicit removal).
+        // atomic-first source: the atomic ChangelogEntry's changes_bullets are
+        // authoritative for the jaccard check. When the atomic entry is missing
+        // or its changes_bullets are empty, fall back to the caller-supplied
+        // sub_bullets (the parsed-markdown path supplies these; the store-direct
+        // path passes an empty slice since the store is authoritative).
         let (bullets_owned, source_label): (Vec<String>, &'static str) =
-            match atomic_store.entry(&entry.entry_id) {
+            match atomic_store.entry(entry_id) {
                 Some(atomic) if !atomic.changes_bullets.is_empty() => {
                     (atomic.changes_bullets.clone(), "changes_bullets")
                 }
-                _ => (entry.sub_bullets.clone(), "sub_bullets"),
+                _ => (fallback_sub_bullets.to_vec(), "sub_bullets"),
             };
         let bullets: &[String] = &bullets_owned;
         for i in 0..bullets.len() {
@@ -522,7 +574,7 @@ fn check_changelog_entry_rule(
                     out.push(make_violation(
                         rule,
                         doc_path,
-                        &entry.entry_id,
+                        entry_id,
                         None,
                         format!(
                             "{}[{}] vs {}[{}] jaccard = {:.3} >= {:.3} (boilerplate)",
@@ -825,6 +877,7 @@ fn has_enumeration_pattern(para: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mnemosyne_schema::ChangelogEntry;
 
     fn empty_doc() -> ParsedDoc {
         ParsedDoc::default()
@@ -1185,6 +1238,117 @@ mod tests {
         assert!(v
             .iter()
             .any(|x| x.rule_id == "terminology_consistency" && x.message.contains("`tc8`")));
+    }
+
+    /// R395 parity: `check_style_atomic` (store-direct) produces the same
+    /// findings as `check_style` (parsed-markdown) for a workspace whose
+    /// parsed doc is the store rendered. Builds a store + the equivalent
+    /// ParsedDoc (sections rendered store-first, so bodies match) and asserts
+    /// the `(rule_id, section_id, severity, message)` sets are identical. Only
+    /// `line_anchor` is allowed to differ (None in the store-direct path).
+    #[test]
+    fn check_style_atomic_matches_parsed_findings() {
+        use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection};
+
+        // Glossary with a variant that fires terminology_consistency.
+        let mut glossary = BTreeMap::new();
+        let mut variants = BTreeSet::new();
+        variants.insert("salsa".to_string());
+        glossary.insert("Salsa".to_string(), variants);
+        let mut ruleset = default_ruleset();
+        for r in ruleset.iter_mut() {
+            if r.rule_id == "terminology_consistency" {
+                r.threshold = StyleThreshold::GlossaryLookup(glossary.clone());
+            }
+        }
+
+        // A section whose synthesized prose contains the variant `salsa`.
+        let mut store = AtomicStore::default();
+        store.sections.insert(
+            "engine/1".into(),
+            AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    title: "1".into(),
+                    parent_doc: "GENERATED.md".into(),
+                    parent_section: None,
+                    ..Default::default()
+                },
+                intent: Some("the salsa incremental layer drives this".into()),
+                ..Default::default()
+            },
+        );
+        // A changelog entry with two near-identical bullets (jaccard boilerplate).
+        store.changelog_entries.insert(
+            "Round 1".into(),
+            AtomicChangelogEntry {
+                changes_bullets: vec![
+                    "the salsa incremental layer drives this engine".into(),
+                    "the salsa incremental layer drives this engine now".into(),
+                ],
+                ..Default::default()
+            },
+        );
+
+        // Equivalent ParsedDoc: one section (body resolves store-first via
+        // atomic_section_id) + the changelog entry id (sub_bullets empty, store
+        // is the jaccard source in both paths).
+        let mut doc = ParsedDoc::default();
+        doc.sections.push(Section {
+            section_id: "engine/1".into(),
+            parent_doc: "GENERATED.md".into(),
+            parent_section: None,
+            title: "1".into(),
+            decision_status: mnemosyne_core::DecisionStatus::Active,
+            atomic_section_id: Some("engine/1".into()),
+        });
+        doc.changelog_entries.push(changelog_entry_stub("Round 1"));
+
+        let parsed = check_style("docs/GENERATED.md", &doc, &store, &ruleset);
+        let atomic = check_style_atomic("docs/GENERATED.md", &store, &ruleset);
+
+        let sev_label = |s: StyleSeverity| match s {
+            StyleSeverity::Warn => "warn",
+            StyleSeverity::Info => "info",
+        };
+        let norm = |v: &[StyleViolation]| -> Vec<(String, String, &'static str, String)> {
+            let mut k: Vec<_> = v
+                .iter()
+                .map(|x| {
+                    (
+                        x.rule_id.clone(),
+                        x.section_id.clone(),
+                        sev_label(x.severity),
+                        x.message.clone(),
+                    )
+                })
+                .collect();
+            k.sort();
+            k
+        };
+        assert_eq!(
+            norm(&parsed),
+            norm(&atomic),
+            "store-direct style findings must match parsed-markdown findings"
+        );
+        // Sanity: both actually fired the terminology + jaccard rules.
+        assert!(atomic
+            .iter()
+            .any(|x| x.rule_id == "terminology_consistency"));
+        assert!(atomic
+            .iter()
+            .any(|x| x.rule_id == "boilerplate_repetition_jaccard"));
+    }
+
+    /// Build a parsed ChangelogEntry carrying only the entry_id (the jaccard
+    /// source is the atomic store in both style paths, so sub_bullets stay
+    /// empty here).
+    fn changelog_entry_stub(entry_id: &str) -> mnemosyne_schema::ChangelogEntry {
+        mnemosyne_schema::ChangelogEntry {
+            entry_id: entry_id.to_string(),
+            parent_changelog_entry: None,
+            sub_bullets: Vec::new(),
+            frozen_at_transaction_time: 0,
+        }
     }
 
     /// End-to-end roundtrip — render a section via `render_section`,
