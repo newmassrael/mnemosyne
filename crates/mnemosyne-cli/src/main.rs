@@ -172,6 +172,9 @@ fn run(args: &[String]) -> Result<()> {
         "query" => cmd_query(prog, &args[2..]),
         "add-section" => atomic_cli::cmd_add_section(&workspace_anchor()?, &args[2..]),
         "import-sections" => atomic_cli::cmd_import_sections(&workspace_anchor()?, &args[2..]),
+        "import-epub-anchors" => {
+            atomic_cli::cmd_import_epub_anchors(&workspace_anchor()?, &args[2..])
+        }
         "style-check" => cmd_style_check(prog, &args[2..]),
         "list-docs" => cmd_list_docs(),
         // atomic mutate API surface.
@@ -365,6 +368,10 @@ fn print_help(prog: &str) {
     println!(" {} add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]", prog);
     println!(
         " {} import-sections --manifest <path.json> [--sidecar <path>] [--no-regenerate] [--json]",
+        prog
+    );
+    println!(
+        " {} import-epub-anchors --anchors <epub-anchor-map.json> [--sidecar <path>] [--no-regenerate] [--json]",
         prog
     );
     println!("   bulk create from a JSON array of {{section_id,parent_doc,title,parent_section?,normative_excerpt?}};");

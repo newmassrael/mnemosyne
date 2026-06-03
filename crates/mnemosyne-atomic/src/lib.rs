@@ -169,6 +169,15 @@ pub struct AtomicSection {
     /// rev side-by-side via `Active` + `Superseded` Sections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normative_excerpt: Option<NormativeExcerpt>,
+
+    /// EPUB-SSOT locator (R393) — where this Section lives in the workspace's
+    /// normalized EPUB. Set by `import-epub-anchors` from the medium-forge
+    /// `epub-anchor-map/v1` output. Adapter-local (EPUB-specific, not L0). A
+    /// derived, mutable pointer; `None` when no EPUB is mirrored. Not rendered
+    /// to GENERATED.md (machine pointer, not human content) so round-trip is
+    /// unaffected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epub_locator: Option<EpubLocator>,
 }
 
 /// serde `skip_serializing_if` predicate for [`AtomicSection::coverage_expectation`]:
@@ -201,6 +210,26 @@ pub struct NormativeExcerpt {
     /// at, so partially-migrated workspaces stay coherent under spec
     /// rev bumps.
     pub source_revision: String,
+}
+
+/// EPUB-SSOT locator (R393) — where this Section lives inside the workspace's
+/// normalized EPUB (produced by the `medium-forge` HTML backend, contract
+/// `epub-anchor-map/v1`). The EPUB is the content SSOT; this pointer lets a
+/// reader/viewer resolve the Section's position to overlay facts on the
+/// rendered spec. Mutable (unlike the frozen `normative_excerpt`): re-importing
+/// an updated anchor map overwrites it, since it is a derived pointer, not an
+/// authored audit value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EpubLocator {
+    /// EPUB spine document holding this Section (e.g. `OEBPS/spec.xhtml`).
+    pub spine_href: String,
+    /// Element `id` within that document — equals the `section_id`, the join
+    /// key the medium-forge backend stamps onto the Section's container.
+    pub fragment: String,
+    /// Canonical Fragment Identifier for precise location. Optional: the
+    /// fragment alone resolves the Section; CFI is for sub-element precision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cfi: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -576,7 +605,13 @@ pub enum AtomicStoreError {
 // default is the conservative no-op, not a silently-blessed claim, so it needs
 // no migration report (contrast v4→v5's `kind = Implements` default, which was
 // a reviewable claim surfaced by `report-binding-migration`).
-const CURRENT_SCHEMA_VERSION: u32 = 6;
+// v6→v7 adds `AtomicSection.epub_locator` (EPUB-SSOT pointer, R393). Same
+// declarative new-field-default pattern: a pre-v7 store has no `epub_locator`
+// key, serde `#[serde(default)]` fills `None` (no EPUB mirrored) — byte-identical
+// on disk, no behavior change. So there is deliberately NO `schema_version < 7`
+// arm in `load`. The locator is a derived pointer (set by `import-epub-anchors`),
+// not an authored value, so no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 7;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -1981,6 +2016,43 @@ pub fn set_section_coverage_expectation(
     )
 }
 
+/// R393 — bulk-set EPUB-SSOT locators from a medium-forge `epub-anchor-map/v1`.
+/// Each `(section_id, locator)` whose section exists has its `epub_locator`
+/// overwritten; ids absent from the store are returned as `unmatched` (the
+/// caller decides whether that is an error). One in-memory pass + one save
+/// (single write path, like `import_sections`) — not N saves. The locator is a
+/// derived pointer, so overwrite is allowed (no frozen-ledger gate).
+pub fn import_epub_anchors(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    anchors: &[(String, EpubLocator)],
+) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    let mut applied = 0usize;
+    let mut unmatched = Vec::new();
+    for (section_id, locator) in anchors {
+        match store.sections.get_mut(section_id) {
+            Some(section) => {
+                section.epub_locator = Some(locator.clone());
+                applied += 1;
+            }
+            None => unmatched.push(section_id.clone()),
+        }
+    }
+    if applied == 0 {
+        return Err(AtomicMutateError::NotFound(
+            "import_epub_anchors: no anchor matched a section in the store".to_string(),
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "import_epub_anchors",
+        "anchors",
+        &applied.to_string(),
+    )?;
+    Ok((receipt, unmatched))
+}
+
 fn validate_binding_file(raw: &str) -> Result<String, AtomicMutateError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -2662,7 +2734,7 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 6);
+        assert_eq!(reloaded.schema_version, 7);
     }
 
     #[test]
@@ -2701,7 +2773,7 @@ mod tests {
         );
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 6);
+        assert_eq!(reloaded.schema_version, 7);
     }
 
     #[test]
@@ -2757,7 +2829,7 @@ mod tests {
         // Save then reload: publishable_* now persisted, schema bumps to CURRENT.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 6);
+        assert_eq!(reloaded.schema_version, 7);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
     }
@@ -3942,7 +4014,7 @@ mod tests {
         // After save (bumps to CURRENT) the report is gone — migration is one-time.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 6);
+        assert_eq!(reloaded.schema_version, 7);
         assert!(reloaded.kind_migration_report().is_none());
     }
 
@@ -4563,7 +4635,7 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 6);
+        assert_eq!(reloaded.schema_version, 7);
         let entry = reloaded.changelog_entries.get("Round 999").unwrap();
         assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
         assert_eq!(
@@ -5073,6 +5145,81 @@ mod tests {
             .unwrap();
         assert_eq!(ne.text, "verbatim spec");
         assert_eq!(ne.source_revision, "2024-rec");
+    }
+
+    #[test]
+    fn import_epub_anchors_sets_locator_reports_unmatched_and_overwrites() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        import_sections(
+            &mut store,
+            &path,
+            &[imp(
+                "scxml-3.13",
+                "docs/GENERATED.md",
+                "Selecting Transitions",
+            )],
+        )
+        .unwrap();
+        let loc = EpubLocator {
+            spine_href: "OEBPS/spec.xhtml".to_string(),
+            fragment: "scxml-3.13".to_string(),
+            cfi: Some("epubcfi(/6/4!/4)".to_string()),
+        };
+        // one matching id + one absent id
+        let (_r, unmatched) = import_epub_anchors(
+            &mut store,
+            &path,
+            &[
+                ("scxml-3.13".to_string(), loc.clone()),
+                ("scxml-absent".to_string(), loc.clone()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(unmatched, vec!["scxml-absent".to_string()]);
+        assert_eq!(
+            store.section("scxml-3.13").unwrap().epub_locator.as_ref(),
+            Some(&loc)
+        );
+        // overwrite is allowed (derived pointer, not frozen)
+        let loc2 = EpubLocator {
+            spine_href: "OEBPS/ch3.xhtml".to_string(),
+            fragment: "scxml-3.13".to_string(),
+            cfi: None,
+        };
+        import_epub_anchors(
+            &mut store,
+            &path,
+            &[("scxml-3.13".to_string(), loc2.clone())],
+        )
+        .unwrap();
+        assert_eq!(
+            store.section("scxml-3.13").unwrap().epub_locator,
+            Some(loc2)
+        );
+    }
+
+    #[test]
+    fn import_epub_anchors_errors_when_nothing_matches() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        import_sections(
+            &mut store,
+            &path,
+            &[imp("scxml-1", "docs/GENERATED.md", "X")],
+        )
+        .unwrap();
+        let loc = EpubLocator {
+            spine_href: "OEBPS/spec.xhtml".to_string(),
+            fragment: "scxml-9".to_string(),
+            cfi: None,
+        };
+        assert!(matches!(
+            import_epub_anchors(&mut store, &path, &[("scxml-9".to_string(), loc)]),
+            Err(AtomicMutateError::NotFound(_))
+        ));
     }
 
     #[test]

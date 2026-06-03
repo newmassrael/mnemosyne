@@ -4029,3 +4029,20 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 393 — EPUB-SSOT epub_locator ingestion — Add AtomicSection.epub_locator (schema v6→v7) + import-epub-anchors verb ingesting the medium-forge epub-anchor-map; a derived pointer (not rendered) linking each section to its EPUB location for the EPUB-SSOT viewer.
+
+**Changes**:
+- AtomicSection.epub_locator (EpubLocator spine_href/fragment/cfi); schema v6→v7 serde-default None
+- import-epub-anchors verb ingests epub-anchor-map/v1; bulk single-save; unmatched ids noted not error
+- not rendered to GENERATED.md (machine pointer) so round-trip unaffected
+
+
+
+**Verification**:
+- atomic lib 125/0; workspace 100 binaries 0 fail; validate-workspace round-trip 1/1 GENERATED sync
+- clippy -D + fmt clean; v6 dogfood store loads under CURRENT=7 (no migration arm); +2 unit +1 smoke
+
+
+
+
+

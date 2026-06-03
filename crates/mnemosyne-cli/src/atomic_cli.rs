@@ -330,6 +330,71 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
     )
 }
 
+/// R393 — ingest a medium-forge `epub-anchor-map/v1` file, setting each
+/// matching Section's `epub_locator` (EPUB-SSOT pointer). One save; ids absent
+/// from the store are reported as a note, not an error.
+pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct AnchorEntry {
+        id: String,
+        locator: mnemosyne_atomic::EpubLocator,
+    }
+    #[derive(serde::Deserialize)]
+    struct AnchorMap {
+        anchors: Vec<AnchorEntry>,
+    }
+    let mut anchors_path: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut regenerate = true;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--anchors" => {
+                anchors_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--anchors missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            "--no-regenerate" => regenerate = false,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let path = anchors_path.ok_or_else(|| anyhow!("--anchors <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read anchors {}", path))?;
+    let map: AnchorMap = serde_json::from_str(&raw)
+        .with_context(|| format!("parse {} (epub-anchor-map/v1)", path))?;
+    let pairs: Vec<(String, mnemosyne_atomic::EpubLocator)> =
+        map.anchors.into_iter().map(|a| (a.id, a.locator)).collect();
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    let outcome = mnemosyne_atomic::import_epub_anchors(&mut store, &sidecar_path, &pairs);
+    if let Ok((_, unmatched)) = &outcome {
+        if !unmatched.is_empty() {
+            eprintln!(
+                "note: {} anchor id(s) matched no section in the store",
+                unmatched.len()
+            );
+        }
+    }
+    finalize_mutate(
+        workspace_root,
+        outcome.map(|(receipt, _)| receipt),
+        sidecar.as_deref(),
+        regenerate,
+        json,
+    )
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<()> {
