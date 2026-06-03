@@ -695,9 +695,27 @@ severity = "reject"   # | "warn" | "info" (default reject)
 Defaults to `reject` (a cache diverging from its own hash is corruption,
 never a legitimate intermediate state — contrast `[spec_drift]`'s `warn`,
 where a trailing rev during partial migration is expected). Empty-hash
-excerpts are *unrevalidatable* (hand-authored / pre-v8, never imported
-from an EPUB): they are counted for context but never gate — that
-work-list is owned by `report-excerpt-hash-backfill`.
+excerpts are *unrevalidatable* (never sealed): they are counted for context
+but never gate — that work-list is owned by `report-excerpt-hash-backfill`.
+
+**Two text-source models (R406).** `text_sha256` is the integrity anchor
+over whichever text is *authoritative* — and that source is the consumer's
+choice:
+
+1. **EPUB-projected**: `import-epub-excerpts` projects `text` + `text_sha256`
+   from a committed EPUB. Use when the EPUB extraction granularity is the
+   text you want.
+2. **Consumer-authored**: author the text via `import-sections` (your own
+   extractor, any granularity), then `seal-excerpt-hashes` stamps
+   `text_sha256 = sha256(text)` on the already-stored text — sealing *your*
+   text as its own baseline. Use when your extractor is finer than or
+   differently scoped from the EPUB `div` granularity (e.g. heading→next-
+   heading direct-body excerpts that the EPUB's container-subtree extraction
+   would collapse or pollute).
+
+The EPUB-file pin (`epub_path` / `epub_sha256`) is *source provenance* in
+both models. `seal-excerpt-hashes` only fills **empty** hashes (a populated-
+but-wrong hash stays drift); it never overwrites `text`.
 
 **Symbol-level binding (record-only).** `Binding.symbol` accepts
 an opaque language-agnostic identifier and is preserved in the store

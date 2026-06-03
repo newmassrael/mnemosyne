@@ -65,15 +65,40 @@ map with your TOC to build an `import-sections` manifest:
 mnemosyne-cli import-sections --manifest manifest.json
 ```
 
-**Migration shortcut** (you already imported sections with hand-authored
-excerpts that have an empty `text_sha256`): skip the join and backfill the hash
-straight from the EPUB map — `import-epub-excerpts` refreshes `text` +
-`text_sha256` and preserves the authored `anchor_url` + `source_revision`:
+### Choosing the text model
+
+`text_sha256` anchors whichever text is **authoritative** — pick the source:
+
+- **EPUB-projected** — the EPUB extraction *is* your text. Use
+  `import-epub-excerpts` (above / below).
+- **Consumer-authored** — your own extractor produces the text (e.g. at a
+  granularity finer than the EPUB `div` scope) and *that* is the SSOT; the EPUB
+  is pinned for provenance only. Author the text via `import-sections`, then
+  **seal** it.
+
+> **Do not blindly `import-epub-excerpts` over hand-authored excerpts.**
+> `medium-forge` extracts the *container subtree* (`div1`..`div4`
+> `text_content()`, including sub-sections and the heading), which can be far
+> coarser than a heading→next-heading direct-body excerpt. Projecting it would
+> overwrite precise excerpts with collapsed/overlapping blobs. If your extractor
+> is the SSOT, **seal**, don't project.
+
+**Migration A — EPUB is your text** (empty-hash excerpts, EPUB granularity OK):
 
 ```bash
 mnemosyne-cli report-excerpt-hash-backfill          # lists empty-hash excerpts
 mnemosyne-cli import-epub-excerpts --anchors out/anchors.json
 mnemosyne-cli report-excerpt-hash-backfill          # now empty
+```
+
+**Migration B — your extractor is the SSOT** (text already in the store, just
+seal it as its own baseline; `text` is never touched):
+
+```bash
+mnemosyne-cli report-excerpt-hash-backfill          # lists empty-hash excerpts
+mnemosyne-cli seal-excerpt-hashes                   # text_sha256 = sha256(text)
+mnemosyne-cli report-excerpt-hash-backfill          # now empty
+mnemosyne-cli validate-content-drift                # sealed text revalidatable
 ```
 
 ### 3. Pin and commit the EPUB

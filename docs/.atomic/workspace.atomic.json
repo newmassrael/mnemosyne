@@ -6655,6 +6655,48 @@
         "Remaining EPUB-SSOT candidates are all consumer-pull, YAGNI until requested: per-chapter spine split in medium-forge (single spec.xhtml today), pinion native renderer (path B), PDF backend for automotive specs.",
         "With R405 the EPUB-as-content-SSOT loop is closed Mnemosyne-side: extract (medium-forge v2) then import (import-sections / import-epub-excerpts) then pin (epub_sha256) then revalidate offline (validate-content-drift). SCE can now formally adopt."
       ]
+    },
+    "Round 406 — seal-excerpt-hashes: seal consumer-authored excerpt text as its own revalidation baseline": {
+      "decision_summary": "SCE's RFC reply showed that EPUB-as-content-SSOT is one model, not the only one: a consumer whose excerpt text is authored by its own extractor (SCE's direct-body scope is finer than the EPUB div granularity — 0/196 byte-identical, projecting EPUB text would collapse 196 precise excerpts into 167 heading-polluted overlapping blobs) treats its own text as SSOT, with the EPUB file pin as source provenance only. R403 deleted the hand-authoring setter assuming EPUB is the sole text source, leaving no way to fill text_sha256 from already-stored text (report-excerpt-hash-backfill reports only; import-epub-excerpts is EPUB-sourced). seal_excerpt_hashes fills the gap: for each excerpt with an empty text_sha256, set text_sha256 = sha256(text), sealing the authored text as its own revalidation baseline — never overwriting text and never re-sealing a populated hash (a wrong populated hash stays drift for validate-content-drift). This unblocks SCE's 196 excerpts without regression and generalizes the model: excerpt text may be EPUB-projected or consumer-authored, unified by the integrity hash and the EPUB-file provenance pin.",
+      "changes_bullets": [
+        "New seal_excerpt_hashes primitive + seal-excerpt-hashes CLI verb: stamp text_sha256 = sha256(text) on every excerpt whose hash is empty, sealing the already-stored (consumer-authored) text as its own revalidation baseline. Never overwrites text or a populated hash; idempotent (a second run seals 0).",
+        "Generalizes the content-SSOT model after SCE's RFC: excerpt text may be EPUB-projected (import-epub-excerpts) OR consumer-authored (import-sections then seal). The EPUB-file pin (R405) is source provenance either way; text_sha256 is the integrity anchor over whichever text is authoritative. SCE's direct-body extractor is finer than the EPUB div granularity (0/196 byte-identical), so projecting EPUB text would regress 196 precise excerpts into 167 collapsed blobs.",
+        "report-excerpt-hash-backfill hint now names both fills (seal from stored text, or import-epub-excerpts from EPUB).",
+        "SCHEMA_GUIDE.md + EPUB_SSOT_RUNBOOK.md document the two models (EPUB-projected vs consumer-authored-sealed)."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "atomic: seal fills empty hashes so text_sha256_matches becomes Some(true); leaves a populated hash untouched; idempotent second run seals 0; post-seal scan_content_drift is clean.",
+        "CLI smoke: seal then report-excerpt-hash-backfill shows 0 backlog; seal then validate-content-drift exits 0."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "SCE ask 1b (import-sections overwrite of existing sections) declined: keep create-only with divergent-reject (the no-silent-overwrite safety); seal-excerpt-hashes is the targeted fix that does not loosen import-sections.",
+        "SCE ask 2 (medium-forge direct-body extraction option + Appendix-D anchor-collapse prohibition) deferred: only needed if a consumer wants EPUB-PROJECTED text at finer-than-div granularity; SCE declines EPUB text, so it is not on SCE's path. Build when a consumer wants EPUB projection below div scope.",
+        "Open: updating an existing excerpt's authored text post-create still requires supersede plus recreate (no in-place text-update setter); revisit if SCE extractor revisions need in-place text update."
+      ],
+      "publishable_decision_summary": "SCE's RFC reply showed that EPUB-as-content-SSOT is one model, not the only one: a consumer whose excerpt text is authored by its own extractor (SCE's direct-body scope is finer than the EPUB div granularity — 0/196 byte-identical, projecting EPUB text would collapse 196 precise excerpts into 167 heading-polluted overlapping blobs) treats its own text as SSOT, with the EPUB file pin as source provenance only. R403 deleted the hand-authoring setter assuming EPUB is the sole text source, leaving no way to fill text_sha256 from already-stored text (report-excerpt-hash-backfill reports only; import-epub-excerpts is EPUB-sourced). seal_excerpt_hashes fills the gap: for each excerpt with an empty text_sha256, set text_sha256 = sha256(text), sealing the authored text as its own revalidation baseline — never overwriting text and never re-sealing a populated hash (a wrong populated hash stays drift for validate-content-drift). This unblocks SCE's 196 excerpts without regression and generalizes the model: excerpt text may be EPUB-projected or consumer-authored, unified by the integrity hash and the EPUB-file provenance pin.",
+      "publishable_changes_bullets": [
+        "New seal_excerpt_hashes primitive + seal-excerpt-hashes CLI verb: stamp text_sha256 = sha256(text) on every excerpt whose hash is empty, sealing the already-stored (consumer-authored) text as its own revalidation baseline. Never overwrites text or a populated hash; idempotent (a second run seals 0).",
+        "Generalizes the content-SSOT model after SCE's RFC: excerpt text may be EPUB-projected (import-epub-excerpts) OR consumer-authored (import-sections then seal). The EPUB-file pin (R405) is source provenance either way; text_sha256 is the integrity anchor over whichever text is authoritative. SCE's direct-body extractor is finer than the EPUB div granularity (0/196 byte-identical), so projecting EPUB text would regress 196 precise excerpts into 167 collapsed blobs.",
+        "report-excerpt-hash-backfill hint now names both fills (seal from stored text, or import-epub-excerpts from EPUB).",
+        "SCHEMA_GUIDE.md + EPUB_SSOT_RUNBOOK.md document the two models (EPUB-projected vs consumer-authored-sealed)."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "atomic: seal fills empty hashes so text_sha256_matches becomes Some(true); leaves a populated hash untouched; idempotent second run seals 0; post-seal scan_content_drift is clean.",
+        "CLI smoke: seal then report-excerpt-hash-backfill shows 0 backlog; seal then validate-content-drift exits 0."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "SCE ask 1b (import-sections overwrite of existing sections) declined: keep create-only with divergent-reject (the no-silent-overwrite safety); seal-excerpt-hashes is the targeted fix that does not loosen import-sections.",
+        "SCE ask 2 (medium-forge direct-body extraction option + Appendix-D anchor-collapse prohibition) deferred: only needed if a consumer wants EPUB-PROJECTED text at finer-than-div granularity; SCE declines EPUB text, so it is not on SCE's path. Build when a consumer wants EPUB projection below div scope.",
+        "Open: updating an existing excerpt's authored text post-create still requires supersede plus recreate (no in-place text-update setter); revisit if SCE extractor revisions need in-place text update."
+      ]
     }
   },
   "inventory_entries": {},

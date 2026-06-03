@@ -2211,6 +2211,57 @@ pub fn import_epub_excerpts(
     Ok((receipt, unmatched))
 }
 
+/// R406 — seal each excerpt whose `text_sha256` is empty by stamping
+/// `text_sha256 = sha256(text)`, making the already-stored (consumer-authored)
+/// text its own offline revalidation baseline.
+///
+/// For consumers whose excerpt text is authored by their own extractor at a
+/// granularity finer than or different from the EPUB `div` scope, so the EPUB
+/// is NOT the per-section text source (the EPUB-file pin (R405) remains the
+/// *source provenance*). The complement of [`import_epub_excerpts`], which
+/// projects text + hash FROM an EPUB: this never touches `text`, only fills the
+/// empty hash.
+///
+/// Only EMPTY hashes are sealed — a populated-but-wrong hash is left as drift
+/// for [`crate::AtomicStore`]'s content scan to catch (never silently
+/// re-sealed). Idempotent: a second run finds nothing empty and writes nothing
+/// (`written_bytes` 0). Returns the count sealed.
+pub fn seal_excerpt_hashes(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+) -> Result<(AtomicMutateReceipt, usize), AtomicMutateError> {
+    let mut sealed = 0usize;
+    for section in store.sections.values_mut() {
+        if let Some(ne) = section.normative_excerpt.as_mut() {
+            if ne.text_sha256.is_empty() {
+                ne.text_sha256 = sha256_hex(ne.text.as_bytes());
+                sealed += 1;
+            }
+        }
+    }
+    if sealed == 0 {
+        // Idempotent no-op: nothing to seal → nothing to persist.
+        return Ok((
+            AtomicMutateReceipt {
+                primitive: "seal_excerpt_hashes".to_string(),
+                target_kind: "excerpts",
+                target_id: "0 sealed".to_string(),
+                sidecar_path: sidecar_path.display().to_string(),
+                written_bytes: 0,
+            },
+            0,
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "seal_excerpt_hashes",
+        "excerpts",
+        &sealed.to_string(),
+    )?;
+    Ok((receipt, sealed))
+}
+
 fn validate_binding_file(raw: &str) -> Result<String, AtomicMutateError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -5381,6 +5432,76 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, AtomicMutateError::NotFound(_)));
+    }
+
+    #[test]
+    fn seal_excerpt_hashes_fills_empty_from_stored_text() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        // consumer-authored text, empty hash (the import_sections-inline path).
+        seed_excerpt(
+            &mut store,
+            &path,
+            "x",
+            "direct-body text",
+            "https://x.org/#x",
+            "rev",
+        );
+        let (_r, sealed) = seal_excerpt_hashes(&mut store, &path).unwrap();
+        assert_eq!(sealed, 1);
+        let ne = store
+            .section("x")
+            .unwrap()
+            .normative_excerpt
+            .as_ref()
+            .unwrap();
+        // text is untouched; the hash now matches it (revalidatable).
+        assert_eq!(ne.text, "direct-body text");
+        assert_eq!(ne.text_sha256, sha256_hex(b"direct-body text"));
+        assert_eq!(ne.text_sha256_matches(), Some(true));
+    }
+
+    #[test]
+    fn seal_excerpt_hashes_leaves_populated_hash_untouched() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_excerpt(&mut store, &path, "x", "text", "https://x.org/#x", "rev");
+        // simulate a populated-but-wrong hash (out-of-band) — must NOT be re-sealed.
+        store
+            .sections
+            .get_mut("x")
+            .unwrap()
+            .normative_excerpt
+            .as_mut()
+            .unwrap()
+            .text_sha256 = "deadbeef".into();
+        let (_r, sealed) = seal_excerpt_hashes(&mut store, &path).unwrap();
+        assert_eq!(sealed, 0);
+        // left as drift (wrong hash) for the content scan to catch.
+        assert_eq!(
+            store
+                .section("x")
+                .unwrap()
+                .normative_excerpt
+                .as_ref()
+                .unwrap()
+                .text_sha256,
+            "deadbeef"
+        );
+    }
+
+    #[test]
+    fn seal_excerpt_hashes_idempotent_second_run_writes_nothing() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_excerpt(&mut store, &path, "x", "text", "https://x.org/#x", "rev");
+        seal_excerpt_hashes(&mut store, &path).unwrap();
+        let (receipt, sealed) = seal_excerpt_hashes(&mut store, &path).unwrap();
+        assert_eq!(sealed, 0);
+        assert_eq!(receipt.written_bytes, 0);
     }
 
     // ---- A2: import_sections (bulk create) ----
