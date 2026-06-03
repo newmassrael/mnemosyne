@@ -15,6 +15,11 @@ and choose, if the defaults don't fit your HTML:
   * --content-xpath     the region to publish              (default: //body)
   * --section-classes   div classes treated as a section   (default: div1..div4)
                         container (<section> always counts)
+  * --text-scope        excerpt text scope (default: container).  'heading'
+                        emits each section's direct body up to the next heading,
+                        heading excluded (body-only) — for ids finer than the
+                        div granularity (sub-div headings); avoids collapsing
+                        distinct ids onto one container blob.
 
 Output:
   <out>/spec.epub       standard EPUB 3 (epubcheck-clean)
@@ -30,8 +35,13 @@ Usage:
              [--title T] [--revision R] [--source-url U]
 """
 import argparse, hashlib, json, os, zipfile
+from html.parser import HTMLParser
 from urllib.parse import urldefrag
 from lxml import html as L, etree
+
+HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+# Tags whose text content is not part of the readable prose body.
+DROP_TEXT_TAGS = {"script", "style"}
 
 XHTML = "http://www.w3.org/1999/xhtml"
 DROP_TAGS = {"script", "link", "style", "meta", "noscript"}
@@ -40,6 +50,77 @@ DROP_ATTRS = {"name", "border", "cellpadding", "cellspacing", "valign", "align",
               "bgcolor", "nowrap", "frame", "rules", "width", "height", "hspace",
               "vspace", "clear", "compact", "type", "start", "lang", "summary",
               "char", "charoff", "axis", "abbr", "scope", "headers"}
+
+
+class BodyExtractor(HTMLParser):
+    """Heading-delimited direct-body text extractor (R407, --text-scope heading).
+
+    One document-order pass: each heading (h1..h6) starts a new section whose
+    body is the text that follows it up to the next heading of any level —
+    descendant subsections belong to their own headings, not the parent's. The
+    heading text itself is EXCLUDED (the body-only canonical rule: the heading
+    already lives in the section's title). script/style text is dropped and
+    whitespace is collapsed. Keyed by the heading's `id` (modern) or an
+    in-heading `<a id>` (legacy). Ported from SCE's proven
+    `scxml_extract_excerpts.py` so the EPUB text matches the consumer's
+    section granularity (cutover diff fidelity)."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.bodies = {}  # heading anchor id -> direct body text
+        self._cur_anchor = None
+        self._in_heading = False
+        self._heading_anchor = None
+        self._buf = []
+        self._drop_depth = 0
+
+    def _flush(self):
+        if self._cur_anchor is not None:
+            self.bodies[self._cur_anchor] = " ".join("".join(self._buf).split())
+        self._buf = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in HEADING_TAGS:
+            self._flush()
+            self._in_heading = True
+            self._heading_anchor = dict(attrs).get("id")
+        elif tag == "a" and self._in_heading and self._heading_anchor is None:
+            a = dict(attrs).get("id")  # legacy in-heading anchor
+            if a:
+                self._heading_anchor = a
+        elif tag in DROP_TEXT_TAGS:
+            self._drop_depth += 1
+
+    def handle_startendtag(self, tag, attrs):
+        if tag == "a" and self._in_heading and self._heading_anchor is None:
+            a = dict(attrs).get("id")
+            if a:
+                self._heading_anchor = a
+
+    def handle_endtag(self, tag):
+        if tag in HEADING_TAGS and self._in_heading:
+            self._in_heading = False
+            self._cur_anchor = self._heading_anchor  # body now accumulates here
+        elif tag in DROP_TEXT_TAGS and self._drop_depth > 0:
+            self._drop_depth -= 1
+
+    def handle_data(self, data):
+        if self._in_heading or self._drop_depth:
+            return
+        if self._cur_anchor is not None:
+            self._buf.append(data)
+
+    def close(self):
+        super().close()
+        self._flush()
+
+
+def heading_bodies(html_text):
+    """{heading anchor id -> direct body text} for --text-scope heading."""
+    bx = BodyExtractor()
+    bx.feed(html_text)
+    bx.close()
+    return bx.bodies
 
 
 def anchor_of(value):
@@ -168,6 +249,12 @@ def main():
                     help="region to publish (default: //body)")
     ap.add_argument("--section-classes", default="div1,div2,div3,div4",
                     help="div classes treated as section containers")
+    ap.add_argument("--text-scope", choices=("container", "heading"),
+                    default="container",
+                    help="excerpt text scope: 'container' = section container "
+                         "subtree (default); 'heading' = each section's direct "
+                         "body up to the next heading, heading excluded "
+                         "(body-only; for ids finer than the div granularity)")
     ap.add_argument("--title", default="Document (medium-forge EPUB)")
     ap.add_argument("--revision", default="")
     ap.add_argument("--source-url", default="")
@@ -198,23 +285,59 @@ def main():
     write_epub(os.path.join(a.out, "spec.epub"), spec_bytes, a.title,
                a.revision, a.source_url)
 
+    # Excerpt text source. 'container' = section subtree (text_content of the
+    # located container — coarse: collapses sub-section ids onto one blob).
+    # 'heading' = each section's direct body, heading excluded (body-only) —
+    # for ids finer than the div granularity (R407).
+    bodies = heading_bodies(open(a.html, encoding="utf-8").read()) \
+        if a.text_scope == "heading" else {}
+
+    def excerpt_text(sid):
+        if a.text_scope == "heading":
+            return bodies.get(anchor_of(amap[sid]), "")
+        return " ".join(located[sid].text_content().split())
+
     anchors = []
     for sid in amap:
         if sid not in located:
             continue
-        # Verbatim section text as published in the EPUB, whitespace-collapsed
-        # for determinism. This is the normative excerpt the Rust store caches
-        # (NormativeExcerpt.text); text_sha256 lets the store re-hash and detect
-        # drift offline without re-extracting (epub-anchor-map/v2).
-        text = " ".join(located[sid].text_content().split())
-        anchors.append({
+        # The locator is always emitted (the EPUB position pointer, consumed by
+        # import-epub-anchors). The excerpt text (NormativeExcerpt.text + its
+        # text_sha256, consumed by import-epub-excerpts) is whitespace-collapsed
+        # for deterministic offline re-hashing (epub-anchor-map/v2).
+        entry = {
             "id": sid,
             "locator": {"spine_href": "OEBPS/spec.xhtml", "fragment": sid,
                         "cfi": f"epubcfi(/6/4!/4/*[@id='{sid}'])"},
-            "text": text,
-            "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "confidence": 1.0, "needs_review": False,
-        })
+        }
+        text = excerpt_text(sid)
+        if text:
+            entry["text"] = text
+            entry["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        else:
+            # Container-only section (no direct prose body): emit the locator but
+            # NO text/text_sha256, so import-epub-excerpts skips it (the pointer
+            # still lands via import-epub-anchors). Flag for the consumer.
+            entry["needs_review"] = True
+            entry["confidence"] = 0.0
+        anchors.append(entry)
+
+    # Anchor-collapse guard: distinct ids must never carry identical text+sha
+    # (it makes them indistinguishable and un-revalidatable per id). Signal any
+    # collision via needs_review + confidence 0.0 instead of silently emitting a
+    # duplicate sha (the container scope is prone to this; heading scope is not).
+    seen = {}
+    for e in anchors:
+        t = e.get("text")
+        if t is not None:
+            seen.setdefault(t, []).append(e)
+    for dupes in seen.values():
+        if len(dupes) > 1:
+            for e in dupes:
+                e["needs_review"] = True
+                e["confidence"] = 0.0
+
     json.dump({"schema": "epub-anchor-map/v2",
                "epub": {"path": "spec.epub", "revision": a.revision,
                         "source": {"kind": "html", "url": a.source_url}},

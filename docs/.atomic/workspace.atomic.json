@@ -6697,6 +6697,48 @@
         "SCE ask 2 (medium-forge direct-body extraction option + Appendix-D anchor-collapse prohibition) deferred: only needed if a consumer wants EPUB-PROJECTED text at finer-than-div granularity; SCE declines EPUB text, so it is not on SCE's path. Build when a consumer wants EPUB projection below div scope.",
         "Open: updating an existing excerpt's authored text post-create still requires supersede plus recreate (no in-place text-update setter); revisit if SCE extractor revisions need in-place text update."
       ]
+    },
+    "Round 407 — medium-forge heading-scope extraction (body-only) for finer-than-div section ids": {
+      "decision_summary": "SCE adopted the full EPUB-as-content-SSOT model (committed EPUB = authoritative excerpt text), un-holding ask 2. medium-forge must extract at HEADING granularity, not container subtree: W3C SCXML section ids are finer than div1..div4 (Appendix D has ~15 h4 function sections under one div1), so container.text_content() collapsed 29 distinct ids onto one blob (0/196 byte-identical). New --text-scope {container,heading}: heading mode emits each section's direct body (heading to next heading, descendants excluded) with the heading text excluded (the body-only canonical rule — the heading already lives in AtomicSection.title), porting SCE's proven heading-to-next-heading extractor for cutover diff fidelity. Container-only sections emit the locator only (no text), so import-epub-excerpts skips them while import-epub-anchors keeps the pointer. An anchor-collapse guard signals distinct ids that resolve to identical text via needs_review + confidence 0.0 rather than emitting a duplicate sha. EPUB rendering is unchanged; no Rust or schema change (import-epub-excerpts already overwrites text+text_sha256 unconditionally). Resolves the gating dependency for SCE's full EPUB-SSOT cutover.",
+      "changes_bullets": [
+        "medium-forge convert.py: new --text-scope {container,heading} (default container). heading mode extracts each anchored section's DIRECT body (its heading up to the next heading of any level, descendants excluded), with the heading text itself excluded (body-only canonical rule — the heading lives in AtomicSection.title). Ports SCE's proven heading-to-next-heading BodyExtractor (the algorithm that produced the correct 196), whitespace-collapsed, script/style dropped.",
+        "Container-only sections (blank direct body) emit the locator only (text + text_sha256 keys omitted) so import-epub-excerpts skips them while import-epub-anchors keeps the EPUB pointer.",
+        "Anchor-collapse guard (both scopes): distinct ids resolving to identical text get needs_review = true + confidence 0.0 instead of silently emitting a duplicate text + sha.",
+        "EPUB rendering is unchanged (still publishes full container subtrees); only the v2 text/text_sha256 field changes scope. No Rust or schema change — import-epub-excerpts already overwrites text + text_sha256 unconditionally.",
+        "README documents the two scopes + the body-only rule."
+      ],
+      "verification_bullets": [
+        "Ran convert.py on a fixture HTML (nested h2/h3/h4 plus an Appendix-style h4-under-one-div1): heading scope emits each heading's own direct body, heading text excluded, zero collapse; container scope reproduces the prior single-blob collapse. Fixture removed after.",
+        "Anchor-collapse guard verified: two ids forced onto identical text both surface needs_review true + confidence 0.0.",
+        "Rust workspace unaffected (Python-only change); validate-workspace green, validate-content-drift unchanged."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "heading set = h1-h6 (generic tool); SCE's proven extractor used h2-h4. No difference expected for W3C SCXML (title is h1 with no anchored section, body sections are h2-h4, no h5/h6); SCE's step-3 diff-review gate will catch any h1/h5/h6 edge. Flagged to SCE.",
+        "ask 2 resolved -> SCE unblocked for the full EPUB-SSOT cutover (vendor fixed medium-forge -> regenerate spec.epub + v2 anchors -> diff-review -> import-epub-excerpts -> pin epub_path/epub_sha256 -> validate-content-drift in CI). R406 seal stays the interim anchor; OPEN in-place authored-text setter stays YAGNI per SCE."
+      ],
+      "publishable_decision_summary": "SCE adopted the full EPUB-as-content-SSOT model (committed EPUB = authoritative excerpt text), un-holding ask 2. medium-forge must extract at HEADING granularity, not container subtree: W3C SCXML section ids are finer than div1..div4 (Appendix D has ~15 h4 function sections under one div1), so container.text_content() collapsed 29 distinct ids onto one blob (0/196 byte-identical). New --text-scope {container,heading}: heading mode emits each section's direct body (heading to next heading, descendants excluded) with the heading text excluded (the body-only canonical rule — the heading already lives in AtomicSection.title), porting SCE's proven heading-to-next-heading extractor for cutover diff fidelity. Container-only sections emit the locator only (no text), so import-epub-excerpts skips them while import-epub-anchors keeps the pointer. An anchor-collapse guard signals distinct ids that resolve to identical text via needs_review + confidence 0.0 rather than emitting a duplicate sha. EPUB rendering is unchanged; no Rust or schema change (import-epub-excerpts already overwrites text+text_sha256 unconditionally). Resolves the gating dependency for SCE's full EPUB-SSOT cutover.",
+      "publishable_changes_bullets": [
+        "medium-forge convert.py: new --text-scope {container,heading} (default container). heading mode extracts each anchored section's DIRECT body (its heading up to the next heading of any level, descendants excluded), with the heading text itself excluded (body-only canonical rule — the heading lives in AtomicSection.title). Ports SCE's proven heading-to-next-heading BodyExtractor (the algorithm that produced the correct 196), whitespace-collapsed, script/style dropped.",
+        "Container-only sections (blank direct body) emit the locator only (text + text_sha256 keys omitted) so import-epub-excerpts skips them while import-epub-anchors keeps the EPUB pointer.",
+        "Anchor-collapse guard (both scopes): distinct ids resolving to identical text get needs_review = true + confidence 0.0 instead of silently emitting a duplicate text + sha.",
+        "EPUB rendering is unchanged (still publishes full container subtrees); only the v2 text/text_sha256 field changes scope. No Rust or schema change — import-epub-excerpts already overwrites text + text_sha256 unconditionally.",
+        "README documents the two scopes + the body-only rule."
+      ],
+      "publishable_verification_bullets": [
+        "Ran convert.py on a fixture HTML (nested h2/h3/h4 plus an Appendix-style h4-under-one-div1): heading scope emits each heading's own direct body, heading text excluded, zero collapse; container scope reproduces the prior single-blob collapse. Fixture removed after.",
+        "Anchor-collapse guard verified: two ids forced onto identical text both surface needs_review true + confidence 0.0.",
+        "Rust workspace unaffected (Python-only change); validate-workspace green, validate-content-drift unchanged."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "heading set = h1-h6 (generic tool); SCE's proven extractor used h2-h4. No difference expected for W3C SCXML (title is h1 with no anchored section, body sections are h2-h4, no h5/h6); SCE's step-3 diff-review gate will catch any h1/h5/h6 edge. Flagged to SCE.",
+        "ask 2 resolved -> SCE unblocked for the full EPUB-SSOT cutover (vendor fixed medium-forge -> regenerate spec.epub + v2 anchors -> diff-review -> import-epub-excerpts -> pin epub_path/epub_sha256 -> validate-content-drift in CI). R406 seal stays the interim anchor; OPEN in-place authored-text setter stays YAGNI per SCE."
+      ]
     }
   },
   "inventory_entries": {},

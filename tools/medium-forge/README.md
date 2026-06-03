@@ -43,6 +43,7 @@ python3 convert.py \
     --out         out/ \
     [--content-xpath   '//div[@class="div1"]'] \  # what to publish (default //body)
     [--section-classes 'div1,div2,div3,div4']  \  # section containers
+    [--text-scope      container|heading]      \  # excerpt text scope (default container)
     [--title T] [--revision R] [--source-url U]
 
 epubcheck out/spec.epub      # → 0 errors / 0 warnings
@@ -84,11 +85,27 @@ python3 convert.py --html "$SNAP" --anchor-map out/scxml-anchor-map.json --out o
                 "confidence": 1.0, "needs_review": false } ] }
 ```
 
-`text` is the section's published text content, whitespace-collapsed for
-determinism — the normative excerpt the Mnemosyne store caches. `text_sha256`
-lets the store re-hash the cached string and detect drift offline without
-re-extracting. The v2 map stays backward-compatible with the locator-only
-importer (extra fields are ignored).
+`text` is the section's text, whitespace-collapsed for determinism — the
+normative excerpt the Mnemosyne store caches. `text_sha256` lets the store
+re-hash the cached string and detect drift offline without re-extracting. The
+v2 map stays backward-compatible with the locator-only importer (extra fields
+are ignored).
+
+### `--text-scope` (R407)
+
+| Scope | `text` is… | Use when |
+|---|---|---|
+| `container` (default) | the section **container subtree** (`text_content()` of the located `div`/`section`, incl. sub-sections + heading) | one anchored id per container |
+| `heading` | each section's **direct body** — its heading up to the next heading of any level, **heading text excluded** (body-only) | ids finer than the `div` granularity (sub-`div` headings, e.g. W3C SCXML Appendix-D `h4` function sections) |
+
+The **body-only canonical rule** (`heading` scope): the excerpt is the section's
+prose only — the heading is *not* part of `text` (it lives in the store's section
+title). A **container-only** section (no direct prose) emits its locator but omits
+`text`/`text_sha256`, so `import-epub-excerpts` skips it while `import-epub-anchors`
+still places the pointer. An **anchor collapse** — distinct ids resolving to
+identical text (the failure mode `container` scope hits for sub-`div` ids) — is
+flagged `needs_review: true`, `confidence: 0.0` and never emitted as a silent
+duplicate `text_sha256`. Heading set is `h1`..`h6`.
 
 ## Roadmap
 
