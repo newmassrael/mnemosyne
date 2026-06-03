@@ -56,12 +56,7 @@ fn import_epub_anchors_sets_locator_and_skips_unmatched() {
     fs::write(&apath, serde_json::to_string(&anchors).unwrap()).unwrap();
 
     let out = Command::new(cli())
-        .args([
-            "import-epub-anchors",
-            "--anchors",
-            apath.to_str().unwrap(),
-            "--no-regenerate",
-        ])
+        .args(["import-epub-anchors", "--anchors", apath.to_str().unwrap()])
         .current_dir(tmp.path())
         .output()
         .expect("cli exec");

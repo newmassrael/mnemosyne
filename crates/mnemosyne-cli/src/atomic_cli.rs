@@ -149,7 +149,6 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
     let mut intent: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -175,7 +174,6 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -184,10 +182,7 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_intent(&mut store, &sidecar_path, &section, &intent),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -207,7 +202,6 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut parent: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -247,7 +241,6 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -258,7 +251,6 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         mnemosyne_atomic::add_section(
             &mut store,
             &sidecar_path,
@@ -267,8 +259,6 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
             &title,
             parent_stripped.as_deref(),
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -277,14 +267,13 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
 /// atomic transaction. Manifest = a JSON array of
 /// `{section_id, parent_doc, title, parent_section?, normative_excerpt?}`.
 /// Per-entry 3-way: absent → create / byte-identical → no-op / divergent →
-/// reject the WHOLE manifest. One save + one regenerate for the batch (no-op
+/// reject the WHOLE manifest. One save for the batch (no-op
 /// entries don't count; an all-no-op manifest writes nothing). Reuses
 /// `add_section`'s in-memory core — the same single section-create write-path.
 pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut manifest: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -303,7 +292,6 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -320,10 +308,7 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         mnemosyne_atomic::import_sections(&mut store, &sidecar_path, &entries),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -344,7 +329,6 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
     let mut anchors_path: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -363,7 +347,6 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -384,13 +367,7 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
             );
         }
     }
-    finalize_mutate(
-        workspace_root,
-        outcome.map(|(receipt, _)| receipt),
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
 /// Round 287 — outline setter CLI surface. set_section_title sets the
@@ -400,7 +377,6 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
     let mut title: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -426,7 +402,6 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -435,10 +410,7 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_title(&mut store, &sidecar_path, &section, &title),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -449,7 +421,6 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
     let mut parent_doc: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -475,7 +446,6 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -484,10 +454,7 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_parent_doc(&mut store, &sidecar_path, &section, &parent_doc),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -501,7 +468,6 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
     let mut clear_parent = false;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -528,7 +494,6 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -543,15 +508,12 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_parent_section(
             &mut store,
             &sidecar_path,
             &section,
             parent_stripped.as_deref(),
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -745,7 +707,6 @@ fn cmd_set_changelog_publishable_string(
     let mut value: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -771,7 +732,6 @@ fn cmd_set_changelog_publishable_string(
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -779,13 +739,7 @@ fn cmd_set_changelog_publishable_string(
     let value = value.ok_or_else(|| anyhow!("--value arg required ({} scope)", field))?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
-    finalize_mutate(
-        workspace_root,
-        primitive(&mut store, &sidecar_path, &entry, &value),
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(primitive(&mut store, &sidecar_path, &entry, &value), json)
 }
 
 fn cmd_set_changelog_publishable_bullets(
@@ -803,7 +757,6 @@ fn cmd_set_changelog_publishable_bullets(
     let mut bullets_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -829,7 +782,6 @@ fn cmd_set_changelog_publishable_bullets(
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -839,13 +791,7 @@ fn cmd_set_changelog_publishable_bullets(
     let bullets = parse_bullets_file(&bullets_path)?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
-    finalize_mutate(
-        workspace_root,
-        primitive(&mut store, &sidecar_path, &entry, &bullets),
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(primitive(&mut store, &sidecar_path, &entry, &bullets), json)
 }
 
 fn cmd_set_section_bullets(
@@ -863,7 +809,6 @@ fn cmd_set_section_bullets(
     let mut bullets_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -889,7 +834,6 @@ fn cmd_set_section_bullets(
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -900,10 +844,7 @@ fn cmd_set_section_bullets(
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         primitive(&mut store, &sidecar_path, &section, &bullets),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -913,7 +854,6 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
     let mut bullet: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -939,7 +879,6 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -948,10 +887,7 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         add_section_caveat(&mut store, &sidecar_path, &section, &bullet),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -961,7 +897,6 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
     let mut alternatives_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -987,7 +922,6 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -997,10 +931,7 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_alternatives(&mut store, &sidecar_path, &section, &alts),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1010,7 +941,6 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
     let mut refs_csv: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1036,7 +966,6 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1051,10 +980,7 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_impact_scope(&mut store, &sidecar_path, &section, &refs),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1065,7 +991,6 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
     let mut code_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1098,7 +1023,6 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1111,10 +1035,7 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         add_section_example(&mut store, &sidecar_path, &section, example),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1153,7 +1074,6 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
     let mut kind: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1193,7 +1113,6 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1206,7 +1125,6 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         add_section_binding(
             &mut store,
             &sidecar_path,
@@ -1215,8 +1133,6 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
             symbol.as_deref(),
             kind,
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1237,7 +1153,6 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1277,7 +1192,6 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1288,7 +1202,6 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         remove_section_binding(
             &mut store,
             &sidecar_path,
@@ -1297,8 +1210,6 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
             symbol.as_deref(),
             &reason,
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1319,7 +1230,6 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1366,7 +1276,6 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1380,7 +1289,6 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_binding_kind(
             &mut store,
             &sidecar_path,
@@ -1390,8 +1298,6 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
             kind,
             &reason,
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1402,7 +1308,6 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1435,7 +1340,6 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1448,10 +1352,7 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_coverage_expectation(&mut store, &sidecar_path, &section, expectation, &reason),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1468,7 +1369,6 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1494,7 +1394,6 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1503,10 +1402,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         remove_section(&mut store, &sidecar_path, &section, &reason),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1524,7 +1420,6 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
     let mut superseding: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1557,7 +1452,6 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1607,13 +1501,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
         print_section_decay_trigger(workspace_root, &section, new_status);
     }
 
-    finalize_mutate(
-        workspace_root,
-        mutate_result,
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(mutate_result, json)
 }
 
 /// External-spec mirror — anchor a vendored normative excerpt onto a
@@ -1633,7 +1521,6 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
     let mut source_revision: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1673,7 +1560,6 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1687,7 +1573,6 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_section_normative_excerpt(
             &mut store,
             &sidecar_path,
@@ -1696,8 +1581,6 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
             &anchor_url,
             &source_revision,
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1825,17 +1708,11 @@ fn print_inventory_decay_trigger(
 }
 
 /// Wrap a mutate primitive call: print the receipt (or error). The atomic
-/// store is the only artifact — there is no GENERATED.md to regenerate. The
-/// `regenerate` flag is inert (removed with the --no-regenerate CLI surface in
-/// the config/cleanup round).
+/// store is the only artifact, so there is nothing to regenerate.
 fn finalize_mutate(
-    workspace_root: &Path,
     result: Result<AtomicMutateReceipt, AtomicMutateError>,
-    sidecar: Option<&str>,
-    regenerate: bool,
     json: bool,
 ) -> Result<()> {
-    let _ = (workspace_root, sidecar, regenerate);
     handle_result(result, json)
 }
 
@@ -1848,7 +1725,6 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     let mut carry_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1902,7 +1778,6 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -1934,7 +1809,6 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         append_changelog_entry(
             &mut store,
             &sidecar_path,
@@ -1947,8 +1821,6 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 carry_forward_bullets: &carry_forward,
             },
         ),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -1973,7 +1845,6 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -2016,7 +1887,6 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2047,13 +1917,7 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
         print_inventory_decay_trigger(workspace_root, &inventory_id, "added(deprecated)");
     }
 
-    finalize_mutate(
-        workspace_root,
-        mutate_result,
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(mutate_result, json)
 }
 
 /// `set-inventory-status --id <ID> --status active|deprecated|reserved \
@@ -2067,7 +1931,6 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -2096,7 +1959,6 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2124,13 +1986,7 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
         print_inventory_decay_trigger(workspace_root, &inventory_id, "deprecated");
     }
 
-    finalize_mutate(
-        workspace_root,
-        mutate_result,
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(mutate_result, json)
 }
 
 /// `set-inventory-section-ref --id <ID> (--section §<N> | --clear) \
@@ -2143,7 +1999,6 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
     let mut clear = false;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -2166,7 +2021,6 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2178,10 +2032,7 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        workspace_root,
         set_inventory_section_ref(&mut store, &sidecar_path, &inventory_id, cleaned.as_deref()),
-        sidecar.as_deref(),
-        regenerate,
         json,
     )
 }
@@ -2192,7 +2043,6 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
-    let mut regenerate = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -2214,7 +2064,6 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            "--no-regenerate" => regenerate = false,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2232,13 +2081,7 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
         print_inventory_decay_trigger(workspace_root, &inventory_id, "removed");
     }
 
-    finalize_mutate(
-        workspace_root,
-        mutate_result,
-        sidecar.as_deref(),
-        regenerate,
-        json,
-    )
+    finalize_mutate(mutate_result, json)
 }
 
 /// Round 297 — `redact-term` CLI subcommand (RFC P1).

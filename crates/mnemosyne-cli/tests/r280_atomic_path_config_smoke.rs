@@ -171,7 +171,6 @@ severity_inventory = "warn"
             "FOO_07",
             "--status",
             "active",
-            "--no-regenerate",
         ],
     );
     assert!(

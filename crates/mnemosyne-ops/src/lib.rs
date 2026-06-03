@@ -53,14 +53,12 @@ impl From<std::io::Error> for OpError {
     }
 }
 
-/// Outcome of a successful atomic mutate. Includes the receipt the
-/// primitive produced plus a flag indicating whether the cascade
-/// auto-regeneration of `GENERATED.md` ran (it does by default; callers
-/// can opt out for batch use cases).
+/// Outcome of a successful atomic mutate — the receipt the primitive
+/// produced. The atomic store is the only artifact; there is nothing to
+/// regenerate.
 #[derive(Debug, Clone, Serialize)]
 pub struct MutateOutcome {
     pub receipt: AtomicMutateReceipt,
-    pub regenerated: bool,
 }
 
 /// Input to the convenience-form `redact_term` op.
@@ -89,13 +87,12 @@ pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&Path>) -> anyhow::Result<
 }
 
 /// Run an atomic mutate primitive in-process: load the store, invoke the
-/// supplied closure against it, then (by default) regenerate
-/// `GENERATED.md` so cascade stays in sync. Returns a structured outcome
-/// instead of printing.
+/// supplied closure against it, and return the receipt. The closure
+/// persists the store itself (`save_with_receipt`); the atomic store is the
+/// only artifact, so there is nothing further to regenerate.
 pub fn run_atomic_mutate<F>(
     workspace_root: &Path,
     sidecar: Option<&Path>,
-    regenerate: bool,
     primitive: F,
 ) -> Result<MutateOutcome, OpError>
 where
@@ -105,14 +102,7 @@ where
     let mut store =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let receipt = primitive(&mut store, &sidecar_path)?;
-    // The atomic store is the only artifact; there is no GENERATED.md to
-    // regenerate. The `regenerate` flag is inert (removed with the
-    // --no-regenerate CLI surface in the config/cleanup round).
-    let _ = regenerate;
-    Ok(MutateOutcome {
-        receipt,
-        regenerated: false,
-    })
+    Ok(MutateOutcome { receipt })
 }
 
 /// Load the atomic store at the resolved sidecar path.

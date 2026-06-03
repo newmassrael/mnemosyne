@@ -367,11 +367,11 @@ fn print_help(prog: &str) {
     );
     println!(" {} add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]", prog);
     println!(
-        " {} import-sections --manifest <path.json> [--sidecar <path>] [--no-regenerate] [--json]",
+        " {} import-sections --manifest <path.json> [--sidecar <path>] [--json]",
         prog
     );
     println!(
-        " {} import-epub-anchors --anchors <epub-anchor-map.json> [--sidecar <path>] [--no-regenerate] [--json]",
+        " {} import-epub-anchors --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]",
         prog
     );
     println!("   bulk create from a JSON array of {{section_id,parent_doc,title,parent_section?,normative_excerpt?}};");
@@ -473,12 +473,6 @@ fn print_help(prog: &str) {
     );
     println!(
  "   Round 273 InventoryEntry 5번째 closed-form 엔티티 substrate; cite-time reject (R275) + cascade (R276) carry"
- );
-    println!(
-        "   exit 0 if GENERATED.md sync, exit 1 if stale (Round 168 cascade auto-update gate)"
-    );
-    println!(
- "   atomic mutate subcommands above auto-regenerate GENERATED.md (override: --no-regenerate)"
  );
     println!();
     println!(" --- code citation defense (Round 255-260, Path B bidirectional) ---");

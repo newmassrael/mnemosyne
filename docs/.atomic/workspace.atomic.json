@@ -6406,6 +6406,56 @@
         "GENERATED.md file + [workspace] docs config + markdown parse model removed next round",
         "inert regenerate param + --no-regenerate flag carry one round (removed with the model)"
       ]
+    },
+    "Round 400": {
+      "decision_summary": "Retire the markdown-doc model entirely: delete GENERATED.md and make load, query, and validate-workspace store-direct so the atomic store JSON is the single directly-validated SSOT. Humans read the EPUB for spec content and mnemosyne-cli query for the changelog audit trail. Removes the markdown parser/emitter, the ParsedDoc-based validators, the validate-file verb, the inert regenerate flag, and the workspace docs/default_doc/output_path config; retargets hooks to the atomic sidecar.",
+      "changes_bullets": [
+        "Delete docs/GENERATED.md and remove the [workspace] docs / default_doc and [atomic] output_path config knobs from mnemosyne.toml and the config struct",
+        "Make load_workspace (cli + ops) store-only: stop reading and parsing the configured markdown docs; the atomic store is the sole loaded substrate",
+        "Refactor mnemosyne-query (section_by_id, related_sections_with_atomic, changelog_entries_for_section, build_envelope, workspace_section_id_set) to read the atomic store directly; drop the now-empty Workspace.docs markdown branches and the markdown-only related_sections",
+        "Slim the Workspace type to the atomic-id set; remove docs, default_doc, MNEMOSYNE_DEFAULT_DOC, mnemosyne(), insert, default_doc_has_section, and reclassify_cross_refs",
+        "Remove the mnemosyne-parser markdown parser and emitter (parse_markdown_with_schema, emit_markdown_with_default, compare_typed_facts) once no consumer remains",
+        "Remove the ParsedDoc-based validators (cross_ref_orphan_reject, cross_ref_orphan_reject_with_workspace, changelog_entry_append_only, frozen_list_membership_delta, section_decision_status_transition, frozen_ledger_jaccard) and the validate <file> verb; the store-direct orphan scan and frozen_ledger_atomic carry production",
+        "Remove the inert regenerate param and --no-regenerate flag threaded through the atomic mutate handlers and MCP regenerated field",
+        "Retarget the pre-commit doc-staged gate to the atomic sidecar; drop the round-trip and verify-generated language from pre-push, CLAUDE.md, and the MCP resources"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0-fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean",
+        "validate-workspace green store-direct: T1 orphan total 0, T3 reject 0, atomic referential closure and frozen-ledger and publishable/audit divergence intact; no round-trip or GENERATED.md-sync lines reported",
+        "grep confirms no residual GENERATED.md / generate-docs / verify-generated / round-trip references in crates, githooks, or mnemosyne.toml"
+      ],
+      "impact_refs": [
+        "generatedmd--atomic-store-derived-view",
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "The markdown-doc generic mode is abandoned for the store-plus-EPUB model; external markdown-doc adopters are no longer supported (pre-release, no external compat)",
+        "Project B (R401+) extracts normative_excerpt.text from a committed EPUB via medium-forge with an offline revalidation hash"
+      ],
+      "publishable_decision_summary": "Retire the markdown-doc model entirely: delete GENERATED.md and make load, query, and validate-workspace store-direct so the atomic store JSON is the single directly-validated SSOT. Humans read the EPUB for spec content and mnemosyne-cli query for the changelog audit trail. Removes the markdown parser/emitter, the ParsedDoc-based validators, the validate-file verb, the inert regenerate flag, and the workspace docs/default_doc/output_path config; retargets hooks to the atomic sidecar.",
+      "publishable_changes_bullets": [
+        "Delete docs/GENERATED.md and remove the [workspace] docs / default_doc and [atomic] output_path config knobs from mnemosyne.toml and the config struct",
+        "Make load_workspace (cli + ops) store-only: stop reading and parsing the configured markdown docs; the atomic store is the sole loaded substrate",
+        "Refactor mnemosyne-query (section_by_id, related_sections_with_atomic, changelog_entries_for_section, build_envelope, workspace_section_id_set) to read the atomic store directly; drop the now-empty Workspace.docs markdown branches and the markdown-only related_sections",
+        "Slim the Workspace type to the atomic-id set; remove docs, default_doc, MNEMOSYNE_DEFAULT_DOC, mnemosyne(), insert, default_doc_has_section, and reclassify_cross_refs",
+        "Remove the mnemosyne-parser markdown parser and emitter (parse_markdown_with_schema, emit_markdown_with_default, compare_typed_facts) once no consumer remains",
+        "Remove the ParsedDoc-based validators (cross_ref_orphan_reject, cross_ref_orphan_reject_with_workspace, changelog_entry_append_only, frozen_list_membership_delta, section_decision_status_transition, frozen_ledger_jaccard) and the validate <file> verb; the store-direct orphan scan and frozen_ledger_atomic carry production",
+        "Remove the inert regenerate param and --no-regenerate flag threaded through the atomic mutate handlers and MCP regenerated field",
+        "Retarget the pre-commit doc-staged gate to the atomic sidecar; drop the round-trip and verify-generated language from pre-push, CLAUDE.md, and the MCP resources"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0-fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean",
+        "validate-workspace green store-direct: T1 orphan total 0, T3 reject 0, atomic referential closure and frozen-ledger and publishable/audit divergence intact; no round-trip or GENERATED.md-sync lines reported",
+        "grep confirms no residual GENERATED.md / generate-docs / verify-generated / round-trip references in crates, githooks, or mnemosyne.toml"
+      ],
+      "publishable_impact_refs": [
+        "generatedmd--atomic-store-derived-view",
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "The markdown-doc generic mode is abandoned for the store-plus-EPUB model; external markdown-doc adopters are no longer supported (pre-release, no external compat)",
+        "Project B (R401+) extracts normative_excerpt.text from a committed EPUB via medium-forge with an offline revalidation hash"
+      ]
     }
   },
   "inventory_entries": {},
