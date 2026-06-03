@@ -36,7 +36,7 @@ pub use fact::{
 };
 
 mod section_ref;
-pub use section_ref::strip_section_marker;
+pub use section_ref::{numeric_section_refs, strip_section_marker};
 
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;

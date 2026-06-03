@@ -6282,6 +6282,38 @@
         "parsed-markdown check_style + full-scale tests removed in the GENERATED.md teardown round",
         "T3 warn/T4 info now 0: 34 prior findings were re-lint of the frozen audit ledger as prose"
       ]
+    },
+    "Round 396 — store-direct cross-ref orphan scan": {
+      "decision_summary": "Move the T1 cross-ref orphan check off parsed markdown onto the atomic store. scan_store_prose_cross_ref_orphans scans each section's synthesized prose for numeric section references and resolves them against the store (intra-doc set, last-segment alias, atomic) — the same resolution chain as the parsed-markdown path, but store-direct. The numeric scanner is single-sourced as mnemosyne_core::numeric_section_refs, reused by both the markdown parser and the new validator so the two cannot diverge. Structured references stay validated by the atomic referential closure. The parsed-markdown orphan fn and its tests remain as the generic markdown-doc capability until the markdown model is torn out. Dogfood orphan stays 0.",
+      "changes_bullets": [
+        "mnemosyne_core::numeric_section_refs: one canonical §N scanner; parser reuses it",
+        "scan_store_prose_cross_ref_orphans resolves prose §N against the store (same chain)",
+        "validate-workspace orphan source switched to the store scanner; store loaded once"
+      ],
+      "verification_bullets": [
+        "+1 core unit (numeric §N extraction) +1 validate unit (resolved vs orphan)",
+        "workspace 100 test binaries 0 fail; clippy -D + fmt clean",
+        "validate-workspace T1 orphan 0 unchanged (dogfood has no prose §N refs)"
+      ],
+      "carry_forward_bullets": [
+        "parsed-markdown cross_ref_orphan_reject + its tests removed in the markdown teardown",
+        "structured refs stay validated by the atomic referential closure (unchanged)"
+      ],
+      "publishable_decision_summary": "Move the T1 cross-ref orphan check off parsed markdown onto the atomic store. scan_store_prose_cross_ref_orphans scans each section's synthesized prose for numeric section references and resolves them against the store (intra-doc set, last-segment alias, atomic) — the same resolution chain as the parsed-markdown path, but store-direct. The numeric scanner is single-sourced as mnemosyne_core::numeric_section_refs, reused by both the markdown parser and the new validator so the two cannot diverge. Structured references stay validated by the atomic referential closure. The parsed-markdown orphan fn and its tests remain as the generic markdown-doc capability until the markdown model is torn out. Dogfood orphan stays 0.",
+      "publishable_changes_bullets": [
+        "mnemosyne_core::numeric_section_refs: one canonical §N scanner; parser reuses it",
+        "scan_store_prose_cross_ref_orphans resolves prose §N against the store (same chain)",
+        "validate-workspace orphan source switched to the store scanner; store loaded once"
+      ],
+      "publishable_verification_bullets": [
+        "+1 core unit (numeric §N extraction) +1 validate unit (resolved vs orphan)",
+        "workspace 100 test binaries 0 fail; clippy -D + fmt clean",
+        "validate-workspace T1 orphan 0 unchanged (dogfood has no prose §N refs)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "parsed-markdown cross_ref_orphan_reject + its tests removed in the markdown teardown",
+        "structured refs stay validated by the atomic referential closure (unchanged)"
+      ]
     }
   },
   "inventory_entries": {},

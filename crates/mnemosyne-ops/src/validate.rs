@@ -16,7 +16,7 @@ use mnemosyne_query::workspace_section_id_set;
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
-use mnemosyne_validate::{validator::cross_ref_orphan_reject_with_workspace, ValidationError};
+use mnemosyne_validate::{validator::scan_store_prose_cross_ref_orphans, ValidationError};
 use serde::Serialize;
 
 use crate::cascade::validate_atomic_store;
@@ -78,19 +78,22 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
+    // Load the atomic store once (the SSOT) — used for the store-direct orphan
+    // scan and the store-direct style check below.
+    let sidecar_path = resolve_sidecar(workspace_root, None)?;
+    let atomic_store =
+        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
+
+    // Store-direct cross-ref orphan scan: free-prose §N references resolved
+    // against the store. Labelled with the configured doc path so orphan-ledger
+    // keys are unchanged from the parsed-markdown era.
+    let orphan_doc_label = parsed_docs
+        .first()
+        .map(|(p, _)| p.clone())
+        .unwrap_or_else(|| "atomic-store".to_string());
     let mut actual_orphan_keys: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for (path, parsed) in &parsed_docs {
-        let orphans = cross_ref_orphan_reject_with_workspace(parsed, &ws);
-        for err in &orphans {
-            if let ValidationError::OrphanCrossRef {
-                from_section,
-                to_target,
-                ..
-            } = err
-            {
-                actual_orphan_keys.insert((path.clone(), from_section.clone(), to_target.clone()));
-            }
-        }
+    for (from_section, to_target) in scan_store_prose_cross_ref_orphans(&atomic_store, &ws) {
+        actual_orphan_keys.insert((orphan_doc_label.clone(), from_section, to_target));
     }
 
     let default_doc_for_emit = loaded.config.workspace.default_doc.as_deref();
@@ -164,9 +167,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         loaded.config.style.as_ref(),
         loaded.config.terminology.as_ref(),
     );
-    let sidecar_path = resolve_sidecar(workspace_root, None)?;
-    let atomic_for_style =
-        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     // Store-direct style: iterate the atomic store (the SSOT) rather than the
     // parsed markdown. Label violations with the configured doc path so output
     // is unchanged from the parsed-markdown era.
@@ -175,7 +175,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .map(|(p, _)| p.as_str())
         .unwrap_or("atomic-store");
     let style_violations: Vec<StyleViolation> =
-        check_style_atomic(style_doc_label, &atomic_for_style, &ruleset);
+        check_style_atomic(style_doc_label, &atomic_store, &ruleset);
     let terminology_violations: Vec<&StyleViolation> = style_violations
         .iter()
         .filter(|v| v.rule_id == "terminology_consistency")
@@ -241,7 +241,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // validate-workspace runs the same check, so the MCP wire must too
     // (R318 closed the gap where ops omitted it).
     let supersede_violations: Vec<String> =
-        mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_for_style)
+        mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_store)
             .into_iter()
             .filter_map(|e| match e {
                 ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
@@ -256,7 +256,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // publishable half diverges from the audit half must have a matching
     // [[publishable_override_ledger]] row (target_id + content_hash_after).
     let ledger = &loaded.config.publishable_override_ledger;
-    let divergent: Vec<(&String, &mnemosyne_atomic::AtomicChangelogEntry)> = atomic_for_style
+    let divergent: Vec<(&String, &mnemosyne_atomic::AtomicChangelogEntry)> = atomic_store
         .changelog_entries
         .iter()
         .filter(|(_, e)| !e.publishable_matches_audit())

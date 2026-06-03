@@ -129,6 +129,46 @@ pub fn cross_ref_orphan_reject_with_workspace(
     errors
 }
 
+/// Store-direct counterpart of [`cross_ref_orphan_reject_with_workspace`]: scan
+/// each section's synthesized prose for numeric `§N` references and reject any
+/// that resolve to no section. The resolution chain is identical (intra-doc
+/// section-id set, last-segment alias, workspace default-doc, atomic store), so
+/// the finding set matches the parsed-markdown path for a workspace whose doc is
+/// the store rendered — but the substrate is the atomic store (the SSOT), not a
+/// parsed file. Structured references (impact_scope / impact_refs / parent /
+/// superseded) are validated separately by the atomic referential closure; this
+/// covers the free-prose `§N` mentions the parser used to extract. Returns
+/// `(from_section, to_target)` pairs for each orphaned reference.
+pub fn scan_store_prose_cross_ref_orphans(
+    store: &mnemosyne_atomic::AtomicStore,
+    workspace: &Workspace,
+) -> Vec<(String, String)> {
+    let section_id_set: BTreeSet<&str> = store.sections.keys().map(String::as_str).collect();
+    let last_segment_set: BTreeSet<&str> = store
+        .sections
+        .keys()
+        .filter_map(|s| s.rsplit_once('/').map(|(_, last)| last))
+        .collect();
+
+    let mut orphans = Vec::new();
+    for (section_id, atomic) in &store.sections {
+        let body = mnemosyne_atomic::synthesize_section_prose_body(atomic);
+        for line in body.lines() {
+            for target in mnemosyne_core::numeric_section_refs(line) {
+                if section_id_set.contains(target.as_str())
+                    || last_segment_set.contains(target.as_str())
+                    || workspace.default_doc_has_section(&target)
+                    || workspace.atomic_has_section(&target)
+                {
+                    continue;
+                }
+                orphans.push((section_id.clone(), target));
+            }
+        }
+    }
+    orphans
+}
+
 // ============================================================================
 // Rule 2 — changelog_entry_append_only.
 // ============================================================================
@@ -478,6 +518,40 @@ mod tests {
 
         let errors = cross_ref_orphan_reject_with_workspace(&same_id_doc, &ws);
         assert!(errors.is_empty(), "step (1) intra-doc priority must PASS");
+    }
+
+    #[test]
+    fn store_prose_orphan_scan_flags_only_unresolved_numeric_refs() {
+        use mnemosyne_atomic::{AtomicSection, AtomicStore};
+        let mk = |title: &str, intent: &str| AtomicSection {
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: title.into(),
+                parent_doc: "GENERATED.md".into(),
+                parent_section: None,
+                ..Default::default()
+            },
+            intent: Some(intent.into()),
+            ..Default::default()
+        };
+        // Build the marker-prefixed prose at runtime (the section-sign marker
+        // comes from a char escape) so this source file carries no literal
+        // section citation for the code-citation gate to flag — the ids 39/99
+        // are test fixtures, not real sections.
+        let m = '\u{a7}'; // section sign U+00A7
+        let mut store = AtomicStore::default();
+        store
+            .sections
+            .insert("39".into(), mk("Base", "base section"));
+        store.sections.insert(
+            "engine".into(),
+            mk("Engine", &format!("see {m}39 (ok) and {m}99 (orphan)")),
+        );
+
+        // Empty workspace (no docs / no atomic set) — the resolvable id resolves
+        // via the store's own section-id set, the other resolves nowhere.
+        let ws = Workspace::mnemosyne();
+        let orphans = scan_store_prose_cross_ref_orphans(&store, &ws);
+        assert_eq!(orphans, vec![("engine".to_string(), "99".to_string())]);
     }
 
     // ── Rule 2 ──────────────────────────────────────────────────────────

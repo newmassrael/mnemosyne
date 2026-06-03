@@ -569,50 +569,16 @@ fn extract_cross_refs(line: &str, state: &ParseState) -> Vec<CrossRef> {
         None => return out,
     };
 
-    // §N / §N.M inline literal scan.
-    let bytes = line.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if let Some(rest) = line.get(i..) {
-            if let Some(stripped) = rest.strip_prefix('§') {
-                let consumed_section_marker = '§'.len_utf8();
-                let mut j = 0usize;
-                let stripped_bytes = stripped.as_bytes();
-                let mut saw_digit = false;
-                while j < stripped_bytes.len() {
-                    let b = stripped_bytes[j];
-                    if b.is_ascii_digit() || (b == b'.' && saw_digit) {
-                        if b.is_ascii_digit() {
-                            saw_digit = true;
-                        }
-                        j += 1;
-                    } else {
-                        break;
-                    }
-                }
-                if saw_digit {
-                    let mut num_end = j;
-                    let raw = &stripped[..num_end];
-                    if raw.ends_with('.') {
-                        num_end -= 1;
-                    }
-                    let target = stripped[..num_end].to_string();
-                    out.push(CrossRef {
-                        from_section: from_section.clone(),
-                        to_target: target,
-                        ref_kind: RefKind::Decision,
-                        created_at_changelog_entry: None,
-                    });
-                    i += consumed_section_marker + j;
-                    continue;
-                }
-            }
-        }
-        let step = match line[i..].chars().next() {
-            Some(c) => c.len_utf8(),
-            None => 1,
-        };
-        i += step;
+    // §N / §N.M inline literal scan — single-sourced through
+    // `mnemosyne_core::numeric_section_refs` so the parser's cross-ref
+    // extraction and the store-direct orphan validator share one scanner.
+    for target in mnemosyne_core::numeric_section_refs(line) {
+        out.push(CrossRef {
+            from_section: from_section.clone(),
+            to_target: target,
+            ref_kind: RefKind::Decision,
+            created_at_changelog_entry: None,
+        });
     }
 
     // Markdown link `[text](url)` scan.
