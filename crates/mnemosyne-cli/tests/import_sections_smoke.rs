@@ -1,8 +1,8 @@
 //! RFC-001 UC-1 "A2" — `import-sections` bulk-create subcommand smoke tests.
 //!
-//! End-to-end: a JSON manifest → `import-sections --manifest` → atomic store
-//! + GENERATED.md. Covers create, inline normative_excerpt render, idempotent
-//! re-run (no-op), and divergent reject.
+//! End-to-end: a JSON manifest → `import-sections --manifest` → atomic store.
+//! Covers create, inline normative_excerpt, sigil-strip, idempotent re-run
+//! (no-op), and divergent reject — all asserted against the store JSON.
 
 use std::fs;
 use std::path::Path;
@@ -43,8 +43,14 @@ fn write_manifest(workspace: &Path, value: serde_json::Value) -> String {
     p.to_str().unwrap().to_string()
 }
 
+/// Read the atomic store JSON the import wrote.
+fn read_store(workspace: &Path) -> serde_json::Value {
+    let raw = fs::read_to_string(workspace.join("docs/.atomic/workspace.atomic.json")).unwrap();
+    serde_json::from_str(&raw).unwrap()
+}
+
 #[test]
-fn import_creates_sections_and_renders_excerpt() {
+fn import_creates_sections_and_excerpt() {
     let tmp = TempDir::new().unwrap();
     write_workspace(tmp.path());
     let manifest = write_manifest(
@@ -66,15 +72,16 @@ fn import_creates_sections_and_renders_excerpt() {
         "import failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let gen = fs::read_to_string(tmp.path().join("docs/GENERATED.md")).unwrap();
+    let store = read_store(tmp.path());
+    let sections = &store["sections"];
     assert!(
-        gen.contains("§scxml-3.13"),
-        "GENERATED.md missing section; {gen}"
+        sections.get("scxml-3.13").is_some(),
+        "store missing scxml-3.13; {store}"
     );
-    assert!(gen.contains("§scxml-5.10"));
-    assert!(
-        gen.contains("**Normative excerpt** (2024-rec):"),
-        "inline excerpt not rendered; {gen}"
+    assert!(sections.get("scxml-5.10").is_some());
+    assert_eq!(
+        sections["scxml-3.13"]["normative_excerpt"]["source_revision"], "2024-rec",
+        "inline excerpt not stored; {store}"
     );
 }
 
@@ -112,7 +119,8 @@ fn import_is_idempotent_on_rerun() {
 
 #[test]
 fn import_strips_section_sigil_no_double() {
-    // SCE-found bug: a citation-form manifest (`§scxml-1`) must NOT render `§§`.
+    // SCE-found bug: a citation-form manifest (`§scxml-1`) must be stored under
+    // the bare key `scxml-1`, never the sigil-prefixed `§scxml-1`.
     let tmp = TempDir::new().unwrap();
     write_workspace(tmp.path());
     let manifest = write_manifest(
@@ -126,11 +134,15 @@ fn import_strips_section_sigil_no_double() {
             .status
             .success()
     );
-    let gen = fs::read_to_string(tmp.path().join("docs/GENERATED.md")).unwrap();
-    assert!(gen.contains("§scxml-1"), "section heading missing; {gen}");
+    let store = read_store(tmp.path());
+    let sections = &store["sections"];
     assert!(
-        !gen.contains("§§"),
-        "double sigil leaked into render: {gen}"
+        sections.get("scxml-1").is_some(),
+        "sigil not stripped to bare key; {store}"
+    );
+    assert!(
+        sections.get("§scxml-1").is_none(),
+        "sigil-prefixed key leaked into store; {store}"
     );
 }
 

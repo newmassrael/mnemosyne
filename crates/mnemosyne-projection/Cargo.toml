@@ -13,7 +13,6 @@ path = "src/lib.rs"
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-cascade = { path = "../mnemosyne-cascade" }
 mnemosyne-core = { path = "../mnemosyne-core" }
-mnemosyne-query = { path = "../mnemosyne-query" }
 salsa.workspace = true
 
 [lints]

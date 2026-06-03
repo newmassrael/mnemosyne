@@ -20,7 +20,6 @@ sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-mnemosyne-query = { path = "../mnemosyne-query" }
 
 [lints]
 workspace = true

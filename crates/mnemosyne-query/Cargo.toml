@@ -18,7 +18,6 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 regex.workspace = true
-tera.workspace = true
 
 [dev-dependencies]
 mnemosyne-parser = { path = "../mnemosyne-parser" }

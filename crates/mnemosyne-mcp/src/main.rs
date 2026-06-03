@@ -28,7 +28,7 @@ use mnemosyne_ops::{
     self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
     RedactTermInput, StyleCheckInput,
 };
-use mnemosyne_projection::{ProjectionService, ProjectionValidation, RenderProjectionService};
+use mnemosyne_projection::{ProjectionService, ProjectionValidation};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
@@ -54,17 +54,6 @@ pub struct ValidateProjectionArgs {
     /// tool (Round 341), so the default (false) is current; pass true only to
     /// pick up an out-of-band log change (e.g. a manual JSON edit or a CLI
     /// mutate run against the same workspace).
-    #[serde(default)]
-    pub refresh: bool,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct RenderProjectionArgs {
-    /// Force a re-sync from the current log before rendering. Since R367 Step 2b
-    /// the warm render projection re-syncs after every successful mutate (and
-    /// owns the GENERATED.md write), so the default (false) already reflects the
-    /// current log. Pass true only to pick up an out-of-band edit (a manual JSON
-    /// edit or a separate CLI mutate that did not go through this host).
     #[serde(default)]
     pub refresh: bool,
 }
@@ -422,15 +411,6 @@ pub struct MnemosyneServer {
     /// from the in-process Salsa memo cache. Shared (not duplicated) across the
     /// router's handler clones.
     projection: Arc<Mutex<ProjectionService>>,
-    /// Warm read-side render projection (convergence C/D, R345 / R365 Step 2a,
-    /// R367 Step 2b). Built from the same log at startup; serves
-    /// `render_projection` from the warm `RenderDb` Salsa memo cache,
-    /// byte-identical to the cold `generate-docs`. Since 2b it also owns the
-    /// write path: every successful mutate incrementally reconciles this
-    /// projection (Round 340 analogue — only changed units re-render), recomposes
-    /// GENERATED.md, and writes it, superseding the cold `auto_regenerate` in the
-    /// warm host (see [`Self::sync_read_models_after_mutate`]).
-    render: Arc<Mutex<RenderProjectionService>>,
     #[allow(dead_code)] // populated by #[tool_router] expansion
     tool_router: ToolRouter<Self>,
 }
@@ -439,19 +419,9 @@ impl MnemosyneServer {
     pub fn new(workspace: PathBuf) -> Result<Self, ops::OpError> {
         let atomic = ops::load_atomic_store(&workspace, None)?;
         let projection = ProjectionService::build(&atomic, atomic::MAIN_BRANCH_ID);
-        // `Source:` line value, computed exactly as the cold render does
-        // (sidecar path relative to the workspace root).
-        let sidecar = ops::cascade::resolve_sidecar(&workspace, None)?;
-        let source_rel =
-            sidecar
-                .display()
-                .to_string()
-                .replacen(&format!("{}/", workspace.display()), "", 1);
-        let render = RenderProjectionService::build(&atomic, &source_rel);
         Ok(Self {
             workspace: Arc::new(workspace),
             projection: Arc::new(Mutex::new(projection)),
-            render: Arc::new(Mutex::new(render)),
             tool_router: Self::tool_router(),
         })
     }
@@ -477,69 +447,34 @@ impl MnemosyneServer {
         Self::tool_error(format!("workspace={}\n{}", self.workspace.display(), e))
     }
 
-    /// Finish a mutate op: re-sync the warm read models from the just-written
-    /// log (recompose + write GENERATED.md through the warm render projection,
-    /// then re-sync the warm validation projection), then receipt JSON. A
-    /// regenerate/write failure is surfaced as a tool error (the store mutate
-    /// already persisted, so a failed regenerate signals an inconsistent cascade
-    /// that needs manual intervention — same contract the cold `auto_regenerate`
-    /// had). `regenerated` is set true since the warm host owns the regenerate.
+    /// Finish a mutate op: re-sync the warm validation projection from the
+    /// just-written log, then receipt JSON. The atomic store is the only
+    /// authoritative artifact — there is no rendered GENERATED.md to regenerate.
     fn finish_mutate(&self, outcome: Result<MutateOutcome, OpError>) -> CallToolResult {
         match outcome {
             Ok(mut o) => {
                 if let Err(e) = self.sync_read_models_after_mutate() {
                     return self.op_error(e);
                 }
-                o.regenerated = true;
+                o.regenerated = false;
                 self.tool_json(&o)
             }
             Err(e) => self.op_error(e),
         }
     }
 
-    /// Re-sync both warm read models from the just-written log after a
-    /// successful mutate (R367 Step 2b — the warm host owns regeneration, so the
-    /// MCP mutate tools run the primitive with `regenerate=false`; the cold
-    /// CLI/CI keeps `auto_regenerate`).
-    ///
-    /// 1. **Render projection (fail-loud):** incrementally reconcile the warm
-    ///    `RenderDb` to the new log (Round 340 analogue — only changed units
-    ///    re-render), recompose `GENERATED.md` through the single-source builder
-    ///    (byte-identical to the cold `generate-docs`), and atomic-write it. A
-    ///    failure here is the cascade-output contract the cold `auto_regenerate`
-    ///    used to own, so it propagates.
-    /// 2. **Validation projection (best-effort cache):** incrementally reconcile
-    ///    the warm `FineCascadeDb` from the same in-memory snapshot so the
-    ///    default `validate_projection` reflects the current log. This operates
-    ///    on the already-loaded store, so it cannot fail.
-    ///
-    /// The store is loaded once and shared by both. Poisoned locks are recovered
-    /// (the projections are rebuildable caches, not authoritative state).
+    /// Re-sync the warm validation projection from the just-written log after a
+    /// successful mutate. Incrementally reconciles the warm `FineCascadeDb` from
+    /// the in-memory snapshot so `validate_projection` reflects the current log.
+    /// Operates on the already-loaded store (rebuildable cache, not authoritative
+    /// state); poisoned locks are recovered.
     fn sync_read_models_after_mutate(&self) -> Result<(), OpError> {
         let atomic = ops::load_atomic_store(&self.workspace, None)?;
-
-        // 1. Render projection: reconcile → recompose → write GENERATED.md.
-        {
-            let mut svc = self
-                .render
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            svc.reload(&atomic);
-            let content = svc.render();
-            let output_path = ops::resolve_output(&self.workspace, None)?;
-            ops::write_generated_md(&output_path, &content)
-                .map_err(|e| OpError::Other(format!("{:#}", e)))?;
-        }
-
-        // 2. Validation projection: best-effort incremental re-sync.
-        {
-            let mut svc = self
-                .projection
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            svc.reload(&atomic);
-        }
-
+        let mut svc = self
+            .projection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        svc.reload(&atomic);
         Ok(())
     }
 }
@@ -623,26 +558,6 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Render docs/GENERATED.md via the warm render model and return the markdown (read-only; does NOT write). Byte-identical to generate_docs. Auto-resyncs after every successful mutate; pass refresh=true only to pick up an out-of-band edit (manual JSON edit or separate CLI mutate)."
-    )]
-    async fn render_projection(&self, args: Parameters<RenderProjectionArgs>) -> CallToolResult {
-        let rendered = {
-            let mut svc = self
-                .render
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if args.0.refresh {
-                match ops::load_atomic_store(&self.workspace, None) {
-                    Ok(atomic) => svc.reload(&atomic),
-                    Err(e) => return self.op_error(e),
-                }
-            }
-            svc.render()
-        };
-        Self::tool_text(rendered)
-    }
-
-    #[tool(
         description = "List every section_id in the workspace (one per line, BTreeMap order). Use this to discover the section topology before authoring §N references."
     )]
     async fn list_sections(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
@@ -684,16 +599,6 @@ impl MnemosyneServer {
         };
         match ops::query_term(&self.workspace, &input) {
             Ok(hits) => self.tool_json(&hits),
-            Err(e) => self.op_error(e),
-        }
-    }
-
-    #[tool(
-        description = "Render the atomic store to docs/GENERATED.md (template render → atomic write temp + rename). Cascade auto-update normally invokes this after every successful mutate primitive; call directly only when you need to force-refresh after a manual JSON edit (which you should not do)."
-    )]
-    async fn generate_docs(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        match ops::generate_docs(&self.workspace, None, None) {
-            Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
     }
@@ -1495,115 +1400,4 @@ fn parse_workspace_arg() -> anyhow::Result<PathBuf> {
         }
     }
     Ok(workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore};
-    use std::fs;
-
-    /// R367 Step 2b end-to-end: the warm-host write path must produce a
-    /// GENERATED.md byte-identical to the cold `render_atomic_store_to_md`. This
-    /// exercises the full seam `MnemosyneServer::sync_read_models_after_mutate`
-    /// drives on every mutate (load → incremental render reconcile → recompose →
-    /// atomic-write), proving the warm path that supersedes `auto_regenerate`
-    /// stays in lockstep with the cold renderer the validate gates compare to.
-    #[test]
-    fn warm_host_write_path_byte_identical_to_cold_render() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ws = tmp.path().to_path_buf();
-
-        // Persist a non-trivial store to the resolved sidecar — the state a
-        // mutate primitive would have just saved (the warm host runs the
-        // primitive with regenerate=false, then this write path).
-        let sidecar = ops::cascade::resolve_sidecar(&ws, None).unwrap();
-        if let Some(parent) = sidecar.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        let mut store = AtomicStore::new();
-        store.sections.insert(
-            "1".to_string(),
-            AtomicSection {
-                intent: Some("warm write path".to_string()),
-                rationale_bullets: vec!["incremental reconcile then compose".to_string()],
-                ..Default::default()
-            },
-        );
-        let mut e = AtomicChangelogEntry {
-            decision_summary: Some("Round 367 render Step 2b".to_string()),
-            changes_bullets: vec!["wire warm render into the mutate write path".to_string()],
-            ..Default::default()
-        };
-        e.clone_audit_into_publishable();
-        store.changelog_entries.insert("Round 367".to_string(), e);
-        store.save(&sidecar).unwrap();
-
-        // Warm host built over that store, then the 2b write path.
-        let server = MnemosyneServer::new(ws.clone()).unwrap();
-        server.sync_read_models_after_mutate().unwrap();
-
-        // GENERATED.md on disk byte-equals a cold render of the same store.
-        let output = ops::resolve_output(&ws, None).unwrap();
-        let on_disk = fs::read_to_string(&output).unwrap();
-        let (cold, _) = ops::render_atomic_store_to_md(&ws, &sidecar).unwrap();
-        assert_eq!(
-            on_disk, cold,
-            "warm-host write path must match cold render byte-for-byte"
-        );
-        assert!(on_disk.contains("warm write path"));
-
-        // Second cycle: a REAL change through the host, so the incremental
-        // reconcile (not a no-op) drives the write. The warm host must pick up
-        // the new content AND stay byte-identical to a cold render of the
-        // mutated store — proving the host-driven incremental path, not just the
-        // write seam.
-        store.sections.get_mut("1").unwrap().intent = Some("edited intent v2".to_string());
-        store.save(&sidecar).unwrap();
-        server.sync_read_models_after_mutate().unwrap();
-        let on_disk_2 = fs::read_to_string(&output).unwrap();
-        let (cold_2, _) = ops::render_atomic_store_to_md(&ws, &sidecar).unwrap();
-        assert_eq!(
-            on_disk_2, cold_2,
-            "incremental warm write after a change must still match cold render"
-        );
-        assert!(on_disk_2.contains("edited intent v2"));
-        assert!(!on_disk_2.contains("warm write path"));
-    }
-
-    /// R367 fail-loud contract: when the GENERATED.md write fails after a
-    /// successful store mutate, `sync_read_models_after_mutate` surfaces the
-    /// error (it does NOT silently leave a desynced cascade). Injected by making
-    /// the resolved output path a directory, so the temp→rename write fails.
-    #[test]
-    fn warm_host_write_failure_is_fail_loud() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ws = tmp.path().to_path_buf();
-
-        let sidecar = ops::cascade::resolve_sidecar(&ws, None).unwrap();
-        if let Some(parent) = sidecar.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        let mut store = AtomicStore::new();
-        store.sections.insert(
-            "1".to_string(),
-            AtomicSection {
-                intent: Some("fail loud".to_string()),
-                ..Default::default()
-            },
-        );
-        store.save(&sidecar).unwrap();
-
-        // Make the GENERATED.md output path a directory → the atomic
-        // temp+rename write cannot succeed.
-        let output = ops::resolve_output(&ws, None).unwrap();
-        fs::create_dir_all(&output).unwrap();
-
-        let server = MnemosyneServer::new(ws.clone()).unwrap();
-        let result = server.sync_read_models_after_mutate();
-        assert!(
-            result.is_err(),
-            "a GENERATED.md write failure after a mutate must fail loud, not silently desync"
-        );
-    }
 }

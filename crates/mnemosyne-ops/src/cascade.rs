@@ -1,24 +1,19 @@
-//! Cascade / render / sidecar orchestration — the side-effecting bridge
-//! between the atomic store and the derived `GENERATED.md` artifact, plus
-//! the sidecar/output path-resolution chain. Shared by the CLI bin
-//! (`generate-docs` / `verify-generated` / every mutate's auto-regenerate)
-//! and the MCP server (in-process mutate + validate).
+//! Sidecar path-resolution + atomic-store referential validation. The atomic
+//! store is the single validated SSOT; there is no rendered `GENERATED.md`
+//! derivation here (the store→markdown render path was removed once the store
+//! became the directly-validated artifact). `validate_atomic_store` is the
+//! shared referential-closure check consumed by validate-workspace.
 //!
 //! Moved here from `mnemosyne-cli/src/atomic_cli.rs` (R319) so both
 //! binaries depend on one orchestration crate rather than mcp linking the
 //! CLI binary's library half.
 
 use std::collections::BTreeSet;
-use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::discover_config;
-use mnemosyne_query::{
-    compose_generated_md, render_changelog_entry, render_section, section_heading,
-};
 
 /// Resolve the workspace root from any directory inside the workspace.
 ///
@@ -74,118 +69,6 @@ pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&str>) -> Result<PathBuf> 
         return Ok(if pb.is_absolute() { pb } else { root.join(pb) });
     }
     Ok(AtomicStore::default_sidecar_path(root))
-}
-
-/// Resolve cascade output path with the Round 279 precedence chain:
-/// 1. Explicit `--output` CLI flag wins absolutely.
-/// 2. `[atomic] output_path` from `mnemosyne.toml`, if set.
-/// 3. Built-in default `<workspace_root>/docs/GENERATED.md`.
-///
-/// `[workspace] docs[0]` is *not* consulted — docs[0] is the parse target
-/// (markdown the validator reads), while this is the cascade write target
-/// (atomic store → md). Keeping them independent prevents a first mutate
-/// from clobbering hand-authored content in docs[0].
-pub fn resolve_output(anchor: &Path, output: Option<&str>) -> Result<PathBuf> {
-    // Explicit override short-circuits before discovery (see resolve_sidecar);
-    // relative override joins the anchor.
-    if let Some(p) = output {
-        let pb = PathBuf::from(p);
-        return Ok(if pb.is_absolute() {
-            pb
-        } else {
-            anchor.join(pb)
-        });
-    }
-    // No override: fail loud on malformed config; `[atomic]` / default paths
-    // join the config-declared root, not `anchor` (see workspace_root_from).
-    let loaded = discover_config(anchor)?;
-    let root = loaded
-        .as_ref()
-        .map(|l| l.workspace_root.as_path())
-        .unwrap_or(anchor);
-    if let Some(cfg_path) = loaded
-        .as_ref()
-        .and_then(|l| l.config.atomic.as_ref())
-        .and_then(|a| a.output_path.as_deref())
-    {
-        let pb = PathBuf::from(cfg_path);
-        return Ok(if pb.is_absolute() { pb } else { root.join(pb) });
-    }
-    Ok(root.join("docs/GENERATED.md"))
-}
-
-/// Render the atomic store at `sidecar_path` to a deterministic markdown
-/// string. Side-effect free — the read-only render path shared by
-/// `generate-docs` (writes the bytes) and `verify-generated` (compares
-/// the bytes). `Source:` line uses a path relative to `workspace_root` so
-/// the output is portable across checkouts.
-pub fn render_atomic_store_to_md(
-    workspace_root: &Path,
-    sidecar_path: &Path,
-) -> Result<(String, AtomicStore)> {
-    let store = AtomicStore::load(sidecar_path).map_err(|e| anyhow!("{}", e))?;
-
-    let workspace_prefix = format!("{}/", workspace_root.display());
-    let source_rel = sidecar_path
-        .display()
-        .to_string()
-        .replacen(&workspace_prefix, "", 1);
-
-    // Render each unit, then hand the raw blocks to the single-source document
-    // composer (R345 Decision 4 — the warm `RenderDb` Tier-2 composition calls
-    // the same builder, so the format cannot drift). Sections: title /
-    // decision_status come from the skeleton; pre-backfill sections (empty
-    // title) fall back to the section_id so the heading stays parseable.
-    let mut section_blocks = Vec::with_capacity(store.sections.len());
-    for (section_id, atomic) in &store.sections {
-        let (title, status) = section_heading(section_id, atomic);
-        section_blocks.push(
-            render_section(section_id, title, status, atomic)
-                .map_err(|e| anyhow!("render section {}: {}", section_id, e))?,
-        );
-    }
-    let mut entry_blocks = Vec::with_capacity(store.changelog_entries.len());
-    for (entry_id, entry) in &store.changelog_entries {
-        entry_blocks.push(
-            render_changelog_entry(entry_id, entry)
-                .map_err(|e| anyhow!("render entry {}: {}", entry_id, e))?,
-        );
-    }
-
-    let out = compose_generated_md(&source_rel, &section_blocks, &entry_blocks);
-    Ok((out, store))
-}
-
-/// Atomic-write the rendered content to `output_path` (temp + rename).
-pub fn write_generated_md(output_path: &Path, content: &str) -> Result<()> {
-    if let Some(parent) = output_path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-    let tmp_path = output_path.with_extension("md.tmp");
-    {
-        let mut tmp = fs::File::create(&tmp_path)
-            .with_context(|| format!("create {}", tmp_path.display()))?;
-        tmp.write_all(content.as_bytes())?;
-        tmp.sync_all()?;
-    }
-    fs::rename(&tmp_path, output_path)
-        .with_context(|| format!("rename to {}", output_path.display()))?;
-    Ok(())
-}
-
-/// Auto-regenerate GENERATED.md after a successful atomic mutate. Default
-/// behavior of every atomic mutate (overridable). Errors are propagated —
-/// a regenerate failure after a successful mutate signals the cascade is in
-/// an inconsistent state and needs manual intervention.
-pub fn auto_regenerate(anchor: &Path, sidecar: Option<&str>) -> Result<()> {
-    let root = workspace_root_from(anchor)?;
-    let sidecar_path = resolve_sidecar(anchor, sidecar)?;
-    let output_path = resolve_output(anchor, None)?;
-    let (content, _) = render_atomic_store_to_md(&root, &sidecar_path)?;
-    write_generated_md(&output_path, &content)?;
-    Ok(())
 }
 
 /// Atomic-first validation summary — shape consumed by validate-workspace.

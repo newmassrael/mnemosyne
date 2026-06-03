@@ -31,9 +31,6 @@
 //! - `mnemosyne-cli query [--include-related] [--include-changelog] [--json]`
 //! - `mnemosyne-cli query --list-sections`
 
-pub mod render;
-pub use render::*;
-
 use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
     NormativeExcerpt,

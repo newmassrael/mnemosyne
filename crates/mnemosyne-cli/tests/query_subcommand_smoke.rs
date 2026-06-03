@@ -186,9 +186,8 @@ fn query_cross_doc_reclassify_inbound() {
 #[test]
 fn query_surfaces_normative_excerpt_for_spec_section() {
     // RFC-001 UC-1 §4 read-path — a Section carrying a normative_excerpt
-    // surfaces it (structured) in `query <id> --json`, end-to-end through
-    // generate-docs (so the workspace parses it) + the atomic resolve. Also
-    // exercises a dotted section_id (`scxml-3.13`, the SCE naming convention).
+    // surfaces it (structured) in `query <id> --json` directly from the atomic
+    // store. Also exercises a dotted section_id (`scxml-3.13`, SCE convention).
     let tmp = TempDir::new().unwrap();
     fs::create_dir_all(tmp.path().join("docs/.atomic")).unwrap();
     let cfg = "[workspace]\ndocs = [\"docs/GENERATED.md\"]\n\
@@ -215,18 +214,9 @@ fn query_surfaces_normative_excerpt_for_spec_section() {
         serde_json::to_string_pretty(&atomic).unwrap(),
     )
     .unwrap();
-
-    // Render GENERATED.md so the workspace parse finds the section.
-    let gen = Command::new(cli_bin())
-        .arg("generate-docs")
-        .current_dir(tmp.path())
-        .output()
-        .expect("generate-docs");
-    assert!(
-        gen.status.success(),
-        "generate-docs failed: {}",
-        String::from_utf8_lossy(&gen.stderr)
-    );
+    // The workspace doc must exist for load_workspace to parse it (the
+    // markdown-doc model is retired in the config/parser teardown round).
+    fs::write(tmp.path().join("docs/GENERATED.md"), "# Stub\n").unwrap();
 
     let out = Command::new(cli_bin())
         .args(["query", "scxml-3.13", "--json"])

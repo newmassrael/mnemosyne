@@ -336,7 +336,7 @@ pub struct KindMigrationReport {
 ///   append time. R295 introduces publishable setters; R296 introduces
 ///   `[[publishable_override_ledger]]` so that publishable_* != audit_*
 ///   transitions require an explicit reason and content_hash anchor.
-///   `generate_docs` renders publishable_*. CQRS / read-write split pattern.
+///   read projections surface publishable_*. CQRS / read-write split pattern.
 ///
 /// Migration: v3 → v4 loader (`AtomicStore::load`) clones audit_* into
 /// publishable_* per entry; v4 stores keep them independent (intended
@@ -2201,7 +2201,7 @@ pub fn append_changelog_entry(
     // Round 294 — initialize publishable_* = audit_* clone. The two halves
     // diverge later via R295 publishable setters (paired with the R296
     // [[publishable_override_ledger]] gate). Default-equal at append time so
-    // generate_docs render shape is byte-identical to pre-R294.
+    // the publishable read-view matches the audit half until an explicit redact.
     let mut entry = AtomicChangelogEntry {
         decision_summary: decision_summary.map(str::to_string),
         changes_bullets: changes_bullets.to_vec(),

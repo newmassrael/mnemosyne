@@ -46,9 +46,7 @@ use mnemosyne_atomic::{
 };
 use mnemosyne_config::discover_config;
 use mnemosyne_core::{strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus};
-use mnemosyne_ops::cascade::{
-    auto_regenerate, render_atomic_store_to_md, resolve_output, resolve_sidecar, write_generated_md,
-};
+use mnemosyne_ops::cascade::resolve_sidecar;
 use mnemosyne_validate::code_refs::{scan_inventory_decay, scan_section_decay};
 
 fn handle_result(result: Result<AtomicMutateReceipt, AtomicMutateError>, json: bool) -> Result<()> {
@@ -1826,57 +1824,10 @@ fn print_inventory_decay_trigger(
     }
 }
 
-/// `generate-docs` subcommand — render atomic store → GENERATED.md.
-///
-/// forward-wire: from this round, the atomic store is the primary changelog
-/// ledger scope (legacy DESIGN.md Changelog stays frozen — consistency).
-/// Output path = `<workspace_root>/docs/GENERATED.md` (default, configurable
-/// via `--output <path>`).
-pub fn cmd_generate_docs(workspace_root: &Path, args: &[String]) -> Result<()> {
-    let mut sidecar: Option<String> = None;
-    let mut output: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--sidecar" => {
-                sidecar = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            "--output" => {
-                output = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--output missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
-    let output_path = resolve_output(workspace_root, output.as_deref())?;
-
-    let (content, store) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
-    write_generated_md(&output_path, &content)?;
-
-    println!("=== mnemosyne-cli generate-docs ===");
-    println!("sidecar: {}", sidecar_path.display());
-    println!("output: {}", output_path.display());
-    println!("sections rendered: {}", store.sections.len());
-    println!(
-        "changelog entries rendered: {}",
-        store.changelog_entries.len()
-    );
-    println!("written_bytes: {}", content.len());
-    Ok(())
-}
-
-/// Wrap a mutate primitive call: print the receipt (or error), then auto-
-/// regenerate GENERATED.md if `regenerate` is true. Each atomic mutate
-/// CLI subcommand routes through this finalizer to keep the cascade
-/// auto-update behavior single-sourced.
+/// Wrap a mutate primitive call: print the receipt (or error). The atomic
+/// store is the only artifact — there is no GENERATED.md to regenerate. The
+/// `regenerate` flag is inert (removed with the --no-regenerate CLI surface in
+/// the config/cleanup round).
 fn finalize_mutate(
     workspace_root: &Path,
     result: Result<AtomicMutateReceipt, AtomicMutateError>,
@@ -1884,11 +1835,8 @@ fn finalize_mutate(
     regenerate: bool,
     json: bool,
 ) -> Result<()> {
-    handle_result(result, json)?;
-    if regenerate {
-        auto_regenerate(workspace_root, sidecar)?;
-    }
-    Ok(())
+    let _ = (workspace_root, sidecar, regenerate);
+    handle_result(result, json)
 }
 
 pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
@@ -2523,70 +2471,6 @@ sidecar_path = "altdir/custom.atomic.json"
         assert_eq!(resolved, abs);
     }
 
-    // Round 279 Bug #3 — cascade output_path resolution chain.
-
-    #[test]
-    fn resolve_output_explicit_cli_flag_wins() {
-        let tmp = TempDir::new().unwrap();
-        write_toml(
-            tmp.path(),
-            r#"
-[workspace]
-docs = ["docs/coverage/X.md"]
-default_doc = "docs/coverage/X.md"
-
-[atomic]
-output_path = "ignored-by-cli.md"
-"#,
-        );
-        let resolved = resolve_output(tmp.path(), Some("manual/output.md")).unwrap();
-        assert_eq!(resolved, tmp.path().join("manual/output.md"));
-    }
-
-    #[test]
-    fn resolve_output_atomic_output_path_used_when_cli_omitted() {
-        let tmp = TempDir::new().unwrap();
-        write_toml(
-            tmp.path(),
-            r#"
-[workspace]
-docs = ["docs/coverage/SPEC_COVERAGE.md"]
-default_doc = "docs/coverage/SPEC_COVERAGE.md"
-
-[atomic]
-output_path = "docs/coverage/SPEC_COVERAGE.md"
-"#,
-        );
-        let resolved = resolve_output(tmp.path(), None).unwrap();
-        assert_eq!(resolved, tmp.path().join("docs/coverage/SPEC_COVERAGE.md"));
-    }
-
-    #[test]
-    fn resolve_output_ignores_workspace_docs_first() {
-        // Round 279 design — [workspace] docs[0] is the parse target, NOT
-        // the cascade write target. Setting docs[0] without [atomic]
-        // output_path must NOT redirect cascade output (would clobber
-        // hand-authored content).
-        let tmp = TempDir::new().unwrap();
-        write_toml(
-            tmp.path(),
-            r#"
-[workspace]
-docs = ["docs/HAND_AUTHORED.md"]
-default_doc = "docs/HAND_AUTHORED.md"
-"#,
-        );
-        let resolved = resolve_output(tmp.path(), None).unwrap();
-        assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
-    }
-
-    #[test]
-    fn resolve_output_built_in_default_without_config() {
-        let tmp = TempDir::new().unwrap();
-        let resolved = resolve_output(tmp.path(), None).unwrap();
-        assert_eq!(resolved, tmp.path().join("docs/GENERATED.md"));
-    }
-
     // Round 362 — a malformed `mnemosyne.toml` fails loud instead of
     // silently falling back to the built-in default path (the prior
     // `if let Ok(Some(..)) = discover_config(..)` swallowed the parse Err).
@@ -2595,7 +2479,6 @@ default_doc = "docs/HAND_AUTHORED.md"
         let tmp = TempDir::new().unwrap();
         write_toml(tmp.path(), "[atomic\nsidecar_path = \"x.json\"\n");
         assert!(resolve_sidecar(tmp.path(), None).is_err());
-        assert!(resolve_output(tmp.path(), None).is_err());
     }
 
     #[test]

@@ -6374,6 +6374,38 @@
       "publishable_carry_forward_bullets": [
         "generate-docs / auto_regenerate / render path removed in the next teardown round"
       ]
+    },
+    "Round 399 — remove the store-to-markdown render path": {
+      "decision_summary": "Remove the entire store-to-markdown render path now that the store is the directly-validated SSOT (R395-R398). Deleted the query render module (compose_generated_md / render_section / render_changelog_entry / section_heading) plus the section template; the ops render/write/auto_regenerate/resolve_output/generate_docs functions; the generate-docs CLI verb plus the MCP generate_docs and render_projection tools; and the warm RenderProjectionService (the validation ProjectionService is kept). Mutates now only persist the store. The GENERATED.md file, the [workspace] docs/default_doc config, the markdown parse model, and the inert regenerate flag are removed in the next teardown round, which is coupled because load_workspace still parses the configured doc.",
+      "changes_bullets": [
+        "query render module + section.md.tera removed; ops render/write/auto_regenerate gone",
+        "generate-docs CLI verb + MCP render_projection/generate_docs + warm RenderProjectionService removed",
+        "mutates persist the store only; render/regen-dependent tests removed or store-rewired"
+      ],
+      "verification_bullets": [
+        "workspace test binaries 0 fail; clippy -D + fmt clean",
+        "validate-workspace green store-direct; query reads the store directly",
+        "dead deps trimmed: projection/style/atomic no longer dep query; query drops tera"
+      ],
+      "carry_forward_bullets": [
+        "GENERATED.md file + [workspace] docs config + markdown parse model removed next round",
+        "inert regenerate param + --no-regenerate flag carry one round (removed with the model)"
+      ],
+      "publishable_decision_summary": "Remove the entire store-to-markdown render path now that the store is the directly-validated SSOT (R395-R398). Deleted the query render module (compose_generated_md / render_section / render_changelog_entry / section_heading) plus the section template; the ops render/write/auto_regenerate/resolve_output/generate_docs functions; the generate-docs CLI verb plus the MCP generate_docs and render_projection tools; and the warm RenderProjectionService (the validation ProjectionService is kept). Mutates now only persist the store. The GENERATED.md file, the [workspace] docs/default_doc config, the markdown parse model, and the inert regenerate flag are removed in the next teardown round, which is coupled because load_workspace still parses the configured doc.",
+      "publishable_changes_bullets": [
+        "query render module + section.md.tera removed; ops render/write/auto_regenerate gone",
+        "generate-docs CLI verb + MCP render_projection/generate_docs + warm RenderProjectionService removed",
+        "mutates persist the store only; render/regen-dependent tests removed or store-rewired"
+      ],
+      "publishable_verification_bullets": [
+        "workspace test binaries 0 fail; clippy -D + fmt clean",
+        "validate-workspace green store-direct; query reads the store directly",
+        "dead deps trimmed: projection/style/atomic no longer dep query; query drops tera"
+      ],
+      "publishable_carry_forward_bullets": [
+        "GENERATED.md file + [workspace] docs config + markdown parse model removed next round",
+        "inert regenerate param + --no-regenerate flag carry one round (removed with the model)"
+      ]
     }
   },
   "inventory_entries": {},

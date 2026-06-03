@@ -34,10 +34,6 @@
 //! keeps unchanged sub-queries memoized) are the next steps, co-designed as
 //! convergence D.
 
-pub mod render;
-
-pub use render::RenderProjectionService;
-
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_cascade::{
     build_branch_index, frozen_list_membership_aggregated, reconcile_branch_index,

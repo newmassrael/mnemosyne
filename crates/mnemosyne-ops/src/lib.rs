@@ -10,7 +10,6 @@
 //! server).
 
 pub mod cascade;
-pub mod docs;
 pub mod query;
 pub mod style;
 pub mod validate;
@@ -21,11 +20,7 @@ use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore};
 use serde::Serialize;
 use thiserror::Error;
 
-pub use cascade::{
-    auto_regenerate, render_atomic_store_to_md, resolve_output, validate_atomic_store,
-    write_generated_md, AtomicValidationSummary,
-};
-pub use docs::{generate_docs, GenerateDocsReport};
+pub use cascade::{validate_atomic_store, AtomicValidationSummary};
 pub use query::{
     list_inventory, list_sections, query_inventory, query_section, query_term, InventoryEntryView,
     ListSectionsReport, QuerySectionMode, QueryTermInput,
@@ -110,13 +105,13 @@ where
     let mut store =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let receipt = primitive(&mut store, &sidecar_path)?;
-    if regenerate {
-        cascade::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
-            .map_err(|e| OpError::Other(format!("{:#}", e)))?;
-    }
+    // The atomic store is the only artifact; there is no GENERATED.md to
+    // regenerate. The `regenerate` flag is inert (removed with the
+    // --no-regenerate CLI surface in the config/cleanup round).
+    let _ = regenerate;
     Ok(MutateOutcome {
         receipt,
-        regenerated: regenerate,
+        regenerated: false,
     })
 }
 
@@ -133,10 +128,6 @@ pub fn load_atomic_store(
 ) -> Result<AtomicStore, OpError> {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
-}
-
-fn sidecar_to_str(sidecar: Option<&Path>) -> Option<String> {
-    sidecar.map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Run the convenience-form redact_term primitive (R297). Mirrors
@@ -191,14 +182,9 @@ pub fn redact_term(
     let mut store =
         AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
     let report = mnemosyne_atomic::redact_term(&mut store, &sidecar_path, &req)?;
-    let did_regenerate = if regenerate && !report.dry_run {
-        cascade::auto_regenerate(workspace_root, sidecar_to_str(sidecar).as_deref())
-            .map_err(|e| OpError::Other(format!("{:#}", e)))?;
-        true
-    } else {
-        false
-    };
-    Ok((report, did_regenerate))
+    // Inert (no GENERATED.md to regenerate); flag removed in the cleanup round.
+    let _ = regenerate;
+    Ok((report, false))
 }
 
 /// Scan code citations for now-stale references to `inventory_id` —

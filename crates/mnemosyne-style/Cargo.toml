@@ -19,7 +19,6 @@ regex.workspace = true
 tempfile.workspace = true
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-parser = { path = "../mnemosyne-parser" }
-mnemosyne-query = { path = "../mnemosyne-query" }
 mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 
 [lints]
