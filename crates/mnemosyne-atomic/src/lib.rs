@@ -210,6 +210,14 @@ pub struct NormativeExcerpt {
     /// at, so partially-migrated workspaces stay coherent under spec
     /// rev bumps.
     pub source_revision: String,
+    /// SHA-256 (hex) of `text` as emitted by the EPUB extractor
+    /// (`medium-forge` `epub-anchor-map/v2`). `text` is a *derived cache* of
+    /// the committed EPUB; this hash lets `scan_content_drift` re-hash the
+    /// cached string offline and detect drift without re-extracting. Empty
+    /// = unrevalidatable (hand-authored or pre-v8 excerpt not yet imported
+    /// from an EPUB); surfaced by `report-excerpt-hash-backfill`. Schema v8.
+    #[serde(default)]
+    pub text_sha256: String,
 }
 
 /// EPUB-SSOT locator (R393) — where this Section lives inside the workspace's
@@ -323,6 +331,21 @@ pub struct KindMigrationReport {
     /// On-disk schema version the store was loaded from (< 5).
     pub from_schema_version: u32,
     pub rows: Vec<KindMigrationRow>,
+}
+
+/// One Section whose `normative_excerpt.text_sha256` is empty — its `text`
+/// is not yet revalidatable against an EPUB (R402, v7→v8 backfill).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExcerptHashBackfillRow {
+    pub section_id: String,
+    pub source_revision: String,
+}
+
+/// The v7→v8 excerpt-hash backfill work-list
+/// (see [`AtomicStore::excerpt_hash_backfill_report`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExcerptHashBackfillReport {
+    pub rows: Vec<ExcerptHashBackfillRow>,
 }
 
 /// ChangelogEntry atomic typed fields.
@@ -611,7 +634,15 @@ pub enum AtomicStoreError {
 // on disk, no behavior change. So there is deliberately NO `schema_version < 7`
 // arm in `load`. The locator is a derived pointer (set by `import-epub-anchors`),
 // not an authored value, so no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 7;
+// v7→v8 adds `NormativeExcerpt.text_sha256` (R402). Same declarative
+// new-field-default pattern: a pre-v8 excerpt has no `text_sha256` key, serde
+// `#[serde(default)]` fills "" — byte-identical behavior, no `schema_version < 8`
+// arm. Unlike `epub_locator`, an empty hash IS a reviewable gap (the excerpt's
+// `text` is not yet revalidatable against an EPUB), so it is surfaced by
+// `excerpt_hash_backfill_report` / `report-excerpt-hash-backfill` — a
+// schema-independent work-list (the gap persists across saves until the excerpt
+// is re-imported from an EPUB via `import_epub_excerpts`).
+const CURRENT_SCHEMA_VERSION: u32 = 8;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -686,6 +717,30 @@ impl AtomicStore {
             from_schema_version: self.schema_version,
             rows,
         })
+    }
+
+    /// v7→v8 backfill work-list: every Section whose `normative_excerpt` has an
+    /// empty `text_sha256` — hand-authored or pre-v8 excerpts whose `text` is
+    /// not yet revalidatable against an EPUB. Re-importing via
+    /// `import_epub_excerpts` populates the hash and clears the row. Unlike
+    /// [`kind_migration_report`] this is schema-independent: the gap is a real
+    /// empty field that persists across saves, not a defaulted-then-blessed
+    /// claim. Ordered by `section_id` for stable output.
+    pub fn excerpt_hash_backfill_report(&self) -> ExcerptHashBackfillReport {
+        let mut rows: Vec<ExcerptHashBackfillRow> = self
+            .sections
+            .iter()
+            .filter_map(|(section_id, section)| {
+                section.normative_excerpt.as_ref().and_then(|ne| {
+                    ne.text_sha256.is_empty().then(|| ExcerptHashBackfillRow {
+                        section_id: section_id.clone(),
+                        source_revision: ne.source_revision.clone(),
+                    })
+                })
+            })
+            .collect();
+        rows.sort_by(|a, b| a.section_id.cmp(&b.section_id));
+        ExcerptHashBackfillReport { rows }
     }
 
     /// Atomic save (temp + rename). Creates parent dir as needed.
@@ -1748,6 +1803,9 @@ fn build_normative_excerpt(
         text: text.trim_end_matches('\n').to_string(),
         anchor_url: anchor_url.to_string(),
         source_revision: source_revision.to_string(),
+        // The authoring path carries no EPUB-derived hash → empty
+        // (unrevalidatable until re-imported via import_epub_excerpts).
+        text_sha256: String::new(),
     })
 }
 
@@ -2734,7 +2792,7 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 7);
+        assert_eq!(reloaded.schema_version, 8);
     }
 
     #[test]
@@ -2773,7 +2831,7 @@ mod tests {
         );
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 7);
+        assert_eq!(reloaded.schema_version, 8);
     }
 
     #[test]
@@ -2829,7 +2887,7 @@ mod tests {
         // Save then reload: publishable_* now persisted, schema bumps to CURRENT.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 7);
+        assert_eq!(reloaded.schema_version, 8);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
     }
@@ -4014,7 +4072,7 @@ mod tests {
         // After save (bumps to CURRENT) the report is gone — migration is one-time.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 7);
+        assert_eq!(reloaded.schema_version, 8);
         assert!(reloaded.kind_migration_report().is_none());
     }
 
@@ -4635,7 +4693,7 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 7);
+        assert_eq!(reloaded.schema_version, 8);
         let entry = reloaded.changelog_entries.get("Round 999").unwrap();
         assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
         assert_eq!(
@@ -4918,6 +4976,37 @@ mod tests {
         assert_eq!(excerpt.text, "The <event> element ...");
         assert_eq!(excerpt.anchor_url, "https://www.w3.org/TR/scxml/#event");
         assert_eq!(excerpt.source_revision, "2015-09-01");
+        // Authoring path produces an empty text_sha256 (unrevalidatable).
+        assert_eq!(excerpt.text_sha256, "");
+    }
+
+    #[test]
+    fn excerpt_hash_backfill_report_lists_only_empty_hash() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "a");
+        seed_section(&mut store, "b");
+        seed_section(&mut store, "c");
+        // a: authored excerpt → empty text_sha256 (in the report).
+        set_section_normative_excerpt(&mut store, &path, "a", "text a", "https://x.org/#a", "rev1")
+            .unwrap();
+        // b: authored, then a hash populated (simulates an EPUB import) → excluded.
+        set_section_normative_excerpt(&mut store, &path, "b", "text b", "https://x.org/#b", "rev2")
+            .unwrap();
+        store
+            .sections
+            .get_mut("b")
+            .unwrap()
+            .normative_excerpt
+            .as_mut()
+            .unwrap()
+            .text_sha256 = "deadbeef".into();
+        // c: no excerpt → excluded.
+        let report = store.excerpt_hash_backfill_report();
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].section_id, "a");
+        assert_eq!(report.rows[0].source_revision, "rev1");
     }
 
     #[test]
@@ -5135,6 +5224,7 @@ mod tests {
             text: "verbatim spec".to_string(),
             anchor_url: "https://www.w3.org/TR/scxml/#event".to_string(),
             source_revision: "2024-rec".to_string(),
+            text_sha256: String::new(),
         });
         import_sections(&mut store, &path, &[e]).unwrap();
         let ne = store
@@ -5253,6 +5343,7 @@ mod tests {
             text: "   ".to_string(),
             anchor_url: "https://example.com/s".to_string(),
             source_revision: "rev".to_string(),
+            text_sha256: String::new(),
         });
         let err = import_sections(&mut store, &path, &[e]).unwrap_err();
         assert!(
@@ -5355,6 +5446,7 @@ mod tests {
                 text: text.to_string(),
                 anchor_url: url.to_string(),
                 source_revision: rev.to_string(),
+                text_sha256: String::new(),
             });
             let import_ok = import_sections(&mut s2, &path, &[e]).is_ok();
 

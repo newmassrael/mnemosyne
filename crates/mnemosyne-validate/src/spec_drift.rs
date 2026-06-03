@@ -110,6 +110,7 @@ mod tests {
                 text: "the normative text".to_string(),
                 anchor_url: "https://www.w3.org/TR/scxml/#x".to_string(),
                 source_revision: r.to_string(),
+                text_sha256: String::new(),
             }),
             ..Default::default()
         }

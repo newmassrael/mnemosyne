@@ -6481,8 +6481,44 @@
         "R402 adds NormativeExcerpt.text_sha256 (schema v7 to v8) so the store caches text + hash; import_epub_excerpts (R403) verifies sha256(text)==text_sha256 on ingest",
         "extraction stays Python-side (medium-forge); the Rust core re-hashes the cached string only, never re-extracts (hexagonal, core zero-dep)"
       ]
+    },
+    "Round 402": {
+      "decision_summary": "NormativeExcerpt.text_sha256 + schema v7 to v8: the store now caches an EPUB-derived text hash so scan_content_drift can revalidate offline. Empty hash = unrevalidatable (hand-authored / pre-v8), surfaced by the read-only report-excerpt-hash-backfill work-list. Project B step 2.",
+      "changes_bullets": [
+        "NormativeExcerpt gains text_sha256 (serde default empty); schema_version v7 to v8, declarative new-field-default (no load arm)",
+        "build_normative_excerpt sets text_sha256 empty for the authoring path (no EPUB-derived hash)",
+        "AtomicStore::excerpt_hash_backfill_report + report-excerpt-hash-backfill CLI verb (TTY + --json): sections whose excerpt lacks a hash"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail (incl backfill-report unit test + 5 schema-version asserts bumped 7 to 8); clippy -D + fmt clean",
+        "text_sha256 is schema-independent: empty hash is a persistent reviewable gap, not a defaulted-then-blessed claim"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R403 flips the frozen-once-set invariant + adds import_epub_excerpts (verifies sha256(text)==text_sha256) + deletes set_section_normative_excerpt + field-invariant parity test",
+        "empty text_sha256 detection also feeds R404 scan_content_drift Layer A (offline re-hash)"
+      ],
+      "publishable_decision_summary": "NormativeExcerpt.text_sha256 + schema v7 to v8: the store now caches an EPUB-derived text hash so scan_content_drift can revalidate offline. Empty hash = unrevalidatable (hand-authored / pre-v8), surfaced by the read-only report-excerpt-hash-backfill work-list. Project B step 2.",
+      "publishable_changes_bullets": [
+        "NormativeExcerpt gains text_sha256 (serde default empty); schema_version v7 to v8, declarative new-field-default (no load arm)",
+        "build_normative_excerpt sets text_sha256 empty for the authoring path (no EPUB-derived hash)",
+        "AtomicStore::excerpt_hash_backfill_report + report-excerpt-hash-backfill CLI verb (TTY + --json): sections whose excerpt lacks a hash"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail (incl backfill-report unit test + 5 schema-version asserts bumped 7 to 8); clippy -D + fmt clean",
+        "text_sha256 is schema-independent: empty hash is a persistent reviewable gap, not a defaulted-then-blessed claim"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R403 flips the frozen-once-set invariant + adds import_epub_excerpts (verifies sha256(text)==text_sha256) + deletes set_section_normative_excerpt + field-invariant parity test",
+        "empty text_sha256 detection also feeds R404 scan_content_drift Layer A (offline re-hash)"
+      ]
     }
   },
   "inventory_entries": {},
-  "schema_version": 7
+  "schema_version": 8
 }

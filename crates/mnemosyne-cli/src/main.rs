@@ -275,6 +275,7 @@ fn run(args: &[String]) -> Result<()> {
         "propose-implementations" => cmd_propose_implementations(&args[2..]),
         "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
         "report-coverage" => cmd_report_coverage(&args[2..]),
+        "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
         "--help" | "-h" | "help" => {
@@ -487,6 +488,7 @@ fn print_help(prog: &str) {
     );
     println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
     println!(" {} report-coverage [--json]", prog);
+    println!(" {} report-excerpt-hash-backfill [--json]", prog);
     println!(
         "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
     );
@@ -1266,6 +1268,43 @@ fn cmd_report_binding_migration(args: &[String]) -> Result<()> {
                     }
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+/// R402 — excerpt-hash backfill work-list: every section whose
+/// `normative_excerpt` has an empty `text_sha256` (hand-authored or pre-v8
+/// excerpt not yet revalidatable against an EPUB). Re-import via
+/// `import-epub-excerpts` to populate the hash. Read-only.
+fn cmd_report_excerpt_hash_backfill(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let report = store.excerpt_hash_backfill_report();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("=== excerpt-hash backfill report ===");
+        println!(
+            "{} excerpt(s) lack a text_sha256 — re-import from EPUB via import-epub-excerpts",
+            report.rows.len()
+        );
+        for r in &report.rows {
+            println!("  §{}  (rev {})", r.section_id, r.source_revision);
         }
     }
     Ok(())
