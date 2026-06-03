@@ -150,25 +150,6 @@ pub struct AddSectionExampleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SetSectionNormativeExcerptArgs {
-    /// Section ID without the `§` prefix.
-    pub section_id: String,
-    /// Vendored normative quote, verbatim. Trailing newline is trimmed
-    /// for round-trip stability; leading whitespace preserved.
-    pub text: String,
-    /// Absolute http(s):// anchor URL pointing at the upstream
-    /// section (e.g. `https://www.w3.org/TR/scxml/#event`).
-    pub anchor_url: String,
-    /// Upstream revision identifier the excerpt was captured at
-    /// (Recommendation publication date, editor's-draft date, RFC
-    /// number + revision letter, etc.). Free-form string; should
-    /// match `[workspace.spec_source].revision` at the time of
-    /// anchoring, but per-Section field carries independently for
-    /// partially-migrated workspaces.
-    pub source_revision: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionBindingArgs {
     /// Section ID without the `§` prefix.
     pub section_id: String,
@@ -792,30 +773,6 @@ impl MnemosyneServer {
         };
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
             atomic::add_section_example(store, path, &section, example)
-        });
-        self.finish_mutate(outcome)
-    }
-
-    #[tool(
-        description = "External-spec mirror — anchor a vendored normative excerpt (text + anchor URL + source revision) onto a Section. Use when this Section represents a section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR / etc.) mirrored into the workspace. **Frozen-ledger field**: once set, the excerpt is immutable; spec revision drift is modeled by transitioning this Section to `decision_status = Superseded` and creating a new Section that carries the updated excerpt. `anchor_url` must be an absolute http(s):// URL with a host."
-    )]
-    async fn set_section_normative_excerpt(
-        &self,
-        args: Parameters<SetSectionNormativeExcerptArgs>,
-    ) -> CallToolResult {
-        let section = strip_section_marker(&args.0.section_id).to_string();
-        let text = args.0.text.clone();
-        let anchor_url = args.0.anchor_url.clone();
-        let source_revision = args.0.source_revision.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::set_section_normative_excerpt(
-                store,
-                path,
-                &section,
-                &text,
-                &anchor_url,
-                &source_revision,
-            )
         });
         self.finish_mutate(outcome)
     }

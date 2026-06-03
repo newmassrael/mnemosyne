@@ -153,13 +153,15 @@ pub struct AtomicSection {
     /// source revision pin let reviewers verify code citations against
     /// the exact spec text the workspace was built against.
     ///
-    /// **Frozen-ledger zone**: once anchored (None → Some), the value is
-    /// immutable. The mutate primitive
-    /// [`set_section_normative_excerpt`] rejects Some → Some transitions.
-    /// Spec revision drift is modeled as `Section.decision_status =
-    /// Superseded` + a new Section carrying the updated excerpt — same
-    /// pattern as R294 audit-half immutability and R265 decision_status
-    /// supersession.
+    /// **EPUB-projected cache (R403)**: `text` is a derived cache of the
+    /// committed EPUB, not a frozen authored value — it may be overwritten by
+    /// re-projecting from a fresh EPUB extraction. The authored identity fields
+    /// (`anchor_url`, `source_revision`) pin which upstream section + revision
+    /// the excerpt belongs to; they are store-side metadata, not EPUB content,
+    /// so [`import_epub_excerpts`] preserves them and refreshes only `text` +
+    /// `text_sha256`. Spec revision drift across a *different* revision is still
+    /// modeled as `Section.decision_status = Superseded` + a new Section (R265),
+    /// keeping the audit trail honest about which rev each excerpt mirrors.
     ///
     /// `None` (default) on every Section that does not mirror an external
     /// standard. The `[workspace.spec_source]` config (FR-2) names the
@@ -1368,17 +1370,18 @@ pub fn remove_section(
 /// here (the parent-section existence check), so the bulk caller may insert
 /// earlier manifest entries before building a later child that parents to one.
 ///
-/// `normative_excerpt` (`(text, anchor_url, source_revision)`) anchors the
-/// excerpt INLINE at create — frozen from birth — via the shared
-/// [`build_normative_excerpt`] validator (same invariants as the post-create
-/// setter).
+/// `normative_excerpt` (`(text, anchor_url, source_revision, text_sha256)`)
+/// anchors the excerpt INLINE at create via the shared
+/// [`build_normative_excerpt`] validator (the same validator the EPUB
+/// re-projection path [`import_epub_excerpts`] uses, so the two write paths
+/// cannot drift on the invariant set).
 fn build_candidate_section(
     store: &AtomicStore,
     section_id: &str,
     parent_doc: &str,
     title: &str,
     parent_section: Option<&str>,
-    normative_excerpt: Option<(&str, &str, &str)>,
+    normative_excerpt: Option<(&str, &str, &str, &str)>,
     coverage_expectation: mnemosyne_core::CoverageExpectation,
 ) -> Result<(String, AtomicSection), AtomicMutateError> {
     // Strip a leading `§` citation sigil so store keys stay bare, regardless of
@@ -1423,12 +1426,13 @@ fn build_candidate_section(
     } else {
         None
     };
-    let excerpt = match normative_excerpt {
-        Some((text, anchor_url, source_revision)) => {
-            Some(build_normative_excerpt(text, anchor_url, source_revision)?)
-        }
-        None => None,
-    };
+    let excerpt =
+        match normative_excerpt {
+            Some((text, anchor_url, source_revision, text_sha256)) => Some(
+                build_normative_excerpt(text, anchor_url, source_revision, text_sha256)?,
+            ),
+            None => None,
+        };
     let section = AtomicSection {
         skeleton: mnemosyne_core::SectionSkeleton {
             title: title_t.to_string(),
@@ -1529,6 +1533,7 @@ pub fn import_sections(
                 n.text.as_str(),
                 n.anchor_url.as_str(),
                 n.source_revision.as_str(),
+                n.text_sha256.as_str(),
             )
         });
         let (section_id_t, candidate) = build_candidate_section(
@@ -1752,26 +1757,43 @@ pub fn set_section_decision_status(
 /// Section to `decision_status = Superseded` and creates a new
 /// Section carrying the updated excerpt — same pattern as audit-half
 /// immutability in `append_changelog_entry`.
+/// SHA-256 of `bytes`, lowercase hex. Shared by [`build_normative_excerpt`]'s
+/// EPUB-cache hash check.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let out = hasher.finalize();
+    let mut s = String::with_capacity(out.len() * 2);
+    for b in out {
+        use std::fmt::Write;
+        let _ = write!(&mut s, "{:02x}", b);
+    }
+    s
+}
+
+/// Validate the four normative-excerpt fields and build the value.
+///
+/// The single validator + constructor for a `NormativeExcerpt`. Both write
+/// paths route through it — the bulk [`import_sections`] inline-at-create path
+/// and the EPUB re-projection path [`import_epub_excerpts`] — so the two paths
+/// cannot drift on the invariant set (CLAUDE.md half-enforced-invariant rule;
+/// the R305 paste-error class). A field-parity test feeds the same edge inputs
+/// through both paths.
 ///
 /// Validates:
 /// - `text` non-empty (trimmed).
-/// - `anchor_url` parses as absolute URL (scheme `http`/`https` + host).
 /// - `source_revision` non-empty (trimmed).
-/// - Target Section exists.
-/// - Target Section's `normative_excerpt` is currently `None` (frozen
-///   reject otherwise).
-/// Validate the three normative-excerpt fields and build the value.
-///
-/// The single validator + constructor for a `NormativeExcerpt`. Both write
-/// paths route through it — [`set_section_normative_excerpt`] (post-create
-/// anchor) and the bulk [`import_sections`] inline-at-create path — so the
-/// two paths cannot drift on the invariant set (CLAUDE.md half-enforced-
-/// invariant rule; the R305 paste-error class). A field-parity test feeds
-/// the same edge inputs through both paths.
+/// - `anchor_url` parses as absolute URL (scheme `http`/`https` + host).
+/// - `text_sha256`, when non-empty, equals `sha256(stored text)` — the stored
+///   text is the EPUB-projected cache and the hash is its revalidation anchor
+///   (R403). Empty `text_sha256` = unrevalidatable (hand-authored or pre-v8,
+///   surfaced by `report-excerpt-hash-backfill`); it is accepted as-is.
 fn build_normative_excerpt(
     text: &str,
     anchor_url: &str,
     source_revision: &str,
+    text_sha256: &str,
 ) -> Result<NormativeExcerpt, AtomicMutateError> {
     if text.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
@@ -1799,41 +1821,24 @@ fn build_normative_excerpt(
             anchor_url
         )));
     }
+    // Trailing newline is trimmed for stable storage; the hash anchors the
+    // *stored* string so revalidation re-hashes exactly what is on disk.
+    let stored_text = text.trim_end_matches('\n').to_string();
+    let hash = text_sha256.trim();
+    if !hash.is_empty() {
+        let computed = sha256_hex(stored_text.as_bytes());
+        if computed != hash {
+            return Err(AtomicMutateError::Validation(format!(
+                "normative_excerpt text_sha256 mismatch: declared `{hash}` != sha256(text) `{computed}` — the cached text does not match its EPUB-extracted hash"
+            )));
+        }
+    }
     Ok(NormativeExcerpt {
-        text: text.trim_end_matches('\n').to_string(),
+        text: stored_text,
         anchor_url: anchor_url.to_string(),
         source_revision: source_revision.to_string(),
-        // The authoring path carries no EPUB-derived hash → empty
-        // (unrevalidatable until re-imported via import_epub_excerpts).
-        text_sha256: String::new(),
+        text_sha256: hash.to_string(),
     })
-}
-
-pub fn set_section_normative_excerpt(
-    store: &mut AtomicStore,
-    sidecar_path: &Path,
-    section_id: &str,
-    text: &str,
-    anchor_url: &str,
-    source_revision: &str,
-) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let excerpt = build_normative_excerpt(text, anchor_url, source_revision)?;
-    let section = section_mut_strict(store, section_id)?;
-    if section.normative_excerpt.is_some() {
-        return Err(AtomicMutateError::FrozenLedger(format!(
-            "normative_excerpt already anchored on §{} — once set, the field is immutable; \
-  model spec rev drift by superseding this Section and creating a new one with the updated excerpt",
-            section_id
-        )));
-    }
-    section.normative_excerpt = Some(excerpt);
-    save_with_receipt(
-        store,
-        sidecar_path,
-        "set_section_normative_excerpt",
-        "section",
-        section_id,
-    )
 }
 
 pub fn add_section_binding(
@@ -2106,6 +2111,79 @@ pub fn import_epub_anchors(
         sidecar_path,
         "import_epub_anchors",
         "anchors",
+        &applied.to_string(),
+    )?;
+    Ok((receipt, unmatched))
+}
+
+/// One entry for the bulk [`import_epub_excerpts`] primitive: the EPUB-extracted
+/// text cache + its SHA-256 for a Section, as emitted per-anchor by medium-forge
+/// `epub-anchor-map/v2`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExcerptImport {
+    pub section_id: String,
+    pub text: String,
+    pub text_sha256: String,
+}
+
+/// R403 — refresh the EPUB-projected `normative_excerpt.text` cache (+ its
+/// `text_sha256`) from a medium-forge `epub-anchor-map/v2`.
+///
+/// The upstream identity fields (`anchor_url`, `source_revision`) are store-side
+/// authored metadata, NOT projected from the EPUB, so they are preserved from
+/// the existing excerpt; only the content cache + hash refresh. Consequently a
+/// Section must already carry a `normative_excerpt` (authored via
+/// [`import_sections`] inline) for its text to be refreshable — the EPUB map has
+/// no anchor_url to construct one from scratch. Sections absent from the store
+/// OR lacking an existing excerpt are returned as `unmatched` (the caller
+/// decides whether that is an error).
+///
+/// Each refresh routes through [`build_normative_excerpt`] — the SAME validator
+/// as the [`import_sections`] inline path — which verifies
+/// `sha256(text) == text_sha256` (CLAUDE.md half-enforced-invariant rule; a
+/// field-parity test pins it). One in-memory pass + one save (single write path,
+/// like [`import_epub_anchors`]). The text cache is derived, so overwrite is
+/// allowed (the frozen-ledger gate was removed in R403). A hash mismatch on any
+/// entry returns `Err` before the save, so `run_atomic_mutate` never persists a
+/// partially-applied import.
+pub fn import_epub_excerpts(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    excerpts: &[ExcerptImport],
+) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    let mut applied = 0usize;
+    let mut unmatched = Vec::new();
+    for e in excerpts {
+        // Read the authored identity off the existing excerpt (owned clone so
+        // the immutable borrow ends before the mutable get_mut below).
+        let prev_meta = store
+            .sections
+            .get(&e.section_id)
+            .and_then(|s| s.normative_excerpt.as_ref())
+            .map(|ne| (ne.anchor_url.clone(), ne.source_revision.clone()));
+        let Some((anchor_url, source_revision)) = prev_meta else {
+            unmatched.push(e.section_id.clone());
+            continue;
+        };
+        let refreshed =
+            build_normative_excerpt(&e.text, &anchor_url, &source_revision, &e.text_sha256)?;
+        store
+            .sections
+            .get_mut(&e.section_id)
+            .expect("section present: prev_meta resolved from it")
+            .normative_excerpt = Some(refreshed);
+        applied += 1;
+    }
+    if applied == 0 {
+        return Err(AtomicMutateError::NotFound(
+            "import_epub_excerpts: no entry matched a refreshable excerpt in the store".to_string(),
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "import_epub_excerpts",
+        "excerpts",
         &applied.to_string(),
     )?;
     Ok((receipt, unmatched))
@@ -4952,32 +5030,115 @@ mod tests {
         );
     }
 
+    /// Seed a section carrying a normative_excerpt with an empty text_sha256
+    /// (the authoring / import_sections-inline path) — the precondition
+    /// [`import_epub_excerpts`] refreshes. Replaces the deleted hand-authoring
+    /// setter as the test seed.
+    fn seed_excerpt(
+        store: &mut AtomicStore,
+        path: &Path,
+        id: &str,
+        text: &str,
+        url: &str,
+        rev: &str,
+    ) {
+        let mut e = imp(id, "docs/GENERATED.md", "T");
+        e.normative_excerpt = Some(NormativeExcerpt {
+            text: text.to_string(),
+            anchor_url: url.to_string(),
+            source_revision: rev.to_string(),
+            text_sha256: String::new(),
+        });
+        import_sections(store, path, &[e]).unwrap();
+    }
+
     #[test]
-    fn normative_excerpt_sets_when_none() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
+    fn build_normative_excerpt_accepts_valid_empty_hash() {
+        let ne = build_normative_excerpt(
             "The <event> element ...",
             "https://www.w3.org/TR/scxml/#event",
             "2015-09-01",
+            "",
         )
         .unwrap();
-        let excerpt = store
-            .section("scxml-3.13")
-            .unwrap()
-            .normative_excerpt
-            .as_ref()
+        assert_eq!(ne.text, "The <event> element ...");
+        assert_eq!(ne.anchor_url, "https://www.w3.org/TR/scxml/#event");
+        assert_eq!(ne.source_revision, "2015-09-01");
+        // Empty hash = unrevalidatable (hand-authored / pre-v8).
+        assert_eq!(ne.text_sha256, "");
+    }
+
+    #[test]
+    fn build_normative_excerpt_trims_trailing_newline() {
+        let ne = build_normative_excerpt("spec text\n\n", "https://example.com/spec", "rev1", "")
             .unwrap();
-        assert_eq!(excerpt.text, "The <event> element ...");
-        assert_eq!(excerpt.anchor_url, "https://www.w3.org/TR/scxml/#event");
-        assert_eq!(excerpt.source_revision, "2015-09-01");
-        // Authoring path produces an empty text_sha256 (unrevalidatable).
-        assert_eq!(excerpt.text_sha256, "");
+        assert_eq!(
+            ne.text, "spec text",
+            "trailing newlines trimmed for stable storage"
+        );
+    }
+
+    #[test]
+    fn build_normative_excerpt_rejects_blank_text() {
+        let err =
+            build_normative_excerpt(" \n ", "https://example.com/spec", "rev1", "").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+    }
+
+    #[test]
+    fn build_normative_excerpt_rejects_blank_source_revision() {
+        let err =
+            build_normative_excerpt("text", "https://example.com/spec", "   ", "").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+    }
+
+    #[test]
+    fn build_normative_excerpt_rejects_non_url_anchor() {
+        let err = build_normative_excerpt("text", "not-a-url", "rev1", "").unwrap_err();
+        match err {
+            AtomicMutateError::Validation(msg) => {
+                assert!(msg.contains("absolute http(s):// URL"), "got: {msg}")
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_normative_excerpt_rejects_missing_host() {
+        let err = build_normative_excerpt("text", "https:///path-only", "rev1", "").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+    }
+
+    #[test]
+    fn build_normative_excerpt_accepts_matching_hash() {
+        let text = "spec text";
+        let hash = sha256_hex(text.as_bytes());
+        let ne = build_normative_excerpt(text, "https://example.com/spec", "rev1", &hash).unwrap();
+        assert_eq!(ne.text_sha256, hash);
+    }
+
+    #[test]
+    fn build_normative_excerpt_hashes_stored_text_not_raw() {
+        // The hash anchors the STORED (newline-trimmed) string, not the raw input.
+        let stored = "spec text";
+        let hash = sha256_hex(stored.as_bytes());
+        let ne = build_normative_excerpt("spec text\n", "https://example.com/spec", "rev1", &hash)
+            .unwrap();
+        assert_eq!(ne.text, stored);
+        assert_eq!(ne.text_sha256, hash);
+    }
+
+    #[test]
+    fn build_normative_excerpt_rejects_mismatched_hash() {
+        let err =
+            build_normative_excerpt("spec text", "https://example.com/spec", "rev1", "deadbeef")
+                .unwrap_err();
+        match err {
+            AtomicMutateError::Validation(msg) => {
+                assert!(msg.contains("text_sha256 mismatch"), "got: {msg}")
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
     }
 
     #[test]
@@ -4985,15 +5146,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        seed_section(&mut store, "a");
-        seed_section(&mut store, "b");
-        seed_section(&mut store, "c");
         // a: authored excerpt → empty text_sha256 (in the report).
-        set_section_normative_excerpt(&mut store, &path, "a", "text a", "https://x.org/#a", "rev1")
-            .unwrap();
+        seed_excerpt(&mut store, &path, "a", "text a", "https://x.org/#a", "rev1");
         // b: authored, then a hash populated (simulates an EPUB import) → excluded.
-        set_section_normative_excerpt(&mut store, &path, "b", "text b", "https://x.org/#b", "rev2")
-            .unwrap();
+        seed_excerpt(&mut store, &path, "b", "text b", "https://x.org/#b", "rev2");
         store
             .sections
             .get_mut("b")
@@ -5003,6 +5159,7 @@ mod tests {
             .unwrap()
             .text_sha256 = "deadbeef".into();
         // c: no excerpt → excluded.
+        seed_section(&mut store, "c");
         let report = store.excerpt_hash_backfill_report();
         assert_eq!(report.rows.len(), 1);
         assert_eq!(report.rows[0].section_id, "a");
@@ -5010,137 +5167,176 @@ mod tests {
     }
 
     #[test]
-    fn normative_excerpt_rejects_overwrite() {
+    fn import_epub_excerpts_refreshes_text_and_preserves_identity() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        set_section_normative_excerpt(
+        seed_excerpt(
             &mut store,
             &path,
             "scxml-3.13",
-            "first",
-            "https://example.com/spec",
-            "rev1",
-        )
-        .unwrap();
-        let err = set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
-            "second",
-            "https://example.com/spec",
-            "rev2",
-        )
-        .unwrap_err();
-        match err {
-            AtomicMutateError::FrozenLedger(msg) => {
-                assert!(
-                    msg.contains("already anchored"),
-                    "expected frozen-ledger reject msg; got: {}",
-                    msg
-                );
-            }
-            other => panic!("expected FrozenLedger, got {:?}", other),
-        }
-        // Original value preserved
-        let excerpt = store
-            .section("scxml-3.13")
-            .unwrap()
-            .normative_excerpt
-            .as_ref()
-            .unwrap();
-        assert_eq!(excerpt.text, "first");
-    }
-
-    #[test]
-    fn normative_excerpt_rejects_blank_text() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        let err = set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
-            " \n ",
-            "https://example.com/spec",
-            "rev1",
-        )
-        .unwrap_err();
-        matches!(err, AtomicMutateError::Validation(_));
-    }
-
-    #[test]
-    fn normative_excerpt_rejects_non_url_anchor() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        let err = set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
-            "text",
-            "not-a-url",
-            "rev1",
-        )
-        .unwrap_err();
-        match err {
-            AtomicMutateError::Validation(msg) => {
-                assert!(
-                    msg.contains("absolute http(s):// URL"),
-                    "expected URL-validation msg; got: {}",
-                    msg
-                );
-            }
-            other => panic!("expected Validation, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn normative_excerpt_rejects_missing_host() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        let err = set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
-            "text",
-            "https:///path-only",
-            "rev1",
-        )
-        .unwrap_err();
-        matches!(err, AtomicMutateError::Validation(_));
-    }
-
-    #[test]
-    fn normative_excerpt_trims_trailing_newline() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join(".atomic/workspace.atomic.json");
-        let mut store = AtomicStore::new();
-        seed_section(&mut store, "scxml-3.13");
-        set_section_normative_excerpt(
-            &mut store,
-            &path,
-            "scxml-3.13",
-            "spec text\n\n",
-            "https://example.com/spec",
-            "rev1",
-        )
-        .unwrap();
-        let excerpt = store
-            .section("scxml-3.13")
-            .unwrap()
-            .normative_excerpt
-            .as_ref()
-            .unwrap();
-        assert_eq!(
-            excerpt.text, "spec text",
-            "trailing newlines should be trimmed for stable round-trip render"
+            "old text",
+            "https://www.w3.org/TR/scxml/#event",
+            "2015-09-01",
         );
+        let new_text = "new EPUB text";
+        let hash = sha256_hex(new_text.as_bytes());
+        let (_r, unmatched) = import_epub_excerpts(
+            &mut store,
+            &path,
+            &[ExcerptImport {
+                section_id: "scxml-3.13".into(),
+                text: new_text.into(),
+                text_sha256: hash.clone(),
+            }],
+        )
+        .unwrap();
+        assert!(unmatched.is_empty());
+        let ne = store
+            .section("scxml-3.13")
+            .unwrap()
+            .normative_excerpt
+            .as_ref()
+            .unwrap();
+        assert_eq!(ne.text, new_text);
+        assert_eq!(ne.text_sha256, hash);
+        // Authored identity preserved (store-side, not EPUB-projected).
+        assert_eq!(ne.anchor_url, "https://www.w3.org/TR/scxml/#event");
+        assert_eq!(ne.source_revision, "2015-09-01");
+    }
+
+    #[test]
+    fn import_epub_excerpts_overwrites_existing_hash() {
+        // Frozen-ledger gate removed in R403: a second import overwrites.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_excerpt(
+            &mut store,
+            &path,
+            "x",
+            "v0",
+            "https://example.com/s",
+            "rev1",
+        );
+        let h1 = sha256_hex(b"first");
+        import_epub_excerpts(
+            &mut store,
+            &path,
+            &[ExcerptImport {
+                section_id: "x".into(),
+                text: "first".into(),
+                text_sha256: h1,
+            }],
+        )
+        .unwrap();
+        let h2 = sha256_hex(b"second");
+        import_epub_excerpts(
+            &mut store,
+            &path,
+            &[ExcerptImport {
+                section_id: "x".into(),
+                text: "second".into(),
+                text_sha256: h2.clone(),
+            }],
+        )
+        .unwrap();
+        let ne = store
+            .section("x")
+            .unwrap()
+            .normative_excerpt
+            .as_ref()
+            .unwrap();
+        assert_eq!(ne.text, "second");
+        assert_eq!(ne.text_sha256, h2);
+    }
+
+    #[test]
+    fn import_epub_excerpts_reports_unmatched() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_excerpt(
+            &mut store,
+            &path,
+            "has",
+            "t",
+            "https://example.com/s",
+            "rev1",
+        );
+        seed_section(&mut store, "noexcerpt"); // present but no excerpt → unmatched
+        let ht = sha256_hex(b"refresh");
+        let (_r, unmatched) = import_epub_excerpts(
+            &mut store,
+            &path,
+            &[
+                ExcerptImport {
+                    section_id: "has".into(),
+                    text: "refresh".into(),
+                    text_sha256: ht,
+                },
+                ExcerptImport {
+                    section_id: "noexcerpt".into(),
+                    text: "x".into(),
+                    text_sha256: String::new(),
+                },
+                ExcerptImport {
+                    section_id: "absent".into(),
+                    text: "y".into(),
+                    text_sha256: String::new(),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            unmatched,
+            vec!["noexcerpt".to_string(), "absent".to_string()]
+        );
+    }
+
+    #[test]
+    fn import_epub_excerpts_rejects_hash_mismatch() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_excerpt(
+            &mut store,
+            &path,
+            "x",
+            "orig",
+            "https://example.com/s",
+            "rev1",
+        );
+        let err = import_epub_excerpts(
+            &mut store,
+            &path,
+            &[ExcerptImport {
+                section_id: "x".into(),
+                text: "new".into(),
+                text_sha256: "deadbeef".into(),
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(err, AtomicMutateError::Validation(_)));
+    }
+
+    #[test]
+    fn import_epub_excerpts_errors_when_nothing_matches() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "x"); // present but no excerpt
+        let err = import_epub_excerpts(
+            &mut store,
+            &path,
+            &[ExcerptImport {
+                section_id: "x".into(),
+                text: "t".into(),
+                text_sha256: String::new(),
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(err, AtomicMutateError::NotFound(_)));
     }
 
     // ---- A2: import_sections (bulk create) ----
@@ -5418,41 +5614,56 @@ mod tests {
 
     #[test]
     fn normative_excerpt_write_path_parity() {
-        // CLAUDE.md half-enforced-invariant rule: the post-create setter and
-        // the import_sections inline-at-create path are TWO write paths to the
-        // same field; both must enforce the identical invariant set. Feed the
-        // same edge inputs through each and assert the accept/reject verdicts
-        // match. (Both route through build_normative_excerpt — this test locks
-        // it so a future bypass on one path is caught.)
-        let cases: &[(&str, &str, &str)] = &[
-            ("valid text", "https://example.com/s", "rev"),
-            ("   ", "https://example.com/s", "rev"),
-            ("text", "ftp://example.com/s", "rev"),
-            ("text", "https://", "rev"),
-            ("text", "https://example.com/s", "   "),
+        // CLAUDE.md half-enforced-invariant rule: import_sections inline-at-create
+        // and import_epub_excerpts are the TWO write paths to normative_excerpt;
+        // both route through build_normative_excerpt and must agree on
+        // accept/reject. anchor_url + source_revision are authoring-only inputs
+        // (the EPUB path PRESERVES them from an already-validated excerpt), so the
+        // overlapping controllable inputs are (text, text_sha256) — vary those,
+        // hold url/rev valid. This locks a future bypass on either path.
+        const URL: &str = "https://example.com/s";
+        const REV: &str = "rev";
+        let good_hash = sha256_hex(b"spec text");
+        // (text, text_sha256)
+        let cases: &[(&str, &str)] = &[
+            ("spec text", ""),                 // valid, unrevalidatable
+            ("   ", ""),                       // blank text → reject
+            ("spec text", good_hash.as_str()), // valid + matching hash
+            ("spec text", "deadbeef"),         // hash mismatch → reject
         ];
-        for (text, url, rev) in cases {
+        for (text, hash) in cases {
             let tmp = TempDir::new().unwrap();
             let path = tmp.path().join(".atomic/workspace.atomic.json");
 
+            // import_sections inline-at-create path.
             let mut s1 = AtomicStore::new();
-            seed_section(&mut s1, "x");
-            let setter_ok =
-                set_section_normative_excerpt(&mut s1, &path, "x", text, url, rev).is_ok();
-
-            let mut s2 = AtomicStore::new();
             let mut e = imp("x", "docs/GENERATED.md", "T");
             e.normative_excerpt = Some(NormativeExcerpt {
                 text: text.to_string(),
-                anchor_url: url.to_string(),
-                source_revision: rev.to_string(),
-                text_sha256: String::new(),
+                anchor_url: URL.to_string(),
+                source_revision: REV.to_string(),
+                text_sha256: hash.to_string(),
             });
-            let import_ok = import_sections(&mut s2, &path, &[e]).is_ok();
+            let import_ok = import_sections(&mut s1, &path, &[e]).is_ok();
+
+            // import_epub_excerpts path: pre-seed a valid excerpt carrying the
+            // same url/rev, then refresh with (text, hash).
+            let mut s2 = AtomicStore::new();
+            seed_excerpt(&mut s2, &path, "x", "seed", URL, REV);
+            let epub_ok = import_epub_excerpts(
+                &mut s2,
+                &path,
+                &[ExcerptImport {
+                    section_id: "x".into(),
+                    text: text.to_string(),
+                    text_sha256: hash.to_string(),
+                }],
+            )
+            .is_ok();
 
             assert_eq!(
-                setter_ok, import_ok,
-                "write-path parity broken for ({text:?}, {url:?}, {rev:?}): setter={setter_ok} import={import_ok}"
+                import_ok, epub_ok,
+                "write-path parity broken for (text={text:?}, hash={hash:?}): import={import_ok} epub={epub_ok}"
             );
         }
     }

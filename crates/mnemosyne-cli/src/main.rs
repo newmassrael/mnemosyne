@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -220,8 +220,8 @@ fn run(args: &[String]) -> Result<()> {
         "set-section-decision-status" => {
             atomic_cli::cmd_set_section_decision_status(&workspace_anchor()?, &args[2..])
         }
-        "set-section-normative-excerpt" => {
-            atomic_cli::cmd_set_section_normative_excerpt(&workspace_anchor()?, &args[2..])
+        "import-epub-excerpts" => {
+            atomic_cli::cmd_import_epub_excerpts(&workspace_anchor()?, &args[2..])
         }
         // Round 267 — section removal (closes Round 266 carry gap).
         "remove-section" => atomic_cli::cmd_remove_section(&workspace_anchor()?, &args[2..]),
@@ -406,11 +406,11 @@ fn print_help(prog: &str) {
  "   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"
  );
     println!(
- " {} set-section-normative-excerpt --section §<N> --text-file <path> --anchor-url <url> --source-revision <rev> [--sidecar <path>] [--json]",
- prog
- );
+        " {} import-epub-excerpts --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]",
+        prog
+    );
     println!(
- "   external-spec mirror anchor — vendored quote + URL + rev; frozen after first set (model spec rev drift by superseding the Section)"
+ "   refresh normative_excerpt.text + text_sha256 from a medium-forge epub-anchor-map/v2; preserves authored anchor_url + source_revision (section must already carry an excerpt)"
  );
     println!(
  " {} set-section-decision-status --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",

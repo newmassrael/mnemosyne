@@ -6517,6 +6517,50 @@
         "R403 flips the frozen-once-set invariant + adds import_epub_excerpts (verifies sha256(text)==text_sha256) + deletes set_section_normative_excerpt + field-invariant parity test",
         "empty text_sha256 detection also feeds R404 scan_content_drift Layer A (offline re-hash)"
       ]
+    },
+    "Round 403 — normative_excerpt becomes EPUB-projected cache; import-epub-excerpts replaces the hand-authoring setter": {
+      "decision_summary": "Flip normative_excerpt.text from a frozen hand-authored value to a derived cache projected from the committed EPUB. The frozen-once-set rejection is removed so the cache can be refreshed; build_normative_excerpt now verifies the declared text_sha256 against sha256(stored text) when present. The new import_epub_excerpts primitive (sibling of import_epub_anchors) refreshes text + text_sha256 from a medium-forge epub-anchor-map/v2 while preserving the authored anchor_url + source_revision (store-side identity, not EPUB-projected). The hand-authoring set_section_normative_excerpt (atomic fn + CLI verb + MCP tool) is deleted per no-legacy-carry, leaving import_epub_excerpts and import_sections-inline as the two write paths, both routing through one build_normative_excerpt validator pinned by a field-invariant parity test.",
+      "changes_bullets": [
+        "Removed the frozen-once-set rejection on normative_excerpt; text is now an EPUB-projected cache (overwrite allowed), no longer an immutable authored value.",
+        "build_normative_excerpt now takes text_sha256 and verifies sha256(stored text) equals the declared hash when non-empty (empty hash = unrevalidatable, hand-authored).",
+        "Added import_epub_excerpts primitive + import-epub-excerpts CLI verb: refreshes text + text_sha256 from an epub-anchor-map/v2, preserving the section's authored anchor_url + source_revision; ids with no refreshable excerpt reported as unmatched.",
+        "Deleted the hand-authoring set_section_normative_excerpt (atomic fn + CLI verb + MCP tool) per the no-legacy-carry rule.",
+        "Added a field-invariant parity test (import_epub_excerpts vs import_sections inline) since both write paths route through the single build_normative_excerpt validator."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "validate-workspace green: T3 reject 0, referential closure, frozen ledger, atomic orphan all pass.",
+        "build_normative_excerpt unit tests cover blank text / blank source_revision / non-url anchor / missing host / trailing-newline trim / empty + matching + mismatched hash.",
+        "import_epub_excerpts tests cover refresh, overwrite (frozen gate removed), hash-mismatch reject, unmatched reporting, and all-unmatched error."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R404 next: scan_content_drift (offline re-hash of stored text vs text_sha256, empty = unrevalidatable finding) + spec_drift-style severity config + SpecSource.epub_sha256/epub_path + commit the EPUB under docs/.atomic/epub/ + dogfood with a seeded fixture store + SCE adoption runbook.",
+        "import_epub_excerpts deliberately requires a pre-existing excerpt: anchor_url + source_revision are store-side authored identity, not EPUB-projected, so the EPUB map cannot construct a complete excerpt from scratch. Sections lacking an excerpt are reported unmatched."
+      ],
+      "publishable_decision_summary": "Flip normative_excerpt.text from a frozen hand-authored value to a derived cache projected from the committed EPUB. The frozen-once-set rejection is removed so the cache can be refreshed; build_normative_excerpt now verifies the declared text_sha256 against sha256(stored text) when present. The new import_epub_excerpts primitive (sibling of import_epub_anchors) refreshes text + text_sha256 from a medium-forge epub-anchor-map/v2 while preserving the authored anchor_url + source_revision (store-side identity, not EPUB-projected). The hand-authoring set_section_normative_excerpt (atomic fn + CLI verb + MCP tool) is deleted per no-legacy-carry, leaving import_epub_excerpts and import_sections-inline as the two write paths, both routing through one build_normative_excerpt validator pinned by a field-invariant parity test.",
+      "publishable_changes_bullets": [
+        "Removed the frozen-once-set rejection on normative_excerpt; text is now an EPUB-projected cache (overwrite allowed), no longer an immutable authored value.",
+        "build_normative_excerpt now takes text_sha256 and verifies sha256(stored text) equals the declared hash when non-empty (empty hash = unrevalidatable, hand-authored).",
+        "Added import_epub_excerpts primitive + import-epub-excerpts CLI verb: refreshes text + text_sha256 from an epub-anchor-map/v2, preserving the section's authored anchor_url + source_revision; ids with no refreshable excerpt reported as unmatched.",
+        "Deleted the hand-authoring set_section_normative_excerpt (atomic fn + CLI verb + MCP tool) per the no-legacy-carry rule.",
+        "Added a field-invariant parity test (import_epub_excerpts vs import_sections inline) since both write paths route through the single build_normative_excerpt validator."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "validate-workspace green: T3 reject 0, referential closure, frozen ledger, atomic orphan all pass.",
+        "build_normative_excerpt unit tests cover blank text / blank source_revision / non-url anchor / missing host / trailing-newline trim / empty + matching + mismatched hash.",
+        "import_epub_excerpts tests cover refresh, overwrite (frozen gate removed), hash-mismatch reject, unmatched reporting, and all-unmatched error."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R404 next: scan_content_drift (offline re-hash of stored text vs text_sha256, empty = unrevalidatable finding) + spec_drift-style severity config + SpecSource.epub_sha256/epub_path + commit the EPUB under docs/.atomic/epub/ + dogfood with a seeded fixture store + SCE adoption runbook.",
+        "import_epub_excerpts deliberately requires a pre-existing excerpt: anchor_url + source_revision are store-side authored identity, not EPUB-projected, so the EPUB map cannot construct a complete excerpt from scratch. Sections lacking an excerpt are reported unmatched."
+      ]
     }
   },
   "inventory_entries": {},

@@ -38,11 +38,10 @@ use mnemosyne_atomic::{
     append_changelog_entry, remove_inventory_entry, remove_section, remove_section_binding,
     set_inventory_section_ref, set_inventory_status, set_section_alternatives,
     set_section_binding_kind, set_section_coverage_expectation, set_section_decision_status,
-    set_section_impact_scope, set_section_inputs, set_section_intent,
-    set_section_normative_excerpt, set_section_outputs, set_section_parent_doc,
-    set_section_parent_section, set_section_rationale, set_section_title, AtomicMutateError,
-    AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft, ExampleBlock,
-    RejectedAlternative,
+    set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs,
+    set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title,
+    AtomicMutateError, AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft,
+    ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
 use mnemosyne_core::{strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus};
@@ -1514,41 +1513,35 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
 /// trailing newline trimmed). `--anchor-url` must be an absolute
 /// http(s) URL. `--source-revision` is the upstream rev identifier
 /// that was current when the excerpt was captured.
-pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String]) -> Result<()> {
-    let mut section: Option<String> = None;
-    let mut text_file: Option<String> = None;
-    let mut anchor_url: Option<String> = None;
-    let mut source_revision: Option<String> = None;
+/// R403 — refresh `normative_excerpt.text` (+ `text_sha256`) from a medium-forge
+/// `epub-anchor-map/v2`. Per-section text is the EPUB-projected cache; the
+/// authored `anchor_url` + `source_revision` are preserved from the existing
+/// excerpt (a section must already carry one to be refreshable). Ids that match
+/// no refreshable excerpt are reported as a note, not an error. Replaces the
+/// deleted hand-authoring `set-section-normative-excerpt` verb.
+pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct ExcerptEntry {
+        id: String,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        text_sha256: Option<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ExcerptAnchorMap {
+        anchors: Vec<ExcerptEntry>,
+    }
+    let mut anchors_path: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
-            "--section" => {
-                section = Some(
+            "--anchors" => {
+                anchors_path = Some(
                     iter.next()
-                        .ok_or_else(|| anyhow!("--section missing"))?
-                        .clone(),
-                )
-            }
-            "--text-file" => {
-                text_file = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--text-file missing"))?
-                        .clone(),
-                )
-            }
-            "--anchor-url" => {
-                anchor_url = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--anchor-url missing"))?
-                        .clone(),
-                )
-            }
-            "--source-revision" => {
-                source_revision = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--source-revision missing"))?
+                        .ok_or_else(|| anyhow!("--anchors missing"))?
                         .clone(),
                 )
             }
@@ -1563,26 +1556,35 @@ pub fn cmd_set_section_normative_excerpt(workspace_root: &Path, args: &[String])
             other => bail!("unknown flag `{}`", other),
         }
     }
-    let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
-    let text_file = text_file.ok_or_else(|| anyhow!("--text-file arg required"))?;
-    let anchor_url = anchor_url.ok_or_else(|| anyhow!("--anchor-url arg required"))?;
-    let source_revision =
-        source_revision.ok_or_else(|| anyhow!("--source-revision arg required"))?;
-    let text = fs::read_to_string(&text_file)
-        .with_context(|| format!("text-file recovery failed: {}", text_file))?;
+    let path = anchors_path.ok_or_else(|| anyhow!("--anchors <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read anchors {}", path))?;
+    let map: ExcerptAnchorMap = serde_json::from_str(&raw)
+        .with_context(|| format!("parse {} (epub-anchor-map/v2)", path))?;
+    // Only v2 entries carry text + text_sha256; v1/locator-only entries are skipped.
+    let excerpts: Vec<mnemosyne_atomic::ExcerptImport> = map
+        .anchors
+        .into_iter()
+        .filter_map(|a| match (a.text, a.text_sha256) {
+            (Some(text), Some(text_sha256)) => Some(mnemosyne_atomic::ExcerptImport {
+                section_id: a.id,
+                text,
+                text_sha256,
+            }),
+            _ => None,
+        })
+        .collect();
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
-    finalize_mutate(
-        set_section_normative_excerpt(
-            &mut store,
-            &sidecar_path,
-            &section,
-            &text,
-            &anchor_url,
-            &source_revision,
-        ),
-        json,
-    )
+    let outcome = mnemosyne_atomic::import_epub_excerpts(&mut store, &sidecar_path, &excerpts);
+    if let Ok((_, unmatched)) = &outcome {
+        if !unmatched.is_empty() {
+            eprintln!(
+                "note: {} id(s) matched no refreshable excerpt in the store",
+                unmatched.len()
+            );
+        }
+    }
+    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
 /// Round 266 — mutate-time auto-cascade trigger.

@@ -619,25 +619,39 @@ becomes an `InventoryEntry` (Phase 1A) when the id shape fits. Use
 `scxml-3.13` rather than `3.13`, so a future spec restructure does not
 silently re-key 30K citations).
 
-**Anchor the vendored quote at section creation.** After `add-section`,
-call `set-section-normative-excerpt` to embed the spec text:
+**Anchor the vendored quote at section creation.** Carry the
+`normative_excerpt` inline in the `import-sections` manifest — its
+`anchor_url` + `source_revision` are the section's authored upstream
+identity (which spec section + revision it mirrors):
 
-```bash
-mnemosyne-cli set-section-normative-excerpt \
-  --section §scxml-3.13 \
-  --text-file /tmp/scxml-3-13.txt \
-  --anchor-url "https://www.w3.org/TR/scxml/#event" \
-  --source-revision "2015-09-01"
+```json
+[
+  { "section_id": "scxml-3.13", "parent_doc": "docs/spec.epub",
+    "title": "Selecting Transitions",
+    "normative_excerpt": {
+      "text": "…verbatim spec text…",
+      "anchor_url": "https://www.w3.org/TR/scxml/#event",
+      "source_revision": "2015-09-01" } }
+]
 ```
 
-The field is **frozen** after first set — once a normative_excerpt is
-anchored, the mutate primitive rejects overwrite. To model spec
-revision drift, supersede the existing Section
-(`set-section-decision-status --status superseded --superseding
-§<new>`) and create a new Section carrying the updated excerpt. The
-audit trail preserves both revisions in parallel; partially-migrated
-workspaces stay coherent because each Section's `source_revision`
-records the rev it was anchored at.
+**`text` is an EPUB-projected cache (R403).** It is *not* frozen: the
+verbatim section text is a derived cache of the committed EPUB. Extract
+it with `medium-forge` (emits an `epub-anchor-map/v2` carrying per-section
+`text` + `text_sha256`), then project it into the store:
+
+```bash
+mnemosyne-cli import-epub-excerpts --anchors out/anchors.json
+```
+
+`import-epub-excerpts` refreshes `text` + `text_sha256` on each section
+that already carries an excerpt, **preserving** the authored `anchor_url`
++ `source_revision` (store-side identity, not EPUB content). The hash
+lets `report-excerpt-hash-backfill` and (future) content-drift scans
+re-hash the cached string offline. To model a *different* spec revision,
+still supersede the existing Section (`set-section-decision-status
+--status superseded --superseding §<new>`) and create a new Section, so
+the audit trail records which revision each excerpt mirrors.
 
 **Spec revision drift as ChangelogEntry stream.** When upstream bumps
 the spec, append a ChangelogEntry recording the diff and the impacted
