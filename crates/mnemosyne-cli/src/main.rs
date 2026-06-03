@@ -278,6 +278,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
+        "validate-content-drift" => cmd_validate_content_drift(&args[2..]),
         "--help" | "-h" | "help" => {
             print_help(prog);
             Ok(())
@@ -511,6 +512,18 @@ fn print_help(prog: &str) {
         "   --severity overrides [spec_drift].severity (default warn); reject => exit 1 on drift."
     );
     println!("   no-op (exit 0) when [workspace.spec_source] is absent.");
+    println!();
+    println!(" --- content-integrity drift (R404 — EPUB-as-content-SSOT) ---");
+    println!(
+        " {} validate-content-drift [--severity reject|warn|info] [--json]",
+        prog
+    );
+    println!("   offline re-hash of each normative_excerpt.text vs its text_sha256;");
+    println!("   a populated hash that no longer matches = drift (cache edited out-of-band).");
+    println!(
+        "   --severity overrides [content_drift].severity (default reject); reject => exit 1."
+    );
+    println!("   empty-hash excerpts are unrevalidatable (counted, not drift).");
     println!();
     println!(" --- meta (Round 286) ---");
     println!(
@@ -2153,6 +2166,106 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
  revision {:?} (severity=reject)",
             violations.len(),
             workspace_revision,
+        );
+    }
+    Ok(())
+}
+
+// ============================================================================
+// validate-content-drift — R404 offline content-integrity scan.
+// ============================================================================
+fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut severity_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--severity" => {
+                severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity missing value"))?
+                        .clone(),
+                );
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+
+    let loaded = workspace_config()?;
+    // Severity: --severity flag overrides [content_drift].severity, which
+    // defaults to reject when the table is absent.
+    let configured = loaded
+        .config
+        .content_drift
+        .as_ref()
+        .map(|c| c.severity.clone())
+        .unwrap_or_else(|| "reject".to_string());
+    let severity = severity_override
+        .as_deref()
+        .unwrap_or(&configured)
+        .to_string();
+    if !matches!(severity.as_str(), "reject" | "warn" | "info") {
+        bail!(
+            "invalid --severity `{}` — expected one of: reject | warn | info",
+            severity
+        );
+    }
+
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+
+    let violations = mnemosyne_validate::scan_content_drift(&store);
+    // Unrevalidatable (empty-hash) excerpts are NOT drift — single-sourced
+    // from the R402 backfill report and surfaced here only for context.
+    let unrevalidatable = store.excerpt_hash_backfill_report().rows.len();
+
+    if json {
+        let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
+        println!(
+            "{}",
+            serde_json::json!({
+            "primitive": "validate-content-drift",
+            "section_count": store.sections.len(),
+            "drift_count": violations.len(),
+            "unrevalidatable_count": unrevalidatable,
+            "severity": severity,
+            "violations": view,
+            })
+        );
+    } else {
+        println!("=== mnemosyne-cli validate-content-drift ===");
+        println!(
+            "sections={} severity={} unrevalidatable={}",
+            store.sections.len(),
+            severity,
+            unrevalidatable,
+        );
+        println!("drift: total={}", violations.len());
+        // Bare section_id (no `§` sigil) — the CLI never renders a literal
+        // section citation the R255 pre-commit hook would scan.
+        for v in &violations {
+            println!(
+                " [drift] {} declared={} computed={}",
+                v.section_id, v.declared_sha256, v.computed_sha256
+            );
+        }
+    }
+
+    // reject => exit 1 on any content drift. warn/info print and exit 0.
+    // Unrevalidatable never gates (it is a backfill work-list, not corruption).
+    if !violations.is_empty() && severity == "reject" {
+        bail!(
+            "{} content-integrity drift violation(s) — cached normative_excerpt.text no longer \
+ matches its text_sha256 (severity=reject)",
+            violations.len(),
         );
     }
     Ok(())

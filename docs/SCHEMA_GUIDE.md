@@ -667,12 +667,37 @@ mnemosyne-cli append-changelog-entry \
   --carry-file /tmp/rev-carry.txt
 ```
 
-`AtomicSection.normative_excerpt` is frozen per-Section; the workspace-
-wide `[workspace.spec_source].revision` is the *current* rev label.
-The ChangelogEntry stream records *when* the workspace moved between
-revs; per-Section excerpts capture *what* the section said at the rev
-it was anchored at. T2 frozen-ledger semantics apply to the entry
+`AtomicSection.normative_excerpt.text` is an **EPUB-projected cache**
+(R403), refreshable via `import-epub-excerpts`; the authored `anchor_url`
++ `source_revision` pin which upstream section + rev it mirrors. The
+workspace-wide `[workspace.spec_source].revision` is the *current* rev
+label. The ChangelogEntry stream records *when* the workspace moved
+between revs; per-Section excerpts capture *what* the section said at the
+rev it was anchored at. T2 frozen-ledger semantics apply to the entry
 audit half — rev-bump records are permanent.
+
+**Content-integrity drift (`validate-content-drift`, R404).** `text_sha256`
+is the offline revalidation anchor: the mutate API guarantees
+`sha256(text) == text_sha256` at write time, so a later divergence means
+the cache was edited out-of-band (a direct sidecar-JSON edit). The scan
+re-hashes every excerpt offline — no EPUB, no re-extraction:
+
+```bash
+mnemosyne-cli validate-content-drift            # default [content_drift].severity = reject
+mnemosyne-cli validate-content-drift --severity warn --json
+```
+
+```toml
+[content_drift]
+severity = "reject"   # | "warn" | "info" (default reject)
+```
+
+Defaults to `reject` (a cache diverging from its own hash is corruption,
+never a legitimate intermediate state — contrast `[spec_drift]`'s `warn`,
+where a trailing rev during partial migration is expected). Empty-hash
+excerpts are *unrevalidatable* (hand-authored / pre-v8, never imported
+from an EPUB): they are counted for context but never gate — that
+work-list is owned by `report-excerpt-hash-backfill`.
 
 **Symbol-level binding (record-only).** `Binding.symbol` accepts
 an opaque language-agnostic identifier and is preserved in the store

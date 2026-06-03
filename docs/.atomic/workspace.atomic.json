@@ -6561,6 +6561,56 @@
         "R404 next: scan_content_drift (offline re-hash of stored text vs text_sha256, empty = unrevalidatable finding) + spec_drift-style severity config + SpecSource.epub_sha256/epub_path + commit the EPUB under docs/.atomic/epub/ + dogfood with a seeded fixture store + SCE adoption runbook.",
         "import_epub_excerpts deliberately requires a pre-existing excerpt: anchor_url + source_revision are store-side authored identity, not EPUB-projected, so the EPUB map cannot construct a complete excerpt from scratch. Sections lacking an excerpt are reported unmatched."
       ]
+    },
+    "Round 404 — scan_content_drift: offline text-hash revalidation of normative_excerpt cache": {
+      "decision_summary": "Add the offline revalidation gate that makes the EPUB-as-content-SSOT claim trustworthy. scan_content_drift re-hashes each excerpt's stored text against its declared text_sha256 entirely offline (no EPUB, no Python); a non-empty hash that no longer equals sha256(text) is a HashMismatch finding — the cache was edited out-of-band (direct sidecar JSON edit, bypassing the mutate API which guarantees the hash at write time). NormativeExcerpt owns the predicate (recompute_text_sha256 + text_sha256_matches). The [content_drift] severity config defaults to reject (unlike [spec_drift]'s warn) because a cache diverging from its own hash is corruption, never a legitimate intermediate state. validate-content-drift composes the mismatch list (severity-gated) with the R402 backfill report's unrevalidatable count (informational), single-sourcing each concern. EPUB-file provenance (epub_sha256/epub_path) + commit-EPUB + SCE runbook are a separate axis deferred to R405.",
+      "changes_bullets": [
+        "New mnemosyne-validate::scan_content_drift (sibling of scan_spec_drift): offline re-hash of each excerpt's stored text vs its declared text_sha256; a non-empty hash that no longer matches sha256(text) is a HashMismatch finding (out-of-band tamper / direct-JSON edit of the cache).",
+        "NormativeExcerpt gains recompute_text_sha256() + text_sha256_matches() (None when empty = unrevalidatable), so the type owns its content-integrity predicate.",
+        "New [content_drift].severity config (default reject; mirror of [spec_drift]) validated at config load; a cache that diverges from its hash is never a legitimate intermediate state.",
+        "New validate-content-drift CLI verb: prints HashMismatch findings (severity-gated) plus the unrevalidatable count sourced from the R402 excerpt_hash_backfill_report (informational, never gates) — each concern single-sourced.",
+        "SCHEMA_GUIDE.md documents [content_drift] + the offline revalidation model.",
+        "EPUB-file provenance (SpecSource.epub_sha256 / epub_path) + commit-EPUB convention + SCE runbook deferred to R405 (independent axis: EPUB-file identity vs cached-text integrity)."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "content_drift unit tests: matching hash clean / mismatch flagged / empty hash exempt from mismatch / BTreeMap-ordered.",
+        "config tests: [content_drift] defaults to reject / rejects invalid severity / absent table is None.",
+        "CLI smoke: mismatch reject exit 1 / warn opt-out exit 0 / unrevalidatable count surfaced / clean store exit 0.",
+        "validate-workspace green (entries unchanged by a read-only verb); this repo has 0 excerpts so the dogfood scan is a clean no-op."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R405 next: SpecSource.epub_sha256 + epub_path (offline EPUB-file integrity: hash the committed EPUB vs the pinned sha256) + commit the revision-pinned EPUB under docs/.atomic/epub/ + SCE adoption runbook (196 excerpts: import-sections inline then import-epub-excerpts then validate-content-drift in CI).",
+        "Layer B (CI re-emit v2 map via medium-forge + diff) stays Python/CI-side; the Rust core never re-extracts, only re-hashes the cached string (hexagonal).",
+        "scan_content_drift is status-agnostic (a corrupted cache is corrupt whether Active or Superseded); unrevalidatable (empty hash) is owned by report-excerpt-hash-backfill, not double-reported as drift."
+      ],
+      "publishable_decision_summary": "Add the offline revalidation gate that makes the EPUB-as-content-SSOT claim trustworthy. scan_content_drift re-hashes each excerpt's stored text against its declared text_sha256 entirely offline (no EPUB, no Python); a non-empty hash that no longer equals sha256(text) is a HashMismatch finding — the cache was edited out-of-band (direct sidecar JSON edit, bypassing the mutate API which guarantees the hash at write time). NormativeExcerpt owns the predicate (recompute_text_sha256 + text_sha256_matches). The [content_drift] severity config defaults to reject (unlike [spec_drift]'s warn) because a cache diverging from its own hash is corruption, never a legitimate intermediate state. validate-content-drift composes the mismatch list (severity-gated) with the R402 backfill report's unrevalidatable count (informational), single-sourcing each concern. EPUB-file provenance (epub_sha256/epub_path) + commit-EPUB + SCE runbook are a separate axis deferred to R405.",
+      "publishable_changes_bullets": [
+        "New mnemosyne-validate::scan_content_drift (sibling of scan_spec_drift): offline re-hash of each excerpt's stored text vs its declared text_sha256; a non-empty hash that no longer matches sha256(text) is a HashMismatch finding (out-of-band tamper / direct-JSON edit of the cache).",
+        "NormativeExcerpt gains recompute_text_sha256() + text_sha256_matches() (None when empty = unrevalidatable), so the type owns its content-integrity predicate.",
+        "New [content_drift].severity config (default reject; mirror of [spec_drift]) validated at config load; a cache that diverges from its hash is never a legitimate intermediate state.",
+        "New validate-content-drift CLI verb: prints HashMismatch findings (severity-gated) plus the unrevalidatable count sourced from the R402 excerpt_hash_backfill_report (informational, never gates) — each concern single-sourced.",
+        "SCHEMA_GUIDE.md documents [content_drift] + the offline revalidation model.",
+        "EPUB-file provenance (SpecSource.epub_sha256 / epub_path) + commit-EPUB convention + SCE runbook deferred to R405 (independent axis: EPUB-file identity vs cached-text integrity)."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "content_drift unit tests: matching hash clean / mismatch flagged / empty hash exempt from mismatch / BTreeMap-ordered.",
+        "config tests: [content_drift] defaults to reject / rejects invalid severity / absent table is None.",
+        "CLI smoke: mismatch reject exit 1 / warn opt-out exit 0 / unrevalidatable count surfaced / clean store exit 0.",
+        "validate-workspace green (entries unchanged by a read-only verb); this repo has 0 excerpts so the dogfood scan is a clean no-op."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R405 next: SpecSource.epub_sha256 + epub_path (offline EPUB-file integrity: hash the committed EPUB vs the pinned sha256) + commit the revision-pinned EPUB under docs/.atomic/epub/ + SCE adoption runbook (196 excerpts: import-sections inline then import-epub-excerpts then validate-content-drift in CI).",
+        "Layer B (CI re-emit v2 map via medium-forge + diff) stays Python/CI-side; the Rust core never re-extracts, only re-hashes the cached string (hexagonal).",
+        "scan_content_drift is status-agnostic (a corrupted cache is corrupt whether Active or Superseded); unrevalidatable (empty hash) is owned by report-excerpt-hash-backfill, not double-reported as drift."
+      ]
     }
   },
   "inventory_entries": {},

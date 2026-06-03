@@ -100,6 +100,13 @@ pub struct WorkspaceConfig {
     /// rounds downgrades to `warn`/`info` (Round 377).
     #[serde(default)]
     pub commit_ledger: Option<CommitLedgerSection>,
+    /// `[content_drift]` table — severity policy for the content-integrity
+    /// scan (R404; `validate-content-drift`'s offline re-hash of each
+    /// `normative_excerpt.text` vs its `text_sha256`). Absent → the scan
+    /// runs at the default `reject` severity (a cache diverging from its own
+    /// hash is corruption, never a legitimate intermediate state).
+    #[serde(default)]
+    pub content_drift: Option<ContentDriftSection>,
 }
 
 /// `[atomic]` table — atomic store path override (Round 279).
@@ -752,6 +759,31 @@ impl Default for CommitLedgerSection {
     }
 }
 
+/// `[content_drift]` table — policy for the content-integrity scan (R404;
+/// the `validate-content-drift` subcommand). Re-hashes each
+/// `normative_excerpt.text` against its declared `text_sha256` offline and
+/// flags any populated hash that no longer matches.
+///
+/// Mirrors [`SpecDriftSection`] but defaults to `reject` rather than `warn`:
+/// `spec_drift` tolerates a rev-label trailing during partial migration (a
+/// legitimate intermediate state), whereas a cache whose text no longer
+/// matches its own hash was edited out-of-band — corruption, never expected.
+/// The `validate-content-drift --severity` flag overrides it per run.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContentDriftSection {
+    /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
+    #[serde(default = "default_severity_reject")]
+    pub severity: String,
+}
+
+impl Default for ContentDriftSection {
+    fn default() -> Self {
+        Self {
+            severity: default_severity_reject(),
+        }
+    }
+}
+
 /// Config discovery + load result.
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
@@ -807,6 +839,14 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             bail!(
                 "mnemosyne.toml: `commit_ledger.severity = {:?}` must be one of: reject | warn | info",
                 cl.severity
+            );
+        }
+    }
+    if let Some(cd) = &cfg.content_drift {
+        if !matches!(cd.severity.as_str(), "reject" | "warn" | "info") {
+            bail!(
+                "mnemosyne.toml: `content_drift.severity = {:?}` must be one of: reject | warn | info",
+                cd.severity
             );
         }
     }
@@ -1083,6 +1123,43 @@ severity = "block"
         assert!(
             err.to_string().contains("commit_ledger.severity"),
             "expected commit_ledger severity error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn content_drift_severity_defaults_to_reject() {
+        // [content_drift] absent → None; present with no severity → reject
+        // (a cache diverging from its hash is corruption, gated by default).
+        let absent = r#"
+[workspace]
+docs = ["docs/spec.md"]
+"#;
+        assert!(parse_config(absent).unwrap().content_drift.is_none());
+
+        let bare = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[content_drift]
+"#;
+        let cfg = parse_config(bare).unwrap();
+        assert_eq!(cfg.content_drift.unwrap().severity, "reject");
+    }
+
+    #[test]
+    fn content_drift_rejects_invalid_severity() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[content_drift]
+severity = "block"
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            err.to_string().contains("content_drift.severity"),
+            "expected content_drift severity error, got: {}",
             err
         );
     }

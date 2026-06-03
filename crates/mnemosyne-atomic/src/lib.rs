@@ -222,6 +222,28 @@ pub struct NormativeExcerpt {
     pub text_sha256: String,
 }
 
+impl NormativeExcerpt {
+    /// SHA-256 (hex) recomputed from the stored `text` — the value
+    /// `text_sha256` is expected to equal. The offline revalidation anchor
+    /// (R404): the mutate API guarantees this equality at write time, so a
+    /// later divergence means the cache was edited out-of-band.
+    pub fn recompute_text_sha256(&self) -> String {
+        sha256_hex(self.text.as_bytes())
+    }
+
+    /// Whether the declared `text_sha256` still matches the stored `text`.
+    /// `None` when the hash is empty (unrevalidatable — never imported from an
+    /// EPUB; owned by `report-excerpt-hash-backfill`, not treated as drift).
+    /// `Some(false)` is a content-integrity failure (`scan_content_drift`).
+    pub fn text_sha256_matches(&self) -> Option<bool> {
+        if self.text_sha256.is_empty() {
+            None
+        } else {
+            Some(self.recompute_text_sha256() == self.text_sha256)
+        }
+    }
+}
+
 /// EPUB-SSOT locator (R393) — where this Section lives inside the workspace's
 /// normalized EPUB (produced by the `medium-forge` HTML backend, contract
 /// `epub-anchor-map/v1`). The EPUB is the content SSOT; this pointer lets a
@@ -5139,6 +5161,28 @@ mod tests {
             }
             other => panic!("expected Validation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn text_sha256_matches_three_states() {
+        let mk = |text: &str, hash: &str| NormativeExcerpt {
+            text: text.to_string(),
+            anchor_url: "https://example.com/s".to_string(),
+            source_revision: "rev".to_string(),
+            text_sha256: hash.to_string(),
+        };
+        // empty hash → None (unrevalidatable)
+        assert_eq!(mk("spec text", "").text_sha256_matches(), None);
+        // correct hash → Some(true)
+        let good = sha256_hex(b"spec text");
+        assert_eq!(mk("spec text", &good).text_sha256_matches(), Some(true));
+        // wrong hash → Some(false)
+        assert_eq!(
+            mk("spec text", "deadbeef").text_sha256_matches(),
+            Some(false)
+        );
+        // recompute is the value a correct hash holds
+        assert_eq!(mk("spec text", "").recompute_text_sha256(), good);
     }
 
     #[test]
