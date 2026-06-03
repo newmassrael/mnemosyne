@@ -33,12 +33,29 @@ cached string and the committed file. Extraction is the Python tool's job
 python3 tools/medium-forge/convert.py \
   --content-xpath "//div[@class='div1']" \
   --anchor-map toc-anchor-map.json \
+  --text-scope heading \
   --revision "REC-scxml-20150901" \
   --source-url "https://www.w3.org/TR/scxml/" \
   --title "SCXML" --out out/
 # → out/spec.epub  +  out/anchors.json  (epub-anchor-map/v2: per-section
 #   text + text_sha256 + locator)
 ```
+
+**Pick `--text-scope` to match your section granularity (R407):**
+
+- `--text-scope heading` (body-only) — each section's `text` is its *direct
+  body* (its heading up to the next heading, **heading text and descendant
+  subsections excluded**). Use this when your section ids are **finer than the
+  `div` containers** — e.g. sub-`div` headings like W3C SCXML's Appendix-D `h4`
+  function sections, which `container` scope would collapse onto one shared blob.
+- `--text-scope container` (default) — `text` is the whole section-container
+  subtree. Fine only when there is exactly one anchored id per container.
+
+A **container-only** section (a heading with no direct prose) emits its locator
+but no `text`/`text_sha256`, so `import-epub-excerpts` skips it. If two distinct
+ids resolve to identical text (an **anchor collapse**), the entries are flagged
+`needs_review: true`, `confidence: 0.0` — investigate before importing rather
+than seal a duplicate.
 
 ### 2. Author the section manifest
 
