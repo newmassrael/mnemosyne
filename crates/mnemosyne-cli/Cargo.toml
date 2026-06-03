@@ -34,6 +34,9 @@ thiserror.workspace = true
 # Round 293 — commit↔ledger drift gate parses commit subjects ("(R<N>)" /
 # "(Round <N>)") and atomic ledger entry-id keys via a small fixed pattern set.
 regex.workspace = true
+# Round 405 — validate-content-drift hashes the committed EPUB file vs the
+# pinned [workspace.spec_source].epub_sha256 (offline provenance check).
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }

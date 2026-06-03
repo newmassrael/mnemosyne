@@ -6611,6 +6611,50 @@
         "Layer B (CI re-emit v2 map via medium-forge + diff) stays Python/CI-side; the Rust core never re-extracts, only re-hashes the cached string (hexagonal).",
         "scan_content_drift is status-agnostic (a corrupted cache is corrupt whether Active or Superseded); unrevalidatable (empty hash) is owned by report-excerpt-hash-backfill, not double-reported as drift."
       ]
+    },
+    "Round 405 — EPUB-file provenance: SpecSource.epub_path/epub_sha256 + content-drift file check + adoption runbook": {
+      "decision_summary": "Close the EPUB-as-content-SSOT loop with the EPUB-file provenance anchor. SpecSource gains epub_path + epub_sha256 pinning the committed content-SSOT EPUB. validate-content-drift, when those are set, re-hashes the committed EPUB file offline and compares to the pin — a mismatch (the EPUB was swapped/updated) or a missing file is gated under [content_drift].severity alongside the per-excerpt cache scan. This is the more fundamental gate: if the EPUB file drifted, every excerpt is suspect even when each still matches its own now-stale hash. The mismatch is also the trigger for the Layer B remediation (re-run medium-forge, import-epub-excerpts, re-pin epub_sha256), which stays Python/CI-side per the hexagonal boundary. docs/EPUB_SSOT_RUNBOOK.md documents the full external-consumer adoption path so SCE can formally switch its 196-section W3C ledger.",
+      "changes_bullets": [
+        "SpecSource gains epub_path + epub_sha256 (the committed content-SSOT EPUB and its pinned hash), validated at config load: 64-char lowercase hex, and a both-or-neither pairing (a path without a hash cannot be checked; a hash without a path has nothing to check).",
+        "validate-content-drift now also re-hashes the committed EPUB file at epub_path vs epub_sha256 (offline file hash, no Python); a swapped/updated or missing EPUB is gated under [content_drift].severity alongside the per-excerpt content scan, so one green run means EPUB-file pinned AND every cache matches its hash.",
+        "New docs/EPUB_SSOT_RUNBOOK.md: external-consumer adoption end-to-end (greenfield import-sections join of TOC anchor_url+rev with medium-forge text+text_sha256; migration via import-epub-excerpts; CI gating; upstream-change re-projection).",
+        "Layer B (medium-forge re-extract + diff) is the documented CI remediation that the epub_sha256 mismatch triggers; the Rust core never re-extracts, only re-hashes (hexagonal)."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "config tests: epub_sha256 rejects uppercase/short hex; epub_path without epub_sha256 (and vice versa) rejected; both-set accepted.",
+        "CLI smoke: committed EPUB matching the pinned hash = clean exit 0; swapped EPUB = epub-file drift exit 1; absent epub_path = file check skipped.",
+        "dogfood: this repo has no spec_source.epub_* so the file check is skipped; validate-content-drift stays green."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Committing the revision-pinned EPUB under docs/.atomic/epub/ is a CONSUMER convention documented in the runbook; this repo has no external spec, so epub_path stays unset (fixture-tested only, no real EPUB committed here).",
+        "Remaining EPUB-SSOT candidates are all consumer-pull, YAGNI until requested: per-chapter spine split in medium-forge (single spec.xhtml today), pinion native renderer (path B), PDF backend for automotive specs.",
+        "With R405 the EPUB-as-content-SSOT loop is closed Mnemosyne-side: extract (medium-forge v2) then import (import-sections / import-epub-excerpts) then pin (epub_sha256) then revalidate offline (validate-content-drift). SCE can now formally adopt."
+      ],
+      "publishable_decision_summary": "Close the EPUB-as-content-SSOT loop with the EPUB-file provenance anchor. SpecSource gains epub_path + epub_sha256 pinning the committed content-SSOT EPUB. validate-content-drift, when those are set, re-hashes the committed EPUB file offline and compares to the pin — a mismatch (the EPUB was swapped/updated) or a missing file is gated under [content_drift].severity alongside the per-excerpt cache scan. This is the more fundamental gate: if the EPUB file drifted, every excerpt is suspect even when each still matches its own now-stale hash. The mismatch is also the trigger for the Layer B remediation (re-run medium-forge, import-epub-excerpts, re-pin epub_sha256), which stays Python/CI-side per the hexagonal boundary. docs/EPUB_SSOT_RUNBOOK.md documents the full external-consumer adoption path so SCE can formally switch its 196-section W3C ledger.",
+      "publishable_changes_bullets": [
+        "SpecSource gains epub_path + epub_sha256 (the committed content-SSOT EPUB and its pinned hash), validated at config load: 64-char lowercase hex, and a both-or-neither pairing (a path without a hash cannot be checked; a hash without a path has nothing to check).",
+        "validate-content-drift now also re-hashes the committed EPUB file at epub_path vs epub_sha256 (offline file hash, no Python); a swapped/updated or missing EPUB is gated under [content_drift].severity alongside the per-excerpt content scan, so one green run means EPUB-file pinned AND every cache matches its hash.",
+        "New docs/EPUB_SSOT_RUNBOOK.md: external-consumer adoption end-to-end (greenfield import-sections join of TOC anchor_url+rev with medium-forge text+text_sha256; migration via import-epub-excerpts; CI gating; upstream-change re-projection).",
+        "Layer B (medium-forge re-extract + diff) is the documented CI remediation that the epub_sha256 mismatch triggers; the Rust core never re-extracts, only re-hashes (hexagonal)."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "config tests: epub_sha256 rejects uppercase/short hex; epub_path without epub_sha256 (and vice versa) rejected; both-set accepted.",
+        "CLI smoke: committed EPUB matching the pinned hash = clean exit 0; swapped EPUB = epub-file drift exit 1; absent epub_path = file check skipped.",
+        "dogfood: this repo has no spec_source.epub_* so the file check is skipped; validate-content-drift stays green."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Committing the revision-pinned EPUB under docs/.atomic/epub/ is a CONSUMER convention documented in the runbook; this repo has no external spec, so epub_path stays unset (fixture-tested only, no real EPUB committed here).",
+        "Remaining EPUB-SSOT candidates are all consumer-pull, YAGNI until requested: per-chapter spine split in medium-forge (single spec.xhtml today), pinion native renderer (path B), PDF backend for automotive specs.",
+        "With R405 the EPUB-as-content-SSOT loop is closed Mnemosyne-side: extract (medium-forge v2) then import (import-sections / import-epub-excerpts) then pin (epub_sha256) then revalidate offline (validate-content-drift). SCE can now formally adopt."
+      ]
     }
   },
   "inventory_entries": {},

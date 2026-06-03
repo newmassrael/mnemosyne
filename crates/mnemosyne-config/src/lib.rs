@@ -700,6 +700,19 @@ pub struct SpecSource {
     /// ISO-8601 timestamp at which `fetched_sha256` was captured.
     #[serde(default)]
     pub fetched_at: Option<String>,
+    /// Workspace-relative POSIX path to the committed, revision-pinned EPUB
+    /// (e.g. `docs/.atomic/epub/scxml-REC-20150901.epub`) — the content SSOT
+    /// the `normative_excerpt` caches are projected from (R405). Paired with
+    /// [`Self::epub_sha256`]: both set, or neither.
+    #[serde(default)]
+    pub epub_path: Option<String>,
+    /// SHA-256 hex (lowercase, 64 chars) of the committed EPUB at
+    /// [`Self::epub_path`]. `validate-content-drift` re-hashes the file and
+    /// flags a mismatch — the EPUB was swapped/updated and the cached
+    /// excerpts must be re-projected (the Layer B trigger). Provenance anchor
+    /// for the EPUB-file itself, distinct from per-excerpt `text_sha256`.
+    #[serde(default)]
+    pub epub_sha256: Option<String>,
 }
 
 /// `[spec_drift]` table — policy for the spec-revision drift scan
@@ -801,6 +814,14 @@ pub fn parse_config(content: &str) -> Result<WorkspaceConfig> {
     Ok(cfg)
 }
 
+/// A 64-char lowercase hex SHA-256 string. Shared by the `fetched_sha256` and
+/// `epub_sha256` config-load checks (R405).
+fn is_lowercase_sha256_hex(s: &str) -> bool {
+    s.len() == 64
+        && s.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+}
+
 fn validate(cfg: &WorkspaceConfig) -> Result<()> {
     if let Some(spec) = &cfg.workspace.spec_source {
         let is_url = spec.url.starts_with("https://") || spec.url.starts_with("http://");
@@ -814,16 +835,27 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             bail!("mnemosyne.toml: `workspace.spec_source.revision` must be non-empty");
         }
         if let Some(hash) = &spec.fetched_sha256 {
-            let valid_sha = hash.len() == 64
-                && hash
-                    .chars()
-                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase());
-            if !valid_sha {
+            if !is_lowercase_sha256_hex(hash) {
                 bail!(
   "mnemosyne.toml: `workspace.spec_source.fetched_sha256` must be 64-char lowercase hex (got `{}`)",
   hash
   );
             }
+        }
+        if let Some(hash) = &spec.epub_sha256 {
+            if !is_lowercase_sha256_hex(hash) {
+                bail!(
+  "mnemosyne.toml: `workspace.spec_source.epub_sha256` must be 64-char lowercase hex (got `{}`)",
+  hash
+  );
+            }
+        }
+        // epub_path + epub_sha256 are a pair: a path without a hash cannot be
+        // checked; a hash without a path has nothing to check (R405).
+        if spec.epub_path.is_some() != spec.epub_sha256.is_some() {
+            bail!(
+                "mnemosyne.toml: `workspace.spec_source.epub_path` and `epub_sha256` must be set together (or neither)"
+            );
         }
     }
     if let Some(sd) = &cfg.spec_drift {
@@ -1043,6 +1075,84 @@ fetched_sha256 = "ABC123"
             "expected sha-validation error, got: {}",
             err
         );
+    }
+
+    #[test]
+    fn spec_source_epub_provenance_accepts_paired() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = "2026-01"
+epub_path = "docs/.atomic/epub/spec.epub"
+epub_sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+"#;
+        let spec = parse_config(content)
+            .unwrap()
+            .workspace
+            .spec_source
+            .unwrap();
+        assert_eq!(
+            spec.epub_path.as_deref(),
+            Some("docs/.atomic/epub/spec.epub")
+        );
+        assert!(spec.epub_sha256.is_some());
+    }
+
+    #[test]
+    fn spec_source_epub_rejects_malformed_sha() {
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = "2026-01"
+epub_path = "docs/.atomic/epub/spec.epub"
+epub_sha256 = "ABC123"
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            err.to_string().contains("epub_sha256"),
+            "expected epub_sha256 validation error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn spec_source_epub_rejects_unpaired() {
+        // path without hash → reject (cannot be checked).
+        let path_only = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = "2026-01"
+epub_path = "docs/.atomic/epub/spec.epub"
+"#;
+        let err = parse_config(path_only).unwrap_err();
+        assert!(
+            err.to_string().contains("set together"),
+            "expected pairing error, got: {}",
+            err
+        );
+        // hash without path → also reject (nothing to check).
+        let hash_only = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[workspace.spec_source]
+url = "https://example.com/spec"
+revision = "2026-01"
+epub_sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+"#;
+        assert!(parse_config(hash_only)
+            .unwrap_err()
+            .to_string()
+            .contains("set together"));
     }
 
     #[test]

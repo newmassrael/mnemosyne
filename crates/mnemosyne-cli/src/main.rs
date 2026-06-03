@@ -524,6 +524,7 @@ fn print_help(prog: &str) {
         "   --severity overrides [content_drift].severity (default reject); reject => exit 1."
     );
     println!("   empty-hash excerpts are unrevalidatable (counted, not drift).");
+    println!("   also re-hashes the committed EPUB vs [workspace.spec_source].epub_sha256 when pinned (R405).");
     println!();
     println!(" --- meta (Round 286) ---");
     println!(
@@ -2171,8 +2172,24 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// SHA-256 (lowercase hex) of a byte slice — re-hashes the committed EPUB file
+/// against the pinned `[workspace.spec_source].epub_sha256` (R405).
+fn sha256_hex_bytes(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    let out = h.finalize();
+    let mut s = String::with_capacity(out.len() * 2);
+    for b in out {
+        use std::fmt::Write;
+        let _ = write!(&mut s, "{:02x}", b);
+    }
+    s
+}
+
 // ============================================================================
-// validate-content-drift — R404 offline content-integrity scan.
+// validate-content-drift — R404 offline content-integrity scan + R405 EPUB-file
+// provenance check.
 // ============================================================================
 fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
     let mut json = false;
@@ -2227,8 +2244,53 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
     // from the R402 backfill report and surfaced here only for context.
     let unrevalidatable = store.excerpt_hash_backfill_report().rows.len();
 
+    // EPUB-file provenance (R405): when [workspace.spec_source].epub_path +
+    // epub_sha256 are pinned, re-hash the committed EPUB offline and compare.
+    // A swap/update or a missing file is the more fundamental signal — a
+    // drifted EPUB makes every excerpt suspect even when each still matches
+    // its own (now stale) text_sha256. Unset (or no spec_source) => skipped.
+    let epub = loaded.config.workspace.spec_source.as_ref().and_then(|s| {
+        match (&s.epub_path, &s.epub_sha256) {
+            (Some(p), Some(pinned)) => Some((p.clone(), pinned.clone())),
+            _ => None,
+        }
+    });
+    let mut epub_checked = false;
+    let mut epub_drift: Option<String> = None;
+    let mut epub_computed: Option<String> = None;
+    let mut epub_pinned: Option<String> = None;
+    if let Some((rel, pinned)) = epub {
+        epub_checked = true;
+        epub_pinned = Some(pinned.clone());
+        match std::fs::read(root.join(&rel)) {
+            Ok(bytes) => {
+                let computed = sha256_hex_bytes(&bytes);
+                if computed != pinned {
+                    epub_drift = Some(format!(
+                        "committed EPUB `{rel}` hash diverges from pinned epub_sha256 (swapped/updated)"
+                    ));
+                }
+                epub_computed = Some(computed);
+            }
+            Err(_) => {
+                epub_drift = Some(format!("committed EPUB missing at epub_path `{rel}`"));
+            }
+        }
+    }
+
     if json {
         let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
+        let epub_json = if epub_checked {
+            serde_json::json!({
+                "checked": true,
+                "status": if epub_drift.is_some() { "drift" } else { "clean" },
+                "reason": epub_drift,
+                "computed_sha256": epub_computed,
+                "pinned_sha256": epub_pinned,
+            })
+        } else {
+            serde_json::json!({ "checked": false })
+        };
         println!(
             "{}",
             serde_json::json!({
@@ -2236,6 +2298,7 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
             "section_count": store.sections.len(),
             "drift_count": violations.len(),
             "unrevalidatable_count": unrevalidatable,
+            "epub_file": epub_json,
             "severity": severity,
             "violations": view,
             })
@@ -2257,15 +2320,27 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
                 v.section_id, v.declared_sha256, v.computed_sha256
             );
         }
+        if epub_checked {
+            match &epub_drift {
+                Some(reason) => println!(" [epub-drift] {reason}"),
+                None => println!("epub_file: clean (committed EPUB matches pinned epub_sha256)"),
+            }
+        } else {
+            println!("epub_file: not pinned (no [workspace.spec_source].epub_path)");
+        }
     }
 
-    // reject => exit 1 on any content drift. warn/info print and exit 0.
-    // Unrevalidatable never gates (it is a backfill work-list, not corruption).
-    if !violations.is_empty() && severity == "reject" {
+    // reject => exit 1 on any content drift OR EPUB-file drift. warn/info print
+    // and exit 0. Unrevalidatable never gates (backfill work-list, not corruption).
+    let gated = !violations.is_empty() || epub_drift.is_some();
+    if gated && severity == "reject" {
         bail!(
-            "{} content-integrity drift violation(s) — cached normative_excerpt.text no longer \
- matches its text_sha256 (severity=reject)",
+            "content-integrity drift (severity=reject): {} excerpt(s) mismatched their text_sha256{}",
             violations.len(),
+            match &epub_drift {
+                Some(r) => format!("; EPUB-file drift: {r}"),
+                None => String::new(),
+            },
         );
     }
     Ok(())
