@@ -4046,3 +4046,26 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 394 — report-spec-map epub_locator projection — Surface AtomicSection.epub_locator in the read-only report-spec-map projection so the EPUB-SSOT viewer resolves each section's rendered position from this one CLI output rather than a second store read, keeping the spec-map read-path single-sourced.
+
+**Changes**:
+- report-spec-map --json: per-section epub_locator (struct-serialized; null when no EPUB mirrored)
+- cfi omitted when absent via EpubLocator skip_serializing_if; JSON shape never drifts from schema
+- with_epub_locator summary count + a TTY locator line, mirroring with_excerpt
+
+
+
+**Verification**:
+- +1 cli smoke: full locator / no-cfi omitted / bare null / with_epub_locator=2
+- report_spec_map_smoke 6/6 pass; cli build + clippy -D + fmt clean
+- schema-v7 test store loads under CURRENT=7 (no migration arm)
+
+
+
+
+**Carry forward**:
+- EPUB-SSOT open: per-chapter spine split; normative_excerpt.text to EPUB-projection flip
+- report-spec-map MCP tool still deferred (CLI/CI consumer only, YAGNI)
+
+
+

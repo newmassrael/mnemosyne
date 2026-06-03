@@ -1705,6 +1705,11 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
             "coverage_class": class,
             "drift": drift_ids.contains(section_id),
             "spec": spec,
+            // EPUB-SSOT pointer (R393). Serialized via the EpubLocator struct
+            // definition (single source) so the viewer resolves the section's
+            // rendered position from this projection, not a 2nd store read;
+            // `null` when no EPUB is mirrored, `cfi` omitted when absent.
+            "epub_locator": sec.epub_locator,
             "bindings": bindings,
             "citation_count": citation_count,
             "cited_from": cited_from,
@@ -1715,6 +1720,11 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
         .sections
         .values()
         .filter(|s| s.normative_excerpt.is_some())
+        .count();
+    let with_locator = store
+        .sections
+        .values()
+        .filter(|s| s.epub_locator.is_some())
         .count();
     let total_cites: usize = citation_index.values().map(Vec::len).sum();
 
@@ -1734,6 +1744,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 "summary": {
                     "total_sections": store.sections.len(),
                     "with_excerpt": with_excerpt,
+                    "with_epub_locator": with_locator,
                     "coverage_ratio": coverage.coverage_ratio(),
                     "by_class": {
                         "implemented": coverage.implemented.len(),
@@ -1750,9 +1761,10 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
     } else {
         println!("=== spec map ===");
         println!(
-            "  sections: {} (with spec excerpt: {})",
+            "  sections: {} (with spec excerpt: {}, with EPUB locator: {})",
             store.sections.len(),
-            with_excerpt
+            with_excerpt,
+            with_locator
         );
         match coverage.coverage_ratio() {
             Some(ratio) => println!(

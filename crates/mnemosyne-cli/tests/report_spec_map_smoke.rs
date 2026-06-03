@@ -20,6 +20,9 @@
 //!  `citation_count` / `cited_from` populated + summary `total_citations`
 //! (iv) TTY (no `--json`) → the human summary block
 //! (v) read-only: the store is byte-identical after a run
+//! (vi) EPUB-SSOT locator (R393) surfaces per-section + `with_epub_locator`
+//!  summary count, so the viewer resolves the rendered position from this one
+//!  projection rather than a 2nd store read
 
 use std::fs;
 use std::path::Path;
@@ -32,7 +35,7 @@ fn cli_binary() -> &'static str {
 
 /// Build a workspace. `spec_source` writes `[workspace.spec_source]`;
 /// `code_refs` writes `[plugins.set_equality_validator]` scanning `src/`.
-/// `sections` is the atomic store's `sections` map (schema v6).
+/// `sections` is the atomic store's `sections` map (schema v7).
 fn write_workspace(
     workspace: &Path,
     spec_source: Option<(&str, &str)>,
@@ -56,7 +59,7 @@ fn write_workspace(
     fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
 
     let atomic = serde_json::json!({
-        "schema_version": 6,
+        "schema_version": 7,
         "sections": sections,
         "changelog_entries": {}
     });
@@ -262,6 +265,53 @@ fn tty_output_prints_human_summary_block() {
     ] {
         assert!(stdout.contains(needle), "missing `{needle}` in:\n{stdout}");
     }
+}
+
+#[test]
+fn epub_locator_surfaces_per_section_and_in_summary() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(
+        tmp.path(),
+        None,
+        false,
+        serde_json::json!({
+            // Full locator: spine_href + fragment + cfi.
+            "located": {
+                "title": "Located", "parent_doc": "docs/GENERATED.md",
+                "epub_locator": {
+                    "spine_href": "OEBPS/spec.xhtml",
+                    "fragment": "located",
+                    "cfi": "epubcfi(/6/4!/4)"
+                }
+            },
+            // Locator without the optional cfi → cfi key omitted.
+            "no-cfi": {
+                "title": "No CFI", "parent_doc": "docs/GENERATED.md",
+                "epub_locator": {
+                    "spine_href": "OEBPS/ch2.xhtml",
+                    "fragment": "no-cfi"
+                }
+            },
+            // No EPUB mirrored → epub_locator null.
+            "bare": { "title": "Bare", "parent_doc": "docs/GENERATED.md" }
+        }),
+    );
+    let parsed = parse_json(&run_cli(tmp.path(), &["report-spec-map", "--json"]));
+
+    assert_eq!(parsed["summary"]["with_epub_locator"], 2);
+
+    let located = section_row(&parsed, "located");
+    assert_eq!(located["epub_locator"]["spine_href"], "OEBPS/spec.xhtml");
+    assert_eq!(located["epub_locator"]["fragment"], "located");
+    assert_eq!(located["epub_locator"]["cfi"], "epubcfi(/6/4!/4)");
+
+    // Absent cfi is omitted (EpubLocator's own skip_serializing_if), not null-keyed.
+    let no_cfi = section_row(&parsed, "no-cfi");
+    assert_eq!(no_cfi["epub_locator"]["spine_href"], "OEBPS/ch2.xhtml");
+    assert!(no_cfi["epub_locator"]["cfi"].is_null());
+
+    // No locator → the whole field is null.
+    assert!(section_row(&parsed, "bare")["epub_locator"].is_null());
 }
 
 #[test]

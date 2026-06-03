@@ -6218,6 +6218,38 @@
         "atomic lib 125/0; workspace 100 binaries 0 fail; validate-workspace round-trip 1/1 GENERATED sync",
         "clippy -D + fmt clean; v6 dogfood store loads under CURRENT=7 (no migration arm); +2 unit +1 smoke"
       ]
+    },
+    "Round 394 — report-spec-map epub_locator projection": {
+      "decision_summary": "Surface AtomicSection.epub_locator in the read-only report-spec-map projection so the EPUB-SSOT viewer resolves each section's rendered position from this one CLI output rather than a second store read, keeping the spec-map read-path single-sourced.",
+      "changes_bullets": [
+        "report-spec-map --json: per-section epub_locator (struct-serialized; null when no EPUB mirrored)",
+        "cfi omitted when absent via EpubLocator skip_serializing_if; JSON shape never drifts from schema",
+        "with_epub_locator summary count + a TTY locator line, mirroring with_excerpt"
+      ],
+      "verification_bullets": [
+        "+1 cli smoke: full locator / no-cfi omitted / bare null / with_epub_locator=2",
+        "report_spec_map_smoke 6/6 pass; cli build + clippy -D + fmt clean",
+        "schema-v7 test store loads under CURRENT=7 (no migration arm)"
+      ],
+      "carry_forward_bullets": [
+        "EPUB-SSOT open: per-chapter spine split; normative_excerpt.text to EPUB-projection flip",
+        "report-spec-map MCP tool still deferred (CLI/CI consumer only, YAGNI)"
+      ],
+      "publishable_decision_summary": "Surface AtomicSection.epub_locator in the read-only report-spec-map projection so the EPUB-SSOT viewer resolves each section's rendered position from this one CLI output rather than a second store read, keeping the spec-map read-path single-sourced.",
+      "publishable_changes_bullets": [
+        "report-spec-map --json: per-section epub_locator (struct-serialized; null when no EPUB mirrored)",
+        "cfi omitted when absent via EpubLocator skip_serializing_if; JSON shape never drifts from schema",
+        "with_epub_locator summary count + a TTY locator line, mirroring with_excerpt"
+      ],
+      "publishable_verification_bullets": [
+        "+1 cli smoke: full locator / no-cfi omitted / bare null / with_epub_locator=2",
+        "report_spec_map_smoke 6/6 pass; cli build + clippy -D + fmt clean",
+        "schema-v7 test store loads under CURRENT=7 (no migration arm)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "EPUB-SSOT open: per-chapter spine split; normative_excerpt.text to EPUB-projection flip",
+        "report-spec-map MCP tool still deferred (CLI/CI consumer only, YAGNI)"
+      ]
     }
   },
   "inventory_entries": {},
