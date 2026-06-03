@@ -9,11 +9,11 @@
 #
 # Checks:
 #
-#   1. `mnemosyne-cli validate-workspace`
-#      - T1 cross-ref orphan delta
+#   1. `mnemosyne-cli validate-workspace` (store-direct, the SSOT)
+#      - T1 prose cross-ref orphan delta
 #      - T2 frozen-ledger violations
-#      - Round-trip mandatory dimension N/N
-#      - Atomic ledger consistency (entries / sections / GENERATED.md sync)
+#      - T3/T4 style violations
+#      - Atomic ledger consistency (entries / sections / orphan refs)
 #      - Publishable / audit divergence ↔ override ledger match (R296)
 #      - Commit ↔ ledger drift (cited vs entries scan)
 #

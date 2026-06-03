@@ -45,7 +45,7 @@ pub static RESOURCES: &[ConceptResource] = &[
         uri: "mnemosyne://concepts/anti-patterns",
         name: "anti-patterns",
         title: "Anti-Patterns — Things You MUST NOT Do",
-        description: "Category violations to refuse: cleanup of frozen entries, GENERATED.md edits, schema bloat.",
+        description: "Category violations to refuse: cleanup of frozen entries, direct atomic-store JSON edits, schema bloat.",
         body: include_str!("../resources/anti-patterns.md"),
     },
     ConceptResource {

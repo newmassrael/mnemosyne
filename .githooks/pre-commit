@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Mnemosyne self-application pre-commit gate — runs on every `git commit`.
 #
-# Mnemosyne dogfoods its own validator against the repo's atomic store +
-# GENERATED.md round-trip + code citation defense before every commit.
-# Plus a clippy gate when `.rs` files are staged (workspace lint baseline).
+# Mnemosyne dogfoods its own validator against the repo's atomic store
+# (the SSOT) + code citation defense before every commit. Plus a clippy
+# gate when `.rs` files are staged (workspace lint baseline).
 #
 # Gates:
 #
@@ -14,10 +14,10 @@
 #      and `§<id>` citations and rejects on hallucination / unbound /
 #      decay / inventory / symbol-mismatch violations (severity per config).
 #
-#   3. Workspace gate — `mnemosyne-cli validate-workspace` when any
-#      tracked doc (per `mnemosyne-cli list-docs`) is staged. Store-direct:
-#      T1 orphan delta, T2 frozen-ledger, T3/T4 style, divergence /
-#      ledger match, commit↔ledger drift.
+#   3. Workspace gate — `mnemosyne-cli validate-workspace` when the atomic
+#      sidecar (`docs/.atomic/workspace.atomic.json`, the SSOT) is staged.
+#      Store-direct: T1 prose-orphan delta, T2 frozen-ledger, T3/T4 style,
+#      publishable/audit divergence, ledger match, commit↔ledger drift.
 #
 #   4. Format gate — `cargo fmt --all --check` when any `.rs` file is
 #      staged. rustfmt 4-space repo-wide (rustfmt.toml, edition 2021);
@@ -70,20 +70,9 @@ if ! "${cli[@]}" validate-code-refs; then
     exit 1
 fi
 
-# Gate 3 — workspace validate when any configured doc is staged.
-needs_validate=0
-if doc_list=$("${cli[@]}" list-docs 2>/dev/null); then
-    while IFS= read -r p; do
-        [[ -z "$p" ]] && continue
-        if printf '%s\n' "$staged" | grep -qx -- "$p"; then
-            needs_validate=1
-            break
-        fi
-    done <<< "$doc_list"
-fi
-
-if [[ "$needs_validate" == "1" ]]; then
-    echo "[mnemosyne pre-commit] doc staged — validate-workspace" >&2
+# Gate 3 — workspace validate when the atomic sidecar (the SSOT) is staged.
+if printf '%s\n' "$staged" | grep -qx -- "$ATOMIC_SIDECAR"; then
+    echo "[mnemosyne pre-commit] atomic sidecar staged — validate-workspace" >&2
     "${cli[@]}" validate-workspace
 fi
 

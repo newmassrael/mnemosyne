@@ -1,29 +1,19 @@
 # Mnemosyne — workspace config (Round 142 WORKSPACE-CONFIG-ABSTRACTION).
 #
-# Phase 0e generic library extraction: this file pulls out what used to be
-# hardcoded in `crates/mnemosyne-cli/src/main.rs::WORKSPACE_DOC_PATHS` and
-# `crates/mnemosyne-validate/src/workspace.rs::MNEMOSYNE_DEFAULT_DOC`.
-#
 # External users author their own `mnemosyne.toml` with the same shape; the
-# Mnemosyne self-application is now the first dogfood consumer of the
-# generic loader (round-tripped through the same code path external users
-# hit). Round 148 self-application re-import via generic ratifies this.
+# Mnemosyne self-application is the first dogfood consumer of the generic
+# loader.
 #
 # Schema:
-# workspace.docs ordered list of doc paths (workspace-relative)
-# workspace.default_doc default cross-doc reclassify target (member of docs)
 # workspace.root optional root override (default = config file's dir)
+# atomic.sidecar_path optional atomic-store path override
 
 [workspace]
-# Round 251 — atomic store = sole source of truth post MD-DELETION-RATIFY.
-# GENERATED.md is the only readable artifact (derived from the atomic
-# sidecar). The 7 source markdowns (DESIGN/ARCHITECTURE/CONCEPTS/ROADMAP/
-# VISION/PRIOR_ART/README) were deleted in Round 251 — atomic store mutate
-# API is the canonical authoring surface.
-docs = [
- "docs/GENERATED.md",
-]
-default_doc = "docs/GENERATED.md"
+# Round 400 — the atomic store sidecar is the single directly-validated SSOT.
+# GENERATED.md and the markdown-doc model were removed: humans read the EPUB
+# for spec content and `mnemosyne-cli query` for the changelog audit trail.
+# This section carries only the optional root override + external-spec
+# mirror provenance ([workspace.spec_source], when present).
 
 # Round 143 — schema-as-input. The 4 entity types (Section / CrossRef /
 # ChangelogEntry / FrozenList) are fixed primitives; this section configures
@@ -98,7 +88,6 @@ paths = [
  "crates/mnemosyne-index/src/",
  "crates/mnemosyne-mcp/src/",
  "crates/mnemosyne-ops/src/",
- "crates/mnemosyne-parser/src/",
  "crates/mnemosyne-plugin-tree-sitter-rust/src/",
  "crates/mnemosyne-projection/src/",
  "crates/mnemosyne-query/src/",
@@ -107,7 +96,6 @@ paths = [
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-style/src/",
  "crates/mnemosyne-validate/src/",
- "crates/mnemosyne-workspace/src/",
  ]
 severity_missing = "reject"
 severity_binding = "reject"
@@ -211,3 +199,88 @@ reason = "Correct test-count delta +5 to +4 (authoring miscount: 3 new projectio
 applied_in = "Round 367"
 content_hash_before = "8d79c9763269da07d37544fa07f05d474db607b69d0b9f02c14969fa8c0820d9"
 content_hash_after = "be7da27ce93b7cd057299e9947b02a74a6319978de529d7a29040aca96bdcd60"
+
+# Round 400 — known-stale atomic_entry_ref orphans. The GENERATED.md
+# rendered-section namespace was deleted; these frozen changelog impact_refs
+# targeted rendered sections that no longer resolve against the atomic
+# section set. Registered (not rewritten) per the frozen-ledger invariant.
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 254"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 310"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-306--rfc-003-fr-1fr-2-plugin-substrate-proof-first-promote--rfc-002-fr-3-symbol-level-enforcement-first-plugin--plugin-substrate-symbolresolver--validator-trait--plugincategory--transport-enum--pluginregistry-landed-via-new-mnemosyne-plugin-crate-in-process-transport--tree-sitter-rust-backend-mnemosyne-plugin-tree-sitter-rust-crate-wired-as-first-proof-rfc-002-fr-3-symbol-level-enforcement--scan_paths_bidirectional-의-violationkindsymbolmismatch-axis-로-production-wire-opt-in-via-pluginssymbol_resolverrust-code_refs--pluginsset_equality_validator-in-place-rename-동반-부채-즉시-상환-mcpcli-transport-variant-는-placeholder-notimplemented-sample-backend-미확보-r307-wire"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 310"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-307--rfc-003-d1d2-closure--validator-trait-dispatch-via-pluginregistry-production-wires-setequalityvalidator--atomicstoreview-trait-lifts-atomic-store-reads-onto-a-json-serializable-snapshot-for-r308-transport-prep"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 310"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-309--textbook-unification--decisionstatus--inventorystatus-enums-lifted-to-mnemosyne-plugin-substrate-parallel-view-enums-decisionstatusview--inventorystatusview-and-view_to_schema-adapter-retired-single-canonical-home-across-the-workspace"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 311"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-310--plugin-substrate-rename-to-mnemosyne-core--legacy-core-typed-facts-layer-rename-to-mnemosyne-facts--d5-closure-substrate-role-declared-by-name-and-13-smell-4-closure-layering-inversion-fix-schema--core-dependency-direction-is-now-honest-since-core-is-the-substrate-that-defines-what-plugins-implement-against"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 312"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-311--mnemosyne-validator-god-crate-decomposition-first-wave--4-leaf-crates-mnemosyne-schema--mnemosyne-config--mnemosyne-parser--mnemosyne-atomic-extracted-with-full-consumer-migration-validator-shrunk-from-15-modules-to-10-faade-free-per-claudemd-no-legacy-carry-13-smell-5-partial-closure-3-more-rounds-r312r313-to-fully-delete-mnemosyne-validator-crate"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 313"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-312--mnemosyne-validator-god-crate-decomposition-second-wave--3-new-crates-mnemosyne-workspace--mnemosyne-style--mnemosyne-query-with-render-submodule-extracted-with-full-consumer-migration-validator-shrunk-from-10-modules-to-5-faade-free-per-claude-no-legacy-carry-13-smell-5-second-of-three-progress-r313-deletes-the-residual-validator-crate-next"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 314"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-313--mnemosyne-validator-god-crate-decomposition-complete--mnemosyne-validate-crate-created-from-final-4-residual-modules-validator--t2--code_refs--commit_ledger-mnemosyne-validator-crate-deleted-entirely-18-integration-tests-redistributed-to-mnemosyne-validatetests-13-smell-5-fully-closed-15-module-16804-line-god-crate-replaced-by-8-cohesion-driven-crates"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 315"
+to = "generatedmd--atomic-store-derived-view/changelog-atomic-ledger/round-314--post-decomposition-cleanup--5-residual-smells-from-r311-r313-closed-test-redistribution-to-textbook-home-crates--mnemosyne-validate-dev-dep-trim--section_by_id-naming-collision-resolution--climainrsatomic_clirs-import-reorganization-to-stdexternalinternal-grouping--benchcodegen-prototype-historical-doc-rot-cleared-repo-wide-mnemosyne-validator-zero-hits-5-god-crate-decomposition-now-true-textbook"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"
+
+[[orphan_ledger]]
+kind = "atomic_entry_ref"
+doc = "<atomic-changelog>"
+from = "Round 400"
+to = "generatedmd--atomic-store-derived-view"
+reason = "R400 removed the GENERATED.md rendered-section namespace; this frozen impact_ref targets a rendered section (generatedmd--*) that no longer resolves against the atomic section set (store = sole SSOT)."
+since = "Round 400"

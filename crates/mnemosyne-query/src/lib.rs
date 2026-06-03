@@ -36,8 +36,6 @@ use mnemosyne_atomic::{
     NormativeExcerpt,
 };
 use mnemosyne_core::DecisionStatus;
-use mnemosyne_schema::{ChangelogEntry, CrossRef, ParsedDoc, RefKind, Section};
-use mnemosyne_workspace::Workspace;
 use serde::Serialize;
 use std::collections::BTreeSet;
 use thiserror::Error;
@@ -138,161 +136,64 @@ pub struct QueryEnvelope {
 // Query primitives — 4 functions.
 // ============================================================================
 
-/// `section_by_id` — workspace in section_id deterministic scan.
+/// `section_by_id` — look up a section in the atomic store (the SSOT).
 ///
-/// Lookup priority: first match in BTreeMap path order.
-/// not found → `None` (CLI in error code 1 + stderr explicit).
-///
-/// atomic-first body source carry (sub_bullets cascade D).
-/// atomic-store-registered section: prose is synthesized from the 8 atomic fields.
-/// SectionView.body, fallback = parsed.bodies (legacy markdown).
-pub fn section_by_id(
-    workspace: &Workspace,
-    atomic_store: &AtomicStore,
-    section_id: &str,
-) -> Option<SectionView> {
-    for (path, doc) in &workspace.docs {
-        if let Some(section) = doc.sections.iter().find(|s| s.section_id == section_id) {
-            return Some(build_section_view(path, section, doc, atomic_store));
-        }
-    }
-    // atomic-only section surface (markdown missing + atomic_store
-    // standalone registered scope, MD-DELETION-RATIFY thereafter sole iteration
-    // source path).
-    //
-    // Round 287 — uses atomic outline fields directly (title / parent_doc /
-    // parent_section). The legacy `ATOMIC_ONLY_PARENT_DOC` sentinel and the
-    // intent→title fallback are retired now that the atomic store carries
-    // the closed-form Section shape. Outline fields default to empty strings
-    // for pre-backfill sections; callers see honest data rather than
-    // synthesized placeholders.
-    if let Some(atomic) = atomic_store.section(section_id) {
-        let synthetic_section = Section {
-            section_id: section_id.to_string(),
-            parent_doc: atomic.skeleton.parent_doc.clone(),
-            parent_section: atomic.skeleton.parent_section.clone(),
-            title: atomic.skeleton.title.clone(),
-            decision_status: atomic
-                .skeleton
-                .decision_status
-                .unwrap_or(DecisionStatus::Active),
-            // Synthetic section is built directly from the atomic store, so
-            // the lookup key is the atomic id verbatim.
-            atomic_section_id: Some(section_id.to_string()),
-        };
-        let synthetic_doc = ParsedDoc::default();
-        return Some(build_section_view(
-            &atomic.skeleton.parent_doc,
-            &synthetic_section,
-            &synthetic_doc,
-            atomic_store,
-        ));
-    }
-    None
+/// Exact-key lookup; not found → `None` (CLI maps to exit 1 + stderr). Prose
+/// is synthesized from the atomic fields; outline fields (title / parent_doc /
+/// parent_section / decision_status) come straight from the skeleton.
+pub fn section_by_id(atomic_store: &AtomicStore, section_id: &str) -> Option<SectionView> {
+    atomic_store
+        .section(section_id)
+        .map(|atomic| build_section_view(section_id, atomic))
 }
 
-fn build_section_view(
-    path: &str,
-    section: &Section,
-    doc: &ParsedDoc,
-    atomic_store: &AtomicStore,
-) -> SectionView {
-    // atomic-first body source. Lookup goes through `AtomicStore::resolve`,
-    // which honours the parser's `atomic_section_id` bridge (the bare
-    // heading `§<token>` slot) so nested `### §<id>` headings emitted
-    // under `## Sections` find their atomic counterpart instead of silently
-    // falling back to the raw markdown body.
-    let atomic = atomic_store.resolve(section);
-    let body = if let Some(atomic) = atomic {
-        synthesize_section_body(atomic)
-    } else {
-        doc.bodies
-            .get(&section.section_id)
-            .cloned()
-            .unwrap_or_default()
-    };
-    let line_anchor = doc
-        .line_anchors
-        .get(&section.section_id)
-        .copied()
-        .unwrap_or(0);
-    // Round 265 — atomic decision_status overrides parser-derived default
-    // when present. parser hardcodes Active workspace-wide; the atomic
-    // override is the only path to surface Superseded / Removed.
-    let resolved_status = atomic
-        .and_then(|a| a.skeleton.decision_status)
-        .unwrap_or(section.decision_status);
+fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
     SectionView {
-        section_id: section.section_id.clone(),
-        parent_doc: path.to_string(),
-        parent_section: section.parent_section.clone(),
-        title: section.title.clone(),
-        decision_status: resolved_status.as_str().to_string(),
-        body,
-        line_anchor,
-        normative_excerpt: atomic.and_then(|a| a.normative_excerpt.clone()),
-        coverage_expectation: atomic.and_then(|a| {
-            // Surface only the `Informative` deviation; ordinary Normative
-            // sections omit the field so the JSON stays unchanged.
-            let tag = a.coverage_expectation.as_str();
+        section_id: section_id.to_string(),
+        parent_doc: atomic.skeleton.parent_doc.clone(),
+        parent_section: atomic.skeleton.parent_section.clone(),
+        title: atomic.skeleton.title.clone(),
+        decision_status: atomic
+            .skeleton
+            .decision_status
+            .unwrap_or(DecisionStatus::Active)
+            .as_str()
+            .to_string(),
+        body: synthesize_section_body(atomic),
+        line_anchor: 0,
+        normative_excerpt: atomic.normative_excerpt.clone(),
+        // Surface only the `Informative` deviation; ordinary Normative
+        // sections omit the field so the JSON stays unchanged.
+        coverage_expectation: {
+            let tag = atomic.coverage_expectation.as_str();
             (tag != "normative").then(|| tag.to_string())
-        }),
+        },
     }
 }
 
-fn ref_kind_str(k: RefKind) -> &'static str {
-    match k {
-        RefKind::Decision => "decision",
-        RefKind::Impl => "impl",
-        RefKind::CrossDoc => "cross_doc",
-    }
-}
-
-/// `related_sections` — workspace full in 1-hop CrossRef traversal.
+/// 1-hop traversal over the atomic store (the SSOT).
 ///
-/// outbound = cross_refs whose from_section is this section_id (within self doc).
-/// inbound = cross_refs whose to_target is this section_id (scanned across all workspace docs;
-/// cross-doc form `{path}#§N` tail anchor strip consistency —
-/// OPTION H-2 carry).
-///
-/// Markdown-derived signature only. For atomic-store-aware traversal that
-/// surfaces `impact_refs` reverse lookup post 7-md deletion, callers should
-/// prefer [`related_sections_with_atomic`].
-pub fn related_sections(workspace: &Workspace, section_id: &str) -> RelatedSections {
-    let mut out = RelatedSections::default();
-    for (path, doc) in &workspace.docs {
-        for cr in &doc.cross_refs {
-            if cr.from_section == section_id {
-                out.outbound_refs.push(build_cross_ref_view(path, cr));
-            }
-            if cross_ref_targets_section(cr, section_id) {
-                out.inbound_refs.push(build_cross_ref_view(path, cr));
-            }
-        }
-    }
-    out
-}
-
-/// atomic-aware variant of [`related_sections`]. Adds two new
-/// inbound traversal sources sourced from the atomic store:
-///
-/// - `entry.impact_refs` — every changelog entry whose impact_refs
-/// contains `section_id` becomes a synthetic inbound ref originating
-/// from `<atomic-changelog>#<entry_id>`.
-/// - `atomic_section.impact_scope` — every atomic section whose
-/// impact_scope references `section_id` becomes an inbound ref from
-/// `<atomic>#<source_section_id>`.
-///
-/// Outbound traversal is unchanged (markdown-derived); the function is
-/// designed for inbound enrichment when the atomic store carries impact
-/// information that legacy markdown cross-refs no longer surface (post
-/// MD-DELETION).
+/// - **outbound** = this section's own `impact_scope` (sections its decision
+///   impacts).
+/// - **inbound** = every changelog entry whose `impact_refs` contains
+///   `section_id` (from `<atomic-changelog>`) and every section whose
+///   `impact_scope` references it (from `<atomic>`).
 pub fn related_sections_with_atomic(
-    workspace: &Workspace,
     atomic_store: &AtomicStore,
     section_id: &str,
 ) -> RelatedSections {
-    let mut out = related_sections(workspace, section_id);
+    let mut out = RelatedSections::default();
+    if let Some(section) = atomic_store.section(section_id) {
+        for target in &section.impact_scope {
+            out.outbound_refs.push(CrossRefView {
+                from_doc: "<atomic>".to_string(),
+                from_section: section_id.to_string(),
+                to_target: target.clone(),
+                ref_kind: "decision".to_string(),
+                created_at_changelog_entry: None,
+            });
+        }
+    }
     for (entry_id, entry) in &atomic_store.changelog_entries {
         for r in &entry.impact_refs {
             if r == section_id {
@@ -322,156 +223,71 @@ pub fn related_sections_with_atomic(
     out
 }
 
-fn build_cross_ref_view(from_doc: &str, cr: &CrossRef) -> CrossRefView {
-    CrossRefView {
-        from_doc: from_doc.to_string(),
-        from_section: cr.from_section.clone(),
-        to_target: cr.to_target.clone(),
-        ref_kind: ref_kind_str(cr.ref_kind).to_string(),
-        created_at_changelog_entry: cr.created_at_changelog_entry.clone(),
-    }
-}
-
-/// Check whether CrossRef.to_target leaks the section_id.
+/// `changelog_entries_for_section` — detect `§N` citations across the atomic
+/// store's changelog entries (the SSOT).
 ///
-/// match shape:
-/// - decision form: bare `§N` → to_target == section_id
-/// - cross-doc form: `{path}#§N` or `{path}#anchor-{N}` etc. → tail in §N
-/// literal-or-anchor numeric prefix consistency.
-fn cross_ref_targets_section(cr: &CrossRef, section_id: &str) -> bool {
-    if cr.to_target == section_id {
-        return true;
-    }
-    if let Some((_path, anchor)) = cr.to_target.split_once('#') {
-        if anchor == section_id {
-            return true;
-        }
-        if let Some(stripped) = anchor.strip_prefix('§') {
-            if stripped == section_id {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// `changelog_entries_for_section` — detect §N citations across the full workspace
-/// (atomic-first surface, cascade B).
-///
-/// citation source = this entry's (1) sub_bullets fulltext (legacy carry,
-/// -162) + (2) atomic_store entry's 5-field fulltext +
-/// (3) atomic impact_refs structural match — boundary check guards against longer numeric
-/// false-positive block for forms `` / `` (next byte after the needle —
-/// ASCII digit OR `.` (in which case it mismatches).
-///
-/// Iteration order:
-/// - workspace.docs in ChangelogEntry markdown-derived entry first
-/// (legacy -162 + atomic-migrated both visible),
-/// - then atomic-only entries (markdown absent, atomic-store-standalone),
-///. parent_doc = "<atomic>" sentinel,
-/// MD-DELETION-RATIFY — sole iteration source thereafter.
+/// citation source = the entry's 5 audit fields (decision_summary /
+/// changes / verification / carry_forward fulltext) + structural
+/// `impact_refs` match. The needle boundary check guards against longer
+/// numeric false-positives (next byte after the needle being an ASCII digit
+/// or `.` mismatches).
 pub fn changelog_entries_for_section(
-    workspace: &Workspace,
     atomic_store: &AtomicStore,
     section_id: &str,
 ) -> Vec<ChangelogEntryView> {
     let mut out = Vec::new();
     let needle = format!("§{}", section_id);
-    let mut seen_entry_ids: BTreeSet<String> = BTreeSet::new();
-    for (path, doc) in &workspace.docs {
-        for entry in &doc.changelog_entries {
-            let atomic = atomic_store.entry(&entry.entry_id);
-            let citation_count = count_citations(entry, atomic, &needle, section_id);
-            if citation_count > 0 {
-                out.push(build_entry_view(path, entry, atomic, citation_count));
-            }
-            seen_entry_ids.insert(entry.entry_id.clone());
-        }
-    }
-    // atomic-only entry surface (markdown missing atomic_store standalone).
     for (entry_id, atomic) in &atomic_store.changelog_entries {
-        if seen_entry_ids.contains(entry_id) {
-            continue;
-        }
-        let synthetic = ChangelogEntry {
-            entry_id: entry_id.clone(),
-            parent_changelog_entry: None,
-            sub_bullets: Vec::new(),
-            frozen_at_transaction_time: 0,
-        };
-        let citation_count = count_citations(&synthetic, Some(atomic), &needle, section_id);
+        let citation_count = count_citations(atomic, &needle, section_id);
         if citation_count > 0 {
-            out.push(build_entry_view(
-                ATOMIC_ONLY_PARENT_DOC,
-                &synthetic,
-                Some(atomic),
-                citation_count,
-            ));
+            out.push(build_entry_view(entry_id, atomic, citation_count));
         }
     }
     out
 }
 
-/// Sentinel `parent_doc` for atomic-only entries.
-/// markdown-absent + atomic-store-standalone entries use a placeholder notation in view.parent_doc.
+/// `parent_doc` marker for changelog entry views — entries live in the atomic
+/// store, not a markdown doc.
 pub const ATOMIC_ONLY_PARENT_DOC: &str = "<atomic>";
 
 fn build_entry_view(
-    path: &str,
-    entry: &ChangelogEntry,
-    atomic: Option<&AtomicChangelogEntry>,
+    entry_id: &str,
+    atomic: &AtomicChangelogEntry,
     citation_count: usize,
 ) -> ChangelogEntryView {
     ChangelogEntryView {
-        entry_id: entry.entry_id.clone(),
-        parent_doc: path.to_string(),
-        parent_changelog_entry: entry.parent_changelog_entry.clone(),
-        frozen_at_transaction_time: entry.frozen_at_transaction_time,
-        sub_bullets: entry.sub_bullets.clone(),
+        entry_id: entry_id.to_string(),
+        parent_doc: ATOMIC_ONLY_PARENT_DOC.to_string(),
+        parent_changelog_entry: None,
+        frozen_at_transaction_time: 0,
+        sub_bullets: Vec::new(),
         citation_count,
-        atomic_decision_summary: atomic.and_then(|a| a.decision_summary.clone()),
-        atomic_changes_bullets: atomic
-            .map(|a| a.changes_bullets.clone())
-            .unwrap_or_default(),
-        atomic_verification_bullets: atomic
-            .map(|a| a.verification_bullets.clone())
-            .unwrap_or_default(),
-        atomic_impact_refs: atomic.map(|a| a.impact_refs.clone()).unwrap_or_default(),
-        atomic_carry_forward_bullets: atomic
-            .map(|a| a.carry_forward_bullets.clone())
-            .unwrap_or_default(),
+        atomic_decision_summary: atomic.decision_summary.clone(),
+        atomic_changes_bullets: atomic.changes_bullets.clone(),
+        atomic_verification_bullets: atomic.verification_bullets.clone(),
+        atomic_impact_refs: atomic.impact_refs.clone(),
+        atomic_carry_forward_bullets: atomic.carry_forward_bullets.clone(),
     }
 }
 
-fn count_citations(
-    entry: &ChangelogEntry,
-    atomic: Option<&AtomicChangelogEntry>,
-    needle: &str,
-    section_id: &str,
-) -> usize {
+fn count_citations(atomic: &AtomicChangelogEntry, needle: &str, section_id: &str) -> usize {
     let mut count = 0usize;
-    for sub in &entry.sub_bullets {
-        count += count_needle_in(sub, needle);
+    if let Some(decision) = &atomic.decision_summary {
+        count += count_needle_in(decision, needle);
     }
-    if let Some(a) = atomic {
-        if let Some(decision) = &a.decision_summary {
-            count += count_needle_in(decision, needle);
-        }
-        for b in &a.changes_bullets {
-            count += count_needle_in(b, needle);
-        }
-        for b in &a.verification_bullets {
-            count += count_needle_in(b, needle);
-        }
-        for b in &a.carry_forward_bullets {
-            count += count_needle_in(b, needle);
-        }
-        // structural cross-ref — impact_refs in direct match (entry §N
-        // impact target as explicit, 1 iteration count).
-        for r in &a.impact_refs {
-            if r == section_id {
-                count += 1;
-            }
+    for b in &atomic.changes_bullets {
+        count += count_needle_in(b, needle);
+    }
+    for b in &atomic.verification_bullets {
+        count += count_needle_in(b, needle);
+    }
+    for b in &atomic.carry_forward_bullets {
+        count += count_needle_in(b, needle);
+    }
+    // structural cross-ref — impact_refs direct match (entry §N impact target).
+    for r in &atomic.impact_refs {
+        if r == section_id {
+            count += 1;
         }
     }
     count
@@ -496,34 +312,12 @@ fn count_needle_in(haystack: &str, needle: &str) -> usize {
     count
 }
 
-/// `workspace_section_id_set` — section_id dict spanning all docs.
-pub fn workspace_section_id_set(workspace: &Workspace) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for doc in workspace.docs.values() {
-        for s in &doc.sections {
-            out.insert(s.section_id.clone());
-        }
-    }
-    out
-}
-
-/// `build_envelope` — section_by_id + related_sections +
-/// changelog_entries_for_section unified envelope (Claude consumable).
-///
-/// atomic-first surface carry (cascade B). atomic-store-entry-driven.
-/// 5-field ChangelogEntryView — `atomic_*` fields exposed, citation_count
-/// atomic-field citations are summed.
-pub fn build_envelope(
-    workspace: &Workspace,
-    atomic_store: &AtomicStore,
-    section_id: &str,
-) -> Option<QueryEnvelope> {
-    let section = section_by_id(workspace, atomic_store, section_id)?;
-    // atomic-aware traversal (post 7-md deletion the markdown
-    // cross_ref graph collapses; impact_refs / impact_scope reverse lookup
-    // restores inbound visibility).
-    let related = related_sections_with_atomic(workspace, atomic_store, section_id);
-    let changelog = changelog_entries_for_section(workspace, atomic_store, section_id);
+/// `build_envelope` — section_by_id + related_sections_with_atomic +
+/// changelog_entries_for_section unified envelope (Claude-consumable).
+pub fn build_envelope(atomic_store: &AtomicStore, section_id: &str) -> Option<QueryEnvelope> {
+    let section = section_by_id(atomic_store, section_id)?;
+    let related = related_sections_with_atomic(atomic_store, section_id);
+    let changelog = changelog_entries_for_section(atomic_store, section_id);
     Some(QueryEnvelope {
         section,
         outbound_refs: related.outbound_refs,
@@ -964,410 +758,88 @@ fn scan_inventory_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_parser::{design_doc_small_fixture, parse_markdown};
 
-    fn fixture_workspace() -> Workspace {
-        let mut ws = Workspace::mnemosyne();
-        let doc = parse_markdown(design_doc_small_fixture(), "docs/DESIGN.md");
-        ws.insert("docs/DESIGN.md", doc);
-        ws
+    // --- store-direct query primitive tests (R400) ---
+
+    fn seed_section(store: &mut AtomicStore, id: &str, title: &str, intent: &str) {
+        store.sections.insert(
+            id.to_string(),
+            AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    title: title.into(),
+                    parent_doc: "spec".into(),
+                    ..Default::default()
+                },
+                intent: Some(intent.into()),
+                ..Default::default()
+            },
+        );
     }
 
     #[test]
-    fn section_by_id_finds_numbered() {
-        let ws = fixture_workspace();
-        let view = section_by_id(&ws, &AtomicStore::default(), "39").expect("§39 exists");
+    fn section_by_id_reads_atomic_store() {
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "39", "Graph schema", "tracks graph schema");
+        let view = section_by_id(&store, "39").expect("section 39 exists");
         assert_eq!(view.section_id, "39");
-        assert_eq!(view.title, "Graph schema codegen");
-        assert_eq!(view.parent_doc, "docs/DESIGN.md");
+        assert_eq!(view.title, "Graph schema");
+        assert_eq!(view.parent_doc, "spec");
         assert_eq!(view.decision_status, "active");
-        assert!(view.line_anchor > 0);
     }
 
     #[test]
-    fn section_by_id_returns_none_for_unknown() {
-        let ws = fixture_workspace();
-        assert!(section_by_id(&ws, &AtomicStore::default(), "999").is_none());
-    }
-
-    #[test]
-    fn related_sections_outbound_includes_decision_refs() {
-        let ws = fixture_workspace();
-        let related = related_sections(&ws, "39");
-        assert!(related
-            .outbound_refs
-            .iter()
-            .any(|r| r.to_target == "41" && r.ref_kind == "decision"));
-    }
-
-    #[test]
-    fn related_sections_inbound_includes_external_citation() {
-        let ws = fixture_workspace();
-        let related_41 = related_sections(&ws, "41");
-        assert!(related_41
-            .inbound_refs
-            .iter()
-            .any(|r| r.from_section == "39"));
-    }
-
-    #[test]
-    fn changelog_entries_for_section_detects_citation() {
-        let ws = fixture_workspace();
+    fn section_by_id_unknown_is_none() {
         let store = AtomicStore::default();
-        let entries = changelog_entries_for_section(&ws, &store, "39");
-        assert!(entries.iter().any(|e| e.entry_id == "Round 60"));
+        assert!(section_by_id(&store, "999").is_none());
     }
 
     #[test]
-    fn count_citations_excludes_substring_match() {
-        let entry = ChangelogEntry {
-            entry_id: "Round X".to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: vec![
-                "§43 cited".to_string(),
-                "§434 not cited (extended)".to_string(),
-                "§43.1 not cited (subnumber)".to_string(),
-            ],
-            frozen_at_transaction_time: 1,
-        };
-        assert_eq!(count_citations(&entry, None, "§43", "43"), 1);
-    }
-
-    #[test]
-    fn count_citations_includes_atomic_fulltext() {
-        // atomic-first surface: atomic 5 field fulltext in §N detect.
-        let entry = ChangelogEntry {
-            entry_id: "Round X".to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: vec![],
-            frozen_at_transaction_time: 1,
-        };
-        let atomic = AtomicChangelogEntry {
-            decision_summary: Some("§43 cited in summary".to_string()),
-            changes_bullets: vec!["§43 in changes".to_string()],
-            verification_bullets: vec!["§43 in verify".to_string()],
-            impact_refs: vec![],
-            carry_forward_bullets: vec!["§43 in carry".to_string()],
-            ..Default::default()
-        };
-        assert_eq!(count_citations(&entry, Some(&atomic), "§43", "43"), 4);
-    }
-
-    #[test]
-    fn count_citations_includes_atomic_impact_refs_structural() {
-        // impact_refs structural match (1 iteration count, fulltext distinct).
-        let entry = ChangelogEntry {
-            entry_id: "Round X".to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: vec![],
-            frozen_at_transaction_time: 1,
-        };
-        let atomic = AtomicChangelogEntry {
-            decision_summary: None,
-            changes_bullets: vec![],
-            verification_bullets: vec![],
-            impact_refs: vec!["43".to_string(), "61".to_string()],
-            carry_forward_bullets: vec![],
-            ..Default::default()
-        };
-        assert_eq!(count_citations(&entry, Some(&atomic), "§43", "43"), 1);
-        assert_eq!(count_citations(&entry, Some(&atomic), "§99", "99"), 0);
-    }
-
-    #[test]
-    fn section_by_id_atomic_first_body_source() {
-        // atomic-first body: atomic store in section is present
-        // synthesize_section_body result SectionView.body authoritative source.
-        use mnemosyne_atomic::AtomicSection;
-        let mut ws = Workspace::mnemosyne();
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "999".to_string(),
-            parent_doc: "docs/DESIGN.md".to_string(),
-            parent_section: None,
-            title: "Test".to_string(),
-            decision_status: DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies
-            .insert("999".to_string(), "legacy markdown body".to_string());
-        ws.insert("docs/DESIGN.md", doc);
-
+    fn related_sections_outbound_from_impact_scope_inbound_from_refs() {
         let mut store = AtomicStore::default();
-        store.sections.insert(
-            "999".to_string(),
-            AtomicSection {
-                intent: Some("atomic intent".to_string()),
-                rationale_bullets: vec!["r1".to_string()],
+        seed_section(&mut store, "39", "A", "a");
+        store.sections.get_mut("39").unwrap().impact_scope = vec!["41".into()];
+        seed_section(&mut store, "41", "B", "b");
+        store.changelog_entries.insert(
+            "Round 1".into(),
+            AtomicChangelogEntry {
+                decision_summary: Some("touches 41".into()),
+                impact_refs: vec!["41".into()],
                 ..Default::default()
             },
         );
-        let view = section_by_id(&ws, &store, "999").expect("§999 exists");
-        // atomic-first: body atomic synthesized result (intent + rationale).
-        assert!(view.body.contains("atomic intent"));
-        assert!(view.body.contains("- r1"));
-        assert!(
-            !view.body.contains("legacy markdown body"),
-            "atomic-first overrides parsed.bodies"
-        );
+        let r39 = related_sections_with_atomic(&store, "39");
+        assert!(r39.outbound_refs.iter().any(|x| x.to_target == "41"));
+        let r41 = related_sections_with_atomic(&store, "41");
+        assert!(r41.inbound_refs.iter().any(|x| x.from_section == "39"));
+        assert!(r41.inbound_refs.iter().any(|x| x.from_section == "Round 1"));
     }
 
     #[test]
-    fn section_by_id_legacy_body_fallback() {
-        // atomic store unregistered section: parsed.bodies fallback carry.
-        let mut ws = Workspace::mnemosyne();
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "888".to_string(),
-            parent_doc: "docs/DESIGN.md".to_string(),
-            parent_section: None,
-            title: "Test".to_string(),
-            decision_status: DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies
-            .insert("888".to_string(), "legacy body content".to_string());
-        ws.insert("docs/DESIGN.md", doc);
-
-        let store = AtomicStore::default();
-        let view = section_by_id(&ws, &store, "888").expect("§888 exists");
-        assert_eq!(view.body, "legacy body content");
-    }
-
-    #[test]
-    fn section_by_id_atomic_only_section_surface() {
-        // markdown missing + atomic store standalone registered section carry.
-        // MD-DELETION-RATIFY thereafter sole iteration source path.
-        //
-        // Round 287 — atomic-only surface now uses real outline fields
-        // (title / parent_doc / parent_section) instead of the legacy
-        // ATOMIC_ONLY_PARENT_DOC sentinel + intent→title fallback.
-        use mnemosyne_atomic::AtomicSection;
-        let ws = Workspace::mnemosyne();
-        let mut store = AtomicStore::default();
-        store.sections.insert(
-            "777".to_string(),
-            AtomicSection {
-                skeleton: mnemosyne_core::SectionSkeleton {
-                    title: "Atomic-only Test".to_string(),
-                    parent_doc: "docs/GENERATED.md".to_string(),
-                    ..Default::default()
-                },
-                intent: Some("atomic-only test".to_string()),
-                ..Default::default()
-            },
-        );
-        let view = section_by_id(&ws, &store, "777").expect("§777 atomic-only");
-        assert_eq!(view.parent_doc, "docs/GENERATED.md");
-        assert_eq!(view.title, "Atomic-only Test");
-        assert!(view.body.contains("atomic-only test"));
-    }
-
-    #[test]
-    fn section_by_id_atomic_decision_status_overrides_parser_default() {
-        // Round 265 — atomic store's decision_status field, when Some(_),
-        // overrides the parser's hardcoded Active. Verifies both code paths:
-        // (1) markdown-backed section + atomic override, (2) atomic-only section
-        // with explicit Superseded.
-        use mnemosyne_atomic::AtomicSection;
-
-        // Path 1: markdown-backed section with Active parser status, atomic
-        // override to Superseded.
-        let mut ws = Workspace::mnemosyne();
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "555".to_string(),
-            parent_doc: "docs/DESIGN.md".to_string(),
-            parent_section: None,
-            title: "MD-backed".to_string(),
-            decision_status: DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        ws.insert("docs/DESIGN.md", doc);
-
-        let mut store = AtomicStore::default();
-        store.sections.insert(
-            "555".to_string(),
-            AtomicSection {
-                skeleton: mnemosyne_core::SectionSkeleton {
-                    decision_status: Some(DecisionStatus::Superseded),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        );
-        let view = section_by_id(&ws, &store, "555").expect("§555 exists");
-        assert_eq!(
-            view.decision_status, "superseded",
-            "atomic Some(Superseded) overrides parser-hardcoded Active"
-        );
-
-        // Path 2: atomic-only section with explicit Removed.
-        let ws2 = Workspace::mnemosyne();
-        let mut store2 = AtomicStore::default();
-        store2.sections.insert(
-            "666".to_string(),
-            AtomicSection {
-                skeleton: mnemosyne_core::SectionSkeleton {
-                    decision_status: Some(DecisionStatus::Removed),
-                    ..Default::default()
-                },
-                intent: Some("removed atomic-only".to_string()),
-                ..Default::default()
-            },
-        );
-        let view2 = section_by_id(&ws2, &store2, "666").expect("§666 atomic-only");
-        assert_eq!(view2.decision_status, "removed");
-
-        // Path 3: atomic field None (default) — parser status carries through.
-        let mut ws3 = Workspace::mnemosyne();
-        let mut doc3 = ParsedDoc::default();
-        doc3.sections.push(Section {
-            section_id: "444".to_string(),
-            parent_doc: "docs/DESIGN.md".to_string(),
-            parent_section: None,
-            title: "no override".to_string(),
-            decision_status: DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        ws3.insert("docs/DESIGN.md", doc3);
-        let mut store3 = AtomicStore::default();
-        store3.sections.insert(
-            "444".to_string(),
-            AtomicSection {
-                skeleton: mnemosyne_core::SectionSkeleton {
-                    decision_status: None,
-                    ..Default::default()
-                },
-                intent: Some("no status override".to_string()),
-                ..Default::default()
-            },
-        );
-        let view3 = section_by_id(&ws3, &store3, "444").expect("§444 exists");
-        assert_eq!(
-            view3.decision_status, "active",
-            "atomic None falls back to parser-derived status"
-        );
-    }
-
-    #[test]
-    fn changelog_entries_for_section_surfaces_atomic_only_entry() {
-        // markdown missing + atomic_store standalone entry also query carry.
-        // MD-DELETION-RATIFY thereafter sole iteration source path.
-        let ws = Workspace::mnemosyne();
+    fn changelog_entries_for_section_counts_atomic_citations() {
+        let m = '\u{a7}'; // section sign U+00A7 (avoid a literal citation in source)
         let mut store = AtomicStore::default();
         store.changelog_entries.insert(
-            "Round 999".to_string(),
+            "Round 60".into(),
             AtomicChangelogEntry {
-                decision_summary: Some("atomic-only test".to_string()),
-                changes_bullets: vec![],
-                verification_bullets: vec![],
-                impact_refs: vec!["39".to_string()],
-                carry_forward_bullets: vec![],
+                decision_summary: Some(format!("supersedes {m}39 decision")),
+                impact_refs: vec!["39".into()],
                 ..Default::default()
             },
         );
-        let entries = changelog_entries_for_section(&ws, &store, "39");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].entry_id, "Round 999");
-        assert_eq!(entries[0].parent_doc, ATOMIC_ONLY_PARENT_DOC);
-        assert_eq!(entries[0].citation_count, 1);
-    }
-
-    #[test]
-    fn changelog_entries_for_section_dedupes_markdown_and_atomic() {
-        // markdown observed entry atomic-only dedupe.
-        let mut ws = Workspace::mnemosyne();
-        let mut doc = ParsedDoc::default();
-        doc.changelog_entries.push(ChangelogEntry {
-            entry_id: "Round 100".to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: vec!["§39 cited".to_string()],
-            frozen_at_transaction_time: 1,
-        });
-        ws.insert("docs/DESIGN.md", doc);
-
-        let mut store = AtomicStore::default();
-        store.changelog_entries.insert(
-            "Round 100".to_string(),
-            AtomicChangelogEntry {
-                decision_summary: Some("test".to_string()),
-                changes_bullets: vec![],
-                verification_bullets: vec![],
-                impact_refs: vec!["39".to_string()],
-                carry_forward_bullets: vec![],
-                ..Default::default()
-            },
-        );
-        let entries = changelog_entries_for_section(&ws, &store, "39");
-        assert_eq!(entries.len(), 1, "single entry, no dupe");
-        assert_eq!(entries[0].parent_doc, "docs/DESIGN.md");
-    }
-
-    #[test]
-    fn changelog_entries_for_section_surfaces_atomic_fields() {
-        // atomic surface field exposed validation.
-        let mut ws = Workspace::mnemosyne();
-        let mut doc = ParsedDoc::default();
-        doc.changelog_entries.push(ChangelogEntry {
-            entry_id: "Round 245".to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: vec![],
-            frozen_at_transaction_time: 1,
-        });
-        ws.insert("docs/DESIGN.md", doc);
-
-        let mut store = AtomicStore::default();
-        store.changelog_entries.insert(
-            "Round 245".to_string(),
-            AtomicChangelogEntry {
-                decision_summary: Some("test summary".to_string()),
-                changes_bullets: vec!["c1".to_string()],
-                verification_bullets: vec!["v1".to_string()],
-                impact_refs: vec!["39".to_string()],
-                carry_forward_bullets: vec!["carry".to_string()],
-                ..Default::default()
-            },
-        );
-        let entries = changelog_entries_for_section(&ws, &store, "39");
-        assert_eq!(entries.len(), 1);
-        let e = &entries[0];
-        assert_eq!(e.atomic_decision_summary.as_deref(), Some("test summary"));
-        assert_eq!(e.atomic_changes_bullets, vec!["c1".to_string()]);
-        assert_eq!(e.atomic_verification_bullets, vec!["v1".to_string()]);
-        assert_eq!(e.atomic_impact_refs, vec!["39".to_string()]);
-        assert_eq!(e.atomic_carry_forward_bullets, vec!["carry".to_string()]);
-        assert_eq!(e.citation_count, 1);
-    }
-
-    #[test]
-    fn workspace_section_id_set_contains_known_sections() {
-        let ws = fixture_workspace();
-        let set = workspace_section_id_set(&ws);
-        assert!(set.contains("39"));
-        assert!(set.contains("61"));
+        let entries = changelog_entries_for_section(&store, "39");
+        assert!(entries
+            .iter()
+            .any(|e| e.entry_id == "Round 60" && e.citation_count >= 1));
     }
 
     #[test]
     fn build_envelope_serializes_to_json() {
-        let ws = fixture_workspace();
-        let store = AtomicStore::default();
-        let env = build_envelope(&ws, &store, "39").expect("§39 exists");
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "39", "Graph schema", "x");
+        let env = build_envelope(&store, "39").expect("section 39 exists");
         let json = serde_json::to_string_pretty(&env).expect("serialize");
         assert!(json.contains("\"section_id\": \"39\""));
         assert!(json.contains("\"outbound_refs\""));
-    }
-
-    #[test]
-    fn cross_ref_targets_section_handles_cross_doc_anchor() {
-        let cr = CrossRef {
-            from_section: "x".to_string(),
-            to_target: "docs/DESIGN.md#§39".to_string(),
-            ref_kind: RefKind::CrossDoc,
-            created_at_changelog_entry: None,
-        };
-        assert!(cross_ref_targets_section(&cr, "39"));
-        assert!(!cross_ref_targets_section(&cr, "41"));
     }
 
     // ========================================================================

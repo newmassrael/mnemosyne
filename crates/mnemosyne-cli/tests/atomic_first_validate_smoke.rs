@@ -13,15 +13,28 @@ fn cli_binary() -> &'static str {
 }
 
 fn write_min_workspace_config(workspace: &std::path::Path) {
-    let cfg = r#"
-[workspace]
-docs = ["docs/STUB.md"]
-default_doc = "docs/STUB.md"
-"#;
+    // Store-only workspace (R400): no markdown docs. The atomic sidecar
+    // (docs/.atomic/workspace.atomic.json) is created on first mutate.
     fs::create_dir_all(workspace.join("docs")).unwrap();
-    fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
-    let stub = "# Stub\n\n## 1. Top\n\nbody.\n";
-    fs::write(workspace.join("docs/STUB.md"), stub).unwrap();
+    fs::write(workspace.join("mnemosyne.toml"), "[workspace]\n").unwrap();
+}
+
+/// Create section `id` in the store so changelog impact_refs / superseded_by
+/// pointers can resolve against it.
+fn add_section(workspace: &std::path::Path, id: &str) {
+    Command::new(cli_binary())
+        .args([
+            "add-section",
+            "--section",
+            id,
+            "--parent-doc",
+            "spec",
+            "--title",
+            "Top",
+        ])
+        .current_dir(workspace)
+        .output()
+        .expect("add-section");
 }
 
 #[test]
@@ -64,7 +77,10 @@ fn validate_workspace_passes_on_clean_store() {
     let verify_path = tmp.path().join("verify.txt");
     fs::write(&verify_path, "v\n").unwrap();
 
-    // Append entry (auto-regenerates GENERATED.md per Round 168 wire).
+    // §1 must exist in the store for the entry's impact_ref to resolve.
+    add_section(tmp.path(), "1");
+
+    // Append entry impacting §1.
     Command::new(cli_binary())
         .args([
             "append-changelog-entry",

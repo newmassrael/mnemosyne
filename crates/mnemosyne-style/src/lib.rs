@@ -25,8 +25,7 @@
 //! - `max_section_body_length` (default 5000 char) — section body char count
 //! - `bullet_list_preference` — enumeration pattern detection in run-on paragraphs
 
-use mnemosyne_atomic::{AtomicSection, AtomicStore};
-use mnemosyne_schema::{ParsedDoc, Section};
+use mnemosyne_atomic::AtomicStore;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,72 +283,11 @@ fn rule_skips_changelog_area(rule_id: &str) -> bool {
     matches!(rule_id, "terminology_consistency")
 }
 
-pub fn check_style(
-    doc_path: &str,
-    parsed: &ParsedDoc,
-    atomic_store: &AtomicStore,
-    ruleset: &[StyleRule],
-) -> Vec<StyleViolation> {
-    let mut out = Vec::new();
-    for rule in ruleset {
-        match rule.scope {
-            StyleScope::SectionBody | StyleScope::FullDoc => {
-                for section in &parsed.sections {
-                    if rule_skips_strong_carry(&rule.rule_id)
-                        && is_strong_carry_section(&section.section_id)
-                    {
-                        continue;
-                    }
-                    // skip terminology check on changelog-area
-                    // sections. Frozen ledger entries (atomic store) cannot
-                    // be retroactively fixed; flagged variants stay as
-                    // *historical* text. Live spec body outside changelog
-                    // still gets full terminology coverage.
-                    if rule_skips_changelog_area(&rule.rule_id)
-                        && is_changelog_area_section(&section.section_id)
-                    {
-                        continue;
-                    }
-                    let body = resolve_section_body(parsed, atomic_store, section);
-                    if let Some(body) = body {
-                        check_section_body_rule(
-                            doc_path,
-                            &section.section_id,
-                            &body,
-                            parsed.line_anchors.get(&section.section_id).copied(),
-                            rule,
-                            &mut out,
-                        );
-                    }
-                }
-            }
-            StyleScope::ChangelogSubBullets => {
-                for entry in &parsed.changelog_entries {
-                    check_changelog_entry_rule(
-                        doc_path,
-                        &entry.entry_id,
-                        &entry.sub_bullets,
-                        atomic_store,
-                        rule,
-                        &mut out,
-                    );
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Store-direct style check — the SSOT-native counterpart of [`check_style`].
-/// Iterates the atomic store's sections and changelog entries directly (no
-/// parsed-markdown substrate), synthesizing each section's prose body via
-/// [`mnemosyne_atomic::synthesize_section_prose_body`] (the same prose-only
-/// source [`check_style`] resolves through `resolve_section_body`). Findings
-/// are identical to the parsed-markdown path for a workspace whose GENERATED.md
-/// is rendered from this store — the only difference is `line_anchor`, which is
-/// `None` here (the section_id is the locator; there is no rendered file with
-/// line numbers). `doc_label` is the value stamped into each violation's
-/// `doc_path` (pass the workspace's configured doc path to preserve output).
+/// Store-direct style check — iterates the atomic store's sections and
+/// changelog entries directly (the SSOT), synthesizing each section's prose
+/// body via [`mnemosyne_atomic::synthesize_section_prose_body`]. `line_anchor`
+/// is `None` (the section_id is the locator; there is no rendered file with
+/// line numbers). `doc_label` is stamped into each violation's `doc_path`.
 pub fn check_style_atomic(
     doc_label: &str,
     store: &AtomicStore,
@@ -382,47 +320,6 @@ pub fn check_style_atomic(
         }
     }
     out
-}
-
-/// Resolve the prose body for a section's style checks. atomic-first source
-///: if the atomic store has an entry
-/// for this `section`, synthesize a prose body via
-/// [`mnemosyne_atomic::synthesize_section_prose_body`] (excludes mechanical
-/// citation blocks like `implementations` file paths — see that function's
-/// doc for the category rationale); otherwise fall back to the legacy
-/// `parsed.bodies` map for sections that have not yet been
-/// atomic-decomposed. Both branches return `None` when no source exists
-/// (decomposed-but-empty atomic section also yields a synthesized empty
-/// string `""`, which `check_section_body_rule` treats as a no-op).
-///
-/// Atomic lookup goes through [`AtomicStore::resolve`], which honours the
-/// parser's `atomic_section_id` bridge — the bare heading `§<token>` slot
-/// — instead of the parent-prefixed `section_id`. Without that bridge,
-/// nested `### §<id>` headings (the renderer's depth-3 layout under
-/// `## Sections`) miss the atomic store and silently fall back to the
-/// raw markdown body, defeating mechanical-citation exclusions like the
-/// `implementations` file-path filter.
-fn resolve_section_body(
-    parsed: &ParsedDoc,
-    atomic_store: &AtomicStore,
-    section: &Section,
-) -> Option<String> {
-    if let Some(atomic) = atomic_store.resolve(section) {
-        return Some(synthesize_atomic_body(atomic));
-    }
-    parsed.bodies.get(&section.section_id).cloned()
-}
-
-// Style-check body synthesizer. Uses the prose-only variant so that
-// mechanical citation blocks (Section.bindings file paths) do not
-// participate in prose rules like `terminology_consistency`. Path-shaped
-// identifiers follow Unix/C filesystem conventions (lowercase) regardless
-// of the canonical prose form of the same concept (e.g. `dut/...` vs the
-// canonical `DUT` glossary form). query.rs continues to use
-// [`mnemosyne_atomic::synthesize_section_body`] (the full variant) for
-// SectionView.body, where downstream consumers want the rendered citations.
-fn synthesize_atomic_body(atomic: &AtomicSection) -> String {
-    mnemosyne_atomic::synthesize_section_prose_body(atomic)
 }
 
 fn check_section_body_rule(
@@ -877,14 +774,29 @@ fn has_enumeration_pattern(para: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_schema::ChangelogEntry;
-
-    fn empty_doc() -> ParsedDoc {
-        ParsedDoc::default()
-    }
+    use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, Binding, BindingKind};
 
     fn empty_store() -> AtomicStore {
         AtomicStore::default()
+    }
+
+    /// Seed a store with one section whose synthesized prose == `body`
+    /// (placed in `intent`, the first prose part).
+    fn store_with_body(id: &str, body: &str) -> AtomicStore {
+        let mut store = AtomicStore::default();
+        store.sections.insert(
+            id.to_string(),
+            AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    title: "Test".into(),
+                    parent_doc: "spec".into(),
+                    ..Default::default()
+                },
+                intent: Some(body.to_string()),
+                ..Default::default()
+            },
+        );
+        store
     }
 
     #[test]
@@ -902,45 +814,24 @@ mod tests {
     }
 
     #[test]
-    fn check_style_empty_doc_no_violations() {
-        let doc = empty_doc();
-        let v = check_style("docs/EMPTY.md", &doc, &empty_store(), &default_ruleset());
+    fn check_style_empty_store_no_violations() {
+        let v = check_style_atomic("spec", &empty_store(), &default_ruleset());
         assert_eq!(v.len(), 0);
     }
 
     #[test]
     fn max_paragraph_length_detects_run_on() {
-        let mut doc = ParsedDoc::default();
-        // Use a prose_named section so the strong-carry skip does not apply.
-        doc.sections.push(Section {
-            section_id: "test/prose-section".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        let long = "-".repeat(1500);
-        doc.bodies.insert("test/prose-section".into(), long);
-        let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
+        // prose-named section so the strong-carry skip does not apply.
+        let store = store_with_body("test/prose-section", &"-".repeat(1500));
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         assert!(v.iter().any(|x| x.rule_id == "max_paragraph_length"));
     }
 
     #[test]
     fn strong_carry_section_skip_length_rules() {
-        let mut doc = ParsedDoc::default();
         // top_level_numeric — strong-carry, length rules must skip.
-        doc.sections.push(Section {
-            section_id: "43".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        let long = "-".repeat(2000);
-        doc.bodies.insert("43".into(), long);
-        let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
+        let store = store_with_body("43", &"-".repeat(2000));
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         assert!(
             !v.iter().any(|x| x.rule_id == "max_paragraph_length"),
             "max_paragraph_length must skip top_level_numeric strong-carry"
@@ -967,11 +858,8 @@ mod tests {
 
     #[test]
     fn effective_sentence_length_em_dash_subclause() {
-        // No dash — full length.
         let plain = "-".repeat(150);
         assert_eq!(effective_sentence_length(&plain), 150);
-
-        // Em-dash chains 3 clauses: 100 + 100 + 100 — effective = 100.
         let chained = format!(
             "{} — {} — {}",
             "-".repeat(100),
@@ -979,64 +867,34 @@ mod tests {
             "b".repeat(100)
         );
         assert_eq!(effective_sentence_length(&chained), 100);
-
-        // En-dash also recognised.
         let en_dash = format!("{}–{}", "-".repeat(50), "a".repeat(50));
         assert_eq!(effective_sentence_length(&en_dash), 50);
     }
 
     #[test]
     fn max_sentence_length_threshold_300_boundary() {
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "test/prose-section".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        // 250-char sentence — under the new 300 cap, no violation (was over 200 cap pre-140).
-        let body = format!("{}.", "-".repeat(250));
-        doc.bodies.insert("test/prose-section".into(), body);
-        let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
+        // 250-char sentence — under the 300 cap.
+        let under = store_with_body("test/prose-section", &format!("{}.", "-".repeat(250)));
         assert!(
-            !v.iter().any(|x| x.rule_id == "max_sentence_length"),
+            !check_style_atomic("spec", &under, &default_ruleset())
+                .iter()
+                .any(|x| x.rule_id == "max_sentence_length"),
             "250-char sentence must not violate the 300-char cap"
         );
-
         // 350-char sentence — over the cap.
-        let mut doc2 = ParsedDoc::default();
-        doc2.sections.push(Section {
-            section_id: "test/prose-section".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        let body2 = format!("{}.", "-".repeat(350));
-        doc2.bodies.insert("test/prose-section".into(), body2);
-        let v2 = check_style("TEST.md", &doc2, &empty_store(), &default_ruleset());
+        let over = store_with_body("test/prose-section", &format!("{}.", "-".repeat(350)));
         assert!(
-            v2.iter().any(|x| x.rule_id == "max_sentence_length"),
+            check_style_atomic("spec", &over, &default_ruleset())
+                .iter()
+                .any(|x| x.rule_id == "max_sentence_length"),
             "350-char sentence must violate the 300-char cap"
         );
     }
 
     #[test]
     fn max_section_body_length_t4_info() {
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "1".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies.insert("1".into(), "-".repeat(6000));
-        let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
+        let store = store_with_body("1", &"-".repeat(6000));
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         let body_len_v: Vec<_> = v
             .iter()
             .filter(|x| x.rule_id == "max_section_body_length")
@@ -1047,17 +905,19 @@ mod tests {
 
     #[test]
     fn boilerplate_jaccard_detects_repetition() {
-        let mut doc = ParsedDoc::default();
-        doc.changelog_entries.push(ChangelogEntry {
-            entry_id: "Round 1".into(),
-            parent_changelog_entry: None,
-            sub_bullets: vec![
-                "this round's substantive contribution = round-scope ratify carry".into(),
-                "this round's substantive contribution = round-scope ratify pass".into(),
-            ],
-            frozen_at_transaction_time: 0,
-        });
-        let v = check_style("TEST.md", &doc, &empty_store(), &default_ruleset());
+        // The store changelog entry's audit bullets are the jaccard source.
+        let mut store = AtomicStore::default();
+        store.changelog_entries.insert(
+            "Round 1".into(),
+            AtomicChangelogEntry {
+                changes_bullets: vec![
+                    "this round's substantive contribution = round-scope ratify carry".into(),
+                    "this round's substantive contribution = round-scope ratify pass".into(),
+                ],
+                ..Default::default()
+            },
+        );
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         assert!(v
             .iter()
             .any(|x| x.rule_id == "boilerplate_repetition_jaccard"));
@@ -1069,93 +929,50 @@ mod tests {
         assert!(has_enumeration_pattern(para));
     }
 
-    #[test]
-    fn glossary_lookup_skipped_when_empty() {
+    fn glossary_rule(canon_variants: &[(&str, &[&str])]) -> StyleRule {
         let mut glossary = BTreeMap::new();
-        glossary.insert("Salsa".to_string(), {
-            let mut s = BTreeSet::new();
-            s.insert("salsa".to_string());
-            s
-        });
-        let rule = StyleRule {
+        for (canon, variants) in canon_variants {
+            let set: BTreeSet<String> = variants.iter().map(|s| s.to_string()).collect();
+            glossary.insert(canon.to_string(), set);
+        }
+        StyleRule {
             rule_id: "terminology_consistency".into(),
             tier: StyleTier::T3,
             threshold: StyleThreshold::GlossaryLookup(glossary),
             scope: StyleScope::FullDoc,
             rationale: "test".into(),
-        };
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "1".into(),
-            parent_doc: "TEST".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies
-            .insert("1".into(), "uses salsa not Salsa".to_string());
-        let v = check_style("TEST.md", &doc, &empty_store(), &[rule]);
+        }
+    }
+
+    #[test]
+    fn glossary_lookup_fires_on_variant() {
+        let rule = glossary_rule(&[("Salsa", &["salsa"])]);
+        let store = store_with_body("1", "uses salsa not Salsa");
+        let v = check_style_atomic("spec", &store, &[rule]);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].rule_id, "terminology_consistency");
     }
 
-    /// Regression — `terminology_consistency` MUST NOT fire on file paths
-    /// in `Section.bindings`. Filesystem paths are mechanical
-    /// citations (lowercase by Unix/C convention), not authored prose.
-    ///
-    /// Scenario mirrors a TC8-style workspace: glossary lists lowercase
-    /// variants (`tc8` / `dut` / `someip` / `dhcpv4`); the section has
-    /// prose using the canonical forms and `implementations[]` populated
-    /// with lowercase filesystem paths. Pre-fix: 4 false positives. Post-
-    /// fix: 0.
+    /// Regression — `terminology_consistency` MUST NOT fire on file paths in
+    /// `Section.bindings`. Filesystem paths are mechanical citations
+    /// (lowercase by Unix/C convention), excluded from the synthesized prose.
     #[test]
     fn terminology_consistency_ignores_implementation_paths() {
-        use mnemosyne_atomic::{AtomicSection, Binding, BindingKind};
-        let mut glossary = BTreeMap::new();
-        for (canon, variants) in [
-            ("TC8", &["tc8", "Tc8"][..]),
-            ("DUT", &["dut", "Dut"][..]),
-            ("SOME/IP", &["someip", "SomeIP"][..]),
-            ("DHCPv4", &["dhcpv4", "Dhcpv4"][..]),
-        ] {
-            let set: BTreeSet<String> = variants.iter().map(|s| s.to_string()).collect();
-            glossary.insert(canon.to_string(), set);
-        }
-        let rule = StyleRule {
-            rule_id: "terminology_consistency".into(),
-            tier: StyleTier::T3,
-            threshold: StyleThreshold::GlossaryLookup(glossary),
-            scope: StyleScope::FullDoc,
-            rationale: "test".into(),
-        };
-
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "tc8-harness/4.2".into(),
-            parent_doc: "GENERATED.md".into(),
-            parent_section: None,
-            title: "4.2".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            // Bare-key uniformity: this test pre-dates the atomic_section_id
-            // bridge and intentionally collapses parser-key and atomic-key onto
-            // the same string, so the atomic-store fallback path covers the
-            // lookup. The render→parse roundtrip test is the canonical
-            // reproduction of the production nested-key shape.
-            atomic_section_id: Some("tc8-harness/4.2".into()),
-        });
-        // prose uses canonical TC8 forms — no terminology violation expected.
+        let rule = glossary_rule(&[
+            ("TC8", &["tc8", "Tc8"]),
+            ("DUT", &["dut", "Dut"]),
+            ("SOME/IP", &["someip", "SomeIP"]),
+            ("DHCPv4", &["dhcpv4", "Dhcpv4"]),
+        ]);
         let mut store = AtomicStore::default();
         let section = AtomicSection {
             skeleton: mnemosyne_core::SectionSkeleton {
                 title: "4.2".into(),
-                parent_doc: "GENERATED.md".into(),
-                parent_section: None,
+                parent_doc: "spec".into(),
                 ..Default::default()
             },
-            intent: Some(
-                "TC8 §4.2 — auto-seeded TC8-internal sub-section (40 code citations).".into(),
-            ),
+            // prose uses canonical TC8 forms — no terminology violation expected.
+            intent: Some("TC8 section 4.2 — auto-seeded TC8-internal sub-section.".into()),
             bindings: vec![
                 Binding {
                     kind: BindingKind::Implements,
@@ -1182,102 +999,57 @@ mod tests {
         };
         store.sections.insert("tc8-harness/4.2".into(), section);
 
-        let v = check_style("docs/GENERATED.md", &doc, &store, &[rule]);
+        let v = check_style_atomic("spec", &store, &[rule]);
         let term_hits: Vec<&StyleViolation> = v
             .iter()
             .filter(|x| x.rule_id == "terminology_consistency")
             .collect();
         assert!(
             term_hits.is_empty(),
-            "implementations file paths must not trigger terminology_consistency; got: {:?}",
+            "binding file paths must not trigger terminology_consistency; got: {:?}",
             term_hits
         );
     }
 
-    /// Companion to [`terminology_consistency_ignores_implementation_paths`]:
-    /// the rule MUST still fire when a lowercase variant appears in genuine
-    /// authored prose (intent text).
+    /// Companion: the rule MUST still fire when a lowercase variant appears in
+    /// genuine authored prose (intent text).
     #[test]
     fn terminology_consistency_still_fires_on_prose_variants() {
-        use mnemosyne_atomic::AtomicSection;
-        let mut glossary = BTreeMap::new();
-        let mut variants = BTreeSet::new();
-        variants.insert("tc8".to_string());
-        glossary.insert("TC8".to_string(), variants);
-        let rule = StyleRule {
-            rule_id: "terminology_consistency".into(),
-            tier: StyleTier::T3,
-            threshold: StyleThreshold::GlossaryLookup(glossary),
-            scope: StyleScope::FullDoc,
-            rationale: "test".into(),
-        };
-
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "p/1".into(),
-            parent_doc: "GENERATED.md".into(),
-            parent_section: None,
-            title: "1".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: Some("p/1".into()),
-        });
-        let mut store = AtomicStore::default();
-        let section = AtomicSection {
-            skeleton: mnemosyne_core::SectionSkeleton {
-                title: "1".into(),
-                parent_doc: "GENERATED.md".into(),
-                parent_section: None,
-                ..Default::default()
-            },
-            intent: Some("the tc8 spec defines ...".into()),
-            ..Default::default()
-        };
-        store.sections.insert("p/1".into(), section);
-
-        let v = check_style("docs/GENERATED.md", &doc, &store, &[rule]);
+        let rule = glossary_rule(&[("TC8", &["tc8"])]);
+        let store = store_with_body("p/1", "the tc8 spec defines ...");
+        let v = check_style_atomic("spec", &store, &[rule]);
         assert!(v
             .iter()
             .any(|x| x.rule_id == "terminology_consistency" && x.message.contains("`tc8`")));
     }
 
-    /// R395 parity: `check_style_atomic` (store-direct) produces the same
-    /// findings as `check_style` (parsed-markdown) for a workspace whose
-    /// parsed doc is the store rendered. Builds a store + the equivalent
-    /// ParsedDoc (sections rendered store-first, so bodies match) and asserts
-    /// the `(rule_id, section_id, severity, message)` sets are identical. Only
-    /// `line_anchor` is allowed to differ (None in the store-direct path).
     #[test]
-    fn check_style_atomic_matches_parsed_findings() {
-        use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection};
-
-        // Glossary with a variant that fires terminology_consistency.
-        let mut glossary = BTreeMap::new();
-        let mut variants = BTreeSet::new();
-        variants.insert("salsa".to_string());
-        glossary.insert("Salsa".to_string(), variants);
+    fn terminology_and_jaccard_fire_store_direct() {
         let mut ruleset = default_ruleset();
         for r in ruleset.iter_mut() {
             if r.rule_id == "terminology_consistency" {
-                r.threshold = StyleThreshold::GlossaryLookup(glossary.clone());
+                r.threshold = StyleThreshold::GlossaryLookup({
+                    let mut g = BTreeMap::new();
+                    let mut variants = BTreeSet::new();
+                    variants.insert("salsa".to_string());
+                    g.insert("Salsa".to_string(), variants);
+                    g
+                });
             }
         }
-
-        // A section whose synthesized prose contains the variant `salsa`.
         let mut store = AtomicStore::default();
         store.sections.insert(
             "engine/1".into(),
             AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     title: "1".into(),
-                    parent_doc: "GENERATED.md".into(),
-                    parent_section: None,
+                    parent_doc: "spec".into(),
                     ..Default::default()
                 },
                 intent: Some("the salsa incremental layer drives this".into()),
                 ..Default::default()
             },
         );
-        // A changelog entry with two near-identical bullets (jaccard boilerplate).
         store.changelog_entries.insert(
             "Round 1".into(),
             AtomicChangelogEntry {
@@ -1288,83 +1060,17 @@ mod tests {
                 ..Default::default()
             },
         );
-
-        // Equivalent ParsedDoc: one section (body resolves store-first via
-        // atomic_section_id) + the changelog entry id (sub_bullets empty, store
-        // is the jaccard source in both paths).
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "engine/1".into(),
-            parent_doc: "GENERATED.md".into(),
-            parent_section: None,
-            title: "1".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: Some("engine/1".into()),
-        });
-        doc.changelog_entries.push(changelog_entry_stub("Round 1"));
-
-        let parsed = check_style("docs/GENERATED.md", &doc, &store, &ruleset);
-        let atomic = check_style_atomic("docs/GENERATED.md", &store, &ruleset);
-
-        let sev_label = |s: StyleSeverity| match s {
-            StyleSeverity::Warn => "warn",
-            StyleSeverity::Info => "info",
-        };
-        let norm = |v: &[StyleViolation]| -> Vec<(String, String, &'static str, String)> {
-            let mut k: Vec<_> = v
-                .iter()
-                .map(|x| {
-                    (
-                        x.rule_id.clone(),
-                        x.section_id.clone(),
-                        sev_label(x.severity),
-                        x.message.clone(),
-                    )
-                })
-                .collect();
-            k.sort();
-            k
-        };
-        assert_eq!(
-            norm(&parsed),
-            norm(&atomic),
-            "store-direct style findings must match parsed-markdown findings"
-        );
-        // Sanity: both actually fired the terminology + jaccard rules.
-        assert!(atomic
-            .iter()
-            .any(|x| x.rule_id == "terminology_consistency"));
-        assert!(atomic
+        let v = check_style_atomic("spec", &store, &ruleset);
+        assert!(v.iter().any(|x| x.rule_id == "terminology_consistency"));
+        assert!(v
             .iter()
             .any(|x| x.rule_id == "boilerplate_repetition_jaccard"));
     }
 
-    /// Build a parsed ChangelogEntry carrying only the entry_id (the jaccard
-    /// source is the atomic store in both style paths, so sub_bullets stay
-    /// empty here).
-    fn changelog_entry_stub(entry_id: &str) -> mnemosyne_schema::ChangelogEntry {
-        mnemosyne_schema::ChangelogEntry {
-            entry_id: entry_id.to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: Vec::new(),
-            frozen_at_transaction_time: 0,
-        }
-    }
-
     #[test]
     fn cross_doc_reference_implicit_detected() {
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "1".into(),
-            parent_doc: "DESIGN.md".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies
-            .insert("1".into(), "see ARCHITECTURE.md for layer".into());
-        let v = check_style("docs/DESIGN.md", &doc, &empty_store(), &default_ruleset());
+        let store = store_with_body("1", "see ARCHITECTURE.md for layer");
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         assert!(v
             .iter()
             .any(|x| x.rule_id == "cross_doc_reference_explicit"));
@@ -1372,18 +1078,9 @@ mod tests {
 
     #[test]
     fn cross_doc_reference_anchored_allowed() {
-        let mut doc = ParsedDoc::default();
-        doc.sections.push(Section {
-            section_id: "1".into(),
-            parent_doc: "DESIGN.md".into(),
-            parent_section: None,
-            title: "Test".into(),
-            decision_status: mnemosyne_core::DecisionStatus::Active,
-            atomic_section_id: None,
-        });
-        doc.bodies
-            .insert("1".into(), "see ARCHITECTURE.md#§3 for layer".into());
-        let v = check_style("docs/DESIGN.md", &doc, &empty_store(), &default_ruleset());
+        let m = '\u{a7}'; // section sign — kept out of source as a literal citation
+        let store = store_with_body("1", &format!("see ARCHITECTURE.md#{m}3 for layer"));
+        let v = check_style_atomic("spec", &store, &default_ruleset());
         assert!(!v
             .iter()
             .any(|x| x.rule_id == "cross_doc_reference_explicit"));

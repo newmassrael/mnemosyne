@@ -2,19 +2,19 @@
 //!
 //! Spec binding: §orphan-ledger (OrphanKind + OrphanLedgerEntry).
 //!
-//! Phase 0e framing reset: Mnemosyne is *LLM-driven MD management
-//! infrastructure for any codebase*, not a project-specific tool. The
-//! workspace path list / default cross-doc target / repo root that used to be
-//! hardcoded in `WORKSPACE_DOC_PATHS` / `MNEMOSYNE_DEFAULT_DOC` are pulled out
-//! into a TOML file an external user authors.
+//! Phase 0e framing reset: Mnemosyne is *LLM-driven spec infrastructure for
+//! any codebase*, not a project-specific tool. The repo root + atomic-store
+//! sidecar path an external user authors live in a TOML file rather than
+//! hardcoded constants.
 //!
 //! ## Schema
 //!
 //! ```toml
 //! [workspace]
-//! docs = ["docs/GENERATED.md", "docs/ARCHITECTURE.md", "README.md"]
-//! default_doc = "docs/GENERATED.md" # optional
 //! root = "." # optional, default = file's dir
+//!
+//! [atomic]
+//! sidecar_path = "docs/.atomic/workspace.atomic.json" # optional
 //! ```
 //!
 //! ## Discovery
@@ -102,19 +102,11 @@ pub struct WorkspaceConfig {
     pub commit_ledger: Option<CommitLedgerSection>,
 }
 
-/// `[atomic]` table — atomic store path overrides (Round 279).
+/// `[atomic]` table — atomic store path override (Round 279).
 ///
 /// Overrides the default sidecar (`docs/.atomic/workspace.atomic.json`)
-/// and cascade output (`docs/GENERATED.md`) paths. Relative paths resolve
-/// against the workspace root; absolute paths are honored as-is. CLI flags
-/// (`--sidecar` / `--output`) win over this config when both are present.
-///
-/// `output_path` is *not* auto-derived from `[workspace] docs[0]` —
-/// `docs[0]` is the *parse target* (markdown the validator reads), while
-/// `output_path` is the *cascade write target* (atomic store → md). Auto-
-/// deriving one from the other risked overwriting hand-authored content in
-/// `docs[0]` the first time a user ran a mutate primitive. The fields are
-/// kept independent so cascade output is an explicit, opt-in choice.
+/// path. Relative paths resolve against the workspace root; absolute paths
+/// are honored as-is. The CLI `--sidecar` flag wins over this config.
 ///
 /// Type name is `AtomicConfigSection` (not `AtomicSection`) to disambiguate
 /// from `atomic::AtomicSection`, which is the typed-fields-per-§ store.
@@ -124,12 +116,6 @@ pub struct AtomicConfigSection {
     /// omitted entirely) falls back to the default `docs/.atomic/workspace.atomic.json`.
     #[serde(default)]
     pub sidecar_path: Option<String>,
-    /// Workspace-relative or absolute cascade output (atomic → md) path.
-    /// `None` falls back to the default `docs/GENERATED.md`. Keep this
-    /// distinct from `[workspace] docs[0]` (parse target) to avoid
-    /// overwriting hand-authored content on first mutate.
-    #[serde(default)]
-    pub output_path: Option<String>,
 }
 
 /// atomic-internal orphan ledger kind.
@@ -659,22 +645,11 @@ impl Default for SchemaSection {
     }
 }
 
-/// `[workspace]` table — doc paths + default cross-doc target + optional
-/// root override (relative paths resolve against the config file's dir
-/// unless `root` is set).
+/// `[workspace]` table — optional root override (relative paths resolve
+/// against the config file's dir unless `root` is set) + external-spec
+/// mirror provenance.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceSection {
-    /// Ordered list of doc paths (relative to workspace root). Set must be
-    /// non-empty — empty list rejected at load time.
-    pub docs: Vec<String>,
-
-    /// Optional default cross-doc target — when a §N reference fails the
-    /// intra-doc lookup and the target is registered here, the parser
-    /// reclassifies as `cross_doc`.
-    /// Must be a member of `docs` if set.
-    #[serde(default)]
-    pub default_doc: Option<String>,
-
     /// Workspace root override — relative paths resolve against this when
     /// set, otherwise against the config file's parent dir.
     #[serde(default)]
@@ -787,18 +762,6 @@ pub struct LoadedConfig {
     pub config_path: PathBuf,
 }
 
-impl LoadedConfig {
-    /// Resolve a doc path entry to an absolute path under `workspace_root`.
-    pub fn doc_abs_path(&self, rel: &str) -> PathBuf {
-        self.workspace_root.join(rel)
-    }
-
-    /// Iterate doc paths (each as `&str`).
-    pub fn doc_paths(&self) -> impl Iterator<Item = &str> {
-        self.config.workspace.docs.iter().map(String::as_str)
-    }
-}
-
 /// Parse a TOML byte slice into a config struct + validate.
 pub fn parse_config(content: &str) -> Result<WorkspaceConfig> {
     let cfg: WorkspaceConfig = toml::from_str(content).context("mnemosyne.toml parse failed")?;
@@ -807,17 +770,6 @@ pub fn parse_config(content: &str) -> Result<WorkspaceConfig> {
 }
 
 fn validate(cfg: &WorkspaceConfig) -> Result<()> {
-    if cfg.workspace.docs.is_empty() {
-        bail!("mnemosyne.toml: `workspace.docs` must contain at least one path");
-    }
-    if let Some(default) = &cfg.workspace.default_doc {
-        if !cfg.workspace.docs.iter().any(|d| d == default) {
-            bail!(
-  "mnemosyne.toml: `workspace.default_doc = {:?}` is not a member of `workspace.docs`",
-  default
- );
-        }
-    }
     if let Some(spec) = &cfg.workspace.spec_source {
         let is_url = spec.url.starts_with("https://") || spec.url.starts_with("http://");
         if !is_url {
@@ -944,11 +896,8 @@ mod tests {
     fn parse_minimal_config() {
         let content = r#"
 [workspace]
-docs = ["a.md", "b.md"]
 "#;
         let cfg = parse_config(content).unwrap();
-        assert_eq!(cfg.workspace.docs, vec!["a.md", "b.md"]);
-        assert!(cfg.workspace.default_doc.is_none());
         assert!(cfg.workspace.root.is_none());
     }
 
@@ -956,21 +905,10 @@ docs = ["a.md", "b.md"]
     fn parse_full_config() {
         let content = r#"
 [workspace]
-docs = ["docs/DESIGN.md", "README.md"]
-default_doc = "docs/DESIGN.md"
 root = "."
 "#;
         let cfg = parse_config(content).unwrap();
-        assert_eq!(cfg.workspace.docs.len(), 2);
-        assert_eq!(cfg.workspace.default_doc.as_deref(), Some("docs/DESIGN.md"));
         assert_eq!(cfg.workspace.root.as_deref(), Some("."));
-    }
-
-    #[test]
-    fn empty_docs_rejected() {
-        let content = "[workspace]\ndocs = []\n";
-        let err = parse_config(content).unwrap_err();
-        assert!(err.to_string().contains("workspace.docs"));
     }
 
     #[test]
@@ -1184,30 +1122,14 @@ default_doc = "docs/GENERATED.md"
     }
 
     #[test]
-    fn default_doc_must_be_in_docs() {
-        let content = r#"
-[workspace]
-docs = ["a.md", "b.md"]
-default_doc = "missing.md"
-"#;
-        let err = parse_config(content).unwrap_err();
-        assert!(err.to_string().contains("default_doc"));
-    }
-
-    #[test]
     fn discover_walks_upward() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
         let nested = root.join("a/b/c");
         fs::create_dir_all(&nested).unwrap();
-        fs::write(
-            root.join("mnemosyne.toml"),
-            "[workspace]\ndocs = [\"x.md\"]\n",
-        )
-        .unwrap();
+        fs::write(root.join("mnemosyne.toml"), "[workspace]\n").unwrap();
 
         let loaded = discover_config(&nested).unwrap().expect("config found");
-        assert_eq!(loaded.config.workspace.docs, vec!["x.md"]);
         // Workspace root resolves to the config file's dir.
         assert_eq!(
             loaded.workspace_root.canonicalize().unwrap(),
@@ -1228,17 +1150,17 @@ default_doc = "missing.md"
         fs::create_dir_all(tmp.path().join(".mnemosyne")).unwrap();
         fs::write(
             tmp.path().join(".mnemosyne/config.toml"),
-            "[workspace]\ndocs = [\"fallback.md\"]\n",
+            "[workspace]\nroot = \"fallback\"\n",
         )
         .unwrap();
         fs::write(
             tmp.path().join("mnemosyne.toml"),
-            "[workspace]\ndocs = [\"primary.md\"]\n",
+            "[workspace]\nroot = \"primary\"\n",
         )
         .unwrap();
 
         let loaded = discover_config(tmp.path()).unwrap().unwrap();
-        assert_eq!(loaded.config.workspace.docs, vec!["primary.md"]);
+        assert_eq!(loaded.config.workspace.root.as_deref(), Some("primary"));
     }
 
     #[test]

@@ -7,9 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use anyhow::Context;
-use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::OrphanKind;
-use mnemosyne_query::workspace_section_id_set;
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
@@ -17,12 +15,10 @@ use mnemosyne_validate::{validator::scan_store_prose_cross_ref_orphans, Validati
 use serde::Serialize;
 
 use crate::cascade::validate_atomic_store;
-use crate::{query::load_workspace, resolve_sidecar, OpError};
+use crate::{query::load_workspace, OpError};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ValidateWorkspaceReport {
-    pub docs_loaded: usize,
-    pub docs_configured: usize,
     pub orphan_actual: Vec<OrphanRef>,
     pub orphan_ledger: Vec<OrphanRef>,
     pub orphan_new: Vec<OrphanRef>,
@@ -59,28 +55,14 @@ pub struct OrphanRef {
 /// one bail condition is hit (round-trip break, new orphan, resolved
 /// ledger entry, T3 reject).
 pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceReport, OpError> {
-    let (ws, loaded, _) = load_workspace(workspace_root).map_err(OpError::from)?;
-    let parsed_docs: Vec<(String, mnemosyne_schema::ParsedDoc)> = ws
-        .docs
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-
-    // Load the atomic store once (the SSOT) — used for the store-direct orphan
-    // scan and the store-direct style check below.
-    let sidecar_path = resolve_sidecar(workspace_root, None)?;
-    let atomic_store =
-        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
+    let (loaded, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
 
     // Store-direct cross-ref orphan scan: free-prose §N references resolved
-    // against the store. Labelled with the configured doc path so orphan-ledger
-    // keys are unchanged from the parsed-markdown era.
-    let orphan_doc_label = parsed_docs
-        .first()
-        .map(|(p, _)| p.clone())
-        .unwrap_or_else(|| "atomic-store".to_string());
+    // against the store (the SSOT). Orphan-ledger keys carry a stable
+    // "atomic-store" doc label.
+    let orphan_doc_label = "atomic-store".to_string();
     let mut actual_orphan_keys: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for (from_section, to_target) in scan_store_prose_cross_ref_orphans(&atomic_store, &ws) {
+    for (from_section, to_target) in scan_store_prose_cross_ref_orphans(&atomic_store) {
         actual_orphan_keys.insert((orphan_doc_label.clone(), from_section, to_target));
     }
 
@@ -129,15 +111,10 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         loaded.config.style.as_ref(),
         loaded.config.terminology.as_ref(),
     );
-    // Store-direct style: iterate the atomic store (the SSOT) rather than the
-    // parsed markdown. Label violations with the configured doc path so output
-    // is unchanged from the parsed-markdown era.
-    let style_doc_label = parsed_docs
-        .first()
-        .map(|(p, _)| p.as_str())
-        .unwrap_or("atomic-store");
+    // Store-direct style: iterate the atomic store (the SSOT). Violations
+    // carry a stable "atomic-store" doc label.
     let style_violations: Vec<StyleViolation> =
-        check_style_atomic(style_doc_label, &atomic_store, &ruleset);
+        check_style_atomic("atomic-store", &atomic_store, &ruleset);
     let terminology_violations: Vec<&StyleViolation> = style_violations
         .iter()
         .filter(|v| v.rule_id == "terminology_consistency")
@@ -158,8 +135,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         .collect();
 
     // Atomic store ledger.
-    let mut id_set = workspace_section_id_set(&ws);
-    id_set.extend(ws.atomic_id_set.iter().cloned());
+    let id_set = atomic_store.atomic_section_id_set();
     let atomic = validate_atomic_store(workspace_root, &id_set)
         .with_context(|| "validate_atomic_store")
         .map_err(|e| OpError::Other(format!("{:#}", e)))?;
@@ -205,12 +181,12 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let supersede_violations: Vec<String> =
         mnemosyne_validate::atomic_section_supersede_state_reject(&atomic_store)
             .into_iter()
-            .filter_map(|e| match e {
-                ValidationError::SupersedeMissingRef { section_id, .. } => Some(format!(
+            .map(|e| {
+                let ValidationError::SupersedeMissingRef { section_id, .. } = e;
+                format!(
                     "§{} decision_status=Superseded but superseded_by is unset",
                     section_id
-                )),
-                _ => None,
+                )
             })
             .collect();
 
@@ -288,8 +264,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let failed = !failure_reasons.is_empty();
 
     Ok(ValidateWorkspaceReport {
-        docs_loaded: parsed_docs.len(),
-        docs_configured: loaded.config.workspace.docs.len(),
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -324,7 +298,6 @@ impl ValidateWorkspaceReport {
         use std::fmt::Write;
         let mut out = String::new();
         let _ = writeln!(out, "=== mnemosyne-cli validate-workspace ===");
-        let _ = writeln!(out, "docs={}/{}", self.docs_loaded, self.docs_configured);
         let _ = writeln!(
             out,
             "T1 orphan total={} (ledger={}, new=+{}, resolved=-{})",

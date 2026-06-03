@@ -2,42 +2,33 @@
 //!
 //! Spec binding: §code-citation-defense (via cmd_validate_code_refs).
 //!
-//! 2 sub-commands:
-//!
-//! - `validate <file>` — single doc T1 + intra-doc round-trip validation.
-//! - `validate-workspace` — 7 markdown doc workspace lookup + reclassify +
-//! round-trip 7/7 mandatory preserved.
-//!
-//! pre-commit hook + CI workflow this binary invoke with design_doc lifecycle
-//! Performs auto-validation — OPTION C Phase 0 dogfood entry source.
+//! `validate-workspace` validates the atomic store (the SSOT) store-direct:
+//! T1 prose cross-ref orphans, T2 frozen ledger, T3/T4 style, atomic
+//! referential closure, publishable/audit divergence, commit-ledger drift.
+//! The pre-commit hook + CI workflow invoke this binary as the dogfood gate.
 
 // atomic_cli is exposed via the package library (src/lib.rs); the bin
 // reaches it through the lib so both targets share one module instance.
 use mnemosyne_cli::atomic_cli;
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::env;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::OnceLock;
-use std::{env, fs};
 
 use anyhow::{anyhow, bail, Context, Result};
 
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, WorkspaceConfig};
-use mnemosyne_parser::{
-    compare_typed_facts, emit_markdown_with_default, parse_markdown_with_schema,
-};
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
-    section_by_id, workspace_section_id_set, TermMode, TermQuery, TermScope,
+    section_by_id, TermMode, TermQuery, TermScope,
 };
-use mnemosyne_schema::ParsedDoc;
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
-use mnemosyne_validate::{code_refs::SetEqualityValidator, ValidationError};
-use mnemosyne_workspace::Workspace;
+use mnemosyne_validate::code_refs::SetEqualityValidator;
 
 /// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`
@@ -158,18 +149,12 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
 
     match cmd.as_str() {
-        "validate" => {
-            let file = args
-                .get(2)
-                .ok_or_else(|| anyhow!("usage: {} validate <file>", prog))?;
-            cmd_validate(file)
-        }
         "validate-workspace" => cmd_validate_workspace(),
         "query" => cmd_query(prog, &args[2..]),
         "add-section" => atomic_cli::cmd_add_section(&workspace_anchor()?, &args[2..]),
@@ -178,7 +163,6 @@ fn run(args: &[String]) -> Result<()> {
             atomic_cli::cmd_import_epub_anchors(&workspace_anchor()?, &args[2..])
         }
         "style-check" => cmd_style_check(prog, &args[2..]),
-        "list-docs" => cmd_list_docs(),
         // atomic mutate API surface.
         "set-section-intent" => {
             atomic_cli::cmd_set_section_intent(&workspace_anchor()?, &args[2..])
@@ -309,15 +293,6 @@ fn run(args: &[String]) -> Result<()> {
     }
 }
 
-/// print the configured workspace doc list (one per line) for
-/// shell consumers (pre-commit hook, CI scripts, external user automation).
-fn cmd_list_docs() -> Result<()> {
-    for path in workspace_config()?.doc_paths() {
-        println!("{}", path);
-    }
-    Ok(())
-}
-
 fn print_help(prog: &str) {
     println!(
         "mnemosyne-cli {} ({}) — Phase 0 design_doc lifecycle (DESIGN §66)",
@@ -326,7 +301,6 @@ fn print_help(prog: &str) {
     );
     println!();
     println!("usage:");
-    println!(" {} validate <file> single-doc T1 + round-trip", prog);
     println!(
         " {} validate-workspace 7 markdown doc full validation",
         prog
@@ -545,132 +519,6 @@ fn print_help(prog: &str) {
 }
 
 // ============================================================================
-// validate <file> — single doc T1 + round-trip.
-// ============================================================================
-
-fn cmd_validate(file: &str) -> Result<()> {
-    let abs = PathBuf::from(file)
-        .canonicalize()
-        .with_context(|| format!("file recovery failed: {}", file))?;
-    let rel = repo_relative_path(&abs)?;
-    let content = fs::read_to_string(&abs).with_context(|| format!("read {}", abs.display()))?;
-    let schema = cli_schema()?;
-    let parsed = parse_markdown_with_schema(&content, &rel, schema);
-
-    // Single-doc T1 (intra-doc only) — workspace fallback validate-workspace scope.
-    let orphans = mnemosyne_validate::validator::cross_ref_orphan_reject(&parsed);
-
-    // Round-trip — single doc scope, default_doc = None.
-    let emitted = emit_markdown_with_default(&parsed, None);
-    let reparsed = parse_markdown_with_schema(&emitted, &rel, schema);
-    let diff = compare_typed_facts(&parsed, &reparsed);
-
-    println!("=== mnemosyne-cli validate {} ===", rel);
-    println!(
-        "sections={} changelog={} cross_refs={} orphans={}",
-        parsed.sections.len(),
-        parsed.changelog_entries.len(),
-        parsed.cross_refs.len(),
-        orphans.len(),
-    );
-    print_orphans(&rel, &orphans, 20);
-    println!(
- "round-trip mandatory_preserved={} (section_identity={}, changelog_sequence={}, cross_ref_set={})",
- diff.mandatory_preserved,
- diff.section_identity_match,
- diff.changelog_sequence_match,
- diff.cross_ref_set_match,
- );
-
-    if !diff.mandatory_preserved {
-        // Round-trip diagnostic — surface the typed-fact diff so authors can
-        // pinpoint which section_id / cross_ref tuples drifted between
-        // parse → emit → re-parse. Without this dump the only signal is a
-        // boolean per dimension, which is insufficient to locate the cause
-        // in a real-world doc with hundreds of sections.
-        let a_keys: BTreeSet<(String, Option<String>, String)> = parsed
-            .sections
-            .iter()
-            .map(|s| {
-                (
-                    s.section_id.clone(),
-                    s.parent_section.clone(),
-                    s.title.clone(),
-                )
-            })
-            .collect();
-        let b_keys: BTreeSet<(String, Option<String>, String)> = reparsed
-            .sections
-            .iter()
-            .map(|s| {
-                (
-                    s.section_id.clone(),
-                    s.parent_section.clone(),
-                    s.title.clone(),
-                )
-            })
-            .collect();
-        if !diff.section_identity_match {
-            eprintln!("--- section diff (a-only / b-only, up to 15 each) ---");
-            for k in a_keys.difference(&b_keys).take(15) {
-                eprintln!("  -A {:?}", k);
-            }
-            for k in b_keys.difference(&a_keys).take(15) {
-                eprintln!("  +B {:?}", k);
-            }
-        }
-        if !diff.cross_ref_set_match {
-            let a_cross: BTreeSet<(String, String, String)> = parsed
-                .cross_refs
-                .iter()
-                .map(|c| {
-                    (
-                        c.from_section.clone(),
-                        c.to_target.clone(),
-                        format!("{:?}", c.ref_kind),
-                    )
-                })
-                .collect();
-            let b_cross: BTreeSet<(String, String, String)> = reparsed
-                .cross_refs
-                .iter()
-                .map(|c| {
-                    (
-                        c.from_section.clone(),
-                        c.to_target.clone(),
-                        format!("{:?}", c.ref_kind),
-                    )
-                })
-                .collect();
-            eprintln!("--- cross_ref diff (a-only / b-only, up to 20 each) ---");
-            for c in a_cross.difference(&b_cross).take(20) {
-                eprintln!("  -A {:?}", c);
-            }
-            for c in b_cross.difference(&a_cross).take(20) {
-                eprintln!("  +B {:?}", c);
-            }
-        }
-        bail!(
- "round-trip mandatory preserved break — sections {}->{} / changelog {}->{} / cross_ref {}->{}",
- diff.section_count_a,
- diff.section_count_b,
- diff.changelog_entry_count_a,
- diff.changelog_entry_count_b,
- diff.cross_ref_count_a,
- diff.cross_ref_count_b,
- );
-    }
-    // Single-doc orphan cross-doc intent possible — workspace scope validation encourage.
-    if !orphans.is_empty() {
-        println!(
- "note: single-doc orphan {}cases — cross-doc intent if `validate-workspace` in step (2) reclassify validation",
- orphans.len()
- );
-    }
-    Ok(())
-}
-
-// ============================================================================
 // query spec query API surface.
 // ============================================================================
 
@@ -754,18 +602,13 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
 fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     let qargs = parse_query_args(args)?;
     let root = workspace_anchor()?;
-    let (ws, _parsed_docs) = load_workspace(&root)?;
-    // cascade B — atomic-first citation surface in atomic store load.
     let atomic_store = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
         .map_err(|e| anyhow!("atomic store load: {}", e))?;
 
     if qargs.list_sections {
-        // list_sections covers BOTH the markdown-derived workspace
-        // sections and the atomic-store-derived sections. Post 7-md deletion
-        // the markdown side is GENERATED.md only (slug-form headings), and
-        // the canonical numeric/`X/Y` ids live in the atomic store.
-        let mut set = workspace_section_id_set(&ws);
-        set.extend(atomic_store.atomic_section_id_set());
+        // The canonical section-id set (numeric / `X/Y` ids plus ancestor
+        // prefixes) lives in the atomic store, the SSOT.
+        let set = atomic_store.atomic_section_id_set();
         for id in &set {
             println!("{}", id);
         }
@@ -893,21 +736,21 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow!("section_id arg required — e.g. {} query §43", prog))?;
 
     if qargs.json && qargs.include_related && qargs.include_changelog {
-        let envelope = build_envelope(&ws, &atomic_store, &section_id)
-            .ok_or_else(|| anyhow!("section_id `{}` workspace in not found", section_id))?;
+        let envelope = build_envelope(&atomic_store, &section_id)
+            .ok_or_else(|| anyhow!("section_id `{}` not found in store", section_id))?;
         println!("{}", serde_json::to_string_pretty(&envelope)?);
         return Ok(());
     }
 
     if qargs.json {
-        let view = section_by_id(&ws, &atomic_store, &section_id)
-            .ok_or_else(|| anyhow!("section_id `{}` workspace in not found", section_id))?;
+        let view = section_by_id(&atomic_store, &section_id)
+            .ok_or_else(|| anyhow!("section_id `{}` not found in store", section_id))?;
         println!("{}", serde_json::to_string_pretty(&view)?);
         return Ok(());
     }
 
-    let view = section_by_id(&ws, &atomic_store, &section_id)
-        .ok_or_else(|| anyhow!("section_id `{}` workspace in not found", section_id))?;
+    let view = section_by_id(&atomic_store, &section_id)
+        .ok_or_else(|| anyhow!("section_id `{}` not found in store", section_id))?;
     println!(
         "§{} ({}#L{}) {}",
         view.section_id, view.parent_doc, view.line_anchor, view.title
@@ -931,7 +774,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     }
 
     if qargs.include_related {
-        let related = related_sections_with_atomic(&ws, &atomic_store, &section_id);
+        let related = related_sections_with_atomic(&atomic_store, &section_id);
         println!();
         println!("outbound_refs ({}):", related.outbound_refs.len());
         for r in &related.outbound_refs {
@@ -948,7 +791,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     }
 
     if qargs.include_changelog {
-        let entries = changelog_entries_for_section(&ws, &atomic_store, &section_id);
+        let entries = changelog_entries_for_section(&atomic_store, &section_id);
         println!();
         println!("related_changelog_entries ({}):", entries.len());
         for e in &entries {
@@ -1224,69 +1067,6 @@ fn workspace_anchor() -> Result<PathBuf> {
         .unwrap_or_else(|| loaded.workspace_root.clone()))
 }
 
-/// The resolved `[workspace] root` — what workspace-relative doc / code
-/// paths join against. Use for path normalization (abs → repo-relative) and
-/// citation / scan roots, NOT for ops calls (those take the anchor).
-fn workspace_root() -> Result<PathBuf> {
-    Ok(workspace_config()?.workspace_root.clone())
-}
-
-fn repo_relative_path(abs: &Path) -> Result<String> {
-    let root = workspace_root()?;
-    let rel = abs
-        .strip_prefix(&root)
-        .with_context(|| format!("{} repo {} external", abs.display(), root.display()))?;
-    Ok(rel.to_string_lossy().into_owned())
-}
-
-fn load_workspace(root: &Path) -> Result<(Workspace, Vec<(String, ParsedDoc)>)> {
-    // workspace.docs + workspace.default_doc come from the
-    // discovered config. `root` is the same workspace_root the config picks;
-    // we accept it as parameter for callers that already resolved it.
-    // schema config (changelog title set + medium_name) routes
-    // through `parse_markdown_with_schema`, the production schema-aware path.
-    // atomic store derived section_id set is injected into the
-    // workspace so that `cross_ref_orphan_reject_with_workspace` step (2.5)
-    // can resolve `to_target` against atomic store keys when markdown re-parse
-    // (workspace.docs=[GENERATED.md] mode or 7-md deletion path) cannot.
-    let loaded = workspace_config()?;
-    let schema = cli_schema()?;
-    let mut ws = Workspace::from_config(loaded);
-    let atomic_for_id_set =
-        AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(root, None)?)?;
-    ws.set_atomic_id_set(atomic_for_id_set.atomic_section_id_set());
-    let doc_paths: Vec<&str> = loaded.doc_paths().collect();
-    let mut parsed_docs: Vec<(String, ParsedDoc)> = Vec::with_capacity(doc_paths.len());
-    for path in &doc_paths {
-        let abs = root.join(path);
-        let content =
-            fs::read_to_string(&abs).with_context(|| format!("read {}", abs.display()))?;
-        let parsed = parse_markdown_with_schema(&content, path, schema);
-        ws.insert((*path).to_string(), parsed.clone());
-        parsed_docs.push(((*path).to_string(), parsed));
-    }
-    Ok((ws, parsed_docs))
-}
-
-fn print_orphans(path: &str, orphans: &[ValidationError], limit: usize) {
-    for err in orphans.iter().take(limit) {
-        if let ValidationError::OrphanCrossRef {
-            from_section,
-            to_target,
-            ref_kind,
-        } = err
-        {
-            println!(
-                " orphan {}: §{} -> §{} ({:?})",
-                path, from_section, to_target, ref_kind
-            );
-        }
-    }
-    if orphans.len() > limit {
-        println!(" ... +{} more in {}", orphans.len() - limit, path);
-    }
-}
-
 // ============================================================================
 // style-check — T3/T4 style rule layer.
 // ============================================================================
@@ -1317,7 +1097,6 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
     }
 
     let root = workspace_anchor()?;
-    let (_ws, parsed_docs) = load_workspace(&root)?;
     let style_check_cfg = workspace_config()?;
     let ruleset = default_ruleset_with_config(
         style_check_cfg.config.style.as_ref(),
@@ -1327,16 +1106,13 @@ fn cmd_style_check(prog: &str, args: &[String]) -> Result<()> {
     let style_check_atomic =
         AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
             .map_err(|e| anyhow!("atomic store load: {}", e))?;
-    let mut all_violations: Vec<StyleViolation> = Vec::new();
-    for (path, _) in &parsed_docs {
-        if let Some(filter) = &doc_filter {
-            if path != filter {
-                continue;
-            }
-        }
-        let mut v = check_style_atomic(path, &style_check_atomic, &ruleset);
-        all_violations.append(&mut v);
-    }
+    // Store-direct: findings come from the atomic store (the SSOT) under a
+    // stable "atomic-store" label; a `--doc` filter selects that label.
+    let label = "atomic-store";
+    let all_violations: Vec<StyleViolation> = match &doc_filter {
+        Some(filter) if filter != label => Vec::new(),
+        _ => check_style_atomic(label, &style_check_atomic, &ruleset),
+    };
 
     let filtered: Vec<&StyleViolation> = all_violations
         .iter()

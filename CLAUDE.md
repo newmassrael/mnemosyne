@@ -12,8 +12,10 @@ on the Mnemosyne project, this instruction takes precedence.
 - ≠ making spec more *concise*
 - ≠ "first-time readers can understand"
 
-The atomic store + GENERATED.md = *audit trail + AI domain*. Density is the
-essence; it is *not* written for human newcomers.
+The atomic store = *audit trail + AI domain* (the single directly-validated
+SSOT post Round 400; GENERATED.md and the markdown-doc model were removed —
+humans read the EPUB for spec content + `mnemosyne-cli query` for the
+changelog). Density is the essence; it is *not* written for human newcomers.
 
 Human-facing surfaces = `GETTING_STARTED.md` / `SCHEMA_GUIDE.md` (separate
 artifacts, already exist).
@@ -31,7 +33,7 @@ recommendation.
 
 ### ❌ "make it readable for first-time readers"
 - That's `GETTING_STARTED.md` / `SCHEMA_GUIDE.md` territory; already exist.
-- Not the purpose of the atomic store / GENERATED.md.
+- Not the purpose of the atomic store.
 
 ### ❌ "rewrite the body of a Round N entry to be shorter"
 - Frozen ledger violation.
@@ -138,12 +140,12 @@ recommendation.
 
 ## Cleanup hard limit
 
-Reasonable termination point for cleanup:
+Reasonable termination point for cleanup (store-direct, post Round 400):
 - T3 reject = 0
-- T1 cross-ref orphan = 0 (outside the known-stale ledger)
-- round-trip mandatory = N/N (all configured docs)
+- T1 prose cross-ref orphan = 0 (outside the known-stale ledger)
+- atomic orphan refs (entry / section) = 0 (outside the known-stale ledger)
 
-Passing these 3 conditions = cleanup complete. Further *prose tidying*
+Passing these conditions = cleanup complete. Further *prose tidying*
 attempts are anti-patterns.
 
 ## Self-check questions (run before any task)
@@ -171,10 +173,10 @@ If a human reports they cannot access information:
 
 ## Progress history location
 
-The atomic store changelog_entries (post Round 251 MD-DELETION-RATIFY) =
-single source of truth. On entering a new conversation, read the changelog
-via `mnemosyne-cli query` first (Round 127 dogfood proof carries — direct
-grep / Read of GENERATED.md not required).
+The atomic store changelog_entries = single source of truth. GENERATED.md
+and the markdown-doc model were removed in Round 400 (the store is the only
+directly-validated artifact). On entering a new conversation, read the
+changelog via `mnemosyne-cli query` first (Round 127 dogfood proof carries).
 
 ## Mutate API enforcement (Round 127 carry)
 

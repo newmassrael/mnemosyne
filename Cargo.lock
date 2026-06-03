@@ -1047,14 +1047,12 @@ dependencies = [
  "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-ops",
- "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-cpp",
  "mnemosyne-plugin-tree-sitter-rust",
  "mnemosyne-query",
  "mnemosyne-schema",
  "mnemosyne-style",
  "mnemosyne-validate",
- "mnemosyne-workspace",
  "regex",
  "serde",
  "serde_json",
@@ -1132,26 +1130,14 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-config",
  "mnemosyne-core",
- "mnemosyne-parser",
  "mnemosyne-query",
  "mnemosyne-schema",
  "mnemosyne-style",
  "mnemosyne-validate",
- "mnemosyne-workspace",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mnemosyne-parser"
-version = "0.1.0"
-dependencies = [
- "mnemosyne-config",
- "mnemosyne-core",
- "mnemosyne-schema",
- "tempfile",
 ]
 
 [[package]]
@@ -1190,9 +1176,7 @@ version = "0.1.0"
 dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-core",
- "mnemosyne-parser",
  "mnemosyne-schema",
- "mnemosyne-workspace",
  "regex",
  "serde",
  "serde_json",
@@ -1265,9 +1249,7 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-config",
  "mnemosyne-core",
- "mnemosyne-parser",
  "mnemosyne-schema",
- "mnemosyne-workspace",
  "regex",
  "tempfile",
 ]
@@ -1280,29 +1262,15 @@ dependencies = [
  "mnemosyne-atomic",
  "mnemosyne-config",
  "mnemosyne-core",
- "mnemosyne-parser",
  "mnemosyne-plugin-tree-sitter-cpp",
  "mnemosyne-plugin-tree-sitter-rust",
  "mnemosyne-schema",
- "mnemosyne-workspace",
  "regex",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mnemosyne-workspace"
-version = "0.1.0"
-dependencies = [
- "mnemosyne-config",
- "mnemosyne-core",
- "mnemosyne-parser",
- "mnemosyne-schema",
- "mnemosyne-validate",
- "tempfile",
 ]
 
 [[package]]

@@ -13,14 +13,12 @@ path = "src/lib.rs"
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
-mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 regex.workspace = true
 
 [dev-dependencies]
-mnemosyne-parser = { path = "../mnemosyne-parser" }
 
 [lints]
 workspace = true

@@ -46,12 +46,7 @@
     "markdown-parser": {
       "title": "Markdown Parser",
       "parent_doc": "docs/GENERATED.md",
-      "bindings": [
-        {
-          "file": "crates/mnemosyne-parser/src/lib.rs",
-          "kind": "implements"
-        }
-      ]
+      "decision_status": "removed"
     },
     "orphan-ledger": {
       "title": "Orphan Ledger",

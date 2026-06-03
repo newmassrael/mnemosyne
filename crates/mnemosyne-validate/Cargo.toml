@@ -14,7 +14,6 @@ mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
-mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
@@ -24,7 +23,6 @@ sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
 mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
 

@@ -1,21 +1,18 @@
-//! Read-only query ops. Each function loads the workspace (markdown +
-//! atomic store) and returns structured data without printing — the CLI
-//! bin formats for stdout, the MCP server serializes to JSON.
+//! Read-only query ops. Each function loads the atomic store (the SSOT) and
+//! returns structured data without printing — the CLI bin formats for stdout,
+//! the MCP server serializes to JSON.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection};
-use mnemosyne_parser::parse_markdown_with_schema;
+use mnemosyne_config::{discover_config, LoadedConfig};
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, query_term as query_term_inner,
-    related_sections_with_atomic, section_by_id, workspace_section_id_set, ChangelogEntryView,
-    QueryEnvelope, RelatedSections, SectionView, TermHit, TermMode, TermQuery, TermScope,
+    related_sections_with_atomic, section_by_id, ChangelogEntryView, QueryEnvelope,
+    RelatedSections, SectionView, TermHit, TermMode, TermQuery, TermScope,
 };
-use mnemosyne_schema::ParsedDoc;
-use mnemosyne_workspace::Workspace;
 use serde::Serialize;
 
 use crate::{load_atomic_store, OpError};
@@ -63,42 +60,21 @@ pub struct QueryTermInput {
     pub fields: Vec<String>,
 }
 
-/// Load the markdown workspace + the atomic store. Mirrors
-/// `cli::load_workspace` but lives in the lib so MCP can call it
-/// without spawning the bin.
-pub fn load_workspace(anchor: &Path) -> Result<(Workspace, LoadedConfig, AtomicStore)> {
+/// Load the config + the atomic store (the SSOT). Lives in the lib so MCP
+/// can call it without spawning the bin.
+pub fn load_workspace(anchor: &Path) -> Result<(LoadedConfig, AtomicStore)> {
     let loaded = discover_config(anchor)
         .map_err(|e| anyhow!("mnemosyne.toml load failed: {}", e))?
         .ok_or_else(|| anyhow!("mnemosyne.toml not found in {}", anchor.display()))?;
-    let schema = loaded
-        .config
-        .schema
-        .clone()
-        .unwrap_or_else(SchemaSection::mnemosyne_preset);
-    // Doc / scan / impl paths resolve against the config-declared
-    // `[workspace] root`, not `anchor` (the discovery start), so a
-    // subdir-located ledger still reads code repo-relative.
-    let workspace_root = loaded.workspace_root.clone();
     let atomic_store = load_atomic_store(anchor, None)?;
-    let mut ws = Workspace::from_config(&loaded);
-    ws.set_atomic_id_set(atomic_store.atomic_section_id_set());
-    let docs: Vec<String> = loaded.doc_paths().map(|s| s.to_string()).collect();
-    for path in &docs {
-        let abs = workspace_root.join(path);
-        let content =
-            std::fs::read_to_string(&abs).with_context(|| format!("read {}", abs.display()))?;
-        let parsed = parse_markdown_with_schema(&content, path, &schema);
-        ws.insert(path.clone(), parsed);
-    }
-    Ok((ws, loaded, atomic_store))
+    Ok((loaded, atomic_store))
 }
 
-/// Workspace + atomic-store union of section ids (the canonical visible
-/// set, post-7-md-deletion). Returned in BTreeSet order.
+/// Atomic-store section ids (the canonical visible set). Returned in
+/// BTreeSet order.
 pub fn list_sections(workspace_root: &Path) -> Result<ListSectionsReport, OpError> {
-    let (ws, _, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
-    let mut set = workspace_section_id_set(&ws);
-    set.extend(atomic_store.atomic_section_id_set());
+    let (_, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
+    let set = atomic_store.atomic_section_id_set();
     let total = set.len();
     Ok(ListSectionsReport {
         section_ids: set.into_iter().collect(),
@@ -113,21 +89,19 @@ pub fn query_section(
     section_id: &str,
     mode: QuerySectionMode,
 ) -> Result<QuerySectionPayload, OpError> {
-    let (ws, _, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
+    let (_, atomic_store) = load_workspace(workspace_root).map_err(OpError::from)?;
     let id = mnemosyne_core::strip_section_marker(section_id);
     match mode {
         QuerySectionMode::Brief => {
-            let view = section_by_id(&ws, &atomic_store, id).ok_or_else(|| {
-                OpError::Other(format!("section_id `{}` not found in workspace", id))
-            })?;
+            let view = section_by_id(&atomic_store, id)
+                .ok_or_else(|| OpError::Other(format!("section_id `{}` not found in store", id)))?;
             Ok(QuerySectionPayload::Brief(view))
         }
         QuerySectionMode::WithRelated => {
-            let view = section_by_id(&ws, &atomic_store, id).ok_or_else(|| {
-                OpError::Other(format!("section_id `{}` not found in workspace", id))
-            })?;
-            let related = related_sections_with_atomic(&ws, &atomic_store, id);
-            let changelog = changelog_entries_for_section(&ws, &atomic_store, id);
+            let view = section_by_id(&atomic_store, id)
+                .ok_or_else(|| OpError::Other(format!("section_id `{}` not found in store", id)))?;
+            let related = related_sections_with_atomic(&atomic_store, id);
+            let changelog = changelog_entries_for_section(&atomic_store, id);
             Ok(QuerySectionPayload::WithRelated {
                 section: view,
                 related,
@@ -135,9 +109,8 @@ pub fn query_section(
             })
         }
         QuerySectionMode::Envelope => {
-            let envelope = build_envelope(&ws, &atomic_store, id).ok_or_else(|| {
-                OpError::Other(format!("section_id `{}` not found in workspace", id))
-            })?;
+            let envelope = build_envelope(&atomic_store, id)
+                .ok_or_else(|| OpError::Other(format!("section_id `{}` not found in store", id)))?;
             Ok(QuerySectionPayload::Envelope(envelope))
         }
     }
@@ -213,11 +186,4 @@ pub fn query_inventory(
         source: entry.source.clone(),
         reason: entry.reason.clone(),
     })
-}
-
-/// Parse + load all configured docs and return the per-doc ParsedDoc map,
-/// reusing the workspace loader so MCP/CLI share the same code path.
-pub fn parsed_docs(workspace_root: &Path) -> Result<BTreeMap<String, ParsedDoc>, OpError> {
-    let (ws, _, _) = load_workspace(workspace_root).map_err(OpError::from)?;
-    Ok(ws.docs.clone())
 }

@@ -449,7 +449,7 @@ impl MnemosyneServer {
 
     /// Finish a mutate op: re-sync the warm validation projection from the
     /// just-written log, then receipt JSON. The atomic store is the only
-    /// authoritative artifact — there is no rendered GENERATED.md to regenerate.
+    /// authoritative artifact; there is nothing rendered to regenerate.
     fn finish_mutate(&self, outcome: Result<MutateOutcome, OpError>) -> CallToolResult {
         match outcome {
             Ok(o) => {
@@ -524,7 +524,7 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
 #[tool_router]
 impl MnemosyneServer {
     #[tool(
-        description = "Run T1 (cross-ref orphan) + T2 (frozen ledger) + store-direct validation across the entire workspace. Returns the metric summary (orphan total / T3 warn / T4 info / GENERATED.md sync). Call at session start for the baseline and after every mutation."
+        description = "Run T1 (prose cross-ref orphan) + T2 (frozen ledger) + T3/T4 style validation store-direct over the atomic store (the SSOT). Returns the metric summary (orphan total / T3 warn / T4 info / atomic orphan refs). Call at session start for the baseline and after every mutation."
     )]
     async fn validate_workspace(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::validate_workspace(&self.workspace) {
@@ -1290,7 +1290,7 @@ impl ServerHandler for MnemosyneServer {
             "then anti-patterns + atomic-store + frozen-ledger before any mutation. ",
             "Run validate_workspace to surface the baseline, mutate via typed primitives, ",
             "validate_workspace again to confirm no new T1/T2 violations. ",
-            "NEVER edit docs/GENERATED.md or the atomic JSON directly."
+            "NEVER edit the atomic store JSON directly — mutate via the typed primitives."
         ))
     }
 

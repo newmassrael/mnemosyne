@@ -3,13 +3,12 @@
 
 use std::path::Path;
 
-use mnemosyne_atomic::AtomicStore;
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
 use serde::Serialize;
 
-use crate::{query::load_workspace, resolve_sidecar, OpError};
+use crate::{query::load_workspace, OpError};
 
 #[derive(Debug, Clone)]
 pub struct StyleCheckInput {
@@ -43,27 +42,20 @@ pub fn style_check(
     workspace_root: &Path,
     input: &StyleCheckInput,
 ) -> Result<StyleCheckReport, OpError> {
-    let (ws, loaded, _) = load_workspace(workspace_root).map_err(OpError::from)?;
+    let (loaded, atomic) = load_workspace(workspace_root).map_err(OpError::from)?;
     let ruleset = default_ruleset_with_config(
         loaded.config.style.as_ref(),
         loaded.config.terminology.as_ref(),
     );
-    let sidecar_path = resolve_sidecar(workspace_root, None)?;
-    let atomic = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
 
-    // Store-direct: style findings come from the atomic store (SSOT), labelled
-    // with the configured doc path. The `--doc` filter still selects which
-    // configured doc label to report under.
-    let mut all: Vec<StyleViolation> = Vec::new();
-    for path in ws.docs.keys() {
-        if let Some(ref filter) = input.doc {
-            if filter != path {
-                continue;
-            }
-        }
-        let mut v = check_style_atomic(path, &atomic, &ruleset);
-        all.append(&mut v);
-    }
+    // Store-direct: style findings come from the atomic store (the SSOT) under
+    // a stable "atomic-store" label. A `--doc` filter, when set, selects that
+    // label (anything else yields no findings).
+    let label = "atomic-store";
+    let all: Vec<StyleViolation> = match &input.doc {
+        Some(filter) if filter != label => Vec::new(),
+        _ => check_style_atomic(label, &atomic, &ruleset),
+    };
 
     let severity_filter = input.severity.clone().unwrap_or_else(|| "all".to_string());
     let mut t3_reject = 0usize;

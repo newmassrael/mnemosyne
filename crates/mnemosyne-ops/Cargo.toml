@@ -11,12 +11,10 @@ description = "Mnemosyne — shared in-process orchestration (atomic mutate + qu
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-core = { path = "../mnemosyne-core" }
-mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-query = { path = "../mnemosyne-query" }
 mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-style = { path = "../mnemosyne-style" }
 mnemosyne-validate = { path = "../mnemosyne-validate" }
-mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 
 anyhow.workspace = true
 serde = { workspace = true }

@@ -18,8 +18,6 @@ regex.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 mnemosyne-core = { path = "../mnemosyne-core" }
-mnemosyne-parser = { path = "../mnemosyne-parser" }
-mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 
 [lints]
 workspace = true

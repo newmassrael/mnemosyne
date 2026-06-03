@@ -1,52 +1,20 @@
-//! T2 datalog rules — / *T2 add* binding source (ratify).
+//! T2 datalog rules — atomic frozen-ledger append-only enforcement.
 //!
-//! Phase 0b entry #6 — ratify carry. Bootstrap stages' T2 datalog
-//! rule's *frozen-ledger-jaccard rule single-item* Stage 3 → Stage 1 pull-in
-//! then Phase 0 entry. Remaining T2 rules (body-ref vs. frozen-list jaccard, etc.)
-//! Phase 1B follow-up — introduced after the entry round.
-//!
-//! ## frozen_ledger_jaccard rule
-//!
-//! **input**: two ParsedDoc snapshot — `prev` (transaction_time T1) +
-//! `curr` (transaction_time T2, T1 < T2). For ChangelogEntries with the same entry_id,
-//! sub_bullets — set comparison between the two.
-//!
-//! **rule**: `jaccard(prev.sub_bullets, curr.sub_bullets) >= 1.0`'s *asymmetric
-//! form* — `prev.sub_bullets ⊆ curr.sub_bullets` (T1's sub_bullets ⊆ T2's,
-//! preserved as-is, append-only). T1 set ⊆ T2 set ⇒ PASS; otherwise threshold-driven
-//! reject (frozen-ledger violation).
-//!
-//! **violation**: a sub_bullet present in T1 is partially modified in T2 (added item = allow,
-//! removed or modified item = violation).
-//!
-//! ## Difference vs T1 rule 2
-//!
-//! T1 rule 2 (`changelog_entry_append_only`) = sequence equality enforced
-//! (Vec equality, reordering also reject). T2 rule (`frozen_ledger_jaccard`) =
-//! set inclusion enforced (T1 ⊆ T2, sub_bullets *add* allowed — append-only
-//! meaning consistency). T2 is *slightly more lenient* than T1 (sub_bullets — additions allowed; removal
-//! block); datalog rule format auto-enforced.
+//! `frozen_ledger_atomic` compares two `AtomicStore` snapshots (prev = T1,
+//! curr = T2, T1 < T2) and enforces the append-only invariant across the
+//! atomic Section fields and the audit half of each ChangelogEntry: a
+//! set-once field (intent / decision_summary) must not change once set, and
+//! each bullet list must satisfy `prev ⊆ curr` (addition OK, removal/modify
+//! reject). The bench-era markdown `frozen_ledger_jaccard` (ParsedDoc pair)
+//! was removed with the markdown model (R400); the atomic-store axis is the
+//! single source of truth.
 
 use mnemosyne_atomic::{AtomicChangelogEntry, AtomicSection, AtomicStore, RejectedAlternative};
-use mnemosyne_schema::{ChangelogEntry, ParsedDoc};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
-/// T2 ValidationError — `frozen_ledger_jaccard` rule violation.
-///
-/// `Eq` derive missing — `f64` IEEE 754 NaN in partial-only ordering at per
-/// `Eq` not implemented (Rust trait bound). PartialEq is the only derived trait — used for assertions / pattern matches.
-/// matching uses the PartialEq path.
+/// T2 ValidationError — atomic frozen-ledger append-only violations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum T2ValidationError {
-    /// Partial modification of T1's sub_bullets (remove or modify) — frozen-ledger violation.
-    /// `missing_in_curr` = exists in prev but not in curr's sub_bullets set.
-    FrozenLedgerJaccardViolation {
-        entry_id: String,
-        prev_sub_bullets_count: usize,
-        curr_sub_bullets_count: usize,
-        missing_in_curr: Vec<String>,
-        jaccard_asymmetric: f64,
-    },
     /// — atomic Section field append-only violation.
     /// `field` = "intent" / "rationale_bullets" /... etc. any atomic 8 field
     /// Explicit out-of-scope violation. `missing_in_curr` = exists in prev but not in curr.
@@ -64,65 +32,6 @@ pub enum T2ValidationError {
         field: &'static str,
         missing_in_curr: Vec<String>,
     },
-}
-
-/// `frozen_ledger_jaccard` T2 rule.
-///
-/// Two ParsedDoc snapshots (prev = T1, curr = T2, T1 < T2) — same entry_id
-/// ChangelogEntry in `prev.sub_bullets ⊆ curr.sub_bullets` check.
-///
-/// carry form:
-/// - prev.entry_id missing in curr → ChangelogEntry itself was removed; T1 rule 2
-/// `changelog_entry_append_only`) — scoped to entry deletion. This T2 rule
-/// Entry deletion is unchecked (T1 rule 2 — reject takes priority).
-/// - prev.entry_id exists in curr + prev.sub_bullets ⊄ curr.sub_bullets
-/// → `FrozenLedgerJaccardViolation` registered (remove sub_bullets explicit).
-/// - prev.sub_bullets ⊆ curr.sub_bullets → PASS (sub_bullets add allow).
-pub fn frozen_ledger_jaccard(prev: &ParsedDoc, curr: &ParsedDoc) -> Vec<T2ValidationError> {
-    let curr_by_id: BTreeMap<&str, &ChangelogEntry> = curr
-        .changelog_entries
-        .iter()
-        .map(|e| (e.entry_id.as_str(), e))
-        .collect();
-
-    let mut errors = Vec::new();
-    for prev_entry in &prev.changelog_entries {
-        let curr_entry = match curr_by_id.get(prev_entry.entry_id.as_str()) {
-            Some(e) => e,
-            // entry deletion T1 rule 2 scope — this T2 rule unchecked.
-            None => continue,
-        };
-
-        let prev_set: BTreeSet<&str> = prev_entry.sub_bullets.iter().map(String::as_str).collect();
-        let curr_set: BTreeSet<&str> = curr_entry.sub_bullets.iter().map(String::as_str).collect();
-
-        // Asymmetric jaccard: |prev ∩ curr| / |prev|.
-        // ≥ 1.0 ↔ prev ⊆ curr (all prev sub_bullet curr in exists).
-        let intersection_size = prev_set.intersection(&curr_set).count();
-        let prev_size = prev_set.len();
-
-        if prev_size == 0 {
-            // empty prev — vacuous PASS (jaccard undefined → 1.0 default).
-            continue;
-        }
-
-        let jaccard = intersection_size as f64 / prev_size as f64;
-        if jaccard < 1.0 {
-            // T1 in sub_bullets in-progress T2 in missing item explicit.
-            let missing: Vec<String> = prev_set
-                .difference(&curr_set)
-                .map(|s| s.to_string())
-                .collect();
-            errors.push(T2ValidationError::FrozenLedgerJaccardViolation {
-                entry_id: prev_entry.entry_id.clone(),
-                prev_sub_bullets_count: prev_size,
-                curr_sub_bullets_count: curr_set.len(),
-                missing_in_curr: missing,
-                jaccard_asymmetric: jaccard,
-            });
-        }
-    }
-    errors
 }
 
 /// `frozen_ledger_atomic` — LEGACY-FIELD-REMOVAL round 2 ratify.
@@ -386,122 +295,6 @@ fn push_examples_diff(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_schema::ChangelogEntry;
-
-    fn entry(id: &str, bullets: &[&str], txn: i64) -> ChangelogEntry {
-        ChangelogEntry {
-            entry_id: id.to_string(),
-            parent_changelog_entry: None,
-            sub_bullets: bullets.iter().map(|s| s.to_string()).collect(),
-            frozen_at_transaction_time: txn,
-        }
-    }
-
-    fn doc(entries: Vec<ChangelogEntry>) -> ParsedDoc {
-        ParsedDoc {
-            changelog_entries: entries,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn jaccard_passes_on_identity() {
-        let prev = doc(vec![entry("Round 1", &["a", "b", "c"], 1)]);
-        let curr = doc(vec![entry("Round 1", &["a", "b", "c"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert!(errors.is_empty(), "identical sub_bullets must PASS");
-    }
-
-    #[test]
-    fn jaccard_passes_on_appended_bullet() {
-        // T2 = T1 ∪ {new} — T1 ⊆ T2, jaccard = 1.0.
-        let prev = doc(vec![entry("Round 1", &["a", "b"], 1)]);
-        let curr = doc(vec![entry("Round 1", &["a", "b", "c"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert!(
-            errors.is_empty(),
-            "append-only sub_bullets must PASS (T1 ⊆ T2)"
-        );
-    }
-
-    #[test]
-    fn jaccard_rejects_removed_bullet() {
-        let prev = doc(vec![entry("Round 1", &["a", "b", "c"], 1)]);
-        let curr = doc(vec![entry("Round 1", &["a", "b"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert_eq!(errors.len(), 1, "removed bullet must reject");
-        if let T2ValidationError::FrozenLedgerJaccardViolation {
-            entry_id,
-            missing_in_curr,
-            jaccard_asymmetric,
-            ..
-        } = &errors[0]
-        {
-            assert_eq!(entry_id, "Round 1");
-            assert_eq!(missing_in_curr, &vec!["c".to_string()]);
-            assert!(*jaccard_asymmetric < 1.0);
-        }
-    }
-
-    #[test]
-    fn jaccard_rejects_modified_bullet() {
-        // T2 in "b" → "B" mutation — content drift, T1 ⊄ T2.
-        let prev = doc(vec![entry("Round 1", &["a", "b"], 1)]);
-        let curr = doc(vec![entry("Round 1", &["a", "B"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert_eq!(errors.len(), 1, "modified bullet must reject");
-    }
-
-    #[test]
-    fn jaccard_skips_entry_deletion() {
-        // entry itself removed — T1 rule 2 scope, T2 unchecked.
-        let prev = doc(vec![
-            entry("Round 1", &["a"], 1),
-            entry("Round 2", &["b"], 2),
-        ]);
-        let curr = doc(vec![entry("Round 1", &["a"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert!(errors.is_empty(), "entry deletion is T1 rule 2 territory");
-    }
-
-    #[test]
-    fn jaccard_passes_on_empty_prev() {
-        let prev = doc(vec![entry("Round 1", &[], 1)]);
-        let curr = doc(vec![entry("Round 1", &["new"], 1)]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert!(errors.is_empty(), "empty prev sub_bullets is vacuous PASS");
-    }
-
-    #[test]
-    fn jaccard_handles_multiple_entries() {
-        let prev = doc(vec![
-            entry("Round 1", &["a", "b"], 1),
-            entry("Round 2", &["c"], 2),
-        ]);
-        let curr = doc(vec![
-            entry("Round 1", &["a"], 1),      // violation
-            entry("Round 2", &["c", "d"], 2), // PASS (append)
-        ]);
-        let errors = frozen_ledger_jaccard(&prev, &curr);
-        assert_eq!(errors.len(), 1);
-        if let T2ValidationError::FrozenLedgerJaccardViolation { entry_id, .. } = &errors[0] {
-            assert_eq!(entry_id, "Round 1");
-        }
-    }
-
-    #[test]
-    fn jaccard_self_check_design_md_passes() {
-        // DESIGN.md itself frozen ledger principle in self-check — same doc two time parse
-        // on jaccard = 1.0 (vector equality in frozen principle carry).
-        use mnemosyne_parser::{design_doc_small_fixture, parse_markdown};
-        let a = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
-        let b = parse_markdown(design_doc_small_fixture(), "DESIGN.md");
-        let errors = frozen_ledger_jaccard(&a, &b);
-        assert!(
-            errors.is_empty(),
-            "self-parse in frozen ledger jaccard violation 0 contract PASS"
-        );
-    }
 
     // ========================================================================
     // — atomic frozen ledger tests (LEGACY-FIELD-REMOVAL round 2).

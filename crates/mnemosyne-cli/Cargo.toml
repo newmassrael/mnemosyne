@@ -19,9 +19,7 @@ mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
-mnemosyne-parser = { path = "../mnemosyne-parser" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
-mnemosyne-workspace = { path = "../mnemosyne-workspace" }
 mnemosyne-style = { path = "../mnemosyne-style" }
 mnemosyne-query = { path = "../mnemosyne-query" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
