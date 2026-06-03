@@ -66,7 +66,7 @@ The rationale: tier mobility would invalidate cross-round comparisons.
 
 | Tool | Tiers it runs |
 |---|---|
-| `validate_workspace` | T1 + T2 (round-trip) |
+| `validate_workspace` | T1 + T2 + T3/T4 (store-direct) |
 | `style_check` | T3 + T4 only |
 | `set_section_*` mutate | T1 + T2 pre-write |
 | `append_changelog_entry` | T1 + T2 pre-write |

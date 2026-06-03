@@ -42,7 +42,7 @@ fn validate_workspace_surfaces_atomic_ledger_line() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());
 
-    // Empty atomic store + no GENERATED.md = trivially in sync.
+    // Empty atomic store = trivially clean (no orphans, no violations).
     let out = Command::new(cli_binary())
         .arg("validate-workspace")
         .current_dir(tmp.path())
@@ -99,7 +99,7 @@ fn validate_workspace_passes_on_clean_store() {
         .output()
         .expect("run mutate");
 
-    // validate-workspace must pass — atomic store + GENERATED.md in sync.
+    // validate-workspace must pass — store is clean (impact_ref §1 resolves).
     let out = Command::new(cli_binary())
         .arg("validate-workspace")
         .current_dir(tmp.path())

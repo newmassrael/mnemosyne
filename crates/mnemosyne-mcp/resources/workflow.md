@@ -7,8 +7,8 @@ Mnemosyne.
 
 1. Read concept resources you haven't internalized yet
    (`mnemosyne://concepts/*`).
-2. Run `validate_workspace` to surface the current baseline (orphans,
-   style violations, round-trip status).
+2. Run `validate_workspace` to surface the current baseline (prose
+   orphans, style violations, atomic orphan refs).
 3. If the user asks "what's the state?", surface the metrics from (2)
    plus the section topology via `list_sections`.
 
@@ -34,7 +34,7 @@ Specifically:
    what content).
 2. Call the **typed primitive** (e.g. `set_section_intent`).
 3. Call **`validate_workspace`** to confirm no new T1/T2 violations.
-4. Report metrics: orphan delta, T3 warn delta, round-trip status.
+4. Report metrics: orphan delta, T3 warn delta, atomic orphan refs.
 
 Skipping step 3 is the most common failure — the user gets confirmation
 "done!" and the next session discovers a T1 reject.
@@ -85,8 +85,7 @@ commit.
 ## Don't do this
 
 - Don't `Read` the atomic JSON. Use `query_section`.
-- Don't `Edit` GENERATED.md. Mutate via tools; cascade auto-update will
-  refresh it.
+- Don't `Edit` the atomic store JSON. Mutate via the typed tools.
 - Don't append a ChangelogEntry without `impact_refs`. Empty
   impact_refs are nearly always a sign of incomplete planning.
 - Don't run `validate_workspace` once at the start and assume that's

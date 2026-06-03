@@ -45,8 +45,9 @@ Consequences:
 - AI reads the store via **DB queries** (tools below), not by `Read`-ing
   the JSON top to bottom.
 - The "looks dense / let's clean it up" instinct is wrong here. The
-  store is meant to be dense. Human-facing readability lives in
-  `docs/GENERATED.md` and external guide files.
+  store is meant to be dense. Human-facing readability lives in the
+  committed EPUB (spec content), `mnemosyne-cli query`, and external
+  guide files.
 - Audit trail integrity > prose tidiness. A `set_section_*` call appends
   to the store; existing entries stay frozen.
 
@@ -80,16 +81,17 @@ Always through typed primitives. Each tool corresponds to one atomic field:
 **Forbidden by default**. The atomic store contract requires mutation
 to route through validated primitives so that:
 
-- T1 cross-ref orphan check runs.
-- T2 frozen-ledger jaccard check runs.
-- Every mutation is reflected in GENERATED.md atomically.
+- T1 prose cross-ref orphan check runs.
+- T2 atomic frozen-ledger check runs.
+- Every mutation appends an audit receipt; existing entries stay frozen.
 
 If a user *explicitly* grants an override, you may edit the JSON
 directly. Otherwise, refuse and call the appropriate tool.
 
-## Cascade auto-update
+## Validation
 
-Every successful atomic mutation auto-regenerates `docs/GENERATED.md`
-(template render → atomic write → byte-identical to a fresh
-`generate_docs` call). The `verify_generated` tool exits 0 when in sync,
-1 when stale — wire this into pre-commit hooks.
+The atomic store is the single directly-validated artifact (post Round
+400 the markdown-rendered GENERATED.md and round-trip gate were removed).
+`validate_workspace` runs store-direct: T1 prose orphans, T2 frozen
+ledger, T3/T4 style, atomic referential closure — wire it into the
+pre-commit hook (it runs when the sidecar is staged).

@@ -8,8 +8,7 @@ to git's pattern.
 
 ```toml
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
+# root override + external-spec mirror provenance only (optional)
 
 [schema]
 changelog_titles = ["Changelog"]
@@ -19,29 +18,10 @@ entry_id_prefix = "Round "
 locale = "en"
 ```
 
-This is the form a typical Mnemosyne-native project uses (atomic store
-+ GENERATED.md as sole source of truth).
-
-## Multi-doc config (legacy markdown carry)
-
-```toml
-[workspace]
-docs = [
-    "ARCHITECTURE.md",
-    "README.md",
-    "docs/spec.md",
-    "docs/protocol.md",
-]
-default_doc = "ARCHITECTURE.md"
-
-[schema]
-changelog_titles = ["Changelog", "Change History"]
-entry_id_prefix = "RFC-"
-```
-
-For projects that have multiple existing markdown docs and want to
-adopt Mnemosyne incrementally without collapsing them into one
-GENERATED.md.
+This is the form a typical Mnemosyne-native project uses: the atomic
+store sidecar (`docs/.atomic/workspace.atomic.json`) is the single
+directly-validated source of truth (post Round 400 the markdown-doc
+model and GENERATED.md were removed).
 
 ## Sections
 
@@ -49,9 +29,8 @@ GENERATED.md.
 
 | Key | Type | Required | Meaning |
 |---|---|---|---|
-| `docs` | list of paths | yes | docs to validate, relative to workspace root |
-| `default_doc` | path | yes | cross-doc fallback target for `§N` lookups |
 | `root` | path | no | override workspace root (relative to config file) |
+| `spec_source` | table | no | external-spec mirror provenance (RFC-002 FR-2) |
 
 ### `[schema]`
 
@@ -160,8 +139,7 @@ If you're standing up a new Mnemosyne project, these defaults work:
 
 ```toml
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
+# root override only (optional)
 
 [schema]
 changelog_titles = ["Changelog"]
@@ -172,7 +150,7 @@ locale = "en"
 ```
 
 Build content by calling `set_section_*` and `append_changelog_entry`
-tools — never by hand-editing the JSON or GENERATED.md.
+tools — never by hand-editing the atomic store JSON.
 
 ## Heading convention
 

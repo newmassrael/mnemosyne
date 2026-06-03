@@ -25,8 +25,9 @@ is missing, append a *new* ChangelogEntry that adds the clarification.
 
 ## ❌ "Let me make this readable for first-time readers"
 
-`docs/GENERATED.md` and external guides are the human-facing surface.
-The atomic store is not. If a human reports "I can't navigate this",
+The committed EPUB (spec content), `mnemosyne-cli query`, and external
+guides are the human-facing surface. The atomic store is not. If a human
+reports "I can't navigate this",
 the answer is to **create a separate readable artifact** (e.g.
 `STATUS.md`, `DECISIONS.md`, `FAQ.md`), not to mutate the atomic store.
 
@@ -50,19 +51,12 @@ Retroactive template enforcement on existing entries = frozen ledger
 violation. Templates may be enforced on *new* entries (a project
 decision), but body mutation of existing entries is forbidden.
 
-## ❌ "I'll edit GENERATED.md directly to fix this typo"
-
-GENERATED.md is a derived artifact. Direct edits get overwritten on
-the next `generate_docs` call. If a typo exists in GENERATED.md, it
-exists in the atomic store — fix it via the appropriate
-`set_section_*` tool.
-
 ## ❌ "Let me edit the atomic JSON directly because that's faster"
 
 The mutate API exists because direct JSON edits skip:
-- T1 cross-ref orphan check
-- T2 frozen-ledger jaccard check
-- Cascade auto-update of GENERATED.md
+- T1 prose cross-ref orphan check
+- T2 atomic frozen-ledger check
+- the typed-primitive audit receipt
 
 The "fast" path produces an inconsistent state that the next
 `validate_workspace` call will surface. Use the typed primitive.

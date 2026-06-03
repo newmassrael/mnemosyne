@@ -7,13 +7,14 @@ Mnemosyne is a design-doc lifecycle infrastructure. Its mission is to make
 must be able to read, mutate, and validate a project's design docs without
 silently corrupting structure or losing audit history.
 
-The shape that achieves this is **atomic-store + GENERATED.md**:
+The shape that achieves this is the **atomic store** (post Round 400 the
+single directly-validated source of truth):
 
-- The atomic store (`docs/.atomic/workspace.atomic.json`) is the
-  source of truth — typed structured records (Section / ChangelogEntry
-  / FrozenList / CrossRef) with append-only audit semantics.
-- `docs/GENERATED.md` is the sole *human-readable* artifact, deterministically
-  rendered from the atomic store.
+- The atomic store (`docs/.atomic/workspace.atomic.json`) is the SSOT —
+  typed structured records (Section / ChangelogEntry / FrozenList / CrossRef)
+  with append-only audit semantics. Humans read the spec content from a
+  committed **EPUB** and the changelog via `mnemosyne-cli query` (the
+  markdown-rendered GENERATED.md was removed in Round 400).
 - Every mutation goes through a typed primitive (e.g.
   `set_section_intent`) which validates against tier rules (T1/T2/T3/T4)
   before persisting.
@@ -32,9 +33,8 @@ reject *before* the mutation lands.
 
 - 4 typed entities (Section / ChangelogEntry / FrozenList / CrossRef)
 - 14 atomic mutate primitives
-- T1 cross-ref orphan reject + T2 frozen-ledger jaccard reject
-- T3/T4 style checks (advisory)
-- Round-trip validation (parse → emit → re-parse → typed-fact diff = ∅)
+- T1 prose cross-ref orphan reject + T2 atomic frozen-ledger reject
+- T3/T4 style checks (advisory), store-direct over the atomic store
 - 5-language code emit (Rust authoritative; Kotlin / Python / C++ / Protobuf reference)
 
 ## Concepts you must internalize
@@ -51,6 +51,6 @@ Read these resources in order:
 ## Identity reminder
 
 **You are not editing markdown.** You are appending to a typed audit log
-that *renders into* markdown. If you find yourself reaching for `Edit`
-or `Write` on `docs/GENERATED.md` or the atomic JSON, stop — the
-correct action is a Mnemosyne tool call.
+(the atomic store). If you find yourself reaching for `Edit` or `Write`
+on the atomic store JSON, stop — the correct action is a Mnemosyne tool
+call.
