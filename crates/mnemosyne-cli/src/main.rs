@@ -158,7 +158,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs|verify-generated> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|list-docs|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|set-section-normative-excerpt|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry|generate-docs> [args...]",
  prog
  )
  })?;
@@ -286,7 +286,6 @@ fn run(args: &[String]) -> Result<()> {
             atomic_cli::cmd_remove_inventory_entry(&workspace_anchor()?, &args[2..])
         }
         "generate-docs" => atomic_cli::cmd_generate_docs(&workspace_anchor()?, &args[2..]),
-        "verify-generated" => atomic_cli::cmd_verify_generated(&workspace_anchor()?, &args[2..]),
         // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
         // rule, carry).
         "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
@@ -481,10 +480,6 @@ fn print_help(prog: &str) {
         prog
     );
     println!("   atomic store → GENERATED.md (default docs/GENERATED.md, Round 163 forward-wire)");
-    println!(
-        " {} verify-generated [--sidecar <path>] [--output <path>]",
-        prog
-    );
     println!(
         "   exit 0 if GENERATED.md sync, exit 1 if stale (Round 168 cascade auto-update gate)"
     );

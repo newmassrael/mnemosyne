@@ -699,20 +699,6 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Verify that docs/GENERATED.md byte-equals what would be rendered fresh from the atomic store. Returns in_sync = true/false. Wire into pre-commit hooks to catch drift."
-    )]
-    async fn verify_generated(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        match ops::verify_generated(&self.workspace, None, None) {
-            Ok(report) if report.in_sync => self.tool_json(&report),
-            Ok(report) => Self::tool_error(format!(
-                "STALE — GENERATED.md does not match atomic sidecar\n{}",
-                serde_json::to_string_pretty(&report).unwrap_or_default()
-            )),
-            Err(e) => self.op_error(e),
-        }
-    }
-
-    #[tool(
         description = "Run T3/T4 style checks. T3 = warning surface (max_paragraph_length, sentence length, terminology); T4 = info. Reject power is configurable; default = warn-only so existing prose stays valid on day 1."
     )]
     async fn style_check(&self, args: Parameters<StyleCheckArgs>) -> CallToolResult {

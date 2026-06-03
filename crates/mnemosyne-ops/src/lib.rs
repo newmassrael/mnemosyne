@@ -25,7 +25,7 @@ pub use cascade::{
     auto_regenerate, render_atomic_store_to_md, resolve_output, validate_atomic_store,
     write_generated_md, AtomicValidationSummary,
 };
-pub use docs::{generate_docs, verify_generated, GenerateDocsReport, VerifyGeneratedReport};
+pub use docs::{generate_docs, GenerateDocsReport};
 pub use query::{
     list_inventory, list_sections, query_inventory, query_section, query_term, InventoryEntryView,
     ListSectionsReport, QuerySectionMode, QueryTermInput,

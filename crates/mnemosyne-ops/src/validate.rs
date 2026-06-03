@@ -35,7 +35,6 @@ pub struct ValidateWorkspaceReport {
     pub atomic_resolved_entries: Vec<(String, String)>,
     pub atomic_new_sections: Vec<(String, String)>,
     pub atomic_resolved_sections: Vec<(String, String)>,
-    pub generated_in_sync: bool,
     pub style_t3_reject: usize,
     pub style_t3_warn: usize,
     pub style_t4_info: usize,
@@ -274,9 +273,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             atomic_resolved_sections.len()
         ));
     }
-    if !atomic.generated_in_sync {
-        failure_reasons.push("GENERATED.md stale (run `generate-docs` then stage)".to_string());
-    }
     if !supersede_violations.is_empty() {
         failure_reasons.push(format!(
             "T1 rule 4 (atomic axis): {} Superseded section(s) without superseding cross-ref",
@@ -306,7 +302,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         atomic_resolved_entries,
         atomic_new_sections,
         atomic_resolved_sections,
-        generated_in_sync: atomic.generated_in_sync,
         style_t3_reject: t3_reject_count,
         style_t3_warn: t3_warn_count,
         style_t4_info: t4_count,
@@ -375,16 +370,11 @@ impl ValidateWorkspaceReport {
         }
         let _ = writeln!(
             out,
-            "atomic ledger: entries={} / sections={} / orphan_refs={}+{} / GENERATED.md={}",
+            "atomic ledger: entries={} / sections={} / orphan_refs={}+{}",
             self.atomic_entries,
             self.atomic_sections,
             self.atomic_orphan_entry_refs,
             self.atomic_orphan_section_refs,
-            if self.generated_in_sync {
-                "sync"
-            } else {
-                "STALE"
-            }
         );
         for v in &self.supersede_violations {
             let _ = writeln!(out, "  T1 rule 4 (atomic axis): {}", v);

@@ -4137,3 +4137,25 @@ Source: `docs/.atomic/workspace.atomic.json`
 
 
 
+### Round 398 — remove byte-sync gate and verify-generated — Remove the GENERATED.md byte-sync gate now that validate-workspace is fully store-direct (R395-R397). Dropped AtomicValidationSummary.generated_in_sync and its render-and-compare computation, the validate-workspace failure condition plus report field and the GENERATED.md=sync output line, the verify-generated CLI verb plus ops verify_generated plus VerifyGeneratedReport plus the MCP verify_generated tool, and the pre-commit Gate 1 that called it. GENERATED.md still auto-regenerates on every mutate until the render path is torn out; it is simply no longer gated.
+
+**Changes**:
+- generated_in_sync removed from cascade summary + validate report + output + gate
+- verify-generated verb + ops fn + report + MCP tool + pre-commit Gate 1 removed
+- 3 byte-sync tests removed; 2 dead GENERATED.md=sync assertions dropped
+
+
+
+**Verification**:
+- workspace 100 test binaries 0 fail; clippy -D + fmt clean
+- validate-workspace green store-direct; ledger line no longer shows sync
+- GENERATED.md still auto-regenerates on mutate (render path removed next)
+
+
+
+
+**Carry forward**:
+- generate-docs / auto_regenerate / render path removed in the next teardown round
+
+
+

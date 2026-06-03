@@ -1,4 +1,4 @@
-//! `generate-docs` / `verify-generated` library ops.
+//! `generate-docs` library op (render the atomic store to GENERATED.md).
 
 use std::path::Path;
 
@@ -14,13 +14,6 @@ pub struct GenerateDocsReport {
     pub sections_rendered: usize,
     pub entries_rendered: usize,
     pub written_bytes: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct VerifyGeneratedReport {
-    pub sidecar_path: String,
-    pub output_path: String,
-    pub in_sync: bool,
 }
 
 /// Render atomic store → markdown bytes → write to output path. Returns
@@ -46,30 +39,5 @@ pub fn generate_docs(
         sections_rendered: store.sections.len(),
         entries_rendered: store.changelog_entries.len(),
         written_bytes: content.len(),
-    })
-}
-
-/// Compare GENERATED.md against the freshly rendered atomic store. Pure
-/// read; returns `in_sync = false` when bytes differ. Caller decides
-/// whether to fail (the CLI bin maps to exit 1).
-pub fn verify_generated(
-    workspace_root: &Path,
-    sidecar: Option<&Path>,
-    output: Option<&Path>,
-) -> Result<VerifyGeneratedReport, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
-    let output_path = match output {
-        Some(p) if p.is_absolute() => p.to_path_buf(),
-        Some(p) => workspace_root.join(p),
-        None => resolve_output(workspace_root, None)?,
-    };
-    let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)
-        .map_err(|e| OpError::Other(format!("{:#}", e)))?;
-    let actual = std::fs::read_to_string(&output_path)
-        .map_err(|e| OpError::Other(format!("read {}: {}", output_path.display(), e)))?;
-    Ok(VerifyGeneratedReport {
-        sidecar_path: sidecar_path.display().to_string(),
-        output_path: output_path.display().to_string(),
-        in_sync: expected == actual,
     })
 }

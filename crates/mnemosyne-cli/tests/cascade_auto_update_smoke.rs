@@ -1,9 +1,8 @@
 //! Round 168 — cascade auto-update wire smoke tests.
 //!
-//! Verifies the three legs of the cascade auto-update wire:
+//! Verifies the cascade auto-update wire:
 //! 1. Atomic-mutate CLI auto-regenerates GENERATED.md by default.
 //! 2. `--no-regenerate` flag skips the regenerate (batch mode)
-//! 3. `verify-generated` subcommand reports sync vs stale via exit code
 //!
 //! Each test runs in an isolated temp workspace (no shared state).
 
@@ -182,118 +181,5 @@ fn set_section_intent_auto_regenerates_generated_md() {
         generated.contains("### §1"),
         "section mutate must render §1 atomic header; got: {}",
         generated
-    );
-}
-
-#[test]
-fn verify_generated_reports_sync_when_in_sync() {
-    let tmp = TempDir::new().unwrap();
-    write_min_workspace_config(tmp.path());
-
-    let changes_path = tmp.path().join("changes.txt");
-    fs::write(&changes_path, "x\n").unwrap();
-    let verify_path = tmp.path().join("verify.txt");
-    fs::write(&verify_path, "v\n").unwrap();
-
-    // Mutate (auto-regenerates GENERATED.md).
-    Command::new(cli_binary())
-        .args([
-            "append-changelog-entry",
-            "--entry-id",
-            "Round 999",
-            "--decision",
-            "verify-sync test",
-            "--changes-file",
-            changes_path.to_str().unwrap(),
-            "--verification-file",
-            verify_path.to_str().unwrap(),
-        ])
-        .current_dir(tmp.path())
-        .output()
-        .expect("run mutate");
-
-    // verify-generated must succeed (in sync).
-    let out = Command::new(cli_binary())
-        .arg("verify-generated")
-        .current_dir(tmp.path())
-        .output()
-        .expect("run verify-generated");
-    assert!(
-        out.status.success(),
-        "verify-generated must exit 0 when in sync; stdout={}, stderr={}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("status: OK (sync)"),
-        "verify-generated must print OK; got: {}",
-        stdout
-    );
-}
-
-#[test]
-fn verify_generated_reports_stale_after_no_regenerate_mutate() {
-    let tmp = TempDir::new().unwrap();
-    write_min_workspace_config(tmp.path());
-
-    let changes_path = tmp.path().join("changes.txt");
-    fs::write(&changes_path, "x\n").unwrap();
-    let verify_path = tmp.path().join("verify.txt");
-    fs::write(&verify_path, "v\n").unwrap();
-
-    // Initial mutate (auto-regen).
-    Command::new(cli_binary())
-        .args([
-            "append-changelog-entry",
-            "--entry-id",
-            "Round 998",
-            "--decision",
-            "first",
-            "--changes-file",
-            changes_path.to_str().unwrap(),
-            "--verification-file",
-            verify_path.to_str().unwrap(),
-        ])
-        .current_dir(tmp.path())
-        .output()
-        .expect("first mutate");
-
-    // Second mutate with --no-regenerate (sidecar updated, GENERATED.md stale).
-    fs::write(&changes_path, "y\n").unwrap();
-    Command::new(cli_binary())
-        .args([
-            "append-changelog-entry",
-            "--entry-id",
-            "Round 999",
-            "--decision",
-            "second-no-regen",
-            "--changes-file",
-            changes_path.to_str().unwrap(),
-            "--verification-file",
-            verify_path.to_str().unwrap(),
-            "--no-regenerate",
-        ])
-        .current_dir(tmp.path())
-        .output()
-        .expect("second mutate --no-regenerate");
-
-    // verify-generated must report stale (sidecar has 998+999, GENERATED has only 998).
-    let out = Command::new(cli_binary())
-        .arg("verify-generated")
-        .current_dir(tmp.path())
-        .output()
-        .expect("run verify-generated");
-    assert!(
-        !out.status.success(),
-        "verify-generated must exit non-zero when stale; stdout={}, stderr={}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("STALE"),
-        "verify-generated must print STALE; got: {}",
-        stderr
     );
 }

@@ -7,10 +7,6 @@
 #
 # Gates:
 #
-#   1. Atomic sidecar gate — `mnemosyne-cli verify-generated` when
-#      `docs/.atomic/workspace.atomic.json` is staged. Rejects if
-#      GENERATED.md is stale (R168 cascade auto-update gate).
-#
 #   2. Code citation defense — `mnemosyne-cli validate-code-refs`
 #      always runs; subcommand silently skips when
 #      `[plugins.set_equality_validator]` is unconfigured (5-min setup
@@ -19,8 +15,8 @@
 #      decay / inventory / symbol-mismatch violations (severity per config).
 #
 #   3. Workspace gate — `mnemosyne-cli validate-workspace` when any
-#      tracked doc (per `mnemosyne-cli list-docs`) is staged. T1 orphan
-#      delta, T2 frozen-ledger, round-trip mandatory, divergence /
+#      tracked doc (per `mnemosyne-cli list-docs`) is staged. Store-direct:
+#      T1 orphan delta, T2 frozen-ledger, T3/T4 style, divergence /
 #      ledger match, commit↔ledger drift.
 #
 #   4. Format gate — `cargo fmt --all --check` when any `.rs` file is
@@ -61,18 +57,6 @@ else
 fi
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
-
-# Gate 1 — atomic sidecar staged → GENERATED.md must be in sync.
-if printf '%s\n' "$staged" | grep -qx -- "$ATOMIC_SIDECAR"; then
-    echo "[mnemosyne pre-commit] atomic sidecar staged — verify-generated" >&2
-    if ! "${cli[@]}" verify-generated; then
-        {
-            echo "[mnemosyne pre-commit] commit rejected — GENERATED.md stale"
-            echo "  fix: ${cli[*]} generate-docs && git add docs/GENERATED.md"
-        } >&2
-        exit 1
-    fi
-fi
 
 # Gate 2 — code citation defense (R257+). Internally skips when
 # [plugins.set_equality_validator] is unconfigured.

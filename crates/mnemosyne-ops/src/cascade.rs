@@ -199,9 +199,6 @@ pub struct AtomicValidationSummary {
     /// `(section_id, target_section_id)` pairs whose target is NOT in the
     /// supplied workspace section id set.
     pub orphan_section_refs: Vec<(String, String)>,
-    /// True iff GENERATED.md byte-equals the freshly rendered output of
-    /// the atomic store.
-    pub generated_in_sync: bool,
 }
 
 /// Validate the atomic store against the supplied workspace section id set.
@@ -213,9 +210,7 @@ pub fn validate_atomic_store(
 ) -> Result<AtomicValidationSummary> {
     // Honor `[atomic].sidecar_path` config so the read / validation path
     // sees the same store the mutate path wrote to. `anchor` is a discovery
-    // start; render below uses the config-declared root so the rendered
-    // `Source:` line matches the committed GENERATED.md (sync comparison).
-    let workspace_root = workspace_root_from(anchor)?;
+    // start.
     let sidecar_path = resolve_sidecar(anchor, None)?;
     let store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
 
@@ -246,23 +241,11 @@ pub fn validate_atomic_store(
         }
     }
 
-    let output_path = resolve_output(anchor, None)?;
-    let generated_in_sync = if output_path.exists() {
-        let (expected, _) = render_atomic_store_to_md(&workspace_root, &sidecar_path)?;
-        let actual = fs::read_to_string(&output_path)
-            .with_context(|| format!("read {}", output_path.display()))?;
-        expected == actual
-    } else {
-        // Empty store + missing GENERATED.md = trivially in sync.
-        store.changelog_entries.is_empty() && store.sections.is_empty()
-    };
-
     Ok(AtomicValidationSummary {
         entries: store.changelog_entries.len(),
         sections: store.sections.len(),
         orphan_entry_refs,
         orphan_section_refs,
-        generated_in_sync,
     })
 }
 

@@ -1873,58 +1873,6 @@ pub fn cmd_generate_docs(workspace_root: &Path, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `verify-generated` subcommand — verify GENERATED.md matches what
-/// generate-docs would produce from the current sidecar (read-only).
-///
-/// pre-commit hook entry point. Exit 0 = sync, exit 1 = stale.
-/// Caller (script / CI) inspects the exit code; stderr prints a one-line
-/// hint if stale.
-pub fn cmd_verify_generated(workspace_root: &Path, args: &[String]) -> Result<()> {
-    let mut sidecar: Option<String> = None;
-    let mut output: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--sidecar" => {
-                sidecar = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            "--output" => {
-                output = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--output missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
-    let output_path = resolve_output(workspace_root, output.as_deref())?;
-
-    let (expected, _) = render_atomic_store_to_md(workspace_root, &sidecar_path)?;
-    let actual = fs::read_to_string(&output_path)
-        .with_context(|| format!("GENERATED.md recovery failed: {}", output_path.display()))?;
-
-    if expected == actual {
-        println!("=== mnemosyne-cli verify-generated ===");
-        println!("sidecar: {}", sidecar_path.display());
-        println!("output: {}", output_path.display());
-        println!("status: OK (sync)");
-        Ok(())
-    } else {
-        eprintln!("=== mnemosyne-cli verify-generated ===");
-        eprintln!("sidecar: {}", sidecar_path.display());
-        eprintln!("output: {}", output_path.display());
-        eprintln!("status: STALE — GENERATED.md does not match atomic sidecar");
-        eprintln!("hint: run `mnemosyne-cli generate-docs` then stage the updated GENERATED.md");
-        bail!("verify-generated: GENERATED.md is stale (Round 168 cascade auto-update gate)")
-    }
-}
-
 /// Wrap a mutate primitive call: print the receipt (or error), then auto-
 /// regenerate GENERATED.md if `regenerate` is true. Each atomic mutate
 /// CLI subcommand routes through this finalizer to keep the cascade

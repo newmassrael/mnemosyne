@@ -93,11 +93,6 @@ fn validate_workspace_honors_atomic_sidecar_override() {
         "validate-workspace must count the section the mutate wrote; got: {}",
         stdout
     );
-    assert!(
-        stdout.contains("GENERATED.md=sync"),
-        "validate-workspace must not falsely report stale; got: {}",
-        stdout
-    );
 }
 
 #[test]

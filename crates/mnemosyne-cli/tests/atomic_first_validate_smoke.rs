@@ -2,7 +2,7 @@
 //!
 //! Verifies the atomic store is now a first-class workspace artifact:
 //! validate-workspace surfaces `atomic ledger:` line + bails when atomic
-//! invariants are violated (cross-ref orphan, GENERATED.md stale).
+//! invariants are violated (cross-ref orphan, superseded_by orphan).
 
 use std::fs;
 use std::process::Command;
@@ -55,7 +55,7 @@ fn validate_workspace_surfaces_atomic_ledger_line() {
 }
 
 #[test]
-fn validate_workspace_passes_when_atomic_in_sync() {
+fn validate_workspace_passes_on_clean_store() {
     let tmp = TempDir::new().unwrap();
     write_min_workspace_config(tmp.path());
 
@@ -104,11 +104,6 @@ fn validate_workspace_passes_when_atomic_in_sync() {
     assert!(
         stdout.contains("orphan_refs=0+0"),
         "expected 0 orphans; got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("GENERATED.md=sync"),
-        "expected sync; got: {}",
         stdout
     );
 }
@@ -221,80 +216,6 @@ fn validate_workspace_rejects_superseded_by_orphan() {
     assert!(
         combined.contains("atomic orphan") || combined.contains("orphan_refs=0+1"),
         "expected superseded_by orphan diagnostic; got: {}",
-        combined
-    );
-}
-
-#[test]
-fn validate_workspace_rejects_stale_generated_md() {
-    let tmp = TempDir::new().unwrap();
-    write_min_workspace_config(tmp.path());
-
-    let changes_path = tmp.path().join("changes.txt");
-    fs::write(&changes_path, "x\n").unwrap();
-    let verify_path = tmp.path().join("verify.txt");
-    fs::write(&verify_path, "v\n").unwrap();
-
-    // Initial mutate (auto-regen).
-    Command::new(cli_binary())
-        .args([
-            "append-changelog-entry",
-            "--entry-id",
-            "Round 998",
-            "--decision",
-            "first",
-            "--changes-file",
-            changes_path.to_str().unwrap(),
-            "--verification-file",
-            verify_path.to_str().unwrap(),
-            "--impact",
-            "1",
-        ])
-        .current_dir(tmp.path())
-        .output()
-        .expect("first mutate");
-
-    // Second mutate with --no-regenerate (sidecar updated, GENERATED stale).
-    fs::write(&changes_path, "y\n").unwrap();
-    Command::new(cli_binary())
-        .args([
-            "append-changelog-entry",
-            "--entry-id",
-            "Round 999",
-            "--decision",
-            "second-no-regen",
-            "--changes-file",
-            changes_path.to_str().unwrap(),
-            "--verification-file",
-            verify_path.to_str().unwrap(),
-            "--impact",
-            "1",
-            "--no-regenerate",
-        ])
-        .current_dir(tmp.path())
-        .output()
-        .expect("second mutate");
-
-    // validate-workspace must fail — GENERATED.md stale.
-    let out = Command::new(cli_binary())
-        .arg("validate-workspace")
-        .current_dir(tmp.path())
-        .output()
-        .expect("run validate-workspace");
-    assert!(
-        !out.status.success(),
-        "validate-workspace must reject stale GENERATED.md; stdout={}, stderr={}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(
-        combined.contains("GENERATED.md stale") || combined.contains("GENERATED.md=STALE"),
-        "expected stale diagnostic; got: {}",
         combined
     );
 }
