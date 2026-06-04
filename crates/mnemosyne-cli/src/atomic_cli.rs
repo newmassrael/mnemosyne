@@ -1587,38 +1587,6 @@ pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Resul
     finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
-/// R406 — seal consumer-authored excerpt text: stamp `text_sha256 = sha256(text)`
-/// on every excerpt whose hash is empty, making the already-stored text its own
-/// revalidation baseline. The non-EPUB complement of `import-epub-excerpts` (for
-/// consumers whose extractor scope is finer than the EPUB div granularity, so
-/// the EPUB is provenance but not the per-section text source). Never overwrites
-/// text or a populated hash.
-pub fn cmd_seal_excerpt_hashes(workspace_root: &Path, args: &[String]) -> Result<()> {
-    let mut sidecar: Option<String> = None;
-    let mut json = false;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--sidecar" => {
-                sidecar = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
-    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
-    let outcome = mnemosyne_atomic::seal_excerpt_hashes(&mut store, &sidecar_path);
-    if let Ok((_, sealed)) = &outcome {
-        eprintln!("note: sealed {sealed} excerpt(s) from their stored text");
-    }
-    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
-}
-
 /// Round 266 — mutate-time auto-cascade trigger.
 ///
 /// Runs a §<section_id> decay scan over `[plugins.set_equality_validator].paths` and prints a

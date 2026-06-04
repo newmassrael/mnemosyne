@@ -6739,6 +6739,48 @@
         "heading set = h1-h6 (generic tool); SCE's proven extractor used h2-h4. No difference expected for W3C SCXML (title is h1 with no anchored section, body sections are h2-h4, no h5/h6); SCE's step-3 diff-review gate will catch any h1/h5/h6 edge. Flagged to SCE.",
         "ask 2 resolved -> SCE unblocked for the full EPUB-SSOT cutover (vendor fixed medium-forge -> regenerate spec.epub + v2 anchors -> diff-review -> import-epub-excerpts -> pin epub_path/epub_sha256 -> validate-content-drift in CI). R406 seal stays the interim anchor; OPEN in-place authored-text setter stays YAGNI per SCE."
       ]
+    },
+    "Round 408 — retire seal-excerpt-hashes (consumer-authored text model) after SCE full EPUB-SSOT cutover": {
+      "decision_summary": "SCE completed the full EPUB-as-content-SSOT cutover (origin/main 8f1c36786, store v6 to v8, 197 sections, import-epub-excerpts hash-mismatch 0, epub_path/epub_sha256 pinned, validate-content-drift CI green) and confirmed seal-excerpt-hashes was the fallback path, UNUSED — they took the EPUB-projected path exclusively, with no demand for consumer-authored text or in-place arbitrary text update. The consumer-authored text model's only concrete consumer is gone, so keeping seal_excerpt_hashes for a hypothetical consumer violates no-legacy-carry / YAGNI — the same basis on which R403 deleted set-section-normative-excerpt once EPUB + import-sections absorbed its need. Remove the seal-specific surface (primitive + CLI verb + tests/smoke + the report hint mention + the consumer-authored doc sections) while keeping the shared EPUB-projected revalidation foundation. The R406 entry stays as the frozen historical record that seal existed and why (audit lives in the store, code lives in code); the model can be re-added from it if a future consumer needs store-authored sealing.",
+      "changes_bullets": [
+        "Removed the seal_excerpt_hashes primitive + seal-excerpt-hashes CLI verb (cmd_seal_excerpt_hashes + dispatch + usage) + its 3 atomic unit tests + seal_excerpt_hashes_smoke.rs.",
+        "Reverted report-excerpt-hash-backfill's hint to name only import-epub-excerpts (the single fill path now).",
+        "SCHEMA_GUIDE.md + EPUB_SSOT_RUNBOOK.md: removed the consumer-authored \"two text-source models\" / Migration B sections; the model is EPUB-projected (single).",
+        "Kept the shared revalidation foundation untouched: text_sha256, build_normative_excerpt hash verify, NormativeExcerpt recompute/matches, scan_content_drift + validate-content-drift, report-excerpt-hash-backfill (empty-hash list), epub_path/epub_sha256, import-epub-excerpts."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "grep for seal across crates/ and docs/ returns 0 after removal.",
+        "validate-workspace green; the import_sections-vs-import_epub_excerpts write-path parity test is unaffected (seal was never in it)."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Consumer-authored text model retired. The R406 entry remains the frozen historical record that seal existed and why; if a future consumer needs to seal store-authored text without an EPUB, re-add from that entry (code lives in code, audit lives in the store).",
+        "SCE adoption COMPLETE: origin/main 8f1c36786, store v6 to v8, 197 sections, EPUB SSOT via import-epub-excerpts (hash mismatch 0), epub_path/epub_sha256 pinned, validate-content-drift CI green across 3 workspaces, GENERATED.md retired. The EPUB-as-content-SSOT epic is closed.",
+        "SCE-side detail (no Mnemosyne action): B.2.8.1 promoted to scxml-B-2-8-1 (196 to 197), extractor aligned to h2..h6; medium-forge stays in the Mnemosyne checkout (not vendored), pin moves with it if it is split to its own repo."
+      ],
+      "publishable_decision_summary": "SCE completed the full EPUB-as-content-SSOT cutover (origin/main 8f1c36786, store v6 to v8, 197 sections, import-epub-excerpts hash-mismatch 0, epub_path/epub_sha256 pinned, validate-content-drift CI green) and confirmed seal-excerpt-hashes was the fallback path, UNUSED — they took the EPUB-projected path exclusively, with no demand for consumer-authored text or in-place arbitrary text update. The consumer-authored text model's only concrete consumer is gone, so keeping seal_excerpt_hashes for a hypothetical consumer violates no-legacy-carry / YAGNI — the same basis on which R403 deleted set-section-normative-excerpt once EPUB + import-sections absorbed its need. Remove the seal-specific surface (primitive + CLI verb + tests/smoke + the report hint mention + the consumer-authored doc sections) while keeping the shared EPUB-projected revalidation foundation. The R406 entry stays as the frozen historical record that seal existed and why (audit lives in the store, code lives in code); the model can be re-added from it if a future consumer needs store-authored sealing.",
+      "publishable_changes_bullets": [
+        "Removed the seal_excerpt_hashes primitive + seal-excerpt-hashes CLI verb (cmd_seal_excerpt_hashes + dispatch + usage) + its 3 atomic unit tests + seal_excerpt_hashes_smoke.rs.",
+        "Reverted report-excerpt-hash-backfill's hint to name only import-epub-excerpts (the single fill path now).",
+        "SCHEMA_GUIDE.md + EPUB_SSOT_RUNBOOK.md: removed the consumer-authored \"two text-source models\" / Migration B sections; the model is EPUB-projected (single).",
+        "Kept the shared revalidation foundation untouched: text_sha256, build_normative_excerpt hash verify, NormativeExcerpt recompute/matches, scan_content_drift + validate-content-drift, report-excerpt-hash-backfill (empty-hash list), epub_path/epub_sha256, import-epub-excerpts."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace 0 fail; cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --check clean.",
+        "grep for seal across crates/ and docs/ returns 0 after removal.",
+        "validate-workspace green; the import_sections-vs-import_epub_excerpts write-path parity test is unaffected (seal was never in it)."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Consumer-authored text model retired. The R406 entry remains the frozen historical record that seal existed and why; if a future consumer needs to seal store-authored text without an EPUB, re-add from that entry (code lives in code, audit lives in the store).",
+        "SCE adoption COMPLETE: origin/main 8f1c36786, store v6 to v8, 197 sections, EPUB SSOT via import-epub-excerpts (hash mismatch 0), epub_path/epub_sha256 pinned, validate-content-drift CI green across 3 workspaces, GENERATED.md retired. The EPUB-as-content-SSOT epic is closed.",
+        "SCE-side detail (no Mnemosyne action): B.2.8.1 promoted to scxml-B-2-8-1 (196 to 197), extractor aligned to h2..h6; medium-forge stays in the Mnemosyne checkout (not vendored), pin moves with it if it is split to its own repo."
+      ]
     }
   },
   "inventory_entries": {},

@@ -223,9 +223,6 @@ fn run(args: &[String]) -> Result<()> {
         "import-epub-excerpts" => {
             atomic_cli::cmd_import_epub_excerpts(&workspace_anchor()?, &args[2..])
         }
-        "seal-excerpt-hashes" => {
-            atomic_cli::cmd_seal_excerpt_hashes(&workspace_anchor()?, &args[2..])
-        }
         // Round 267 — section removal (closes Round 266 carry gap).
         "remove-section" => atomic_cli::cmd_remove_section(&workspace_anchor()?, &args[2..]),
         "append-changelog-entry" => {
@@ -415,10 +412,6 @@ fn print_help(prog: &str) {
     );
     println!(
  "   refresh normative_excerpt.text + text_sha256 from a medium-forge epub-anchor-map/v2; preserves authored anchor_url + source_revision (section must already carry an excerpt)"
- );
-    println!(" {} seal-excerpt-hashes [--sidecar <path>] [--json]", prog);
-    println!(
- "   stamp text_sha256 = sha256(text) on excerpts whose hash is empty (seal consumer-authored text as its own baseline; non-EPUB complement of import-epub-excerpts; never overwrites text)"
  );
     println!(
  " {} set-section-decision-status --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
@@ -1321,7 +1314,7 @@ fn cmd_report_excerpt_hash_backfill(args: &[String]) -> Result<()> {
     } else {
         println!("=== excerpt-hash backfill report ===");
         println!(
-            "{} excerpt(s) lack a text_sha256 — seal the stored text via seal-excerpt-hashes, or re-project from an EPUB via import-epub-excerpts",
+            "{} excerpt(s) lack a text_sha256 — project from an EPUB via import-epub-excerpts",
             report.rows.len()
         );
         for r in &report.rows {
