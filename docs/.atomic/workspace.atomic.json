@@ -2,7 +2,7 @@
   "sections": {
     "atomic-store-mutate-api": {
       "title": "Atomic Store Mutate API",
-      "parent_doc": "docs/GENERATED.md",
+      "parent_doc": "mnemosyne-design",
       "bindings": [
         {
           "file": "crates/mnemosyne-cli/src/atomic_cli.rs",
@@ -16,7 +16,7 @@
     },
     "code-citation-defense": {
       "title": "Code Citation Defense",
-      "parent_doc": "docs/GENERATED.md",
+      "parent_doc": "mnemosyne-design",
       "bindings": [
         {
           "file": "crates/mnemosyne-cli/src/main.rs",
@@ -30,7 +30,7 @@
     },
     "code-citation-defense/bidirectional-binding": {
       "title": "Bidirectional Binding",
-      "parent_doc": "docs/GENERATED.md",
+      "parent_doc": "mnemosyne-design",
       "parent_section": "code-citation-defense",
       "bindings": [
         {
@@ -45,12 +45,12 @@
     },
     "markdown-parser": {
       "title": "Markdown Parser",
-      "parent_doc": "docs/GENERATED.md",
+      "parent_doc": "mnemosyne-design",
       "decision_status": "removed"
     },
     "orphan-ledger": {
       "title": "Orphan Ledger",
-      "parent_doc": "docs/GENERATED.md",
+      "parent_doc": "mnemosyne-design",
       "bindings": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
@@ -6780,6 +6780,42 @@
         "Consumer-authored text model retired. The R406 entry remains the frozen historical record that seal existed and why; if a future consumer needs to seal store-authored text without an EPUB, re-add from that entry (code lives in code, audit lives in the store).",
         "SCE adoption COMPLETE: origin/main 8f1c36786, store v6 to v8, 197 sections, EPUB SSOT via import-epub-excerpts (hash mismatch 0), epub_path/epub_sha256 pinned, validate-content-drift CI green across 3 workspaces, GENERATED.md retired. The EPUB-as-content-SSOT epic is closed.",
         "SCE-side detail (no Mnemosyne action): B.2.8.1 promoted to scxml-B-2-8-1 (196 to 197), extractor aligned to h2..h6; medium-forge stays in the Mnemosyne checkout (not vendored), pin moves with it if it is split to its own repo."
+      ]
+    },
+    "Round 409 — parent_doc canonical post-R400: logical owning-document label, not a file path": {
+      "decision_summary": "SCE asked the canonical value of AtomicSection.parent_doc after R400 removed the render path. Investigation: parent_doc is a mandatory non-empty L0 SectionSkeleton field (medium-neutral; surfaced in query / facts / schema / cascade index; mutable via set_section_parent_doc) and is NOT validated against any file post-R400 (the file-path interpretation died with the markdown-doc parser and render). CANONICAL: parent_doc is a free-form LOGICAL owning-document / namespace label, not a filesystem path and not provenance (provenance lives in normative_excerpt.anchor_url + [workspace.spec_source]). Of SCE's three options: option 2 (clear/null) is structurally impossible (mandatory non-empty); option 1 (keep docs/GENERATED.md) is a harmless-but-stale render-era leftover, not canonical; option 3 (a meaningful logical doc id) is correct, with the caveat that the target is a grouping label, never a source URL. Re-binding is cosmetic (no functional consumer breaks) and safe (set_section_parent_doc is a dedicated mutable setter, not frozen-ledger). Aligned the dogfood's sections to the logical label mnemosyne-design so adopters can follow the canonical without diverging from upstream. parent_doc is not on a deprecation roadmap.",
+      "changes_bullets": [
+        "Documented the post-R400 canonical for AtomicSection.parent_doc in SCHEMA_GUIDE: a free-form LOGICAL owning-document / namespace label (medium-neutral L0), NOT a filesystem path, NOT validated against any file (the file-path reading died with the markdown-doc parser/render in R400), and NOT provenance (provenance lives in normative_excerpt.anchor_url + [workspace.spec_source]).",
+        "Aligned the dogfood store: re-bound all sections' parent_doc from the stale render-era \"docs/GENERATED.md\" to the logical label \"mnemosyne-design\" via set-section-parent-doc, so the canonical is exemplified upstream and adopters do not diverge."
+      ],
+      "verification_bullets": [
+        "validate-workspace green: parent_doc is not file-validated, so the re-bind touches no gate (T1/T3/frozen/orphan unaffected); ledger entries reference sections by section_id, not parent_doc.",
+        "No Rust change (store mutate + doc only); workspace build/test/clippy/fmt unaffected."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "parent_doc is NOT on a deprecation/removal roadmap; it stays a live L0 grouping field. Its semantics narrowed from file-path (markdown-doc era) to logical owning-document label. Clearing/nulling is structurally impossible (mandatory non-empty); option 2 is off the table without a schema change that is not planned.",
+        "Adopters: set parent_doc to a logical document id (e.g. scxml, mesh, wire) at leisure via set-section-parent-doc. This is cosmetic — nothing cross-validates parent_doc between stores, so there is no functional divergence either way; render-era leftover values are harmless and may be grandfathered.",
+        "parent_doc != provenance: do not point it at an EPUB path or spec URL; that conflates grouping with source. Source provenance is normative_excerpt.anchor_url + [workspace.spec_source].epub_path/url."
+      ],
+      "publishable_decision_summary": "SCE asked the canonical value of AtomicSection.parent_doc after R400 removed the render path. Investigation: parent_doc is a mandatory non-empty L0 SectionSkeleton field (medium-neutral; surfaced in query / facts / schema / cascade index; mutable via set_section_parent_doc) and is NOT validated against any file post-R400 (the file-path interpretation died with the markdown-doc parser and render). CANONICAL: parent_doc is a free-form LOGICAL owning-document / namespace label, not a filesystem path and not provenance (provenance lives in normative_excerpt.anchor_url + [workspace.spec_source]). Of SCE's three options: option 2 (clear/null) is structurally impossible (mandatory non-empty); option 1 (keep docs/GENERATED.md) is a harmless-but-stale render-era leftover, not canonical; option 3 (a meaningful logical doc id) is correct, with the caveat that the target is a grouping label, never a source URL. Re-binding is cosmetic (no functional consumer breaks) and safe (set_section_parent_doc is a dedicated mutable setter, not frozen-ledger). Aligned the dogfood's sections to the logical label mnemosyne-design so adopters can follow the canonical without diverging from upstream. parent_doc is not on a deprecation roadmap.",
+      "publishable_changes_bullets": [
+        "Documented the post-R400 canonical for AtomicSection.parent_doc in SCHEMA_GUIDE: a free-form LOGICAL owning-document / namespace label (medium-neutral L0), NOT a filesystem path, NOT validated against any file (the file-path reading died with the markdown-doc parser/render in R400), and NOT provenance (provenance lives in normative_excerpt.anchor_url + [workspace.spec_source]).",
+        "Aligned the dogfood store: re-bound all sections' parent_doc from the stale render-era \"docs/GENERATED.md\" to the logical label \"mnemosyne-design\" via set-section-parent-doc, so the canonical is exemplified upstream and adopters do not diverge."
+      ],
+      "publishable_verification_bullets": [
+        "validate-workspace green: parent_doc is not file-validated, so the re-bind touches no gate (T1/T3/frozen/orphan unaffected); ledger entries reference sections by section_id, not parent_doc.",
+        "No Rust change (store mutate + doc only); workspace build/test/clippy/fmt unaffected."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "parent_doc is NOT on a deprecation/removal roadmap; it stays a live L0 grouping field. Its semantics narrowed from file-path (markdown-doc era) to logical owning-document label. Clearing/nulling is structurally impossible (mandatory non-empty); option 2 is off the table without a schema change that is not planned.",
+        "Adopters: set parent_doc to a logical document id (e.g. scxml, mesh, wire) at leisure via set-section-parent-doc. This is cosmetic — nothing cross-validates parent_doc between stores, so there is no functional divergence either way; render-era leftover values are harmless and may be grandfathered.",
+        "parent_doc != provenance: do not point it at an EPUB path or spec URL; that conflates grouping with source. Source provenance is normative_excerpt.anchor_url + [workspace.spec_source].epub_path/url."
       ]
     }
   },

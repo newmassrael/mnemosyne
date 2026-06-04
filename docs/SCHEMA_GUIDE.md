@@ -619,6 +619,19 @@ becomes an `InventoryEntry` (Phase 1A) when the id shape fits. Use
 `scxml-3.13` rather than `3.13`, so a future spec restructure does not
 silently re-key 30K citations).
 
+**`parent_doc` is a logical label, not a file path (post-R400, R409).**
+`AtomicSection.parent_doc` is a mandatory, non-empty, medium-neutral L0
+field naming the section's **logical owning document / namespace** (a
+grouping key — e.g. `scxml`, `mesh`, `wire`, or `mnemosyne-design`). Since
+R400 retired the markdown render, it is **not** a filesystem path and is
+**not** validated against any file; the render-era value `docs/GENERATED.md`
+is a harmless stale leftover. It is **not provenance** — which upstream the
+section mirrors lives in `normative_excerpt.anchor_url` +
+`[workspace.spec_source]`, not here. Re-bind with `set-section-parent-doc`
+(cosmetic; nothing cross-validates `parent_doc` between stores, so stale
+leftovers may be grandfathered). It cannot be cleared (mandatory non-empty)
+and is **not** on a deprecation roadmap.
+
 **Anchor the vendored quote at section creation.** Carry the
 `normative_excerpt` inline in the `import-sections` manifest — its
 `anchor_url` + `source_revision` are the section's authored upstream
