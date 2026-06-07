@@ -1,0 +1,42 @@
+# Mnemosyne Studio — the Layer-3 pinion native viewer (ARCHITECTURE.md §3).
+#
+# A SEPARATE in-repo workspace (the same pattern as `bench/`): its own
+# `[workspace]` so the root workspace's build / CI / pre-commit gates never
+# compile pinion. The core crates stay GUI-free (crate-level invariant);
+# this app crate is the only thing that depends on pinion.
+#
+# Dependency direction: studio -> mnemosyne core crates (path) + pinion (path).
+# core crates never depend on studio; pinion never depends on mnemosyne.
+[workspace]
+
+[package]
+name = "mnemosyne-studio"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Mnemosyne Studio — pinion native viewer over the atomic store"
+
+[[bin]]
+name = "mnemosyne-studio"
+path = "src/main.rs"
+
+[dependencies]
+# pinion GUI framework (sibling repo at ../../pinion, path dep).
+pinion-core = { path = "../../pinion/crates/pinion-core" }
+pinion-a11y = { path = "../../pinion/crates/pinion-a11y" }
+pinion-shell = { path = "../../pinion/crates/pinion-shell" }
+pinion-widget-paint = { path = "../../pinion/crates/pinion-widget-paint" }
+# Matches pinion's vello pin (ABI of the forge-emitted `::vello::*` renderer).
+vello = "0.9"
+
+# Mnemosyne backend read surface — the GUI-free core crates, linked exactly
+# as the CLI links them (the read SSOT is these lib fns).
+mnemosyne-atomic = { path = "../crates/mnemosyne-atomic" }
+mnemosyne-query = { path = "../crates/mnemosyne-query" }
+
+[build-dependencies]
+# pinion-forge codegen: compiles app.pinion.xml -> $OUT_DIR/app.rs (the
+# vello renderer struct the shell drives).
+pinion-forge = { path = "../../pinion/crates/pinion-forge" }

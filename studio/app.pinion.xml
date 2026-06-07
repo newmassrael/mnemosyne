@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  pinion-forge renderer manifest for mnemosyne-studio. Same single-source
+  template as the pinion hello-* renderers; only the struct name diverges.
+  backend=vello.
+-->
+<pinion xmlns="https://pinion.dev/dsl/v1"
+        kind="renderer"
+        name="StudioRenderer"
+        backend="vello"/>

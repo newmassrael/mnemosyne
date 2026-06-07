@@ -10,7 +10,10 @@ Decisions locked by the owner (2026-06-07):
   violation; the path-B layout cost is accepted because pinion is
   owner-driven.
 - Viewer first (read-only). Editor is a later phase.
-- The backend is in-tree; the frontend lives in pinion-land.
+- The Studio app lives in-repo as a SEPARATE workspace (`studio/`, the same
+  pattern as `bench/`): its own `[workspace]`, depending on the core read
+  crates (path) + pinion (the GUI framework). Core crates stay GUI-free
+  (crate-level invariant); the root workspace's build/CI never compiles pinion.
 - Missing frontend capability is filed as a request to pinion.
 
 ---
@@ -133,9 +136,13 @@ violated §6.1.)
 
 ## 5. Crate placement
 
-- **Native: NO new crate.** The Phase-1 viewer can start immediately on
-  `mnemosyne-query` + `mnemosyne-validate` + `mnemosyne-atomic` +
-  `mnemosyne-ops`, exactly as the CLI links them.
+- **Native: a new app crate in the `studio/` workspace; NO new BACKEND crate.**
+  The Studio app crate (`studio/`) depends on the existing read crates
+  (`mnemosyne-query` / `mnemosyne-validate` / `mnemosyne-atomic` /
+  `mnemosyne-ops`, via path) + pinion — it links them exactly as the CLI does,
+  so the read surface needs no new backend crate. `studio/` is a separate
+  in-repo workspace (like `bench/`): core crates stay GUI-free and the root
+  workspace's build/gates never compile pinion.
 - **Web (later): the converged `mnemosyne-server` daemon** (convergence
   C/D), NOT a new parallel crate. server is the designated warm daemon host
   (ARCHITECTURE §4) and the Studio web is its first consumer. Building the
@@ -281,7 +288,8 @@ fork — it is the consumer that *completes* the fork's convergence.
 
 The read surface is speculative until a frontend consumes it. So:
 
-1. **Native viewer first** — needs NO new crate. As the first screen
+1. **Native viewer first** — needs no new BACKEND crate (the `studio/` app crate
+   links the existing read crates). As the first screen
    (changelog timeline + section browser) is built in pinion, it links
    query/atomic and calls `list_changelog` (full-ledger iterate),
    `section_by_id`, `build_envelope`. This is the heart of "the whole
