@@ -1049,19 +1049,13 @@ fn collect_recent_commit_round_labels(root: &std::path::Path, max_commits: usize
 }
 
 fn collect_ledger_round_numbers(atomic: &mnemosyne_atomic::AtomicStore) -> BTreeSet<u32> {
-    let re = match regex::Regex::new(r"^Round (\d+)") {
-        Ok(r) => r,
-        Err(_) => return BTreeSet::new(),
-    };
-    let mut set: BTreeSet<u32> = BTreeSet::new();
-    for key in atomic.changelog_entries.keys() {
-        if let Some(cap) = re.captures(key) {
-            if let Ok(n) = cap[1].parse::<u32>() {
-                set.insert(n);
-            }
-        }
-    }
-    set
+    // Single round-parse home: mnemosyne_query::round_number (shared with
+    // list_changelog) so the ledger scan and the timeline ordering agree.
+    atomic
+        .changelog_entries
+        .keys()
+        .filter_map(|k| mnemosyne_query::round_number(k))
+        .collect()
 }
 
 // ============================================================================

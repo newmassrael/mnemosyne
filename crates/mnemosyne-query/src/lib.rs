@@ -264,16 +264,19 @@ pub fn list_changelog(atomic_store: &AtomicStore) -> Vec<ChangelogEntryView> {
         .map(|(entry_id, atomic)| build_entry_view(entry_id, atomic, 0))
         .collect();
     out.sort_by(|a, b| {
-        let ka = entry_round_number(&a.entry_id).unwrap_or(u32::MAX);
-        let kb = entry_round_number(&b.entry_id).unwrap_or(u32::MAX);
+        let ka = round_number(&a.entry_id).unwrap_or(u32::MAX);
+        let kb = round_number(&b.entry_id).unwrap_or(u32::MAX);
         ka.cmp(&kb).then_with(|| a.entry_id.cmp(&b.entry_id))
     });
     out
 }
 
-/// Parse the leading `Round <n>` from a changelog entry_id, for chronological
-/// ordering. Returns `None` when the key does not open with `Round <digits>`.
-fn entry_round_number(entry_id: &str) -> Option<u32> {
+/// Parse the leading `Round <n>` of a changelog entry_id into its round
+/// number. The single home for entry_id -> round parsing — used by
+/// [`list_changelog`]'s ordering and the CLI's ledger-round scan
+/// (`collect_ledger_round_numbers`), so the two cannot drift. `None` when
+/// the key does not open with `Round <digits>`.
+pub fn round_number(entry_id: &str) -> Option<u32> {
     let rest = entry_id.strip_prefix("Round ")?;
     let end = rest
         .find(|c: char| !c.is_ascii_digit())
