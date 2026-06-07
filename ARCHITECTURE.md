@@ -84,7 +84,7 @@ medium with an adapter; plug in domain meaning; project everything else.*
                        │ projection (cascade, incremental)
 ┌──────────────────────┴────────────────────────────────────────────────┐
 │ Layer 3  VIEWS — projections of Layer-0 facts                           │
-│ readable docs (GENERATED.md) · logic IR (SCXML) · generated code        │
+│ readable docs (EPUB + query) · logic IR (SCXML) · generated code        │
 │ (SCE) · reports · Studio UI                                             │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -96,7 +96,7 @@ medium with an adapter; plug in domain meaning; project everything else.*
 - **Dependency Inversion:** dependencies point toward the core abstractions,
   never outward toward formats or engines.
 - **Single Source of Truth:** the canonical typed-fact log is the only truth.
-  `GENERATED.md`, SCXML IR, generated code, the RocksDB index — all derived.
+  SCXML IR, generated code, the RocksDB index, reports — all derived.
 - **Event Sourcing + bitemporal:** the append-only fact log *is* the event log
   (this is the existing frozen-ledger principle); current state is a fold;
   valid-time and transaction-time are separate axes.
@@ -207,8 +207,10 @@ dead code.
   projection service** — a warm Salsa host behind the §3 Transport seam — built
   jointly with D. The audit's two open questions (R336) are resolved in
   *Incremental projection architecture* below: engine = `fine_grained.rs`
-  (coarse `runtime.rs` retired); render is the chosen target, reached after a
-  validation walking skeleton.
+  (coarse `runtime.rs` retired). The validation projection landed (R339–R341);
+  the former markdown-render target was retired with the markdown-doc model
+  (R400), so C's read side now serves validation + reports + the future Studio,
+  not a markdown render.
 - **D — unify the write path.** Atomic mutate primitives + proposal→gate→audit
   reconcile into one command path: append log (RocksDB-free) → notify the
   read-side projection service → incremental index update + cascade recompute. D
@@ -238,21 +240,21 @@ efficiently):
   is C's engine; the coarse `runtime.rs` (monolithic `snapshot_payload`,
   non-incremental by construction) is retired at C's implementation
   (no-legacy-carry), and its measurement test moves to the fine-grained engine.
-- **Layer-1 content feeds the projection engine as Salsa inputs.** The engine is
-  a Layer-3-producing *read model*, not the domain-agnostic Layer-0 core, so
-  supplying it the design_doc content (intent / rationale / …) that the markdown
-  render needs does not breach invariant #4. Validation needs only the Layer-0
-  skeleton; the render adds the Layer-1 inputs.
+- **Layer-1 content can feed the projection engine as Salsa inputs.** The engine
+  is a Layer-3-producing *read model*, not the domain-agnostic Layer-0 core, so
+  supplying it the design_doc content (intent / rationale / …) a richer view needs
+  does not breach invariant #4. Validation needs only the Layer-0 skeleton; a
+  Layer-1 read model (e.g. the Studio views) adds the Layer-1 inputs.
 - **Persisted vs in-process state.** The RocksDB index (B) is the durable,
   cross-process read model, updated by applying only the log delta. Within a warm
   session, Salsa memoizes the recompute. Both are derived and rebuildable — the
   log remains the single source of truth.
 - **Sequencing (no half-finished).** (1) A **validation** projection through the
   warm service first — Layer-0 only, the cheapest real projection, proving the
-  warm-host + RocksDB-free split end-to-end (walking skeleton). (2) The **render**
-  projection (the chosen target): Layer-1 content as Salsa inputs, per-section
-  render memoized, `GENERATED.md` produced incrementally, superseding the
-  full-rebuild `auto_regenerate`.
+  warm-host + RocksDB-free split end-to-end (walking skeleton); landed R339–R341.
+  (2) The original step 2 was an incremental markdown render to `GENERATED.md`;
+  that target was removed with the markdown-doc model (R400). The next Layer-1
+  read projection is the Studio views, built with their consumer.
 
 ### Canonical fact-model boundary (A's keystone, R323–R326)
 
@@ -266,7 +268,7 @@ domain-agnostic (§1):
   every adapter, which is what makes the type safely shareable.
 - **Layer 1 — medium content (design_doc adapter = `mnemosyne-atomic`).** The
   rich design_doc fields — `intent`, `rationale`, `inputs`/`outputs`, `caveats`,
-  `alternatives`, `examples`, `normative_excerpt`, `implementations`,
+  `alternatives`, `examples`, `normative_excerpt`, `bindings`,
   `publishable_*` — are *shaped by the design_doc medium* (a fiction or ADR
   section carries different content) and stay in the adapter, never in Layer 0.
 
@@ -298,17 +300,15 @@ a "normative excerpt" is.
 ### Supersession cross-ref convergence (R342)
 
 A Superseded section forward-points to the decision that replaced it. The
-markdown-axis validator (`section_decision_status_transition`) and the
-authoritative atomic-axis gate (`atomic_section_supersede_state_reject`) both
-encode the invariant *Superseded ⟹ an outbound `decision`/`impl` cross-ref
-exists*. But the pointer had **no structural home**: `set_section_decision_status`
-validated `--superseding §M`'s *presence* and then discarded it, so the only
-surviving trace of the replacement target was whatever `§M` citation the author
-happened to type into free prose, recovered by re-parsing the rendered markdown.
-The atomic-axis gate sourced its cross-refs from `parsed_docs`, so it stayed
-correct; the warm read-side projection (R339), which reads **only** the atomic
+atomic-axis gate (`atomic_section_supersede_state_reject`) encodes the invariant
+*Superseded ⟹ an outbound `decision`/`impl` cross-ref exists*. At R342 the
+pointer had **no structural home**: `set_section_decision_status` validated
+`--superseding §M`'s *presence* and then discarded it, so the only surviving
+trace of the replacement target was whatever `§M` citation the author typed into
+free prose, recovered only by the markdown re-parse (itself since removed in
+R400). The warm read-side projection (R339), which reads **only** the atomic
 store, could never see a `decision`-kind ref and therefore over-flagged *every*
-Superseded section. That is a single-source-of-truth break: the supersession
+Superseded section. That was a single-source-of-truth break: the supersession
 relation lived in the markdown projection, not the canonical store.
 
 **Decision — model the pointer as a first-class adapter cross-ref field**
@@ -322,10 +322,8 @@ emits a `ref_kind = "decision"` relation for the pointer; the fine-grained
 cascade already accepts `decision`/`impl` outbound refs
 (`section_decision_violation`), so the engine needs no change and the projection
 stops over-flagging. The atomic-axis gate now reads `superseded_by` from the
-store (the SSOT) instead of re-parsed markdown, and the render derives the
-`**Superseded by**: §M` line from the field so the human surface and the
-round-trip citation are *projections* of the stored fact rather than its only
-home.
+store (the SSOT) instead of re-parsed markdown; the relation is a stored fact,
+surfaced through `query` and any read-side view rather than living only in prose.
 
 **Rejected alternatives.** *(A) A `SectionSkeleton` scalar* next to
 `decision_status`: would force the pointer into the index codec, producing a
@@ -336,104 +334,6 @@ with typed `ref_kind`): the broader "adapter-divergent cross-refs" convergence,
 deferred as YAGNI — supersession is the only divergent ref with a live consumer,
 and a cardinality-1 lifecycle-coupled pointer does not need a general relation
 collection. `impact_scope` keeps its own field; supersession keeps its own.
-
-### Render projection (Step 2 design, R345)
-
-R337 chose render as convergence C's target and sequenced it after a validation
-walking skeleton; R339–R341 delivered that skeleton — a warm `ProjectionService`
-that folds the log into Layer-0 Salsa inputs, reconciles the minimal delta on
-mutate (R340), and is notified from the MCP mutate finishers (R341). What R337
-left open is render's *implementation* architecture, and the gap it closes is
-concrete: `auto_regenerate` re-renders the **entire** `GENERATED.md` — every
-section and every changelog entry back through Tera — on every mutate, so a
-one-field edit pays O(N) template work (today N is small — a handful of
-sections plus the growing changelog ledger). The four questions below are
-answered before any render code lands, because render adds Layer-1 content to a
-projection engine the validation skeleton deliberately kept Layer-0-only.
-
-**Decision 1 — render owns a separate Salsa database (`RenderDb`), not a
-widened validation engine.** Validation needs only the Layer-0 skeleton
-(`SectionRecord` = `title`/parents/`decision_status`); render needs the Layer-1
-design_doc content (`intent`/`rationale`/`inputs`/`outputs`/`caveats`/
-`alternatives`/`examples`/`normative_excerpt`/`implementations`/`publishable_*`).
-Putting Layer-1 fields on the validation `SectionRecord` would couple the two:
-a `rationale` edit would dirty the validation sub-queries even though validation
-never reads it. Instead render gets its own `#[salsa::input]` vocabulary in its
-own database, keyed by the same `entity_id`. The two projections then have
-independent memo tables and independent inputs — a render-only content edit is
-not even an *input* to the validation db, so it cannot invalidate a validation
-memo. This dissolves the "do we widen `SectionRecord`?" question: no.
-
-**Decision 2 — the render Salsa engine lives one layer up, never inside the
-pure cascade engine.** R338 reduced `mnemosyne-cascade` to a pure Salsa engine
-and R346 severed its last `facts` re-export edge, leaving deps `core + salsa`
-(the CQRS read side stays RocksDB-free and dependency-light). Render
-requires the Tera per-unit renderers, which already live in `mnemosyne-query`
-(`render_section`/`render_changelog_entry`, reading `templates/*.md.tera`). So
-the `RenderDb` + its tracked queries live in the projection layer (extending
-`mnemosyne-projection`, which already composes adapter + engine), where it may
-depend on `mnemosyne-query` — `tera`, template I/O, and design_doc-medium
-knowledge never enter the validation engine. The composition layer projects each
-`AtomicSection` into a render-input context (the medium-specific extraction,
-adapter knowledge) and sets the Salsa input; the engine stays a generic
-template-over-context memoizer.
-
-**Decision 3 — two memoization tiers.** *Tier 1*: one memoized render query per
-Section and per ChangelogEntry, keyed by `entity_id`/`round_number`, body = the
-existing Tera render of that unit. This is where the per-unit template cost is
-paid — once per *changed* unit. *Tier 2*: one memoized document-composition
-query that emits the fixed scaffolding (title preamble, `Source:` line, `---`,
-`## Sections`, the `## §`→`### §` demotion, `## Changelog (atomic ledger)`, the
-empty-changelog fallback) and concatenates the Tier-1 strings in store order.
-The reconcile path (R340) gates re-execution by Salsa input-equality: an
-unchanged unit's context is backdated, so its Tier-1 render stays memoized and
-Tier-2 re-runs only the cheap concatenation. A single-field mutate thus re-runs
-one Tier-1 render, not N.
-
-**Decision 4 — single-source the render format; supersede `auto_regenerate`
-only in the warm host.** The incremental output must stay byte-identical to
-`render_atomic_store_to_md` (the `round-trip 1/1` + `GENERATED.md = sync` gates
-are hard). Rather than re-implement the format in the incremental path (two
-definitions = drift against those gates — the half-enforced-invariant
-anti-pattern), the scaffolding + per-unit invocation is extracted out of
-`render_atomic_store_to_md` into one shared pure builder that **both** the cold
-full-render and the warm Tier-2 composition call. `auto_regenerate` is *not*
-deleted: it remains the cold one-shot renderer for the CLI/CI path, which is
-warm-Salsa-free and gains nothing from memoization (R337 — `cli` keeps its
-full-rebuild). In the warm MCP host the incremental render supersedes it on the
-existing notify seam (R341): mutate → append log → notify → reconcile render
-inputs → recompute `generated_md` incrementally → `write_generated_md`
-(unchanged atomic temp+rename).
-
-**Sequencing (no half-finished), mirroring Step 1.** *(2a)* single-source the
-format builder, stand up `RenderDb` + the two tiers in the projection layer
-served warm, prove byte-identity against `render_atomic_store_to_md` (dogfood +
-randomized stores), and wire one warm consumer (an MCP render-projection tool,
-mirroring `validate_projection`) — *without* yet touching the live write path.
-This is the render walking skeleton. *(2b)* wire the warm incremental render into
-the mutate write path, superseding `auto_regenerate` in the warm host; the cold
-path keeps `auto_regenerate`. Each step is independently green and
-byte-verifiable.
-
-**Open impl spikes (deliberately not pre-solved).** Whether the new Salsa
-permits the render tracked queries over a fresh `RenderDb` defined in the
-projection crate (expected: yes — a self-contained database in one crate); and
-the render-input context shape (a generic `field → value` map vs. a typed
-Layer-1 record) — decided at 2a against the actual templates, since the template
-variable set is the only thing that fixes it.
-
-**Rejected alternatives.** *(A) Widen the validation `SectionRecord`/
-`FineCascadeDb` with Layer-1 fields* — couples validation invalidation to
-render-only content and bloats the Layer-0 validation input with medium-shaped
-data; a separate `RenderDb` keeps both projections independent. *(B) Move the
-Tera render into `mnemosyne-cascade`* — re-pollutes the pure `core + salsa`
-engine (R338/R346) with `tera`, template I/O, and medium knowledge; keep render
-one layer up. *(C) Re-implement the `GENERATED.md` format in the incremental path* —
-two format definitions drift against the round-trip/sync gates; single-source the
-builder instead. *(D) Delete `auto_regenerate` / force the CLI onto the warm
-path* — the one-shot CLI rebuilds cold every invocation (warm Salsa buys it
-nothing) and it would drag the render engine's deps into the RocksDB-free
-authoring path; supersede `auto_regenerate` only where a warm process exists.
 
 ## 6. Anti-drift invariants
 
