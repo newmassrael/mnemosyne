@@ -28,6 +28,10 @@ pinion-core = { path = "../../pinion/crates/pinion-core" }
 pinion-a11y = { path = "../../pinion/crates/pinion-a11y" }
 pinion-shell = { path = "../../pinion/crates/pinion-shell" }
 pinion-widget-paint = { path = "../../pinion/crates/pinion-widget-paint" }
+# Layout + paint pipeline for the headless `screenshot` subcommand
+# (pinion Scene -> compute_layout -> to_vello_cached -> offscreen wgpu).
+pinion-runtime = { path = "../../pinion/crates/pinion-runtime" }
+pinion-text = { path = "../../pinion/crates/pinion-text" }
 # Matches pinion's vello pin (ABI of the forge-emitted `::vello::*` renderer).
 vello = "0.9"
 

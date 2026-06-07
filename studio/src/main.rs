@@ -61,6 +61,11 @@ const SCROLLBAR_TAG: &str = "changelog_scrollbar";
 
 /// The whole changelog ledger, loaded once at startup (round-number order).
 /// The view fn reads it by index; it never mutates after `main` sets it.
+///
+/// v1 read-only choice: a `OnceLock` is correct while the Studio only VIEWS.
+/// The Phase-2 editor (a mutation must re-project the timeline) will replace
+/// this with a reactive `Signal` — do NOT mistake the `OnceLock` for the
+/// final state model; it does not extend to writes.
 static CHANGELOG: OnceLock<Vec<ChangelogEntryView>> = OnceLock::new();
 
 fn changelog() -> &'static [ChangelogEntryView] {
@@ -216,11 +221,9 @@ impl WidgetView for StudioView {
     }
 }
 
-fn main() {
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "docs/.atomic/workspace.atomic.json".to_string());
-    match mnemosyne_atomic::AtomicStore::load(std::path::Path::new(&path)) {
+/// Load the atomic store at `path` and populate the changelog timeline once.
+fn load_changelog(path: &str) {
+    match mnemosyne_atomic::AtomicStore::load(std::path::Path::new(path)) {
         Ok(store) => {
             let _ = CHANGELOG.set(mnemosyne_query::list_changelog(&store));
         }
@@ -229,7 +232,87 @@ fn main() {
             std::process::exit(1);
         }
     }
-    pinion_shell::run::<StudioView>();
+}
+
+/// Headless render of the first screen to a PNG via pinion's offscreen
+/// wgpu + vello path (`HeadlessScreenshot`). No display required — this is
+/// the same scene the live window paints, proving the GUI rasterizes (not
+/// just that the view fn builds a `Scene`). Exits 2 if no wgpu adapter is
+/// available (run on a display instead).
+fn screenshot(out_path: &str, store_path: &str) {
+    use pinion_core::Owner;
+    use pinion_runtime::compute_layout;
+    use pinion_runtime::image_cache::ImageCache;
+    use pinion_runtime::paint_adapter::{root_background, to_vello_cached, FragmentCache};
+    use pinion_text::LayoutCache;
+    use vello::Scene as VelloScene;
+
+    load_changelog(store_path);
+
+    let mut scene = Owner::new().run(|| view((), &Frame::default()));
+    let mut text_cache = LayoutCache::new();
+    compute_layout(&mut scene, &mut text_cache, WIN_W, WIN_H);
+
+    let base = root_background(&scene);
+    let mut frag = FragmentCache::new();
+    let mut image_cache = ImageCache::new();
+    let mut vello = VelloScene::new();
+    to_vello_cached(
+        &scene,
+        &|_| None,
+        &mut text_cache,
+        &mut image_cache,
+        &mut frag,
+        &mut vello,
+    );
+
+    let mut shot = match pinion_shell::HeadlessScreenshot::new() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mnemosyne-studio: no headless wgpu adapter ({e}); run on a display");
+            std::process::exit(2);
+        }
+    };
+    let file = match std::fs::File::create(out_path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("mnemosyne-studio: cannot create {out_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    match shot.render_to_png(&vello, WIN_W, WIN_H, base, std::io::BufWriter::new(file)) {
+        Ok(()) => println!(
+            "mnemosyne-studio: wrote {out_path} ({WIN_W}x{WIN_H}, {} entries)",
+            changelog().len()
+        ),
+        Err(e) => {
+            eprintln!("mnemosyne-studio: render_to_png failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let cmd = args.next();
+    match cmd.as_deref() {
+        Some("screenshot") => {
+            let out = args
+                .next()
+                .unwrap_or_else(|| "studio-timeline.png".to_string());
+            let store = args
+                .next()
+                .unwrap_or_else(|| "docs/.atomic/workspace.atomic.json".to_string());
+            screenshot(&out, &store);
+        }
+        other => {
+            let store = other
+                .map(str::to_string)
+                .unwrap_or_else(|| "docs/.atomic/workspace.atomic.json".to_string());
+            load_changelog(&store);
+            pinion_shell::run::<StudioView>();
+        }
+    }
 }
 
 #[cfg(test)]
