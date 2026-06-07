@@ -246,6 +246,41 @@ pub fn changelog_entries_for_section(
     out
 }
 
+/// `list_changelog` — the whole changelog ledger projected to views, in
+/// round-number order. `changelog_entries` is keyed by the prose entry_id
+/// (`Round <n> — …`) and iterates lexicographically — that key's string order
+/// is not numeric (digits compare left-to-right), so this sorts by the parsed
+/// round number, making the timeline chronological (ascending = oldest first;
+/// a viewer reverses
+/// client-side for newest-first). Entries whose key has no leading
+/// `Round <n>` sort last, then by key for stability. Drives the Studio
+/// changelog timeline and any full-ledger read; the per-section view is
+/// [`changelog_entries_for_section`]. `citation_count` is `0` — it is a
+/// per-section relevance metric, not applicable to the whole-ledger projection.
+pub fn list_changelog(atomic_store: &AtomicStore) -> Vec<ChangelogEntryView> {
+    let mut out: Vec<ChangelogEntryView> = atomic_store
+        .changelog_entries
+        .iter()
+        .map(|(entry_id, atomic)| build_entry_view(entry_id, atomic, 0))
+        .collect();
+    out.sort_by(|a, b| {
+        let ka = entry_round_number(&a.entry_id).unwrap_or(u32::MAX);
+        let kb = entry_round_number(&b.entry_id).unwrap_or(u32::MAX);
+        ka.cmp(&kb).then_with(|| a.entry_id.cmp(&b.entry_id))
+    });
+    out
+}
+
+/// Parse the leading `Round <n>` from a changelog entry_id, for chronological
+/// ordering. Returns `None` when the key does not open with `Round <digits>`.
+fn entry_round_number(entry_id: &str) -> Option<u32> {
+    let rest = entry_id.strip_prefix("Round ")?;
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest[..end].parse::<u32>().ok()
+}
+
 /// `parent_doc` marker for changelog entry views — entries live in the atomic
 /// store, not a markdown doc.
 pub const ATOMIC_ONLY_PARENT_DOC: &str = "<atomic>";
@@ -830,6 +865,25 @@ mod tests {
         assert!(entries
             .iter()
             .any(|e| e.entry_id == "Round 60" && e.citation_count >= 1));
+    }
+
+    #[test]
+    fn list_changelog_returns_all_entries_in_round_number_order() {
+        let mut store = AtomicStore::default();
+        for id in ["Round 2", "Round 10", "Round 1"] {
+            store.changelog_entries.insert(
+                id.into(),
+                AtomicChangelogEntry {
+                    decision_summary: Some(format!("entry {id}")),
+                    ..Default::default()
+                },
+            );
+        }
+        let all = list_changelog(&store);
+        let ids: Vec<&str> = all.iter().map(|v| v.entry_id.as_str()).collect();
+        // round-number order, NOT lexicographic: a two-digit round key sorts
+        // before a one-digit one as a string, but parses to a larger number.
+        assert_eq!(ids, ["Round 1", "Round 2", "Round 10"]);
     }
 
     #[test]

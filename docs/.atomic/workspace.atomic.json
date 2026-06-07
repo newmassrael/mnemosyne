@@ -6817,6 +6817,28 @@
         "Adopters: set parent_doc to a logical document id (e.g. scxml, mesh, wire) at leisure via set-section-parent-doc. This is cosmetic — nothing cross-validates parent_doc between stores, so there is no functional divergence either way; render-era leftover values are harmless and may be grandfathered.",
         "parent_doc != provenance: do not point it at an EPUB path or spec URL; that conflates grouping with source. Source provenance is normative_excerpt.anchor_url + [workspace.spec_source].epub_path/url."
       ]
+    },
+    "Round 410 — list_changelog: whole-ledger projection in round order for the Studio timeline": {
+      "decision_summary": "Added list_changelog(store) -> Vec<ChangelogEntryView> to mnemosyne-query: the whole changelog ledger projected to views in round-number order, the one backend read the Studio changelog-timeline screen needs that had no lib fn (the per-section view is changelog_entries_for_section). Round number reused R410 because the prior R410 (server-removal) was reverted and never landed in the ledger. Demand-driven first slice of the Studio read surface per docs/STUDIO_BACKEND_CONTRACT.md.",
+      "changes_bullets": [
+        "Add list_changelog + private entry_round_number helper to mnemosyne-query",
+        "Sort by parsed round number (BTreeMap key order is lexicographic: Round 10 < Round 2); None/unparseable keys sort last, then by key for stability",
+        "Reuse ChangelogEntryView + build_entry_view (no new view type, no projection logic duplicated); citation_count=0 (per-section metric, n/a whole-ledger)"
+      ],
+      "verification_bullets": [
+        "cargo test -p mnemosyne-query 22 pass incl list_changelog_returns_all_entries_in_round_number_order",
+        "clippy -p mnemosyne-query -D warnings clean; cargo fmt --all --check clean"
+      ],
+      "publishable_decision_summary": "Added list_changelog(store) -> Vec<ChangelogEntryView> to mnemosyne-query: the whole changelog ledger projected to views in round-number order, the one backend read the Studio changelog-timeline screen needs that had no lib fn (the per-section view is changelog_entries_for_section). Round number reused R410 because the prior R410 (server-removal) was reverted and never landed in the ledger. Demand-driven first slice of the Studio read surface per docs/STUDIO_BACKEND_CONTRACT.md.",
+      "publishable_changes_bullets": [
+        "Add list_changelog + private entry_round_number helper to mnemosyne-query",
+        "Sort by parsed round number (BTreeMap key order is lexicographic: Round 10 < Round 2); None/unparseable keys sort last, then by key for stability",
+        "Reuse ChangelogEntryView + build_entry_view (no new view type, no projection logic duplicated); citation_count=0 (per-section metric, n/a whole-ledger)"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test -p mnemosyne-query 22 pass incl list_changelog_returns_all_entries_in_round_number_order",
+        "clippy -p mnemosyne-query -D warnings clean; cargo fmt --all --check clean"
+      ]
     }
   },
   "inventory_entries": {},
