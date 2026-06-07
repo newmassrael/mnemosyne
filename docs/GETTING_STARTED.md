@@ -4,7 +4,7 @@ Mnemosyne is a markdown spec/doc management infrastructure for LLM-using
 codebases (Claude Code / Cursor / Aider / etc.). It treats your spec
 documents (`DESIGN.md`, `ARCHITECTURE.md`, ADRs, READMEs) as a typed
 workspace with cross-doc reference resolution, append-only changelog
-ledgers, and round-trip-stable mutate API.
+ledgers, and a typed mutate API over a single directly-validated store.
 
 This guide walks you from a fresh checkout to your first
 `validate-workspace` pass in five minutes.
@@ -78,14 +78,13 @@ Output looks like:
 
 ```
 === mnemosyne-cli validate-workspace ===
-docs=3/3
 T1 orphan total=0 (ledger=0, new=+0, resolved=-0)
-round-trip mandatory=3/3
 style violations: T3 reject=0 / T3 warn=12 / T4 info=4
+atomic ledger: entries=42 / sections=18
 ```
 
-Every doc parses, round-trips through the mandatory schema (Section /
-CrossRef / ChangelogEntry / FrozenList), no broken cross-doc references,
+The store holds the typed records (Section / CrossRef / ChangelogEntry /
+FrozenList) with no broken cross-doc references,
 and the style summary is informational unless the deterministic
 `terminology_consistency` rule fires (which rejects).
 
@@ -141,10 +140,10 @@ cargo run -p mnemosyne-cli -- append-changelog-entry-v2 \
 ```
 
 Every mutate command emits a `MutateReceipt` with the primitive name,
-target id, sidecar path, and written bytes. After a successful write,
-the cascade auto-update re-renders `docs/GENERATED.md` so the
-human-readable view stays in sync. Failures roll back atomically — the
-sidecar JSON is never left half-written.
+target id, sidecar path, and written bytes. The sidecar JSON is the single
+directly-validated artifact — read it back with `mnemosyne-cli query`.
+Failures roll back atomically — the sidecar JSON is never left
+half-written.
 
 ## 6. Install pre-commit hook (optional)
 
@@ -210,9 +209,9 @@ hygiene* section.
 
 - **Schema customization**: see [SCHEMA_GUIDE.md](SCHEMA_GUIDE.md) — every
  `mnemosyne.toml` field, with presets.
-- **Design history**: see [docs/GENERATED.md](GENERATED.md) — the atomic
- store's rendered view of Mnemosyne's own design decisions
- (`Round 252-272` is the most recent Phase 0 hardening arc).
+- **Design history**: read it with `mnemosyne-cli query` — Mnemosyne's own
+ design decisions live in the atomic store changelog (`Round 252+` is the
+ Phase 0 hardening arc).
 - **Roadmap**: tracked in the atomic store changelog. Phase 1 (narrative
  medium adapter) is registered as a deferred carry behind Phase 0
  stabilization.

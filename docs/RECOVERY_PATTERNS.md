@@ -25,8 +25,8 @@ Every ChangelogEntry has two parallel views:
  record of what was originally written.
 - **Publishable half** — `publishable_decision_summary` and four matching
  `publishable_*` bullet lists. Initialized to a clone of the audit half
- at append time. Mutable through the R295 setters. `generate-docs`
- renders the publishable half into `GENERATED.md`.
+ at append time. Mutable through the R295 setters. `mnemosyne-cli query`
+ surfaces the publishable half.
 
 Divergence between the two halves is gated by `[[publishable_override_ledger]]`
 rows in `mnemosyne.toml` (R296). Each row supplies a mandatory `reason`
@@ -63,8 +63,8 @@ number, PR number, etc.). The `content_hash` is pre-computed against the
 post-setter state, so the row clears the R296 gate on the next commit.
 
 **Audit effect**: the audit half is untouched. The publishable half now
-renders the corrected form in `GENERATED.md`. The override ledger row is
-the audit of the correction itself.
+carries the corrected form (surfaced via `mnemosyne-cli query`). The
+override ledger row is the audit of the correction itself.
 
 ## 2. Recipe — bulk format/redaction across multiple entries
 
@@ -117,7 +117,7 @@ root and is subject to your normal git history controls. If the secret
 must also be expunged from git history, that is a separate `git filter-repo`
 operation outside Mnemosyne's scope.
 
-For the rendered output (`GENERATED.md`):
+For the publishable view (surfaced via `mnemosyne-cli query`):
 
 ```bash
 cargo run -p mnemosyne-cli -- redact-term \
@@ -176,9 +176,9 @@ The following are not supported and policy-rejected:
  entry can carry the corrected decision.
 - **Direct `Edit` / `Write` on the atomic store JSON.** Enforced by
  project policy (Round 126 escape hatch is the only exception, and
- requires explicit user override grant). Edits made this way will fail
- the round-trip test (`generate-docs` → re-parse → compare) and the
- cascade gate.
+ requires explicit user override grant). Edits made this way bypass the
+ typed invariants and are caught by `validate-workspace` + the pre-commit
+ atomic-sidecar gate.
 - **Mutate a publishable field without an accompanying ledger row.**
  R301 hard-rejects on commit. Always pair a setter call with the matching
  ledger row; use `emit-publishable-override-ledger-draft` if you forgot.
@@ -212,6 +212,6 @@ as the historical record.
  enforcement details.
 - `docs/GETTING_STARTED.md` §code-citation-defense — `[code_refs]` and
  the bidirectional binding model.
-- `crates/mnemosyne-validator/src/mutate.rs` — primitive implementations.
+- `crates/mnemosyne-atomic/src/lib.rs` — the atomic mutate primitives.
 - `crates/mnemosyne-mcp/src/main.rs` — MCP tool descriptions for the
  R295/R297/R300 surface.

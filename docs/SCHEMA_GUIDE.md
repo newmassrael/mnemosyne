@@ -5,10 +5,10 @@ ChangelogEntry / FrozenList / InventoryEntry — five closed-form entity
 types) and a **markdown pattern → entity** mapping that is fully
 config-driven via `mnemosyne.toml`. The atomic store
 (`docs/.atomic/workspace.atomic.json`, path overridable via
-`[atomic] sidecar_path`) is the single source of truth for typed facts;
-the cascade output (`docs/GENERATED.md`, path overridable via
-`[atomic] output_path`) is the deterministic human-readable view. This
-guide shows the knobs available and the reference presets.
+`[atomic] sidecar_path`) is the single, directly-validated source of truth
+for typed facts; humans read it via `mnemosyne-cli query` (the
+markdown-render output `GENERATED.md` was removed in Round 400). This guide
+shows the knobs available and the reference presets.
 
 The fifth primitive — **InventoryEntry** — was added in Phase 1A
 (Round 273) for stable external IDs with a lifecycle vocabulary distinct
@@ -51,9 +51,8 @@ max_section_body_length = 5000
 "Salsa" = ["salsa"]
 "bi-temporal" = ["bitemporal"]
 
-[atomic]   # optional — override default store / cascade paths
+[atomic]   # optional — override the default store path
 sidecar_path = "doc/.atomic/store.json"  # default: docs/.atomic/workspace.atomic.json
-output_path = "docs/coverage/SPEC.md"  # default: docs/GENERATED.md
 
 [plugins.set_equality_validator]   # optional — opt into code-citation defense
 paths = ["src/"]
@@ -187,12 +186,6 @@ when the project never numbers its history rows.
  this to redirect the sidecar into an existing `doc/` tree without
  colliding with `docs/`. CLI `--sidecar` flag wins over this config
  when both are present.
-- **`[atomic].output_path`** — workspace-relative or absolute path for
- the cascade write target. Default `docs/GENERATED.md`. This is *not*
- auto-derived from `[workspace] docs[0]` — docs[0] is the parse target
- (markdown the validator reads), while `output_path` is the cascade
- write target (atomic store → md). Keep them independent so cascade
- doesn't overwrite hand-authored content on first mutate.
 - **`[[orphan_ledger]]`** — register legitimate cross-ref carries
  (e.g. references to legacy docs you preserved by design). Each entry
  names `doc` / `from` / `to` / `kind` / `reason`. The validator's
@@ -527,24 +520,20 @@ cite time (with an optional cascade scan surfacing existing cite-sites
 when a mutate flips status). Lookup via `query --list-inventory` or
 `query --inventory <id>`.
 
-### External adopter — redirect store/output to avoid `docs/` collision
+### External adopter — redirect the store to avoid `docs/` collision
 
-Projects with an existing `doc/` (or `documentation/`) tree that wants
-to add Mnemosyne without renaming directories:
+Projects with an existing `doc/` (or `documentation/`) tree that want to
+add Mnemosyne without renaming directories override the sidecar path:
 
 ```toml
-[workspace]
-docs = ["docs/coverage/SPEC.md"]   # parse target
-default_doc = "docs/coverage/SPEC.md"
-
 [atomic]
 sidecar_path = "doc/.atomic/store.json"   # avoid docs/.atomic collision
-output_path = "docs/coverage/SPEC.md"   # cascade write — explicit
 ```
 
-The mutate, read, validate, and cascade paths all honor both overrides
-(Round 280); there is no split-brain. CLI `--sidecar` / `--output`
-flags still win when supplied.
+The mutate, read, and validate paths all honor the override; the CLI
+`--sidecar` flag wins when supplied. (The pre-R400 `[workspace] docs` /
+`default_doc` / `[atomic] output_path` knobs are gone — the store is the
+single directly-validated artifact, with no markdown parse/render target.)
 
 ### External-spec mirror
 

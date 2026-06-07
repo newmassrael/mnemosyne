@@ -24,13 +24,15 @@ same class of integrity break, just in a different medium.
 **Mnemosyne replaces these fragile surfaces with a typed, bi-directional integrity stack.**
 
 - The **atomic store** (`docs/.atomic/workspace.atomic.json`) is the
-  single source of truth — typed records (Section / ChangelogEntry /
-  FrozenList / CrossRef) with append-only audit semantics.
-- `docs/GENERATED.md` is the sole human-readable artifact,
-  deterministically rendered from the store. Humans read; AI writes
-  through typed primitives.
-- Every mutation routes through a typed primitive that runs T1
-  (cross-ref orphan reject) and T2 (frozen-ledger jaccard) before
+  single, directly-validated source of truth — typed records (Section /
+  ChangelogEntry / FrozenList / CrossRef) with append-only audit semantics.
+- Humans read the design history through `mnemosyne-cli query`; for spec
+  content the SSOT is a committed **EPUB** (the `normative_excerpt` text is
+  a revalidated projection of it). The markdown-render model (the old
+  `GENERATED.md`) was removed in Round 400. AI writes through typed
+  primitives.
+- Every mutation routes through a typed primitive that enforces the atomic
+  invariants (cross-ref orphan reject, append-only / frozen-ledger) before
   persisting.
 - **Code citations** of spec ids (`§3`, `Round 254`) are scanned at
   commit time; hallucinated or superseded references are rejected
@@ -39,10 +41,9 @@ same class of integrity break, just in a different medium.
   each decision. When a spec section is renamed or superseded, the
   citing code locations surface automatically.
 
-**Status:** Phase 0 hardening (7 crates). 500+ tests green. Mnemosyne
-dogfoods itself — its own design history lives in the atomic store at
-`docs/.atomic/workspace.atomic.json`, with `docs/GENERATED.md` as the
-human-readable view.
+**Status:** Phase 0 hardening. 500+ tests green. Mnemosyne dogfoods itself
+— its own design history lives in the atomic store at
+`docs/.atomic/workspace.atomic.json`, read via `mnemosyne-cli query`.
 
 ## What Mnemosyne actually protects
 
@@ -105,12 +106,14 @@ nothing flagged it for six weeks."
 
 | Crate | Role |
 |---|---|
-| `mnemosyne-validator` | Parser / emitter / T1+T2 / round-trip |
-| `mnemosyne-store` | RocksDB CF layout |
+| `mnemosyne-atomic` | Atomic store (the JSON SSOT) + mutate primitives |
+| `mnemosyne-query` | Read projections (query / report-*) over the store |
+| `mnemosyne-validate` | Citation / coverage / drift validation |
+| `mnemosyne-store` | RocksDB CF layout (derived index) |
 | `mnemosyne-core` | Typed-fact bridge |
 | `mnemosyne-cascade` | Salsa cascade queries |
 | `mnemosyne-server` | gRPC + audit append surface |
-| `mnemosyne-cli` | Production CLI (validate / mutate / generate-docs) |
+| `mnemosyne-cli` | Production CLI (validate / mutate / query) |
 | `mnemosyne-mcp` | Model Context Protocol server for AI clients |
 
 ## Quick start (CLI)
@@ -149,13 +152,13 @@ comment_only = true
 Then:
 
 ```bash
-mnemosyne-cli validate-workspace   # T1 + round-trip + atomic ledger
+mnemosyne-cli validate-workspace   # T1 orphans + atomic ledger + style
 mnemosyne-cli validate-code-refs   # citation defense (if [plugins.set_equality_validator] configured)
 ```
 
-This surfaces your baseline: T1 orphan total, round-trip mandatory
-status, T3/T4 style violations, atomic ledger sync, plus any spec-id
-citations in source that no longer resolve. From that baseline,
+This surfaces your baseline: T1 orphan total, T3/T4 style violations,
+atomic ledger sync, plus any spec-id citations in source that no longer
+resolve. From that baseline,
 mutations are evaluated incrementally.
 
 See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) and
@@ -210,34 +213,35 @@ planned for a future release.
 
 ## How It Works
 
-The lifecycle has four nodes:
+The atomic store JSON is the single directly-validated artifact:
 
 ```
-typed mutate primitive ──► atomic store JSON ──► tera render ──► GENERATED.md
-        │                                                             │
-        └────────── round-trip: parse(emit) == typed_facts ───────────┘
+typed mutate primitive ──► atomic store JSON  (the single SSOT)
+                                  │
+                  mnemosyne-cli query / report-*  (read projections)
 ```
 
 A typical mutation flow:
 
 1. The author or AI calls a typed primitive
    (e.g. `set_section_intent`).
-2. The primitive runs T1 (cross-ref orphan reject) and T2 (frozen
-   ledger jaccard) before any write.
+2. The primitive enforces the atomic invariants (cross-ref orphan
+   reject, append-only / frozen-ledger) before any write.
 3. On accept, the atomic store JSON is written via temp file + atomic
    rename.
-4. Cascade auto-update: a tera template renders the store back to
-   `docs/GENERATED.md`.
-5. The round-trip invariant — `parse(emit(typed_facts)) ==
-   typed_facts` — is rechecked on every subsequent
-   `validate-workspace` call.
+4. `validate-workspace` rechecks the store invariants (T1 orphans,
+   citation hygiene, drift) on every subsequent call.
 
-Read paths skip parsing entirely — `query-section` returns SectionView
-JSON straight from the atomic store.
+The markdown-render model (a tera template → `GENERATED.md`, gated by a
+`parse(emit) == typed_facts` round-trip) was removed in Round 400: the
+store is the single directly-validated SSOT, humans read the design
+history via `mnemosyne-cli query`, and spec content lives in a committed
+EPUB. Read paths return SectionView JSON straight from the store.
 
 Whether a tool is invoked by the CLI, the MCP server, or a pre-commit
-hook, the same code path runs (parse + emit + T1 + T2 in
-`mnemosyne-validator`). One implementation, three entry surfaces.
+hook, the same code path runs (the typed mutate primitives in
+`mnemosyne-atomic` + validation in `mnemosyne-validate`). One
+implementation, three entry surfaces.
 
 ## CI integration
 
@@ -267,9 +271,8 @@ git config core.hooksPath .githooks
 ```
 
 Three hooks then run automatically:
-- `pre-commit` — atomic-sidecar / GENERATED.md sync, code-citation
-  defense, workspace validate (when a tracked doc is staged), and
-  clippy (when `.rs` is staged).
+- `pre-commit` — code-citation defense, workspace validate (when the
+  atomic sidecar is staged), and fmt + clippy (when `.rs` is staged).
 - `commit-msg` — enforces `COMMIT_FORMAT.md` (subject ≤ 72 bytes,
   body ≤ 72 bytes per line, 1–3 bullets, English + typographic
   whitelist).
@@ -286,7 +289,7 @@ The major shape decisions and the alternatives examined. Useful when
 adopting Mnemosyne in a project that has its own opinions about doc
 management.
 
-### Why atomic store + GENERATED.md, not raw markdown
+### Why the atomic store, not raw markdown
 
 A pure markdown surface exposes three structural failure modes to AI
 agents:
@@ -313,7 +316,7 @@ layer.
 For the **workspace-scope** atomic store (Section + ChangelogEntry
 typed facts), a full database buys nothing — the workspace is small,
 and the access pattern is "load whole file → mutate once →
-re-render." A single JSON file written via temp + atomic rename
+save." A single JSON file written via temp + atomic rename
 covers the use case.
 
 RocksDB is still wired in Phase 0 for the **audit-trail layer**:
@@ -345,8 +348,8 @@ many regions:
 - LSP rename `§39 → §40`: author writes a regex and hopes it's
   correct.
 - Mnemosyne `set_section_impact_scope(target=§40)`: validator checks
-  that §40 exists, atomically updates every relevant cross_ref,
-  re-renders GENERATED.md.
+  that §40 exists and atomically updates every relevant cross_ref in
+  the store.
 
 Cost: mutations must go through the typed API. Benefit: the
 "regex matched the wrong thing" class of bugs is eliminated by
@@ -380,18 +383,6 @@ Phase 1.5 cascade-gate full-scale measurement (50K asset workload)
 will validate that the per-record pattern scales to the §11 SLA
 budget.
 
-### Why round-trip equality is the spine
-
-The contract: `parse(emit(typed_facts)) == typed_facts`.
-
-Without it, the atomic store and `GENERATED.md` drift, and any
-pre-commit hook eventually misclassifies. The Round 67 sub-section
-prefix bug surfaced exactly this way: the parser produced section_id
-`60/1` for a nested numbered heading, but the emitter wrote bare
-`1.`, so re-parsing yielded a different id and the diff broke. The
-fix preserved the parent prefix on the last segment. Mechanical
-hygiene that hand-written tests rarely catch.
-
 ### Closed-form schema in Phase 0
 
 The four entity kinds (Section / ChangelogEntry / FrozenList /
@@ -403,7 +394,7 @@ round).
 Closing the schema in Phase 0:
 
 - Simplifies the validator (no plugin loader path).
-- Keeps round-trip provability tractable.
+- Keeps the typed-fact model and validation tractable.
 - Makes 5-language emit (Rust + Kotlin + Python + C++ + Protobuf)
   feasible. Salsa cascade semantics remain Rust-only because porting
   the incremental-computation guarantees to other languages was
@@ -413,8 +404,8 @@ Closing the schema in Phase 0:
 
 - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — 5-minute setup walkthrough.
 - [docs/SCHEMA_GUIDE.md](docs/SCHEMA_GUIDE.md) — every `mnemosyne.toml` field, with presets.
-- [docs/GENERATED.md](docs/GENERATED.md) — generated from the atomic
-  store; the project's own design-doc dogfood.
+- `mnemosyne-cli query` — the project's own design history (the atomic
+  store changelog); spec content lives in a committed EPUB.
 - [CLAUDE.md](CLAUDE.md) — Claude Code guidance for working *on*
   Mnemosyne itself.
 - [COMMIT_FORMAT.md](COMMIT_FORMAT.md) — commit message convention.
@@ -455,8 +446,8 @@ integrity gaps:
   and three-edged set-equality detection
   (`CitationUnbound` + `ImplementationUnbacked` + `ImplementationMissing`,
   the last counting only `implements` as coverage).
-- Atomic ChangelogEntry mutate API with auto-cascade regeneration of
-  `GENERATED.md` on every successful write.
+- Atomic ChangelogEntry mutate API (append-only audit half + a separate
+  publishable view) — the single directly-validated SSOT.
 
 ### Phase 1 — Narrative medium adapter
 
