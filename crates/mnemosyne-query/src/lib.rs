@@ -32,8 +32,8 @@
 //! - `mnemosyne-cli query --list-sections`
 
 use mnemosyne_atomic::{
-    synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, InventoryEntry,
-    NormativeExcerpt,
+    synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, Binding,
+    InventoryEntry, NormativeExcerpt,
 };
 use mnemosyne_core::DecisionStatus;
 use serde::Serialize;
@@ -67,6 +67,16 @@ pub struct SectionView {
     /// surface stays unchanged for unclassified stores.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coverage_expectation: Option<String>,
+    /// Spec → Code trace-links (Path B `§<id>.bindings`): the ratified
+    /// implementing files/symbols for this section. Surfaced on the
+    /// per-section read-path so an agent navigating "work on §X" gets the
+    /// authoritative, kind-typed file set inline — without a separate
+    /// whole-store `report-spec-map` round-trip (which scales O(total
+    /// sections)) or a noisy `grep §<id>` over the tree (raw citations, not
+    /// the ratified set). Empty for prose-only sections that have no
+    /// binding; omitted from JSON then so the read surface is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<Binding>,
 }
 
 /// RelatedSections — `related_sections` carry form. 1-hop traversal result.
@@ -168,6 +178,7 @@ fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
             let tag = atomic.coverage_expectation.as_str();
             (tag != "normative").then(|| tag.to_string())
         },
+        bindings: atomic.bindings.clone(),
     }
 }
 
@@ -829,6 +840,58 @@ mod tests {
     fn section_by_id_unknown_is_none() {
         let store = AtomicStore::default();
         assert!(section_by_id(&store, "999").is_none());
+    }
+
+    #[test]
+    fn section_by_id_projects_bindings() {
+        let section = AtomicSection {
+            skeleton: mnemosyne_core::SectionSkeleton {
+                title: "Citation defense".into(),
+                parent_doc: "spec".into(),
+                ..Default::default()
+            },
+            bindings: vec![
+                Binding {
+                    kind: BindingKind::Implements,
+                    file: "crates/mnemosyne-validate/src/code_refs.rs".to_string(),
+                    symbol: None,
+                },
+                Binding {
+                    kind: BindingKind::References,
+                    file: "crates/mnemosyne-cli/src/main.rs".to_string(),
+                    symbol: Some("fn cmd_validate_code_refs".to_string()),
+                },
+            ],
+            ..Default::default()
+        };
+        let store = store_with_one_section("code-citation-defense", section);
+        let view = section_by_id(&store, "code-citation-defense").expect("section exists");
+        assert_eq!(view.bindings.len(), 2);
+        assert_eq!(view.bindings[0].kind, BindingKind::Implements);
+        assert_eq!(
+            view.bindings[0].file,
+            "crates/mnemosyne-validate/src/code_refs.rs"
+        );
+        assert_eq!(view.bindings[1].kind, BindingKind::References);
+        assert_eq!(
+            view.bindings[1].symbol.as_deref(),
+            Some("fn cmd_validate_code_refs")
+        );
+    }
+
+    #[test]
+    fn section_by_id_omits_bindings_when_absent() {
+        // Prose-only section: empty bindings → field skipped in JSON so the
+        // read surface is unchanged for stores that do not use Path B.
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "39", "Graph schema", "tracks graph schema");
+        let view = section_by_id(&store, "39").expect("section 39 exists");
+        assert!(view.bindings.is_empty());
+        let json = serde_json::to_string(&view).expect("serialize");
+        assert!(
+            !json.contains("bindings"),
+            "empty bindings must be omitted from JSON: {json}"
+        );
     }
 
     #[test]

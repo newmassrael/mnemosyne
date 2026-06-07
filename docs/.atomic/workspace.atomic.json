@@ -6839,6 +6839,44 @@
         "cargo test -p mnemosyne-query 22 pass incl list_changelog_returns_all_entries_in_round_number_order",
         "clippy -p mnemosyne-query -D warnings clean; cargo fmt --all --check clean"
       ]
+    },
+    "Round 411 — surface Path B bindings on the per-section query read-path": {
+      "decision_summary": "SectionView (the section_by_id read-path) now projects a section's bindings inline, so an agent navigating to work on a section receives the ratified implementing-file set on the query it already issues, without a separate whole-store report-spec-map round-trip. Empty bindings are omitted, leaving the read surface unchanged for prose-only sections.",
+      "changes_bullets": [
+        "Add bindings: Vec<Binding> to SectionView with serde skip_serializing_if = Vec::is_empty",
+        "Project atomic.bindings in build_section_view, reusing the Serialize-derived Binding (no new view type)",
+        "Tests: section_by_id_projects_bindings (positive) + section_by_id_omits_bindings_when_absent (JSON omission)"
+      ],
+      "verification_bullets": [
+        "cargo test -p mnemosyne-query: 24 of 24 pass, including the two new projection tests",
+        "clippy clean; mnemosyne-cli + mnemosyne-mcp regression suites green; cargo build --workspace exit 0",
+        "E2E: query code-citation-defense emits bindings inline; query markdown-parser omits the key (no binding)"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "Token win is scale-conditional (Gate 4b): marginal vs grep on the 4-section dogfood; the O(n) report-spec-map round-trip elimination materializes only at consumer scale (no consumer wired yet)",
+        "Derived from the Graphify comparison (auto-discovery vs verified-binding graphs); insight 1 cold-start discovery and insight 3 coverage moat deferred to the SCE PoC gate; insight 2 staging state refuted since the propose-implementations emit channel already suffices"
+      ],
+      "publishable_decision_summary": "SectionView (the section_by_id read-path) now projects a section's bindings inline, so an agent navigating to work on a section receives the ratified implementing-file set on the query it already issues, without a separate whole-store report-spec-map round-trip. Empty bindings are omitted, leaving the read surface unchanged for prose-only sections.",
+      "publishable_changes_bullets": [
+        "Add bindings: Vec<Binding> to SectionView with serde skip_serializing_if = Vec::is_empty",
+        "Project atomic.bindings in build_section_view, reusing the Serialize-derived Binding (no new view type)",
+        "Tests: section_by_id_projects_bindings (positive) + section_by_id_omits_bindings_when_absent (JSON omission)"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test -p mnemosyne-query: 24 of 24 pass, including the two new projection tests",
+        "clippy clean; mnemosyne-cli + mnemosyne-mcp regression suites green; cargo build --workspace exit 0",
+        "E2E: query code-citation-defense emits bindings inline; query markdown-parser omits the key (no binding)"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Token win is scale-conditional (Gate 4b): marginal vs grep on the 4-section dogfood; the O(n) report-spec-map round-trip elimination materializes only at consumer scale (no consumer wired yet)",
+        "Derived from the Graphify comparison (auto-discovery vs verified-binding graphs); insight 1 cold-start discovery and insight 3 coverage moat deferred to the SCE PoC gate; insight 2 staging state refuted since the propose-implementations emit channel already suffices"
+      ]
     }
   },
   "inventory_entries": {},
