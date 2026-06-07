@@ -26,15 +26,16 @@ coverage / binding-migration / drift dashboards, spec-map, inventory,
 term search.
 
 Out of scope here (later phases, named so the contract stays stable):
-- Phase 2 — editor: routes through the EXISTING dogfooded write path,
-  the `mnemosyne-atomic` primitives (NOT `mnemosyne-server`). Previewed
-  in §9.
+- Phase 2 — editor: native goes through the in-process `mnemosyne-atomic`
+  primitives (the dogfood write path); web goes through the converged
+  `mnemosyne-server` write pipeline (same proposal→gate→audit semantics
+  over the wire). Previewed in §9.
 - Phase 3 — frame/branch selector, rich EPUB-body structured render,
   narrative multi-EPUB. Forward-compat reserved in §8, not built.
 
 ---
 
-## 2. The two ground truths this design depends on
+## 2. The ground truths this design depends on
 
 Verified in code (rev `04c9143`). The whole design follows from them.
 
@@ -56,15 +57,20 @@ INSIDE the primitives.
   / `cmd_add_section_binding` (`main.rs:168/202/229`).
 - MCP: `atomic::append_changelog_entry(...)` (`mnemosyne-mcp/src/main.rs`).
 
-NON-GROUND-TRUTH — `mnemosyne-server` (`submit_proposal` /
-`ProposalHandler` / `gate` / `audit`) is a PARALLEL stack with ZERO
-production consumers. `commit_storage` writes to RocksDB column families
-(`self.store.put(CfId::Entities, branch_id, entity_id, valid_from,
-payload)`) — a bitemporal RocksDB model, not the JSON atomic SSOT. Its
-gate Tier 2/3 are stubs (`tier2_phase0_stub_accepts_all`,
-`tier3_phase0_stub_no_warnings`). It is the RocksDB side of the recorded
-persistence fork (see the persistence-fork memory; R161). The Studio MUST
-NOT build on it (§11 covers the fork as a separate decision).
+GROUND TRUTH 3 — `mnemosyne-server` (`proposal → gate → audit`) is
+FOUNDATION, not legacy. ARCHITECTURE.md §3 names that pipeline a Layer-0
+CORE property ("every mutation = reviewed txn") + the CQRS write side, and
+§6.1 protects the crate by name. It is INCOMPLETE today — gate Tier 2/3 are
+stubs (`tier2_phase0_stub_accepts_all` / `tier3_phase0_stub_no_warnings`)
+and `commit_storage` still writes RocksDB (the pre-convergence-D state; the
+target is log-append, RocksDB-free) — and has no production consumer yet
+(CLI/MCP write via the in-process atomic primitives). Those are "converge
+it" conditions (convergence C/D), NOT "avoid it." The Studio **web** backend
+is exactly convergence C/D's first consumer: the converged `mnemosyne-server`
+daemon hosts the warm read-side projections (C) + the log-append write
+pipeline (D). §11 details this. (An earlier draft of this contract wrongly
+told the Studio to avoid server; corrected after a near-deletion that
+violated §6.1.)
 
 ---
 
@@ -73,15 +79,18 @@ NOT build on it (§11 covers the fork as a separate decision).
 1. **Read = pure projection.** Every read is a function of the current
    `AtomicStore` snapshot. ZERO new authoritative state. SSOT stays the
    JSON atomic store.
-2. **Single dogfooded write path.** Phase 2 mutation goes ONLY through the
-   `mnemosyne-atomic` primitives — the exact path CLI and MCP use. The
-   Studio editor is just another client of the same primitives, so it
-   inherits the identical frozen-ledger gate and writes to the real SSOT.
-   No new write path, no second gate.
+2. **Single write model.** Phase 2 mutation bottoms out in the
+   `mnemosyne-atomic` primitives over the JSON log — the dogfood SSOT.
+   Native calls them in-process (the exact path CLI/MCP use); web calls the
+   converged `mnemosyne-server` pipeline (proposal→gate→audit) that wraps
+   the same primitives. Either way the editor inherits the identical
+   frozen-ledger enforcement and the one SSOT — no second write model, no
+   second gate.
 3. **Reuse, do not reinvent, do not re-abstract.** Reads wrap existing
-   query/validate fns; writes call existing atomic primitives. The CLI and
-   MCP add no service layer over these — neither does the Studio. The lib
-   fns ARE the read SSOT; the primitives ARE the write SSOT.
+   query/validate fns; writes bottom out in existing atomic primitives.
+   Native adds no service layer (links them directly, as CLI/MCP do); web
+   reuses the existing `mnemosyne-server` pipeline rather than a parallel
+   one. The lib fns ARE the read SSOT; the primitives ARE the write SSOT.
 4. **Native links the libs directly; only web needs a remote.** See §4.
 5. **Frame-ready, single-frame now.** v1 serves the current store (one
    epistemic frame). The contract reserves an optional frame selector
@@ -96,9 +105,9 @@ NOT build on it (§11 covers the fork as a separate decision).
                 /                                  \
         native target                          web / WASM target
    links the crates in-process,           cannot do file IO in WASM →
-   calls lib fns + atomic                 talks to a thin remote adapter
-   primitives DIRECTLY                    over gRPC-web/HTTP that hosts
-   (no new crate, no daemon)              the SAME lib fns + primitives
+   calls lib fns + atomic                 talks over gRPC-web/HTTP to
+   primitives DIRECTLY                    the converged mnemosyne-server
+   (no new crate, no daemon)              daemon (convergence C/D)
         \                                  /
          mnemosyne-query / mnemosyne-validate (reads)
          mnemosyne-atomic primitives        (writes, Phase 2)
@@ -110,9 +119,11 @@ NOT build on it (§11 covers the fork as a separate decision).
   `mnemosyne-ops::cascade::resolve_sidecar`), calls query/validate for
   reads and atomic primitives for writes. No backend crate to build.
 - Web/WASM pinion Studio needs a network boundary (no local file IO in
-  WASM). A thin remote adapter wraps the SAME lib fns + primitives over
-  the wire. It is the ONLY genuinely new code, and only for the web
-  target — built when the web target starts, not before.
+  WASM). That daemon is the converged `mnemosyne-server` (convergence
+  C/D): it hosts the warm read-side projections (reads) + the
+  proposal→gate→audit→log-append write pipeline (writes) behind
+  gRPC-web/HTTP. Built when the web target starts — and building it IS
+  finishing convergence C/D (§11), not a parallel adapter.
 - Value-equality is trivial here (not an elaborate invariant): native and
   web bottom out in the SAME fns over the SAME store, so equal inputs give
   equal outputs by construction. A smoke test pins it once the remote
@@ -125,16 +136,18 @@ NOT build on it (§11 covers the fork as a separate decision).
 - **Native: NO new crate.** The Phase-1 viewer can start immediately on
   `mnemosyne-query` + `mnemosyne-validate` + `mnemosyne-atomic` +
   `mnemosyne-ops`, exactly as the CLI links them.
-- **Web (later): one thin remote-adapter crate** (suggested
-  `mnemosyne-studio`), depending on query/validate/atomic/ops, exposing
-  reads (and Phase-2 writes) over gRPC-web/HTTP. It wraps Path X — it does
-  NOT reuse `mnemosyne-server` (the RocksDB fork). Name is for its first
-  consumer (the Studio); generalize/rename if a second remote client
-  appears.
+- **Web (later): the converged `mnemosyne-server` daemon** (convergence
+  C/D), NOT a new parallel crate. server is the designated warm daemon host
+  (ARCHITECTURE §4) and the Studio web is its first consumer. Building the
+  web backend = finishing server: gate Tier 2/3 + switch `commit` to
+  log-append (RocksDB-free, convergence D) + add the warm read-side
+  projection service (convergence C) + the gRPC-web/HTTP face. Authoring
+  stays RocksDB-free (reads project from the log; RocksDB read-index at
+  scale, convergence B).
 
-This is deliberately minimal (no `StudioRead` trait, no "BFF" facade): the
-libs are already the API, and adding an abstraction the CLI/MCP do not
-have would be unjustified ceremony.
+This keeps the read side deliberately minimal (no `StudioRead` trait, no
+"BFF" facade): the libs are already the read API, and the write side reuses
+the existing server pipeline rather than a parallel one.
 
 ---
 
@@ -159,7 +172,7 @@ to an existing implementation; no projection logic is added or duplicated.
 
 `list_changelog` is the only read without a per-section equivalent today
 (query exposes `changelog_entries_for_section`); it iterates the full
-ledger — a trivial wrap, no new logic. If the web adapter needs a stable
+ledger — a trivial wrap, no new logic. If the web daemon needs a stable
 aggregate entry point, add a small `mnemosyne-query` fn (one home for the
 logic), so native and web share it.
 
@@ -224,8 +237,9 @@ Recorded so the read contract stays stable when the editor lands.
 - Primitive errors (frozen reject, divergent-manifest reject, invariant
   violations) surface verbatim. A citation-hygiene helper validates
   `Round NNN` existence before submit (R255).
-- Web editor: the remote adapter exposes the same primitives over the
-  wire; the primitive still does the enforcement server-side.
+- Web editor: the converged `mnemosyne-server` daemon exposes the write
+  pipeline (proposal→gate→audit→log-append) over the wire; enforcement
+  happens server-side in the gate + primitives.
 
 ---
 
@@ -240,24 +254,26 @@ Recorded so the read contract stays stable when the editor lands.
 
 ---
 
-## 11. The persistence-fork decision (web backend foundation; bigger than the Studio)
+## 11. The Studio web backend completes convergence C/D
 
-Building the web remote forces a decision the Studio merely surfaces: what
-does a remote read/write run against?
+The web backend is not a side decision to route *around* the persistence
+fork — it is the consumer that *completes* the fork's convergence.
 
-- Today: dogfood reality is the JSON `AtomicStore` for BOTH read and
-  write (Path X). `mnemosyne-server`'s RocksDB stack is the unconverged
-  other side of the persistence fork (R161; intended end-state =
-  log/atomic = SSOT, RocksDB = rebuildable read-index; convergence A→D
-  not done).
-- For the Studio web adapter, the safe, dogfood-aligned choice is to wrap
-  Path X (JSON store) directly. A RocksDB read-index is legitimate ONLY as
-  the fork's intended read-index — and only once convergence makes writes
-  still land in the log SSOT. Do NOT adopt the RocksDB stack as a
-  shortcut; that would entrench the fork.
-- This is an owner architectural decision, out of Studio scope. Default
-  for now: web adapter wraps Path X. Revisit if/when fork convergence is
-  taken up.
+- The fork (R161) is ~80% converged into CQRS event-sourcing: log (JSON
+  `AtomicStore`) = SSOT, RocksDB = derived read-index, Salsa cascade =
+  incremental projection. A done; B landed-half (live query-routing
+  scale-gated); C half + designed; D designed. See ARCHITECTURE.md §4-5 +
+  the persistence-fork memory.
+- The converged `mnemosyne-server` daemon = the web backend: writes go
+  proposal→gate→audit→**log-append** (RocksDB-free authoring, convergence
+  D — this is where gate Tier 2/3 get finished and `commit` stops writing
+  RocksDB); reads project from the log (flat scan at dogfood scale; the
+  RocksDB read-index at corpus scale, convergence B). The log stays the
+  single SSOT throughout.
+- So the web phase is genuinely large (it finishes C/D) and is gated on
+  actually needing the web target. **native viewer first** sidesteps all of
+  it: native links the libs over the JSON store in-process (Path X),
+  fork-independent, buildable today.
 
 ---
 
@@ -274,8 +290,9 @@ The read surface is speculative until a frontend consumes it. So:
 3. Dashboards (`classify_coverage` + binding-migration + drift).
 4. Spec-map overlay tab (reuses the existing spec viewer design).
 5. Search + inventory.
-6. Web target — only when needed: the thin remote adapter over Path X
-   (resolve §11 default), exposing the same reads; then Phase-2 editor.
+6. Web target — only when needed: the converged `mnemosyne-server` daemon
+   (convergence C/D) — warm read-side projections + the log-append write
+   pipeline + gRPC-web/HTTP; then the Phase-2 editor over it (§11).
 
 Each slice: call the existing fn (native) first; add the remote binding
 when the web target reaches that screen.
@@ -290,6 +307,6 @@ when the web target reaches that screen.
   native + web) or stays an inline iterate in each caller (prefer the
   shared fn the moment the web adapter needs it).
 - When to introduce the studio-owned wire-DTO anti-corruption layer (§7).
-- The persistence-fork direction (§11) — owner decision, gates only the
-  web target, not native.
+- Convergence C/D scope + timing for the web daemon (§11) — gates only the
+  web target; the native viewer is fork-independent.
 ```
