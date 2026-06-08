@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, bail, Context, Result};
 
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, WorkspaceConfig};
+use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, Severity, WorkspaceConfig};
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
     section_by_id, TermMode, TermQuery, TermScope,
@@ -1797,68 +1797,47 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         }
     };
 
-    let severity_missing = severity_missing_override
-        .as_deref()
-        .unwrap_or(&cfg.severity_missing)
-        .to_string();
-    if !matches!(severity_missing.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity-missing `{}` — expected one of: reject | warn | info",
-            severity_missing
-        );
-    }
-    let severity_binding = severity_binding_override
-        .as_deref()
-        .unwrap_or(&cfg.severity_binding)
-        .to_string();
-    if !matches!(severity_binding.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity-binding `{}` — expected one of: reject | warn | info",
-            severity_binding
-        );
-    }
+    // Resolve each axis severity: a `--severity-*` flag (parsed once via
+    // `Severity::from_tag` — the single CLI validation point) overrides the
+    // config `Severity` (already serde-validated at load).
+    let parse_sev = |flag: &str, raw: &str| -> Result<Severity> {
+        Severity::from_tag(raw.trim()).ok_or_else(|| {
+            anyhow!(
+                "invalid {} `{}` — expected one of: reject | warn | info",
+                flag,
+                raw
+            )
+        })
+    };
+    let severity_missing = match &severity_missing_override {
+        Some(s) => parse_sev("--severity-missing", s)?,
+        None => cfg.severity_missing,
+    };
+    let severity_binding = match &severity_binding_override {
+        Some(s) => parse_sev("--severity-binding", s)?,
+        None => cfg.severity_binding,
+    };
     // severity_coverage (Round 385) inherits severity_binding when unset, so
     // the dogfood (no [plugins.set_equality_validator].severity_coverage) keeps
     // the Round 269 behaviour of coverage gating with the binding severity.
     // Precedence: --severity-coverage flag > config.severity_coverage >
     // resolved severity_binding.
-    let severity_coverage = severity_coverage_override
-        .as_deref()
-        .or(cfg.severity_coverage.as_deref())
-        .unwrap_or(&severity_binding)
-        .to_string();
-    if !matches!(severity_coverage.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity-coverage `{}` — expected one of: reject | warn | info",
-            severity_coverage
-        );
-    }
+    let severity_coverage = match &severity_coverage_override {
+        Some(s) => parse_sev("--severity-coverage", s)?,
+        None => cfg.severity_coverage.unwrap_or(severity_binding),
+    };
     // Verify axis (R413) is opt-in: `None` = disabled. A CLI override enables
     // it for the run (and is injected into the validator config below so the
     // scan actually emits VerificationMissing); otherwise the config value
-    // governs. `Some(_)` is validated, `None` leaves the axis off.
-    let severity_verification: Option<String> = severity_verification_override
-        .as_deref()
-        .or(cfg.severity_verification.as_deref())
-        .map(str::to_string);
-    if let Some(sv) = severity_verification.as_deref() {
-        if !matches!(sv, "reject" | "warn" | "info") {
-            bail!(
-                "invalid --severity-verification `{}` — expected one of: reject | warn | info",
-                sv
-            );
-        }
-    }
-    let severity_inventory = severity_inventory_override
-        .as_deref()
-        .unwrap_or(&cfg.severity_inventory)
-        .to_string();
-    if !matches!(severity_inventory.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity-inventory `{}` — expected one of: reject | warn | info",
-            severity_inventory
-        );
-    }
+    // governs.
+    let severity_verification: Option<Severity> = match &severity_verification_override {
+        Some(s) => Some(parse_sev("--severity-verification", s)?),
+        None => cfg.severity_verification,
+    };
+    let severity_inventory = match &severity_inventory_override {
+        Some(s) => parse_sev("--severity-inventory", s)?,
+        None => cfg.severity_inventory,
+    };
 
     let prefix = cli_schema()?.entry_id_prefix.clone();
     let root = loaded.workspace_root.clone();
@@ -1891,7 +1870,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // override ENABLES the axis for this run (the scan only emits
     // VerificationMissing when `config.severity_verification.is_some()`).
     let mut validator_cfg = cfg.clone();
-    validator_cfg.severity_verification = severity_verification.clone();
+    validator_cfg.severity_verification = severity_verification;
     let validator = SetEqualityValidator {
         config: validator_cfg,
         entry_id_prefix: prefix.clone(),
@@ -2029,11 +2008,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             decay_count,
             inventory_missing_count,
             inventory_deprecated_count,
-            severity_missing,
-            severity_binding,
-            severity_coverage,
-            severity_verification.as_deref().unwrap_or("off"),
-            severity_inventory,
+            severity_missing.as_str(),
+            severity_binding.as_str(),
+            severity_coverage.as_str(),
+            severity_verification.map(Severity::as_str).unwrap_or("off"),
+            severity_inventory.as_str(),
         );
         // `CodeRefViolation: Display` renders the legacy TTY shape
         // (`[<kind>] <file>:<line> <entry_id>` for citations, etc.).
@@ -2045,35 +2024,35 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // Reject gates by defect class — each class gated by its
     // own severity flag. Decay never rejects (informational).
     let mut reject_msgs: Vec<String> = Vec::new();
-    if hallucination_count > 0 && severity_missing == "reject" {
+    if hallucination_count > 0 && severity_missing.is_reject() {
         reject_msgs.push(format!(
             "{} hallucination-class citation(s) — Missing={} SectionMissing={} \
  (severity_missing=reject)",
             hallucination_count, missing_count, section_missing_count,
         ));
     }
-    if binding_count > 0 && severity_binding == "reject" {
+    if binding_count > 0 && severity_binding.is_reject() {
         reject_msgs.push(format!(
             "{} binding-class violation(s) — CitationUnbound={} BindingUnbacked={} \
  SymbolMismatch={} (severity_binding=reject)",
             binding_count, citation_unbound_count, binding_unbacked_count, symbol_mismatch_count,
         ));
     }
-    if coverage_count > 0 && severity_coverage == "reject" {
+    if coverage_count > 0 && severity_coverage.is_reject() {
         reject_msgs.push(format!(
             "{} coverage-class violation(s) — ImplementationMissing={} \
  (severity_coverage=reject)",
             coverage_count, impl_missing_count,
         ));
     }
-    if verification_missing_count > 0 && severity_verification.as_deref() == Some("reject") {
+    if verification_missing_count > 0 && severity_verification == Some(Severity::Reject) {
         reject_msgs.push(format!(
             "{} verification-class violation(s) — VerificationMissing={} \
  (severity_verification=reject)",
             verification_missing_count, verification_missing_count,
         ));
     }
-    if inventory_count > 0 && severity_inventory == "reject" {
+    if inventory_count > 0 && severity_inventory.is_reject() {
         reject_msgs.push(format!(
             "{} inventory-axis violation(s) — InventoryMissing={} InventoryDeprecated={} \
  (severity_inventory=reject)",
@@ -2139,18 +2118,17 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
         .config
         .spec_drift
         .as_ref()
-        .map(|s| s.severity.clone())
-        .unwrap_or_else(|| "warn".to_string());
-    let severity = severity_override
-        .as_deref()
-        .unwrap_or(&configured)
-        .to_string();
-    if !matches!(severity.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity `{}` — expected one of: reject | warn | info",
-            severity
-        );
-    }
+        .map(|s| s.severity)
+        .unwrap_or(Severity::Warn);
+    let severity = match &severity_override {
+        Some(s) => Severity::from_tag(s.trim()).ok_or_else(|| {
+            anyhow!(
+                "invalid --severity `{}` — expected one of: reject | warn | info",
+                s
+            )
+        })?,
+        None => configured,
+    };
 
     let workspace_revision = spec_source.revision.clone();
     let root = loaded.workspace_root.clone();
@@ -2188,7 +2166,7 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
             spec_source.url,
             workspace_revision,
             store.sections.len(),
-            severity,
+            severity.as_str(),
         );
         println!("drift: total={}", violations.len());
         // Bare section_id (no `§` sigil) — the CLI never renders a literal
@@ -2204,7 +2182,7 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
     // Single configurable axis: reject => exit 1 on any drift. warn/info
     // print the findings and exit 0 (CI decides gating; partial migration
     // is a legitimate intermediate state).
-    if !violations.is_empty() && severity == "reject" {
+    if !violations.is_empty() && severity.is_reject() {
         bail!(
             "{} spec-revision drift violation(s) — Active Section(s) trailing workspace \
  revision {:?} (severity=reject)",
@@ -2259,18 +2237,17 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
         .config
         .content_drift
         .as_ref()
-        .map(|c| c.severity.clone())
-        .unwrap_or_else(|| "reject".to_string());
-    let severity = severity_override
-        .as_deref()
-        .unwrap_or(&configured)
-        .to_string();
-    if !matches!(severity.as_str(), "reject" | "warn" | "info") {
-        bail!(
-            "invalid --severity `{}` — expected one of: reject | warn | info",
-            severity
-        );
-    }
+        .map(|c| c.severity)
+        .unwrap_or(Severity::Reject);
+    let severity = match &severity_override {
+        Some(s) => Severity::from_tag(s.trim()).ok_or_else(|| {
+            anyhow!(
+                "invalid --severity `{}` — expected one of: reject | warn | info",
+                s
+            )
+        })?,
+        None => configured,
+    };
 
     let root = loaded.workspace_root.clone();
     let anchor = loaded
@@ -2351,7 +2328,7 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
         println!(
             "sections={} severity={} unrevalidatable={}",
             store.sections.len(),
-            severity,
+            severity.as_str(),
             unrevalidatable,
         );
         println!("drift: total={}", violations.len());
@@ -2376,7 +2353,7 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
     // reject => exit 1 on any content drift OR EPUB-file drift. warn/info print
     // and exit 0. Unrevalidatable never gates (backfill work-list, not corruption).
     let gated = !violations.is_empty() || epub_drift.is_some();
-    if gated && severity == "reject" {
+    if gated && severity.is_reject() {
         bail!(
             "content-integrity drift (severity=reject): {} excerpt(s) mismatched their text_sha256{}",
             violations.len(),

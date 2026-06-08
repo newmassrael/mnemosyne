@@ -2324,11 +2324,11 @@ mod tests {
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
                 paths: paths.to_vec(),
-                severity_missing: "reject".into(),
-                severity_binding: "reject".into(),
+                severity_missing: mnemosyne_config::Severity::Reject,
+                severity_binding: mnemosyne_config::Severity::Reject,
                 severity_coverage: None,
                 severity_verification: None,
-                severity_inventory: "reject".into(),
+                severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
                 external_section_prefixes: external_section_prefixes_numeric.to_vec(),
@@ -2560,11 +2560,11 @@ mod tests {
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
                 paths: vec!["src/".to_string()],
-                severity_missing: "reject".into(),
-                severity_binding: "reject".into(),
+                severity_missing: mnemosyne_config::Severity::Reject,
+                severity_binding: mnemosyne_config::Severity::Reject,
                 severity_coverage: None,
                 severity_verification: None,
-                severity_inventory: "reject".into(),
+                severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
                 external_section_prefixes: vec![],
@@ -2822,11 +2822,12 @@ mod tests {
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
                 paths: vec![],
-                severity_missing: "reject".into(),
-                severity_binding: "reject".into(),
+                severity_missing: mnemosyne_config::Severity::Reject,
+                severity_binding: mnemosyne_config::Severity::Reject,
                 severity_coverage: None,
-                severity_verification: severity_verification.map(String::from),
-                severity_inventory: "reject".into(),
+                severity_verification: severity_verification
+                    .map(|s| mnemosyne_config::Severity::from_tag(s).expect("valid severity tag")),
+                severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
                 external_section_prefixes: vec![],

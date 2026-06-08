@@ -28,11 +28,11 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
     SetEqualityValidator {
         config: SetEqualityValidatorConfig {
             paths: vec!["src/".into()],
-            severity_missing: "reject".into(),
-            severity_binding: "reject".into(),
+            severity_missing: mnemosyne_config::Severity::Reject,
+            severity_binding: mnemosyne_config::Severity::Reject,
             severity_coverage: None,
             severity_verification: None,
-            severity_inventory: "reject".into(),
+            severity_inventory: mnemosyne_config::Severity::Reject,
             comment_only: true,
             inventory_prefixes: vec![],
             external_section_prefixes: vec![],

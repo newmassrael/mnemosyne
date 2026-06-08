@@ -27,6 +27,58 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Cite-time gate strictness — the canonical `reject | warn | info` vocabulary
+/// shared by every reject-class config knob (`severity_missing` /
+/// `severity_binding` / `severity_coverage` / `severity_verification` /
+/// `severity_inventory`, and the `spec_drift` / `commit_ledger` /
+/// `content_drift` gates). `Reject` fails the run (exit 1); `Warn` and `Info`
+/// print but pass.
+///
+/// Lives in `mnemosyne-config` (not `mnemosyne-core`) because severity is a
+/// pure config-policy concept — never stored in the atomic store, unlike the
+/// domain enums `BindingKind` / `CoverageExpectation`. Parsed ONCE: by serde
+/// at config load, and at the CLI `--severity-*` boundary via
+/// [`from_tag`](Self::from_tag). This replaces the stringly-typed `String` +
+/// the `matches!("reject"|"warn"|"info")` checks that were scattered across
+/// the config loader and the CLI. Distinct from the style-tier `StyleSeverity`
+/// (`warn | info`, no `reject`). `Reject` is the default — the conservative
+/// gate (matches the pre-enum `default_severity_reject`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    #[default]
+    Reject,
+    Warn,
+    Info,
+}
+
+impl Severity {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Severity::Reject => "reject",
+            Severity::Warn => "warn",
+            Severity::Info => "info",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
+    /// `None` for any other string — the single CLI-boundary validation point.
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "reject" => Some(Severity::Reject),
+            "warn" => Some(Severity::Warn),
+            "info" => Some(Severity::Info),
+            _ => None,
+        }
+    }
+
+    /// Does this severity fail the run (exit 1)?
+    pub fn is_reject(self) -> bool {
+        matches!(self, Severity::Reject)
+    }
+}
+
 /// Top-level workspace config schema, mapping 1:1 to TOML tables.
 ///
 /// `[workspace]` is required. `[schema]`, `[style]`, `[terminology]` are
@@ -324,7 +376,7 @@ pub struct SetEqualityValidatorConfig {
     /// - `SectionMissing` — §<id> not in atomic section_id set
     /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
     #[serde(default = "default_severity_reject")]
-    pub severity_missing: String,
+    pub severity_missing: Severity,
 
     /// severity for binding-class violations (Path B Spec ↔
     /// Code bidirectional set-equality):
@@ -335,7 +387,7 @@ pub struct SetEqualityValidatorConfig {
     /// registered symbol set for that file
     /// Recognized values: `"reject"` (default) / `"warn"` / `"info"`.
     #[serde(default = "default_severity_reject")]
-    pub severity_binding: String,
+    pub severity_binding: Severity,
 
     /// severity for the coverage-class violation, split out from
     /// `severity_binding`. Round 269 added `ImplementationMissing` but
@@ -349,7 +401,7 @@ pub struct SetEqualityValidatorConfig {
     /// configs and the implementation-ledger default are unchanged.
     /// Recognized values: `"reject"` / `"warn"` / `"info"`.
     #[serde(default)]
-    pub severity_coverage: Option<String>,
+    pub severity_coverage: Option<Severity>,
 
     /// Severity for the verification-axis violation (`VerificationMissing`,
     /// R413): a `Normative` + `Dedicated` section with zero `verifies`
@@ -362,7 +414,7 @@ pub struct SetEqualityValidatorConfig {
     /// bindings pays no cost and sees no noise. Set to `"reject"` / `"warn"` /
     /// `"info"` to enable the gate at that strictness.
     #[serde(default)]
-    pub severity_verification: Option<String>,
+    pub severity_verification: Option<Severity>,
 
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
@@ -397,7 +449,7 @@ pub struct SetEqualityValidatorConfig {
     /// `"warn"` / `"info"`. Mirrors `severity_missing` / `severity_binding`
     /// — the cite-time gate's strictness is a per-project knob.
     #[serde(default = "default_severity_reject")]
-    pub severity_inventory: String,
+    pub severity_inventory: Severity,
 
     /// Round 277 — External-standard section-citation prefixes (Phase 1A P1).
     ///
@@ -501,12 +553,12 @@ pub struct SetEqualityValidatorConfig {
     pub section_namespace: Option<String>,
 }
 
-fn default_severity_reject() -> String {
-    "reject".to_string()
+fn default_severity_reject() -> Severity {
+    Severity::Reject
 }
 
-fn default_severity_warn() -> String {
-    "warn".to_string()
+fn default_severity_warn() -> Severity {
+    Severity::Warn
 }
 
 fn default_comment_only() -> bool {
@@ -745,7 +797,7 @@ pub struct SpecDriftSection {
     /// load. The `validate-spec-drift --severity` flag overrides it per
     /// run.
     #[serde(default = "default_severity_warn")]
-    pub severity: String,
+    pub severity: Severity,
 }
 
 impl Default for SpecDriftSection {
@@ -774,7 +826,7 @@ pub struct CommitLedgerSection {
     /// `reject` | `warn` | `info`. Default `reject`. Validated at config
     /// load.
     #[serde(default = "default_severity_reject")]
-    pub severity: String,
+    pub severity: Severity,
 }
 
 impl Default for CommitLedgerSection {
@@ -799,7 +851,7 @@ impl Default for CommitLedgerSection {
 pub struct ContentDriftSection {
     /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
     #[serde(default = "default_severity_reject")]
-    pub severity: String,
+    pub severity: Severity,
 }
 
 impl Default for ContentDriftSection {
@@ -871,30 +923,10 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             );
         }
     }
-    if let Some(sd) = &cfg.spec_drift {
-        if !matches!(sd.severity.as_str(), "reject" | "warn" | "info") {
-            bail!(
-                "mnemosyne.toml: `spec_drift.severity = {:?}` must be one of: reject | warn | info",
-                sd.severity
-            );
-        }
-    }
-    if let Some(cl) = &cfg.commit_ledger {
-        if !matches!(cl.severity.as_str(), "reject" | "warn" | "info") {
-            bail!(
-                "mnemosyne.toml: `commit_ledger.severity = {:?}` must be one of: reject | warn | info",
-                cl.severity
-            );
-        }
-    }
-    if let Some(cd) = &cfg.content_drift {
-        if !matches!(cd.severity.as_str(), "reject" | "warn" | "info") {
-            bail!(
-                "mnemosyne.toml: `content_drift.severity = {:?}` must be one of: reject | warn | info",
-                cd.severity
-            );
-        }
-    }
+    // The `spec_drift` / `commit_ledger` / `content_drift` severities are now
+    // the `Severity` enum: serde rejects any value outside `reject|warn|info`
+    // at deserialization (the single validation point), so the former manual
+    // `matches!` checks here are gone.
     if let Some(sev) = cfg
         .plugins
         .as_ref()
@@ -1178,7 +1210,7 @@ docs = ["docs/spec.md"]
 [spec_drift]
 "#;
         let cfg = parse_config(content).unwrap();
-        assert_eq!(cfg.spec_drift.unwrap().severity, "warn");
+        assert_eq!(cfg.spec_drift.unwrap().severity.as_str(), "warn");
     }
 
     #[test]
@@ -1191,10 +1223,10 @@ docs = ["docs/spec.md"]
 severity = "block"
 "#;
         let err = parse_config(content).unwrap_err();
+        let chain = format!("{err:#}");
         assert!(
-            err.to_string().contains("spec_drift.severity"),
-            "expected spec_drift severity error, got: {}",
-            err
+            chain.contains("unknown variant") && chain.contains("block"),
+            "serde must reject the invalid severity value, got: {chain}"
         );
     }
 
@@ -1216,7 +1248,7 @@ docs = ["docs/spec.md"]
 [commit_ledger]
 "#;
         let cfg = parse_config(bare).unwrap();
-        assert_eq!(cfg.commit_ledger.unwrap().severity, "reject");
+        assert_eq!(cfg.commit_ledger.unwrap().severity.as_str(), "reject");
     }
 
     #[test]
@@ -1230,7 +1262,7 @@ docs = ["docs/spec.md"]
 severity = "warn"
 "#;
         let cfg = parse_config(content).unwrap();
-        assert_eq!(cfg.commit_ledger.unwrap().severity, "warn");
+        assert_eq!(cfg.commit_ledger.unwrap().severity.as_str(), "warn");
     }
 
     #[test]
@@ -1243,10 +1275,10 @@ docs = ["docs/spec.md"]
 severity = "block"
 "#;
         let err = parse_config(content).unwrap_err();
+        let chain = format!("{err:#}");
         assert!(
-            err.to_string().contains("commit_ledger.severity"),
-            "expected commit_ledger severity error, got: {}",
-            err
+            chain.contains("unknown variant") && chain.contains("block"),
+            "serde must reject the invalid severity value, got: {chain}"
         );
     }
 
@@ -1267,7 +1299,7 @@ docs = ["docs/spec.md"]
 [content_drift]
 "#;
         let cfg = parse_config(bare).unwrap();
-        assert_eq!(cfg.content_drift.unwrap().severity, "reject");
+        assert_eq!(cfg.content_drift.unwrap().severity.as_str(), "reject");
     }
 
     #[test]
@@ -1280,10 +1312,10 @@ docs = ["docs/spec.md"]
 severity = "block"
 "#;
         let err = parse_config(content).unwrap_err();
+        let chain = format!("{err:#}");
         assert!(
-            err.to_string().contains("content_drift.severity"),
-            "expected content_drift severity error, got: {}",
-            err
+            chain.contains("unknown variant") && chain.contains("block"),
+            "serde must reject the invalid severity value, got: {chain}"
         );
     }
 

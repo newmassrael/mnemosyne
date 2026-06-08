@@ -6991,6 +6991,42 @@
         "session-review finding: the exhaustive-match guarantee was applied inconsistently — counts_as_coverage and is_citation_edge enforced it, but the sort wildcard silently lost it (compiled with a missing arm, panicked at runtime on the R413 multi-gap case). A wildcard cross-variant tiebreaker defeats the compile-time variant check; avoid it",
         "no further verify-axis work queued Mnemosyne-side; v2 verifies-link freshness + report-coverage surface remain deferred"
       ]
+    },
+    "Round 415 — Severity enum: replace stringly-typed reject|warn|info across all gate knobs": {
+      "decision_summary": "Replace the stringly-typed severity model (String + scattered matches!(reject|warn|info)) with a parsed Severity {Reject, Warn, Info} enum in mnemosyne-config. Validation now happens once: serde at config load, and Severity::from_tag at the CLI --severity-* boundary. All 8 reject-class knobs convert (5 set-equality severities + the spec_drift/commit_ledger/content_drift gates). The TOML format is unchanged (still the reject/warn/info strings) — a pure internal-type refactor with no migration. Severity lives in config, not core, because it is config policy, never stored.",
+      "changes_bullets": [
+        "new Severity {Reject, Warn, Info} enum in mnemosyne-config (as_str/from_tag/is_reject, default Reject, serde lowercase); the 8 reject-class config knobs (5 set-equality + spec_drift/commit_ledger/content_drift) + the 2 default fns are typed to it",
+        "CLI resolves each --severity-* through one Severity::from_tag (the single validation point) and decides reject via .is_reject() / == Some(Severity::Reject); the scattered matches!(\"reject\"|\"warn\"|\"info\") checks are gone",
+        "removed the 3 redundant config-load severity validations (serde rejects invalid values at deserialization) and reworked the 3 invalid-severity tests to assert serde's unknown-variant rejection"
+      ],
+      "verification_bullets": [
+        "full workspace test + all-targets clippy + fmt green; dogfood validate-code-refs output and reject behavior preserved end-to-end",
+        "TOML severity strings are unchanged (still reject/warn/info) so the dogfood and SCE configs deserialize identically — a pure internal-type refactor, no migration"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "session-review debt closure: this was the inherited stringly-typed severity debt flagged after R414. Severity lives in mnemosyne-config (not core) because it is a config-policy concept, never stored in the atomic store, unlike BindingKind/CoverageExpectation. The style-tier StyleSeverity (warn|info, no reject) is a distinct vocabulary, intentionally left alone",
+        "NOT unified: severity_coverage (None=inherit binding) vs severity_verification (None=off) keep divergent Option<Severity> None semantics — a genuine domain difference (universal axiom vs opt-in axis), documented on the field, not a smell to collapse"
+      ],
+      "publishable_decision_summary": "Replace the stringly-typed severity model (String + scattered matches!(reject|warn|info)) with a parsed Severity {Reject, Warn, Info} enum in mnemosyne-config. Validation now happens once: serde at config load, and Severity::from_tag at the CLI --severity-* boundary. All 8 reject-class knobs convert (5 set-equality severities + the spec_drift/commit_ledger/content_drift gates). The TOML format is unchanged (still the reject/warn/info strings) — a pure internal-type refactor with no migration. Severity lives in config, not core, because it is config policy, never stored.",
+      "publishable_changes_bullets": [
+        "new Severity {Reject, Warn, Info} enum in mnemosyne-config (as_str/from_tag/is_reject, default Reject, serde lowercase); the 8 reject-class config knobs (5 set-equality + spec_drift/commit_ledger/content_drift) + the 2 default fns are typed to it",
+        "CLI resolves each --severity-* through one Severity::from_tag (the single validation point) and decides reject via .is_reject() / == Some(Severity::Reject); the scattered matches!(\"reject\"|\"warn\"|\"info\") checks are gone",
+        "removed the 3 redundant config-load severity validations (serde rejects invalid values at deserialization) and reworked the 3 invalid-severity tests to assert serde's unknown-variant rejection"
+      ],
+      "publishable_verification_bullets": [
+        "full workspace test + all-targets clippy + fmt green; dogfood validate-code-refs output and reject behavior preserved end-to-end",
+        "TOML severity strings are unchanged (still reject/warn/info) so the dogfood and SCE configs deserialize identically — a pure internal-type refactor, no migration"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "session-review debt closure: this was the inherited stringly-typed severity debt flagged after R414. Severity lives in mnemosyne-config (not core) because it is a config-policy concept, never stored in the atomic store, unlike BindingKind/CoverageExpectation. The style-tier StyleSeverity (warn|info, no reject) is a distinct vocabulary, intentionally left alone",
+        "NOT unified: severity_coverage (None=inherit binding) vs severity_verification (None=off) keep divergent Option<Severity> None semantics — a genuine domain difference (universal axiom vs opt-in axis), documented on the field, not a smell to collapse"
+      ]
     }
   },
   "inventory_entries": {},
