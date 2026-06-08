@@ -211,6 +211,33 @@ fn classify_section_coverage(section: &mnemosyne_core::SectionView) -> CoverageC
     }
 }
 
+/// Single source of truth for the verify-axis gap (R413), mirroring
+/// [`classify_section_coverage`]. A section is a verification gap iff it is
+/// `Normative` (the implements axis applies), `Dedicated` (it expects dedicated
+/// test/report evidence), non-`Removed`, and has zero `verifies` bindings.
+/// `ByConstruction` / `Informative` / `Removed` are exempt. The opt-in gate
+/// (`VerificationMissing`) and any future positive projection both bottom out
+/// here so they cannot drift — the same single-source discipline the coverage
+/// axis uses. The kind predicate is the exhaustive [`counts_as_coverage`]'s
+/// sibling: `Verifies` is the only kind that satisfies it.
+fn is_verification_gap(section: &mnemosyne_core::SectionView) -> bool {
+    let removed =
+        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
+    !removed
+        && matches!(
+            section.coverage_expectation,
+            mnemosyne_core::CoverageExpectation::Normative
+        )
+        && matches!(
+            section.verification_expectation,
+            mnemosyne_core::VerificationExpectation::Dedicated
+        )
+        && !section
+            .bindings
+            .iter()
+            .any(|b| matches!(b.kind, mnemosyne_core::BindingKind::Verifies))
+}
+
 /// The positive coverage projection (Round 390): the 3-way breakdown of every
 /// section into implemented / normative-gap / informative-exempt, plus the
 /// `Removed` tombstones excluded from the denominator. Read-only — derived
@@ -1813,20 +1840,7 @@ impl SetEqualityValidator {
         // enforces it.
         if filter_id.is_none() && self.config.severity_verification.is_some() {
             for (section_id, section) in &snapshot.sections {
-                let removed = matches!(section.decision_status, Some(DecisionStatus::Removed));
-                let normative = matches!(
-                    section.coverage_expectation,
-                    mnemosyne_core::CoverageExpectation::Normative
-                );
-                let dedicated = matches!(
-                    section.verification_expectation,
-                    mnemosyne_core::VerificationExpectation::Dedicated
-                );
-                let has_verifies = section
-                    .bindings
-                    .iter()
-                    .any(|b| matches!(b.kind, mnemosyne_core::BindingKind::Verifies));
-                if !removed && normative && dedicated && !has_verifies {
+                if is_verification_gap(section) {
                     violations.push(CodeRefViolation::VerificationMissing {
                         section_id: section_id.clone(),
                         decision_status: section.decision_status,
@@ -2167,57 +2181,81 @@ pub fn scan_inventory_decay(
     Ok(hits)
 }
 
-/// Deterministic ordering — Citation variants sort by (file, line, entry_id);
-/// BindingUnbacked variants sort by (file, section_id, symbol);
-/// ImplementationMissing variants sort by section_id. The variant order is
-/// Citation < BindingUnbacked < ImplementationMissing so existing
-/// reports keep their relative diff stability when the third edge surfaces.
+/// Total-order key for the deterministic violation sort. `rank` (the variant
+/// declaration order) is the primary axis — Citation < BindingUnbacked <
+/// ImplementationMissing < VerificationMissing — so reports keep relative diff
+/// stability as edges surface. The remaining fields carry each variant's
+/// secondary ordering and are *rank-gated*: cross-rank pairs are separated by
+/// `rank` and never compare them, so a field slot legitimately means different
+/// things per variant (e.g. `primary` = file for Citation/BindingUnbacked, but
+/// section_id for the two Missing variants).
+///
+/// Derived `Ord` compares fields in declaration order. The key is produced by
+/// the single exhaustive [`CodeRefViolation::sort_key`] match, so adding a
+/// `CodeRefViolation` variant is a compile error there — restoring the
+/// exhaustiveness guarantee the previous `match (a, b) { _ => unreachable!() }`
+/// tiebreaker silently lost (it compiled with a missing same-rank arm and
+/// panicked at runtime when two of the new variant were compared).
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct ViolationSortKey {
+    rank: u8,
+    /// file (Citation / BindingUnbacked) | section_id (the Missing variants).
+    primary: String,
+    /// line (Citation) | 0 otherwise.
+    line: usize,
+    /// entry_id (Citation) | section_id (BindingUnbacked) | "" otherwise.
+    secondary: String,
+    /// symbol (BindingUnbacked) | "" otherwise.
+    tertiary: String,
+}
+
+impl CodeRefViolation {
+    /// Compute the [`ViolationSortKey`]. ONE exhaustive match — the
+    /// compiler-enforced extension point for variant ordering.
+    fn sort_key(&self) -> ViolationSortKey {
+        match self {
+            CodeRefViolation::Citation { citation, .. } => ViolationSortKey {
+                rank: 0,
+                primary: citation.file.to_string_lossy().into_owned(),
+                line: citation.line,
+                secondary: citation.entry_id.clone(),
+                tertiary: String::new(),
+            },
+            CodeRefViolation::BindingUnbacked {
+                section_id,
+                file,
+                symbol,
+            } => ViolationSortKey {
+                rank: 1,
+                primary: file.to_string_lossy().into_owned(),
+                line: 0,
+                secondary: section_id.clone(),
+                // Symbols are validated non-empty, so "" uniquely encodes
+                // `None` and preserves the `Option` ordering (None < Some).
+                tertiary: symbol.clone().unwrap_or_default(),
+            },
+            CodeRefViolation::ImplementationMissing { section_id, .. } => ViolationSortKey {
+                rank: 2,
+                primary: section_id.clone(),
+                line: 0,
+                secondary: String::new(),
+                tertiary: String::new(),
+            },
+            CodeRefViolation::VerificationMissing { section_id, .. } => ViolationSortKey {
+                rank: 3,
+                primary: section_id.clone(),
+                line: 0,
+                secondary: String::new(),
+                tertiary: String::new(),
+            },
+        }
+    }
+}
+
+/// Deterministic ordering — see [`ViolationSortKey`]. `sort_by_cached_key`
+/// computes each key once (the keys allocate), then sorts.
 fn sort_violations(violations: &mut [CodeRefViolation]) {
-    violations.sort_by(|a, b| {
-        use std::cmp::Ordering;
-        use CodeRefViolation::*;
-        fn rank(v: &CodeRefViolation) -> u8 {
-            match v {
-                Citation { .. } => 0,
-                BindingUnbacked { .. } => 1,
-                ImplementationMissing { .. } => 2,
-                VerificationMissing { .. } => 3,
-            }
-        }
-        let r = rank(a).cmp(&rank(b));
-        if r != Ordering::Equal {
-            return r;
-        }
-        match (a, b) {
-            (Citation { citation: c1, .. }, Citation { citation: c2, .. }) => c1
-                .file
-                .cmp(&c2.file)
-                .then(c1.line.cmp(&c2.line))
-                .then(c1.entry_id.cmp(&c2.entry_id)),
-            (
-                BindingUnbacked {
-                    file: f1,
-                    section_id: s1,
-                    symbol: y1,
-                },
-                BindingUnbacked {
-                    file: f2,
-                    section_id: s2,
-                    symbol: y2,
-                },
-            ) => f1.cmp(f2).then(s1.cmp(s2)).then(y1.cmp(y2)),
-            (
-                ImplementationMissing { section_id: s1, .. },
-                ImplementationMissing { section_id: s2, .. },
-            ) => s1.cmp(s2),
-            (
-                VerificationMissing { section_id: s1, .. },
-                VerificationMissing { section_id: s2, .. },
-            ) => s1.cmp(s2),
-            // rank() already separated cross-variant pairs above.
-            _ => unreachable!("cross-variant ordering handled by rank()"),
-        }
-    });
+    violations.sort_by_cached_key(|v| v.sort_key());
 }
 
 #[cfg(test)]

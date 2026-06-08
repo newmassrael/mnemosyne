@@ -6955,6 +6955,42 @@
         "caught a sort-tiebreaker panic (missing VerificationMissing pair arm) only via the live multi-gap run, not the single-gap unit test; test strengthened to two gaps",
         "SCE supplies per-section classification (manifest.xml IRP projection + Dedicated/ByConstruction) and registers verifies bindings; verifies link freshness + report-coverage surface deferred to v2"
       ]
+    },
+    "Round 414 — cleanup: exhaustive sort_key + single-source is_verification_gap + CLI smoke": {
+      "decision_summary": "Session-review cleanup of two R413 structural smells. (1) Remove the sort_violations (a,b) wildcard tiebreaker that defeated the exhaustive-match discipline — it compiled with a missing same-rank arm and panicked at runtime (the R413 verify-axis bug, caught only by live e2e); replace with a single exhaustive sort_key match so a new variant is a compile error. (2) Extract is_verification_gap as the single-source predicate mirroring classify_section_coverage, so the verify gate and any future positive projection cannot drift. Add a CLI smoke test locking the opt-in/gate/exempt wiring.",
+      "changes_bullets": [
+        "sort_violations: the (a,b) wildcard tiebreaker became an exhaustive ViolationSortKey computed in one match, sorted via sort_by_cached_key; a new variant is now a compile error here, not a runtime panic",
+        "is_verification_gap extracted as the single-source predicate (mirrors classify_section_coverage); scan Step 5 calls it instead of inlining the gap definition",
+        "new verification_axis_smoke.rs CLI regression: axis off by default, --severity-verification reject gates the Dedicated gap, by_construction exempts it"
+      ],
+      "verification_bullets": [
+        "full workspace test + all-targets clippy + fmt green; sort and gate behavior preserved across 157 validate tests",
+        "new CLI smoke locks the opt-in/gate/exempt wiring that was previously only manually e2e-checked"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "session-review finding: the exhaustive-match guarantee was applied inconsistently — counts_as_coverage and is_citation_edge enforced it, but the sort wildcard silently lost it (compiled with a missing arm, panicked at runtime on the R413 multi-gap case). A wildcard cross-variant tiebreaker defeats the compile-time variant check; avoid it",
+        "no further verify-axis work queued Mnemosyne-side; v2 verifies-link freshness + report-coverage surface remain deferred"
+      ],
+      "publishable_decision_summary": "Session-review cleanup of two R413 structural smells. (1) Remove the sort_violations (a,b) wildcard tiebreaker that defeated the exhaustive-match discipline — it compiled with a missing same-rank arm and panicked at runtime (the R413 verify-axis bug, caught only by live e2e); replace with a single exhaustive sort_key match so a new variant is a compile error. (2) Extract is_verification_gap as the single-source predicate mirroring classify_section_coverage, so the verify gate and any future positive projection cannot drift. Add a CLI smoke test locking the opt-in/gate/exempt wiring.",
+      "publishable_changes_bullets": [
+        "sort_violations: the (a,b) wildcard tiebreaker became an exhaustive ViolationSortKey computed in one match, sorted via sort_by_cached_key; a new variant is now a compile error here, not a runtime panic",
+        "is_verification_gap extracted as the single-source predicate (mirrors classify_section_coverage); scan Step 5 calls it instead of inlining the gap definition",
+        "new verification_axis_smoke.rs CLI regression: axis off by default, --severity-verification reject gates the Dedicated gap, by_construction exempts it"
+      ],
+      "publishable_verification_bullets": [
+        "full workspace test + all-targets clippy + fmt green; sort and gate behavior preserved across 157 validate tests",
+        "new CLI smoke locks the opt-in/gate/exempt wiring that was previously only manually e2e-checked"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "session-review finding: the exhaustive-match guarantee was applied inconsistently — counts_as_coverage and is_citation_edge enforced it, but the sort wildcard silently lost it (compiled with a missing arm, panicked at runtime on the R413 multi-gap case). A wildcard cross-variant tiebreaker defeats the compile-time variant check; avoid it",
+        "no further verify-axis work queued Mnemosyne-side; v2 verifies-link freshness + report-coverage surface remain deferred"
+      ]
     }
   },
   "inventory_entries": {},
