@@ -122,14 +122,32 @@ pub enum CodeRefViolation {
 }
 
 /// Whether a binding `kind` satisfies the coverage axiom (`ImplementationMissing`).
-/// Only «satisfy» counts; «trace» does not. Written as an exhaustive `match`
-/// (not `== Implements`) so adding a `BindingKind` variant (e.g. `verifies`,
+/// Only «satisfy» counts; «trace» and «verify» do not. Written as an exhaustive
+/// `match` (not `== Implements`) so adding a `BindingKind` variant (e.g.
 /// `refines`) is a compile error here until its coverage semantics is decided
 /// — the "free single-step" extension claim's one non-obvious touch-point.
 fn counts_as_coverage(kind: mnemosyne_core::BindingKind) -> bool {
     match kind {
         mnemosyne_core::BindingKind::Implements => true,
         mnemosyne_core::BindingKind::References => false,
+        mnemosyne_core::BindingKind::Verifies => false,
+    }
+}
+
+/// Whether a binding `kind` asserts a *code↔spec citation* edge — i.e. its
+/// `file` is expected to carry a `§<id>` citation and so participates in the
+/// bidirectional citation set-equality (`citation_unbound` / `binding_unbacked`
+/// / `symbol_mismatch`). `Implements` and `References` do; `Verifies` does NOT
+/// — a verifies binding points at a test/evidence artifact whose link to the
+/// section is sourced externally (e.g. a conformance manifest), not from a
+/// `§<id>` citation in the file, so requiring it to be witnessed by a citation
+/// would be a spurious `binding_unbacked`. Exhaustive (not `!= Verifies`) so a
+/// new kind forces this decision too.
+fn is_citation_edge(kind: mnemosyne_core::BindingKind) -> bool {
+    match kind {
+        mnemosyne_core::BindingKind::Implements => true,
+        mnemosyne_core::BindingKind::References => true,
+        mnemosyne_core::BindingKind::Verifies => false,
     }
 }
 
@@ -1450,14 +1468,20 @@ impl SetEqualityValidator {
         let section_id_set = &snapshot.section_ids_with_implied_parents;
 
         // Pre-index §X.bindings files by section_id for O(log n) per-cite
-        // membership check + step 3 universe enumeration. Presence is
-        // kind-agnostic: a binding of ANY kind (implements OR references)
-        // defends a citation against `citation_unbound`.
+        // membership check + step 3 universe enumeration. Restricted to
+        // citation-edge kinds (implements OR references): a verifies binding
+        // points at an externally-mapped test artifact, not a §<id>-citing
+        // file, so it neither defends a citation nor enters the set-equality.
         let impl_files_by_section: BTreeMap<&str, BTreeSet<&str>> = snapshot
             .sections
             .iter()
             .map(|(sid, sec)| {
-                let files: BTreeSet<&str> = sec.bindings.iter().map(|b| b.file.as_str()).collect();
+                let files: BTreeSet<&str> = sec
+                    .bindings
+                    .iter()
+                    .filter(|b| is_citation_edge(b.kind))
+                    .map(|b| b.file.as_str())
+                    .collect();
                 (sid.as_str(), files)
             })
             .collect();
@@ -1476,6 +1500,9 @@ impl SetEqualityValidator {
             .map(|(sid, sec)| {
                 let mut m: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
                 for b in &sec.bindings {
+                    if !is_citation_edge(b.kind) {
+                        continue;
+                    }
                     if let Some(s) = b.symbol.as_deref() {
                         m.entry(b.file.as_str()).or_default().insert(s);
                     }
@@ -1679,9 +1706,14 @@ impl SetEqualityValidator {
         // Skip under decay-filter mode.
         if filter_id.is_none() {
             for (section_id, section) in &snapshot.sections {
-                // Any-kind binding (implements OR references) asserts a
-                // code↔spec edge and so must be witnessed by a citation.
+                // A citation-edge binding (implements OR references) asserts a
+                // code↔spec edge and so must be witnessed by a citation. A
+                // verifies binding is externally mapped (test → section), not a
+                // §<id> citation, so it is excluded from this half.
                 for impl_entry in &section.bindings {
+                    if !is_citation_edge(impl_entry.kind) {
+                        continue;
+                    }
                     let suppressed =
                         ledger_index.contains(&(impl_entry.file.as_str(), section_id.as_str()));
                     if suppressed {
@@ -2596,6 +2628,61 @@ mod tests {
         assert!(
             !impl_missing_ids.contains(&"info"),
             "Informative section is exempt from the coverage axiom: {:?}",
+            v
+        );
+    }
+
+    #[test]
+    fn verifies_binding_excluded_from_set_equality_and_coverage() {
+        // A `verifies` binding points at a test artifact whose link to the
+        // section is externally mapped (e.g. a conformance manifest), not a
+        // §<id> citation. So the test file is NOT required to cite the section
+        // (no binding_unbacked), and verifies does not satisfy the implements
+        // coverage axiom (impl_missing still fires when it is the only binding).
+        let tmp = TempDir::new().unwrap();
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        store
+            .sections
+            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+        add_section_binding(
+            &mut store,
+            &store_path,
+            "39",
+            "tests/conformance/test144.rs",
+            Some("fn test144"),
+            BindingKind::Verifies,
+        )
+        .unwrap();
+        // src/ is the only scanned code path; the verifies test artifact lives
+        // outside it and never cites the section — the externally-mapped link.
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/foo.rs"), "fn main() {}\n").unwrap();
+        let v = scan_paths_no_resolvers(
+            tmp.path(),
+            &["src/".to_string()],
+            "Round ",
+            &store,
+            &[],
+            None,
+            true,
+            &[],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(
+            !v.iter().any(|x| x.kind_tag() == "binding_unbacked"),
+            "verifies binding's test file must not require a §-citation: {:?}",
+            v
+        );
+        assert!(
+            v.iter().any(|x| matches!(
+                x,
+                CodeRefViolation::ImplementationMissing { section_id, .. } if section_id == "39"
+            )),
+            "verifies-only section still trips impl_missing (verifies != coverage): {:?}",
             v
         );
     }

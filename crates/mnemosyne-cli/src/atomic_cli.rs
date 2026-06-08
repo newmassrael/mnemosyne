@@ -1045,7 +1045,7 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
 fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
     BindingKind::from_tag(raw.trim()).ok_or_else(|| {
         anyhow!(
-            "--kind must be `implements` or `references` (got `{}`)",
+            "--kind must be `implements`, `references`, or `verifies` (got `{}`)",
             raw
         )
     })

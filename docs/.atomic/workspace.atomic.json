@@ -6877,6 +6877,44 @@
         "Token win is scale-conditional (Gate 4b): marginal vs grep on the 4-section dogfood; the O(n) report-spec-map round-trip elimination materializes only at consumer scale (no consumer wired yet)",
         "Derived from the Graphify comparison (auto-discovery vs verified-binding graphs); insight 1 cold-start discovery and insight 3 coverage moat deferred to the SCE PoC gate; insight 2 staging state refuted since the propose-implementations emit channel already suffices"
       ]
+    },
+    "Round 412 — activate BindingKind::verifies (SysML «verify»), outside the citation set-equality": {
+      "decision_summary": "Activate the reserved Verifies binding kind. A verifies binding records a test/evidence artifact for a section; it counts as neither implements-coverage nor a code↔spec citation edge, so it is excluded from the bidirectional citation set-equality — a verifies test file is externally mapped (e.g. a conformance manifest) and is not required to cite the section. Unblocks SCE registering verification bindings ahead of the VerificationMissing coverage gate.",
+      "changes_bullets": [
+        "core BindingKind gains the Verifies variant (SysML «verify»); as_str/from_tag + serde lowercase tag cover it",
+        "code_refs: counts_as_coverage(Verifies)=false, plus a new is_citation_edge predicate that excludes verifies from the citation set-equality (citation_unbound / binding_unbacked / symbol_mismatch)",
+        "CLI and MCP add-section-binding + set-section-binding-kind now accept --kind verifies"
+      ],
+      "verification_bullets": [
+        "new test verifies_binding_excluded_from_set_equality_and_coverage: a verifies test artifact triggers neither binding_unbacked nor implements-coverage (impl_missing still fires)",
+        "binding_kind_write_path_parity extended to all three variants; workspace build + all-targets clippy + fmt all green",
+        "non-mutating CLI smoke confirms --kind verifies is accepted (fails only on the missing section, not on kind)"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "SCE-confirmed shape: the VerificationMissing gate (next round) fires when a section is Normative and verification_expectation Dedicated and has zero verifies bindings; gate is at-least-one, not exactly-one",
+        "verifies is externally mapped (test → section via a conformance manifest), so it is deliberately outside the code-citation set-equality; SCE registers W3C IRP + AOT-vs-Interpreter equivalence verifies bindings in parallel now"
+      ],
+      "publishable_decision_summary": "Activate the reserved Verifies binding kind. A verifies binding records a test/evidence artifact for a section; it counts as neither implements-coverage nor a code↔spec citation edge, so it is excluded from the bidirectional citation set-equality — a verifies test file is externally mapped (e.g. a conformance manifest) and is not required to cite the section. Unblocks SCE registering verification bindings ahead of the VerificationMissing coverage gate.",
+      "publishable_changes_bullets": [
+        "core BindingKind gains the Verifies variant (SysML «verify»); as_str/from_tag + serde lowercase tag cover it",
+        "code_refs: counts_as_coverage(Verifies)=false, plus a new is_citation_edge predicate that excludes verifies from the citation set-equality (citation_unbound / binding_unbacked / symbol_mismatch)",
+        "CLI and MCP add-section-binding + set-section-binding-kind now accept --kind verifies"
+      ],
+      "publishable_verification_bullets": [
+        "new test verifies_binding_excluded_from_set_equality_and_coverage: a verifies test artifact triggers neither binding_unbacked nor implements-coverage (impl_missing still fires)",
+        "binding_kind_write_path_parity extended to all three variants; workspace build + all-targets clippy + fmt all green",
+        "non-mutating CLI smoke confirms --kind verifies is accepted (fails only on the missing section, not on kind)"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "SCE-confirmed shape: the VerificationMissing gate (next round) fires when a section is Normative and verification_expectation Dedicated and has zero verifies bindings; gate is at-least-one, not exactly-one",
+        "verifies is externally mapped (test → section via a conformance manifest), so it is deliberately outside the code-citation set-equality; SCE registers W3C IRP + AOT-vs-Interpreter equivalence verifies bindings in parallel now"
+      ]
     }
   },
   "inventory_entries": {},

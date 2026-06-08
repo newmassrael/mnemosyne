@@ -4102,17 +4102,22 @@ mod tests {
     /// diverges between the two paths).
     #[test]
     fn binding_kind_write_path_parity() {
-        for kind in [BindingKind::Implements, BindingKind::References] {
+        for kind in [
+            BindingKind::Implements,
+            BindingKind::References,
+            BindingKind::Verifies,
+        ] {
             let tmp = TempDir::new().unwrap();
             let path = tmp.path().join(".atomic/workspace.atomic.json");
             // Path A: add with this kind.
             let mut store_a = AtomicStore::new();
             seed_section(&mut store_a, "X");
             let add = add_section_binding(&mut store_a, &path, "X", "src/f.rs", None, kind);
-            // Path B: add with the other kind, then set to this kind.
+            // Path B: add with some other kind, then set to this kind.
             let other = match kind {
                 BindingKind::Implements => BindingKind::References,
-                BindingKind::References => BindingKind::Implements,
+                BindingKind::References => BindingKind::Verifies,
+                BindingKind::Verifies => BindingKind::Implements,
             };
             let path_b = tmp.path().join(".atomic/b.atomic.json");
             let mut store_b = AtomicStore::new();

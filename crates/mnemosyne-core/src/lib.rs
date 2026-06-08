@@ -160,15 +160,21 @@ pub struct SectionView {
 /// Canonical substrate enum (lives here in L0 core, mirroring
 /// [`DecisionStatus`], so atomic / validate / plugins share one type with
 /// no adapter). `Implements` = SysML «satisfy» (fulfills the requirement;
-/// the only kind that counts as coverage); `References` = SysML «trace»
-/// (related to, no fulfillment claim). `verifies`/`refines` are named in
-/// the closed taxonomy but deferred (YAGNI; load-time migration makes a new
-/// variant a free single-step change).
+/// the only kind that counts as implements-coverage); `References` = SysML
+/// «trace» (related to, no fulfillment claim); `Verifies` = SysML «verify»
+/// (a test/evidence artifact establishes the requirement). `Verifies` counts
+/// as neither implements-coverage NOR a code↔spec citation edge: its `file`
+/// is a test/report artifact whose link to the section is sourced externally
+/// (e.g. a conformance manifest), not from a `§<id>` citation, so it is
+/// excluded from the bidirectional citation set-equality. `refines` remains
+/// in the closed taxonomy but deferred (load-time migration makes a new
+/// variant a single-step change).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BindingKind {
     Implements,
     References,
+    Verifies,
 }
 
 impl BindingKind {
@@ -176,6 +182,7 @@ impl BindingKind {
         match self {
             BindingKind::Implements => "implements",
             BindingKind::References => "references",
+            BindingKind::Verifies => "verifies",
         }
     }
 
@@ -187,6 +194,7 @@ impl BindingKind {
         match s {
             "implements" => Some(BindingKind::Implements),
             "references" => Some(BindingKind::References),
+            "verifies" => Some(BindingKind::Verifies),
             _ => None,
         }
     }

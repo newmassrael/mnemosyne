@@ -788,7 +788,7 @@ impl MnemosyneServer {
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
             let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
                 atomic::AtomicMutateError::Validation(format!(
-                    "kind must be `implements` or `references` (got `{}`)",
+                    "kind must be `implements`, `references`, or `verifies` (got `{}`)",
                     kind_raw
                 ))
             })?;
@@ -829,7 +829,7 @@ impl MnemosyneServer {
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
             let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
                 atomic::AtomicMutateError::Validation(format!(
-                    "kind must be `implements` or `references` (got `{}`)",
+                    "kind must be `implements`, `references`, or `verifies` (got `{}`)",
                     kind_raw
                 ))
             })?;
