@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -213,6 +213,9 @@ fn run(args: &[String]) -> Result<()> {
         // informative exempts it from the coverage axiom (Round 389).
         "set-section-coverage-expectation" => {
             atomic_cli::cmd_set_section_coverage_expectation(&workspace_anchor()?, &args[2..])
+        }
+        "set-section-verification-expectation" => {
+            atomic_cli::cmd_set_section_verification_expectation(&workspace_anchor()?, &args[2..])
         }
         // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
         // dropped; legacy markdown-surgical variant retired with the rest of
@@ -404,6 +407,10 @@ fn print_help(prog: &str) {
  prog
  );
     println!(
+ " {} set-section-verification-expectation --section §<N> --expectation dedicated|by_construction --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
  "   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"
  );
     println!(
@@ -456,6 +463,7 @@ fn print_help(prog: &str) {
         " {} validate-code-refs [--severity-missing reject|warn|info]\n\
  \x20                       [--severity-binding reject|warn|info]\n\
  \x20                       [--severity-coverage reject|warn|info]\n\
+ \x20                       [--severity-verification reject|warn|info]\n\
  \x20                       [--filter-id <entry_id>] [--json]",
         prog
     );
@@ -1704,6 +1712,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let mut severity_missing_override: Option<String> = None;
     let mut severity_binding_override: Option<String> = None;
     let mut severity_coverage_override: Option<String> = None;
+    let mut severity_verification_override: Option<String> = None;
     let mut severity_inventory_override: Option<String> = None;
     // explicit decay filter (cascade caller restricts the scan
     // to citations of one entry_id, e.g. an entry that just transitioned
@@ -1731,6 +1740,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 severity_coverage_override = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--severity-coverage missing value"))?
+                        .clone(),
+                );
+            }
+            "--severity-verification" => {
+                severity_verification_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity-verification missing value"))?
                         .clone(),
                 );
             }
@@ -1817,6 +1833,22 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             severity_coverage
         );
     }
+    // Verify axis (R413) is opt-in: `None` = disabled. A CLI override enables
+    // it for the run (and is injected into the validator config below so the
+    // scan actually emits VerificationMissing); otherwise the config value
+    // governs. `Some(_)` is validated, `None` leaves the axis off.
+    let severity_verification: Option<String> = severity_verification_override
+        .as_deref()
+        .or(cfg.severity_verification.as_deref())
+        .map(str::to_string);
+    if let Some(sv) = severity_verification.as_deref() {
+        if !matches!(sv, "reject" | "warn" | "info") {
+            bail!(
+                "invalid --severity-verification `{}` — expected one of: reject | warn | info",
+                sv
+            );
+        }
+    }
     let severity_inventory = severity_inventory_override
         .as_deref()
         .unwrap_or(&cfg.severity_inventory)
@@ -1855,8 +1887,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // still exercised end-to-end in validator_trait_dispatch.rs as
     // proof that ErasedValidator object-safe dispatch works for
     // dynamic-plugin scenarios.
+    // Inject the resolved verify-axis severity so a CLI `--severity-verification`
+    // override ENABLES the axis for this run (the scan only emits
+    // VerificationMissing when `config.severity_verification.is_some()`).
+    let mut validator_cfg = cfg.clone();
+    validator_cfg.severity_verification = severity_verification.clone();
     let validator = SetEqualityValidator {
-        config: cfg.clone(),
+        config: validator_cfg,
         entry_id_prefix: prefix.clone(),
         orphan_ledger: loaded.config.orphan_ledger.clone(),
         symbol_resolvers,
@@ -1886,6 +1923,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let binding_unbacked_count = get("binding_unbacked");
     let decay_count = get("decay");
     let impl_missing_count = get("impl_missing");
+    let verification_missing_count = get("verification_missing");
     let inventory_missing_count = get("inventory_missing");
     let inventory_deprecated_count = get("inventory_deprecated");
     let symbol_mismatch_count = get("symbol_mismatch");
@@ -1926,12 +1964,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "citation_unbound_count": citation_unbound_count,
             "binding_unbacked_count": binding_unbacked_count,
             "impl_missing_count": impl_missing_count,
+            "verification_missing_count": verification_missing_count,
             "decay_count": decay_count,
             "inventory_missing_count": inventory_missing_count,
             "inventory_deprecated_count": inventory_deprecated_count,
             "severity_missing": severity_missing,
             "severity_binding": severity_binding,
             "severity_coverage": severity_coverage,
+            "severity_verification": severity_verification,
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "violations": view,
@@ -1976,21 +2016,23 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         }
         println!(
             "violations: total={} missing={} section_missing={} \
- citation_unbound={} binding_unbacked={} impl_missing={} decay={} \
+ citation_unbound={} binding_unbacked={} impl_missing={} verification_missing={} decay={} \
  inv_missing={} inv_deprecated={} \
- (severity_missing={} severity_binding={} severity_coverage={} severity_inventory={})",
+ (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} severity_inventory={})",
             violations.len(),
             missing_count,
             section_missing_count,
             citation_unbound_count,
             binding_unbacked_count,
             impl_missing_count,
+            verification_missing_count,
             decay_count,
             inventory_missing_count,
             inventory_deprecated_count,
             severity_missing,
             severity_binding,
             severity_coverage,
+            severity_verification.as_deref().unwrap_or("off"),
             severity_inventory,
         );
         // `CodeRefViolation: Display` renders the legacy TTY shape
@@ -2022,6 +2064,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "{} coverage-class violation(s) — ImplementationMissing={} \
  (severity_coverage=reject)",
             coverage_count, impl_missing_count,
+        ));
+    }
+    if verification_missing_count > 0 && severity_verification.as_deref() == Some("reject") {
+        reject_msgs.push(format!(
+            "{} verification-class violation(s) — VerificationMissing={} \
+ (severity_verification=reject)",
+            verification_missing_count, verification_missing_count,
         ));
     }
     if inventory_count > 0 && severity_inventory == "reject" {

@@ -67,6 +67,12 @@ pub struct SectionView {
     /// surface stays unchanged for unclassified stores.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coverage_expectation: Option<String>,
+    /// Verification class (R413). `Some("by_construction")` only when the
+    /// section is exempt from the dedicated-verify gate; omitted for the
+    /// default `Dedicated` so the read surface stays unchanged for stores that
+    /// do not use the verify axis.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_expectation: Option<String>,
     /// Spec → Code trace-links (Path B `§<id>.bindings`): the ratified
     /// implementing files/symbols for this section. Surfaced on the
     /// per-section read-path so an agent navigating "work on §X" gets the
@@ -177,6 +183,10 @@ fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
         coverage_expectation: {
             let tag = atomic.coverage_expectation.as_str();
             (tag != "normative").then(|| tag.to_string())
+        },
+        verification_expectation: {
+            let tag = atomic.verification_expectation.as_str();
+            (tag != "dedicated").then(|| tag.to_string())
         },
         bindings: atomic.bindings.clone(),
     }

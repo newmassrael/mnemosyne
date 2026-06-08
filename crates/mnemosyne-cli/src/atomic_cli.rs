@@ -40,11 +40,14 @@ use mnemosyne_atomic::{
     set_section_binding_kind, set_section_coverage_expectation, set_section_decision_status,
     set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs,
     set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title,
-    AtomicMutateError, AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft,
-    ExampleBlock, RejectedAlternative,
+    set_section_verification_expectation, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
+    BindingKind, ChangelogEntryDraft, ExampleBlock, RejectedAlternative,
 };
 use mnemosyne_config::discover_config;
-use mnemosyne_core::{strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus};
+use mnemosyne_core::{
+    strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus,
+    VerificationExpectation,
+};
 use mnemosyne_ops::cascade::resolve_sidecar;
 use mnemosyne_validate::code_refs::{scan_inventory_decay, scan_section_decay};
 
@@ -1060,6 +1063,15 @@ fn parse_coverage_expectation(raw: &str) -> Result<CoverageExpectation> {
     })
 }
 
+fn parse_verification_expectation(raw: &str) -> Result<VerificationExpectation> {
+    VerificationExpectation::from_tag(raw.trim()).ok_or_else(|| {
+        anyhow!(
+            "--expectation must be `dedicated` or `by_construction` (got `{}`)",
+            raw
+        )
+    })
+}
+
 /// Append a `(file, symbol?, kind)` typed trace-link binding to
 /// `Section.bindings`. File path is workspace-relative POSIX shape; symbol
 /// is opaque (no language grammar regex); `--kind` is required and explicit
@@ -1352,6 +1364,74 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         set_section_coverage_expectation(&mut store, &sidecar_path, &section, expectation, &reason),
+        json,
+    )
+}
+
+/// R413 — classify a section's verification expectation
+/// (`dedicated` | `by_construction`).
+///
+/// `--section §<id> --expectation dedicated|by_construction --reason <text>
+///   [--sidecar <path>] [--json]`
+pub fn cmd_set_section_verification_expectation(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<()> {
+    let mut section: Option<String> = None;
+    let mut expectation: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--section" => {
+                section = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--section missing"))?
+                        .clone(),
+                )
+            }
+            "--expectation" => {
+                expectation = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--expectation missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" => {
+                reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+    let expectation = parse_verification_expectation(&expectation.ok_or_else(|| {
+        anyhow!("--expectation arg required (`dedicated` or `by_construction`)")
+    })?)?;
+    let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        set_section_verification_expectation(
+            &mut store,
+            &sidecar_path,
+            &section,
+            expectation,
+            &reason,
+        ),
         json,
     )
 }

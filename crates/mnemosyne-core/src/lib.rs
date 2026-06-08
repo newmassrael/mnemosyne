@@ -154,6 +154,7 @@ pub struct SectionView {
     pub bindings: Vec<BindingRef>,
     pub decision_status: Option<DecisionStatus>,
     pub coverage_expectation: CoverageExpectation,
+    pub verification_expectation: VerificationExpectation,
 }
 
 /// Trace-link claim strength on a Path B binding (code → spec section).
@@ -246,6 +247,51 @@ impl CoverageExpectation {
         match s {
             "normative" => Some(CoverageExpectation::Normative),
             "informative" => Some(CoverageExpectation::Informative),
+            _ => None,
+        }
+    }
+}
+
+/// What KIND of verification evidence a `Normative` section is expected to
+/// carry — the axis orthogonal to [`CoverageExpectation`]. `Dedicated` = a
+/// behavioral requirement whose evidence is a concrete test/report artifact,
+/// so a `verifies` binding is expected (a `Dedicated` section with zero
+/// `verifies` bindings is the `VerificationMissing` gap). `ByConstruction` =
+/// a requirement with no independently-assertable per-unit oracle (e.g.
+/// transcribed algorithm pseudocode exercised holistically by behavioral
+/// tests), exempt from the dedicated-verify gate. This is SEPARATE from
+/// `CoverageExpectation` because a `ByConstruction` section is still
+/// `Normative` for the implements axiom (it has implementing code) — folding
+/// the two into one field would force an `Informative` mislabel that silently
+/// drops it from implements-coverage. Consulted only when
+/// `coverage_expectation == Normative` (an `Informative` section is exempt
+/// from both axes). `Dedicated` is the default: a new normative section, and
+/// any section with at least one independently-assertable clause, expects
+/// dedicated evidence until classified otherwise. Mirrors [`BindingKind`] /
+/// [`CoverageExpectation`] (L0 core, adapter-local, no medium-neutral lift).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationExpectation {
+    #[default]
+    Dedicated,
+    ByConstruction,
+}
+
+impl VerificationExpectation {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VerificationExpectation::Dedicated => "dedicated",
+            VerificationExpectation::ByConstruction => "by_construction",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
+    /// `None` for any other string. Mirrors [`CoverageExpectation::from_tag`].
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "dedicated" => Some(VerificationExpectation::Dedicated),
+            "by_construction" => Some(VerificationExpectation::ByConstruction),
             _ => None,
         }
     }

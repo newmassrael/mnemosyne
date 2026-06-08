@@ -6915,8 +6915,48 @@
         "SCE-confirmed shape: the VerificationMissing gate (next round) fires when a section is Normative and verification_expectation Dedicated and has zero verifies bindings; gate is at-least-one, not exactly-one",
         "verifies is externally mapped (test → section via a conformance manifest), so it is deliberately outside the code-citation set-equality; SCE registers W3C IRP + AOT-vs-Interpreter equivalence verifies bindings in parallel now"
       ]
+    },
+    "Round 413 — verify axis: VerificationExpectation + opt-in VerificationMissing gate": {
+      "decision_summary": "Add the verify axis. A VerificationExpectation {Dedicated, ByConstruction} classification, orthogonal to coverage_expectation, plus the VerificationMissing gate: a Normative + Dedicated, non-Removed section with zero verifies bindings is the gap. Opt-in via [plugins.set_equality_validator].severity_verification — None disables the axis entirely, so a workspace that registers no verifies bindings (e.g. the dogfood) is unaffected. ByConstruction sections (no per-unit oracle) and Informative sections are exempt. The classification is consumer-supplied; the ledger only enforces it. SCE-confirmed shape.",
+      "changes_bullets": [
+        "core VerificationExpectation {Dedicated, ByConstruction} enum + snapshot SectionView field; atomic schema v8 to v9 field (skip-when-Dedicated) + set_section_verification_expectation primitive",
+        "validate: VerificationMissing gate fires on Normative and Dedicated and zero verifies bindings, opt-in via severity_verification (None = axis off); DefectClass::Verification; emitted in scan Step 5",
+        "CLI set-section-verification-expectation + validate-code-refs --severity-verification; MCP set_section_verification_expectation; query SectionView surfaces verification_expectation"
+      ],
+      "verification_bullets": [
+        "new gate test (axis off emits zero; on fires only Dedicated-with-zero-verifies, two gap sections exercise the sort tiebreaker) + atomic round-trip/skip-default test",
+        "full workspace test + all-targets clippy + fmt green; schema-version tests re-pinned to CURRENT_SCHEMA_VERSION constant",
+        "E2E: dogfood validate-code-refs default verification_missing=0 (axis off, pre-commit safe); --severity-verification warn surfaces the 4-section backlog without rejecting"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "by_construction is a SEPARATE field from coverage_expectation, not folded in: a by_construction section stays Normative for implements-coverage, so collapsing would force an Informative mislabel that silently drops implements-coverage (half-enforced invariant)",
+        "caught a sort-tiebreaker panic (missing VerificationMissing pair arm) only via the live multi-gap run, not the single-gap unit test; test strengthened to two gaps",
+        "SCE supplies per-section classification (manifest.xml IRP projection + Dedicated/ByConstruction) and registers verifies bindings; verifies link freshness + report-coverage surface deferred to v2"
+      ],
+      "publishable_decision_summary": "Add the verify axis. A VerificationExpectation {Dedicated, ByConstruction} classification, orthogonal to coverage_expectation, plus the VerificationMissing gate: a Normative + Dedicated, non-Removed section with zero verifies bindings is the gap. Opt-in via [plugins.set_equality_validator].severity_verification — None disables the axis entirely, so a workspace that registers no verifies bindings (e.g. the dogfood) is unaffected. ByConstruction sections (no per-unit oracle) and Informative sections are exempt. The classification is consumer-supplied; the ledger only enforces it. SCE-confirmed shape.",
+      "publishable_changes_bullets": [
+        "core VerificationExpectation {Dedicated, ByConstruction} enum + snapshot SectionView field; atomic schema v8 to v9 field (skip-when-Dedicated) + set_section_verification_expectation primitive",
+        "validate: VerificationMissing gate fires on Normative and Dedicated and zero verifies bindings, opt-in via severity_verification (None = axis off); DefectClass::Verification; emitted in scan Step 5",
+        "CLI set-section-verification-expectation + validate-code-refs --severity-verification; MCP set_section_verification_expectation; query SectionView surfaces verification_expectation"
+      ],
+      "publishable_verification_bullets": [
+        "new gate test (axis off emits zero; on fires only Dedicated-with-zero-verifies, two gap sections exercise the sort tiebreaker) + atomic round-trip/skip-default test",
+        "full workspace test + all-targets clippy + fmt green; schema-version tests re-pinned to CURRENT_SCHEMA_VERSION constant",
+        "E2E: dogfood validate-code-refs default verification_missing=0 (axis off, pre-commit safe); --severity-verification warn surfaces the 4-section backlog without rejecting"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "by_construction is a SEPARATE field from coverage_expectation, not folded in: a by_construction section stays Normative for implements-coverage, so collapsing would force an Informative mislabel that silently drops implements-coverage (half-enforced invariant)",
+        "caught a sort-tiebreaker panic (missing VerificationMissing pair arm) only via the live multi-gap run, not the single-gap unit test; test strengthened to two gaps",
+        "SCE supplies per-section classification (manifest.xml IRP projection + Dedicated/ByConstruction) and registers verifies bindings; verifies link freshness + report-coverage surface deferred to v2"
+      ]
     }
   },
   "inventory_entries": {},
-  "schema_version": 8
+  "schema_version": 9
 }

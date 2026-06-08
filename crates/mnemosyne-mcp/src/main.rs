@@ -238,6 +238,18 @@ pub struct SetSectionCoverageExpectationArgs {
     pub reason: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionVerificationExpectationArgs {
+    /// Section ID without the `§` prefix.
+    pub section_id: String,
+    /// `"dedicated"` (expects a `verifies` binding to a test/report artifact)
+    /// or `"by_construction"` (no independently-assertable per-unit oracle,
+    /// exempt from the dedicated-verify gate).
+    pub expectation: String,
+    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    pub reason: String,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -865,6 +877,35 @@ impl MnemosyneServer {
                     ))
                 })?;
             atomic::set_section_coverage_expectation(store, path, &section, expectation, &reason)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Classify a section's verification expectation (R413). `dedicated` (default) keeps the verify gate — when the verify axis is enabled, a normative + dedicated section with zero `verifies` bindings is a VerificationMissing gap. `by_construction` exempts the section (no independently-assertable per-unit oracle — e.g. transcribed algorithm pseudocode exercised holistically). Orthogonal to coverage_expectation: a by_construction section stays normative for implements-coverage. `reason` mandatory."
+    )]
+    async fn set_section_verification_expectation(
+        &self,
+        args: Parameters<SetSectionVerificationExpectationArgs>,
+    ) -> CallToolResult {
+        let section = strip_section_marker(&args.0.section_id).to_string();
+        let expectation_raw = args.0.expectation.clone();
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            let expectation = atomic::VerificationExpectation::from_tag(expectation_raw.trim())
+                .ok_or_else(|| {
+                    atomic::AtomicMutateError::Validation(format!(
+                        "expectation must be `dedicated` or `by_construction` (got `{}`)",
+                        expectation_raw
+                    ))
+                })?;
+            atomic::set_section_verification_expectation(
+                store,
+                path,
+                &section,
+                expectation,
+                &reason,
+            )
         });
         self.finish_mutate(outcome)
     }

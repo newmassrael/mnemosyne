@@ -119,6 +119,17 @@ pub enum CodeRefViolation {
         section_id: String,
         decision_status: Option<DecisionStatus>,
     },
+    /// Spec-side verification axiom (R413, opt-in) — `§section_id` is a
+    /// `Normative` + `Dedicated`, non-`Removed` section with zero `verifies`
+    /// bindings: it expects dedicated test/report evidence and names none.
+    /// Emitted only when the verify axis is enabled
+    /// (`severity_verification` configured); `ByConstruction` and
+    /// `Informative` sections are exempt. `decision_status` is preserved as the
+    /// raw `Option` for the same audit-trail reason as `ImplementationMissing`.
+    VerificationMissing {
+        section_id: String,
+        decision_status: Option<DecisionStatus>,
+    },
 }
 
 /// Whether a binding `kind` satisfies the coverage axiom (`ImplementationMissing`).
@@ -276,6 +287,7 @@ impl CodeRefViolation {
             },
             CodeRefViolation::BindingUnbacked { .. } => "binding_unbacked",
             CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
+            CodeRefViolation::VerificationMissing { .. } => "verification_missing",
         }
     }
 
@@ -302,6 +314,7 @@ impl CodeRefViolation {
             },
             CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
             CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
+            CodeRefViolation::VerificationMissing { .. } => DefectClass::Verification,
         }
     }
 
@@ -342,6 +355,17 @@ impl CodeRefViolation {
                 }
             }
             CodeRefViolation::ImplementationMissing {
+                section_id,
+                decision_status,
+            } => {
+                obj.insert("section_id".into(), Value::String(section_id.clone()));
+                let status_str = match decision_status {
+                    Some(s) => format!("{:?}", s).to_lowercase(),
+                    None => "none(default-active)".into(),
+                };
+                obj.insert("decision_status".into(), Value::String(status_str));
+            }
+            CodeRefViolation::VerificationMissing {
                 section_id,
                 decision_status,
             } => {
@@ -400,6 +424,20 @@ impl std::fmt::Display for CodeRefViolation {
                 };
                 write!(f, "[{}] §{} (status={})", kind_tag, section_id, status_str)
             }
+            CodeRefViolation::VerificationMissing {
+                section_id,
+                decision_status,
+            } => {
+                let status_str = match decision_status {
+                    Some(s) => format!("{:?}", s).to_lowercase(),
+                    None => "none(default-active)".into(),
+                };
+                write!(
+                    f,
+                    "[{}] §{} (status={}, no verifies evidence)",
+                    kind_tag, section_id, status_str
+                )
+            }
         }
     }
 }
@@ -421,6 +459,12 @@ pub enum DefectClass {
     /// Deprecated / Reserved) and a separate severity knob
     /// (`severity_inventory`) for per-project tuning.
     Inventory,
+    /// R413 — verification axis violation (`VerificationMissing`): a
+    /// Normative + Dedicated section with no `verifies` evidence. Its own
+    /// class with a separate, opt-in `severity_verification` knob, because
+    /// requirement→test traceability is a per-project commitment, not a
+    /// universal axiom.
+    Verification,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -1758,6 +1802,39 @@ impl SetEqualityValidator {
             }
         }
 
+        // ---- Step 5: spec-side verification axiom (R413, opt-in) ----
+        // OFF unless the verify axis is enabled (`severity_verification` set):
+        // requirement→test-evidence traceability is a per-project commitment,
+        // not a universal axiom, so a workspace that registers no `verifies`
+        // bindings pays no cost and sees no noise. When on, a Normative +
+        // Dedicated, non-`Removed` section with zero `verifies` bindings is the
+        // gap. `ByConstruction` (no per-unit oracle) and `Informative` sections
+        // are exempt — the classification is SCE-supplied; the gate only
+        // enforces it.
+        if filter_id.is_none() && self.config.severity_verification.is_some() {
+            for (section_id, section) in &snapshot.sections {
+                let removed = matches!(section.decision_status, Some(DecisionStatus::Removed));
+                let normative = matches!(
+                    section.coverage_expectation,
+                    mnemosyne_core::CoverageExpectation::Normative
+                );
+                let dedicated = matches!(
+                    section.verification_expectation,
+                    mnemosyne_core::VerificationExpectation::Dedicated
+                );
+                let has_verifies = section
+                    .bindings
+                    .iter()
+                    .any(|b| matches!(b.kind, mnemosyne_core::BindingKind::Verifies));
+                if !removed && normative && dedicated && !has_verifies {
+                    violations.push(CodeRefViolation::VerificationMissing {
+                        section_id: section_id.clone(),
+                        decision_status: section.decision_status,
+                    });
+                }
+            }
+        }
+
         sort_violations(&mut violations);
         Ok(violations)
     }
@@ -2104,6 +2181,7 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
                 Citation { .. } => 0,
                 BindingUnbacked { .. } => 1,
                 ImplementationMissing { .. } => 2,
+                VerificationMissing { .. } => 3,
             }
         }
         let r = rank(a).cmp(&rank(b));
@@ -2132,6 +2210,10 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
                 ImplementationMissing { section_id: s1, .. },
                 ImplementationMissing { section_id: s2, .. },
             ) => s1.cmp(s2),
+            (
+                VerificationMissing { section_id: s1, .. },
+                VerificationMissing { section_id: s2, .. },
+            ) => s1.cmp(s2),
             // rank() already separated cross-variant pairs above.
             _ => unreachable!("cross-variant ordering handled by rank()"),
         }
@@ -2142,8 +2224,10 @@ fn sort_violations(violations: &mut [CodeRefViolation]) {
 mod tests {
     use super::*;
     use mnemosyne_atomic::{
-        add_section_binding, set_section_coverage_expectation, AtomicStore, BindingKind,
+        add_section_binding, set_section_coverage_expectation,
+        set_section_verification_expectation, AtomicStore, BindingKind,
     };
+    use mnemosyne_core::VerificationExpectation;
     use tempfile::TempDir;
 
     /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
@@ -2205,6 +2289,7 @@ mod tests {
                 severity_missing: "reject".into(),
                 severity_binding: "reject".into(),
                 severity_coverage: None,
+                severity_verification: None,
                 severity_inventory: "reject".into(),
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
@@ -2440,6 +2525,7 @@ mod tests {
                 severity_missing: "reject".into(),
                 severity_binding: "reject".into(),
                 severity_coverage: None,
+                severity_verification: None,
                 severity_inventory: "reject".into(),
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -2687,6 +2773,120 @@ mod tests {
         );
     }
 
+    /// Drive the verify axis (Step 5) directly with a chosen
+    /// `severity_verification`, bypassing the always-off test helper.
+    fn scan_verify_axis(
+        workspace_root: &Path,
+        store: &AtomicStore,
+        severity_verification: Option<&str>,
+    ) -> Vec<CodeRefViolation> {
+        use mnemosyne_core::AtomicStoreView;
+        let validator = SetEqualityValidator {
+            config: SetEqualityValidatorConfig {
+                paths: vec![],
+                severity_missing: "reject".into(),
+                severity_binding: "reject".into(),
+                severity_coverage: None,
+                severity_verification: severity_verification.map(String::from),
+                severity_inventory: "reject".into(),
+                comment_only: true,
+                inventory_prefixes: vec![],
+                external_section_prefixes: vec![],
+                external_section_prefixes_bare: vec![],
+                inventory_path_prefixes: vec![],
+                section_namespace: None,
+            },
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: BTreeMap::new(),
+            filter_id: None,
+        };
+        validator.scan(workspace_root, &store.snapshot()).unwrap()
+    }
+
+    fn verification_missing_ids(v: &[CodeRefViolation]) -> Vec<&str> {
+        v.iter()
+            .filter_map(|x| match x {
+                CodeRefViolation::VerificationMissing { section_id, .. } => {
+                    Some(section_id.as_str())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn verification_axis_gate_fires_only_for_dedicated_without_verifies() {
+        let tmp = TempDir::new().unwrap();
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        // Two Normative + Dedicated, no-verifies sections → the gaps. Two of
+        // them exercise the (VerificationMissing, VerificationMissing) sort
+        // tiebreaker (a single gap would not).
+        store.sections.insert(
+            "ded-novf".into(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        store.sections.insert(
+            "ded-novf2".into(),
+            mnemosyne_atomic::AtomicSection::default(),
+        );
+        // Normative + Dedicated, WITH a verifies binding → satisfied.
+        store
+            .sections
+            .insert("ded-vf".into(), mnemosyne_atomic::AtomicSection::default());
+        add_section_binding(
+            &mut store,
+            &store_path,
+            "ded-vf",
+            "tests/t.rs",
+            None,
+            BindingKind::Verifies,
+        )
+        .unwrap();
+        // Normative + ByConstruction → exempt.
+        store
+            .sections
+            .insert("bycon".into(), mnemosyne_atomic::AtomicSection::default());
+        set_section_verification_expectation(
+            &mut store,
+            &store_path,
+            "bycon",
+            VerificationExpectation::ByConstruction,
+            "transcribed pseudocode, holistic coverage",
+        )
+        .unwrap();
+        // Informative → exempt (not Normative).
+        store
+            .sections
+            .insert("info".into(), mnemosyne_atomic::AtomicSection::default());
+        set_section_coverage_expectation(
+            &mut store,
+            &store_path,
+            "info",
+            mnemosyne_core::CoverageExpectation::Informative,
+            "glossary",
+        )
+        .unwrap();
+
+        // Axis OFF (severity_verification None): no VerificationMissing at all.
+        let off = scan_verify_axis(tmp.path(), &store, None);
+        assert!(
+            verification_missing_ids(&off).is_empty(),
+            "verify axis off must emit no VerificationMissing: {:?}",
+            off
+        );
+
+        // Axis ON: fires for exactly the Dedicated-without-verifies section.
+        let on = scan_verify_axis(tmp.path(), &store, Some("reject"));
+        assert_eq!(
+            verification_missing_ids(&on),
+            vec!["ded-novf", "ded-novf2"],
+            "verify gate must fire only for Normative+Dedicated+0-verifies (sorted): {:?}",
+            on
+        );
+    }
+
     // ============ Round 390: report-coverage positive projection ============
 
     #[test]
@@ -2709,6 +2909,7 @@ mod tests {
                 .collect(),
             decision_status: status,
             coverage_expectation: exp,
+            verification_expectation: Default::default(),
         };
         let mut snap = AtomicSnapshot::default();
         // Normative + an implements binding → implemented.
@@ -2754,6 +2955,7 @@ mod tests {
                 bindings: Vec::new(),
                 decision_status: None,
                 coverage_expectation: CoverageExpectation::Informative,
+                verification_expectation: Default::default(),
             },
         );
         let r = classify_coverage(&snap);

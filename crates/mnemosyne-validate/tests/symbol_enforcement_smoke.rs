@@ -88,6 +88,7 @@ fn build_validator(
             severity_missing: "reject".into(),
             severity_binding: "reject".into(),
             severity_coverage: None,
+            severity_verification: None,
             severity_inventory: "reject".into(),
             comment_only: true,
             inventory_prefixes: vec![],

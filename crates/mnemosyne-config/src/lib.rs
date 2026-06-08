@@ -351,6 +351,19 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub severity_coverage: Option<String>,
 
+    /// Severity for the verification-axis violation (`VerificationMissing`,
+    /// R413): a `Normative` + `Dedicated` section with zero `verifies`
+    /// bindings. UNLIKE `severity_coverage` (which inherits `severity_binding`
+    /// when unset), `None` here means the verify axis is DISABLED — no
+    /// `VerificationMissing` is emitted at all. The verify axis is opt-in: it
+    /// is a per-project commitment to requirement→test-evidence traceability
+    /// (e.g. a conformance-ledger consumer), not a universal axiom like
+    /// implements-coverage, so a workspace that does not register `verifies`
+    /// bindings pays no cost and sees no noise. Set to `"reject"` / `"warn"` /
+    /// `"info"` to enable the gate at that strictness.
+    #[serde(default)]
+    pub severity_verification: Option<String>,
+
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
     /// (`//`, `/* */`, `#`); string-literal contents and code identifiers

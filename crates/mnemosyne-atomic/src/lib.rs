@@ -146,6 +146,16 @@ pub struct AtomicSection {
     #[serde(default, skip_serializing_if = "is_normative_coverage")]
     pub coverage_expectation: mnemosyne_core::CoverageExpectation,
 
+    /// Verification class (R413) — which kind of evidence a `Normative` section
+    /// expects, orthogonal to `coverage_expectation`. Adapter-local beside
+    /// `bindings`. Skipped from JSON when `Dedicated` (the default) so an
+    /// unclassified store is byte-identical and only the `ByConstruction`
+    /// deviation is persisted. Consulted by the `VerificationMissing` gate only
+    /// when `coverage_expectation == Normative` and the verify axis is enabled
+    /// (`[plugins.set_equality_validator].severity_verification` set).
+    #[serde(default, skip_serializing_if = "is_dedicated_verification")]
+    pub verification_expectation: mnemosyne_core::VerificationExpectation,
+
     /// External-spec mirror — vendored normative quote anchored to this
     /// Section (RFC-002 FR-1). When `Some`, the Section represents a
     /// section of an external standard (W3C / IETF RFC / IEEE / AUTOSAR /
@@ -187,6 +197,13 @@ pub struct AtomicSection {
 /// stay byte-identical and only the `Informative` deviation is persisted.
 fn is_normative_coverage(c: &mnemosyne_core::CoverageExpectation) -> bool {
     matches!(c, mnemosyne_core::CoverageExpectation::Normative)
+}
+
+/// serde `skip_serializing_if` predicate for [`AtomicSection::verification_expectation`]:
+/// the default `Dedicated` is omitted from the JSON log so unclassified stores
+/// stay byte-identical and only the `ByConstruction` deviation is persisted.
+fn is_dedicated_verification(v: &mnemosyne_core::VerificationExpectation) -> bool {
+    matches!(v, mnemosyne_core::VerificationExpectation::Dedicated)
 }
 
 /// Vendored quote from an external normative source — embedded into an
@@ -304,6 +321,7 @@ pub struct ExampleBlock {
 // validator/view layer — no adapter, no duplicate enum (R309 pattern).
 pub use mnemosyne_core::BindingKind;
 pub use mnemosyne_core::CoverageExpectation;
+pub use mnemosyne_core::VerificationExpectation;
 
 /// serde default for [`Binding::kind`]: pre-v5 stores have no `kind` field;
 /// every legacy binding was an implicit implementation claim (coverage
@@ -666,7 +684,14 @@ pub enum AtomicStoreError {
 // `excerpt_hash_backfill_report` / `report-excerpt-hash-backfill` — a
 // schema-independent work-list (the gap persists across saves until the excerpt
 // is re-imported from an EPUB via `import_epub_excerpts`).
-const CURRENT_SCHEMA_VERSION: u32 = 8;
+// v8→v9 adds `AtomicSection.verification_expectation` (Dedicated | ByConstruction,
+// R413). Same declarative new-field-default pattern as v5→v6 coverage_expectation:
+// a pre-v9 store has no `verification_expectation` key, serde `#[serde(default)]`
+// fills `Dedicated` — but because the VerificationMissing gate is OFF unless
+// `severity_verification` is explicitly configured, an unclassified store gates
+// identically to before (no verify violations). So there is deliberately NO
+// `schema_version < 9` arm in `load`, and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 9;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -905,6 +930,7 @@ impl mnemosyne_core::AtomicStoreView for AtomicStore {
                         bindings,
                         decision_status: sec.skeleton.decision_status,
                         coverage_expectation: sec.coverage_expectation,
+                        verification_expectation: sec.verification_expectation,
                     },
                 )
             })
@@ -2101,6 +2127,42 @@ pub fn set_section_coverage_expectation(
     )
 }
 
+/// Classify a section's verification expectation (`Dedicated` | `ByConstruction`,
+/// R413). Mirrors [`set_section_coverage_expectation`]: `reason` mandatory
+/// (audit-trail safeguard), section must exist. Orthogonal to the coverage
+/// axis — a `ByConstruction` section stays `Normative` for implements-coverage.
+pub fn set_section_verification_expectation(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    section_id: &str,
+    expectation: mnemosyne_core::VerificationExpectation,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "set_section_verification_expectation: --reason mandatory (audit-trail safeguard)"
+                .to_string(),
+        ));
+    }
+    let section = match store.sections.get_mut(section_id) {
+        Some(s) => s,
+        None => {
+            return Err(AtomicMutateError::NotFound(format!(
+                "section_id `{}` not present in atomic store",
+                section_id
+            )));
+        }
+    };
+    section.verification_expectation = expectation;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_section_verification_expectation",
+        "section",
+        section_id,
+    )
+}
+
 /// R393 — bulk-set EPUB-SSOT locators from a medium-forge `epub-anchor-map/v1`.
 /// Each `(section_id, locator)` whose section exists has its `epub_locator`
 /// overwritten; ids absent from the store are returned as `unmatched` (the
@@ -2787,6 +2849,41 @@ mod tests {
     }
 
     #[test]
+    fn verification_expectation_round_trips_and_skips_default() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "dedicated");
+        seed_section(&mut store, "bycon");
+        // The set persists the whole store (default `dedicated` section included).
+        set_section_verification_expectation(
+            &mut store,
+            &path,
+            "bycon",
+            mnemosyne_core::VerificationExpectation::ByConstruction,
+            "transcribed pseudocode, holistic coverage",
+        )
+        .unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.sections["bycon"].verification_expectation,
+            mnemosyne_core::VerificationExpectation::ByConstruction,
+            "ByConstruction must round-trip"
+        );
+        assert_eq!(
+            reloaded.sections["dedicated"].verification_expectation,
+            mnemosyne_core::VerificationExpectation::Dedicated,
+            "default Dedicated must reload from an omitted key"
+        );
+        // Default `Dedicated` is skipped on disk; `ByConstruction` is persisted.
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            raw.contains("by_construction"),
+            "ByConstruction must persist on disk: {raw}"
+        );
+    }
+
+    #[test]
     fn save_load_round_trip() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
@@ -2892,7 +2989,7 @@ mod tests {
         assert_eq!(loaded.schema_version, 1);
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 8);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]
@@ -2931,7 +3028,7 @@ mod tests {
         );
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 8);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]
@@ -2987,7 +3084,7 @@ mod tests {
         // Save then reload: publishable_* now persisted, schema bumps to CURRENT.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 8);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
     }
@@ -4177,7 +4274,7 @@ mod tests {
         // After save (bumps to CURRENT) the report is gone — migration is one-time.
         loaded.save(&path).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 8);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(reloaded.kind_migration_report().is_none());
     }
 
@@ -4798,7 +4895,7 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.schema_version, 8);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         let entry = reloaded.changelog_entries.get("Round 999").unwrap();
         assert_eq!(entry.decision_summary.as_deref(), Some("audit summary"));
         assert_eq!(
