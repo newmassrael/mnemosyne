@@ -7067,6 +7067,42 @@
         "R419 opt-in severity gate wiring plus code/test artifact hashing",
         "3-state coverage_expectation deferred (SCE breaking risk, coordinate first)"
       ]
+    },
+    "Round 417": {
+      "decision_summary": "Confirmation-event CLI verb plus MCP tool plus derived event_id rule (max-rigor v1)",
+      "changes_bullets": [
+        "add-confirmation-event CLI verb plus add_confirmation_event MCP tool: build a ConfirmationEvent from flags/args and append (a file present makes a VerifiesBinding claim, else SectionCompleteness)",
+        "event_id now DERIVED in-core (derive_confirmation_event_id: sha256 of the verification act) as a single rule shared by both write paths; the primitive signature drops the caller-supplied event_id; an identical act is an idempotent reject",
+        "enum flags parsed via from_tag (confirmer_kind, method, verdict); section prefix stripped"
+      ],
+      "verification_bullets": [
+        "3 CLI smoke tests: derived-id landing, self-confirm reject, unknown-enum reject",
+        "atomic 142 plus cli tests green, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R418 confirmed predicate plus projections (status, confirmation-debt work-queue)",
+        "R419 opt-in severity gate plus code/test artifact hashing"
+      ],
+      "publishable_decision_summary": "Confirmation-event CLI verb plus MCP tool plus derived event_id rule (max-rigor v1)",
+      "publishable_changes_bullets": [
+        "add-confirmation-event CLI verb plus add_confirmation_event MCP tool: build a ConfirmationEvent from flags/args and append (a file present makes a VerifiesBinding claim, else SectionCompleteness)",
+        "event_id now DERIVED in-core (derive_confirmation_event_id: sha256 of the verification act) as a single rule shared by both write paths; the primitive signature drops the caller-supplied event_id; an identical act is an idempotent reject",
+        "enum flags parsed via from_tag (confirmer_kind, method, verdict); section prefix stripped"
+      ],
+      "publishable_verification_bullets": [
+        "3 CLI smoke tests: derived-id landing, self-confirm reject, unknown-enum reject",
+        "atomic 142 plus cli tests green, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R418 confirmed predicate plus projections (status, confirmation-debt work-queue)",
+        "R419 opt-in severity gate plus code/test artifact hashing"
+      ]
     }
   },
   "inventory_entries": {},

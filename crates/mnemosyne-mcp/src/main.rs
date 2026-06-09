@@ -250,6 +250,39 @@ pub struct SetSectionVerificationExpectationArgs {
     pub reason: String,
 }
 
+/// R417 — confirmation-event MCP args. A `file` present makes it a
+/// VerifiesBinding claim, else a SectionCompleteness claim. Enum fields take the
+/// snake_case tag. The event_id is derived in-core (not supplied).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddConfirmationEventArgs {
+    /// Claim section ID without the `§` prefix.
+    pub section_id: String,
+    /// Bound file (VerifiesBinding claim). Omit for a SectionCompleteness claim.
+    pub file: Option<String>,
+    /// Bound symbol (requires `file`).
+    pub symbol: Option<String>,
+    /// `"tool"` (deterministic, reproducible) or `"model"` (fresh-context LLM).
+    pub confirmer_kind: String,
+    pub confirmer_id: String,
+    pub confirmer_version: String,
+    /// `"linkage_check"` | `"semantic_review"` | `"coverage_attestation"`.
+    pub method: String,
+    /// `"confirm"` or `"refute"`.
+    pub verdict: String,
+    /// The run that authored the claim.
+    pub authoring_run: String,
+    /// The run producing THIS verdict (must differ from `authoring_run`).
+    pub confirming_run: String,
+    pub rationale: String,
+    /// Caller-supplied timestamp (determinism — never generated in-core).
+    pub timestamp: String,
+    pub spec_sha256: Option<String>,
+    #[serde(default)]
+    pub code_sha256: Vec<String>,
+    #[serde(default)]
+    pub test_sha256: Vec<String>,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -906,6 +939,76 @@ impl MnemosyneServer {
                 expectation,
                 &reason,
             )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Append a confirmation event (R416/R417) — an append-only record that a claim (a `verifies` binding, or a section all-I/O completeness claim) was independently re-verified. The event_id is derived in-core. Enforces self-confirm reject (confirming_run must differ from authoring_run) and R287 fail-loud (the claim section must exist). The core records provenance only; it neither verifies the artifact hashes nor spawns a confirmer. Set `file` for a VerifiesBinding claim, omit for SectionCompleteness. Enum fields take the snake_case tag."
+    )]
+    async fn add_confirmation_event(
+        &self,
+        args: Parameters<AddConfirmationEventArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let section = strip_section_marker(&a.section_id).to_string();
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            let claim = match &a.file {
+                Some(f) => atomic::ConfirmationClaim::VerifiesBinding {
+                    section_id: section.clone(),
+                    file: f.clone(),
+                    symbol: a.symbol.clone(),
+                },
+                None => {
+                    if a.symbol.is_some() {
+                        return Err(atomic::AtomicMutateError::Validation(
+                            "symbol requires file (a VerifiesBinding claim)".to_string(),
+                        ));
+                    }
+                    atomic::ConfirmationClaim::SectionCompleteness {
+                        section_id: section.clone(),
+                    }
+                }
+            };
+            let kind =
+                atomic::ConfirmerKind::from_tag(a.confirmer_kind.trim()).ok_or_else(|| {
+                    atomic::AtomicMutateError::Validation(format!(
+                        "confirmer_kind must be `tool` or `model` (got `{}`)",
+                        a.confirmer_kind
+                    ))
+                })?;
+            let method = atomic::ConfirmMethod::from_tag(a.method.trim()).ok_or_else(|| {
+                atomic::AtomicMutateError::Validation(format!(
+                    "method must be linkage_check|semantic_review|coverage_attestation (got `{}`)",
+                    a.method
+                ))
+            })?;
+            let verdict = atomic::Verdict::from_tag(a.verdict.trim()).ok_or_else(|| {
+                atomic::AtomicMutateError::Validation(format!(
+                    "verdict must be `confirm` or `refute` (got `{}`)",
+                    a.verdict
+                ))
+            })?;
+            let event = atomic::ConfirmationEvent {
+                claim,
+                confirmer: atomic::Confirmer {
+                    kind,
+                    id: a.confirmer_id.clone(),
+                    version: a.confirmer_version.clone(),
+                },
+                method,
+                artifact_hashes: atomic::ArtifactHashes {
+                    spec_sha256: a.spec_sha256.clone(),
+                    code_sha256: a.code_sha256.clone(),
+                    test_sha256: a.test_sha256.clone(),
+                },
+                authoring_run: a.authoring_run.clone(),
+                confirming_run: a.confirming_run.clone(),
+                verdict,
+                rationale: a.rationale.clone(),
+                timestamp: a.timestamp.clone(),
+            };
+            atomic::append_confirmation_event(store, path, event)
         });
         self.finish_mutate(outcome)
     }

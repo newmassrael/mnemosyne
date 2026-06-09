@@ -2631,29 +2631,21 @@ pub fn append_changelog_entry(
     )
 }
 
-/// `append_confirmation_event` primitive (R416) — append-only confirmation
-/// record. Mirrors [`append_changelog_entry`]: a caller-supplied `event_id`
-/// keys the event, and a duplicate is rejected (append-only audit trail).
-/// Enforces the self-confirm reject invariant (design sec 4.7): `confirming_run`
-/// must differ from `authoring_run`. The core does NOT verify the artifact
-/// hashes or spawn any confirmer — it records the producer's claimed provenance
-/// (design sec 4.6); the `confirmed?` predicate and the opt-in gate land later
-/// (R418 / R419).
+/// `append_confirmation_event` primitive (R416; R417 derives the id). Append-only
+/// confirmation record. The `event_id` is DERIVED deterministically from the
+/// verification act ([`derive_confirmation_event_id`]) — callers never supply it,
+/// so the CLI and MCP write paths cannot mint inconsistent keys. A re-append of
+/// the identical act hashes to the same id and is rejected (idempotent
+/// append-only). Enforces the self-confirm reject invariant (design sec 4.7):
+/// `confirming_run` must differ from `authoring_run`. The core does NOT verify the
+/// artifact hashes or spawn any confirmer — it records the producer's claimed
+/// provenance (design sec 4.6); the `confirmed?` predicate and the opt-in gate
+/// land later (R418 / R419).
 pub fn append_confirmation_event(
     store: &mut AtomicStore,
     sidecar_path: &Path,
-    event_id: &str,
     event: ConfirmationEvent,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if event_id.trim().is_empty() {
-        return Err(AtomicMutateError::Validation("event_id blank".to_string()));
-    }
-    if store.confirmation_events.contains_key(event_id) {
-        return Err(AtomicMutateError::FrozenLedger(format!(
-            "event_id `{}` already exists; confirmation events are append-only",
-            event_id
-        )));
-    }
     if event.authoring_run.trim().is_empty() || event.confirming_run.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
             "authoring_run / confirming_run must be non-blank (provenance, sec 4.1)".to_string(),
@@ -2686,16 +2678,62 @@ pub fn append_confirmation_event(
             claim_section
         )));
     }
-    store
-        .confirmation_events
-        .insert(event_id.to_string(), event);
+    let event_id = derive_confirmation_event_id(&event);
+    if store.confirmation_events.contains_key(&event_id) {
+        return Err(AtomicMutateError::FrozenLedger(format!(
+            "confirmation already recorded (identical act, idempotent): `{}`",
+            event_id
+        )));
+    }
+    store.confirmation_events.insert(event_id.clone(), event);
     save_with_receipt(
         store,
         sidecar_path,
         "append_confirmation_event",
         "confirmation_event",
-        event_id,
+        &event_id,
     )
+}
+
+/// Deterministic `event_id` for a confirmation event (R417) — the SINGLE source
+/// of the id rule, shared by the CLI and MCP write paths so neither can mint an
+/// inconsistent key. Hashes the verification *act*: claim + confirmer + method +
+/// verdict + both runs + timestamp. `rationale` and `artifact_hashes` are
+/// EXCLUDED — they are payload of the act, not its identity. Two identical acts
+/// collide (idempotent re-append rejects); distinct independent confirmations
+/// (a different `confirming_run` / `timestamp`) get distinct ids and accumulate.
+fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
+    let (kind, section, file, symbol) = match &event.claim {
+        ConfirmationClaim::VerifiesBinding {
+            section_id,
+            file,
+            symbol,
+        } => (
+            "verifies_binding",
+            section_id.as_str(),
+            file.as_str(),
+            symbol.as_deref().unwrap_or(""),
+        ),
+        ConfirmationClaim::SectionCompleteness { section_id } => {
+            ("section_completeness", section_id.as_str(), "", "")
+        }
+    };
+    // Unit-separator join so distinct field tuples can never alias.
+    let canonical = [
+        kind,
+        section,
+        file,
+        symbol,
+        event.confirmer.kind.as_str(),
+        event.confirmer.id.as_str(),
+        event.method.as_str(),
+        event.verdict.as_str(),
+        event.authoring_run.as_str(),
+        event.confirming_run.as_str(),
+        event.timestamp.as_str(),
+    ]
+    .join("\u{1f}");
+    format!("evt-{}", &sha256_hex(canonical.as_bytes())[..16])
 }
 
 // ============================================================================
@@ -3135,12 +3173,13 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_section(&mut store, "sec");
         let receipt =
-            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
-                .unwrap();
+            append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
         assert_eq!(receipt.target_kind, "confirmation_event");
+        // The event_id is DERIVED (R417); the receipt carries it.
+        assert!(receipt.target_id.starts_with("evt-"));
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
-        let ev = &reloaded.confirmation_events["evt-1"];
+        let ev = &reloaded.confirmation_events[&receipt.target_id];
         assert_eq!(ev.verdict, Verdict::Confirm);
         assert_eq!(ev.confirmer.kind, ConfirmerKind::Model);
         assert_eq!(ev.method, ConfirmMethod::SemanticReview);
@@ -3159,8 +3198,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_section(&mut store, "sec");
         let err =
-            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runA"))
-                .unwrap_err();
+            append_confirmation_event(&mut store, &path, sample_event("runA", "runA")).unwrap_err();
         assert!(
             matches!(err, AtomicMutateError::Validation(_)),
             "self-confirm (authoring_run == confirming_run) must reject (sec 4.7)"
@@ -3168,20 +3206,22 @@ mod tests {
     }
 
     #[test]
-    fn confirmation_event_duplicate_id_rejected() {
+    fn confirmation_event_idempotent_reappend_rejected() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "sec");
-        append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
-            .unwrap();
+        // Same verification act twice → same derived id → append-only reject.
+        append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
         let err =
-            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runC"))
-                .unwrap_err();
+            append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap_err();
         assert!(
             matches!(err, AtomicMutateError::FrozenLedger(_)),
-            "append-only: a duplicate event_id must reject"
+            "an identical act must reject (idempotent append-only)"
         );
+        // A DISTINCT confirming_run is a different act → accepted (accumulates).
+        append_confirmation_event(&mut store, &path, sample_event("runA", "runC")).unwrap();
+        assert_eq!(store.confirmation_events.len(), 2);
     }
 
     #[test]
@@ -3191,8 +3231,7 @@ mod tests {
         let mut store = AtomicStore::new();
         // No seed_section → the claim's section_id is absent.
         let err =
-            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
-                .unwrap_err();
+            append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap_err();
         assert!(
             matches!(err, AtomicMutateError::NotFound(_)),
             "R287 fail-loud: a claim about an unknown section must reject"
@@ -3207,7 +3246,7 @@ mod tests {
         seed_section(&mut store, "sec");
         let mut ev = sample_event("runA", "runB");
         ev.rationale = "   ".to_string();
-        let err = append_confirmation_event(&mut store, &path, "evt-1", ev).unwrap_err();
+        let err = append_confirmation_event(&mut store, &path, ev).unwrap_err();
         assert!(
             matches!(err, AtomicMutateError::Validation(_)),
             "blank rationale must reject (sec 4.1)"

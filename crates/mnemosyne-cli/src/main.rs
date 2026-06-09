@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -216,6 +216,9 @@ fn run(args: &[String]) -> Result<()> {
         }
         "set-section-verification-expectation" => {
             atomic_cli::cmd_set_section_verification_expectation(&workspace_anchor()?, &args[2..])
+        }
+        "add-confirmation-event" => {
+            atomic_cli::cmd_add_confirmation_event(&workspace_anchor()?, &args[2..])
         }
         // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
         // dropped; legacy markdown-surgical variant retired with the rest of
@@ -408,6 +411,10 @@ fn print_help(prog: &str) {
  );
     println!(
  " {} set-section-verification-expectation --section §<N> --expectation dedicated|by_construction --reason <text> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp <iso> [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]",
  prog
  );
     println!(

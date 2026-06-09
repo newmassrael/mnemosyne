@@ -35,13 +35,15 @@ use anyhow::{anyhow, bail, Context, Result};
 
 use mnemosyne_atomic::{
     add_inventory_entry, add_section_binding, add_section_caveat, add_section_example,
-    append_changelog_entry, remove_inventory_entry, remove_section, remove_section_binding,
-    set_inventory_section_ref, set_inventory_status, set_section_alternatives,
-    set_section_binding_kind, set_section_coverage_expectation, set_section_decision_status,
-    set_section_impact_scope, set_section_inputs, set_section_intent, set_section_outputs,
-    set_section_parent_doc, set_section_parent_section, set_section_rationale, set_section_title,
-    set_section_verification_expectation, AtomicMutateError, AtomicMutateReceipt, AtomicStore,
-    BindingKind, ChangelogEntryDraft, ExampleBlock, RejectedAlternative,
+    append_changelog_entry, append_confirmation_event, remove_inventory_entry, remove_section,
+    remove_section_binding, set_inventory_section_ref, set_inventory_status,
+    set_section_alternatives, set_section_binding_kind, set_section_coverage_expectation,
+    set_section_decision_status, set_section_impact_scope, set_section_inputs, set_section_intent,
+    set_section_outputs, set_section_parent_doc, set_section_parent_section, set_section_rationale,
+    set_section_title, set_section_verification_expectation, ArtifactHashes, AtomicMutateError,
+    AtomicMutateReceipt, AtomicStore, BindingKind, ChangelogEntryDraft, ConfirmMethod,
+    ConfirmationClaim, ConfirmationEvent, Confirmer, ConfirmerKind, ExampleBlock,
+    RejectedAlternative, Verdict,
 };
 use mnemosyne_config::discover_config;
 use mnemosyne_core::{
@@ -1432,6 +1434,209 @@ pub fn cmd_set_section_verification_expectation(
             expectation,
             &reason,
         ),
+        json,
+    )
+}
+
+/// R417 — confirmation-event CLI surface. Builds a `ConfirmationEvent` from
+/// flags and appends it; the `event_id` is derived in-core (never supplied).
+/// A `--file` present makes it a `VerifiesBinding` claim, else a
+/// `SectionCompleteness` claim. Enum flags take the snake_case tag.
+pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut section: Option<String> = None;
+    let mut file: Option<String> = None;
+    let mut symbol: Option<String> = None;
+    let mut confirmer_kind: Option<String> = None;
+    let mut confirmer_id: Option<String> = None;
+    let mut confirmer_version: Option<String> = None;
+    let mut method: Option<String> = None;
+    let mut verdict: Option<String> = None;
+    let mut authoring_run: Option<String> = None;
+    let mut confirming_run: Option<String> = None;
+    let mut rationale: Option<String> = None;
+    let mut timestamp: Option<String> = None;
+    let mut spec_sha256: Option<String> = None;
+    let mut code_sha256: Vec<String> = Vec::new();
+    let mut test_sha256: Vec<String> = Vec::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--section" => {
+                section = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--section missing"))?
+                        .clone(),
+                )
+            }
+            "--file" => {
+                file = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--file missing"))?
+                        .clone(),
+                )
+            }
+            "--symbol" => {
+                symbol = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--symbol missing"))?
+                        .clone(),
+                )
+            }
+            "--confirmer-kind" => {
+                confirmer_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--confirmer-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--confirmer-id" => {
+                confirmer_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--confirmer-id missing"))?
+                        .clone(),
+                )
+            }
+            "--confirmer-version" => {
+                confirmer_version = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--confirmer-version missing"))?
+                        .clone(),
+                )
+            }
+            "--method" => {
+                method = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--method missing"))?
+                        .clone(),
+                )
+            }
+            "--verdict" => {
+                verdict = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--verdict missing"))?
+                        .clone(),
+                )
+            }
+            "--authoring-run" => {
+                authoring_run = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--authoring-run missing"))?
+                        .clone(),
+                )
+            }
+            "--confirming-run" => {
+                confirming_run = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--confirming-run missing"))?
+                        .clone(),
+                )
+            }
+            "--rationale" => {
+                rationale = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rationale missing"))?
+                        .clone(),
+                )
+            }
+            "--timestamp" => {
+                timestamp = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--timestamp missing"))?
+                        .clone(),
+                )
+            }
+            "--spec-sha256" => {
+                spec_sha256 = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--spec-sha256 missing"))?
+                        .clone(),
+                )
+            }
+            "--code-sha256" => code_sha256.push(
+                iter.next()
+                    .ok_or_else(|| anyhow!("--code-sha256 missing"))?
+                    .clone(),
+            ),
+            "--test-sha256" => test_sha256.push(
+                iter.next()
+                    .ok_or_else(|| anyhow!("--test-sha256 missing"))?
+                    .clone(),
+            ),
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
+    let claim = match file {
+        Some(f) => ConfirmationClaim::VerifiesBinding {
+            section_id: section,
+            file: f,
+            symbol,
+        },
+        None => {
+            if symbol.is_some() {
+                bail!("--symbol requires --file (a VerifiesBinding claim)");
+            }
+            ConfirmationClaim::SectionCompleteness {
+                section_id: section,
+            }
+        }
+    };
+    let confirmer = Confirmer {
+        kind: ConfirmerKind::from_tag(
+            confirmer_kind
+                .as_deref()
+                .ok_or_else(|| anyhow!("--confirmer-kind arg required (`tool` or `model`)"))?
+                .trim(),
+        )
+        .ok_or_else(|| anyhow!("--confirmer-kind must be `tool` or `model`"))?,
+        id: confirmer_id.ok_or_else(|| anyhow!("--confirmer-id arg required"))?,
+        version: confirmer_version.ok_or_else(|| anyhow!("--confirmer-version arg required"))?,
+    };
+    let method = ConfirmMethod::from_tag(
+        method
+            .as_deref()
+            .ok_or_else(|| anyhow!("--method arg required"))?
+            .trim(),
+    )
+    .ok_or_else(|| {
+        anyhow!("--method must be `linkage_check`, `semantic_review`, or `coverage_attestation`")
+    })?;
+    let verdict = Verdict::from_tag(
+        verdict
+            .as_deref()
+            .ok_or_else(|| anyhow!("--verdict arg required"))?
+            .trim(),
+    )
+    .ok_or_else(|| anyhow!("--verdict must be `confirm` or `refute`"))?;
+    let event = ConfirmationEvent {
+        claim,
+        confirmer,
+        method,
+        artifact_hashes: ArtifactHashes {
+            spec_sha256,
+            code_sha256,
+            test_sha256,
+        },
+        authoring_run: authoring_run.ok_or_else(|| anyhow!("--authoring-run arg required"))?,
+        confirming_run: confirming_run.ok_or_else(|| anyhow!("--confirming-run arg required"))?,
+        verdict,
+        rationale: rationale.ok_or_else(|| anyhow!("--rationale arg required"))?,
+        timestamp: timestamp.ok_or_else(|| anyhow!("--timestamp arg required"))?,
+    };
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        append_confirmation_event(&mut store, &sidecar_path, event),
         json,
     )
 }
