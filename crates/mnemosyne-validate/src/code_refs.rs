@@ -2328,6 +2328,7 @@ mod tests {
                 severity_binding: mnemosyne_config::Severity::Reject,
                 severity_coverage: None,
                 severity_verification: None,
+                severity_confirmation: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
@@ -2564,6 +2565,7 @@ mod tests {
                 severity_binding: mnemosyne_config::Severity::Reject,
                 severity_coverage: None,
                 severity_verification: None,
+                severity_confirmation: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -2827,6 +2829,7 @@ mod tests {
                 severity_coverage: None,
                 severity_verification: severity_verification
                     .map(|s| mnemosyne_config::Severity::from_tag(s).expect("valid severity tag")),
+                severity_confirmation: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],

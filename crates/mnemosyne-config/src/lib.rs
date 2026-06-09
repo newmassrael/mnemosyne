@@ -416,6 +416,17 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub severity_verification: Option<Severity>,
 
+    /// Severity for the confirmation-gate violation (`ConfirmationUnconfirmed`,
+    /// R419): a `Normative` + `Dedicated` section whose `verifies` binding is not
+    /// yet `Confirmed` (the v1 required-evidence-set unmet, or an open refute).
+    /// Like `severity_verification`, `None` means the confirmation gate is
+    /// DISABLED — fully opt-in, so a workspace that does not run independent
+    /// confirmation pays no cost. Layers ON TOP of the verify axis: verify checks
+    /// that a test exists; confirmation checks the test was independently
+    /// re-verified. Set to `"reject"` / `"warn"` / `"info"` to enable.
+    #[serde(default)]
+    pub severity_confirmation: Option<Severity>,
+
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
     /// (`//`, `/* */`, `#`); string-literal contents and code identifiers

@@ -7135,6 +7135,42 @@
       "publishable_carry_forward_bullets": [
         "R419 opt-in severity gate in validate plus code/test artifact hashing (the drift/stale substrate; adds the Stale status)"
       ]
+    },
+    "Round 419": {
+      "decision_summary": "Opt-in confirmation gate: validate-confirmation verb plus severity_confirmation (max-rigor v1)",
+      "changes_bullets": [
+        "scan_confirmation_gate (mnemosyne-validate confirmation module): a Normative plus Dedicated verifies binding must map to a Confirmed claim, else it is an unconfirmed gap; pure over the binding-graph snapshot plus the store confirmation events",
+        "severity_confirmation config (opt-in, None means disabled, layers above the R413 verify axis) plus validate-confirmation CLI verb (--severity override greater than config, --json, reject plus any gap means exit 1)",
+        "drift/stale (code/test artifact hashing) deferred to R420; this gate treats every stored event as current"
+      ],
+      "verification_bullets": [
+        "3 CLI gate smoke tests: disabled-without-severity, reject-unconfirmed, pass-confirmed",
+        "workspace clippy -D warnings clean, validate plus cli tests green, validate-workspace green"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R420 code/test artifact hashing (the drift/stale substrate; adds the Stale status and re-hash check)",
+        "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
+      ],
+      "publishable_decision_summary": "Opt-in confirmation gate: validate-confirmation verb plus severity_confirmation (max-rigor v1)",
+      "publishable_changes_bullets": [
+        "scan_confirmation_gate (mnemosyne-validate confirmation module): a Normative plus Dedicated verifies binding must map to a Confirmed claim, else it is an unconfirmed gap; pure over the binding-graph snapshot plus the store confirmation events",
+        "severity_confirmation config (opt-in, None means disabled, layers above the R413 verify axis) plus validate-confirmation CLI verb (--severity override greater than config, --json, reject plus any gap means exit 1)",
+        "drift/stale (code/test artifact hashing) deferred to R420; this gate treats every stored event as current"
+      ],
+      "publishable_verification_bullets": [
+        "3 CLI gate smoke tests: disabled-without-severity, reject-unconfirmed, pass-confirmed",
+        "workspace clippy -D warnings clean, validate plus cli tests green, validate-workspace green"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R420 code/test artifact hashing (the drift/stale substrate; adds the Stale status and re-hash check)",
+        "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
+      ]
     }
   },
   "inventory_entries": {},

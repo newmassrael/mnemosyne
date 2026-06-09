@@ -282,6 +282,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
         "report-coverage" => cmd_report_coverage(&args[2..]),
         "report-confirmation" => cmd_report_confirmation(&args[2..]),
+        "validate-confirmation" => cmd_validate_confirmation(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
@@ -506,6 +507,10 @@ fn print_help(prog: &str) {
     println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
     println!(" {} report-coverage [--json]", prog);
     println!(" {} report-confirmation [--json]", prog);
+    println!(
+        " {} validate-confirmation [--severity reject|warn|info] [--json]",
+        prog
+    );
     println!(" {} report-excerpt-hash-backfill [--json]", prog);
     println!(
         "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
@@ -1477,6 +1482,105 @@ fn cmd_report_confirmation(args: &[String]) -> Result<()> {
             };
             println!("  [{}] {}", st, claim_label(&c.claim));
         }
+    }
+    Ok(())
+}
+
+/// R419 — confirmation gate (max-rigor v1). For every Normative + Dedicated
+/// section, each `verifies` binding must map to a Confirmed claim, else it is an
+/// unconfirmed gap. Opt-in: `--severity` overrides
+/// `[plugins.set_equality_validator].severity_confirmation`; unset on both means
+/// the gate is disabled (exit 0). `reject` + any gap => exit 1. Layers above the
+/// R413 verify axis (verify = a test exists; confirmation = independently
+/// re-verified).
+fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
+    use mnemosyne_atomic::ConfirmationStatus;
+    use mnemosyne_config::Severity;
+    let mut json = false;
+    let mut severity_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--severity" => {
+                severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let configured = loaded
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+        .and_then(|c| c.severity_confirmation);
+    let severity = match severity_override {
+        Some(s) => Some(
+            Severity::from_tag(s.trim())
+                .ok_or_else(|| anyhow!("--severity must be `reject`, `warn`, or `info`"))?,
+        ),
+        None => configured,
+    };
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    let gaps = mnemosyne_validate::confirmation::scan_confirmation_gate(&snapshot, &store);
+    let status_str = |s: ConfirmationStatus| match s {
+        ConfirmationStatus::Proposed => "proposed",
+        ConfirmationStatus::Confirmed => "confirmed",
+        ConfirmationStatus::Refuted => "refuted",
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "severity": severity.map(|s| s.as_str()),
+                "unconfirmed_count": gaps.len(),
+                "unconfirmed": gaps.iter().map(|g| serde_json::json!({
+                    "section_id": g.section_id,
+                    "file": g.file,
+                    "symbol": g.symbol,
+                    "status": status_str(g.status),
+                })).collect::<Vec<_>>(),
+            })
+        );
+    } else {
+        match severity {
+            None => println!("confirmation gate: disabled (severity_confirmation unset)"),
+            Some(s) => {
+                println!("=== confirmation gate ({}) ===", s.as_str());
+                println!("  unconfirmed verifies bindings: {}", gaps.len());
+                for g in &gaps {
+                    let sym = g
+                        .symbol
+                        .as_deref()
+                        .map(|x| format!(":{x}"))
+                        .unwrap_or_default();
+                    println!(
+                        "  [{}] §{} {}{}",
+                        status_str(g.status),
+                        g.section_id,
+                        g.file,
+                        sym
+                    );
+                }
+            }
+        }
+    }
+    if matches!(severity, Some(s) if s.is_reject()) && !gaps.is_empty() {
+        std::process::exit(1);
     }
     Ok(())
 }
