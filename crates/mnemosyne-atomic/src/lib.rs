@@ -613,6 +613,13 @@ pub struct AtomicStore {
     /// via `#[serde(default)]`.
     #[serde(default)]
     pub inventory_entries: BTreeMap<String, InventoryEntry>,
+    /// Max-rigor confirmation events (R416) — append-only audit records, keyed
+    /// by a caller-supplied `event_id`. Mirrors `changelog_entries`: a top-level
+    /// collection (NOT nested on a section/binding) so it shares the audit-trail
+    /// genre and never bloats a section. Empty on pre-v10 stores via
+    /// `#[serde(default)]`.
+    #[serde(default)]
+    pub confirmation_events: BTreeMap<String, ConfirmationEvent>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -620,6 +627,182 @@ pub struct AtomicStore {
 
 fn default_schema_version() -> u32 {
     1
+}
+
+// ============================================================================
+// Max-rigor confirmation events (R416 — design `claudedocs/
+// max-rigor-verification-design.md` sec 12). Append-only audit records that a
+// claim (a `Verifies` binding, or a section all-I/O completeness claim) was
+// independently re-verified. Events are the SSOT; status / count / `confirmed?`
+// are PROJECTIONS computed later (R418), never stored. The core only records
+// provenance — fresh-ness is a producer property, not a store invariant
+// (design sec 4.6). All vocab lives here in `mnemosyne-atomic` (an audit-store
+// concept with no medium-neutral consumer yet — no core lift, per YAGNI).
+// ============================================================================
+
+/// The claim a confirmation event is about (design sec 7 claim-key).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConfirmationClaim {
+    /// A `Verifies` binding ("does this test verify this requirement?"), keyed
+    /// by `(section_id, file, symbol)` — `kind` is implicitly `Verifies`.
+    VerifiesBinding {
+        section_id: String,
+        file: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol: Option<String>,
+    },
+    /// A section-level all-I/O completeness claim ("the verifies-set covers
+    /// every normative I/O behavior of this section").
+    SectionCompleteness { section_id: String },
+}
+
+impl ConfirmationClaim {
+    /// The section this claim is about — both variants carry one. Used by
+    /// [`append_confirmation_event`] to enforce the R287 fail-loud rule: the
+    /// section must already exist before a claim about it is recorded.
+    pub fn section_id(&self) -> &str {
+        match self {
+            ConfirmationClaim::VerifiesBinding { section_id, .. } => section_id,
+            ConfirmationClaim::SectionCompleteness { section_id } => section_id,
+        }
+    }
+}
+
+/// What KIND of producer emitted a confirmation (design sec 4.1 provenance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmerKind {
+    /// A deterministic tool (reproducible — CI re-runs it; truly
+    /// un-hand-authorable, design sec 4.6).
+    Tool,
+    /// A fresh-context LLM confirmer (non-deterministic; trusted only as an
+    /// independent-set member, design sec 4.6).
+    Model,
+}
+
+impl ConfirmerKind {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConfirmerKind::Tool => "tool",
+            ConfirmerKind::Model => "model",
+        }
+    }
+
+    /// Parse the canonical tag back to a value; `None` otherwise.
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "tool" => Some(ConfirmerKind::Tool),
+            "model" => Some(ConfirmerKind::Model),
+            _ => None,
+        }
+    }
+}
+
+/// The verification method recorded on the event (design sec 4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmMethod {
+    /// Deterministic: the verifying test exercises the bound symbol.
+    LinkageCheck,
+    /// Fresh-context LLM semantic judgement.
+    SemanticReview,
+    /// A coverage attestation (an external coverage tool's result).
+    CoverageAttestation,
+}
+
+impl ConfirmMethod {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConfirmMethod::LinkageCheck => "linkage_check",
+            ConfirmMethod::SemanticReview => "semantic_review",
+            ConfirmMethod::CoverageAttestation => "coverage_attestation",
+        }
+    }
+
+    /// Parse the canonical tag back to a value; `None` otherwise.
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "linkage_check" => Some(ConfirmMethod::LinkageCheck),
+            "semantic_review" => Some(ConfirmMethod::SemanticReview),
+            "coverage_attestation" => Some(ConfirmMethod::CoverageAttestation),
+            _ => None,
+        }
+    }
+}
+
+/// The verdict an event records (design sec 4.1). A single `Refute` blocks
+/// regardless of confirmations (design sec 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    Confirm,
+    Refute,
+}
+
+impl Verdict {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Confirm => "confirm",
+            Verdict::Refute => "refute",
+        }
+    }
+
+    /// Parse the canonical tag back to a value; `None` otherwise.
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "confirm" => Some(Verdict::Confirm),
+            "refute" => Some(Verdict::Refute),
+            _ => None,
+        }
+    }
+}
+
+/// Who/what produced a confirmation (design sec 4.1 `confirmer`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Confirmer {
+    pub kind: ConfirmerKind,
+    pub id: String,
+    pub version: String,
+}
+
+/// Hashes of the artifacts the event was checked against (design sec 4.4). When
+/// any drifts, the event stops being `valid` and drops out of `confirmed?`
+/// (computed later, R418). `spec_sha256` reuses R404 `text_sha256`; the
+/// code/test hashes are collected by the outside producer (design sec 4.6 — the
+/// core never reads the files).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactHashes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub code_sha256: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub test_sha256: Vec<String>,
+}
+
+/// One immutable confirmation / refutation event (design sec 4.1) — the SSOT for
+/// "what confirmations happened." Everything derived (status, count,
+/// `confirmed?`) is a projection computed later, never stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfirmationEvent {
+    pub claim: ConfirmationClaim,
+    pub confirmer: Confirmer,
+    pub method: ConfirmMethod,
+    #[serde(default)]
+    pub artifact_hashes: ArtifactHashes,
+    /// The run that AUTHORED the claim.
+    pub authoring_run: String,
+    /// The run that produced THIS verdict — must differ from `authoring_run`
+    /// (self-confirm reject, design sec 4.7).
+    pub confirming_run: String,
+    pub verdict: Verdict,
+    pub rationale: String,
+    /// Caller-supplied (determinism — never generated in-core, design sec 4.1).
+    pub timestamp: String,
 }
 
 #[derive(Debug, Error)]
@@ -691,7 +874,14 @@ pub enum AtomicStoreError {
 // `severity_verification` is explicitly configured, an unclassified store gates
 // identically to before (no verify violations). So there is deliberately NO
 // `schema_version < 9` arm in `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 9;
+// v9→v10 adds `AtomicStore.confirmation_events` (max-rigor confirmation
+// subsystem, R416) — a top-level append-only collection mirroring
+// `changelog_entries`. Same declarative new-field-default pattern: a pre-v10
+// store has no `confirmation_events` key, serde `#[serde(default)]` fills an
+// empty map — no behavior change (nothing reads the events until the R418
+// predicate / R419 gate land, and that gate is opt-in). So there is deliberately
+// NO `schema_version < 10` arm in `load`, and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 10;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -2441,6 +2631,73 @@ pub fn append_changelog_entry(
     )
 }
 
+/// `append_confirmation_event` primitive (R416) — append-only confirmation
+/// record. Mirrors [`append_changelog_entry`]: a caller-supplied `event_id`
+/// keys the event, and a duplicate is rejected (append-only audit trail).
+/// Enforces the self-confirm reject invariant (design sec 4.7): `confirming_run`
+/// must differ from `authoring_run`. The core does NOT verify the artifact
+/// hashes or spawn any confirmer — it records the producer's claimed provenance
+/// (design sec 4.6); the `confirmed?` predicate and the opt-in gate land later
+/// (R418 / R419).
+pub fn append_confirmation_event(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    event_id: &str,
+    event: ConfirmationEvent,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if event_id.trim().is_empty() {
+        return Err(AtomicMutateError::Validation("event_id blank".to_string()));
+    }
+    if store.confirmation_events.contains_key(event_id) {
+        return Err(AtomicMutateError::FrozenLedger(format!(
+            "event_id `{}` already exists; confirmation events are append-only",
+            event_id
+        )));
+    }
+    if event.authoring_run.trim().is_empty() || event.confirming_run.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "authoring_run / confirming_run must be non-blank (provenance, sec 4.1)".to_string(),
+        ));
+    }
+    // Self-confirm reject — the cheapest, machine-checkable slice of independence
+    // (design sec 4.7). The store cannot prove fresh-ness, but it CAN reject a run
+    // confirming its own claim.
+    if event.authoring_run == event.confirming_run {
+        return Err(AtomicMutateError::Validation(format!(
+            "self-confirm rejected: confirming_run `{}` must differ from authoring_run \
+             (independence, design sec 4.7)",
+            event.confirming_run
+        )));
+    }
+    if event.rationale.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "rationale must be non-blank (esp. for Refute, sec 4.1)".to_string(),
+        ));
+    }
+    // R287 fail-loud: a claim about a non-existent section is a silent footgun.
+    // Only section existence is checked here; binding existence + the
+    // `Verifies` kind are evaluated by the `confirmed?` predicate (R418), which
+    // reads the live binding graph at query time rather than freezing it here.
+    let claim_section = event.claim.section_id();
+    if !store.sections.contains_key(claim_section) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "claim section_id `{}` not present in atomic store (use add_section first; \
+             R287 fail-loud)",
+            claim_section
+        )));
+    }
+    store
+        .confirmation_events
+        .insert(event_id.to_string(), event);
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "append_confirmation_event",
+        "confirmation_event",
+        event_id,
+    )
+}
+
 // ============================================================================
 // ChangelogEntry publishable-half setters (Round 295).
 //
@@ -2846,6 +3103,136 @@ mod tests {
         store
             .sections
             .insert(section_id.to_string(), AtomicSection::default());
+    }
+
+    // R416 — confirmation-event fixture. Claim targets section "sec".
+    fn sample_event(authoring: &str, confirming: &str) -> ConfirmationEvent {
+        ConfirmationEvent {
+            claim: ConfirmationClaim::VerifiesBinding {
+                section_id: "sec".to_string(),
+                file: "tests/w3c/Test1.h".to_string(),
+                symbol: Some("verify_foo".to_string()),
+            },
+            confirmer: Confirmer {
+                kind: ConfirmerKind::Model,
+                id: "claude-opus-4-8".to_string(),
+                version: "2026-06".to_string(),
+            },
+            method: ConfirmMethod::SemanticReview,
+            artifact_hashes: ArtifactHashes::default(),
+            authoring_run: authoring.to_string(),
+            confirming_run: confirming.to_string(),
+            verdict: Verdict::Confirm,
+            rationale: "the test verifies the bound requirement".to_string(),
+            timestamp: "2026-06-09T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn confirmation_event_round_trips() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        let receipt =
+            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
+                .unwrap();
+        assert_eq!(receipt.target_kind, "confirmation_event");
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        let ev = &reloaded.confirmation_events["evt-1"];
+        assert_eq!(ev.verdict, Verdict::Confirm);
+        assert_eq!(ev.confirmer.kind, ConfirmerKind::Model);
+        assert_eq!(ev.method, ConfirmMethod::SemanticReview);
+        match &ev.claim {
+            ConfirmationClaim::VerifiesBinding { section_id, .. } => {
+                assert_eq!(section_id, "sec")
+            }
+            _ => panic!("wrong claim variant"),
+        }
+    }
+
+    #[test]
+    fn confirmation_event_self_confirm_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        let err =
+            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runA"))
+                .unwrap_err();
+        assert!(
+            matches!(err, AtomicMutateError::Validation(_)),
+            "self-confirm (authoring_run == confirming_run) must reject (sec 4.7)"
+        );
+    }
+
+    #[test]
+    fn confirmation_event_duplicate_id_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
+            .unwrap();
+        let err =
+            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runC"))
+                .unwrap_err();
+        assert!(
+            matches!(err, AtomicMutateError::FrozenLedger(_)),
+            "append-only: a duplicate event_id must reject"
+        );
+    }
+
+    #[test]
+    fn confirmation_event_unknown_section_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        // No seed_section → the claim's section_id is absent.
+        let err =
+            append_confirmation_event(&mut store, &path, "evt-1", sample_event("runA", "runB"))
+                .unwrap_err();
+        assert!(
+            matches!(err, AtomicMutateError::NotFound(_)),
+            "R287 fail-loud: a claim about an unknown section must reject"
+        );
+    }
+
+    #[test]
+    fn confirmation_event_blank_rationale_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        let mut ev = sample_event("runA", "runB");
+        ev.rationale = "   ".to_string();
+        let err = append_confirmation_event(&mut store, &path, "evt-1", ev).unwrap_err();
+        assert!(
+            matches!(err, AtomicMutateError::Validation(_)),
+            "blank rationale must reject (sec 4.1)"
+        );
+    }
+
+    #[test]
+    fn confirmation_events_default_empty_on_legacy_store() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let legacy_json = r#"{ "sections": {}, "changelog_entries": {}, "schema_version": 9 }"#;
+        std::fs::write(&path, legacy_json).unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        assert!(
+            loaded.confirmation_events.is_empty(),
+            "a missing confirmation_events key must default to empty"
+        );
+        assert_eq!(loaded.schema_version, 9, "version preserved on load");
+        loaded.save(&path).unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.schema_version, CURRENT_SCHEMA_VERSION,
+            "save bumps the store to v10"
+        );
     }
 
     #[test]

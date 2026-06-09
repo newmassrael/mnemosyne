@@ -7027,8 +7027,49 @@
         "session-review debt closure: this was the inherited stringly-typed severity debt flagged after R414. Severity lives in mnemosyne-config (not core) because it is a config-policy concept, never stored in the atomic store, unlike BindingKind/CoverageExpectation. The style-tier StyleSeverity (warn|info, no reject) is a distinct vocabulary, intentionally left alone",
         "NOT unified: severity_coverage (None=inherit binding) vs severity_verification (None=off) keep divergent Option<Severity> None semantics — a genuine domain difference (universal axiom vs opt-in axis), documented on the field, not a smell to collapse"
       ]
+    },
+    "Round 416": {
+      "decision_summary": "Confirmation-event data foundation plus append primitive (max-rigor v1 core)",
+      "changes_bullets": [
+        "ConfirmationEvent plus claim/confirmer/method/verdict/artifact-hash types added to mnemosyne-atomic; top-level confirmation_events BTreeMap mirrors changelog_entries (schema v9 to v10, declarative serde default, no load arm)",
+        "append_confirmation_event primitive: append-only (duplicate event_id rejects), self-confirm reject (authoring_run must differ from confirming_run), R287 fail-loud (claim section must exist)",
+        "confirmation vocab kept in mnemosyne-atomic (audit-store concept, no medium-neutral core lift per YAGNI); events are the SSOT, status and confirmed-state are deferred projections"
+      ],
+      "verification_bullets": [
+        "6 new atomic unit tests: round-trip, self-confirm reject, duplicate-id reject, unknown-section fail-loud, blank-rationale reject, pre-v10 backward-compat empty default",
+        "atomic 142 tests pass, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R417 CLI verb plus MCP tool plus a deterministic event_id generation rule",
+        "R418 confirmed predicate plus projections (status, confirmation-debt work-queue)",
+        "R419 opt-in severity gate wiring plus code/test artifact hashing",
+        "3-state coverage_expectation deferred (SCE breaking risk, coordinate first)"
+      ],
+      "publishable_decision_summary": "Confirmation-event data foundation plus append primitive (max-rigor v1 core)",
+      "publishable_changes_bullets": [
+        "ConfirmationEvent plus claim/confirmer/method/verdict/artifact-hash types added to mnemosyne-atomic; top-level confirmation_events BTreeMap mirrors changelog_entries (schema v9 to v10, declarative serde default, no load arm)",
+        "append_confirmation_event primitive: append-only (duplicate event_id rejects), self-confirm reject (authoring_run must differ from confirming_run), R287 fail-loud (claim section must exist)",
+        "confirmation vocab kept in mnemosyne-atomic (audit-store concept, no medium-neutral core lift per YAGNI); events are the SSOT, status and confirmed-state are deferred projections"
+      ],
+      "publishable_verification_bullets": [
+        "6 new atomic unit tests: round-trip, self-confirm reject, duplicate-id reject, unknown-section fail-loud, blank-rationale reject, pre-v10 backward-compat empty default",
+        "atomic 142 tests pass, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R417 CLI verb plus MCP tool plus a deterministic event_id generation rule",
+        "R418 confirmed predicate plus projections (status, confirmation-debt work-queue)",
+        "R419 opt-in severity gate wiring plus code/test artifact hashing",
+        "3-state coverage_expectation deferred (SCE breaking risk, coordinate first)"
+      ]
     }
   },
   "inventory_entries": {},
-  "schema_version": 9
+  "confirmation_events": {},
+  "schema_version": 10
 }
