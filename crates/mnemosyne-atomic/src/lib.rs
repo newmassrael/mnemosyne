@@ -1012,7 +1012,15 @@ pub enum AtomicStoreError {
 // empty map — no behavior change (nothing reads the events until the R418
 // predicate / R419 gate land, and that gate is opt-in). So there is deliberately
 // NO `schema_version < 10` arm in `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 10;
+// v10→v11 widens `AtomicSection.coverage_expectation` from 2-state
+// (Normative | Informative) to 3-state (Normative | OutOfScopeHere |
+// Informational, R421). Declarative + back-compatible: the legacy `informative`
+// tag deserializes as `OutOfScopeHere` via `#[serde(alias)]` (the conservative
+// migration default — most exempt sections are out-of-scope, design sec 6), so a
+// pre-v11 store loads unchanged and gates identically (both exempt classes leave
+// the coverage axiom). No `schema_version < 11` arm; the next save rewrites the
+// tag to `out_of_scope_here`. SCE's 50 `informative` sections migrate this way.
+const CURRENT_SCHEMA_VERSION: u32 = 11;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -4719,7 +4727,7 @@ mod tests {
             &mut a,
             &path_a,
             "X",
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             "terminology section, nothing to implement",
         )
         .unwrap();
@@ -4735,13 +4743,13 @@ mod tests {
                 title: "X".to_string(),
                 parent_section: None,
                 normative_excerpt: None,
-                coverage_expectation: mnemosyne_core::CoverageExpectation::Informative,
+                coverage_expectation: mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             }],
         )
         .unwrap();
         assert_eq!(
             a.section("X").unwrap().coverage_expectation,
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
         );
         assert_eq!(
             a.section("X").unwrap().coverage_expectation,
@@ -4763,14 +4771,14 @@ mod tests {
             &mut store,
             &path,
             "Info",
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             "overview prose",
         )
         .unwrap();
         let json = std::fs::read_to_string(&path).unwrap();
         assert!(
-            json.contains("\"informative\""),
-            "Informative deviation is persisted"
+            json.contains("\"out_of_scope_here\""),
+            "OutOfScopeHere deviation persists under the canonical 3-state tag"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
@@ -4780,7 +4788,30 @@ mod tests {
         );
         assert_eq!(
             reloaded.section("Info").unwrap().coverage_expectation,
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
+        );
+    }
+
+    #[test]
+    fn coverage_expectation_legacy_informative_alias_loads_as_out_of_scope() {
+        // R421 — a pre-3-state store with `"informative"` deserializes as
+        // OutOfScopeHere (the conservative migration default), so SCE's 50
+        // informative sections load unchanged and gate identically (both exempt).
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/ws.atomic.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let legacy = r#"{
+            "sections": { "Info": { "title": "T", "parent_doc": "d",
+                "coverage_expectation": "informative" } },
+            "changelog_entries": {},
+            "schema_version": 9
+        }"#;
+        std::fs::write(&path, legacy).unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            loaded.section("Info").unwrap().coverage_expectation,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
+            "legacy `informative` migrates to OutOfScopeHere"
         );
     }
 

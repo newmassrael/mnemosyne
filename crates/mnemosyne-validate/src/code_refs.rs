@@ -192,7 +192,10 @@ fn classify_section_coverage(section: &mnemosyne_core::SectionView) -> CoverageC
     let removed =
         section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
     match section.coverage_expectation {
-        mnemosyne_core::CoverageExpectation::Informative => {
+        // Both exempt classes (R421 3-state) leave the coverage axiom: a section
+        // out-of-scope here, or inherently informational, expects no implements.
+        mnemosyne_core::CoverageExpectation::OutOfScopeHere
+        | mnemosyne_core::CoverageExpectation::Informational => {
             if removed {
                 CoverageClass::RemovedExcluded
             } else {
@@ -2717,7 +2720,7 @@ mod tests {
             &mut store,
             &store_path,
             "info",
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             "terminology — nothing to implement here",
         )
         .unwrap();
@@ -2906,7 +2909,7 @@ mod tests {
             &mut store,
             &store_path,
             "info",
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             "glossary",
         )
         .unwrap();
@@ -2970,7 +2973,7 @@ mod tests {
         );
         // Informative + live → exempt.
         snap.sections
-            .insert("info".to_string(), view(None, Ce::Informative, &[]));
+            .insert("info".to_string(), view(None, Ce::OutOfScopeHere, &[]));
         // Removed Normative with no coverage → excluded, NOT a gap.
         snap.sections.insert(
             "dead".to_string(),
@@ -2996,7 +2999,7 @@ mod tests {
             SectionView {
                 bindings: Vec::new(),
                 decision_status: None,
-                coverage_expectation: CoverageExpectation::Informative,
+                coverage_expectation: CoverageExpectation::OutOfScopeHere,
                 verification_expectation: Default::default(),
             },
         );
@@ -3029,7 +3032,7 @@ mod tests {
             &mut store,
             &store_path,
             "info",
-            mnemosyne_core::CoverageExpectation::Informative,
+            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
             "terminology — nothing to implement here",
         )
         .unwrap();

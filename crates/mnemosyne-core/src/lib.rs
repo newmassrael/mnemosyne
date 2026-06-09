@@ -222,11 +222,19 @@ pub struct BindingRef {
 /// (every section expects coverage), so a store with no classification gates
 /// identically to before.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum CoverageExpectation {
     #[default]
     Normative,
-    Informative,
+    /// Part of the standard but not implemented by THIS consumer; revisitable if
+    /// scope expands (design sec 6). The pre-3-state `informative` tag
+    /// deserializes HERE via `#[serde(alias)]` — the conservative migration
+    /// default, since most exempt sections are out-of-scope rather than
+    /// inherently informational. Serialized canonically as `out_of_scope_here`.
+    #[serde(alias = "informative")]
+    OutOfScopeHere,
+    /// Inherently non-implementable prose / context (terminology / overview).
+    Informational,
 }
 
 impl CoverageExpectation {
@@ -234,7 +242,8 @@ impl CoverageExpectation {
     pub fn as_str(self) -> &'static str {
         match self {
             CoverageExpectation::Normative => "normative",
-            CoverageExpectation::Informative => "informative",
+            CoverageExpectation::OutOfScopeHere => "out_of_scope_here",
+            CoverageExpectation::Informational => "informational",
         }
     }
 
@@ -246,7 +255,11 @@ impl CoverageExpectation {
     pub fn from_tag(s: &str) -> Option<Self> {
         match s {
             "normative" => Some(CoverageExpectation::Normative),
-            "informative" => Some(CoverageExpectation::Informative),
+            "out_of_scope_here" => Some(CoverageExpectation::OutOfScopeHere),
+            "informational" => Some(CoverageExpectation::Informational),
+            // Pre-3-state back-compat: `informative` maps to the conservative
+            // out-of-scope default (design sec 6 migration).
+            "informative" => Some(CoverageExpectation::OutOfScopeHere),
             _ => None,
         }
     }

@@ -408,7 +408,7 @@ fn print_help(prog: &str) {
  "   Reclassify an existing binding's kind (Stage-B implements→references; --reason mandatory)"
  );
     println!(
- " {} set-section-coverage-expectation --section §<N> --expectation normative|informative --reason <text> [--sidecar <path>] [--json]",
+ " {} set-section-coverage-expectation --section §<N> --expectation normative|out_of_scope_here|informational --reason <text> [--sidecar <path>] [--json]",
  prog
  );
     println!(

@@ -7207,9 +7207,45 @@
         "report-confirmation stays drift-unaware (store-only quick view); validate-confirmation is the drift-aware gate",
         "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
       ]
+    },
+    "Round 421": {
+      "decision_summary": "3-state coverage_expectation (OutOfScopeHere plus Informational); legacy informative alias-migrates",
+      "changes_bullets": [
+        "CoverageExpectation widened from 2-state (Normative, Informative) to 3-state (Normative, OutOfScopeHere, Informational); serde alias maps the legacy \"informative\" tag to OutOfScopeHere (conservative migration default, design sec 6); schema v10 to v11, declarative back-compat",
+        "classify_section_coverage exempts both OutOfScopeHere and Informational, so the gate behavior is unchanged (the informative split is exempt-reason only); is_verification_gap and the confirmation gate still key off Normative",
+        "CLI plus MCP set-section-coverage-expectation accept the 3 values, and the legacy informative tag still parses (maps to out_of_scope_here)"
+      ],
+      "verification_bullets": [
+        "atomic round-trip plus legacy-informative-alias-loads-as-out-of-scope tests; workspace clippy -D warnings clean, all tests green, validate-workspace green",
+        "SCE non-breaking: its 50 informative sections alias-migrate to out_of_scope_here on rev bump and gate identically (both exempt)"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "R422 coverage migration report plus opt-in invariant gate (has-implements implies Normative; OutOfScope or Informational implies no implements) to surface the 1 SCE conflict section (scxml-3.11, informative plus implements)",
+        "SCE rev bump to adopt R416 through R421 (confirmation system plus 3-state)"
+      ],
+      "publishable_decision_summary": "3-state coverage_expectation (OutOfScopeHere plus Informational); legacy informative alias-migrates",
+      "publishable_changes_bullets": [
+        "CoverageExpectation widened from 2-state (Normative, Informative) to 3-state (Normative, OutOfScopeHere, Informational); serde alias maps the legacy \"informative\" tag to OutOfScopeHere (conservative migration default, design sec 6); schema v10 to v11, declarative back-compat",
+        "classify_section_coverage exempts both OutOfScopeHere and Informational, so the gate behavior is unchanged (the informative split is exempt-reason only); is_verification_gap and the confirmation gate still key off Normative",
+        "CLI plus MCP set-section-coverage-expectation accept the 3 values, and the legacy informative tag still parses (maps to out_of_scope_here)"
+      ],
+      "publishable_verification_bullets": [
+        "atomic round-trip plus legacy-informative-alias-loads-as-out-of-scope tests; workspace clippy -D warnings clean, all tests green, validate-workspace green",
+        "SCE non-breaking: its 50 informative sections alias-migrate to out_of_scope_here on rev bump and gate identically (both exempt)"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R422 coverage migration report plus opt-in invariant gate (has-implements implies Normative; OutOfScope or Informational implies no implements) to surface the 1 SCE conflict section (scxml-3.11, informative plus implements)",
+        "SCE rev bump to adopt R416 through R421 (confirmation system plus 3-state)"
+      ]
     }
   },
   "inventory_entries": {},
   "confirmation_events": {},
-  "schema_version": 10
+  "schema_version": 11
 }

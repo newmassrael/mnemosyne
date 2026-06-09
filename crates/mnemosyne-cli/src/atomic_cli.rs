@@ -1059,7 +1059,8 @@ fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
 fn parse_coverage_expectation(raw: &str) -> Result<CoverageExpectation> {
     CoverageExpectation::from_tag(raw.trim()).ok_or_else(|| {
         anyhow!(
-            "--expectation must be `normative` or `informative` (got `{}`)",
+            "--expectation must be `normative`, `out_of_scope_here`, or \
+             `informational` (got `{}`; legacy `informative` maps to out_of_scope_here)",
             raw
         )
     })
