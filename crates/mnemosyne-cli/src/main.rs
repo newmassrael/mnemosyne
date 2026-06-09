@@ -1907,6 +1907,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let mut severity_binding_override: Option<String> = None;
     let mut severity_coverage_override: Option<String> = None;
     let mut severity_verification_override: Option<String> = None;
+    let mut severity_classification_override: Option<String> = None;
     let mut severity_inventory_override: Option<String> = None;
     // explicit decay filter (cascade caller restricts the scan
     // to citations of one entry_id, e.g. an entry that just transitioned
@@ -1941,6 +1942,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 severity_verification_override = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--severity-verification missing value"))?
+                        .clone(),
+                );
+            }
+            "--severity-classification" => {
+                severity_classification_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity-classification missing value"))?
                         .clone(),
                 );
             }
@@ -2028,6 +2036,10 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         Some(s) => Some(parse_sev("--severity-verification", s)?),
         None => cfg.severity_verification,
     };
+    let severity_classification: Option<Severity> = match &severity_classification_override {
+        Some(s) => Some(parse_sev("--severity-classification", s)?),
+        None => cfg.severity_classification,
+    };
     let severity_inventory = match &severity_inventory_override {
         Some(s) => parse_sev("--severity-inventory", s)?,
         None => cfg.severity_inventory,
@@ -2065,6 +2077,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // VerificationMissing when `config.severity_verification.is_some()`).
     let mut validator_cfg = cfg.clone();
     validator_cfg.severity_verification = severity_verification;
+    validator_cfg.severity_classification = severity_classification;
     let validator = SetEqualityValidator {
         config: validator_cfg,
         entry_id_prefix: prefix.clone(),
@@ -2097,6 +2110,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let decay_count = get("decay");
     let impl_missing_count = get("impl_missing");
     let verification_missing_count = get("verification_missing");
+    let misclassified_coverage_count = get("misclassified_coverage");
     let inventory_missing_count = get("inventory_missing");
     let inventory_deprecated_count = get("inventory_deprecated");
     let symbol_mismatch_count = get("symbol_mismatch");
@@ -2138,6 +2152,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "binding_unbacked_count": binding_unbacked_count,
             "impl_missing_count": impl_missing_count,
             "verification_missing_count": verification_missing_count,
+            "misclassified_coverage_count": misclassified_coverage_count,
             "decay_count": decay_count,
             "inventory_missing_count": inventory_missing_count,
             "inventory_deprecated_count": inventory_deprecated_count,
@@ -2145,6 +2160,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "severity_binding": severity_binding,
             "severity_coverage": severity_coverage,
             "severity_verification": severity_verification,
+            "severity_classification": severity_classification,
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "violations": view,
@@ -2189,9 +2205,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         }
         println!(
             "violations: total={} missing={} section_missing={} \
- citation_unbound={} binding_unbacked={} impl_missing={} verification_missing={} decay={} \
+ citation_unbound={} binding_unbacked={} impl_missing={} verification_missing={} \
+ misclassified_coverage={} decay={} \
  inv_missing={} inv_deprecated={} \
- (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} severity_inventory={})",
+ (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} \
+ severity_classification={} severity_inventory={})",
             violations.len(),
             missing_count,
             section_missing_count,
@@ -2199,6 +2217,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             binding_unbacked_count,
             impl_missing_count,
             verification_missing_count,
+            misclassified_coverage_count,
             decay_count,
             inventory_missing_count,
             inventory_deprecated_count,
@@ -2206,6 +2225,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             severity_binding.as_str(),
             severity_coverage.as_str(),
             severity_verification.map(Severity::as_str).unwrap_or("off"),
+            severity_classification
+                .map(Severity::as_str)
+                .unwrap_or("off"),
             severity_inventory.as_str(),
         );
         // `CodeRefViolation: Display` renders the legacy TTY shape
@@ -2244,6 +2266,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "{} verification-class violation(s) — VerificationMissing={} \
  (severity_verification=reject)",
             verification_missing_count, verification_missing_count,
+        ));
+    }
+    if misclassified_coverage_count > 0 && severity_classification == Some(Severity::Reject) {
+        reject_msgs.push(format!(
+            "{} classification-class violation(s) — MisclassifiedCoverage={} \
+ (severity_classification=reject)",
+            misclassified_coverage_count, misclassified_coverage_count,
         ));
     }
     if inventory_count > 0 && severity_inventory.is_reject() {

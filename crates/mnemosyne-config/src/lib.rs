@@ -427,6 +427,17 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub severity_confirmation: Option<Severity>,
 
+    /// Severity for the coverage-invariant violation (`MisclassifiedCoverage`,
+    /// R423): an EXEMPT section (`OutOfScopeHere` | `Informational`) that carries
+    /// an `implements` or `verifies` binding — design sec 6's
+    /// `has-implements/verifies ⟹ Normative` rule. Either the section is
+    /// mislabeled (should be Normative) or the binding is wrong. `None` = the
+    /// invariant gate is OFF (opt-in, like `severity_verification`). The 3-state
+    /// `coverage_expectation` enum alone cannot catch this — the enum adds the
+    /// label, this gate enforces label↔binding consistency.
+    #[serde(default)]
+    pub severity_classification: Option<Severity>,
+
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
     /// (`//`, `/* */`, `#`); string-literal contents and code identifiers

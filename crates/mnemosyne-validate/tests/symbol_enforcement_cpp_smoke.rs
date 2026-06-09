@@ -80,6 +80,7 @@ fn build_validator(
             severity_coverage: None,
             severity_verification: None,
             severity_confirmation: None,
+            severity_classification: None,
             severity_inventory: mnemosyne_config::Severity::Reject,
             comment_only: true,
             inventory_prefixes: vec![],

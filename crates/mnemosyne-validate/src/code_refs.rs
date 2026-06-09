@@ -130,6 +130,18 @@ pub enum CodeRefViolation {
         section_id: String,
         decision_status: Option<DecisionStatus>,
     },
+    /// Coverage-invariant violation (R423, opt-in) — `§section_id` is an EXEMPT
+    /// section (`OutOfScopeHere` | `Informational`) that carries an `implements`
+    /// or `verifies` binding, violating design sec 6's
+    /// `has-implements/verifies ⟹ Normative`. Either the section is mislabeled
+    /// (should be `Normative`) or the binding is wrong. Emitted only when
+    /// `severity_classification` is set. The 3-state `coverage_expectation` enum
+    /// adds the label; this gate enforces label↔binding consistency (catches the
+    /// "exempt but actually implemented" mislabel the enum alone misses).
+    MisclassifiedCoverage {
+        section_id: String,
+        decision_status: Option<DecisionStatus>,
+    },
 }
 
 /// Whether a binding `kind` satisfies the coverage axiom (`ImplementationMissing`).
@@ -241,6 +253,33 @@ fn is_verification_gap(section: &mnemosyne_core::SectionView) -> bool {
             .any(|b| matches!(b.kind, mnemosyne_core::BindingKind::Verifies))
 }
 
+/// Whether a section violates the coverage invariant (R423, design sec 6): an
+/// EXEMPT section (`OutOfScopeHere` | `Informational`, non-`Removed`) that
+/// carries an `implements` or `verifies` binding. Such a binding asserts the
+/// section IS implemented/verified here, contradicting the exempt label — so
+/// either the label is wrong (should be `Normative`) or the binding is.
+/// `references` bindings are fine on an exempt section (a «trace» edge, not a
+/// fulfillment claim). Mirrors [`is_verification_gap`] — opt-in, predicate-only.
+fn is_coverage_misclassified(section: &mnemosyne_core::SectionView) -> bool {
+    let removed =
+        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
+    if removed {
+        return false;
+    }
+    let exempt = matches!(
+        section.coverage_expectation,
+        mnemosyne_core::CoverageExpectation::OutOfScopeHere
+            | mnemosyne_core::CoverageExpectation::Informational
+    );
+    exempt
+        && section.bindings.iter().any(|b| {
+            matches!(
+                b.kind,
+                mnemosyne_core::BindingKind::Implements | mnemosyne_core::BindingKind::Verifies
+            )
+        })
+}
+
 /// The positive coverage projection (Round 390): the 3-way breakdown of every
 /// section into implemented / normative-gap / informative-exempt, plus the
 /// `Removed` tombstones excluded from the denominator. Read-only — derived
@@ -318,6 +357,7 @@ impl CodeRefViolation {
             CodeRefViolation::BindingUnbacked { .. } => "binding_unbacked",
             CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
             CodeRefViolation::VerificationMissing { .. } => "verification_missing",
+            CodeRefViolation::MisclassifiedCoverage { .. } => "misclassified_coverage",
         }
     }
 
@@ -345,6 +385,7 @@ impl CodeRefViolation {
             CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
             CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
             CodeRefViolation::VerificationMissing { .. } => DefectClass::Verification,
+            CodeRefViolation::MisclassifiedCoverage { .. } => DefectClass::Classification,
         }
     }
 
@@ -396,6 +437,17 @@ impl CodeRefViolation {
                 obj.insert("decision_status".into(), Value::String(status_str));
             }
             CodeRefViolation::VerificationMissing {
+                section_id,
+                decision_status,
+            } => {
+                obj.insert("section_id".into(), Value::String(section_id.clone()));
+                let status_str = match decision_status {
+                    Some(s) => format!("{:?}", s).to_lowercase(),
+                    None => "none(default-active)".into(),
+                };
+                obj.insert("decision_status".into(), Value::String(status_str));
+            }
+            CodeRefViolation::MisclassifiedCoverage {
                 section_id,
                 decision_status,
             } => {
@@ -468,6 +520,20 @@ impl std::fmt::Display for CodeRefViolation {
                     kind_tag, section_id, status_str
                 )
             }
+            CodeRefViolation::MisclassifiedCoverage {
+                section_id,
+                decision_status,
+            } => {
+                let status_str = match decision_status {
+                    Some(s) => format!("{:?}", s).to_lowercase(),
+                    None => "none(default-active)".into(),
+                };
+                write!(
+                    f,
+                    "[{}] §{} (status={}, exempt but has implements/verifies — must be normative)",
+                    kind_tag, section_id, status_str
+                )
+            }
         }
     }
 }
@@ -495,6 +561,11 @@ pub enum DefectClass {
     /// requirement→test traceability is a per-project commitment, not a
     /// universal axiom.
     Verification,
+    /// R423 — coverage-invariant violation (`MisclassifiedCoverage`): an exempt
+    /// section carries an implements/verifies binding. Its own opt-in
+    /// `severity_classification` knob — label↔binding consistency layered on the
+    /// 3-state `coverage_expectation` enum.
+    Classification,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -1852,6 +1923,23 @@ impl SetEqualityValidator {
             }
         }
 
+        // ---- Step 6: coverage invariant (R423, opt-in) ----
+        // OFF unless `severity_classification` is set. Enforces design sec 6: an
+        // exempt section (OutOfScope | Informational) must NOT carry an
+        // implements/verifies binding — else it is mislabeled (should be
+        // Normative) or the binding is wrong. The 3-state enum adds the label;
+        // this gate enforces label↔binding consistency.
+        if filter_id.is_none() && self.config.severity_classification.is_some() {
+            for (section_id, section) in &snapshot.sections {
+                if is_coverage_misclassified(section) {
+                    violations.push(CodeRefViolation::MisclassifiedCoverage {
+                        section_id: section_id.clone(),
+                        decision_status: section.decision_status,
+                    });
+                }
+            }
+        }
+
         sort_violations(&mut violations);
         Ok(violations)
     }
@@ -2251,6 +2339,13 @@ impl CodeRefViolation {
                 secondary: String::new(),
                 tertiary: String::new(),
             },
+            CodeRefViolation::MisclassifiedCoverage { section_id, .. } => ViolationSortKey {
+                rank: 4,
+                primary: section_id.clone(),
+                line: 0,
+                secondary: String::new(),
+                tertiary: String::new(),
+            },
         }
     }
 }
@@ -2332,6 +2427,7 @@ mod tests {
                 severity_coverage: None,
                 severity_verification: None,
                 severity_confirmation: None,
+                severity_classification: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
@@ -2569,6 +2665,7 @@ mod tests {
                 severity_coverage: None,
                 severity_verification: None,
                 severity_confirmation: None,
+                severity_classification: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -2833,6 +2930,7 @@ mod tests {
                 severity_verification: severity_verification
                     .map(|s| mnemosyne_config::Severity::from_tag(s).expect("valid severity tag")),
                 severity_confirmation: None,
+                severity_classification: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -2986,6 +3084,52 @@ mod tests {
         assert_eq!(r.removed_excluded, vec!["dead".to_string()]);
         assert_eq!(r.applicable(), 2);
         assert_eq!(r.coverage_ratio(), Some(0.5));
+    }
+
+    #[test]
+    fn coverage_invariant_flags_exempt_with_implements_or_verifies() {
+        // R423 — design sec 6 invariant: an exempt section must NOT carry an
+        // implements/verifies binding. This is the gate that was MISSING and let
+        // SCE's scxml-3.11 (out_of_scope + implements) and 6.4.4 (exempt +
+        // verifies) through.
+        use mnemosyne_core::{
+            BindingKind as Bk, BindingRef, CoverageExpectation as Ce, SectionView,
+        };
+        let view = |exp: Ce, kinds: &[Bk]| SectionView {
+            bindings: kinds
+                .iter()
+                .map(|&k| BindingRef {
+                    file: "f.rs".to_string(),
+                    symbol: None,
+                    kind: k,
+                })
+                .collect(),
+            decision_status: None,
+            coverage_expectation: exp,
+            verification_expectation: Default::default(),
+        };
+        // exempt + implements → misclassified (the scxml-3.11 shape)
+        assert!(is_coverage_misclassified(&view(
+            Ce::OutOfScopeHere,
+            &[Bk::Implements]
+        )));
+        // exempt + verifies → misclassified (the 6.4.4 shape)
+        assert!(is_coverage_misclassified(&view(
+            Ce::Informational,
+            &[Bk::Verifies]
+        )));
+        // exempt + references only → clean (a trace edge is allowed on exempt)
+        assert!(!is_coverage_misclassified(&view(
+            Ce::OutOfScopeHere,
+            &[Bk::References]
+        )));
+        // Normative + implements → clean (correctly classified)
+        assert!(!is_coverage_misclassified(&view(
+            Ce::Normative,
+            &[Bk::Implements]
+        )));
+        // exempt + no bindings → clean
+        assert!(!is_coverage_misclassified(&view(Ce::Informational, &[])));
     }
 
     #[test]

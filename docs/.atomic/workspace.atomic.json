@@ -7281,6 +7281,42 @@
         "SCE migration: sed informative to out_of_scope_here in the store before the rev bump (loud-failure safety net if forgotten)",
         "coverage migration report plus opt-in invariant gate (scxml-3.11 conflict) still pending a future round"
       ]
+    },
+    "Round 423": {
+      "decision_summary": "Coverage invariant gate: exempt section with implements/verifies = MisclassifiedCoverage (opt-in)",
+      "changes_bullets": [
+        "MisclassifiedCoverage violation + DefectClass::Classification + is_coverage_misclassified predicate: an exempt section (OutOfScopeHere | Informational) carrying an implements/verifies binding violates design sec 6's has-implements/verifies implies Normative",
+        "opt-in severity_classification config + validate-code-refs --severity-classification (None means off, R413 verify-gate pattern) + Step 6 scan; the 3-state enum adds the label, this gate enforces label-to-binding consistency",
+        "closes the gate gap that let SCE scxml-3.11 (out_of_scope + implements) and 6.4.4 (exempt + verifies) through unflagged"
+      ],
+      "verification_bullets": [
+        "unit test (exempt+implements/verifies flagged; references/normative clean) plus EMPIRICAL dogfood proof: scxml-3.11 shape caught under --severity-classification reject (misclassified_coverage=1), off by default",
+        "workspace clippy -D warnings clean, all tests green, validate-workspace green"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "the out_of_scope_here vs informational distinction (prose vs unimplemented feature) is NOT machine-gateable; only fresh-context confirmation (coverage_attestation) catches it, so SCE's 48-section reclassification still needs independent review",
+        "SCE and pinion: enable severity_classification to surface their conflicts (e.g. SCE scxml-3.11)"
+      ],
+      "publishable_decision_summary": "Coverage invariant gate: exempt section with implements/verifies = MisclassifiedCoverage (opt-in)",
+      "publishable_changes_bullets": [
+        "MisclassifiedCoverage violation + DefectClass::Classification + is_coverage_misclassified predicate: an exempt section (OutOfScopeHere | Informational) carrying an implements/verifies binding violates design sec 6's has-implements/verifies implies Normative",
+        "opt-in severity_classification config + validate-code-refs --severity-classification (None means off, R413 verify-gate pattern) + Step 6 scan; the 3-state enum adds the label, this gate enforces label-to-binding consistency",
+        "closes the gate gap that let SCE scxml-3.11 (out_of_scope + implements) and 6.4.4 (exempt + verifies) through unflagged"
+      ],
+      "publishable_verification_bullets": [
+        "unit test (exempt+implements/verifies flagged; references/normative clean) plus EMPIRICAL dogfood proof: scxml-3.11 shape caught under --severity-classification reject (misclassified_coverage=1), off by default",
+        "workspace clippy -D warnings clean, all tests green, validate-workspace green"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the out_of_scope_here vs informational distinction (prose vs unimplemented feature) is NOT machine-gateable; only fresh-context confirmation (coverage_attestation) catches it, so SCE's 48-section reclassification still needs independent review",
+        "SCE and pinion: enable severity_classification to surface their conflicts (e.g. SCE scxml-3.11)"
+      ]
     }
   },
   "inventory_entries": {},
