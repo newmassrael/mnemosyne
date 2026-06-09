@@ -7103,6 +7103,38 @@
         "R418 confirmed predicate plus projections (status, confirmation-debt work-queue)",
         "R419 opt-in severity gate plus code/test artifact hashing"
       ]
+    },
+    "Round 418": {
+      "decision_summary": "Confirmation report projection plus report-confirmation verb (max-rigor v1)",
+      "changes_bullets": [
+        "confirmation_report projection (atomic): groups events by claim, classifies proposed/confirmed/refuted via the v1 required-evidence-set (tool linkage-check plus an independent semantic confirm; one refute blocks); pure over the event log, nothing stored",
+        "ConfirmationStatus plus ClaimConfirmation plus ConfirmationReport types plus a debt() work-queue iterator; ConfirmationClaim gains Ord/Hash for grouping",
+        "report-confirmation read-only CLI verb (TTY plus json): status counts plus the confirmation-debt list"
+      ],
+      "verification_bullets": [
+        "2 atomic projection tests plus 1 CLI smoke (proposed/debt); atomic plus cli green, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R419 opt-in severity gate in validate plus code/test artifact hashing (the drift/stale substrate; adds the Stale status)"
+      ],
+      "publishable_decision_summary": "Confirmation report projection plus report-confirmation verb (max-rigor v1)",
+      "publishable_changes_bullets": [
+        "confirmation_report projection (atomic): groups events by claim, classifies proposed/confirmed/refuted via the v1 required-evidence-set (tool linkage-check plus an independent semantic confirm; one refute blocks); pure over the event log, nothing stored",
+        "ConfirmationStatus plus ClaimConfirmation plus ConfirmationReport types plus a debt() work-queue iterator; ConfirmationClaim gains Ord/Hash for grouping",
+        "report-confirmation read-only CLI verb (TTY plus json): status counts plus the confirmation-debt list"
+      ],
+      "publishable_verification_bullets": [
+        "2 atomic projection tests plus 1 CLI smoke (proposed/debt); atomic plus cli green, clippy -D warnings clean, cargo build --workspace green"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R419 opt-in severity gate in validate plus code/test artifact hashing (the drift/stale substrate; adds the Stale status)"
+      ]
     }
   },
   "inventory_entries": {},

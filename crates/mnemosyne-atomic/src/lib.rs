@@ -641,7 +641,7 @@ fn default_schema_version() -> u32 {
 // ============================================================================
 
 /// The claim a confirmation event is about (design sec 7 claim-key).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ConfirmationClaim {
     /// A `Verifies` binding ("does this test verify this requirement?"), keyed
@@ -803,6 +803,105 @@ pub struct ConfirmationEvent {
     pub rationale: String,
     /// Caller-supplied (determinism — never generated in-core, design sec 4.1).
     pub timestamp: String,
+}
+
+/// Confirmation status of a claim — a PROJECTION over the event log (R418),
+/// never stored (design sec 4.5). `Refuted` wins (one credible refute blocks,
+/// design sec 8); else `Confirmed` iff the v1 required-evidence-set is met; else
+/// `Proposed`. NOTE: `Stale` (drift) is intentionally absent until R419 wires the
+/// code/test artifact hashing — this projection is pure over the stored events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmationStatus {
+    Proposed,
+    Confirmed,
+    Refuted,
+}
+
+/// Per-claim confirmation projection (R418).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClaimConfirmation {
+    pub claim: ConfirmationClaim,
+    pub status: ConfirmationStatus,
+    pub confirm_count: usize,
+    pub refute_count: usize,
+    /// A deterministic tool `linkage_check` Confirm exists.
+    pub has_tool_linkage: bool,
+    /// Distinct `confirming_run` among `semantic_review` Confirms (independence
+    /// count; self-confirm is already impossible — the append rejects it).
+    pub independent_semantic: usize,
+}
+
+/// Whole-store confirmation projection (R418).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConfirmationReport {
+    pub claims: Vec<ClaimConfirmation>,
+}
+
+impl ConfirmationReport {
+    /// The confirmation-debt work-queue (design sec 4.5): every claim not yet
+    /// `Confirmed` (i.e. `Proposed` or `Refuted`).
+    pub fn debt(&self) -> impl Iterator<Item = &ClaimConfirmation> {
+        self.claims
+            .iter()
+            .filter(|c| c.status != ConfirmationStatus::Confirmed)
+    }
+}
+
+/// Build the confirmation projection (R418) — PURE over the event log, nothing
+/// stored. Groups events by claim, then classifies each via the v1
+/// required-evidence-set (design sec 4.2 decision A): a deterministic tool
+/// `linkage_check` Confirm AND at least one independent `semantic_review` Confirm
+/// (a `confirming_run` differing from the authoring run), with zero refutations.
+/// A single `Refute` blocks regardless (design sec 8). Drift/staleness is NOT
+/// considered here (R419 substrate); every stored event counts as current.
+pub fn confirmation_report(store: &AtomicStore) -> ConfirmationReport {
+    let mut by_claim: BTreeMap<ConfirmationClaim, Vec<&ConfirmationEvent>> = BTreeMap::new();
+    for ev in store.confirmation_events.values() {
+        by_claim.entry(ev.claim.clone()).or_default().push(ev);
+    }
+    let mut claims = Vec::new();
+    for (claim, events) in by_claim {
+        let confirm_count = events
+            .iter()
+            .filter(|e| e.verdict == Verdict::Confirm)
+            .count();
+        let refute_count = events
+            .iter()
+            .filter(|e| e.verdict == Verdict::Refute)
+            .count();
+        let has_tool_linkage = events
+            .iter()
+            .any(|e| e.verdict == Verdict::Confirm && e.method == ConfirmMethod::LinkageCheck);
+        let mut sem_runs: Vec<&str> = events
+            .iter()
+            .filter(|e| {
+                e.verdict == Verdict::Confirm
+                    && e.method == ConfirmMethod::SemanticReview
+                    && e.confirming_run != e.authoring_run
+            })
+            .map(|e| e.confirming_run.as_str())
+            .collect();
+        sem_runs.sort_unstable();
+        sem_runs.dedup();
+        let independent_semantic = sem_runs.len();
+        let status = if refute_count > 0 {
+            ConfirmationStatus::Refuted
+        } else if has_tool_linkage && independent_semantic >= 1 {
+            ConfirmationStatus::Confirmed
+        } else {
+            ConfirmationStatus::Proposed
+        };
+        claims.push(ClaimConfirmation {
+            claim,
+            status,
+            confirm_count,
+            refute_count,
+            has_tool_linkage,
+            independent_semantic,
+        });
+    }
+    ConfirmationReport { claims }
 }
 
 #[derive(Debug, Error)]
@@ -3272,6 +3371,49 @@ mod tests {
             reloaded.schema_version, CURRENT_SCHEMA_VERSION,
             "save bumps the store to v10"
         );
+    }
+
+    #[test]
+    fn confirmation_report_classifies_proposed_confirmed_refuted() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+
+        // One semantic confirm only → Proposed (no tool linkage yet).
+        append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
+        let rep = confirmation_report(&store);
+        assert_eq!(rep.claims.len(), 1);
+        assert_eq!(rep.claims[0].status, ConfirmationStatus::Proposed);
+        assert_eq!(rep.claims[0].independent_semantic, 1);
+
+        // Add a deterministic tool linkage_check confirm → Confirmed.
+        let mut tool = sample_event("runA", "runTool");
+        tool.method = ConfirmMethod::LinkageCheck;
+        tool.confirmer.kind = ConfirmerKind::Tool;
+        append_confirmation_event(&mut store, &path, tool).unwrap();
+        let rep = confirmation_report(&store);
+        assert_eq!(rep.claims[0].status, ConfirmationStatus::Confirmed);
+        assert!(rep.claims[0].has_tool_linkage);
+
+        // A single refute blocks regardless (design sec 8).
+        let mut refute = sample_event("runA", "runRefuter");
+        refute.verdict = Verdict::Refute;
+        refute.rationale = "the test does not exercise the requirement".to_string();
+        append_confirmation_event(&mut store, &path, refute).unwrap();
+        let rep = confirmation_report(&store);
+        assert_eq!(rep.claims[0].status, ConfirmationStatus::Refuted);
+    }
+
+    #[test]
+    fn confirmation_report_debt_excludes_confirmed() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        // A Proposed claim (semantic only) is on the debt queue.
+        append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
+        assert_eq!(confirmation_report(&store).debt().count(), 1);
     }
 
     #[test]

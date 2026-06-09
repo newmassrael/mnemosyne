@@ -281,6 +281,7 @@ fn run(args: &[String]) -> Result<()> {
         "propose-implementations" => cmd_propose_implementations(&args[2..]),
         "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
         "report-coverage" => cmd_report_coverage(&args[2..]),
+        "report-confirmation" => cmd_report_confirmation(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
@@ -504,6 +505,7 @@ fn print_help(prog: &str) {
     );
     println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
     println!(" {} report-coverage [--json]", prog);
+    println!(" {} report-confirmation [--json]", prog);
     println!(" {} report-excerpt-hash-backfill [--json]", prog);
     println!(
         "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
@@ -1395,6 +1397,85 @@ fn cmd_report_coverage(args: &[String]) -> Result<()> {
             for id in &report.normative_gap {
                 println!("  §{}", id);
             }
+        }
+    }
+    Ok(())
+}
+
+/// R418 — read-only confirmation projection (max-rigor v1). Classifies each
+/// claim in the event log as confirmed / proposed / refuted via the v1
+/// required-evidence-set, and surfaces the confirmation-debt work-queue (claims
+/// not yet confirmed). Pure over the stored events; no new authoritative state.
+/// Drift/staleness is out of scope until R419 wires artifact hashing.
+fn cmd_report_confirmation(args: &[String]) -> Result<()> {
+    use mnemosyne_atomic::{ConfirmationClaim, ConfirmationStatus};
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let report = mnemosyne_atomic::confirmation_report(&store);
+    let count_of = |s: ConfirmationStatus| report.claims.iter().filter(|c| c.status == s).count();
+    let confirmed = count_of(ConfirmationStatus::Confirmed);
+    let proposed = count_of(ConfirmationStatus::Proposed);
+    let refuted = count_of(ConfirmationStatus::Refuted);
+    let claim_label = |claim: &ConfirmationClaim| -> String {
+        match claim {
+            ConfirmationClaim::VerifiesBinding {
+                section_id,
+                file,
+                symbol,
+            } => format!(
+                "§{} {}{}",
+                section_id,
+                file,
+                symbol
+                    .as_deref()
+                    .map(|s| format!(":{s}"))
+                    .unwrap_or_default()
+            ),
+            ConfirmationClaim::SectionCompleteness { section_id } => {
+                format!("§{} (all-I/O completeness)", section_id)
+            }
+        }
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "total_claims": report.claims.len(),
+                "confirmed_count": confirmed,
+                "proposed_count": proposed,
+                "refuted_count": refuted,
+                "debt_count": report.debt().count(),
+                "claims": report.claims,
+            })
+        );
+    } else {
+        println!("=== confirmation report ===");
+        println!("  confirmed: {}", confirmed);
+        println!("  proposed:  {}", proposed);
+        println!("  refuted:   {}", refuted);
+        println!("  debt (not yet confirmed): {}", report.debt().count());
+        for c in report.debt() {
+            let st = match c.status {
+                ConfirmationStatus::Proposed => "proposed",
+                ConfirmationStatus::Confirmed => "confirmed",
+                ConfirmationStatus::Refuted => "refuted",
+            };
+            println!("  [{}] {}", st, claim_label(&c.claim));
         }
     }
     Ok(())
