@@ -116,7 +116,7 @@ fn mixed_store_projects_summary_and_per_section_rows() {
             // Informative → exempt.
             "info": {
                 "title": "Terminology", "parent_doc": "docs/GENERATED.md",
-                "coverage_expectation": "informative"
+                "coverage_expectation": "out_of_scope_here"
             },
             // Removed → excluded from the applicable denominator.
             "dead": {

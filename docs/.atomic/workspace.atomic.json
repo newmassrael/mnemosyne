@@ -7243,6 +7243,44 @@
         "R422 coverage migration report plus opt-in invariant gate (has-implements implies Normative; OutOfScope or Informational implies no implements) to surface the 1 SCE conflict section (scxml-3.11, informative plus implements)",
         "SCE rev bump to adopt R416 through R421 (confirmation system plus 3-state)"
       ]
+    },
+    "Round 422": {
+      "decision_summary": "Remove the informative coverage alias: clean break (no-legacy-carry)",
+      "changes_bullets": [
+        "removed the serde alias on CoverageExpectation::OutOfScopeHere and the informative arm in from_tag; a store still carrying the legacy informative tag now fails to load LOUDLY (an unknown enum tag errors, not a silent drop)",
+        "reconsiders R421's non-breaking serde alias: per no-legacy-carry, a compat shim with no clear removal point is debt, and coverage_expectation has no silent-drop risk (unlike R388 F9's flatten case), so the alias was unnecessary",
+        "consumers (SCE) migrate informative to out_of_scope_here before bumping (one-line sed); schema stays v11"
+      ],
+      "verification_bullets": [
+        "atomic test flipped from alias-loads to loud-reject (informative no longer deserializes); 3 CLI smoke store tags updated informative to out_of_scope_here",
+        "workspace clippy -D warnings clean, all tests green, validate-workspace green"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "R421 entry stays frozen — it records the alias that R422 removed, an honest audit trail of the reconsideration",
+        "SCE migration: sed informative to out_of_scope_here in the store before the rev bump (loud-failure safety net if forgotten)",
+        "coverage migration report plus opt-in invariant gate (scxml-3.11 conflict) still pending a future round"
+      ],
+      "publishable_decision_summary": "Remove the informative coverage alias: clean break (no-legacy-carry)",
+      "publishable_changes_bullets": [
+        "removed the serde alias on CoverageExpectation::OutOfScopeHere and the informative arm in from_tag; a store still carrying the legacy informative tag now fails to load LOUDLY (an unknown enum tag errors, not a silent drop)",
+        "reconsiders R421's non-breaking serde alias: per no-legacy-carry, a compat shim with no clear removal point is debt, and coverage_expectation has no silent-drop risk (unlike R388 F9's flatten case), so the alias was unnecessary",
+        "consumers (SCE) migrate informative to out_of_scope_here before bumping (one-line sed); schema stays v11"
+      ],
+      "publishable_verification_bullets": [
+        "atomic test flipped from alias-loads to loud-reject (informative no longer deserializes); 3 CLI smoke store tags updated informative to out_of_scope_here",
+        "workspace clippy -D warnings clean, all tests green, validate-workspace green"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R421 entry stays frozen — it records the alias that R422 removed, an honest audit trail of the reconsideration",
+        "SCE migration: sed informative to out_of_scope_here in the store before the rev bump (loud-failure safety net if forgotten)",
+        "coverage migration report plus opt-in invariant gate (scxml-3.11 conflict) still pending a future round"
+      ]
     }
   },
   "inventory_entries": {},

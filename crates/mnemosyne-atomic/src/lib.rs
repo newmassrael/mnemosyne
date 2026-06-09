@@ -1014,12 +1014,13 @@ pub enum AtomicStoreError {
 // NO `schema_version < 10` arm in `load`, and no migration report is needed.
 // v10→v11 widens `AtomicSection.coverage_expectation` from 2-state
 // (Normative | Informative) to 3-state (Normative | OutOfScopeHere |
-// Informational, R421). Declarative + back-compatible: the legacy `informative`
-// tag deserializes as `OutOfScopeHere` via `#[serde(alias)]` (the conservative
-// migration default — most exempt sections are out-of-scope, design sec 6), so a
-// pre-v11 store loads unchanged and gates identically (both exempt classes leave
-// the coverage axiom). No `schema_version < 11` arm; the next save rewrites the
-// tag to `out_of_scope_here`. SCE's 50 `informative` sections migrate this way.
+// Informational, R421). The `informative` alias was REMOVED (R422 clean break):
+// a store still carrying that tag fails to load LOUDLY (an unknown enum tag
+// errors — no silent drop), so a consumer migrates `informative` →
+// `out_of_scope_here` deliberately before bumping. New 3-state stores gate
+// identically to the old 2-state (both OutOfScopeHere and Informational leave the
+// coverage axiom, exactly as Informative did). SCE's 50 `informative` sections
+// migrate this way on rev bump.
 const CURRENT_SCHEMA_VERSION: u32 = 11;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
@@ -4793,10 +4794,11 @@ mod tests {
     }
 
     #[test]
-    fn coverage_expectation_legacy_informative_alias_loads_as_out_of_scope() {
-        // R421 — a pre-3-state store with `"informative"` deserializes as
-        // OutOfScopeHere (the conservative migration default), so SCE's 50
-        // informative sections load unchanged and gate identically (both exempt).
+    fn coverage_expectation_legacy_informative_tag_now_rejects() {
+        // R422 — clean break: the `informative` alias was removed, so a
+        // pre-3-state store carrying it fails to load LOUDLY (an unknown enum tag
+        // errors — NOT a silent drop). A consumer migrates `informative` →
+        // `out_of_scope_here` before bumping, rather than relying on a compat shim.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/ws.atomic.json");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -4807,11 +4809,9 @@ mod tests {
             "schema_version": 9
         }"#;
         std::fs::write(&path, legacy).unwrap();
-        let loaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(
-            loaded.section("Info").unwrap().coverage_expectation,
-            mnemosyne_core::CoverageExpectation::OutOfScopeHere,
-            "legacy `informative` migrates to OutOfScopeHere"
+        assert!(
+            AtomicStore::load(&path).is_err(),
+            "legacy `informative` no longer deserializes (R422 clean break)"
         );
     }
 

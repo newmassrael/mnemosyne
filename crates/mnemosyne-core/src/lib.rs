@@ -227,11 +227,11 @@ pub enum CoverageExpectation {
     #[default]
     Normative,
     /// Part of the standard but not implemented by THIS consumer; revisitable if
-    /// scope expands (design sec 6). The pre-3-state `informative` tag
-    /// deserializes HERE via `#[serde(alias)]` — the conservative migration
-    /// default, since most exempt sections are out-of-scope rather than
-    /// inherently informational. Serialized canonically as `out_of_scope_here`.
-    #[serde(alias = "informative")]
+    /// scope expands (design sec 6). Serialized as `out_of_scope_here`. The
+    /// pre-3-state `informative` tag is NOT aliased (R422 clean break): a store
+    /// still carrying it fails to load LOUDLY, so a consumer migrates it
+    /// (`informative` → `out_of_scope_here`) deliberately rather than relying on
+    /// a silent compat shim. No silent-drop risk (unknown enum tags error).
     OutOfScopeHere,
     /// Inherently non-implementable prose / context (terminology / overview).
     Informational,
@@ -257,9 +257,6 @@ impl CoverageExpectation {
             "normative" => Some(CoverageExpectation::Normative),
             "out_of_scope_here" => Some(CoverageExpectation::OutOfScopeHere),
             "informational" => Some(CoverageExpectation::Informational),
-            // Pre-3-state back-compat: `informative` maps to the conservative
-            // out-of-scope default (design sec 6 migration).
-            "informative" => Some(CoverageExpectation::OutOfScopeHere),
             _ => None,
         }
     }

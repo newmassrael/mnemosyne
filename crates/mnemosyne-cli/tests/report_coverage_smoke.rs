@@ -59,7 +59,7 @@ fn mixed_store_reports_three_way_breakdown_and_ratio() {
             // Informative → exempt.
             "info": {
                 "title": "Terminology", "parent_doc": "docs/GENERATED.md",
-                "coverage_expectation": "informative"
+                "coverage_expectation": "out_of_scope_here"
             },
             // Removed Normative with no coverage → excluded, not a gap.
             "dead": {
@@ -100,7 +100,7 @@ fn all_informative_store_has_null_ratio() {
         serde_json::json!({
             "intro": {
                 "title": "Intro", "parent_doc": "docs/GENERATED.md",
-                "coverage_expectation": "informative"
+                "coverage_expectation": "out_of_scope_here"
             }
         }),
     );

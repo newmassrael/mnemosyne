@@ -892,7 +892,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Classify a section's coverage applicability (R421 3-state). `normative` (default) keeps the coverage axiom — a non-removed normative section with zero `implements` bindings is a gap. `out_of_scope_here` (part of the standard but not implemented by this consumer; revisitable) and `informational` (inherently non-implementable prose — terminology / overview) both EXEMPT the section. The legacy `informative` tag maps to `out_of_scope_here`. Second write path to Section.coverage_expectation alongside import_sections; both enforce the same closed value set. `reason` mandatory."
+        description = "Classify a section's coverage applicability (R421 3-state). `normative` (default) keeps the coverage axiom — a non-removed normative section with zero `implements` bindings is a gap. `out_of_scope_here` (part of the standard but not implemented by this consumer; revisitable) and `informational` (inherently non-implementable prose — terminology / overview) both EXEMPT the section. Second write path to Section.coverage_expectation alongside import_sections; both enforce the same closed value set. `reason` mandatory."
     )]
     async fn set_section_coverage_expectation(
         &self,
