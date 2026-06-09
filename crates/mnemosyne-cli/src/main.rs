@@ -1479,6 +1479,7 @@ fn cmd_report_confirmation(args: &[String]) -> Result<()> {
                 ConfirmationStatus::Proposed => "proposed",
                 ConfirmationStatus::Confirmed => "confirmed",
                 ConfirmationStatus::Refuted => "refuted",
+                ConfirmationStatus::Stale => "stale",
             };
             println!("  [{}] {}", st, claim_label(&c.claim));
         }
@@ -1536,11 +1537,12 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
     let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-    let gaps = mnemosyne_validate::confirmation::scan_confirmation_gate(&snapshot, &store);
+    let gaps = mnemosyne_validate::confirmation::scan_confirmation_gate(&snapshot, &store, &root);
     let status_str = |s: ConfirmationStatus| match s {
         ConfirmationStatus::Proposed => "proposed",
         ConfirmationStatus::Confirmed => "confirmed",
         ConfirmationStatus::Refuted => "refuted",
+        ConfirmationStatus::Stale => "stale",
     };
     if json {
         println!(

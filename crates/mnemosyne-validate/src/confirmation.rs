@@ -1,18 +1,26 @@
-//! R419 — confirmation gate (max-rigor v1). For every `Normative` + `Dedicated`
-//! section, each `Verifies` binding must map to a `Confirmed` claim in the
-//! event log; otherwise it is an unconfirmed gap. Pure over the binding-graph
-//! snapshot + the store's confirmation events. Opt-in via `severity_confirmation`
-//! — `None` (the default) means the gate is disabled and costs nothing.
+//! R419/R420 — confirmation gate (max-rigor v1). For every `Normative` +
+//! `Dedicated` section, each `Verifies` binding must map to a `Confirmed` claim
+//! in the event log; otherwise it is an unconfirmed gap. Opt-in via
+//! `severity_confirmation` — `None` (the default) means the gate is disabled and
+//! costs nothing.
 //!
 //! Layers one rung above the R413 verify axis: `is_verification_gap` checks a
 //! `verifies` test EXISTS; this gate checks it was independently re-verified
-//! (design sec 12.5). Drift/staleness (the code/test artifact-hash substrate) is
-//! out of scope here — that lands in R420 and adds a `Stale` status; this scan
-//! treats every stored event as current.
+//! (design sec 12.5).
+//!
+//! R420 — DRIFT. A confirmation is only valid while the artifacts it examined are
+//! unchanged. This module re-hashes the bound artifacts (the file-reading half
+//! the core deliberately omits, design sec 4.6) and feeds a validity predicate to
+//! `confirmation_report_with`; an event whose `artifact_hashes` diverged drops out
+//! of the valid set, so a previously-confirmed claim becomes `Stale` and the gate
+//! flags it again. Empty hashes are *unrevalidatable*, not drift (R404 rule).
 
 use std::collections::HashMap;
+use std::path::Path;
 
-use mnemosyne_atomic::{confirmation_report, AtomicStore, ConfirmationClaim, ConfirmationStatus};
+use mnemosyne_atomic::{
+    confirmation_report_with, AtomicStore, ConfirmationClaim, ConfirmationEvent, ConfirmationStatus,
+};
 use mnemosyne_core::{
     AtomicSnapshot, BindingKind, CoverageExpectation, DecisionStatus, VerificationExpectation,
 };
@@ -24,25 +32,79 @@ pub struct UnconfirmedBinding {
     pub section_id: String,
     pub file: String,
     pub symbol: Option<String>,
-    /// The claim's current status: `Proposed` (no events yet, or the
-    /// required-evidence-set is unmet) or `Refuted` (an open refutation).
+    /// The claim's current status: `Proposed` (no/insufficient evidence),
+    /// `Refuted` (an open refutation), or `Stale` (a confirm drifted out, R420).
     pub status: ConfirmationStatus,
 }
 
-/// Scan the confirmation gate (R419). A `Verifies` binding is unconfirmed iff
-/// its `VerifiesBinding` claim is anything but `Confirmed` (including the
-/// "no events yet" case, which the projection reports as `Proposed`). The claim
-/// key is `(section_id, file, symbol)` — it must match the binding exactly, so a
-/// confirmation recorded against a different file/symbol does not count.
+fn hash_file(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).ok()?;
+    let mut h = Sha256::new();
+    h.update(&bytes);
+    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// R420 drift check: has any artifact the event examined changed since? Returns
+/// `true` (drifted) if a recorded, non-empty hash no longer matches the live
+/// artifact. Empty hash lists are unrevalidatable (not drift). The mapping from
+/// hashes to files is the binding graph: `spec` = the claim section's
+/// `normative_excerpt`; `test` = the verifies binding's own file; `code` = the
+/// section's `implements` binding files.
+fn artifact_drifted(event: &ConfirmationEvent, store: &AtomicStore, workspace_root: &Path) -> bool {
+    let section_id = event.claim.section_id();
+    let section = store.sections.get(section_id);
+
+    // spec — store-only (R404 text_sha256 reuse).
+    if let Some(spec) = event.artifact_hashes.spec_sha256.as_deref() {
+        if !spec.is_empty() {
+            if let Some(exc) = section.and_then(|s| s.normative_excerpt.as_ref()) {
+                if !exc.text_sha256.is_empty() && exc.text_sha256 != spec {
+                    return true;
+                }
+            }
+        }
+    }
+    // test — the verifies binding's own file.
+    if !event.artifact_hashes.test_sha256.is_empty() {
+        if let ConfirmationClaim::VerifiesBinding { file, .. } = &event.claim {
+            match hash_file(&workspace_root.join(file)) {
+                Some(actual) if event.artifact_hashes.test_sha256.contains(&actual) => {}
+                _ => return true, // changed, missing, or hash not among those recorded
+            }
+        }
+    }
+    // code — the section's `implements` binding files.
+    if !event.artifact_hashes.code_sha256.is_empty() {
+        if let Some(section) = section {
+            for b in &section.bindings {
+                if matches!(b.kind, BindingKind::Implements) {
+                    match hash_file(&workspace_root.join(&b.file)) {
+                        Some(actual) if event.artifact_hashes.code_sha256.contains(&actual) => {}
+                        _ => return true,
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Scan the confirmation gate (R419 + R420 drift). A `Verifies` binding is
+/// unconfirmed iff its `VerifiesBinding` claim is anything but `Confirmed` once
+/// drifted events are dropped (`Proposed` / `Refuted` / `Stale`). The claim key
+/// is `(section_id, file, symbol)` — it must match the binding exactly.
 pub fn scan_confirmation_gate(
     snapshot: &AtomicSnapshot,
     store: &AtomicStore,
+    workspace_root: &Path,
 ) -> Vec<UnconfirmedBinding> {
-    let status_of: HashMap<ConfirmationClaim, ConfirmationStatus> = confirmation_report(store)
-        .claims
-        .into_iter()
-        .map(|c| (c.claim, c.status))
-        .collect();
+    let status_of: HashMap<ConfirmationClaim, ConfirmationStatus> =
+        confirmation_report_with(store, |e| !artifact_drifted(e, store, workspace_root))
+            .claims
+            .into_iter()
+            .map(|c| (c.claim, c.status))
+            .collect();
     let mut out = Vec::new();
     for (section_id, section) in &snapshot.sections {
         let removed =

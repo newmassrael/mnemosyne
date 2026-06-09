@@ -807,28 +807,36 @@ pub struct ConfirmationEvent {
 
 /// Confirmation status of a claim — a PROJECTION over the event log (R418),
 /// never stored (design sec 4.5). `Refuted` wins (one credible refute blocks,
-/// design sec 8); else `Confirmed` iff the v1 required-evidence-set is met; else
-/// `Proposed`. NOTE: `Stale` (drift) is intentionally absent until R419 wires the
-/// code/test artifact hashing — this projection is pure over the stored events.
+/// design sec 8); else `Confirmed` iff the v1 required-evidence-set is met among
+/// the VALID events; else `Stale` if the claim had a confirm that drifted out of
+/// validity (R420); else `Proposed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfirmationStatus {
     Proposed,
     Confirmed,
     Refuted,
+    /// Had a confirm that is no longer current — its `artifact_hashes` diverged
+    /// from the live artifacts (R420 drift). Distinct from `Proposed` (never had
+    /// evidence): a `Stale` claim WAS confirmed and now demands re-confirmation.
+    Stale,
 }
 
-/// Per-claim confirmation projection (R418).
+/// Per-claim confirmation projection (R418/R420). Counts are over the VALID
+/// events (those passing the drift predicate); `stale_count` is the events
+/// dropped by drift.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ClaimConfirmation {
     pub claim: ConfirmationClaim,
     pub status: ConfirmationStatus,
     pub confirm_count: usize,
     pub refute_count: usize,
-    /// A deterministic tool `linkage_check` Confirm exists.
+    /// Events dropped by the drift predicate (R420) — no longer current.
+    pub stale_count: usize,
+    /// A deterministic tool `linkage_check` Confirm exists (among valid events).
     pub has_tool_linkage: bool,
-    /// Distinct `confirming_run` among `semantic_review` Confirms (independence
-    /// count; self-confirm is already impossible — the append rejects it).
+    /// Distinct `confirming_run` among valid `semantic_review` Confirms
+    /// (independence count; self-confirm is already impossible — append rejects).
     pub independent_semantic: usize,
 }
 
@@ -840,7 +848,7 @@ pub struct ConfirmationReport {
 
 impl ConfirmationReport {
     /// The confirmation-debt work-queue (design sec 4.5): every claim not yet
-    /// `Confirmed` (i.e. `Proposed` or `Refuted`).
+    /// `Confirmed` (`Proposed`, `Refuted`, or `Stale`).
     pub fn debt(&self) -> impl Iterator<Item = &ClaimConfirmation> {
         self.claims
             .iter()
@@ -848,32 +856,47 @@ impl ConfirmationReport {
     }
 }
 
-/// Build the confirmation projection (R418) — PURE over the event log, nothing
-/// stored. Groups events by claim, then classifies each via the v1
-/// required-evidence-set (design sec 4.2 decision A): a deterministic tool
-/// `linkage_check` Confirm AND at least one independent `semantic_review` Confirm
-/// (a `confirming_run` differing from the authoring run), with zero refutations.
-/// A single `Refute` blocks regardless (design sec 8). Drift/staleness is NOT
-/// considered here (R419 substrate); every stored event counts as current.
+/// Build the confirmation projection — PURE over the event log, nothing stored.
+/// Drift-unaware: every stored event counts as current. Equivalent to
+/// [`confirmation_report_with`] with an always-valid predicate.
 pub fn confirmation_report(store: &AtomicStore) -> ConfirmationReport {
+    confirmation_report_with(store, |_| true)
+}
+
+/// Build the confirmation projection with a caller-supplied VALIDITY predicate
+/// (R420). `is_valid(event)` decides whether an event is still current; the
+/// drift check itself (re-hashing spec / code / test artifacts) lives in the
+/// outer validate layer so the core stays file-free (design sec 4.6). Groups
+/// events by claim, then classifies each via the v1 required-evidence-set
+/// (design sec 4.2 decision A) over the VALID events: a deterministic tool
+/// `linkage_check` Confirm AND ≥ 1 independent `semantic_review` Confirm, zero
+/// valid refutations. One valid `Refute` blocks (design sec 8). A claim whose
+/// only confirms drifted out becomes `Stale` (was confirmed, now demands
+/// re-confirmation) rather than `Proposed`.
+pub fn confirmation_report_with<F: Fn(&ConfirmationEvent) -> bool>(
+    store: &AtomicStore,
+    is_valid: F,
+) -> ConfirmationReport {
     let mut by_claim: BTreeMap<ConfirmationClaim, Vec<&ConfirmationEvent>> = BTreeMap::new();
     for ev in store.confirmation_events.values() {
         by_claim.entry(ev.claim.clone()).or_default().push(ev);
     }
     let mut claims = Vec::new();
-    for (claim, events) in by_claim {
-        let confirm_count = events
+    for (claim, all) in by_claim {
+        let valid: Vec<&ConfirmationEvent> = all.iter().copied().filter(|e| is_valid(e)).collect();
+        let stale_count = all.len() - valid.len();
+        let confirm_count = valid
             .iter()
             .filter(|e| e.verdict == Verdict::Confirm)
             .count();
-        let refute_count = events
+        let refute_count = valid
             .iter()
             .filter(|e| e.verdict == Verdict::Refute)
             .count();
-        let has_tool_linkage = events
+        let has_tool_linkage = valid
             .iter()
             .any(|e| e.verdict == Verdict::Confirm && e.method == ConfirmMethod::LinkageCheck);
-        let mut sem_runs: Vec<&str> = events
+        let mut sem_runs: Vec<&str> = valid
             .iter()
             .filter(|e| {
                 e.verdict == Verdict::Confirm
@@ -885,10 +908,18 @@ pub fn confirmation_report(store: &AtomicStore) -> ConfirmationReport {
         sem_runs.sort_unstable();
         sem_runs.dedup();
         let independent_semantic = sem_runs.len();
+        // A confirm that drifted out of the valid set: the claim HAD evidence
+        // that is no longer current (R420) — `Stale`, not `Proposed`.
+        let invalid_confirm = all
+            .iter()
+            .copied()
+            .any(|e| e.verdict == Verdict::Confirm && !is_valid(e));
         let status = if refute_count > 0 {
             ConfirmationStatus::Refuted
         } else if has_tool_linkage && independent_semantic >= 1 {
             ConfirmationStatus::Confirmed
+        } else if invalid_confirm {
+            ConfirmationStatus::Stale
         } else {
             ConfirmationStatus::Proposed
         };
@@ -897,6 +928,7 @@ pub fn confirmation_report(store: &AtomicStore) -> ConfirmationReport {
             status,
             confirm_count,
             refute_count,
+            stale_count,
             has_tool_linkage,
             independent_semantic,
         });
@@ -3414,6 +3446,29 @@ mod tests {
         // A Proposed claim (semantic only) is on the debt queue.
         append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
         assert_eq!(confirmation_report(&store).debt().count(), 1);
+    }
+
+    #[test]
+    fn confirmation_report_with_drift_marks_stale() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "sec");
+        let mut tool = sample_event("runA", "runTool");
+        tool.method = ConfirmMethod::LinkageCheck;
+        tool.confirmer.kind = ConfirmerKind::Tool;
+        append_confirmation_event(&mut store, &path, tool).unwrap();
+        append_confirmation_event(&mut store, &path, sample_event("runA", "runB")).unwrap();
+        // All events valid → Confirmed.
+        assert_eq!(
+            confirmation_report(&store).claims[0].status,
+            ConfirmationStatus::Confirmed
+        );
+        // Drift everything (R420): the confirms drop out → Stale, not Proposed.
+        let rep = confirmation_report_with(&store, |_| false);
+        assert_eq!(rep.claims[0].status, ConfirmationStatus::Stale);
+        assert_eq!(rep.claims[0].stale_count, 2);
+        assert_eq!(rep.claims[0].confirm_count, 0, "valid confirms excluded");
     }
 
     #[test]

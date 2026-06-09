@@ -7171,6 +7171,42 @@
         "R420 code/test artifact hashing (the drift/stale substrate; adds the Stale status and re-hash check)",
         "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
       ]
+    },
+    "Round 420": {
+      "decision_summary": "Confirmation drift to Stale: validate-confirmation re-hashes bound artifacts (max-rigor v1)",
+      "changes_bullets": [
+        "ConfirmationStatus gains Stale (was confirmed, now drifted); confirmation_report_with(store, is_valid) adds a validity predicate and confirmation_report becomes the drift-unaware wrapper; ClaimConfirmation gains stale_count",
+        "validate confirmation gate re-hashes the bound artifacts and drops drifted events, so a previously-confirmed claim becomes Stale and the gate flags it again (spec reuses normative_excerpt text_sha256; test is the verifies binding file; code is the section implements binding files)",
+        "empty hashes stay unrevalidatable not drift (R404 rule); the core stays file-free (validate injects the predicate, design sec 4.6)"
+      ],
+      "verification_bullets": [
+        "atomic drift unit (all-valid Confirmed vs drifted Stale plus stale_count) plus CLI drift smoke (missing bound file means stale means reject exit 1)",
+        "workspace clippy -D warnings clean, atomic plus validate plus cli green, validate-workspace green"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "report-confirmation stays drift-unaware (store-only quick view); validate-confirmation is the drift-aware gate",
+        "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
+      ],
+      "publishable_decision_summary": "Confirmation drift to Stale: validate-confirmation re-hashes bound artifacts (max-rigor v1)",
+      "publishable_changes_bullets": [
+        "ConfirmationStatus gains Stale (was confirmed, now drifted); confirmation_report_with(store, is_valid) adds a validity predicate and confirmation_report becomes the drift-unaware wrapper; ClaimConfirmation gains stale_count",
+        "validate confirmation gate re-hashes the bound artifacts and drops drifted events, so a previously-confirmed claim becomes Stale and the gate flags it again (spec reuses normative_excerpt text_sha256; test is the verifies binding file; code is the section implements binding files)",
+        "empty hashes stay unrevalidatable not drift (R404 rule); the core stays file-free (validate injects the predicate, design sec 4.6)"
+      ],
+      "publishable_verification_bullets": [
+        "atomic drift unit (all-valid Confirmed vs drifted Stale plus stale_count) plus CLI drift smoke (missing bound file means stale means reject exit 1)",
+        "workspace clippy -D warnings clean, atomic plus validate plus cli green, validate-workspace green"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "report-confirmation stays drift-unaware (store-only quick view); validate-confirmation is the drift-aware gate",
+        "3-state coverage_expectation still deferred (SCE breaking risk, coordinate first)"
+      ]
     }
   },
   "inventory_entries": {},
