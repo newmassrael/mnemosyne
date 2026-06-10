@@ -942,10 +942,20 @@ pub struct PayoffCoverageReport {
     /// them together — e.g. a payoff on one sibling branch naming a setup
     /// on another. The dangling list shows the symptom in the setup's
     /// world; this surfaces the dead edge itself (the author thinks the
-    /// gun was paid; no world agrees). Edges involving an
-    /// undecidable-visibility endpoint are not listed (B-1: not
-    /// definitively dead).
+    /// gun was paid; no world agrees). An edge is exempted from this list
+    /// only by a world where it COULD still credit (Round 447 — see
+    /// `undecidable_edges`); a world where either endpoint is Out is
+    /// decided and exempts nothing.
     pub uncredited_edges: Vec<PayoffEdgeRef>,
+    /// Edges that credited nowhere AND met a could-credit undecidable
+    /// world — both endpoints In/Unknown with at least one Unknown, so the
+    /// declared order cannot decide their fate there (Round 447, the R445
+    /// Detroit Finding 3 fix). Surfaced instead of silently withdrawn
+    /// (no-silent-caps): under parallel protagonist chains the old blanket
+    /// withdrawal masked genuinely dead cross-chain edges behind Unknowns
+    /// in unrelated forks. B-1 honesty either way: these are *undecided*,
+    /// never listed as definitively dead.
+    pub undecidable_edges: Vec<PayoffEdgeRef>,
 }
 
 /// Classify setup/payoff coverage per world (Round 442). WORLD-scoped via
@@ -974,8 +984,9 @@ pub fn payoff_coverage(
     };
     // Every recorded edge with an existing target (a missing target is the
     // scan's finding, not the report's). Edges drain from this set as some
-    // world credits them or an undecidable endpoint makes their fate
-    // non-definitive; what remains is dead in every world (Round 443).
+    // world credits them; what remains either surfaces as definitively
+    // dead or, when a could-credit world was undecidable, as undecidable
+    // (Rounds 443 + 447).
     let mut never_credited: BTreeSet<(String, String)> = facts
         .iter()
         .flat_map(|(pid, p)| {
@@ -985,6 +996,7 @@ pub fn payoff_coverage(
                 .map(|t| (pid.clone(), t.clone()))
         })
         .collect();
+    let mut undecidable: BTreeSet<(String, String)> = BTreeSet::new();
     let mut worlds: Vec<String> = vec![mnemosyne_core::MAIN_BRANCH.to_string()];
     worlds.extend(store.branches.keys().cloned());
     for world in worlds {
@@ -1000,12 +1012,36 @@ pub fn payoff_coverage(
                 Vis::Out => {}
             }
         }
-        // An edge touching an undecidable endpoint here is not
-        // definitively dead (B-1) — withdraw it from the uncredited pool.
+        // Round 447 (the R445 Detroit Finding 3 fix): an Unknown endpoint
+        // suspends the dead-edge verdict ONLY in a world where the edge
+        // could actually credit — both endpoints In/Unknown. A world where
+        // either endpoint is Out is DECIDED (the edge cannot credit there)
+        // regardless of any Unknown: the pre-fix blanket withdrawal let an
+        // Unknown in an unrelated fork (parallel protagonist chains make
+        // every cross-chain fact Unknown there) silently mask genuinely
+        // dead edges. Suspended edges surface as `undecidable_edges`, not
+        // as definitively dead (B-1 honesty, no silent caps).
+        let unknown_set: BTreeSet<&str> = unknown.iter().map(String::as_str).collect();
         for (pid, p) in facts {
             for target in &p.pays_off {
-                if unknown.iter().any(|u| u == pid || u == target) {
-                    never_credited.remove(&(pid.clone(), target.clone()));
+                // In = Some(true), Unknown = Some(false), Out = None.
+                let endpoint = |id: &str| {
+                    if visible.contains_key(id) {
+                        Some(true)
+                    } else if unknown_set.contains(id) {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                };
+                let could_credit_undecided = matches!(
+                    (endpoint(pid), endpoint(target.as_str())),
+                    (Some(true), Some(false))
+                        | (Some(false), Some(true))
+                        | (Some(false), Some(false))
+                );
+                if could_credit_undecided {
+                    undecidable.insert((pid.clone(), target.clone()));
                 }
             }
         }
@@ -1056,7 +1092,14 @@ pub fn payoff_coverage(
         }
         report.worlds.insert(world, cov);
     }
-    report.uncredited_edges = never_credited
+    let (undecided, dead): (Vec<_>, Vec<_>) = never_credited
+        .into_iter()
+        .partition(|e| undecidable.contains(e));
+    report.uncredited_edges = dead
+        .into_iter()
+        .map(|(payoff, setup)| PayoffEdgeRef { payoff, setup })
+        .collect();
+    report.undecidable_edges = undecided
         .into_iter()
         .map(|(payoff, setup)| PayoffEdgeRef { payoff, setup })
         .collect();
@@ -1526,7 +1569,9 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
-        for ch in ["ch-1", "ch-2", "ch-3", "ch-4"] {
+        // ch-* = the main discourse chain; k-* = a parallel (incomparable)
+        // chain for the Round 447 cross-chain fixtures.
+        for ch in ["ch-1", "ch-2", "ch-3", "ch-4", "k-1", "k-2"] {
             store
                 .sections
                 .insert(ch.to_string(), AtomicSection::default());
@@ -1982,6 +2027,96 @@ mod tests {
             payoff_fact("p", "gt", "ch-2", &["su"]),
         ]);
         let report = payoff_coverage(&store, &order).unwrap();
+        assert!(report.uncredited_edges.is_empty());
+    }
+
+    /// Round 447 (R445 Detroit Finding 3): an Unknown endpoint in a world
+    /// where the edge CANNOT credit (other endpoint Out) must not exempt a
+    /// dead edge — under parallel protagonist chains the pre-fix blanket
+    /// withdrawal masked every dead cross-chain edge behind Unknowns in
+    /// unrelated forks.
+    #[test]
+    fn dead_edge_not_masked_by_unknown_in_non_crediting_world() {
+        let store = store_with_forks(
+            vec![
+                {
+                    // Late main-chain setup: Out in the early fork (the
+                    // fork departed before it), Unknown in the
+                    // parallel-chain fork (incomparable).
+                    let mut s = fact("su-late", "gt", "ch-3", None);
+                    s.payoff_expectation = Some("expected".to_string());
+                    s
+                },
+                {
+                    // Payoff on the early fork: its world never sees the
+                    // late setup -> the edge credits in NO world.
+                    let mut p = branch_fact("p-early", "gt", "b-early", "ch-2");
+                    p.pays_off = vec!["su-late".to_string()];
+                    p
+                },
+            ],
+            &[
+                ("b-early", MAIN_BRANCH, "ch-1"),
+                ("b-k", MAIN_BRANCH, "k-1"),
+            ],
+        );
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-2".to_string(), "ch-3".to_string()],
+            ["ch-3".to_string(), "ch-4".to_string()],
+            ["k-1".to_string(), "k-2".to_string()],
+        ])
+        .unwrap();
+        let report = payoff_coverage(&store, &order).unwrap();
+        // In b-k the setup is Unknown (cross-chain) but the payoff is Out
+        // (sibling fork) — that world is decided; the edge is dead.
+        assert_eq!(
+            report.uncredited_edges,
+            vec![PayoffEdgeRef {
+                payoff: "p-early".to_string(),
+                setup: "su-late".to_string(),
+            }]
+        );
+        assert!(report.undecidable_edges.is_empty());
+    }
+
+    /// Round 447 — the suspension that IS legitimate surfaces instead of
+    /// silently draining: payoff In, setup Unknown in the same world
+    /// (could credit there if the order were richer) = `undecidable_edges`.
+    #[test]
+    fn could_credit_unknown_surfaces_as_undecidable_edge() {
+        let store = store_with_forks(
+            vec![
+                {
+                    // Parallel-chain setup on main.
+                    let mut s = fact("su-k", "gt", "k-1", None);
+                    s.payoff_expectation = Some("expected".to_string());
+                    s
+                },
+                {
+                    // Payoff on a main-chain fork: in its world the payoff
+                    // is In and the cross-chain setup is Unknown.
+                    let mut p = branch_fact("p-x", "gt", "b-early", "ch-2");
+                    p.pays_off = vec!["su-k".to_string()];
+                    p
+                },
+            ],
+            &[("b-early", MAIN_BRANCH, "ch-1")],
+        );
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-2".to_string(), "ch-3".to_string()],
+            ["k-1".to_string(), "k-2".to_string()],
+        ])
+        .unwrap();
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(
+            report.undecidable_edges,
+            vec![PayoffEdgeRef {
+                payoff: "p-x".to_string(),
+                setup: "su-k".to_string(),
+            }]
+        );
         assert!(report.uncredited_edges.is_empty());
     }
 

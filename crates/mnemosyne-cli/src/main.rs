@@ -2007,6 +2007,12 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
                 e.payoff, e.setup
             );
         }
+        for e in &report.undecidable_edges {
+            println!(
+                "  [UNDECIDABLE EDGE] {} -> {} (a could-credit world cannot decide it under the declared order)",
+                e.payoff, e.setup
+            );
+        }
         for (world, cov) in &report.worlds {
             println!(
                 "world `{world}`: paid={} dangling={} exempt={} unknown={}",
