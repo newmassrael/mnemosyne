@@ -400,11 +400,26 @@ pub fn load_narrative_rules(
             path,
         )?;
     }
-    let file: NarrativeRulesFile = serde_json::from_slice(&bytes)
+    let mut file: NarrativeRulesFile = serde_json::from_slice(&bytes)
         .map_err(|e| format!("narrative-rules parse {}: {}", path.display(), e))?;
+    // Whitespace normalizes INTO the stored values (R450 session review):
+    // boundary check and evaluation both compare exact, so a padded
+    // `" alive"` that only a trimmed registry check accepted would match
+    // no typed fact and silently disarm its rule — the precise
+    // silent-escape class the boundary check exists to prevent.
+    for rule in &mut file.rules {
+        rule.id = rule.id.trim().to_string();
+        rule.predicate = rule.predicate.trim().to_string();
+        if let NarrativeRuleSpec::Transition { allowed } = &mut rule.spec {
+            for pair in allowed {
+                pair[0] = pair[0].trim().to_string();
+                pair[1] = pair[1].trim().to_string();
+            }
+        }
+    }
     let mut seen_ids: BTreeSet<&str> = BTreeSet::new();
     for rule in &file.rules {
-        let id = rule.id.trim();
+        let id = rule.id.as_str();
         if id.is_empty() {
             return Err("narrative-rules: blank rule id".to_string());
         }
@@ -414,14 +429,14 @@ pub fn load_narrative_rules(
                  must be unique"
             ));
         }
-        if rule.predicate.trim().is_empty() {
+        if rule.predicate.is_empty() {
             return Err(format!(
                 "narrative-rules: rule `{id}` has a blank predicate"
             ));
         }
         if let NarrativeRuleSpec::Transition { allowed } = &rule.spec {
             for pair in allowed {
-                if pair[0].trim().is_empty() || pair[1].trim().is_empty() {
+                if pair[0].is_empty() || pair[1].is_empty() {
                     return Err(format!(
                         "narrative-rules: rule `{id}` has a blank leg in an allowed \
                          transition pair"
@@ -799,8 +814,13 @@ pub fn scan_continuity(
     rules: &[NarrativeRule],
 ) -> Result<ContinuityReport, String> {
     check_store_boundary(store, order)?;
+    // EXACT registry compare, deliberately untrimmed (R450): the loader
+    // normalizes whitespace into the stored values, so a padded predicate
+    // arriving here (a programmatic rule that skipped the loader) fails
+    // loud instead of passing a trimmed check while the evaluation below
+    // compares exact and silently matches nothing.
     for rule in rules {
-        if !store.predicates.contains_key(rule.predicate.trim()) {
+        if !store.predicates.contains_key(&rule.predicate) {
             return Err(format!(
                 "narrative-rules: rule `{}` names predicate `{}`, which is not in the \
                  predicate registry — a typo'd predicate would silently escape its rule \
@@ -3021,5 +3041,75 @@ mod tests {
         let view = frame_view(&store, &order, "gt", MAIN_BRANCH, None, &at_point).unwrap();
         let held: BTreeSet<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains("l2") && held.contains("bad"), "{held:?}");
+    }
+
+    /// R450 session review — whitespace normalization: the loader trims
+    /// id/predicate/transition legs INTO the stored values, so a padded
+    /// declaration still arms its rule (pre-fix it passed the trimmed
+    /// boundary check yet matched no typed fact — silently disarmed); a
+    /// programmatic rule that skipped the loader fails the EXACT registry
+    /// compare loud.
+    #[test]
+    fn rules_whitespace_normalizes_at_load_and_padded_programmatic_fails_loud() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let padded = tmp.path().join("padded.json");
+        std::fs::write(
+            &padded,
+            r#"{"rules":[{"id":" life ","class":"transition","predicate":" life-status",
+                "allowed":[[" alive","dead "]]}]}"#,
+        )
+        .unwrap();
+        let file = load_narrative_rules(&padded, None).unwrap();
+        assert_eq!(file.rules[0].id, "life");
+        assert_eq!(file.rules[0].predicate, "life-status");
+        let mut s2 = typed_fact("s2", "gt", "ch-3", "lucy", "life-status", at("undead"));
+        s2.supersedes_in_frame = Some("s1".to_string());
+        let store = store_with(vec![
+            typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
+            s2,
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // The normalized rule is ARMED: alive->undead is outside the
+        // normalized allowed set [["alive","dead"]] and must fire.
+        let report = scan_continuity(&store, &order, &file.rules).unwrap();
+        assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
+        // A padded predicate that bypassed the loader: exact compare, loud.
+        let err = scan_continuity(
+            &store,
+            &order,
+            &[transition_rule(
+                "life",
+                " life-status",
+                &[("alive", "dead")],
+            )],
+        )
+        .unwrap_err();
+        assert!(err.contains("` life-status`"), "{err}");
+    }
+
+    /// R450 session review — the per-world reporting contract pinned: a
+    /// violating pair inherited by a fork reports in BOTH worlds (the world
+    /// is part of the finding; the R441 probe's executable model).
+    #[test]
+    fn rule_exclusive_violation_reports_per_world_including_inheriting_fork() {
+        let store = store_with_forks(
+            vec![
+                typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+                typed_fact("l2", "gt", "ch-1", "dracula", "at-location", at("whitby")),
+            ],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        let worlds: Vec<&str> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::RuleExclusiveOverlap { branch, .. } => Some(branch.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(worlds, vec![MAIN_BRANCH, "route"], "{worlds:?}");
     }
 }
