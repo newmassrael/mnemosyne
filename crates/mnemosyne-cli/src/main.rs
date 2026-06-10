@@ -1988,6 +1988,12 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
             "=== payoff coverage — {} fact(s), {} setup(s) ===",
             report.facts, report.setups_total
         );
+        for e in &report.uncredited_edges {
+            println!(
+                "  [UNCREDITED EDGE] {} -> {} (credits in no world)",
+                e.payoff, e.setup
+            );
+        }
         for (world, cov) in &report.worlds {
             println!(
                 "world `{world}`: paid={} dangling={} exempt={} unknown={}",

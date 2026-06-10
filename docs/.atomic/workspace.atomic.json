@@ -8131,6 +8131,46 @@
         "reinstall cli+mcp binaries after this round (schema v18 + new verb; the R435 skew lesson)",
         "remaining AAA map: story-time axis, LLM discovery adapter, pinion adapter (statechart-to-canon-order, scene-script bindings); typed-claim build rounds A/B stay design-frozen per R441"
       ]
+    },
+    "Round 443 — session review of R441-R442: symmetric exclusivity skip, dead payoff edges surfaced": {
+      "decision_summary": "The R436/R440 cadence applied to the two newest rounds: hold R441 (typed-claim/rule-gate design) and R442 (setup/payoff coverage) to the lifetime-project standard before anything builds on them. Three findings, all repaid in-session. The real one is in the R441 probe: the exclusive rule's consistency skip ('a restated fact is not a violation') was implemented one-sided - it skipped equal OBJECTS under per:subject but never skipped equal SUBJECTS under per:object, so a restated custody fact (the same holder stated twice) would false-positive as a two-holder conservation violation. The principle is now pinned symmetric - the skip applies to the NON-KEYED leg, both directions - in the probe and in design sec 7.12, so build round B inherits the rule, not the bug. The review also caught the reviewer: the first regression fixture left the restated fact's extent open, which IS a genuine two-holder conflict with the later custody transfer, and the gate correctly flagged it - the fixture was wrong, not the gate; extent closed. Finding 2 is an R442 omission: a payoff edge whose endpoints no world ever sees together (sibling-branch endpoints, both existing) was silent dead data - the setup's world shows dangling (the symptom) but nothing surfaced the edge itself, so an author who paid a gun on the wrong world-line got no signal that the edge credits nowhere. PayoffCoverageReport.uncredited_edges now lists edges that credited in no world, with B-1 honesty (an edge touching an undecidable-visibility endpoint is withdrawn, not declared dead). A write-side reject for this is impossible by design: world-coherence depends on the declared canon order, a validate-time artifact the mutate primitive never sees. Finding 3: the pays_off forward-ref-within-manifest path (the succession symmetry) was untested; covered. DEBT-1 (ARCHITECTURE doc drift) was checked on the way in and verified already paid.",
+      "changes_bullets": [
+        "finding 1 (R441 probe, real bug): the exclusive-rule consistency skip was ONE-SIDED - per:object (custody) false-positived a restated same-holder fact as a two-holder violation; principle pinned symmetric (skip when the NON-KEYED leg agrees), probe fixed + custody-restatement probe case added, design sec 7.12 amended so build round B cannot inherit the bug; the first fixture for the new case was itself wrong (open extent = a REAL two-holder conflict, correctly caught) - extent closed",
+        "finding 2 (R442, omission): payoff edges crediting in NO world (e.g. sibling-branch endpoints) were silent dead data - dangling showed the symptom, never the edge; PayoffCoverageReport.uncredited_edges lands (edges drain as any world credits them or an undecidable endpoint withdraws them per B-1), CLI TTY prints them, sibling-edge + credited-edge tests added",
+        "finding 3 (R442, test gap): pays_off forward ref WITHIN one import manifest was untested (succession had the analogue); atomic test added - import allows it via the store-union-manifest visibility set"
+      ],
+      "verification_bullets": [
+        "rule-gate probe re-run green including the new probe 4b (restated custody fact consistent; open-extent variant correctly remains a violation)",
+        "786 workspace tests 0 fail (+2: sibling_branch_payoff_edge_surfaces_as_uncredited, import_facts_allows_forward_payoff_ref_within_manifest); clippy -D warnings clean, fmt clean",
+        "DEBT LEDGER check: DEBT-1 (ARCHITECTURE doc drift) verified already paid - sec 4-5 cite the R400 teardown correctly, no dead render subsection remains"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R441 design amendment is doc-level only (sec 7.12 symmetric-skip clause); the R441 ledger entry body stays frozen - build round B implements BOTH skip directions with tests for each",
+        "uncredited_edges is report-only honesty; a write-side world-coherence reject is impossible by design (visibility is canon-order-dependent and the order is a validate-time artifact, not available to the mutate primitive)",
+        "remaining AAA map unchanged and all gated: story-time (flashback-corpus pull), LLM discovery adapter (scale pull), pinion adapter (consumer-side); typed-claim build A/B design-frozen per R441"
+      ],
+      "publishable_decision_summary": "The R436/R440 cadence applied to the two newest rounds: hold R441 (typed-claim/rule-gate design) and R442 (setup/payoff coverage) to the lifetime-project standard before anything builds on them. Three findings, all repaid in-session. The real one is in the R441 probe: the exclusive rule's consistency skip ('a restated fact is not a violation') was implemented one-sided - it skipped equal OBJECTS under per:subject but never skipped equal SUBJECTS under per:object, so a restated custody fact (the same holder stated twice) would false-positive as a two-holder conservation violation. The principle is now pinned symmetric - the skip applies to the NON-KEYED leg, both directions - in the probe and in design sec 7.12, so build round B inherits the rule, not the bug. The review also caught the reviewer: the first regression fixture left the restated fact's extent open, which IS a genuine two-holder conflict with the later custody transfer, and the gate correctly flagged it - the fixture was wrong, not the gate; extent closed. Finding 2 is an R442 omission: a payoff edge whose endpoints no world ever sees together (sibling-branch endpoints, both existing) was silent dead data - the setup's world shows dangling (the symptom) but nothing surfaced the edge itself, so an author who paid a gun on the wrong world-line got no signal that the edge credits nowhere. PayoffCoverageReport.uncredited_edges now lists edges that credited in no world, with B-1 honesty (an edge touching an undecidable-visibility endpoint is withdrawn, not declared dead). A write-side reject for this is impossible by design: world-coherence depends on the declared canon order, a validate-time artifact the mutate primitive never sees. Finding 3: the pays_off forward-ref-within-manifest path (the succession symmetry) was untested; covered. DEBT-1 (ARCHITECTURE doc drift) was checked on the way in and verified already paid.",
+      "publishable_changes_bullets": [
+        "finding 1 (R441 probe, real bug): the exclusive-rule consistency skip was ONE-SIDED - per:object (custody) false-positived a restated same-holder fact as a two-holder violation; principle pinned symmetric (skip when the NON-KEYED leg agrees), probe fixed + custody-restatement probe case added, design sec 7.12 amended so build round B cannot inherit the bug; the first fixture for the new case was itself wrong (open extent = a REAL two-holder conflict, correctly caught) - extent closed",
+        "finding 2 (R442, omission): payoff edges crediting in NO world (e.g. sibling-branch endpoints) were silent dead data - dangling showed the symptom, never the edge; PayoffCoverageReport.uncredited_edges lands (edges drain as any world credits them or an undecidable endpoint withdraws them per B-1), CLI TTY prints them, sibling-edge + credited-edge tests added",
+        "finding 3 (R442, test gap): pays_off forward ref WITHIN one import manifest was untested (succession had the analogue); atomic test added - import allows it via the store-union-manifest visibility set"
+      ],
+      "publishable_verification_bullets": [
+        "rule-gate probe re-run green including the new probe 4b (restated custody fact consistent; open-extent variant correctly remains a violation)",
+        "786 workspace tests 0 fail (+2: sibling_branch_payoff_edge_surfaces_as_uncredited, import_facts_allows_forward_payoff_ref_within_manifest); clippy -D warnings clean, fmt clean",
+        "DEBT LEDGER check: DEBT-1 (ARCHITECTURE doc drift) verified already paid - sec 4-5 cite the R400 teardown correctly, no dead render subsection remains"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R441 design amendment is doc-level only (sec 7.12 symmetric-skip clause); the R441 ledger entry body stays frozen - build round B implements BOTH skip directions with tests for each",
+        "uncredited_edges is report-only honesty; a write-side world-coherence reject is impossible by design (visibility is canon-order-dependent and the order is a validate-time artifact, not available to the mutate primitive)",
+        "remaining AAA map unchanged and all gated: story-time (flashback-corpus pull), LLM discovery adapter (scale pull), pinion adapter (consumer-side); typed-claim build A/B design-frozen per R441"
+      ]
     }
   },
   "inventory_entries": {},
@@ -8139,5 +8179,5 @@
   "branches": {},
   "entities": {},
   "narrative_facts": {},
-  "schema_version": 17
+  "schema_version": 18
 }

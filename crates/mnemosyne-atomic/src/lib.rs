@@ -8077,6 +8077,45 @@ mod tests {
         retract_fact(&mut store, &path, "setup-1", "test").unwrap();
     }
 
+    /// Round 443 session review — a `pays_off` forward ref WITHIN one
+    /// manifest is legal (the store ∪ manifest visibility set, the
+    /// succession symmetry), while `add_fact` against the bare store still
+    /// rejects the same shape.
+    #[test]
+    fn import_facts_allows_forward_payoff_ref_within_manifest() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: vec![],
+                branches: vec![],
+                entities: vec![],
+                facts: vec![
+                    // The payoff lists FIRST, naming a setup later in the
+                    // same manifest.
+                    FactImport {
+                        pays_off: vec!["su-later".to_string()],
+                        ..sample_fact("p-first", "gt")
+                    },
+                    FactImport {
+                        payoff_expectation: Some("expected".to_string()),
+                        ..sample_fact("su-later", "gt")
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            store.narrative_facts["p-first"].pays_off,
+            vec!["su-later".to_string()]
+        );
+    }
+
     /// Round 433 — world-line branch axis: omitted branch = MAIN_BRANCH, the
     /// default never serializes (pre-branch stores stay byte-stable), and a
     /// declared branch round-trips.

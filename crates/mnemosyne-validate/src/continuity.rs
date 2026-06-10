@@ -933,6 +933,15 @@ pub struct PayoffCoverageReport {
     pub facts: usize,
     /// Distinct facts marked `expected`, store-wide (before world scoping).
     pub setups_total: usize,
+    /// Recorded payoff edges that credited a setup in NO world (Round 443
+    /// session review): both endpoints exist, but no query world ever sees
+    /// them together — e.g. a payoff on one sibling branch naming a setup
+    /// on another. The dangling list shows the symptom in the setup's
+    /// world; this surfaces the dead edge itself (the author thinks the
+    /// gun was paid; no world agrees). Edges involving an
+    /// undecidable-visibility endpoint are not listed (B-1: not
+    /// definitively dead).
+    pub uncredited_edges: Vec<PayoffEdgeRef>,
 }
 
 /// Classify setup/payoff coverage per world (Round 442). WORLD-scoped via
@@ -959,6 +968,19 @@ pub fn payoff_coverage(
             .count(),
         ..Default::default()
     };
+    // Every recorded edge with an existing target (a missing target is the
+    // scan's finding, not the report's). Edges drain from this set as some
+    // world credits them or an undecidable endpoint makes their fate
+    // non-definitive; what remains is dead in every world (Round 443).
+    let mut never_credited: BTreeSet<(String, String)> = facts
+        .iter()
+        .flat_map(|(pid, p)| {
+            p.pays_off
+                .iter()
+                .filter(|t| facts.contains_key(*t))
+                .map(|t| (pid.clone(), t.clone()))
+        })
+        .collect();
     let mut worlds: Vec<String> = vec![mnemosyne_core::MAIN_BRANCH.to_string()];
     worlds.extend(store.branches.keys().cloned());
     for world in worlds {
@@ -972,6 +994,15 @@ pub fn payoff_coverage(
                 }
                 Vis::Unknown => unknown.push(id.clone()),
                 Vis::Out => {}
+            }
+        }
+        // An edge touching an undecidable endpoint here is not
+        // definitively dead (B-1) — withdraw it from the uncredited pool.
+        for (pid, p) in facts {
+            for target in &p.pays_off {
+                if unknown.iter().any(|u| u == pid || u == target) {
+                    never_credited.remove(&(pid.clone(), target.clone()));
+                }
             }
         }
         let mut cov = WorldPayoffCoverage {
@@ -991,6 +1022,7 @@ pub fn payoff_coverage(
                     .entry(target.as_str())
                     .or_default()
                     .push((*pid).to_string());
+                never_credited.remove(&((*pid).to_string(), target.clone()));
                 if t.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
                     cov.payoffs_to_unmarked.push(PayoffEdgeRef {
                         payoff: (*pid).to_string(),
@@ -1020,6 +1052,10 @@ pub fn payoff_coverage(
         }
         report.worlds.insert(world, cov);
     }
+    report.uncredited_edges = never_credited
+        .into_iter()
+        .map(|(payoff, setup)| PayoffEdgeRef { payoff, setup })
+        .collect();
     Ok(report)
 }
 
@@ -1891,6 +1927,54 @@ mod tests {
             vec!["p-main"],
             "the fork's payoff never leaks back into main's classification"
         );
+    }
+
+    /// Round 443 session review: a payoff edge between SIBLING branches
+    /// credits in no world — both endpoints exist, no world sees them
+    /// together. The dead edge itself surfaces as `uncredited_edges`
+    /// (the dangling list only shows the symptom in the setup's world).
+    /// An in-world edge never appears there.
+    #[test]
+    fn sibling_branch_payoff_edge_surfaces_as_uncredited() {
+        let store = store_with_forks(
+            vec![
+                {
+                    let mut s = branch_fact("su-a", "gt", "route-a", "ch-3");
+                    s.payoff_expectation = Some("expected".to_string());
+                    s
+                },
+                {
+                    let mut p = branch_fact("p-b", "gt", "route-b", "ch-3");
+                    p.pays_off = vec!["su-a".to_string()];
+                    p
+                },
+            ],
+            &[
+                ("route-a", MAIN_BRANCH, "ch-2"),
+                ("route-b", MAIN_BRANCH, "ch-2"),
+            ],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(
+            report.uncredited_edges,
+            vec![PayoffEdgeRef {
+                payoff: "p-b".to_string(),
+                setup: "su-a".to_string(),
+            }]
+        );
+        assert_eq!(
+            report.worlds["route-a"].dangling,
+            vec!["su-a".to_string()],
+            "the symptom still shows in the setup's own world"
+        );
+        // A credited edge never lists.
+        let store = store_with(vec![
+            setup_fact("su", "gt", "ch-1"),
+            payoff_fact("p", "gt", "ch-2", &["su"]),
+        ]);
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert!(report.uncredited_edges.is_empty());
     }
 
     /// Out-of-band pays_off target removal = scan violation (the
