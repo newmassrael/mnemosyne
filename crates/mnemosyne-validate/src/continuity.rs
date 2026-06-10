@@ -21,9 +21,9 @@
 //! gated. Equality needs no declaration (a point always co-holds with
 //! itself), so the gate is meaningful even with no order file.
 //!
-//! **Guardrail B-2 (landed, Round 433):** the conflict scope key is the
-//! `same_scope` predicate below — `(frame, branch)` since the world-line
-//! branch axis landed. Same-frame facts on different world-lines never
+//! **Guardrail B-2 (landed, Round 433):** conflict scoping is decided in
+//! ONE place — [`join_world`] (`(frame, world-line)` since the branch axis
+//! landed; it superseded the pre-fork `same_scope` predicate in Round 438). Same-frame facts on different world-lines never
 //! conflict (cross-branch pairs are data, exactly like cross-frame pairs),
 //! and the canon order is branch-relative: the declaration may carry
 //! per-branch edge sets (`branches`), each composed with the shared `edges`
@@ -338,30 +338,18 @@ pub struct Lineage {
     cut: BTreeMap<String, String>,
 }
 
-/// Walk `forks_from` toward the root. The forest is write-guaranteed
-/// (parents pre-exist, forks immutable); the hop cap fails loud on an
-/// out-of-band cyclic edit.
+/// One world's lineage view over THE single fork-chain traversal
+/// ([`mnemosyne_core::fork_chain`], Round 440 — write path, gate, and view
+/// share one walk).
 pub fn lineage_of(
     branches: &BTreeMap<String, mnemosyne_core::Branch>,
     world: &str,
 ) -> Result<Lineage, String> {
-    let mut cut = BTreeMap::new();
-    let mut current = world.to_string();
-    for _ in 0..=branches.len() {
-        let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
-            return Ok(Lineage { cut });
-        };
-        if cut.insert(fork.branch.clone(), fork.at.clone()).is_some() {
-            return Err(format!(
-                "branch fork ancestry of `{world}` revisits `{}` — cyclic out-of-band edit",
-                fork.branch
-            ));
-        }
-        current = fork.branch;
-    }
-    Err(format!(
-        "branch fork ancestry of `{world}` exceeds the registry size — cyclic out-of-band edit"
-    ))
+    Ok(Lineage {
+        cut: mnemosyne_core::fork_chain(branches, world)?
+            .into_iter()
+            .collect(),
+    })
 }
 
 /// Ancestor chains (nearest-first) for every registered branch — the
@@ -371,23 +359,13 @@ pub fn fork_ancestry(
 ) -> Result<BTreeMap<String, Vec<String>>, String> {
     let mut out = BTreeMap::new();
     for branch in branches.keys() {
-        let mut chain = Vec::new();
-        let mut current = branch.clone();
-        for _ in 0..=branches.len() {
-            let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
-                out.insert(branch.clone(), chain);
-                chain = Vec::new();
-                break;
-            };
-            chain.push(fork.branch.clone());
-            current = fork.branch;
-        }
-        if !chain.is_empty() {
-            return Err(format!(
-                "branch fork ancestry of `{branch}` exceeds the registry size — cyclic \
-                 out-of-band edit"
-            ));
-        }
+        out.insert(
+            branch.clone(),
+            mnemosyne_core::fork_chain(branches, branch)?
+                .into_iter()
+                .map(|(ancestor, _)| ancestor)
+                .collect(),
+        );
     }
     Ok(out)
 }
@@ -447,54 +425,69 @@ fn join_world<'a>(
     None
 }
 
-/// Whether `fact` (id `fact_id`) holds at canon point `p` IN QUERY WORLD
-/// `world` (Round 438): visible in that world, started (`canon_from <= p`),
-/// not past a stored `canon_to`, and not yet replaced by an in-frame
-/// successor THAT IS ITSELF VISIBLE in this world — a fork's revision never
-/// ends the inherited belief in the ancestor's own world. All precedence is
-/// evaluated under the query world's composed order.
-///
-/// THE single holds-semantics — shared by the continuity gate and the
-/// frame-at-T projection ([`frame_view`]) so the two can never drift (the
-/// R390 single-predicate discipline).
-#[allow(clippy::too_many_arguments)]
-fn holds_at(
-    world: &str,
-    lineage: &Lineage,
-    fact_id: &str,
-    fact: &NarrativeFact,
-    p: &str,
-    order: &CanonOrder,
-    successors: &BTreeMap<&str, Vec<&NarrativeFact>>,
-) -> bool {
-    if visibility(world, lineage, order, fact) != Vis::In {
-        return false;
-    }
-    if !order.le(world, &fact.canon_from, p) {
-        return false;
-    }
-    if let Some(to) = &fact.canon_to {
-        if !order.le(world, p, to) {
-            return false;
-        }
-    }
-    if let Some(succ) = successors.get(fact_id) {
-        if succ.iter().any(|s| {
-            visibility(world, lineage, order, s) == Vis::In && order.le(world, &s.canon_from, p)
-        }) {
-            return false;
-        }
-    }
-    true
+/// One query world's evaluation context (Round 440): the world id, its
+/// fork lineage, the composed order, and the succession index — bundled so
+/// the holds-semantics reads as a judgment about a world rather than a
+/// seven-argument shuffle.
+struct WorldCtx<'a> {
+    world: &'a str,
+    lineage: &'a Lineage,
+    order: &'a CanonOrder,
+    successors: &'a BTreeMap<&'a str, Vec<&'a NarrativeFact>>,
 }
 
-/// Fail-loud declaration↔store boundary shared by the gate and the view
-/// (Round 436, single check — the two read paths cannot drift): every order
-/// node must be a section (canon coordinates are structure refs), and every
-/// declared per-branch edge set must name a REGISTERED world-line — the
-/// declaration is a consumer artifact, and a typo in it must not silently
-/// order nothing.
-fn check_order_against_store(store: &AtomicStore, order: &CanonOrder) -> Result<(), String> {
+impl WorldCtx<'_> {
+    fn visibility(&self, fact: &NarrativeFact) -> Vis {
+        visibility(self.world, self.lineage, self.order, fact)
+    }
+
+    /// Whether `fact` (id `fact_id`) holds at canon point `p` in this world
+    /// (Round 438): visible here, started (`canon_from <= p`), not past a
+    /// stored `canon_to`, and not yet replaced by an in-frame successor
+    /// THAT IS ITSELF VISIBLE here — a fork's revision never ends the
+    /// inherited belief in the ancestor's own world. All precedence is
+    /// evaluated under this world's composed order.
+    ///
+    /// THE single holds-semantics — shared by the continuity gate and the
+    /// frame-at-T projection ([`frame_view`]) so the two can never drift
+    /// (the R390 single-predicate discipline).
+    fn holds_at(&self, fact_id: &str, fact: &NarrativeFact, p: &str) -> bool {
+        if self.visibility(fact) != Vis::In {
+            return false;
+        }
+        if !self.order.le(self.world, &fact.canon_from, p) {
+            return false;
+        }
+        if let Some(to) = &fact.canon_to {
+            if !self.order.le(self.world, p, to) {
+                return false;
+            }
+        }
+        if let Some(succ) = self.successors.get(fact_id) {
+            if succ.iter().any(|s| {
+                self.visibility(s) == Vis::In && self.order.le(self.world, &s.canon_from, p)
+            }) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Fail-loud store boundary shared by the gate and the view (Rounds 436 +
+/// 440, single check — the two read paths cannot drift). Declaration side:
+/// every order node must be a section (canon coordinates are structure
+/// refs) and every declared per-branch edge set must name a REGISTERED
+/// world-line. Fact side (Round 440 — the write path enforces all of this;
+/// the scan RE-CHECKS it against out-of-band edits, closing the
+/// half-enforced asymmetry where only conflict/succession targets were
+/// re-checked): every fact's frame / branch / entity refs must be
+/// registered, its canon coordinates and evidence must be sections, and
+/// evidence must be non-empty. A store that fails this is corrupt — the
+/// semantics below are not evaluable over it, so this is an `Err`, not a
+/// violation. (It also guarantees every fact branch has a lineage entry,
+/// which is what makes the downstream lineage lookups total.)
+fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), String> {
     for n in order.nodes() {
         if !store.sections.contains_key(n) {
             return Err(format!(
@@ -511,6 +504,57 @@ fn check_order_against_store(store: &AtomicStore, order: &CanonOrder) -> Result<
             ));
         }
     }
+    for (id, fact) in &store.narrative_facts {
+        if !store.frames.contains_key(&fact.frame) {
+            return Err(format!(
+                "fact `{id}`: frame `{}` not in the frames registry (out-of-band edit; \
+                 the write path enforces this)",
+                fact.frame
+            ));
+        }
+        if fact.branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(&fact.branch)
+        {
+            return Err(format!(
+                "fact `{id}`: branch `{}` not in the branch registry (out-of-band edit; \
+                 the write path enforces this)",
+                fact.branch
+            ));
+        }
+        for e in &fact.entities {
+            if !store.entities.contains_key(e) {
+                return Err(format!(
+                    "fact `{id}`: entity `{e}` not in the entity registry (out-of-band \
+                     edit; the write path enforces this)"
+                ));
+            }
+        }
+        if !store.sections.contains_key(&fact.canon_from) {
+            return Err(format!(
+                "fact `{id}`: canon_from `{}` is not a section (out-of-band edit)",
+                fact.canon_from
+            ));
+        }
+        if let Some(to) = &fact.canon_to {
+            if !store.sections.contains_key(to) {
+                return Err(format!(
+                    "fact `{id}`: canon_to `{to}` is not a section (out-of-band edit)"
+                ));
+            }
+        }
+        if fact.evidence.is_empty() {
+            return Err(format!(
+                "fact `{id}`: evidence emptied out-of-band (a claim without provenance \
+                 is unauditable)"
+            ));
+        }
+        for e in &fact.evidence {
+            if !store.sections.contains_key(e) {
+                return Err(format!(
+                    "fact `{id}`: evidence `{e}` is not a section (out-of-band edit)"
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -523,7 +567,7 @@ pub fn scan_continuity(
     store: &AtomicStore,
     order: &CanonOrder,
 ) -> Result<ContinuityReport, String> {
-    check_order_against_store(store, order)?;
+    check_store_boundary(store, order)?;
     let facts = &store.narrative_facts;
     let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
     for fact in facts.values() {
@@ -646,11 +690,18 @@ pub fn scan_continuity(
             continue;
         };
         let world = world.to_string();
-        let lineage = &lineages[&world];
-        let co_hold = store.sections.keys().find(|p| {
-            holds_at(&world, lineage, aid, a, p, order, &successors)
-                && holds_at(&world, lineage, bid, b, p, order, &successors)
-        });
+        // Total by the Round 440 boundary: every fact branch is registered,
+        // and `lineages` covers main + every registered branch.
+        let ctx = WorldCtx {
+            world: &world,
+            lineage: &lineages[&world],
+            order,
+            successors: &successors,
+        };
+        let co_hold = store
+            .sections
+            .keys()
+            .find(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
         match co_hold {
             Some(p) => report
                 .violations
@@ -719,7 +770,7 @@ pub fn frame_view(
     entity: Option<&str>,
     at: &str,
 ) -> Result<FrameView, String> {
-    check_order_against_store(store, order)?;
+    check_store_boundary(store, order)?;
     if !store.frames.contains_key(frame) {
         return Err(format!(
             "frame `{frame}` not present in the frames registry (fail-loud)"
@@ -752,6 +803,12 @@ pub fn frame_view(
         }
     }
     let lineage = lineage_of(&store.branches, branch)?;
+    let ctx = WorldCtx {
+        world: branch,
+        lineage: &lineage,
+        order,
+        successors: &successors,
+    };
     let mut view = FrameView {
         frame: frame.to_string(),
         branch: branch.to_string(),
@@ -771,7 +828,7 @@ pub fn frame_view(
         // World membership (Round 438): own branch, or inherited from an
         // ancestor up to the fork point. Definitively other worlds drop out
         // silently; an undecidable fork comparison is honest `unknown`.
-        let vis = visibility(branch, &lineage, order, fact);
+        let vis = ctx.visibility(fact);
         if vis == Vis::Out {
             continue;
         }
@@ -779,7 +836,7 @@ pub fn frame_view(
             view.unknown.push(id.clone());
             continue;
         }
-        if holds_at(branch, &lineage, id, fact, at, order, &successors) {
+        if ctx.holds_at(id, fact, at) {
             view.holding.push(FrameViewEntry {
                 fact_id: id.clone(),
                 claim: fact.claim.clone(),
@@ -800,9 +857,11 @@ pub fn frame_view(
                 .canon_to
                 .as_ref()
                 .is_some_and(|to| !order.comparable(branch, at, to));
-        let succ_cut = successors.get(id.as_str()).into_iter().flatten().any(|s| {
-            visibility(branch, &lineage, order, s) == Vis::In && order.le(branch, &s.canon_from, at)
-        });
+        let succ_cut = successors
+            .get(id.as_str())
+            .into_iter()
+            .flatten()
+            .any(|s| ctx.visibility(s) == Vis::In && order.le(branch, &s.canon_from, at));
         if from_unknown || (to_unknown && !succ_cut) {
             view.unknown.push(id.clone());
         } else {
@@ -1506,6 +1565,37 @@ mod tests {
         mnemosyne_atomic::amend_fact(&mut store, &path, &owner, "re-affirm edges").unwrap();
         let report = scan_continuity(&store, &order).unwrap();
         assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
+    }
+
+    /// Round 440 — out-of-band corruption fails LOUD as an `Err` from both
+    /// read paths (previously an unregistered fact branch panicked the
+    /// scan's lineage lookup; registry/section integrity was only enforced
+    /// at the write path).
+    #[test]
+    fn out_of_band_corruption_errors_instead_of_panicking() {
+        let order = chain(&["ch-1", "ch-2"]);
+        // Unregistered branch on a fact (hand-edited store).
+        let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".to_string();
+        let err = scan_continuity(&store, &order).unwrap_err();
+        assert!(err.contains("branch registry"), "{err}");
+        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
+        assert!(err.contains("branch registry"), "{err}");
+        // Unregistered frame.
+        let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        store.narrative_facts.get_mut("f1").unwrap().frame = "nobody".to_string();
+        let err = scan_continuity(&store, &order).unwrap_err();
+        assert!(err.contains("frames registry"), "{err}");
+        // Evidence emptied out-of-band.
+        let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        store
+            .narrative_facts
+            .get_mut("f1")
+            .unwrap()
+            .evidence
+            .clear();
+        let err = scan_continuity(&store, &order).unwrap_err();
+        assert!(err.contains("unauditable"), "{err}");
     }
 
     /// R390-style consistency lock: the gate and the view share holds_at —

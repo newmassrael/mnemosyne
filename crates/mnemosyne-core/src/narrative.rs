@@ -26,6 +26,8 @@
 //! frame itself onto that dimension). The JSON log stays the SSOT and
 //! carries every field the index will ever need.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// The default world-line branch every fact belongs to unless authored onto
@@ -90,6 +92,31 @@ pub struct BranchFork {
     /// Canon point of divergence — facts on the parent starting at or
     /// before this point are part of this world's inherited history.
     pub at: String,
+}
+
+/// Walk a branch's fork lineage toward the root (Round 440 — THE single
+/// fork-chain traversal; the write path, the continuity gate, and the
+/// frame-at-T projection all route here so the subtle termination logic
+/// cannot drift). Returns `(ancestor, departure_point)` pairs
+/// nearest-first. The forest is write-guaranteed (parents pre-exist, forks
+/// are immutable after registration); the hop cap fails loud on an
+/// out-of-band cyclic edit instead of looping.
+pub fn fork_chain(
+    branches: &BTreeMap<String, Branch>,
+    branch: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let mut chain = Vec::new();
+    let mut current = branch.to_string();
+    for _ in 0..=branches.len() {
+        let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
+            return Ok(chain);
+        };
+        chain.push((fork.branch.clone(), fork.at));
+        current = fork.branch;
+    }
+    Err(format!(
+        "branch fork ancestry of `{branch}` exceeds the registry size — cyclic out-of-band edit"
+    ))
 }
 
 /// One recorded conflict assertion (Round 439): the judged target plus a

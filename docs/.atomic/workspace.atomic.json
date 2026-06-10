@@ -8001,6 +8001,54 @@
         "supersedes_in_frame deliberately NOT content-pinned: succession is an in-world relation between fact IDENTITIES (the successor replaces the belief whatever its exact wording), not a judgment about specific text - pin only where the judgment is about content",
         "remaining from the AAA map: typed-claim/rule-gate design round (class C), setup/payoff coverage, story-time axis, LLM discovery adapter, pinion adapter (statechart->canon-order, scene-script bindings)"
       ]
+    },
+    "Round 440 — hardening: one fork walk, total read boundary, parity fix (session-review findings closed)": {
+      "decision_summary": "The second session review held R433-R439 to the lifetime-project standard and found five defects; this round pays all of them plus one live bug the fix surfaced. The deep one was a fail-loud asymmetry: the scan re-checked conflict/succession targets against out-of-band edits while trusting frame/branch/entity registry membership and section refs entirely to the write path - and the lineage lookup PANICKED on an unregistered fact branch instead of erroring. The shared gate/view boundary now re-checks the store's full referential closure (an Err, because a store that fails it is corrupt and the semantics are not evaluable - distinct from missing conflict targets, which remain evaluable data findings), making every downstream lineage lookup total by invariant. The fork-chain traversal existed in three subtly-different copies across two crates - exactly where drift bugs breed - and is now ONE core function all paths route. Fixing the review findings surfaced a real R439 bug: import_facts verdicted before stamping, so an idempotent re-import of a manifest with conflict edges false-diverged on empty pins - stamping now precedes verdicts on both write paths (R305 parity restored, regression-tested). Also paid: the B-2 module doc citing a deleted predicate, the seven-argument holds_at hiding behind a clippy allow (WorldCtx bundle), and the unexplained stamp-only divergence message (now names the re-affirmation path).",
+      "changes_bullets": [
+        "fork-walk 3중 구현 제거: mnemosyne_core::fork_chain = THE single traversal (write path / gate / view 전부 경유); atomic::is_fork_ancestor DELETED (no-legacy-carry), validate lineage_of/fork_ancestry는 core 위임 thin wrapper로 축소",
+        "check_order_against_store -> check_store_boundary: gate와 view가 공유하는 단일 boundary가 fact integrity까지 재검사 (frame/branch/entity registry 멤버십, canon/evidence section refs, evidence 비공백) - succession/conflict target만 재검사하던 half-enforced 비대칭 해소; 미등록 branch fact의 lineage 인덱싱 panic 경로가 구조적으로 소멸 (boundary가 Err를 먼저 반환)",
+        "WorldCtx{world, lineage, order, successors} 번들: holds_at 7-인자 + clippy allow 제거, 의미론이 \"world에 대한 판정\"으로 읽히는 형태로 재구조화",
+        "B-2 모듈 doc drift 수정 (삭제된 same_scope 지칭 -> join_world)",
+        "R439 잔류 실버그 수정 (리뷰 중 발견): import_facts가 stamp 전에 verdict를 내려 conflict edge 있는 manifest의 idempotent 재import가 false-divergent - stamping을 verdict 앞으로 (add_fact와 동일 순서 = R305 parity 복원), visibility = store + staged로 forward ref 유지",
+        "divergent_fact_message 공유 helper: stamp-only divergence(target이 amend된 뒤 동일 내용 재기록)는 \"STALE judgment pins - amend_fact로 재확인\" 메시지로 구분 안내 (양 write path 동일 문구)"
+      ],
+      "verification_bullets": [
+        "out-of-band corruption 테스트: 미등록 branch(구 panic 경로)/미등록 frame/evidence 비움 전부 scan과 view 양쪽에서 Err로 fail-loud",
+        "parity 회귀 테스트: conflict edge 포함 manifest 재import = written_bytes 0 + 전건 no-op",
+        "stale-pin 메시지 테스트: target amend 후 동일 내용 재-add -> \"STALE judgment pins\" + amend_fact 안내",
+        "full workspace suite green (777 tests, 0 failed), clippy --all-targets clean (allow 어트리뷰트 0 추가), fmt clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "세션리뷰 finding 5건 전부 상환 완료; registry 코드 3벌 반복은 관찰 유지 - 4번째 registry가 생기는 순간이 추상화 시점 (지금 추상화 = 과설계)",
+        "boundary의 Err-vs-violation 경계선 문서화됨: registry/구조 ref 붕괴 = 평가 불가능한 corrupt store = Err; conflict/succession target 누락 = 평가 가능한 데이터 finding = violation",
+        "다음 = typed-claim/rule-gate 설계 라운드 (class C; PoC-first, 신선한 세션 권장)"
+      ],
+      "publishable_decision_summary": "The second session review held R433-R439 to the lifetime-project standard and found five defects; this round pays all of them plus one live bug the fix surfaced. The deep one was a fail-loud asymmetry: the scan re-checked conflict/succession targets against out-of-band edits while trusting frame/branch/entity registry membership and section refs entirely to the write path - and the lineage lookup PANICKED on an unregistered fact branch instead of erroring. The shared gate/view boundary now re-checks the store's full referential closure (an Err, because a store that fails it is corrupt and the semantics are not evaluable - distinct from missing conflict targets, which remain evaluable data findings), making every downstream lineage lookup total by invariant. The fork-chain traversal existed in three subtly-different copies across two crates - exactly where drift bugs breed - and is now ONE core function all paths route. Fixing the review findings surfaced a real R439 bug: import_facts verdicted before stamping, so an idempotent re-import of a manifest with conflict edges false-diverged on empty pins - stamping now precedes verdicts on both write paths (R305 parity restored, regression-tested). Also paid: the B-2 module doc citing a deleted predicate, the seven-argument holds_at hiding behind a clippy allow (WorldCtx bundle), and the unexplained stamp-only divergence message (now names the re-affirmation path).",
+      "publishable_changes_bullets": [
+        "fork-walk 3중 구현 제거: mnemosyne_core::fork_chain = THE single traversal (write path / gate / view 전부 경유); atomic::is_fork_ancestor DELETED (no-legacy-carry), validate lineage_of/fork_ancestry는 core 위임 thin wrapper로 축소",
+        "check_order_against_store -> check_store_boundary: gate와 view가 공유하는 단일 boundary가 fact integrity까지 재검사 (frame/branch/entity registry 멤버십, canon/evidence section refs, evidence 비공백) - succession/conflict target만 재검사하던 half-enforced 비대칭 해소; 미등록 branch fact의 lineage 인덱싱 panic 경로가 구조적으로 소멸 (boundary가 Err를 먼저 반환)",
+        "WorldCtx{world, lineage, order, successors} 번들: holds_at 7-인자 + clippy allow 제거, 의미론이 \"world에 대한 판정\"으로 읽히는 형태로 재구조화",
+        "B-2 모듈 doc drift 수정 (삭제된 same_scope 지칭 -> join_world)",
+        "R439 잔류 실버그 수정 (리뷰 중 발견): import_facts가 stamp 전에 verdict를 내려 conflict edge 있는 manifest의 idempotent 재import가 false-divergent - stamping을 verdict 앞으로 (add_fact와 동일 순서 = R305 parity 복원), visibility = store + staged로 forward ref 유지",
+        "divergent_fact_message 공유 helper: stamp-only divergence(target이 amend된 뒤 동일 내용 재기록)는 \"STALE judgment pins - amend_fact로 재확인\" 메시지로 구분 안내 (양 write path 동일 문구)"
+      ],
+      "publishable_verification_bullets": [
+        "out-of-band corruption 테스트: 미등록 branch(구 panic 경로)/미등록 frame/evidence 비움 전부 scan과 view 양쪽에서 Err로 fail-loud",
+        "parity 회귀 테스트: conflict edge 포함 manifest 재import = written_bytes 0 + 전건 no-op",
+        "stale-pin 메시지 테스트: target amend 후 동일 내용 재-add -> \"STALE judgment pins\" + amend_fact 안내",
+        "full workspace suite green (777 tests, 0 failed), clippy --all-targets clean (allow 어트리뷰트 0 추가), fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "세션리뷰 finding 5건 전부 상환 완료; registry 코드 3벌 반복은 관찰 유지 - 4번째 registry가 생기는 순간이 추상화 시점 (지금 추상화 = 과설계)",
+        "boundary의 Err-vs-violation 경계선 문서화됨: registry/구조 ref 붕괴 = 평가 불가능한 corrupt store = Err; conflict/succession target 누락 = 평가 가능한 데이터 finding = violation",
+        "다음 = typed-claim/rule-gate 설계 라운드 (class C; PoC-first, 신선한 세션 권장)"
+      ]
     }
   },
   "inventory_entries": {},

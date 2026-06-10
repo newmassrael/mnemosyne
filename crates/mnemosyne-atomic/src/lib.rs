@@ -3632,24 +3632,6 @@ fn build_candidate_fact(
     ))
 }
 
-/// Whether `ancestor` is on `branch`'s fork lineage (Round 438) — walks
-/// `forks_from` toward the root. The forest is write-guaranteed (parents
-/// pre-exist, forks immutable), so the walk terminates; the hop cap is a
-/// fail-safe against out-of-band edits.
-pub fn is_fork_ancestor(branches: &BTreeMap<String, Branch>, ancestor: &str, branch: &str) -> bool {
-    let mut current = branch;
-    for _ in 0..=branches.len() {
-        let Some(fork) = branches.get(current).and_then(|b| b.forks_from.as_ref()) else {
-            return false;
-        };
-        if fork.branch == ancestor {
-            return true;
-        }
-        current = &fork.branch;
-    }
-    false
-}
-
 /// Cross-fact ref check + judgment stamping for one fact against a
 /// visibility set (the caller's store ∪ manifest view). Conflict targets
 /// must exist, and each assertion is STAMPED with the target's current
@@ -3694,7 +3676,9 @@ fn validate_and_stamp_fact_refs(
             }
             Some(t)
                 if t.branch != fact.branch
-                    && !is_fork_ancestor(branches, &t.branch, &fact.branch) =>
+                    && !mnemosyne_core::fork_chain(branches, &fact.branch)?
+                        .iter()
+                        .any(|(ancestor, _)| *ancestor == t.branch) =>
             {
                 return Err(format!(
                     "fact `{fact_id}` (branch `{}`): supersedes_in_frame `{target}` lives on \
@@ -3880,6 +3864,39 @@ pub fn add_entity(
     }
 }
 
+/// Divergent-overwrite reject message, shared by both create paths (Round
+/// 440 nuance on the R434 advice): when the ONLY divergence is the
+/// judgment pins — a conflict target's claim was amended since this exact
+/// content was recorded — say so, because the fix is re-affirmation, not a
+/// content change.
+fn divergent_fact_message(
+    primitive: &str,
+    fact_id: &str,
+    existing: &NarrativeFact,
+    candidate: &NarrativeFact,
+) -> String {
+    let unpin = |f: &NarrativeFact| {
+        let mut f = f.clone();
+        for c in &mut f.conflicts_with {
+            c.target_claim_sha256 = String::new();
+        }
+        f
+    };
+    if unpin(existing) == unpin(candidate) {
+        format!(
+            "{primitive}: fact `{fact_id}` matches the stored content except for STALE \
+             judgment pins — a conflict target's claim was amended since this judgment \
+             was recorded; re-affirm via amend_fact (it restamps outbound judgments)"
+        )
+    } else {
+        format!(
+            "{primitive}: fact `{fact_id}` already exists with DIVERGENT content — \
+             refusing silent overwrite (in-world belief change: supersede in-frame; \
+             authorial correction: amend_fact / retract_fact)"
+        )
+    }
+}
+
 /// Create one narrative fact. Routes the SAME builder as `import_facts`
 /// (R305 parity); cross-fact refs resolve against the store only (a single
 /// add cannot forward-reference). 3-way verdict mirrors `import_sections`:
@@ -3908,10 +3925,8 @@ pub fn add_fact(
             sidecar_path: sidecar_path.display().to_string(),
             written_bytes: 0,
         }),
-        Some(_) => Err(AtomicMutateError::Validation(format!(
-            "add_fact: fact `{fact_id}` already exists with DIVERGENT content — \
-             refusing silent overwrite (in-world belief change: supersede in-frame; \
-             authorial correction: amend_fact / retract_fact)"
+        Some(existing) => Err(AtomicMutateError::Validation(divergent_fact_message(
+            "add_fact", &fact_id, existing, &candidate,
         ))),
         None => {
             store.narrative_facts.insert(fact_id.clone(), candidate);
@@ -4039,39 +4054,36 @@ pub fn import_facts(
         }
         staged.push((fact_id, candidate));
     }
+    // Refs validate + judgment pins stamp BEFORE the create/no-op verdicts
+    // (Round 440 parity fix: `add_fact` verdicts on a stamped candidate, so
+    // import must too — otherwise an idempotent re-import of a manifest
+    // with conflict edges false-diverges on empty pins). Visibility =
+    // store ∪ staged, so forward refs within one manifest stay legal and a
+    // pin records the target's claim as staged.
+    let mut visible = store.narrative_facts.clone();
+    for (fact_id, candidate) in &staged {
+        visible.insert(fact_id.clone(), candidate.clone());
+    }
+    for (fact_id, candidate) in &mut staged {
+        validate_and_stamp_fact_refs(fact_id, candidate, &visible, &store.branches)
+            .map_err(AtomicMutateError::Validation)?;
+    }
     for (fact_id, candidate) in staged {
-        let verdict = store
-            .narrative_facts
-            .get(&fact_id)
-            .map(|existing| *existing == candidate);
-        match verdict {
+        match store.narrative_facts.get(&fact_id) {
             None => {
                 store.narrative_facts.insert(fact_id, candidate);
                 facts_created += 1;
             }
-            Some(true) => no_op += 1,
-            Some(false) => {
-                return Err(AtomicMutateError::Validation(format!(
-                    "import_facts: fact_id `{fact_id}` already exists with DIVERGENT \
-                     content — refusing silent overwrite (in-world belief change: \
-                     supersede in-frame; authorial correction: amend_fact / retract_fact)"
+            Some(existing) if *existing == candidate => no_op += 1,
+            Some(existing) => {
+                return Err(AtomicMutateError::Validation(divergent_fact_message(
+                    "import_facts",
+                    &fact_id,
+                    existing,
+                    &candidate,
                 )));
             }
         }
-    }
-    // Refs validate + stamps compute against a post-staging snapshot
-    // (forward refs within one manifest are legal; a judgment pins the
-    // target's claim as staged).
-    let snapshot = store.narrative_facts.clone();
-    let branches_view = store.branches.clone();
-    for entry in &manifest.facts {
-        let fact_id = entry.fact_id.trim();
-        let fact = store
-            .narrative_facts
-            .get_mut(fact_id)
-            .expect("staged above");
-        validate_and_stamp_fact_refs(fact_id, fact, &snapshot, &branches_view)
-            .map_err(AtomicMutateError::Validation)?;
     }
     let summary = format!(
         "{frames_created} frames + {branches_created} branches + {entities_created} entities \
@@ -8185,6 +8197,70 @@ mod tests {
         };
         let err = add_fact(&mut store, &path, &stray).unwrap_err();
         assert!(err.to_string().contains("fork lineage"), "{err}");
+    }
+
+    /// Round 440 — parity fix regression: an idempotent re-import of a
+    /// manifest WITH conflict edges must no-op (pins stamp before the
+    /// verdict, exactly like add_fact).
+    #[test]
+    fn import_facts_with_edges_reimports_as_no_op() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let mut a = sample_fact("f-a", "gt");
+        a.conflicts_with = vec!["f-b".to_string()];
+        let b = FactImport {
+            claim: "a contradicting account".to_string(),
+            ..sample_fact("f-b", "gt")
+        };
+        let manifest = FactsManifest {
+            frames: vec![FrameImport {
+                frame_id: "gt".to_string(),
+                description: String::new(),
+            }],
+            branches: vec![],
+            entities: vec![],
+            facts: vec![a, b],
+        };
+        import_facts(&mut store, &path, &manifest).unwrap();
+        let again = import_facts(&mut store, &path, &manifest).unwrap();
+        assert_eq!(again.written_bytes, 0, "{}", again.target_id);
+        assert!(again.target_id.contains("3 no-op"), "{}", again.target_id);
+    }
+
+    /// Round 440 — stale-pin nuance: re-adding content-identical facts
+    /// after the conflict TARGET was amended rejects with the
+    /// re-affirmation message, not the generic divergent one.
+    #[test]
+    fn stamp_only_divergence_names_the_reaffirmation_path() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        let target = sample_fact("f-target", "gt");
+        let mut owner = FactImport {
+            conflicts_with: vec!["f-target".to_string()],
+            ..sample_fact("f-owner", "gt")
+        };
+        owner.claim = "the contradicting account".to_string();
+        add_fact(&mut store, &path, &target).unwrap();
+        add_fact(&mut store, &path, &owner).unwrap();
+        amend_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                claim: "a revised target claim".to_string(),
+                ..sample_fact("f-target", "gt")
+            },
+            "revision",
+        )
+        .unwrap();
+        let err = add_fact(&mut store, &path, &owner).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("STALE judgment pins"), "{msg}");
+        assert!(msg.contains("amend_fact"), "{msg}");
     }
 
     /// Round 437 — entity registry: refs fail loud until registered, dup
