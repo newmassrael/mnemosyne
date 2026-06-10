@@ -239,8 +239,8 @@ pub struct ContinuityScanReport {
     pub rules: usize,
     /// Exclusive-rule candidate pairs the declared order cannot compare.
     pub rule_unordered_pairs: usize,
-    /// Same-frame same-subject typed pairs no succession edge chains —
-    /// surfaced, never gated (Round 449).
+    /// Same-frame same-subject typed pairs no succession PATH connects —
+    /// surfaced, never gated (Round 449; path not edge, Round 452).
     pub unchained_state_pairs: usize,
     pub violation_count: usize,
     pub violations: Vec<mnemosyne_validate::continuity::ContinuityViolation>,

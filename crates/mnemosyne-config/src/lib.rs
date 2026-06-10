@@ -1005,6 +1005,26 @@ fn is_lowercase_sha256_hex(s: &str) -> bool {
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
 }
 
+/// One gate-authority pin/path pair check (Round 452 — the second
+/// `[continuity]` pin made it a pattern): a pin requires its path (a pin
+/// with nothing to pin is a config mistake) and must be canonical hex.
+fn check_authority_pin_pair(
+    pin: &Option<String>,
+    path_present: bool,
+    pin_key: &str,
+    path_key: &str,
+) -> Result<()> {
+    if let Some(hash) = pin {
+        if !path_present {
+            bail!("mnemosyne.toml: `{pin_key}` requires `{path_key}` (a pin with nothing to pin)");
+        }
+        if !is_lowercase_sha256_hex(hash) {
+            bail!("mnemosyne.toml: `{pin_key}` must be 64-char lowercase hex (got `{hash}`)");
+        }
+    }
+    Ok(())
+}
+
 fn validate(cfg: &WorkspaceConfig) -> Result<()> {
     if let Some(spec) = &cfg.workspace.spec_source {
         let is_url = spec.url.starts_with("https://") || spec.url.starts_with("http://");
@@ -1052,32 +1072,18 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
         }
     }
     if let Some(cont) = &cfg.continuity {
-        if let Some(hash) = &cont.canon_order_sha256 {
-            if cont.canon_order_path.is_none() {
-                bail!(
-                    "mnemosyne.toml: `continuity.canon_order_sha256` requires `canon_order_path` (a pin with nothing to pin)"
-                );
-            }
-            if !is_lowercase_sha256_hex(hash) {
-                bail!(
-  "mnemosyne.toml: `continuity.canon_order_sha256` must be 64-char lowercase hex (got `{}`)",
-  hash
-  );
-            }
-        }
-        if let Some(hash) = &cont.rules_sha256 {
-            if cont.rules_path.is_none() {
-                bail!(
-                    "mnemosyne.toml: `continuity.rules_sha256` requires `rules_path` (a pin with nothing to pin)"
-                );
-            }
-            if !is_lowercase_sha256_hex(hash) {
-                bail!(
-  "mnemosyne.toml: `continuity.rules_sha256` must be 64-char lowercase hex (got `{}`)",
-  hash
-  );
-            }
-        }
+        check_authority_pin_pair(
+            &cont.canon_order_sha256,
+            cont.canon_order_path.is_some(),
+            "continuity.canon_order_sha256",
+            "canon_order_path",
+        )?;
+        check_authority_pin_pair(
+            &cont.rules_sha256,
+            cont.rules_path.is_some(),
+            "continuity.rules_sha256",
+            "rules_path",
+        )?;
     }
     // The `spec_drift` / `commit_ledger` / `content_drift` severities are now
     // the `Severity` enum: serde rejects any value outside `reject|warn|info`

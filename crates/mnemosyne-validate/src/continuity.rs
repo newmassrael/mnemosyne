@@ -557,12 +557,14 @@ pub struct ContinuityReport {
     /// gated — the rule cannot decide them).
     pub rule_unordered_pairs: usize,
     /// Distinct same-frame same-subject typed pairs (per transition rule)
-    /// visible together in some query world yet not connected by a direct
-    /// succession edge — pairs the transition rule deliberately cannot see
-    /// (succession IS the declared adjacency). Surfaced as a count, never
-    /// gated. WORLD-scoped via the shared visibility (the R441 probe
-    /// finding: raw branch equality would silently miss fork-inherited
-    /// pairs), deduplicated across worlds.
+    /// visible together in some query world with NO succession PATH
+    /// between them — states the chain never connects, which the
+    /// transition rule therefore cannot see. Surfaced as a count, never
+    /// gated. Path, not direct edge (Round 452): a correctly chained
+    /// A→B→C arc transitively connects (A, C) and must not count.
+    /// WORLD-scoped via the shared visibility (the R441 probe finding:
+    /// raw branch equality would silently miss fork-inherited pairs),
+    /// deduplicated across worlds.
     pub unchained_state_pairs: usize,
 }
 
@@ -795,6 +797,63 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
     Ok(())
 }
 
+/// The per-world pair space both rule surfaces sweep (Round 452 — the
+/// second copy triggered the extraction): for every query world, every
+/// same-frame pair of `typed` facts visible together there, visited with
+/// that world's evaluation context. Pairs visit in id order (`typed` is
+/// id-sorted); a pair visible in several worlds visits once per world —
+/// the world is part of the finding. Cross-frame pairs never visit
+/// (data, never gated — the North-Star sentence).
+fn for_each_world_pair<'a>(
+    worlds: &[&'a str],
+    lineages: &'a BTreeMap<String, Lineage>,
+    order: &'a CanonOrder,
+    successors: &'a BTreeMap<&'a str, Vec<&'a NarrativeFact>>,
+    typed: &[(&'a String, &'a NarrativeFact)],
+    mut visit: impl FnMut(&WorldCtx<'_>, &'a str, &'a NarrativeFact, &'a str, &'a NarrativeFact),
+) {
+    for world in worlds {
+        let ctx = WorldCtx {
+            world,
+            lineage: &lineages[*world],
+            order,
+            successors,
+        };
+        let vis: Vec<&(&'a String, &'a NarrativeFact)> = typed
+            .iter()
+            .filter(|(_, f)| ctx.visibility(f) == Vis::In)
+            .collect();
+        for (i, (aid, a)) in vis.iter().enumerate() {
+            for (bid, b) in vis.iter().skip(i + 1) {
+                if a.frame != b.frame {
+                    continue;
+                }
+                visit(&ctx, aid.as_str(), a, bid.as_str(), b);
+            }
+        }
+    }
+}
+
+/// Every transitive predecessor of `id` along the `supersedes_in_frame`
+/// chain (each fact carries at most one backward pointer, so this is a
+/// single upward walk). Cycle-guarded: the write path rejects succession
+/// cycles, but the scan re-reads out-of-band-edited stores (the Round 440
+/// boundary doctrine), so the walk must terminate regardless.
+fn succession_ancestors<'a>(
+    facts: &'a BTreeMap<String, NarrativeFact>,
+    id: &str,
+) -> BTreeSet<&'a str> {
+    let mut out = BTreeSet::new();
+    let mut cur = facts.get(id).and_then(|f| f.supersedes_in_frame.as_deref());
+    while let Some(p) = cur {
+        if !out.insert(p) {
+            break;
+        }
+        cur = facts.get(p).and_then(|f| f.supersedes_in_frame.as_deref());
+    }
+    out
+}
+
 /// Frame-scoped continuity scan over the narrative facts. Returns `Err` only
 /// on a malformed input boundary (an order node that is not a section, a
 /// declared branch that is not registered, or a rule naming an unregistered
@@ -1000,6 +1059,13 @@ pub fn scan_continuity(
     // sibling-world pairs are data by construction (a fact invisible in the
     // query world never holds there). A pair violating in several worlds is
     // reported per world — the world is part of the finding.
+    //
+    // Two scoping models coexist in this scan, deliberately (Round 452):
+    // RECORDED conflict edges evaluate once per edge in the pair's join
+    // world (B-2 — the edge is the finding's identity), while DERIVED rule
+    // findings sweep every query world (the payoff-coverage shape — a
+    // derived pair exists only relative to a world). One holds-semantics
+    // under both: `WorldCtx::holds_at`.
     report.rules = rules.len();
     let worlds: Vec<&str> = std::iter::once(mnemosyne_core::MAIN_BRANCH)
         .chain(store.branches.keys().map(String::as_str))
@@ -1016,57 +1082,49 @@ pub fn scan_continuity(
         match &rule.spec {
             NarrativeRuleSpec::Exclusive { per } => {
                 let mut unordered: BTreeSet<(&str, &str)> = BTreeSet::new();
-                for world in &worlds {
-                    let ctx = WorldCtx {
-                        world,
-                        lineage: &lineages[*world],
-                        order,
-                        successors: &successors,
-                    };
-                    let vis: Vec<&(&String, &NarrativeFact)> = typed
-                        .iter()
-                        .filter(|(_, f)| ctx.visibility(f) == Vis::In)
-                        .collect();
-                    for (i, (aid, a)) in vis.iter().enumerate() {
-                        for (bid, b) in vis.iter().skip(i + 1) {
-                            if a.frame != b.frame {
-                                continue; // cross-frame = data, never gated
-                            }
-                            let (ta, tb) = (a.typed.as_ref().unwrap(), b.typed.as_ref().unwrap());
-                            if claim_leg(ta, *per) != claim_leg(tb, *per) {
-                                continue; // different keyed legs — no exclusivity claim
-                            }
-                            if claim_leg(ta, per.other()) == claim_leg(tb, per.other()) {
-                                // The non-keyed leg agrees — a restated fact is
-                                // exclusivity-consistent, not gated (R443:
-                                // symmetric, both `per` directions).
-                                continue;
-                            }
-                            let co_hold = store
-                                .sections
-                                .keys()
-                                .find(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
-                            match co_hold {
-                                Some(p) => report.violations.push(
-                                    ContinuityViolation::RuleExclusiveOverlap {
+                for_each_world_pair(
+                    &worlds,
+                    &lineages,
+                    order,
+                    &successors,
+                    &typed,
+                    |ctx, aid, a, bid, b| {
+                        let (ta, tb) = (a.typed.as_ref().unwrap(), b.typed.as_ref().unwrap());
+                        if claim_leg(ta, *per) != claim_leg(tb, *per) {
+                            return; // different keyed legs — no exclusivity claim
+                        }
+                        if claim_leg(ta, per.other()) == claim_leg(tb, per.other()) {
+                            // The non-keyed leg agrees — a restated fact is
+                            // exclusivity-consistent, not gated (R443: symmetric,
+                            // both `per` directions).
+                            return;
+                        }
+                        let co_hold = store
+                            .sections
+                            .keys()
+                            .find(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
+                        match co_hold {
+                            Some(p) => {
+                                report
+                                    .violations
+                                    .push(ContinuityViolation::RuleExclusiveOverlap {
                                         rule: rule.id.clone(),
                                         predicate: rule.predicate.clone(),
                                         frame: a.frame.clone(),
-                                        branch: (*world).to_string(),
-                                        fact_a: (*aid).clone(),
-                                        fact_b: (*bid).clone(),
+                                        branch: ctx.world.to_string(),
+                                        fact_a: aid.to_string(),
+                                        fact_b: bid.to_string(),
                                         at: p.clone(),
-                                    },
-                                ),
-                                None => {
-                                    if !order.comparable(world, &a.canon_from, &b.canon_from) {
-                                        unordered.insert((aid.as_str(), bid.as_str()));
-                                    }
+                                    })
+                            }
+                            None => {
+                                if !order.comparable(ctx.world, &a.canon_from, &b.canon_from) {
+                                    unordered.insert((aid, bid));
                                 }
                             }
                         }
-                    }
-                }
+                    },
+                );
                 report.rule_unordered_pairs += unordered.len();
             }
             NarrativeRuleSpec::Transition { allowed } => {
@@ -1110,41 +1168,37 @@ pub fn scan_continuity(
                     }
                 }
                 // The honesty half: same-frame same-subject typed pairs
-                // visible together in some world yet NOT directly chained —
-                // the rule cannot see them (surfaced count, never gated).
+                // visible together in some world with NO succession PATH
+                // between them — states the chain never connects, which the
+                // transition rule therefore cannot see (surfaced count,
+                // never gated). Path, not direct edge (Round 452 session
+                // review): a correctly chained A→B→C arc transitively
+                // connects (A, C) — each hop was checked, so counting the
+                // pair as "unchained" was a false signal on correct data
+                // (falsified live: a chained 4-step arc reported 3).
                 // World-scoped via visibility (the R441 probe finding) and
                 // deduplicated across worlds.
+                let ancestors: BTreeMap<&str, BTreeSet<&str>> = typed
+                    .iter()
+                    .map(|(id, _)| (id.as_str(), succession_ancestors(facts, id)))
+                    .collect();
                 let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
-                for world in &worlds {
-                    let ctx = WorldCtx {
-                        world,
-                        lineage: &lineages[*world],
-                        order,
-                        successors: &successors,
-                    };
-                    let vis: Vec<&(&String, &NarrativeFact)> = typed
-                        .iter()
-                        .filter(|(_, f)| ctx.visibility(f) == Vis::In)
-                        .collect();
-                    for (i, (aid, a)) in vis.iter().enumerate() {
-                        for (bid, b) in vis.iter().skip(i + 1) {
-                            if a.frame != b.frame {
-                                continue;
-                            }
-                            if a.typed.as_ref().unwrap().subject
-                                != b.typed.as_ref().unwrap().subject
-                            {
-                                continue;
-                            }
-                            if a.supersedes_in_frame.as_deref() == Some(bid.as_str())
-                                || b.supersedes_in_frame.as_deref() == Some(aid.as_str())
-                            {
-                                continue;
-                            }
-                            seen.insert((aid.as_str(), bid.as_str()));
+                for_each_world_pair(
+                    &worlds,
+                    &lineages,
+                    order,
+                    &successors,
+                    &typed,
+                    |_, aid, a, bid, b| {
+                        if a.typed.as_ref().unwrap().subject != b.typed.as_ref().unwrap().subject {
+                            return;
                         }
-                    }
-                }
+                        if ancestors[aid].contains(bid) || ancestors[bid].contains(aid) {
+                            return; // connected through the succession chain
+                        }
+                        seen.insert((aid, bid));
+                    },
+                );
                 report.unchained_state_pairs += seen.len();
             }
         }
@@ -2838,10 +2892,10 @@ mod tests {
             }
             v => panic!("wrong violation: {v:?}"),
         }
-        // The correctly chained leg is NOT in the unchained count; the
-        // transitively related pairs (s1,bad) etc. are (the rule cannot
-        // see them — direct adjacency only).
-        assert_eq!(report.unchained_state_pairs, 1);
+        // The whole s1→s2→bad arc is succession-connected (path, not
+        // direct edge — Round 452): zero unchained pairs on chained data,
+        // even with the invalid step (the violation IS the signal there).
+        assert_eq!(report.unchained_state_pairs, 0);
     }
 
     /// Fork world (R441 probe 6): a what-if branch keeps its own state
@@ -3111,5 +3165,69 @@ mod tests {
             })
             .collect();
         assert_eq!(worlds, vec![MAIN_BRANCH, "route"], "{worlds:?}");
+    }
+
+    /// R452 session review — unchained means NO SUCCESSION PATH, not "no
+    /// direct edge": a correct 4-step chain reports zero (the pre-fix
+    /// direct-adjacency definition reported its 3 transitive pairs as
+    /// "unchained" — a false signal on correct data, falsified live); a
+    /// chain through an UNTYPED middle fact still connects its typed
+    /// endpoints; only a genuinely unconnected state fact counts.
+    #[test]
+    fn unchained_counts_path_disconnected_pairs_only() {
+        let chain4 = |vals: [&str; 4]| -> Vec<FactImport> {
+            vals.iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    let mut f = typed_fact(
+                        &format!("s{}", i + 1),
+                        "gt",
+                        &format!("ch-{}", i + 1),
+                        "lucy",
+                        "life-status",
+                        at(v),
+                    );
+                    if i > 0 {
+                        f.supersedes_in_frame = Some(format!("s{i}"));
+                    }
+                    f
+                })
+                .collect()
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "life",
+            "life-status",
+            &[
+                ("alive", "dead"),
+                ("dead", "undead"),
+                ("undead", "destroyed"),
+            ],
+        )];
+        // Fully chained correct arc: zero unchained, zero violations.
+        let store = store_with(chain4(["alive", "dead", "undead", "destroyed"]));
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        assert_eq!(report.unchained_state_pairs, 0);
+        // Untyped middle: s1(typed) <- m(untyped) <- s3(typed) still
+        // connects the endpoints through the chain (the hops are outside
+        // the rule — partial coverage — but the pair is not unchained).
+        let mut middle = fact("m", "gt", "ch-2", None);
+        middle.entities = vec!["lucy".to_string()];
+        middle.supersedes_in_frame = Some("s1".to_string());
+        let mut s3 = typed_fact("s3", "gt", "ch-3", "lucy", "life-status", at("dead"));
+        s3.supersedes_in_frame = Some("m".to_string());
+        let store = store_with(vec![
+            typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
+            middle,
+            s3,
+            // Genuinely unconnected same-subject state fact: the only pair
+            // class that counts.
+            typed_fact("loose", "gt", "ch-4", "lucy", "life-status", at("undead")),
+        ]);
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        // (s1,s3) path-connected through m -> not counted; (s1,loose),
+        // (s3,loose) disconnected -> 2.
+        assert_eq!(report.unchained_state_pairs, 2);
     }
 }
