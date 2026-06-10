@@ -7637,6 +7637,52 @@
         "canon-order for the Dracula PoC = linear 26-edge chain artifact (claudedocs scratch); a game-medium consumer exercises the DAG path live when one arrives",
         "world-line branch axis (design sec 7.9 axis 2) still consumer-pull; same_scope widens then"
       ]
+    },
+    "Round 432 — frame-at-T read projection: report-frame-view (Phase 1A Round C)": {
+      "decision_summary": "Phase 1A build Round C, completing the ratified A/B/C decomposition: the frame-at-T read projection lands. frame_view answers the question the whole slice was built for — what does frame F hold at canon point T — by routing the SAME holds_at semantics the continuity gate uses, so gate and view share one predicate and cannot drift (the R390 single-source discipline, locked by a consistency test: any overlap violation the gate reports at point p must show both facts holding in the view at p). The projection is three-state honest under the declared partial order (guardrail B-1): a fact is holding, definitively not holding, or UNKNOWN when a coordinate its verdict depends on is not comparable to the query point — a quest-DAG arm queried from a sibling arm reports unknown rather than silently absent. Read-only verb report-frame-view (order/store resolution identical to validate-continuity), no schema change, no new authoritative state. Acceptance on the real corpus closes the North-Star slice: seward at ch-12 believes the illness while ground-truth at ch-10 simultaneously holds the vampire facts; at ch-16 seward's belief has swapped to F07 by derived closure with nothing written back — coexisting perspectival truths, frame-scoped queries, never cross-validated. The Phase 1A v1 slice (R430 entity + R431 gate + R432 projection) is complete; remaining Phase 1 work is consumer-pull.",
+      "changes_bullets": [
+        "frame_view(store, order, frame, at) in mnemosyne-validate continuity.rs: the facts frame F holds at canon point T, routed through the SAME private holds_at the continuity gate uses (R390 single-predicate discipline — gate and view cannot drift)",
+        "three-state honesty under the declared partial order (B-1): holding / definitively not_holding (count) / unknown (a coordinate the verdict depends on is not comparable to the query point — a quest-DAG arm queried from a sibling arm is unknown, never silently absent)",
+        "fail-loud boundaries: frame must be registered, query point must be a section, order declaration must name only sections",
+        "read-only CLI verb report-frame-view --frame --at (--order pin-bypass + --sidecar + --json, resolution identical to validate-continuity); usage lines",
+        "no schema change, no new authoritative state (pure L3 projection, report-binding-migration genre)"
+      ],
+      "verification_bullets": [
+        "5 new continuity unit tests: succession swaps the held belief between ch-2 and ch-3, stored-to ends + other frames excluded, DAG incomparable arm = unknown not absent, fail-loud boundaries, and a gate-view consistency lock (any FrameConflictOverlap at point p must show both facts holding in frame_view at p)",
+        "3 CLI smoke tests (report_frame_view_smoke.rs): succession swap + no cross-frame leakage via JSON contract, empty declaration turns holdings into unknown, unknown-frame/non-section errors",
+        "workspace: 94 test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus (Dracula store + 26-edge declared chain): seward@ch-12 holds F04 illness + F09 Renfield-case; seward@ch-16 belief SWAPPED to F07 vampires-real by derived closure; jonathan@ch-02 F02 nobleman vs @ch-04 F03 unnatural; ground-truth@ch-10 simultaneously holds the vampire facts — coexisting perspectival truths queried per-frame, never cross-validated"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Phase 1A v1 slice (A entity / B gate / C projection) COMPLETE — design sec 7.7 acceptance all demonstrated on the real corpus; next Phase 1 work is consumer-pull (world-line branch axis, retract/tombstone for authorial retcon, MCP fact tools, MediumAdapter L1 field composition) or user-directed",
+        "frame_view JSON omits WHY a fact is not holding (ended-by-which-successor); add when a viewer consumer asks",
+        "holds_at stays private to continuity.rs by design: frame_view is its only other consumer and lives beside it"
+      ],
+      "publishable_decision_summary": "Phase 1A build Round C, completing the ratified A/B/C decomposition: the frame-at-T read projection lands. frame_view answers the question the whole slice was built for — what does frame F hold at canon point T — by routing the SAME holds_at semantics the continuity gate uses, so gate and view share one predicate and cannot drift (the R390 single-source discipline, locked by a consistency test: any overlap violation the gate reports at point p must show both facts holding in the view at p). The projection is three-state honest under the declared partial order (guardrail B-1): a fact is holding, definitively not holding, or UNKNOWN when a coordinate its verdict depends on is not comparable to the query point — a quest-DAG arm queried from a sibling arm reports unknown rather than silently absent. Read-only verb report-frame-view (order/store resolution identical to validate-continuity), no schema change, no new authoritative state. Acceptance on the real corpus closes the North-Star slice: seward at ch-12 believes the illness while ground-truth at ch-10 simultaneously holds the vampire facts; at ch-16 seward's belief has swapped to F07 by derived closure with nothing written back — coexisting perspectival truths, frame-scoped queries, never cross-validated. The Phase 1A v1 slice (R430 entity + R431 gate + R432 projection) is complete; remaining Phase 1 work is consumer-pull.",
+      "publishable_changes_bullets": [
+        "frame_view(store, order, frame, at) in mnemosyne-validate continuity.rs: the facts frame F holds at canon point T, routed through the SAME private holds_at the continuity gate uses (R390 single-predicate discipline — gate and view cannot drift)",
+        "three-state honesty under the declared partial order (B-1): holding / definitively not_holding (count) / unknown (a coordinate the verdict depends on is not comparable to the query point — a quest-DAG arm queried from a sibling arm is unknown, never silently absent)",
+        "fail-loud boundaries: frame must be registered, query point must be a section, order declaration must name only sections",
+        "read-only CLI verb report-frame-view --frame --at (--order pin-bypass + --sidecar + --json, resolution identical to validate-continuity); usage lines",
+        "no schema change, no new authoritative state (pure L3 projection, report-binding-migration genre)"
+      ],
+      "publishable_verification_bullets": [
+        "5 new continuity unit tests: succession swaps the held belief between ch-2 and ch-3, stored-to ends + other frames excluded, DAG incomparable arm = unknown not absent, fail-loud boundaries, and a gate-view consistency lock (any FrameConflictOverlap at point p must show both facts holding in frame_view at p)",
+        "3 CLI smoke tests (report_frame_view_smoke.rs): succession swap + no cross-frame leakage via JSON contract, empty declaration turns holdings into unknown, unknown-frame/non-section errors",
+        "workspace: 94 test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus (Dracula store + 26-edge declared chain): seward@ch-12 holds F04 illness + F09 Renfield-case; seward@ch-16 belief SWAPPED to F07 vampires-real by derived closure; jonathan@ch-02 F02 nobleman vs @ch-04 F03 unnatural; ground-truth@ch-10 simultaneously holds the vampire facts — coexisting perspectival truths queried per-frame, never cross-validated"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Phase 1A v1 slice (A entity / B gate / C projection) COMPLETE — design sec 7.7 acceptance all demonstrated on the real corpus; next Phase 1 work is consumer-pull (world-line branch axis, retract/tombstone for authorial retcon, MCP fact tools, MediumAdapter L1 field composition) or user-directed",
+        "frame_view JSON omits WHY a fact is not holding (ended-by-which-successor); add when a viewer consumer asks",
+        "holds_at stays private to continuity.rs by design: frame_view is its only other consumer and lives beside it"
+      ]
     }
   },
   "inventory_entries": {},

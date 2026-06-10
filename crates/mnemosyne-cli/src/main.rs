@@ -290,6 +290,8 @@ fn run(args: &[String]) -> Result<()> {
         "validate-confirmation" => cmd_validate_confirmation(&args[2..]),
         // Round 431 — frame-scoped narrative continuity gate (Phase 1A Round B).
         "validate-continuity" => cmd_validate_continuity(&args[2..]),
+        // Round 432 — frame-at-T read projection (Phase 1A Round C).
+        "report-frame-view" => cmd_report_frame_view(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -545,6 +547,14 @@ fn print_help(prog: &str) {
     println!(
         "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred"
     );
+    println!(
+        " {} report-frame-view --frame <id> --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   read-only frame-at-T projection (Round 432): the facts frame F holds at canon point T,"
+    );
+    println!("   same holds-semantics as the gate; incomparable coordinates surface as `unknown`");
     println!(
         " {} validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]",
         prog
@@ -1782,6 +1792,116 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     }
     if matches!(severity, Some(s) if s.is_reject()) && !report.violations.is_empty() {
         std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 432 — frame-at-T read projection (`report-frame-view`): the facts a
+/// frame holds at a canon point, over the SAME holds-semantics as the
+/// continuity gate (R390 single-predicate discipline). Read-only; order and
+/// store resolve exactly as `validate-continuity` (`--order` bypasses the
+/// pin; `--sidecar` for non-dogfood stores).
+fn cmd_report_frame_view(args: &[String]) -> Result<()> {
+    use mnemosyne_validate::continuity::{frame_view, load_canon_order, CanonOrder};
+    let mut json = false;
+    let mut frame: Option<String> = None;
+    let mut at: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--frame" => {
+                frame = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--frame missing"))?
+                        .clone(),
+                )
+            }
+            "--at" => at = Some(iter.next().ok_or_else(|| anyhow!("--at missing"))?.clone()),
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let frame = frame.ok_or_else(|| anyhow!("--frame arg required"))?;
+    let at = at.ok_or_else(|| anyhow!("--at arg required"))?;
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let cont_cfg = loaded.config.continuity.as_ref();
+    let order = match (
+        &order_override,
+        cont_cfg.and_then(|c| c.canon_order_path.as_ref()),
+    ) {
+        (Some(p), _) => load_canon_order(&root.join(p), None).map_err(|e| anyhow!("{e}"))?,
+        (None, Some(p)) => load_canon_order(
+            &root.join(p),
+            cont_cfg.and_then(|c| c.canon_order_sha256.as_deref()),
+        )
+        .map_err(|e| anyhow!("{e}"))?,
+        (None, None) => CanonOrder::empty(),
+    };
+    let atomic_path =
+        mnemosyne_ops::cascade::resolve_sidecar(&anchor, sidecar_override.as_deref())?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let view = frame_view(&store, &order, &frame, &at).map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "frame": view.frame,
+                "at": view.at,
+                "holding": view.holding.iter().map(|e| serde_json::json!({
+                    "fact_id": e.fact_id,
+                    "claim": e.claim,
+                    "canon_from": e.canon_from,
+                    "canon_to": e.canon_to,
+                    "evidence": e.evidence,
+                    "quote": e.quote,
+                })).collect::<Vec<_>>(),
+                "holding_count": view.holding.len(),
+                "not_holding": view.not_holding,
+                "unknown": view.unknown,
+            })
+        );
+    } else {
+        println!("=== frame `{}` at `{}` ===", view.frame, view.at);
+        println!(
+            "  holding={} not_holding={} unknown={}",
+            view.holding.len(),
+            view.not_holding,
+            view.unknown.len()
+        );
+        for e in &view.holding {
+            let to = e
+                .canon_to
+                .as_deref()
+                .map(|t| format!("..{t}"))
+                .unwrap_or_default();
+            println!("  [{}{}] {}: {}", e.canon_from, to, e.fact_id, e.claim);
+        }
+        for u in &view.unknown {
+            println!("  [unknown under declared order] {u}");
+        }
     }
     Ok(())
 }

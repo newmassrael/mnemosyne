@@ -202,6 +202,10 @@ fn same_scope(a: &NarrativeFact, b: &NarrativeFact) -> bool {
 /// Whether `fact` (id `fact_id`) holds at canon point `p` under the derived
 /// extent: started (`canon_from <= p`), not past a stored `canon_to`, and
 /// not yet replaced by any in-frame successor.
+///
+/// THE single holds-semantics — shared by the continuity gate and the
+/// frame-at-T projection ([`frame_view`]) so the two can never drift (the
+/// R390 single-predicate discipline).
 fn holds_at(
     fact_id: &str,
     fact: &NarrativeFact,
@@ -339,6 +343,109 @@ pub fn scan_continuity(
         }
     }
     Ok(report)
+}
+
+/// One fact currently in effect in a frame view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrameViewEntry {
+    pub fact_id: String,
+    pub claim: String,
+    pub canon_from: String,
+    pub canon_to: Option<String>,
+    pub evidence: Vec<String>,
+    pub quote: Option<String>,
+}
+
+/// The frame-at-T projection result (Round 432). Three-state honest under a
+/// partial order (B-1): a fact is `holding`, definitively `not_holding`
+/// (counted), or `unknown` — some canon coordinate involved is not
+/// comparable to the query point, so the declaration cannot decide.
+#[derive(Debug, Clone, Default)]
+pub struct FrameView {
+    pub frame: String,
+    pub at: String,
+    pub holding: Vec<FrameViewEntry>,
+    pub not_holding: usize,
+    pub unknown: Vec<String>,
+}
+
+/// "Facts of frame F at canon point T" — the read projection over the SAME
+/// `holds_at` semantics the continuity gate uses (R390 single-predicate
+/// discipline: gate and view cannot drift). Fail-loud boundaries: the frame
+/// must be registered, the query point must be a section, and the order
+/// declaration must name only sections.
+pub fn frame_view(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    frame: &str,
+    at: &str,
+) -> Result<FrameView, String> {
+    for n in order.nodes() {
+        if !store.sections.contains_key(n) {
+            return Err(format!(
+                "canon-order names `{n}`, which is not a section in the store — \
+                 canon coordinates are structure refs; fix the declaration"
+            ));
+        }
+    }
+    if !store.frames.contains_key(frame) {
+        return Err(format!(
+            "frame `{frame}` not present in the frames registry (fail-loud)"
+        ));
+    }
+    if !store.sections.contains_key(at) {
+        return Err(format!(
+            "query point `{at}` not present as a section (canon coordinates are structure refs)"
+        ));
+    }
+    let facts = &store.narrative_facts;
+    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
+    for fact in facts.values() {
+        if let Some(t) = &fact.supersedes_in_frame {
+            successors.entry(t.as_str()).or_default().push(fact);
+        }
+    }
+    let mut view = FrameView {
+        frame: frame.to_string(),
+        at: at.to_string(),
+        ..Default::default()
+    };
+    for (id, fact) in facts {
+        if fact.frame != frame {
+            continue;
+        }
+        if holds_at(id, fact, at, order, &successors) {
+            view.holding.push(FrameViewEntry {
+                fact_id: id.clone(),
+                claim: fact.claim.clone(),
+                canon_from: fact.canon_from.clone(),
+                canon_to: fact.canon_to.clone(),
+                evidence: fact.evidence.clone(),
+                quote: fact.quote.clone(),
+            });
+            continue;
+        }
+        // Not holding — definitive vs unknown (B-1 honesty): if a coordinate
+        // the verdict depended on is not comparable to `at`, the declared
+        // order cannot actually decide it.
+        let from_unknown = !order.comparable(&fact.canon_from, at);
+        let to_unknown = order.le(&fact.canon_from, at)
+            && fact
+                .canon_to
+                .as_ref()
+                .is_some_and(|to| !order.comparable(at, to));
+        let succ_cut = successors
+            .get(id.as_str())
+            .into_iter()
+            .flatten()
+            .any(|s| order.le(&s.canon_from, at));
+        if from_unknown || (to_unknown && !succ_cut) {
+            view.unknown.push(id.clone());
+        } else {
+            view.not_holding += 1;
+        }
+    }
+    Ok(view)
 }
 
 #[cfg(test)]
@@ -525,5 +632,101 @@ mod tests {
         let store = store_with(vec![]);
         let err = scan_continuity(&store, &chain(&["ch-1", "ch-99"])).unwrap_err();
         assert!(err.contains("ch-99"), "{err}");
+    }
+    // ── frame_view (Round 432) ──────────────────────────────────────────
+
+    #[test]
+    fn frame_view_succession_swaps_the_held_belief() {
+        // jonathan at ch-2: f-old holds; at ch-3: f-new (derived closure).
+        let old = fact("f-old", "jonathan", "ch-1", None);
+        let mut new = fact("f-new", "jonathan", "ch-3", None);
+        new.supersedes_in_frame = Some("f-old".to_string());
+        let store = store_with(vec![old, new]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let at2 = frame_view(&store, &order, "jonathan", "ch-2").unwrap();
+        assert_eq!(
+            at2.holding
+                .iter()
+                .map(|e| e.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-old"]
+        );
+        assert_eq!(at2.not_holding, 1);
+        let at3 = frame_view(&store, &order, "jonathan", "ch-3").unwrap();
+        assert_eq!(
+            at3.holding
+                .iter()
+                .map(|e| e.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-new"]
+        );
+        assert_eq!(at3.not_holding, 1);
+        assert!(at3.unknown.is_empty());
+    }
+
+    #[test]
+    fn frame_view_stored_to_ends_and_other_frames_excluded() {
+        let bounded = fact("f-b", "seward", "ch-1", Some("ch-2"));
+        let other = fact("f-x", "jonathan", "ch-1", None);
+        let store = store_with(vec![bounded, other]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let at3 = frame_view(&store, &order, "seward", "ch-3").unwrap();
+        assert!(at3.holding.is_empty());
+        assert_eq!(at3.not_holding, 1);
+        // jonathan's fact never appears in seward's view.
+        let at1 = frame_view(&store, &order, "seward", "ch-1").unwrap();
+        assert_eq!(at1.holding.len(), 1);
+        assert_eq!(at1.holding[0].fact_id, "f-b");
+    }
+
+    #[test]
+    fn frame_view_incomparable_is_unknown_not_absent() {
+        // Quest-DAG: ch-1 -> ch-2, ch-1 -> ch-3. A fact on the ch-2 arm
+        // queried at ch-3 is UNKNOWN (B-1), not silently "not holding".
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-1".to_string(), "ch-3".to_string()],
+        ])
+        .unwrap();
+        let store = store_with(vec![fact("f-arm", "seward", "ch-2", None)]);
+        let view = frame_view(&store, &order, "seward", "ch-3").unwrap();
+        assert!(view.holding.is_empty());
+        assert_eq!(view.unknown, vec!["f-arm".to_string()]);
+        assert_eq!(view.not_holding, 0);
+    }
+
+    #[test]
+    fn frame_view_fail_loud_boundaries() {
+        let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        let order = chain(&["ch-1", "ch-2"]);
+        let err = frame_view(&store, &order, "nobody", "ch-1").unwrap_err();
+        assert!(err.contains("frames registry"), "{err}");
+        let err = frame_view(&store, &order, "seward", "ch-99").unwrap_err();
+        assert!(err.contains("ch-99"), "{err}");
+    }
+
+    /// R390-style consistency lock: the gate and the view share holds_at —
+    /// any FrameConflictOverlap the gate reports at point `at` MUST show
+    /// both facts holding in that frame's view at `at`.
+    #[test]
+    fn gate_and_view_agree_on_co_holding() {
+        let mut a = fact("fa", "seward", "ch-1", Some("ch-3"));
+        let b = fact("fb", "seward", "ch-2", None);
+        a.conflicts_with = vec!["fb".to_string()];
+        let store = store_with(vec![a, b]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order).unwrap();
+        let ContinuityViolation::FrameConflictOverlap {
+            frame,
+            fact_a,
+            fact_b,
+            at,
+        } = &report.violations[0]
+        else {
+            panic!("expected overlap");
+        };
+        let view = frame_view(&store, &order, frame, at).unwrap();
+        let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
+        assert!(held.contains(&fact_a.as_str()) && held.contains(&fact_b.as_str()));
     }
 }
