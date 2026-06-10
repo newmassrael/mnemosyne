@@ -612,6 +612,12 @@ pub struct MnemosyneServer {
     /// from the in-process Salsa memo cache. Shared (not duplicated) across the
     /// router's handler clones.
     projection: Arc<Mutex<ProjectionService>>,
+    /// Serializes every mutate tool's load→mutate→save against concurrent
+    /// `tools/call` (Round 448 session review): MCP clients may issue
+    /// parallel calls, and two unserialized mutates on one store file are a
+    /// lost-update race. Held only across the mutate itself; read tools
+    /// stay lock-free (they tolerate seeing the pre- or post-state).
+    mutate_lock: Arc<Mutex<()>>,
     #[allow(dead_code)] // populated by #[tool_router] expansion
     tool_router: ToolRouter<Self>,
 }
@@ -623,8 +629,27 @@ impl MnemosyneServer {
         Ok(Self {
             workspace: Arc::new(workspace),
             projection: Arc::new(Mutex::new(projection)),
+            mutate_lock: Arc::new(Mutex::new(())),
             tool_router: Self::tool_router(),
         })
+    }
+
+    /// THE single mutate entry for every tool (Round 448): acquire the
+    /// server mutate lock, then run the primitive in-process. CLI
+    /// invocations are process-per-call and need no lock; cross-PROCESS
+    /// concurrency on one store stays the filesystem/git domain.
+    fn run_mutate<F>(&self, primitive: F) -> Result<ops::MutateOutcome, ops::OpError>
+    where
+        F: FnOnce(
+            &mut atomic::AtomicStore,
+            &std::path::Path,
+        ) -> Result<atomic::AtomicMutateReceipt, atomic::AtomicMutateError>,
+    {
+        let _guard = self
+            .mutate_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        run_atomic_mutate(&self.workspace, None, primitive)
     }
 
     fn tool_text(s: String) -> CallToolResult {
@@ -724,36 +749,20 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
 
 /// Map the MCP fact-shaped args onto the atomic `FactImport` (Round 435).
 /// All registry/shape invariants live in the shared `build_candidate_fact`
-/// path — this is shape translation plus the one arg-surface rule the
-/// builder cannot see: the typed object arrives as exactly one of the two
-/// arg fields (Round 446).
+/// path; the flattened typed-object pair resolves through the ONE shared
+/// constructor (`TypedObject::from_exclusive_args`, Round 448) — pure
+/// shape translation here.
 fn fact_import_from(a: &AddFactArgs) -> Result<atomic::FactImport, String> {
     let typed = match &a.typed {
         None => None,
-        Some(t) => {
-            let object = match (&t.object_entity, &t.object_value) {
-                (Some(id), None) => mnemosyne_core::TypedObject::Entity { id: id.clone() },
-                (None, Some(value)) => mnemosyne_core::TypedObject::Value {
-                    value: value.clone(),
-                },
-                (Some(_), Some(_)) => {
-                    return Err(
-                        "typed leg: object_entity and object_value are mutually exclusive"
-                            .to_string(),
-                    );
-                }
-                (None, None) => {
-                    return Err(
-                        "typed leg needs an object: object_entity or object_value".to_string()
-                    );
-                }
-            };
-            Some(mnemosyne_core::TypedClaim {
-                subject: t.subject.clone(),
-                predicate: t.predicate.clone(),
-                object,
-            })
-        }
+        Some(t) => Some(mnemosyne_core::TypedClaim {
+            subject: t.subject.clone(),
+            predicate: t.predicate.clone(),
+            object: mnemosyne_core::TypedObject::from_exclusive_args(
+                t.object_entity.clone(),
+                t.object_value.clone(),
+            )?,
+        }),
     };
     Ok(atomic::FactImport {
         fact_id: a.fact_id.clone(),
@@ -880,7 +889,7 @@ impl MnemosyneServer {
             .parent_section
             .as_deref()
             .map(|p| strip_section_marker(p).to_string());
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::add_section(
                 store,
                 path,
@@ -899,9 +908,8 @@ impl MnemosyneServer {
     async fn set_section_title(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let title = args.0.text.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::set_section_title(store, path, &section, &title)
-        });
+        let outcome =
+            self.run_mutate(|store, path| atomic::set_section_title(store, path, &section, &title));
         self.finish_mutate(outcome)
     }
 
@@ -911,7 +919,7 @@ impl MnemosyneServer {
     async fn set_section_parent_doc(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let parent_doc = args.0.text.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_section_parent_doc(store, path, &section, &parent_doc)
         });
         self.finish_mutate(outcome)
@@ -930,7 +938,7 @@ impl MnemosyneServer {
             .parent_section
             .as_deref()
             .map(|p| strip_section_marker(p).to_string());
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_section_parent_section(store, path, &section, parent.as_deref())
         });
         self.finish_mutate(outcome)
@@ -942,9 +950,8 @@ impl MnemosyneServer {
     async fn set_section_intent(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let intent = args.0.text.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::set_section_intent(store, path, &section, &intent)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::set_section_intent(store, path, &section, &intent));
         self.finish_mutate(outcome)
     }
 
@@ -957,7 +964,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_section_rationale(store, path, &section, &bullets)
         });
         self.finish_mutate(outcome)
@@ -967,9 +974,8 @@ impl MnemosyneServer {
     async fn set_section_inputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::set_section_inputs(store, path, &section, &bullets)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::set_section_inputs(store, path, &section, &bullets));
         self.finish_mutate(outcome)
     }
 
@@ -977,9 +983,8 @@ impl MnemosyneServer {
     async fn set_section_outputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::set_section_outputs(store, path, &section, &bullets)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::set_section_outputs(store, path, &section, &bullets));
         self.finish_mutate(outcome)
     }
 
@@ -989,9 +994,8 @@ impl MnemosyneServer {
     async fn add_section_caveat(&self, args: Parameters<AddSectionCaveatArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullet = args.0.bullet.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::add_section_caveat(store, path, &section, &bullet)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::add_section_caveat(store, path, &section, &bullet));
         self.finish_mutate(outcome)
     }
 
@@ -1007,7 +1011,7 @@ impl MnemosyneServer {
             Ok(a) => a,
             Err(e) => return Self::tool_error(e),
         };
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_section_alternatives(store, path, &section, &alternatives)
         });
         self.finish_mutate(outcome)
@@ -1027,7 +1031,7 @@ impl MnemosyneServer {
             .iter()
             .map(|r| strip_section_marker(r).to_string())
             .collect();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_section_impact_scope(store, path, &section, &refs)
         });
         self.finish_mutate(outcome)
@@ -1042,9 +1046,8 @@ impl MnemosyneServer {
             language: args.0.language.clone(),
             code: args.0.code.clone(),
         };
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::add_section_example(store, path, &section, example)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::add_section_example(store, path, &section, example));
         self.finish_mutate(outcome)
     }
 
@@ -1056,7 +1059,7 @@ impl MnemosyneServer {
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
         let kind_raw = args.0.kind.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
                 atomic::AtomicMutateError::Validation(format!(
                     "kind must be `implements`, `references`, or `verifies` (got `{}`)",
@@ -1079,7 +1082,7 @@ impl MnemosyneServer {
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::remove_section_binding(store, path, &section, &file, symbol.as_deref(), &reason)
         });
         self.finish_mutate(outcome)
@@ -1097,7 +1100,7 @@ impl MnemosyneServer {
         let symbol = args.0.symbol.clone();
         let kind_raw = args.0.kind.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
                 atomic::AtomicMutateError::Validation(format!(
                     "kind must be `implements`, `references`, or `verifies` (got `{}`)",
@@ -1127,7 +1130,7 @@ impl MnemosyneServer {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let expectation_raw = args.0.expectation.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let expectation = atomic::CoverageExpectation::from_tag(expectation_raw.trim())
                 .ok_or_else(|| {
                     atomic::AtomicMutateError::Validation(format!(
@@ -1150,7 +1153,7 @@ impl MnemosyneServer {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let expectation_raw = args.0.expectation.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let expectation = atomic::VerificationExpectation::from_tag(expectation_raw.trim())
                 .ok_or_else(|| {
                     atomic::AtomicMutateError::Validation(format!(
@@ -1178,7 +1181,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let a = args.0;
         let section = strip_section_marker(&a.section_id).to_string();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let claim = match &a.file {
                 Some(f) => atomic::ConfirmationClaim::VerifiesBinding {
                     section_id: section.clone(),
@@ -1246,9 +1249,8 @@ impl MnemosyneServer {
     )]
     async fn add_frame(&self, args: Parameters<AddFrameArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::add_frame(store, path, &a.frame_id, &a.description)
-        });
+        let outcome = self
+            .run_mutate(|store, path| atomic::add_frame(store, path, &a.frame_id, &a.description));
         self.finish_mutate(outcome)
     }
 
@@ -1257,7 +1259,7 @@ impl MnemosyneServer {
     )]
     async fn add_branch(&self, args: Parameters<AddBranchArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let fork = match (&a.forks_from, &a.forks_at) {
                 (None, None) => None,
                 (Some(p), Some(at)) => Some((p.as_str(), at.as_str())),
@@ -1277,7 +1279,7 @@ impl MnemosyneServer {
     )]
     async fn add_entity(&self, args: Parameters<AddEntityArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::add_entity(store, path, &a.entity_id, &a.kind, &a.description)
         });
         self.finish_mutate(outcome)
@@ -1288,7 +1290,7 @@ impl MnemosyneServer {
     )]
     async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::add_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
         });
         self.finish_mutate(outcome)
@@ -1308,7 +1310,7 @@ impl MnemosyneServer {
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
     async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let entry = fact_import_from(&args.0).map_err(atomic::AtomicMutateError::Validation)?;
             atomic::add_fact(store, path, &entry)
         });
@@ -1320,7 +1322,7 @@ impl MnemosyneServer {
     )]
     async fn add_fact_conflict(&self, args: Parameters<AddFactConflictArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::add_fact_conflict(store, path, &a.fact_id, &a.conflicts_with)
         });
         self.finish_mutate(outcome)
@@ -1331,7 +1333,7 @@ impl MnemosyneServer {
     )]
     async fn amend_fact(&self, args: Parameters<AmendFactArgs>) -> CallToolResult {
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             let entry =
                 fact_import_from(&args.0.fact).map_err(atomic::AtomicMutateError::Validation)?;
             atomic::amend_fact(store, path, &entry, &reason)
@@ -1344,9 +1346,8 @@ impl MnemosyneServer {
     )]
     async fn retract_fact(&self, args: Parameters<RetractFactArgs>) -> CallToolResult {
         let a = args.0;
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::retract_fact(store, path, &a.fact_id, &a.reason)
-        });
+        let outcome =
+            self.run_mutate(|store, path| atomic::retract_fact(store, path, &a.fact_id, &a.reason));
         self.finish_mutate(outcome)
     }
 
@@ -1418,7 +1419,7 @@ impl MnemosyneServer {
             Ok(p) => p,
             Err(e) => return self.op_error(e),
         };
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::append_changelog_entry(
                 store,
                 path,
@@ -1452,7 +1453,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let entry_id = args.0.entry_id.clone();
         let value = args.0.value.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_changelog_publishable_decision_summary(store, path, &entry_id, &value)
         });
         self.finish_mutate(outcome)
@@ -1467,7 +1468,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_changelog_publishable_changes_bullets(store, path, &entry_id, &bullets)
         });
         self.finish_mutate(outcome)
@@ -1482,7 +1483,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_changelog_publishable_verification_bullets(store, path, &entry_id, &bullets)
         });
         self.finish_mutate(outcome)
@@ -1502,7 +1503,7 @@ impl MnemosyneServer {
             .iter()
             .map(|r| strip_section_marker(r).to_string())
             .collect();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_changelog_publishable_impact_refs(store, path, &entry_id, &bullets)
         });
         self.finish_mutate(outcome)
@@ -1517,7 +1518,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_changelog_publishable_carry_forward_bullets(
                 store, path, &entry_id, &bullets,
             )
@@ -1633,7 +1634,7 @@ impl MnemosyneServer {
             .map(|s| strip_section_marker(s).to_string());
         let source = args.0.source.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::add_inventory_entry(
                 store,
                 path,
@@ -1664,7 +1665,7 @@ impl MnemosyneServer {
             Err(e) => return Self::tool_error(e),
         };
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_inventory_status(store, path, &inventory_id, status, reason.as_deref())
         });
         self.finish_inventory_mutate(
@@ -1691,7 +1692,7 @@ impl MnemosyneServer {
             }
         };
         let inventory_id = args.0.inventory_id.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::set_inventory_section_ref(store, path, &inventory_id, cleaned.as_deref())
         });
         self.finish_mutate(outcome)
@@ -1706,7 +1707,7 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         let inventory_id = args.0.inventory_id.clone();
         let reason = args.0.reason.clone();
-        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+        let outcome = self.run_mutate(|store, path| {
             atomic::remove_inventory_entry(store, path, &inventory_id, &reason)
         });
         self.finish_inventory_mutate(outcome, &inventory_id, true)

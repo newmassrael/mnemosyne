@@ -4007,6 +4007,15 @@ pub fn add_branch(
     forks_from: Option<(&str, &str)>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = branch_id.trim();
+    // Fail on a blank id BEFORE fork shaping (Round 448 session review:
+    // the staging helper also rejects it, but only after build_branch_fork
+    // would have emitted a blank-named fork message — fail with the
+    // precise cause first).
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_branch: branch_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
     if id == mnemosyne_core::MAIN_BRANCH {
         return Err(AtomicMutateError::Validation(format!(
             "add_branch: `{id}` is the default world-line — known by construction, \
@@ -4206,6 +4215,14 @@ pub fn import_facts(
     }
     for (idx, b) in manifest.branches.iter().enumerate() {
         let id = b.branch_id.trim();
+        // Blank-id fail-fast before fork shaping (Round 448 — the
+        // add_branch symmetry; the staging helper's check would fire too
+        // late to name the precise cause).
+        if id.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest branch {idx}: branch_id mandatory (non-empty after trim)"
+            )));
+        }
         if id == mnemosyne_core::MAIN_BRANCH {
             return Err(AtomicMutateError::Validation(format!(
                 "import_facts: manifest branch {idx}: `{id}` is the default world-line — \
@@ -8805,6 +8822,10 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
+        // Round 448 — blank id fails with the precise cause even when a
+        // fork declaration is present (not a blank-named fork message).
+        let err = add_branch(&mut store, &path, "  ", "", Some(("main", "ch-2"))).unwrap_err();
+        assert!(err.to_string().contains("branch_id mandatory"), "{err}");
         // Parent must pre-exist; fork point must be a section; no self-fork.
         let err = add_branch(&mut store, &path, "deep", "", Some(("route", "ch-2"))).unwrap_err();
         assert!(err.to_string().contains("fork parent"), "{err}");

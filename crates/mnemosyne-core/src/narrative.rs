@@ -218,6 +218,33 @@ pub enum TypedObject {
     Value { value: String },
 }
 
+impl TypedObject {
+    /// Resolve the flattened two-field arg surface (CLI `--typed-object-*`
+    /// flags, MCP `object_entity`/`object_value` args) into the object
+    /// leg — the ONE place the exactly-one rule lives (Round 448 session
+    /// review: both surfaces had hand-rolled copies). Shape-vs-predicate
+    /// validation stays in the store builder; this is pure arg resolution.
+    pub fn from_exclusive_args(
+        entity: Option<String>,
+        value: Option<String>,
+    ) -> Result<Self, String> {
+        match (entity, value) {
+            (Some(id), None) => Ok(TypedObject::Entity { id }),
+            (None, Some(value)) => Ok(TypedObject::Value { value }),
+            (Some(_), Some(_)) => Err(
+                "typed leg: the entity-shaped and value-shaped object args are mutually \
+                 exclusive (give exactly one)"
+                    .to_string(),
+            ),
+            (None, None) => Err(
+                "typed leg needs an object: give the entity-shaped or the value-shaped \
+                 object arg"
+                    .to_string(),
+            ),
+        }
+    }
+}
+
 /// Optional machine-readable leg of a [`NarrativeFact`] (Round 446, design
 /// sec 7.12): subject–predicate–object, binary only (n-ary = recorded
 /// revisit trigger). AUTHORED in the same act as the prose claim, never
@@ -375,4 +402,33 @@ pub struct NarrativeFact {
     /// offline — the R404 content-drift pattern.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote_sha256: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Round 448 — the ONE shared resolution of the flattened typed-object
+    /// arg pair (CLI flags / MCP args both route here).
+    #[test]
+    fn typed_object_exclusive_args_resolution() {
+        assert_eq!(
+            TypedObject::from_exclusive_args(Some("gun".into()), None).unwrap(),
+            TypedObject::Entity { id: "gun".into() }
+        );
+        assert_eq!(
+            TypedObject::from_exclusive_args(None, Some("alive".into())).unwrap(),
+            TypedObject::Value {
+                value: "alive".into()
+            }
+        );
+        assert!(
+            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()))
+                .unwrap_err()
+                .contains("mutually exclusive")
+        );
+        assert!(TypedObject::from_exclusive_args(None, None)
+            .unwrap_err()
+            .contains("needs an object"));
+    }
 }

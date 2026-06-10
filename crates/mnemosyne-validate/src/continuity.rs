@@ -1001,10 +1001,13 @@ pub fn payoff_coverage(
     worlds.extend(store.branches.keys().cloned());
     for world in worlds {
         let lineage = lineage_of(&store.branches, &world)?;
+        let mut vis_by_id: BTreeMap<&str, Vis> = BTreeMap::new();
         let mut visible: BTreeMap<&str, &NarrativeFact> = BTreeMap::new();
         let mut unknown: Vec<String> = Vec::new();
         for (id, fact) in facts {
-            match visibility(&world, &lineage, order, fact) {
+            let vis = visibility(&world, &lineage, order, fact);
+            vis_by_id.insert(id.as_str(), vis);
+            match vis {
                 Vis::In => {
                     visible.insert(id.as_str(), fact);
                 }
@@ -1021,24 +1024,17 @@ pub fn payoff_coverage(
         // every cross-chain fact Unknown there) silently mask genuinely
         // dead edges. Suspended edges surface as `undecidable_edges`, not
         // as definitively dead (B-1 honesty, no silent caps).
-        let unknown_set: BTreeSet<&str> = unknown.iter().map(String::as_str).collect();
         for (pid, p) in facts {
             for target in &p.pays_off {
-                // In = Some(true), Unknown = Some(false), Out = None.
-                let endpoint = |id: &str| {
-                    if visible.contains_key(id) {
-                        Some(true)
-                    } else if unknown_set.contains(id) {
-                        Some(false)
-                    } else {
-                        None
-                    }
-                };
+                // An edge endpoint outside the fact map (a missing target)
+                // is the scan's finding, never in `never_credited` — Out
+                // is the honest default here.
+                let endpoint = |id: &str| vis_by_id.get(id).copied().unwrap_or(Vis::Out);
                 let could_credit_undecided = matches!(
                     (endpoint(pid), endpoint(target.as_str())),
-                    (Some(true), Some(false))
-                        | (Some(false), Some(true))
-                        | (Some(false), Some(false))
+                    (Vis::In, Vis::Unknown)
+                        | (Vis::Unknown, Vis::In)
+                        | (Vis::Unknown, Vis::Unknown)
                 );
                 if could_credit_undecided {
                     undecidable.insert((pid.clone(), target.clone()));

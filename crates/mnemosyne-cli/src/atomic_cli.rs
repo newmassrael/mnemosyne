@@ -755,16 +755,9 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     ) {
         (None, None, None, None) => None,
         (Some(subject), Some(predicate), object_entity, object_value) => {
-            let object = match (object_entity, object_value) {
-                (Some(id), None) => mnemosyne_core::TypedObject::Entity { id },
-                (None, Some(value)) => mnemosyne_core::TypedObject::Value { value },
-                (Some(_), Some(_)) => {
-                    bail!("--typed-object-entity and --typed-object-value are mutually exclusive")
-                }
-                (None, None) => bail!(
-                    "typed leg needs an object: --typed-object-entity or --typed-object-value"
-                ),
-            };
+            let object =
+                mnemosyne_core::TypedObject::from_exclusive_args(object_entity, object_value)
+                    .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
                 subject,
                 predicate,

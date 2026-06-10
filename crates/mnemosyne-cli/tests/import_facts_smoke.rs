@@ -1,7 +1,8 @@
-//! Round 430 — narrative fact verbs smoke tests.
+//! Rounds 430/446 — narrative fact verbs smoke tests.
 //!
-//! End-to-end over the four Phase 1A verbs: `import-facts` (bulk manifest,
-//! atomic, forward succession), `add-frame`, `add-fact`, `add-fact-conflict`.
+//! End-to-end over the fact-shaped verbs: `import-facts` (bulk manifest,
+//! atomic, forward succession), `add-frame`, `add-fact`, `add-fact-conflict`,
+//! and the Round 446 typed-claim surface (`add-predicate` + typed flags).
 //! Asserted against the store JSON, including the no-silent-overwrite and
 //! fail-loud reject paths.
 
