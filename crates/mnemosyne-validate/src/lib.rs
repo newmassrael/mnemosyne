@@ -20,6 +20,7 @@ pub mod content_drift;
 pub mod spec_drift;
 pub mod t2;
 pub mod validator;
+pub mod verifies_linkage;
 
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
 pub use content_drift::{scan_content_drift, ContentDriftViolation};

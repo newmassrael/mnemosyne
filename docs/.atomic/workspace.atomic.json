@@ -7393,6 +7393,42 @@
         "SCE response doc round numbers shifted by one (R424 was taken by the parallel prefix-gate round)",
         "multi-target opt-out annotation deferred until a consumer accumulates legitimate multi-target tests"
       ]
+    },
+    "Round 426": {
+      "decision_summary": "Verifies-catalog linkage check: deterministic validity rung over the existence-only verify axis (SCE P2 plus P5)",
+      "changes_bullets": [
+        "verifies-catalog generic contract (verifies-catalog/v1 JSON: entries of file, optional symbol, section_ids) plus [verifies_catalog] config (path plus severity, default reject) — consumer-generated; format parsers stay consumer-side per the sec 2.6 boundary (medium-forge precedent; SCE P2 with the parser-shipping part declined)",
+        "new validate-verifies-linkage verb plus scan_verifies_linkage: every verifies binding must exactly match the artifact's declared section(s); mismatch kinds cross vs finer_than_declared (the P5 granularity lint); uncataloged artifacts are a count, never gating (partial catalogs legitimate)",
+        "SCHEMA_GUIDE: binding granularity at most source granularity rule plus verification method precedence (deterministic primary, model for discovery/no-ground-truth) with the SCE field-report numbers"
+      ],
+      "verification_bullets": [
+        "unit test (exact match valid, child-of-declared finer_than_declared, outside-family cross, uncataloged counted) plus 4 CLI smoke (disabled opt-in, cross rejects exit 1, finer classified, exact passes)",
+        "workspace clippy -D warnings clean, all tests green, dogfood verb reports disabled"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "R427 confirmed-rule catalog-live branch (SCE P3): when [verifies_catalog] is configured, a live catalog pass satisfies confirmed? for the verifies claim — plus design doc sec 4.2 update",
+        "catalog sha256 pinning deferred until SCE asks (their report offered the option)"
+      ],
+      "publishable_decision_summary": "Verifies-catalog linkage check: deterministic validity rung over the existence-only verify axis (SCE P2 plus P5)",
+      "publishable_changes_bullets": [
+        "verifies-catalog generic contract (verifies-catalog/v1 JSON: entries of file, optional symbol, section_ids) plus [verifies_catalog] config (path plus severity, default reject) — consumer-generated; format parsers stay consumer-side per the sec 2.6 boundary (medium-forge precedent; SCE P2 with the parser-shipping part declined)",
+        "new validate-verifies-linkage verb plus scan_verifies_linkage: every verifies binding must exactly match the artifact's declared section(s); mismatch kinds cross vs finer_than_declared (the P5 granularity lint); uncataloged artifacts are a count, never gating (partial catalogs legitimate)",
+        "SCHEMA_GUIDE: binding granularity at most source granularity rule plus verification method precedence (deterministic primary, model for discovery/no-ground-truth) with the SCE field-report numbers"
+      ],
+      "publishable_verification_bullets": [
+        "unit test (exact match valid, child-of-declared finer_than_declared, outside-family cross, uncataloged counted) plus 4 CLI smoke (disabled opt-in, cross rejects exit 1, finer classified, exact passes)",
+        "workspace clippy -D warnings clean, all tests green, dogfood verb reports disabled"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R427 confirmed-rule catalog-live branch (SCE P3): when [verifies_catalog] is configured, a live catalog pass satisfies confirmed? for the verifies claim — plus design doc sec 4.2 update",
+        "catalog sha256 pinning deferred until SCE asks (their report offered the option)"
+      ]
     }
   },
   "inventory_entries": {},

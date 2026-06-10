@@ -159,6 +159,14 @@ pub struct WorkspaceConfig {
     /// hash is corruption, never a legitimate intermediate state).
     #[serde(default)]
     pub content_drift: Option<ContentDriftSection>,
+    /// `[verifies_catalog]` table — authoritative test-catalog linkage check
+    /// (R426; SCE field-report P2; the `validate-verifies-linkage` subcommand).
+    /// Points at a consumer-generated catalog JSON mapping each test artifact
+    /// to the section(s) its authoritative metadata declares it targets; every
+    /// `verifies` binding is then validated against it deterministically.
+    /// Absent → the check is disabled (opt-in).
+    #[serde(default)]
+    pub verifies_catalog: Option<VerifiesCatalogSection>,
 }
 
 /// `[atomic]` table — atomic store path override (Round 279).
@@ -893,6 +901,26 @@ impl Default for ContentDriftSection {
             severity: default_severity_reject(),
         }
     }
+}
+
+/// `[verifies_catalog]` table — policy + location for the authoritative
+/// test-catalog linkage check (R426; SCE field-report P2; the
+/// `validate-verifies-linkage` subcommand).
+///
+/// The catalog itself is CONSUMER-GENERATED (e.g. parsed from the W3C
+/// `metadata.txt` `specnum` field) — Mnemosyne takes only this neutral
+/// contract, never format-specific parsers (sec 2.6: verification is the
+/// consumer's; precedent: medium-forge). Defaults to `reject` like
+/// `[content_drift]`: a `verifies` binding that contradicts the test's own
+/// declared target is a wrong claim, never a legitimate intermediate state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VerifiesCatalogSection {
+    /// Workspace-relative path to the catalog JSON
+    /// (`verifies-catalog/v1`: `{ "entries": [ { "file", "symbol"?, "section_ids" } ] }`).
+    pub path: String,
+    /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
+    #[serde(default = "default_severity_reject")]
+    pub severity: Severity,
 }
 
 /// Config discovery + load result.

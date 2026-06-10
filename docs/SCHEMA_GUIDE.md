@@ -725,6 +725,32 @@ markdown (e.g., a paragraph inside `SCXML.md` referencing `§3.13`)
 participate in the validate-code-refs gate. Code fences inside the
 prose remain exempt.
 
+**`verifies` binding granularity ≤ source granularity (R426).** Do not
+bind a `verifies` edge at finer granularity than your authoritative
+test metadata supports. If the test's own declaration (e.g. the W3C
+`metadata.txt` `specnum`) is section-granular, bind to that section —
+not to its sub-sections. Claiming finer precision than the source
+supports is the structural root of *blanket-binding* (one test stamped
+across sibling sub-sections it does not exercise; in the originating
+field report, 84/126 bindings were wrong this way while every
+existence gate stayed green). Two machine fences back this rule, both
+opt-in: `severity_blanket` (one artifact `verifies`-bound to >1
+section) and `[verifies_catalog]` + `validate-verifies-linkage`
+(deterministic check against a consumer-generated catalog of declared
+targets; a child-of-declared binding is flagged `finer_than_declared`).
+The catalog is consumer-generated — Mnemosyne takes the neutral
+`verifies-catalog/v1` JSON (`entries[] = { file, symbol?, section_ids }`),
+never format-specific parsers.
+
+**Verification method precedence.** Where authoritative metadata
+exists, the deterministic linkage check is *primary*; model
+(fresh-context LLM) review is for *discovery* and for claims with no
+deterministic ground truth (e.g. `implements` bindings, tests without
+metadata). Measured in the field: deterministic catalog check 0
+errors; single model verdicts ~12–25% error. Model review found the
+blanket-binding problem — use it to hunt; let the catalog be the
+authority.
+
 ## What stays fixed
 
 The five entity types — Section / CrossRef / ChangelogEntry / FrozenList

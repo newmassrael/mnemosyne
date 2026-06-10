@@ -283,6 +283,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-coverage" => cmd_report_coverage(&args[2..]),
         "report-confirmation" => cmd_report_confirmation(&args[2..]),
         "validate-confirmation" => cmd_validate_confirmation(&args[2..]),
+        "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
         "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
@@ -511,6 +512,10 @@ fn print_help(prog: &str) {
     println!(" {} report-confirmation [--json]", prog);
     println!(
         " {} validate-confirmation [--severity reject|warn|info] [--json]",
+        prog
+    );
+    println!(
+        " {} validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]",
         prog
     );
     println!(" {} report-excerpt-hash-backfill [--json]", prog);
@@ -1584,6 +1589,119 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
         }
     }
     if matches!(severity, Some(s) if s.is_reject()) && !gaps.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// R426 — authoritative test-catalog linkage check (SCE field-report P2 + the
+/// P5 granularity lint). Every `verifies` binding must match the consumer-
+/// generated catalog's declared target section(s) for that test artifact.
+/// Opt-in: `--catalog` overrides `[verifies_catalog].path`; absent on both =
+/// disabled (exit 0). `reject` + any mismatch => exit 1; uncataloged artifacts
+/// are a count, never gating (a partial catalog is legitimate).
+fn cmd_validate_verifies_linkage(args: &[String]) -> Result<()> {
+    use mnemosyne_config::Severity;
+    use mnemosyne_validate::verifies_linkage::{load_catalog, scan_verifies_linkage};
+    let mut json = false;
+    let mut catalog_override: Option<String> = None;
+    let mut severity_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--catalog" => {
+                catalog_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--catalog missing"))?
+                        .clone(),
+                )
+            }
+            "--severity" => {
+                severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let cfg_section = loaded.config.verifies_catalog.as_ref();
+    let catalog_path = catalog_override
+        .clone()
+        .or_else(|| cfg_section.map(|c| c.path.clone()));
+    let Some(catalog_rel) = catalog_path else {
+        if json {
+            println!("{}", serde_json::json!({ "enabled": false }));
+        } else {
+            println!("verifies-linkage: disabled ([verifies_catalog] unset, no --catalog)");
+        }
+        return Ok(());
+    };
+    let severity = match severity_override {
+        Some(s) => Severity::from_tag(s.trim())
+            .ok_or_else(|| anyhow!("--severity must be `reject`, `warn`, or `info`"))?,
+        None => cfg_section.map(|c| c.severity).unwrap_or(Severity::Reject),
+    };
+    let catalog_abs = root.join(&catalog_rel);
+    let catalog = load_catalog(&catalog_abs).map_err(|e| anyhow!("{}", e))?;
+    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    let report = scan_verifies_linkage(&snapshot, &catalog);
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "enabled": true,
+                "catalog": catalog_rel,
+                "severity": severity.as_str(),
+                "examined": report.examined,
+                "uncataloged": report.uncataloged,
+                "mismatch_count": report.mismatches.len(),
+                "mismatches": report.mismatches.iter().map(|m| serde_json::json!({
+                    "section_id": m.section_id,
+                    "file": m.file,
+                    "symbol": m.symbol,
+                    "declared": m.declared,
+                    "kind": m.kind.as_str(),
+                })).collect::<Vec<_>>(),
+            })
+        );
+    } else {
+        println!("=== verifies-linkage ({}) ===", severity.as_str());
+        println!(
+            "  examined={} mismatches={} uncataloged={}",
+            report.examined,
+            report.mismatches.len(),
+            report.uncataloged
+        );
+        for m in &report.mismatches {
+            let sym = m
+                .symbol
+                .as_deref()
+                .map(|s| format!(":{s}"))
+                .unwrap_or_default();
+            println!(
+                "  [{}] {}{} bound to section {} but catalog declares {:?}",
+                m.kind.as_str(),
+                m.file,
+                sym,
+                m.section_id,
+                m.declared
+            );
+        }
+    }
+    if severity.is_reject() && !report.mismatches.is_empty() {
         std::process::exit(1);
     }
     Ok(())
