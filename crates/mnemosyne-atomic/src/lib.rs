@@ -35,7 +35,7 @@ pub mod redact;
 pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
-use mnemosyne_core::{strip_section_marker, DecisionStatus, InventoryStatus};
+use mnemosyne_core::{strip_section_marker, DecisionStatus, Frame, InventoryStatus, NarrativeFact};
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -620,6 +620,18 @@ pub struct AtomicStore {
     /// `#[serde(default)]`.
     #[serde(default)]
     pub confirmation_events: BTreeMap<String, ConfirmationEvent>,
+    /// Epistemic-frame registry (Round 430) — keyed by frame id;
+    /// `ground-truth` is a non-privileged entry like any other. Every
+    /// `NarrativeFact.frame` must reference a key here (fail-loud at the
+    /// mutate primitives). Empty on pre-v12 stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub frames: BTreeMap<String, Frame>,
+    /// Multi-axis narrative facts (Round 430) — append-only perspectival
+    /// claims, keyed by fact id. Top-level (the confirmation_events
+    /// placement pattern): never nested on a section, no frozen-ledger
+    /// contact. Empty on pre-v12 stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub narrative_facts: BTreeMap<String, NarrativeFact>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1021,7 +1033,15 @@ pub enum AtomicStoreError {
 // identically to the old 2-state (both OutOfScopeHere and Informational leave the
 // coverage axiom, exactly as Informative did). SCE's 50 `informative` sections
 // migrate this way on rev bump.
-const CURRENT_SCHEMA_VERSION: u32 = 11;
+// v11→v12 adds `AtomicStore.frames` + `AtomicStore.narrative_facts` (Phase 1A
+// narrative fact entity, Round 430) — two top-level collections mirroring the
+// v9→v10 confirmation_events placement. Same declarative new-field-default
+// pattern: a pre-v12 store has no `frames` / `narrative_facts` keys, serde
+// `#[serde(default)]` fills empty maps — no behavior change (nothing reads
+// them until the continuity gate lands, and that gate is opt-in). So there is
+// deliberately NO `schema_version < 12` arm in `load`, and no migration
+// report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 12;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3272,6 +3292,456 @@ pub fn remove_inventory_entry(
         "remove_inventory_entry",
         "inventory_entry",
         inventory_id,
+    )
+}
+
+// ============================================================================
+// Narrative fact mutate primitives (Phase 1A, Round 430).
+//
+// Multi-axis perspectival facts (ARCHITECTURE.md sec 1.1): a claim held in
+// exactly one epistemic frame over a canon-time extent. Append-only genre:
+// belief change = a successor fact carrying `supersedes_in_frame`, never an
+// edit of the predecessor. BOTH write paths (`add_fact` / `import_facts`)
+// route `build_candidate_fact` — the field-invariant-parity rule (R305): one
+// closed invariant set, no half-enforced second path.
+// ============================================================================
+
+/// One frame entry in the [`FactsManifest`] (and the `add_frame` shape).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameImport {
+    pub frame_id: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// One fact entry in the import manifest — the authoring face of
+/// [`NarrativeFact`] plus its map key. `quote_sha256` is deliberately NOT
+/// accepted from the caller: the primitive computes it from `quote` at write
+/// time, so a stored hash can never start out wrong (offline drift detection
+/// then owns divergence — the R404 content-drift pattern).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactImport {
+    pub fact_id: String,
+    pub frame: String,
+    pub claim: String,
+    pub canon_from: String,
+    #[serde(default)]
+    pub canon_to: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub conflicts_with: Vec<String>,
+    #[serde(default)]
+    pub supersedes_in_frame: Option<String>,
+    #[serde(default)]
+    pub quote: Option<String>,
+}
+
+/// `import-facts` manifest: frames + facts created in ONE atomic
+/// transaction (frames first, so same-manifest facts can reference them).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactsManifest {
+    #[serde(default)]
+    pub frames: Vec<FrameImport>,
+    #[serde(default)]
+    pub facts: Vec<FactImport>,
+}
+
+/// Single shared fact builder/validator — both write paths route here
+/// (R305 parity). Enforces the scalar invariants:
+/// - `fact_id` / `frame` / `claim` / `canon_from` non-empty after trim;
+/// - `frame` must exist in the frames registry (fail-loud, R287 lesson);
+/// - `canon_from` / `canon_to` / every `evidence` ref must name an existing
+///   section (canon coordinates ARE structure refs, design sec 7.3/7.5);
+/// - `evidence` >= 1 (a claim without provenance is unauditable);
+/// - no self-reference in `conflicts_with` / `supersedes_in_frame`;
+/// - `quote_sha256` computed here, never caller-supplied.
+///
+/// Cross-FACT refs (`conflicts_with` / `supersedes_in_frame` targets) are
+/// validated by the caller against its own visibility set — store ∪ manifest
+/// for `import_facts` (forward refs within one manifest are legal), store
+/// for `add_fact`.
+fn build_candidate_fact(
+    store: &AtomicStore,
+    entry: &FactImport,
+) -> Result<(String, NarrativeFact), String> {
+    let fact_id = entry.fact_id.trim();
+    if fact_id.is_empty() {
+        return Err("fact_id mandatory (non-empty after trim)".to_string());
+    }
+    let frame = entry.frame.trim();
+    if frame.is_empty() {
+        return Err(format!("fact `{fact_id}`: frame mandatory (non-empty)"));
+    }
+    if !store.frames.contains_key(frame) {
+        return Err(format!(
+            "fact `{fact_id}`: frame `{frame}` not present in the frames registry \
+             (add_frame / manifest frames[] first; fail-loud)"
+        ));
+    }
+    let claim = entry.claim.trim();
+    if claim.is_empty() {
+        return Err(format!("fact `{fact_id}`: claim mandatory (non-empty)"));
+    }
+    let canon_from = entry.canon_from.trim();
+    if canon_from.is_empty() {
+        return Err(format!(
+            "fact `{fact_id}`: canon_from mandatory (non-empty)"
+        ));
+    }
+    if !store.sections.contains_key(canon_from) {
+        return Err(format!(
+            "fact `{fact_id}`: canon_from `{canon_from}` not present as a section \
+             (canon coordinates are structure-section refs)"
+        ));
+    }
+    let canon_to = match entry.canon_to.as_deref().map(str::trim) {
+        None => None,
+        Some("") => {
+            return Err(format!(
+                "fact `{fact_id}`: canon_to must be non-empty when present (omit it instead)"
+            ));
+        }
+        Some(c) => {
+            if !store.sections.contains_key(c) {
+                return Err(format!(
+                    "fact `{fact_id}`: canon_to `{c}` not present as a section"
+                ));
+            }
+            Some(c.to_string())
+        }
+    };
+    if entry.evidence.is_empty() {
+        return Err(format!(
+            "fact `{fact_id}`: evidence mandatory (>= 1 structure-section ref; \
+             a claim without provenance is unauditable)"
+        ));
+    }
+    let mut evidence = Vec::with_capacity(entry.evidence.len());
+    for e in &entry.evidence {
+        let e = e.trim();
+        if e.is_empty() {
+            return Err(format!("fact `{fact_id}`: blank evidence ref"));
+        }
+        if !store.sections.contains_key(e) {
+            return Err(format!(
+                "fact `{fact_id}`: evidence `{e}` not present as a section"
+            ));
+        }
+        evidence.push(e.to_string());
+    }
+    let mut conflicts_with = Vec::with_capacity(entry.conflicts_with.len());
+    for c in &entry.conflicts_with {
+        let c = c.trim();
+        if c.is_empty() {
+            return Err(format!("fact `{fact_id}`: blank conflicts_with ref"));
+        }
+        if c == fact_id {
+            return Err(format!(
+                "fact `{fact_id}`: conflicts_with itself — a fact cannot contradict itself"
+            ));
+        }
+        conflicts_with.push(c.to_string());
+    }
+    let supersedes_in_frame = match entry.supersedes_in_frame.as_deref().map(str::trim) {
+        None => None,
+        Some("") => {
+            return Err(format!(
+                "fact `{fact_id}`: supersedes_in_frame must be non-empty when present"
+            ));
+        }
+        Some(s) if s == fact_id => {
+            return Err(format!(
+                "fact `{fact_id}`: supersedes_in_frame itself — succession needs a predecessor"
+            ));
+        }
+        Some(s) => Some(s.to_string()),
+    };
+    let (quote, quote_sha256) = match entry.quote.as_deref().map(str::trim) {
+        None => (None, None),
+        Some("") => {
+            return Err(format!(
+                "fact `{fact_id}`: quote must be non-empty when present (omit it instead)"
+            ));
+        }
+        Some(q) => (Some(q.to_string()), Some(sha256_hex(q.as_bytes()))),
+    };
+    Ok((
+        fact_id.to_string(),
+        NarrativeFact {
+            frame: frame.to_string(),
+            claim: claim.to_string(),
+            canon_from: canon_from.to_string(),
+            canon_to,
+            evidence,
+            conflicts_with,
+            supersedes_in_frame,
+            quote,
+            quote_sha256,
+        },
+    ))
+}
+
+/// Cross-fact ref check for one fact against a visibility set (the caller's
+/// store ∪ manifest view). `supersedes_in_frame` additionally enforces SAME
+/// frame: cross-frame disagreement is data, never succession (design sec 7.3).
+fn validate_fact_refs(
+    fact_id: &str,
+    fact: &NarrativeFact,
+    visible: &BTreeMap<String, NarrativeFact>,
+) -> Result<(), String> {
+    for c in &fact.conflicts_with {
+        if !visible.contains_key(c) {
+            return Err(format!(
+                "fact `{fact_id}`: conflicts_with `{c}` not present \
+                 (a recorded assertion needs an existing target; fail-loud)"
+            ));
+        }
+    }
+    if let Some(target) = &fact.supersedes_in_frame {
+        match visible.get(target) {
+            None => {
+                return Err(format!(
+                    "fact `{fact_id}`: supersedes_in_frame `{target}` not present \
+                     (succession needs an existing predecessor; fail-loud)"
+                ));
+            }
+            Some(t) if t.frame != fact.frame => {
+                return Err(format!(
+                    "fact `{fact_id}` (frame `{}`): supersedes_in_frame `{target}` lives in \
+                     frame `{}` — in-frame succession only (cross-frame disagreement is \
+                     data, not succession)",
+                    fact.frame, t.frame
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// Register one epistemic frame. A2-consistent verdicts: absent → create,
+/// byte-identical → idempotent no-op (written_bytes 0), divergent → reject
+/// (no silent overwrite; description revision = a future setter,
+/// consumer-pull).
+pub fn add_frame(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    frame_id: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = frame_id.trim();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_frame: frame_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    let candidate = Frame {
+        description: description.trim().to_string(),
+    };
+    match store.frames.get(id) {
+        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
+            primitive: "add_frame".to_string(),
+            target_kind: "frame",
+            target_id: format!("{id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        }),
+        Some(_) => Err(AtomicMutateError::Validation(format!(
+            "add_frame: frame `{id}` already exists with DIVERGENT description — \
+             refusing silent overwrite"
+        ))),
+        None => {
+            store.frames.insert(id.to_string(), candidate);
+            save_with_receipt(store, sidecar_path, "add_frame", "frame", id)
+        }
+    }
+}
+
+/// Create one narrative fact. Routes the SAME builder as `import_facts`
+/// (R305 parity); cross-fact refs resolve against the store only (a single
+/// add cannot forward-reference). 3-way verdict mirrors `import_sections`:
+/// absent → create, byte-identical → no-op, divergent → reject (a wrong
+/// fact is superseded in-frame, never overwritten).
+pub fn add_fact(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    entry: &FactImport,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let (fact_id, candidate) =
+        build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
+    validate_fact_refs(&fact_id, &candidate, &store.narrative_facts)
+        .map_err(AtomicMutateError::Validation)?;
+    match store.narrative_facts.get(&fact_id) {
+        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
+            primitive: "add_fact".to_string(),
+            target_kind: "narrative_fact",
+            target_id: format!("{fact_id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        }),
+        Some(_) => Err(AtomicMutateError::Validation(format!(
+            "add_fact: fact `{fact_id}` already exists with DIVERGENT content — \
+             refusing silent overwrite (supersede in-frame to revise a belief)"
+        ))),
+        None => {
+            store.narrative_facts.insert(fact_id.clone(), candidate);
+            save_with_receipt(store, sidecar_path, "add_fact", "narrative_fact", &fact_id)
+        }
+    }
+}
+
+/// Bulk frames + facts create from a manifest, as one atomic transaction
+/// (the `import_sections` A2 pattern). Frames land first so same-manifest
+/// facts can reference them; cross-fact refs are checked AFTER all facts
+/// stage, so forward references within one manifest are legal. Any rejection
+/// returns `Err` before the single save — the on-disk store is untouched.
+pub fn import_facts(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    manifest: &FactsManifest,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let mut frames_created = 0usize;
+    let mut facts_created = 0usize;
+    let mut no_op = 0usize;
+    for (idx, f) in manifest.frames.iter().enumerate() {
+        let id = f.frame_id.trim();
+        if id.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest frame {idx}: frame_id mandatory"
+            )));
+        }
+        let candidate = Frame {
+            description: f.description.trim().to_string(),
+        };
+        match store.frames.get(id) {
+            None => {
+                store.frames.insert(id.to_string(), candidate);
+                frames_created += 1;
+            }
+            Some(existing) if *existing == candidate => no_op += 1,
+            Some(_) => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_facts: manifest frame {idx} `{id}` already exists with \
+                     DIVERGENT description — refusing silent overwrite"
+                )));
+            }
+        }
+    }
+    let mut staged: Vec<(String, NarrativeFact)> = Vec::with_capacity(manifest.facts.len());
+    for (idx, entry) in manifest.facts.iter().enumerate() {
+        let (fact_id, candidate) = build_candidate_fact(store, entry).map_err(|e| {
+            AtomicMutateError::Validation(format!("import_facts: manifest fact {idx}: {e}"))
+        })?;
+        if staged.iter().any(|(sid, _)| *sid == fact_id) {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest fact {idx}: duplicate fact_id `{fact_id}` in manifest"
+            )));
+        }
+        staged.push((fact_id, candidate));
+    }
+    for (fact_id, candidate) in staged {
+        let verdict = store
+            .narrative_facts
+            .get(&fact_id)
+            .map(|existing| *existing == candidate);
+        match verdict {
+            None => {
+                store.narrative_facts.insert(fact_id, candidate);
+                facts_created += 1;
+            }
+            Some(true) => no_op += 1,
+            Some(false) => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_facts: fact_id `{fact_id}` already exists with DIVERGENT \
+                     content — refusing silent overwrite (supersede in-frame to revise)"
+                )));
+            }
+        }
+    }
+    for entry in &manifest.facts {
+        let fact_id = entry.fact_id.trim();
+        let fact = &store.narrative_facts[fact_id];
+        validate_fact_refs(fact_id, fact, &store.narrative_facts)
+            .map_err(AtomicMutateError::Validation)?;
+    }
+    let summary = format!("{frames_created} frames + {facts_created} facts created, {no_op} no-op");
+    if frames_created == 0 && facts_created == 0 {
+        return Ok(AtomicMutateReceipt {
+            primitive: "import_facts".to_string(),
+            target_kind: "narrative_fact",
+            target_id: summary,
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        });
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "import_facts",
+        "narrative_fact",
+        &summary,
+    )
+}
+
+/// Append one conflict assertion edge between two existing facts. The edge
+/// is a RECORDED semantic judgment (contradiction cannot be derived from
+/// claim text), stored on `fact_id` and read symmetrically by projections.
+/// An edge already present on either side rejects as already-recorded (the
+/// confirmation-event idempotency precedent).
+pub fn add_fact_conflict(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    conflicts_with: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim();
+    let other = conflicts_with.trim();
+    if id.is_empty() || other.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_fact_conflict: fact_id and conflicts_with both mandatory".to_string(),
+        ));
+    }
+    if id == other {
+        return Err(AtomicMutateError::Validation(
+            "add_fact_conflict: a fact cannot conflict with itself".to_string(),
+        ));
+    }
+    if !store.narrative_facts.contains_key(id) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "fact_id `{id}` not present in atomic store"
+        )));
+    }
+    if !store.narrative_facts.contains_key(other) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "conflicts_with `{other}` not present in atomic store"
+        )));
+    }
+    let already = store.narrative_facts[id]
+        .conflicts_with
+        .iter()
+        .any(|c| c == other)
+        || store.narrative_facts[other]
+            .conflicts_with
+            .iter()
+            .any(|c| c == id);
+    if already {
+        return Err(AtomicMutateError::FrozenLedger(format!(
+            "conflict edge `{id}` <-> `{other}` already recorded (idempotent)"
+        )));
+    }
+    store
+        .narrative_facts
+        .get_mut(id)
+        .expect("checked above")
+        .conflicts_with
+        .push(other.to_string());
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "add_fact_conflict",
+        "narrative_fact",
+        &format!("{id} -> {other}"),
     )
 }
 
@@ -6579,5 +7049,323 @@ mod tests {
                 "write-path parity broken for (text={text:?}, hash={hash:?}): import={import_ok} epub={epub_ok}"
             );
         }
+    }
+    // ========================================================================
+    // Narrative fact primitives (Phase 1A, Round 430).
+    // ========================================================================
+
+    /// Fixture: a valid FactImport against `seed_section`-created chapters.
+    fn sample_fact(fact_id: &str, frame: &str) -> FactImport {
+        FactImport {
+            fact_id: fact_id.to_string(),
+            frame: frame.to_string(),
+            claim: "the count is an eccentric nobleman".to_string(),
+            canon_from: "ch-1".to_string(),
+            canon_to: None,
+            evidence: vec!["ch-1".to_string()],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            quote: None,
+        }
+    }
+
+    fn seed_chapters(store: &mut AtomicStore) {
+        seed_section(store, "ch-1");
+        seed_section(store, "ch-2");
+        seed_section(store, "ch-3");
+    }
+
+    #[test]
+    fn import_facts_round_trips_with_forward_succession() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        // f-new supersedes f-old, declared BEFORE f-old in the manifest —
+        // forward refs within one manifest are legal (refs checked post-stage).
+        let mut f_new = sample_fact("f-new", "jonathan");
+        f_new.canon_from = "ch-3".to_string();
+        f_new.claim = "the count is something unnatural".to_string();
+        f_new.supersedes_in_frame = Some("f-old".to_string());
+        f_new.quote = Some("he crawled face-down the castle wall".to_string());
+        let mut f_old = sample_fact("f-old", "jonathan");
+        f_old.canon_to = Some("ch-2".to_string());
+        let manifest = FactsManifest {
+            frames: vec![
+                FrameImport {
+                    frame_id: "jonathan".to_string(),
+                    description: "Jonathan Harker's epistemic frame".to_string(),
+                },
+                FrameImport {
+                    frame_id: "ground-truth".to_string(),
+                    description: String::new(),
+                },
+            ],
+            facts: vec![f_new, f_old],
+        };
+        let receipt = import_facts(&mut store, &path, &manifest).unwrap();
+        assert_eq!(receipt.target_id, "2 frames + 2 facts created, 0 no-op");
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(reloaded.frames.len(), 2);
+        let new = &reloaded.narrative_facts["f-new"];
+        assert_eq!(new.supersedes_in_frame.as_deref(), Some("f-old"));
+        // quote_sha256 computed by the primitive, never caller-supplied.
+        assert_eq!(
+            new.quote_sha256.as_deref(),
+            Some(sha256_hex("he crawled face-down the castle wall".as_bytes()).as_str())
+        );
+        assert_eq!(
+            reloaded.narrative_facts["f-old"].canon_to.as_deref(),
+            Some("ch-2")
+        );
+        // Idempotent re-import: pure no-op, nothing written.
+        let again = import_facts(&mut store, &path, &manifest).unwrap();
+        assert_eq!(again.written_bytes, 0);
+        assert_eq!(again.target_id, "0 frames + 0 facts created, 4 no-op");
+    }
+
+    #[test]
+    fn import_facts_rejects_unknown_frame_and_missing_refs() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        // Unknown frame (registry empty).
+        let manifest = FactsManifest {
+            frames: vec![],
+            facts: vec![sample_fact("f1", "nobody")],
+        };
+        let err = import_facts(&mut store, &path, &manifest).unwrap_err();
+        assert!(err.to_string().contains("frames registry"), "{err}");
+        // Evidence ref to a non-section.
+        let frames = vec![FrameImport {
+            frame_id: "gt".to_string(),
+            description: String::new(),
+        }];
+        let mut bad_evidence = sample_fact("f1", "gt");
+        bad_evidence.evidence = vec!["ch-99".to_string()];
+        let err = import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: frames.clone(),
+                facts: vec![bad_evidence],
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("not present as a section"),
+            "{err}"
+        );
+        // Empty evidence: a claim without provenance is unauditable.
+        let mut no_evidence = sample_fact("f1", "gt");
+        no_evidence.evidence = vec![];
+        let err = import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: frames.clone(),
+                facts: vec![no_evidence],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("evidence mandatory"), "{err}");
+        // canon_from must be a section.
+        let mut bad_canon = sample_fact("f1", "gt");
+        bad_canon.canon_from = "ch-99".to_string();
+        let err = import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames,
+                facts: vec![bad_canon],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("canon_from"), "{err}");
+        // Every rejection happened before any save: store file never created.
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn import_facts_rejects_cross_frame_succession() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let mut successor = sample_fact("f2", "seward");
+        successor.supersedes_in_frame = Some("f1".to_string());
+        let manifest = FactsManifest {
+            frames: vec![
+                FrameImport {
+                    frame_id: "jonathan".to_string(),
+                    description: String::new(),
+                },
+                FrameImport {
+                    frame_id: "seward".to_string(),
+                    description: String::new(),
+                },
+            ],
+            facts: vec![sample_fact("f1", "jonathan"), successor],
+        };
+        let err = import_facts(&mut store, &path, &manifest).unwrap_err();
+        assert!(
+            err.to_string().contains("in-frame succession only"),
+            "{err}"
+        );
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn import_facts_divergent_rejects_whole_manifest() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let frames = vec![FrameImport {
+            frame_id: "gt".to_string(),
+            description: String::new(),
+        }];
+        import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: frames.clone(),
+                facts: vec![sample_fact("f1", "gt")],
+            },
+        )
+        .unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+        let mut divergent = sample_fact("f1", "gt");
+        divergent.claim = "a different claim".to_string();
+        let err = import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames,
+                facts: vec![divergent],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+        // Reject happened before the save — on-disk store untouched.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+    }
+
+    /// R305 field-invariant parity: the SAME edge-case inputs through both
+    /// write paths must produce the SAME accept/reject verdict.
+    #[test]
+    fn fact_write_path_parity_add_vs_import() {
+        let cases: Vec<(&str, FactImport)> = vec![
+            ("valid", sample_fact("p1", "gt")),
+            ("unknown frame", sample_fact("p2", "nobody")),
+            (
+                "missing evidence ref",
+                FactImport {
+                    evidence: vec!["ch-99".to_string()],
+                    ..sample_fact("p3", "gt")
+                },
+            ),
+            (
+                "empty evidence",
+                FactImport {
+                    evidence: vec![],
+                    ..sample_fact("p4", "gt")
+                },
+            ),
+            (
+                "self conflict",
+                FactImport {
+                    conflicts_with: vec!["p5".to_string()],
+                    ..sample_fact("p5", "gt")
+                },
+            ),
+            (
+                "blank canon_to",
+                FactImport {
+                    canon_to: Some("  ".to_string()),
+                    ..sample_fact("p6", "gt")
+                },
+            ),
+        ];
+        for (label, entry) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path_a = tmp.path().join("a.json");
+            let path_b = tmp.path().join("b.json");
+            let mut store_a = AtomicStore::new();
+            let mut store_b = AtomicStore::new();
+            for s in [&mut store_a, &mut store_b] {
+                seed_chapters(s);
+                s.frames.insert("gt".to_string(), Frame::default());
+            }
+            let add_ok = add_fact(&mut store_a, &path_a, &entry).is_ok();
+            let import_ok = import_facts(
+                &mut store_b,
+                &path_b,
+                &FactsManifest {
+                    frames: vec![],
+                    facts: vec![entry],
+                },
+            )
+            .is_ok();
+            assert_eq!(
+                add_ok, import_ok,
+                "write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
+            );
+        }
+    }
+
+    #[test]
+    fn add_fact_conflict_appends_edge_and_rejects_duplicates() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("seward".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
+        add_fact(&mut store, &path, &sample_fact("f2", "seward")).unwrap();
+        // Unknown target fail-loud.
+        let err = add_fact_conflict(&mut store, &path, "f1", "f9").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::NotFound(_)), "{err}");
+        // Self-conflict reject.
+        let err = add_fact_conflict(&mut store, &path, "f1", "f1").unwrap_err();
+        assert!(err.to_string().contains("itself"), "{err}");
+        add_fact_conflict(&mut store, &path, "f1", "f2").unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.narrative_facts["f1"].conflicts_with, vec!["f2"]);
+        // Already recorded — in EITHER direction.
+        let err = add_fact_conflict(&mut store, &path, "f1", "f2").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::FrozenLedger(_)), "{err}");
+        let err = add_fact_conflict(&mut store, &path, "f2", "f1").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::FrozenLedger(_)), "{err}");
+    }
+
+    #[test]
+    fn add_frame_idempotent_no_op_and_divergent_reject() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        add_frame(&mut store, &path, "gt", "the ground truth axis").unwrap();
+        let again = add_frame(&mut store, &path, "gt", "the ground truth axis").unwrap();
+        assert_eq!(again.written_bytes, 0);
+        let err = add_frame(&mut store, &path, "gt", "another description").unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+    }
+
+    #[test]
+    fn legacy_store_without_narrative_maps_loads_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("v11.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version": 11, "sections": {}, "changelog_entries": {}}"#,
+        )
+        .unwrap();
+        let store = AtomicStore::load(&path).unwrap();
+        assert!(store.frames.is_empty());
+        assert!(store.narrative_facts.is_empty());
+        assert_eq!(store.schema_version, 11);
     }
 }

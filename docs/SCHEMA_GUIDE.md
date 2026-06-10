@@ -755,13 +755,42 @@ errors; single model verdicts ~12–25% error. Model review found the
 blanket-binding problem — use it to hunt; let the catalog be the
 authority.
 
+## Narrative facts (multi-axis, Round 430)
+
+Schema v12 adds two top-level store collections for perspectival
+(multi-axis) facts — the Phase 1 narrative substrate:
+
+- **`frames`** — the epistemic-frame registry, keyed by frame id.
+  `ground-truth` is a non-privileged entry like any other frame; a
+  believed-fact and the corresponding actual-events fact are *distinct
+  facts on distinct axes, both true, never cross-validated*.
+- **`narrative_facts`** — append-only claims, keyed by fact id. Each
+  fact holds exactly one `frame`, a per-claim `claim`, a canon-time
+  extent in structure-section refs (`canon_from` + optional
+  `canon_to`), `evidence` (≥ 1 section refs, fail-loud), recorded
+  `conflicts_with` assertion edges, and optional in-frame succession
+  (`supersedes_in_frame`, same frame enforced — cross-frame
+  disagreement is data, never succession). A superseded belief's
+  effective end derives from its successor's `canon_from`; nothing is
+  written back. An optional `quote` carries `quote_sha256`, computed
+  at write time (offline drift detection, the content-drift pattern).
+
+Authoring routes through `import-facts --manifest` (bulk, one atomic
+transaction, forward refs within the manifest legal) or `add-frame` /
+`add-fact` / `add-fact-conflict` — both fact paths share one builder,
+so the invariant set cannot diverge. Frames are sparse: a fact absent
+from a frame is *unrecorded*, not false.
+
 ## What stays fixed
 
-The five entity types — Section / CrossRef / ChangelogEntry / FrozenList
-/ InventoryEntry — are **not** configurable. They are the universal
-primitives the validator + mutate API + cascade engine all build on.
-What `[schema]` configures is *which markdown patterns* the parser maps
-onto Section / ChangelogEntry. The fifth, InventoryEntry, was added in
-Phase 1A (Round 273) for stable-id citation hygiene; further entity
-types (medium-specific `Character` / `Location` / `Faction` for
-narrative products) remain Phase 1+ scope.
+The store entity types — Section / CrossRef / ChangelogEntry /
+FrozenList / InventoryEntry / ConfirmationEvent / Frame /
+NarrativeFact — are **not** configurable. They are the universal
+primitives the validator + mutate API + cascade engine all build on;
+`[schema]` configures naming conventions (citation tokens, entry-id
+prefix, section-id shapes) over them, never the shapes themselves.
+InventoryEntry was added in Phase 1A (Round 273) for stable-id
+citation hygiene; ConfirmationEvent in R416 (max-rigor confirmation);
+Frame / NarrativeFact in Round 430 (Phase 1 narrative facts). Further
+medium-specific entity types (`Character` / `Location` / `Faction`)
+remain consumer-pull scope.

@@ -35,6 +35,9 @@ pub use fact::{
     ChangelogEntryFact, CrossRefFact, FactKey, FrozenListFact, SectionFact, SectionSkeleton,
 };
 
+mod narrative;
+pub use narrative::{Frame, NarrativeFact};
+
 mod section_ref;
 pub use section_ref::{numeric_section_refs, strip_section_marker};
 

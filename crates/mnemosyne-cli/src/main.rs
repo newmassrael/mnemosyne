@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-fact|add-fact-conflict|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -159,6 +159,11 @@ fn run(args: &[String]) -> Result<()> {
         "query" => cmd_query(prog, &args[2..]),
         "add-section" => atomic_cli::cmd_add_section(&workspace_anchor()?, &args[2..]),
         "import-sections" => atomic_cli::cmd_import_sections(&workspace_anchor()?, &args[2..]),
+        // Round 430 — narrative fact primitives (Phase 1A).
+        "import-facts" => atomic_cli::cmd_import_facts(&workspace_anchor()?, &args[2..]),
+        "add-frame" => atomic_cli::cmd_add_frame(&workspace_anchor()?, &args[2..]),
+        "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
+        "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
         "import-epub-anchors" => {
             atomic_cli::cmd_import_epub_anchors(&workspace_anchor()?, &args[2..])
         }
@@ -361,6 +366,22 @@ fn print_help(prog: &str) {
     );
     println!("   bulk create from a JSON array of {{section_id,parent_doc,title,parent_section?,normative_excerpt?}};");
     println!("   3-way per entry: absent=create / byte-identical=no-op / divergent=reject whole manifest (atomic)");
+    println!(
+        " {} import-facts --manifest <path.json> [--sidecar <path>] [--json]",
+        prog
+    );
+    println!("   bulk narrative frames + facts (Round 430): manifest = {{frames:[{{frame_id,description?}}],");
+    println!("   facts:[{{fact_id,frame,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,quote?}}]}};");
+    println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied");
+    println!(
+        " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(" {} add-fact --fact <id> --frame <f> --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(
+        " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
+        prog
+    );
     println!(
         "   pairs with remove-section (R267); content fields populate via set-section-* afterwards"
     );

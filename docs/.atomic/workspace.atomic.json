@@ -7537,9 +7537,61 @@
         "FR-5.x substrate (bi-temporal index, branch model, continuity validator) lands as single rounds on adapter pull, not pre-built",
         "if Phase 1 scope drifts from the ratified ordering, re-run the priority audit as a new round before proceeding"
       ]
+    },
+    "Round 430 — narrative fact entity: frames registry + multi-axis facts (Phase 1A Round A)": {
+      "decision_summary": "Phase 1A build Round A (of the A/B/C decomposition ratified with R429): the narrative fact entity lands. NarrativeFact = a claim held in exactly one epistemic frame over a canon-time extent in structure-section coordinates, with mandatory evidence provenance, recorded conflict assertion edges, and in-frame succession for time-indexed belief change — the storage half of the North Star sentence that frames are sparse non-privileged axes (a believed-fact and the ground-truth fact are distinct facts, both true, never cross-validated; absence in a frame = unrecorded, not false). Frame mechanism per the design round: frames-as-data at the SSOT log layer (a registry + an axis field), no inheritance or overlay (the multi-axis model leaves nothing to overlay); branch-KV remains the read-side projection realization when scale materializes the index. Canon closure is DERIVED: a superseded belief's effective end comes from its successor's canon_from, never written back (append-only, frozen-ledger genre). Both write paths route one shared builder (R305 parity); quote hashes are computed at write so a stored hash can never start out wrong (R404). Schema v11 to v12 is a declarative default — all four consumer stores load unchanged. Proven against the real corpus: the 27-chapter Dracula PoC store took 4 frames + 10 hand-extracted facts (3 cross-frame conflict clusters, 2 in-frame belief changes) in one atomic transaction with forward succession refs, idempotent on re-run. Round B (continuity gate) and Round C (frame-at-T projection) follow.",
+      "changes_bullets": [
+        "NarrativeFact + Frame structs land in mnemosyne-core (L0: spec-subset-narrative makes fact/frame/canon-time substrate vocabulary, the SectionSkeleton placement logic; nothing fiction-shaped in the struct)",
+        "AtomicStore gains top-level frames registry + narrative_facts maps (R416 confirmation_events placement: never nested on sections, no frozen-ledger contact), schema v11 to v12 via declarative serde default — every existing consumer store loads unchanged with empty maps, no migration arm",
+        "one shared build path build_candidate_fact + validate_fact_refs for BOTH write paths (R305 field-invariant parity): frame must exist in registry, canon_from/canon_to/evidence refs must name existing sections, evidence >= 1, no self refs, in-frame-only succession (cross-frame disagreement is data, never succession), quote_sha256 computed at write never caller-supplied (R404 drift pattern)",
+        "new primitives import_facts (bulk frames+facts, one atomic transaction, forward succession refs within a manifest legal, divergent rejects whole manifest before save) / add_frame / add_fact / add_fact_conflict (recorded assertion edge, either-direction duplicate rejects as already-recorded)",
+        "CLI verbs import-facts / add-frame / add-fact / add-fact-conflict + usage; SCHEMA_GUIDE narrative-facts section + what-stays-fixed destale (entity list was 5-strong and pre-R400 parser-vocabulary)"
+      ],
+      "verification_bullets": [
+        "8 new atomic unit tests (round-trip with forward succession + computed quote_sha256, unknown-frame/missing-ref/empty-evidence/canon rejects before any save, cross-frame succession reject, divergent-manifest atomicity with disk-untouched assert, add/import write-path parity over 6 edge cases, conflict-edge append + either-direction duplicate reject, pre-v12 store loads with empty maps)",
+        "4 new CLI smoke tests (import_facts_smoke.rs: bulk create + idempotent re-run no-op, unknown-frame reject leaves store byte-identical, add-frame/add-fact/add-fact-conflict end-to-end, cross-frame succession reject)",
+        "workspace: all test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus: 27-chapter Dracula PoC store imported 4 frames + 10 hand-extracted facts (3 conflict clusters, 2 in-frame belief changes) in one transaction, idempotent re-run 14 no-op, store v12"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Round B next: continuity gate — effective-extent derivation from succession + frame-scoped conflict scan (same-frame overlap = violation, cross-frame = data) + opt-in severity_continuity; needs a canon-order rule for overlap (natural sort of section ids vs explicit order — decide at build)",
+        "Round C after: read projection \"facts of frame F at canon point T\" (report-* verb pattern)",
+        "MCP tools for the fact primitives deferred until an agent session needs them (R127 mutate-gate parity then)",
+        "MediumAdapter L1 field-composition debt (spec-shaped fields hard-welded on AtomicSection, surfaced by the novel medium) stays flagged, separate round",
+        "consumer note: schema v12 is load-transparent (empty maps); global cli+mcp need reinstall at next sync"
+      ],
+      "publishable_decision_summary": "Phase 1A build Round A (of the A/B/C decomposition ratified with R429): the narrative fact entity lands. NarrativeFact = a claim held in exactly one epistemic frame over a canon-time extent in structure-section coordinates, with mandatory evidence provenance, recorded conflict assertion edges, and in-frame succession for time-indexed belief change — the storage half of the North Star sentence that frames are sparse non-privileged axes (a believed-fact and the ground-truth fact are distinct facts, both true, never cross-validated; absence in a frame = unrecorded, not false). Frame mechanism per the design round: frames-as-data at the SSOT log layer (a registry + an axis field), no inheritance or overlay (the multi-axis model leaves nothing to overlay); branch-KV remains the read-side projection realization when scale materializes the index. Canon closure is DERIVED: a superseded belief's effective end comes from its successor's canon_from, never written back (append-only, frozen-ledger genre). Both write paths route one shared builder (R305 parity); quote hashes are computed at write so a stored hash can never start out wrong (R404). Schema v11 to v12 is a declarative default — all four consumer stores load unchanged. Proven against the real corpus: the 27-chapter Dracula PoC store took 4 frames + 10 hand-extracted facts (3 cross-frame conflict clusters, 2 in-frame belief changes) in one atomic transaction with forward succession refs, idempotent on re-run. Round B (continuity gate) and Round C (frame-at-T projection) follow.",
+      "publishable_changes_bullets": [
+        "NarrativeFact + Frame structs land in mnemosyne-core (L0: spec-subset-narrative makes fact/frame/canon-time substrate vocabulary, the SectionSkeleton placement logic; nothing fiction-shaped in the struct)",
+        "AtomicStore gains top-level frames registry + narrative_facts maps (R416 confirmation_events placement: never nested on sections, no frozen-ledger contact), schema v11 to v12 via declarative serde default — every existing consumer store loads unchanged with empty maps, no migration arm",
+        "one shared build path build_candidate_fact + validate_fact_refs for BOTH write paths (R305 field-invariant parity): frame must exist in registry, canon_from/canon_to/evidence refs must name existing sections, evidence >= 1, no self refs, in-frame-only succession (cross-frame disagreement is data, never succession), quote_sha256 computed at write never caller-supplied (R404 drift pattern)",
+        "new primitives import_facts (bulk frames+facts, one atomic transaction, forward succession refs within a manifest legal, divergent rejects whole manifest before save) / add_frame / add_fact / add_fact_conflict (recorded assertion edge, either-direction duplicate rejects as already-recorded)",
+        "CLI verbs import-facts / add-frame / add-fact / add-fact-conflict + usage; SCHEMA_GUIDE narrative-facts section + what-stays-fixed destale (entity list was 5-strong and pre-R400 parser-vocabulary)"
+      ],
+      "publishable_verification_bullets": [
+        "8 new atomic unit tests (round-trip with forward succession + computed quote_sha256, unknown-frame/missing-ref/empty-evidence/canon rejects before any save, cross-frame succession reject, divergent-manifest atomicity with disk-untouched assert, add/import write-path parity over 6 edge cases, conflict-edge append + either-direction duplicate reject, pre-v12 store loads with empty maps)",
+        "4 new CLI smoke tests (import_facts_smoke.rs: bulk create + idempotent re-run no-op, unknown-frame reject leaves store byte-identical, add-frame/add-fact/add-fact-conflict end-to-end, cross-frame succession reject)",
+        "workspace: all test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus: 27-chapter Dracula PoC store imported 4 frames + 10 hand-extracted facts (3 conflict clusters, 2 in-frame belief changes) in one transaction, idempotent re-run 14 no-op, store v12"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Round B next: continuity gate — effective-extent derivation from succession + frame-scoped conflict scan (same-frame overlap = violation, cross-frame = data) + opt-in severity_continuity; needs a canon-order rule for overlap (natural sort of section ids vs explicit order — decide at build)",
+        "Round C after: read projection \"facts of frame F at canon point T\" (report-* verb pattern)",
+        "MCP tools for the fact primitives deferred until an agent session needs them (R127 mutate-gate parity then)",
+        "MediumAdapter L1 field-composition debt (spec-shaped fields hard-welded on AtomicSection, surfaced by the novel medium) stays flagged, separate round",
+        "consumer note: schema v12 is load-transparent (empty maps); global cli+mcp need reinstall at next sync"
+      ]
     }
   },
   "inventory_entries": {},
   "confirmation_events": {},
-  "schema_version": 11
+  "frames": {},
+  "narrative_facts": {},
+  "schema_version": 12
 }

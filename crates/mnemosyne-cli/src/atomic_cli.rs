@@ -317,6 +317,234 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
     )
 }
 
+/// Round 430 — bulk frames + narrative facts from a manifest (one atomic
+/// transaction; forward succession refs within the manifest are legal).
+pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut manifest: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--manifest" => {
+                manifest = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--manifest missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let manifest_path = manifest.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
+    let raw = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read manifest {}", manifest_path))?;
+    let parsed: mnemosyne_atomic::FactsManifest =
+        serde_json::from_str(&raw).with_context(|| {
+            format!(
+                "parse manifest {} (JSON object with `frames` + `facts` arrays)",
+                manifest_path
+            )
+        })?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::import_facts(&mut store, &sidecar_path, &parsed),
+        json,
+    )
+}
+
+/// Round 430 — register one epistemic frame.
+pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut frame_id: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--frame" => {
+                frame_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--frame missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let frame_id = frame_id.ok_or_else(|| anyhow!("--frame arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_frame(&mut store, &sidecar_path, &frame_id, &description),
+        json,
+    )
+}
+
+/// Round 430 — create one narrative fact (same shared build path as
+/// `import-facts`; cross-fact refs must already exist in the store).
+pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut entry = mnemosyne_atomic::FactImport {
+        fact_id: String::new(),
+        frame: String::new(),
+        claim: String::new(),
+        canon_from: String::new(),
+        canon_to: None,
+        evidence: vec![],
+        conflicts_with: vec![],
+        supersedes_in_frame: None,
+        quote: None,
+    };
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let csv = |raw: &str| -> Vec<String> {
+        raw.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                entry.fact_id = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--fact missing"))?
+                    .clone()
+            }
+            "--frame" => {
+                entry.frame = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--frame missing"))?
+                    .clone()
+            }
+            "--claim" => {
+                entry.claim = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--claim missing"))?
+                    .clone()
+            }
+            "--canon-from" => {
+                entry.canon_from = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--canon-from missing"))?
+                    .clone()
+            }
+            "--canon-to" => {
+                entry.canon_to = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--canon-to missing"))?
+                        .clone(),
+                )
+            }
+            "--evidence" => {
+                entry.evidence = csv(iter.next().ok_or_else(|| anyhow!("--evidence missing"))?)
+            }
+            "--conflicts" => {
+                entry.conflicts_with =
+                    csv(iter.next().ok_or_else(|| anyhow!("--conflicts missing"))?)
+            }
+            "--supersedes" => {
+                entry.supersedes_in_frame = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--supersedes missing"))?
+                        .clone(),
+                )
+            }
+            "--quote" => {
+                entry.quote = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--quote missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_fact(&mut store, &sidecar_path, &entry),
+        json,
+    )
+}
+
+/// Round 430 — record one conflict assertion edge between two existing facts.
+pub fn cmd_add_fact_conflict(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut fact_id: Option<String> = None;
+    let mut other: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--conflicts-with" => {
+                other = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--conflicts-with missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other_flag => bail!("unknown flag `{}`", other_flag),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let other = other.ok_or_else(|| anyhow!("--conflicts-with arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_fact_conflict(&mut store, &sidecar_path, &fact_id, &other),
+        json,
+    )
+}
+
 /// R393 — ingest a medium-forge `epub-anchor-map/v1` file, setting each
 /// matching Section's `epub_locator` (EPUB-SSOT pointer). One save; ids absent
 /// from the store are reported as a note, not an error.
