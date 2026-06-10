@@ -581,7 +581,7 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
-        " {} validate-continuity [--order <canon-order.json>] [--severity reject|warn|info] [--sidecar <path>] [--json]",
+        " {} validate-continuity [--order <canon-order.json>] [--rules <narrative-rules.json>] [--severity reject|warn|info] [--sidecar <path>] [--json]",
         prog
     );
     println!("   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,");
@@ -1691,12 +1691,14 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
 /// resolution is the shared `ops::continuity_scan` path (Round 435 — one
 /// resolution chain for CLI and MCP): `--order` bypasses the sha256 pin (the
 /// R428 `--catalog` rule); `--sidecar` overrides the store path (narrative
-/// facts usually live in non-dogfood stores).
+/// facts usually live in non-dogfood stores). `--rules` overrides the
+/// declared `narrative-rules/v1` artifact (Round 449; same pin-bypass rule).
 fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     use mnemosyne_config::Severity;
     let mut json = false;
     let mut severity_override: Option<String> = None;
     let mut order_override: Option<String> = None;
+    let mut rules_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
     let mut iter = args.iter();
     while let Some(a) = iter.next() {
@@ -1713,6 +1715,13 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 order_override = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--rules" => {
+                rules_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rules missing"))?
                         .clone(),
                 )
             }
@@ -1736,6 +1745,7 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         &anchor,
         sidecar_override.as_deref().map(std::path::Path::new),
         order_override.as_deref(),
+        rules_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if let Some(s) = &severity_override {
@@ -1759,6 +1769,12 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             report.cross_scope_pairs,
             report.unordered_pairs
         );
+        if report.rules > 0 {
+            println!(
+                "  rules={} rule_unordered={} unchained_state_pairs={}",
+                report.rules, report.rule_unordered_pairs, report.unchained_state_pairs
+            );
+        }
         println!("  violations: {}", report.violation_count);
         for v in &report.violations {
             println!("  {}", serde_json::to_string(v)?);

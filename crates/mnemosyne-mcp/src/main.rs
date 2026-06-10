@@ -431,6 +431,11 @@ pub struct ValidateContinuityArgs {
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
+    /// `narrative-rules/v1` declaration path override (Round 449;
+    /// workspace-relative, bypasses the configured sha256 pin). Omit to
+    /// use `[continuity].rules_path`.
+    #[serde(default)]
+    pub rules_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1352,13 +1357,18 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Frame-scoped continuity scan (R431, read-only): same-(frame, branch) conflicting pairs whose derived canon extents co-hold are violations; cross-scope pairs are data. Returns the JSON report (configured severity, counts, violations); gating policy belongs to the caller."
+        description = "Frame-scoped continuity scan (R431, read-only): same-(frame, branch) conflicting pairs whose derived canon extents co-hold are violations; cross-scope pairs are data. With a declared narrative-rules/v1 artifact (R449) it also derives typed-claim rule findings — exclusive (one co-holding value per subject / one holder per object) and transition (allowed state steps on succession edges) — plus the unchained_state_pairs honesty count. Returns the JSON report (configured severity, counts, violations); gating policy belongs to the caller."
     )]
     async fn validate_continuity(
         &self,
         args: Parameters<ValidateContinuityArgs>,
     ) -> CallToolResult {
-        match ops::continuity_scan(&self.workspace, None, args.0.order_path.as_deref()) {
+        match ops::continuity_scan(
+            &self.workspace,
+            None,
+            args.0.order_path.as_deref(),
+            args.0.rules_path.as_deref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

@@ -965,6 +965,19 @@ pub struct ContinuitySection {
     /// fails LOUDLY on mismatch). Requires `canon_order_path`.
     #[serde(default)]
     pub canon_order_sha256: Option<String>,
+    /// Workspace-relative path to the `narrative-rules/v1` declaration
+    /// (Round 449, design sec 7.12) — consumer-vocabulary exclusivity/
+    /// transition rules over typed claims. Optional: authoring the file IS
+    /// the opt-in; rule violations ride `severity` (no separate knob — a
+    /// same-frame rule violation is wrong data, never a legitimate
+    /// intermediate state).
+    #[serde(default)]
+    pub rules_path: Option<String>,
+    /// Optional sha256 pin of the narrative-rules file (the same R428
+    /// gate-authority-input contract as `canon_order_sha256`). Requires
+    /// `rules_path`.
+    #[serde(default)]
+    pub rules_sha256: Option<String>,
 }
 
 /// Config discovery + load result.
@@ -1048,6 +1061,19 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             if !is_lowercase_sha256_hex(hash) {
                 bail!(
   "mnemosyne.toml: `continuity.canon_order_sha256` must be 64-char lowercase hex (got `{}`)",
+  hash
+  );
+            }
+        }
+        if let Some(hash) = &cont.rules_sha256 {
+            if cont.rules_path.is_none() {
+                bail!(
+                    "mnemosyne.toml: `continuity.rules_sha256` requires `rules_path` (a pin with nothing to pin)"
+                );
+            }
+            if !is_lowercase_sha256_hex(hash) {
+                bail!(
+  "mnemosyne.toml: `continuity.rules_sha256` must be 64-char lowercase hex (got `{}`)",
   hash
   );
             }
@@ -1826,6 +1852,45 @@ canon_order_sha256 = "0000000000000000000000000000000000000000000000000000000000
 [continuity]
 canon_order_path = "canon-order.json"
 canon_order_sha256 = "NOT-HEX"
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("lowercase hex"), "{err}");
+    }
+
+    #[test]
+    fn continuity_rules_path_parses_and_pin_requires_path_and_hex() {
+        // Round 449: narrative-rules declaration, same R428 pin contract.
+        let cfg = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+canon_order_path = "canon-order.json"
+rules_path = "narrative-rules.json"
+"#,
+        )
+        .unwrap();
+        let cont = cfg.continuity.unwrap();
+        assert_eq!(cont.rules_path.as_deref(), Some("narrative-rules.json"));
+        assert!(cont.rules_sha256.is_none());
+        let err = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+rules_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("requires `rules_path`"), "{err}");
+        let err = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+rules_path = "narrative-rules.json"
+rules_sha256 = "NOT-HEX"
 "#,
         )
         .unwrap_err();

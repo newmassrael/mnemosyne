@@ -43,6 +43,18 @@
 //! visible — main never sees a fork's revisions. A branch's composed order
 //! also inherits every ancestor's edge set. `forks_from = None` keeps the
 //! standalone-world semantics exactly.
+//!
+//! **Typed-claim rule gate (Round 449, design sec 7.12):** a declared
+//! `narrative-rules/v1` artifact (consumer vocabulary, never L0; R428
+//! authority-input contract with an optional sha256 pin) adds two derived
+//! violation classes over the typed subset — `exclusive` (one co-holding
+//! value per subject / one holder per object, symmetric non-keyed-leg
+//! consistency skip per R443) and `transition` (allowed state steps riding
+//! the in-frame succession edge). The gate is the THIRD reader of
+//! [`WorldCtx::holds_at`] — point-quantified holds-semantics verbatim, no
+//! interval algebra of its own. Rule findings are derivations: re-evaluated
+//! fresh each scan, never pinned. Authoring the file is the opt-in;
+//! violations ride the existing continuity severity knob.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -227,6 +239,33 @@ impl CanonOrder {
     }
 }
 
+/// Authority-input pin check (R428 pattern), shared by the canon-order and
+/// narrative-rules loaders (Round 449 — the second declared gate-authority
+/// artifact triggered the dedup): a configured pin re-hashes every load and
+/// fails LOUDLY on mismatch. `what` names the artifact, `pin_key` the
+/// config key to update after a reviewed change.
+fn verify_authority_pin(
+    bytes: &[u8],
+    expected: &str,
+    what: &str,
+    pin_key: &str,
+    path: &Path,
+) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    let actual: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    if actual != expected {
+        return Err(format!(
+            "{what} sha256 mismatch at {}: pinned {expected} but file hashes {actual} — the \
+             declaration changed without a re-pin (or was tampered); re-generate, review, \
+             and update {pin_key}",
+            path.display(),
+        ));
+    }
+    Ok(())
+}
+
 /// Load a declared canon order FILE, with the optional sha256 pin (R428
 /// pattern: the order is a gate-authority input; a configured pin re-hashes
 /// every load and fails LOUDLY on mismatch). Construction into a
@@ -239,23 +278,159 @@ pub fn load_canon_order(
     let bytes =
         std::fs::read(path).map_err(|e| format!("canon-order read {}: {}", path.display(), e))?;
     if let Some(expected) = expected_sha256 {
-        use sha2::{Digest, Sha256};
-        let mut h = Sha256::new();
-        h.update(&bytes);
-        let actual: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
-        if actual != expected {
-            return Err(format!(
-                "canon-order sha256 mismatch at {}: pinned {} but file hashes {} — the \
-                 declaration changed without a re-pin (or was tampered); re-generate, review, \
-                 and update [continuity].canon_order_sha256",
-                path.display(),
-                expected,
-                actual
-            ));
-        }
+        verify_authority_pin(
+            &bytes,
+            expected,
+            "canon-order",
+            "[continuity].canon_order_sha256",
+            path,
+        )?;
     }
     serde_json::from_slice(&bytes)
         .map_err(|e| format!("canon-order parse {}: {}", path.display(), e))
+}
+
+/// The `narrative-rules/v1` contract — consumer/medium-adapter declared
+/// (Round 449, design sec 7.12). Rule semantics are game/world vocabulary
+/// and never enter L0 (ARCHITECTURE sec 6 invariant 4); like canon order,
+/// the artifact arrives declared (guardrail B-1) with an optional sha256
+/// pin. Extra JSON fields are ignored (lenient, the canon-order precedent).
+/// Authoring the file IS the opt-in — there is no separate severity knob;
+/// rule violations ride the existing continuity severity (the R431
+/// rationale: a same-frame rule violation is wrong data, never a
+/// legitimate intermediate state).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct NarrativeRulesFile {
+    #[serde(default)]
+    pub rules: Vec<NarrativeRule>,
+}
+
+/// One declared rule. `id` names the rule in findings; `predicate` must be
+/// a registered predicate id (predicates are LOAD-BEARING refs — a typo'd
+/// predicate would silently escape its rule, the R436 write-side-typo
+/// lesson — so the scan boundary fail-louds on an unknown one).
+#[derive(Debug, Clone, Deserialize)]
+pub struct NarrativeRule {
+    pub id: String,
+    pub predicate: String,
+    #[serde(flatten)]
+    pub spec: NarrativeRuleSpec,
+}
+
+/// The TWO rule classes (design sec 7.12 — probe-verified sufficient for
+/// the named trio: location exclusivity, conservation/custody, state
+/// machines).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "class", rename_all = "snake_case")]
+pub enum NarrativeRuleSpec {
+    /// At most one co-holding value per subject (`per: subject` — location
+    /// exclusivity) or one holder per object (`per: object` —
+    /// conservation/custody) within one (frame × world). The consistency
+    /// skip is on the NON-KEYED leg, symmetric (R443 session-review fix):
+    /// `per: subject` skips pairs with equal objects (one value restated ≠
+    /// two values), `per: object` skips pairs with equal subjects (one
+    /// holder restated ≠ two holders).
+    Exclusive { per: ExclusiveKey },
+    /// Rides the in-frame SUCCESSION edge: successor and predecessor both
+    /// typed with the same subject + predicate → `(from, to)` must be a
+    /// declared transition. Succession IS the declared adjacency —
+    /// "adjacent" over a partial canon order is ill-defined, so the rule
+    /// deliberately sees ONLY chained pairs; unchained same-subject pairs
+    /// surface as `unchained_state_pairs`, never gated.
+    Transition { allowed: Vec<[String; 2]> },
+}
+
+/// Which typed leg an exclusive rule keys on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExclusiveKey {
+    Subject,
+    Object,
+}
+
+impl ExclusiveKey {
+    /// The non-keyed leg — where the symmetric consistency skip applies.
+    fn other(self) -> Self {
+        match self {
+            ExclusiveKey::Subject => ExclusiveKey::Object,
+            ExclusiveKey::Object => ExclusiveKey::Subject,
+        }
+    }
+}
+
+/// The comparison key of a typed leg under an [`ExclusiveKey`]: the subject
+/// entity id, or the object's id/value string. Entity ids and scalar values
+/// never collide in practice because a predicate's object shape is fixed by
+/// its registered `object_kind` — every object of one predicate has one
+/// shape.
+fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> &str {
+    match leg {
+        ExclusiveKey::Subject => &t.subject,
+        ExclusiveKey::Object => typed_object_key(&t.object),
+    }
+}
+
+/// The object leg's comparison/report string: the entity id or the scalar
+/// value. The rule gate is the only reader today; promote to
+/// `mnemosyne-core` if a second one appears.
+fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
+    match o {
+        mnemosyne_core::TypedObject::Entity { id } => id,
+        mnemosyne_core::TypedObject::Value { value } => value,
+    }
+}
+
+/// Load a declared narrative-rules FILE, with the optional sha256 pin
+/// (Round 449; same R428 authority-input contract as the canon order).
+/// File-shape validation is here (blank/duplicate ids, blank legs);
+/// registry checks (the predicate must exist) happen at the scan boundary,
+/// where the store is in hand.
+pub fn load_narrative_rules(
+    path: &Path,
+    expected_sha256: Option<&str>,
+) -> Result<NarrativeRulesFile, String> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("narrative-rules read {}: {}", path.display(), e))?;
+    if let Some(expected) = expected_sha256 {
+        verify_authority_pin(
+            &bytes,
+            expected,
+            "narrative-rules",
+            "[continuity].rules_sha256",
+            path,
+        )?;
+    }
+    let file: NarrativeRulesFile = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("narrative-rules parse {}: {}", path.display(), e))?;
+    let mut seen_ids: BTreeSet<&str> = BTreeSet::new();
+    for rule in &file.rules {
+        let id = rule.id.trim();
+        if id.is_empty() {
+            return Err("narrative-rules: blank rule id".to_string());
+        }
+        if !seen_ids.insert(id) {
+            return Err(format!(
+                "narrative-rules: duplicate rule id `{id}` — ids name findings, so they \
+                 must be unique"
+            ));
+        }
+        if rule.predicate.trim().is_empty() {
+            return Err(format!(
+                "narrative-rules: rule `{id}` has a blank predicate"
+            ));
+        }
+        if let NarrativeRuleSpec::Transition { allowed } = &rule.spec {
+            for pair in allowed {
+                if pair[0].trim().is_empty() || pair[1].trim().is_empty() {
+                    return Err(format!(
+                        "narrative-rules: rule `{id}` has a blank leg in an allowed \
+                         transition pair"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(file)
 }
 
 /// One continuity violation.
@@ -316,6 +491,33 @@ pub enum ContinuityViolation {
     /// An evaluable data finding like the conflict/succession variants, not
     /// a store-corruption `Err` (the Round 440 boundary doctrine).
     PayoffTargetMissing { fact_id: String, target: String },
+    /// An exclusive rule violated (Round 449, design sec 7.12): two
+    /// same-frame typed facts with the rule's predicate agree on the keyed
+    /// leg but differ on the non-keyed one, and co-hold at `at` in query
+    /// world `branch`. Rule findings are DERIVATIONS — re-evaluated fresh
+    /// each scan, never pinned (judgments pin, derivations re-evaluate).
+    RuleExclusiveOverlap {
+        rule: String,
+        predicate: String,
+        frame: String,
+        branch: String,
+        fact_a: String,
+        fact_b: String,
+        at: String,
+    },
+    /// A transition rule violated (Round 449): an in-frame succession edge
+    /// whose two legs are typed with the same subject + predicate steps
+    /// `(from → to)` outside the rule's allowed set.
+    RuleTransitionInvalid {
+        rule: String,
+        predicate: String,
+        frame: String,
+        subject: String,
+        predecessor: String,
+        successor: String,
+        from: String,
+        to: String,
+    },
 }
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
@@ -332,6 +534,21 @@ pub struct ContinuityReport {
     pub unordered_pairs: usize,
     pub facts: usize,
     pub order_nodes: usize,
+    /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
+    /// the gate's pre-Round-449 behavior exactly).
+    pub rules: usize,
+    /// Distinct exclusive-rule candidate pairs whose canon coordinates the
+    /// declared order cannot compare in some world (B-1: surfaced, never
+    /// gated — the rule cannot decide them).
+    pub rule_unordered_pairs: usize,
+    /// Distinct same-frame same-subject typed pairs (per transition rule)
+    /// visible together in some query world yet not connected by a direct
+    /// succession edge — pairs the transition rule deliberately cannot see
+    /// (succession IS the declared adjacency). Surfaced as a count, never
+    /// gated. WORLD-scoped via the shared visibility (the R441 probe
+    /// finding: raw branch equality would silently miss fork-inherited
+    /// pairs), deduplicated across worlds.
+    pub unchained_state_pairs: usize,
 }
 
 /// Fork lineage of one query world (Round 438): for each ancestor branch,
@@ -564,15 +781,34 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
 }
 
 /// Frame-scoped continuity scan over the narrative facts. Returns `Err` only
-/// on a malformed input boundary (an order node that is not a section, or a
-/// declared branch that is not registered — likely a typo in the
-/// declaration; fail loud). All data findings are violations/counts in the
-/// report.
+/// on a malformed input boundary (an order node that is not a section, a
+/// declared branch that is not registered, or a rule naming an unregistered
+/// predicate — likely a typo in a declaration; fail loud). All data findings
+/// are violations/counts in the report.
+///
+/// `rules` is the declared `narrative-rules/v1` rule set (Round 449, design
+/// sec 7.12) — empty = no rules authored = the recorded-edge gate alone.
+/// The rule gate is the THIRD reader of [`WorldCtx::holds_at`] (after the
+/// conflict gate and the frame-at-T view): it reuses the point-quantified
+/// holds-semantics verbatim, never its own interval algebra (the R441 probe
+/// falsified a paper interval model — the half-open successor cut is
+/// load-bearing).
 pub fn scan_continuity(
     store: &AtomicStore,
     order: &CanonOrder,
+    rules: &[NarrativeRule],
 ) -> Result<ContinuityReport, String> {
     check_store_boundary(store, order)?;
+    for rule in rules {
+        if !store.predicates.contains_key(rule.predicate.trim()) {
+            return Err(format!(
+                "narrative-rules: rule `{}` names predicate `{}`, which is not in the \
+                 predicate registry — a typo'd predicate would silently escape its rule \
+                 (the R436 lesson); register it (add_predicate) or fix the declaration",
+                rule.id, rule.predicate
+            ));
+        }
+    }
     let facts = &store.narrative_facts;
     let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
     for fact in facts.values() {
@@ -735,6 +971,161 @@ pub fn scan_continuity(
                 if !order.comparable(&world, &a.canon_from, &b.canon_from) {
                     report.unordered_pairs += 1;
                 }
+            }
+        }
+    }
+    // Typed-claim rule gate (Round 449, design sec 7.12) — derivations over
+    // the typed subset, evaluated per query world (main + every registered
+    // branch, the R441 probe's executable model): cross-frame pairs and
+    // sibling-world pairs are data by construction (a fact invisible in the
+    // query world never holds there). A pair violating in several worlds is
+    // reported per world — the world is part of the finding.
+    report.rules = rules.len();
+    let worlds: Vec<&str> = std::iter::once(mnemosyne_core::MAIN_BRANCH)
+        .chain(store.branches.keys().map(String::as_str))
+        .collect();
+    for rule in rules {
+        let typed: Vec<(&String, &NarrativeFact)> = facts
+            .iter()
+            .filter(|(_, f)| {
+                f.typed
+                    .as_ref()
+                    .is_some_and(|t| t.predicate == rule.predicate)
+            })
+            .collect();
+        match &rule.spec {
+            NarrativeRuleSpec::Exclusive { per } => {
+                let mut unordered: BTreeSet<(&str, &str)> = BTreeSet::new();
+                for world in &worlds {
+                    let ctx = WorldCtx {
+                        world,
+                        lineage: &lineages[*world],
+                        order,
+                        successors: &successors,
+                    };
+                    let vis: Vec<&(&String, &NarrativeFact)> = typed
+                        .iter()
+                        .filter(|(_, f)| ctx.visibility(f) == Vis::In)
+                        .collect();
+                    for (i, (aid, a)) in vis.iter().enumerate() {
+                        for (bid, b) in vis.iter().skip(i + 1) {
+                            if a.frame != b.frame {
+                                continue; // cross-frame = data, never gated
+                            }
+                            let (ta, tb) = (a.typed.as_ref().unwrap(), b.typed.as_ref().unwrap());
+                            if claim_leg(ta, *per) != claim_leg(tb, *per) {
+                                continue; // different keyed legs — no exclusivity claim
+                            }
+                            if claim_leg(ta, per.other()) == claim_leg(tb, per.other()) {
+                                // The non-keyed leg agrees — a restated fact is
+                                // exclusivity-consistent, not gated (R443:
+                                // symmetric, both `per` directions).
+                                continue;
+                            }
+                            let co_hold = store
+                                .sections
+                                .keys()
+                                .find(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
+                            match co_hold {
+                                Some(p) => report.violations.push(
+                                    ContinuityViolation::RuleExclusiveOverlap {
+                                        rule: rule.id.clone(),
+                                        predicate: rule.predicate.clone(),
+                                        frame: a.frame.clone(),
+                                        branch: (*world).to_string(),
+                                        fact_a: (*aid).clone(),
+                                        fact_b: (*bid).clone(),
+                                        at: p.clone(),
+                                    },
+                                ),
+                                None => {
+                                    if !order.comparable(world, &a.canon_from, &b.canon_from) {
+                                        unordered.insert((aid.as_str(), bid.as_str()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                report.rule_unordered_pairs += unordered.len();
+            }
+            NarrativeRuleSpec::Transition { allowed } => {
+                let allowed: BTreeSet<(&str, &str)> = allowed
+                    .iter()
+                    .map(|pair| (pair[0].as_str(), pair[1].as_str()))
+                    .collect();
+                // The gated half: every typed succession edge with this
+                // predicate and one subject must step inside `allowed`.
+                // The edge itself is the scope — the write path already
+                // confines succession to one frame and one world-line.
+                for (sid, s) in &typed {
+                    let st = s.typed.as_ref().unwrap();
+                    let Some(pid) = &s.supersedes_in_frame else {
+                        continue;
+                    };
+                    // A missing predecessor is already surfaced as
+                    // SuccessionTargetMissing; an untyped or
+                    // other-predicate/subject predecessor is outside this
+                    // rule (partial coverage is the design).
+                    let Some(pt) = facts.get(pid).and_then(|p| p.typed.as_ref()) else {
+                        continue;
+                    };
+                    if pt.predicate != rule.predicate || pt.subject != st.subject {
+                        continue;
+                    }
+                    let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
+                    if !allowed.contains(&(from, to)) {
+                        report
+                            .violations
+                            .push(ContinuityViolation::RuleTransitionInvalid {
+                                rule: rule.id.clone(),
+                                predicate: rule.predicate.clone(),
+                                frame: s.frame.clone(),
+                                subject: st.subject.clone(),
+                                predecessor: pid.clone(),
+                                successor: (*sid).clone(),
+                                from: from.to_string(),
+                                to: to.to_string(),
+                            });
+                    }
+                }
+                // The honesty half: same-frame same-subject typed pairs
+                // visible together in some world yet NOT directly chained —
+                // the rule cannot see them (surfaced count, never gated).
+                // World-scoped via visibility (the R441 probe finding) and
+                // deduplicated across worlds.
+                let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
+                for world in &worlds {
+                    let ctx = WorldCtx {
+                        world,
+                        lineage: &lineages[*world],
+                        order,
+                        successors: &successors,
+                    };
+                    let vis: Vec<&(&String, &NarrativeFact)> = typed
+                        .iter()
+                        .filter(|(_, f)| ctx.visibility(f) == Vis::In)
+                        .collect();
+                    for (i, (aid, a)) in vis.iter().enumerate() {
+                        for (bid, b) in vis.iter().skip(i + 1) {
+                            if a.frame != b.frame {
+                                continue;
+                            }
+                            if a.typed.as_ref().unwrap().subject
+                                != b.typed.as_ref().unwrap().subject
+                            {
+                                continue;
+                            }
+                            if a.supersedes_in_frame.as_deref() == Some(bid.as_str())
+                                || b.supersedes_in_frame.as_deref() == Some(aid.as_str())
+                            {
+                                continue;
+                            }
+                            seen.insert((aid.as_str(), bid.as_str()));
+                        }
+                    }
+                }
+                report.unchained_state_pairs += seen.len();
             }
         }
     }
@@ -1135,6 +1526,53 @@ mod tests {
         }
     }
 
+    /// Entity + predicate imports auto-derived from the facts (Round 449
+    /// test convenience): every referenced entity id registers, every typed
+    /// leg's predicate registers with the object_kind its object shape
+    /// implies — the production write path then enforces the same
+    /// invariants it always does.
+    fn derived_registries(
+        facts: &[FactImport],
+    ) -> (
+        Vec<mnemosyne_atomic::EntityImport>,
+        Vec<mnemosyne_atomic::PredicateImport>,
+    ) {
+        let entities = facts
+            .iter()
+            .flat_map(|f| f.entities.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|entity_id| mnemosyne_atomic::EntityImport {
+                entity_id,
+                kind: String::new(),
+                description: String::new(),
+            })
+            .collect();
+        let predicates = facts
+            .iter()
+            .filter_map(|f| f.typed.as_ref())
+            .map(|t| {
+                (
+                    t.predicate.clone(),
+                    match t.object {
+                        mnemosyne_core::TypedObject::Entity { .. } => "entity",
+                        mnemosyne_core::TypedObject::Value { .. } => "scalar",
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .into_iter()
+            .map(
+                |(predicate_id, object_kind)| mnemosyne_atomic::PredicateImport {
+                    predicate_id,
+                    object_kind: object_kind.to_string(),
+                    description: String::new(),
+                },
+            )
+            .collect();
+        (entities, predicates)
+    }
+
     /// Store with sections ch-1..ch-4 and the given facts, built through the
     /// REAL import primitive (same invariants as production writes).
     fn store_with(facts: Vec<FactImport>) -> AtomicStore {
@@ -1169,14 +1607,15 @@ mod tests {
                 forks_at: None,
             })
             .collect();
+        let (entities, predicates) = derived_registries(&facts);
         mnemosyne_atomic::import_facts(
             &mut store,
             &path,
             &FactsManifest {
-                entities: vec![],
+                entities,
                 frames,
                 branches,
-                predicates: vec![],
+                predicates,
                 facts,
             },
         )
@@ -1190,7 +1629,8 @@ mod tests {
         let b = fact("fb", "seward", "ch-2", None);
         a.conflicts_with = vec!["fb".to_string()];
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert_eq!(report.conflict_pairs_checked, 1);
         assert_eq!(report.violations.len(), 1);
         match &report.violations[0] {
@@ -1210,7 +1650,8 @@ mod tests {
         let b = fact("f-vampire", "van-helsing", "ch-2", None);
         a.conflicts_with = vec!["f-vampire".to_string()];
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert!(report.violations.is_empty());
         assert_eq!(report.cross_scope_pairs, 1);
     }
@@ -1224,7 +1665,8 @@ mod tests {
         let mut b = fact("f-ship", "jonathan", "ch-1", None);
         b.branch = Some("sea-route".to_string());
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         assert_eq!(report.cross_scope_pairs, 1);
     }
@@ -1261,7 +1703,7 @@ mod tests {
         fa_b.conflicts_with = vec!["fb-b".to_string()];
         let fb_b = mk("fb-b", "b", "ch-3", None);
         let store = store_with(vec![fa_a, fb_a, fa_b, fb_b]);
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
         match &report.violations[0] {
             ContinuityViolation::FrameConflictOverlap {
@@ -1289,7 +1731,8 @@ mod tests {
         let mut late = fact("f-late", "jonathan", "ch-3", None);
         late.conflicts_with = vec!["f-old".to_string()];
         let store = store_with(vec![old, new, late]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert!(
             report.violations.is_empty(),
             "f-old is derived-closed at ch-3: {:?}",
@@ -1300,7 +1743,8 @@ mod tests {
         let mut late = fact("f-late", "jonathan", "ch-3", None);
         late.conflicts_with = vec!["f-old".to_string()];
         let store = store_with(vec![old, late]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert_eq!(report.violations.len(), 1);
     }
 
@@ -1310,7 +1754,8 @@ mod tests {
         let mut new = fact("f-new", "jonathan", "ch-2", None);
         new.supersedes_in_frame = Some("f-old".to_string());
         let store = store_with(vec![old, new]);
-        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let report =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert_eq!(report.violations.len(), 1);
         assert!(matches!(
             &report.violations[0],
@@ -1327,7 +1772,7 @@ mod tests {
         let b = fact("fb", "seward", "ch-2", None);
         a.conflicts_with = vec!["fb".to_string()];
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &CanonOrder::empty()).unwrap();
+        let report = scan_continuity(&store, &CanonOrder::empty(), &[]).unwrap();
         assert!(report.violations.is_empty());
         assert_eq!(report.unordered_pairs, 1);
     }
@@ -1339,7 +1784,7 @@ mod tests {
         let b = fact("fb", "seward", "ch-2", None);
         a.conflicts_with = vec!["fb".to_string()];
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &CanonOrder::empty()).unwrap();
+        let report = scan_continuity(&store, &CanonOrder::empty(), &[]).unwrap();
         assert_eq!(report.violations.len(), 1);
         assert_eq!(report.unordered_pairs, 0);
     }
@@ -1358,7 +1803,7 @@ mod tests {
         let b = fact("fb", "seward", "ch-3", None);
         a.conflicts_with = vec!["fb".to_string()];
         let store = store_with(vec![a, b]);
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(report.violations.is_empty());
         assert_eq!(report.unordered_pairs, 1);
     }
@@ -1376,7 +1821,7 @@ mod tests {
     #[test]
     fn order_node_must_be_a_section() {
         let store = store_with(vec![]);
-        let err = scan_continuity(&store, &chain(&["ch-1", "ch-99"])).unwrap_err();
+        let err = scan_continuity(&store, &chain(&["ch-1", "ch-99"]), &[]).unwrap_err();
         assert!(err.contains("ch-99"), "{err}");
     }
     // ── frame_view (Round 432) ──────────────────────────────────────────
@@ -1486,7 +1931,7 @@ mod tests {
         };
         let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
-        let err = scan_continuity(&store, &order).unwrap_err();
+        let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
         let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
@@ -1618,14 +2063,15 @@ mod tests {
                 }
             })
             .collect();
+        let (entities, predicates) = derived_registries(&facts);
         mnemosyne_atomic::import_facts(
             &mut store,
             &path,
             &FactsManifest {
                 frames,
                 branches,
-                entities: vec![],
-                predicates: vec![],
+                entities,
+                predicates,
                 facts,
             },
         )
@@ -1667,7 +2113,7 @@ mod tests {
         on_route.conflicts_with = vec!["f-main".to_string()];
         let store = store_with_forks(vec![inherited, on_route], &[("route", MAIN_BRANCH, "ch-2")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
         match &report.violations[0] {
             ContinuityViolation::FrameConflictOverlap { branch, .. } => {
@@ -1686,7 +2132,7 @@ mod tests {
                 ("route-b", MAIN_BRANCH, "ch-2"),
             ],
         );
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         assert_eq!(report.cross_scope_pairs, 1);
     }
@@ -1701,7 +2147,7 @@ mod tests {
         let store = store_with_forks(vec![old, new], &[("route", MAIN_BRANCH, "ch-2")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         // No SuccessionCrossBranch: the predecessor is on the lineage.
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         // Route at ch-3: revised belief holds, inherited one derived-closed.
         let route = frame_view(&store, &order, "jonathan", "route", None, "ch-3").unwrap();
@@ -1789,7 +2235,7 @@ mod tests {
                 .filter(|v| matches!(v, ContinuityViolation::ConflictEdgeStale { .. }))
                 .count()
         };
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
         // Amend the target's claim: the recorded judgment pinned other text.
         let revised_target = FactImport {
@@ -1797,12 +2243,12 @@ mod tests {
             ..fact("f-target", "seward", "ch-1", None)
         };
         mnemosyne_atomic::amend_fact(&mut store, &path, &revised_target, "revision").unwrap();
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(stale_count(&report), 1, "{:?}", report.violations);
         // Re-affirm: amend the edge-owning fact (same content) — its
         // outbound judgments restamp against the target's CURRENT claim.
         mnemosyne_atomic::amend_fact(&mut store, &path, &owner, "re-affirm edges").unwrap();
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
     }
 
@@ -1816,14 +2262,14 @@ mod tests {
         // Unregistered branch on a fact (hand-edited store).
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".to_string();
-        let err = scan_continuity(&store, &order).unwrap_err();
+        let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
         let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
         // Unregistered frame.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         store.narrative_facts.get_mut("f1").unwrap().frame = "nobody".to_string();
-        let err = scan_continuity(&store, &order).unwrap_err();
+        let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
         // Evidence emptied out-of-band.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
@@ -1833,7 +2279,7 @@ mod tests {
             .unwrap()
             .evidence
             .clear();
-        let err = scan_continuity(&store, &order).unwrap_err();
+        let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("unauditable"), "{err}");
     }
 
@@ -1847,7 +2293,7 @@ mod tests {
         a.conflicts_with = vec!["fb".to_string()];
         let store = store_with(vec![a, b]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         let ContinuityViolation::FrameConflictOverlap {
             frame,
             branch,
@@ -2126,7 +2572,7 @@ mod tests {
         ]);
         store.narrative_facts.remove("su");
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = scan_continuity(&store, &order).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
             report.violations.iter().any(|v| matches!(
                 v,
@@ -2136,5 +2582,444 @@ mod tests {
             "{:?}",
             report.violations
         );
+    }
+
+    // --- Round 449: narrative-rules gate (R441 probe mirror) ---------------
+
+    use mnemosyne_core::{TypedClaim, TypedObject};
+
+    /// A typed fact: subject (+ entity-shaped object) ride the entities
+    /// list, per the Round 446 invariant (the typed leg never widens the
+    /// retrieval key).
+    fn typed_fact(
+        id: &str,
+        frame: &str,
+        from: &str,
+        subject: &str,
+        predicate: &str,
+        object: TypedObject,
+    ) -> FactImport {
+        let mut entities = vec![subject.to_string()];
+        if let TypedObject::Entity { id } = &object {
+            entities.push(id.clone());
+        }
+        FactImport {
+            entities,
+            typed: Some(TypedClaim {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                object,
+            }),
+            ..fact(id, frame, from, None)
+        }
+    }
+
+    fn at(value: &str) -> TypedObject {
+        TypedObject::Value {
+            value: value.to_string(),
+        }
+    }
+
+    fn holds(entity: &str) -> TypedObject {
+        TypedObject::Entity {
+            id: entity.to_string(),
+        }
+    }
+
+    fn exclusive_rule(id: &str, predicate: &str, per: ExclusiveKey) -> NarrativeRule {
+        NarrativeRule {
+            id: id.to_string(),
+            predicate: predicate.to_string(),
+            spec: NarrativeRuleSpec::Exclusive { per },
+        }
+    }
+
+    fn transition_rule(id: &str, predicate: &str, allowed: &[(&str, &str)]) -> NarrativeRule {
+        NarrativeRule {
+            id: id.to_string(),
+            predicate: predicate.to_string(),
+            spec: NarrativeRuleSpec::Transition {
+                allowed: allowed
+                    .iter()
+                    .map(|(a, b)| [a.to_string(), b.to_string()])
+                    .collect(),
+            },
+        }
+    }
+
+    /// A correctly chained location arc — including an A→B→A revisit shape —
+    /// is green under the exclusive rule (R441 probe 1).
+    #[test]
+    fn rule_exclusive_chained_arc_is_green() {
+        let mut l2 = typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("ship"));
+        l2.supersedes_in_frame = Some("l1".to_string());
+        let mut l3 = typed_fact("l3", "gt", "ch-3", "dracula", "at-location", at("castle"));
+        l3.supersedes_in_frame = Some("l2".to_string());
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            l2,
+            l3,
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        assert_eq!(report.rules, 1);
+    }
+
+    /// A location fact that forgot the succession chain co-holds with the
+    /// still-open predecessor — caught (R441 probe 2). The forgotten chain
+    /// becomes a caught overlap: the authoring convention is now a checked
+    /// invariant.
+    #[test]
+    fn rule_exclusive_catches_forgotten_location_chain() {
+        let mut l2 = typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("england"));
+        l2.supersedes_in_frame = Some("l1".to_string());
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            l2,
+            // No chain: l2 `england` is still open at ch-3.
+            typed_fact("bad", "gt", "ch-3", "dracula", "at-location", at("whitby")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, fact_a, fact_b, branch, .. }
+                    if rule == "loc" && fact_a == "bad" && fact_b == "l2"
+                        && branch == MAIN_BRANCH
+            )),
+            "{:?}",
+            report.violations
+        );
+    }
+
+    /// per:subject skips pairs whose OBJECTS agree — a restated location is
+    /// one value said twice, not two values (R443 symmetric skip, leg 1).
+    #[test]
+    fn rule_exclusive_per_subject_skips_restated_value() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            typed_fact("dup", "gt", "ch-2", "dracula", "at-location", at("castle")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+    }
+
+    /// per:object catches two holders of one object co-holding (R441 probe
+    /// 4 — conservation/custody).
+    #[test]
+    fn rule_exclusive_per_object_catches_double_custody() {
+        let mut c2 = typed_fact("c2", "gt", "ch-2", "mina", "holds", holds("journal"));
+        c2.supersedes_in_frame = Some("c1".to_string());
+        let store = store_with(vec![
+            typed_fact("c1", "gt", "ch-1", "jonathan", "holds", holds("journal")),
+            c2,
+            // Second holder, no chain: c2 `mina holds` is open from ch-2.
+            typed_fact("bad", "gt", "ch-3", "seward", "holds", holds("journal")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("custody", "holds", ExclusiveKey::Object)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "custody"
+            )),
+            "{:?}",
+            report.violations
+        );
+    }
+
+    /// per:object skips pairs whose SUBJECTS agree — a restated holder is
+    /// one holder said twice, not two holders (R443 symmetric skip, leg 2;
+    /// the pre-review probe had this direction missing and false-positived
+    /// a restated custody fact). The restatement's extent is closed before
+    /// the custody transfer — an open extent here would be a GENUINE
+    /// two-holder conflict with the later holder (the R443 fixture lesson).
+    #[test]
+    fn rule_exclusive_per_object_skips_restated_holder() {
+        let mut dup = typed_fact("dup", "gt", "ch-2", "jonathan", "holds", holds("journal"));
+        dup.canon_to = Some("ch-2".to_string());
+        let mut c2 = typed_fact("c2", "gt", "ch-3", "mina", "holds", holds("journal"));
+        c2.supersedes_in_frame = Some("c1".to_string());
+        let store = store_with(vec![
+            typed_fact("c1", "gt", "ch-1", "jonathan", "holds", holds("journal")),
+            dup,
+            c2,
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("custody", "holds", ExclusiveKey::Object)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+    }
+
+    /// Cross-frame same-key pairs are data, never gated (R441 probe 5 —
+    /// frames are never cross-validated; the North-Star sentence carries
+    /// into the rule class unchanged).
+    #[test]
+    fn rule_exclusive_cross_frame_pair_is_data() {
+        let store = store_with(vec![
+            typed_fact("gt", "gt", "ch-1", "dracula", "at-location", at("england")),
+            typed_fact(
+                "belief",
+                "jonathan",
+                "ch-1",
+                "dracula",
+                "at-location",
+                at("castle"),
+            ),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+    }
+
+    /// A transition outside the allowed set, riding the succession edge —
+    /// caught at the exact offending pair (R441 probe 3).
+    #[test]
+    fn rule_transition_catches_disallowed_step() {
+        let mut s2 = typed_fact("s2", "gt", "ch-2", "lucy", "life-status", at("dead"));
+        s2.supersedes_in_frame = Some("s1".to_string());
+        let mut bad = typed_fact("bad", "gt", "ch-3", "lucy", "life-status", at("alive"));
+        bad.supersedes_in_frame = Some("s2".to_string());
+        let store = store_with(vec![
+            typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
+            s2,
+            bad,
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "life",
+            "life-status",
+            &[("alive", "dead"), ("dead", "undead")],
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
+        match &report.violations[0] {
+            ContinuityViolation::RuleTransitionInvalid {
+                rule,
+                predecessor,
+                successor,
+                from,
+                to,
+                ..
+            } => {
+                assert_eq!(rule, "life");
+                assert_eq!(predecessor, "s2");
+                assert_eq!(successor, "bad");
+                assert_eq!(from, "dead");
+                assert_eq!(to, "alive");
+            }
+            v => panic!("wrong violation: {v:?}"),
+        }
+        // The correctly chained leg is NOT in the unchained count; the
+        // transitively related pairs (s1,bad) etc. are (the rule cannot
+        // see them — direct adjacency only).
+        assert_eq!(report.unchained_state_pairs, 1);
+    }
+
+    /// Fork world (R441 probe 6): a what-if branch keeps its own state
+    /// without colliding with main's post-fork facts, and the unchained
+    /// honesty count is WORLD-scoped — the inherited-vs-fork pair (s1 on
+    /// main, w1 on the fork) is visible together ONLY in the fork world;
+    /// raw branch equality would silently miss it (the probe finding).
+    #[test]
+    fn rule_fork_world_scoping_and_unchained_count() {
+        let mut w1 = typed_fact("w1", "gt", "ch-2", "lucy", "life-status", at("alive"));
+        w1.branch = Some("lucy-lives".to_string());
+        let store = store_with_forks(
+            vec![
+                typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
+                // Main continues without the fork: lucy dies at ch-2.
+                {
+                    let mut s2 = typed_fact("s2", "gt", "ch-2", "lucy", "life-status", at("dead"));
+                    s2.supersedes_in_frame = Some("s1".to_string());
+                    s2
+                },
+                w1,
+            ],
+            &[("lucy-lives", MAIN_BRANCH, "ch-1")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule("life", "life-status", &[("alive", "dead")])];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        // No violation: w1 has no succession edge (fork-vs-main is never a
+        // transition), and main's own chain is allowed.
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        // Exactly the (s1, w1) pair surfaces: same frame + subject, both
+        // visible only in the lucy-lives world, not chained. (s2, w1)
+        // never co-occur in any world; (s1, s2) is chained.
+        assert_eq!(report.unchained_state_pairs, 1);
+    }
+
+    /// Sibling forks never share a world: each world-line's state facts are
+    /// data to the other (B-2 carried into the rule class).
+    #[test]
+    fn rule_exclusive_sibling_worlds_are_data() {
+        let mut a = typed_fact("on-a", "gt", "ch-2", "kara", "at-location", at("highway"));
+        a.branch = Some("w-a".to_string());
+        let mut b = typed_fact("on-b", "gt", "ch-2", "kara", "at-location", at("motel"));
+        b.branch = Some("w-b".to_string());
+        let store = store_with_forks(
+            vec![a, b],
+            &[("w-a", MAIN_BRANCH, "ch-1"), ("w-b", MAIN_BRANCH, "ch-1")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+    }
+
+    /// An exclusive candidate pair the declared order cannot compare is
+    /// surfaced as a count, never gated (B-1).
+    #[test]
+    fn rule_unordered_pair_surfaced_not_gated() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("england")),
+        ]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &CanonOrder::empty(), &rules).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        assert_eq!(report.rule_unordered_pairs, 1);
+    }
+
+    /// A rule naming an unregistered predicate fails LOUD at the scan
+    /// boundary — a typo'd predicate must not silently escape its rule
+    /// (the R436 write-side-typo lesson applied to the read side).
+    #[test]
+    fn rule_unknown_predicate_fails_loud() {
+        let store = store_with(vec![typed_fact(
+            "l1",
+            "gt",
+            "ch-1",
+            "dracula",
+            "at-location",
+            at("castle"),
+        )]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-locaton", ExclusiveKey::Subject)];
+        let err = scan_continuity(&store, &order, &rules).unwrap_err();
+        assert!(err.contains("at-locaton"), "{err}");
+        assert!(err.contains("predicate registry"), "{err}");
+    }
+
+    /// Loader contract: parse + file-shape validation + the sha256 pin
+    /// (R428 authority-input rule shared with the canon order).
+    #[test]
+    fn rules_loader_validates_shape_and_pin() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        // Happy path: both classes, extra fields ignored (lenient).
+        let ok = write(
+            "ok.json",
+            r#"{"rules":[
+                {"id":"loc","class":"exclusive","predicate":"at-location","per":"subject"},
+                {"id":"life","class":"transition","predicate":"life-status",
+                 "allowed":[["alive","dead"]],"note":"extra ignored"}
+            ],"version":"narrative-rules/v1"}"#,
+        );
+        let file = load_narrative_rules(&ok, None).unwrap();
+        assert_eq!(file.rules.len(), 2);
+        // Pin mismatch fails loud and names the config key.
+        let err = load_narrative_rules(&ok, Some(&"0".repeat(64))).unwrap_err();
+        assert!(err.contains("rules_sha256"), "{err}");
+        // Matching pin passes.
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut h = Sha256::new();
+            h.update(std::fs::read(&ok).unwrap());
+            h.finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        };
+        assert!(load_narrative_rules(&ok, Some(&hash)).is_ok());
+        // Duplicate rule ids reject (ids name findings).
+        let dup = write(
+            "dup.json",
+            r#"{"rules":[
+                {"id":"r","class":"exclusive","predicate":"p","per":"subject"},
+                {"id":"r","class":"transition","predicate":"q","allowed":[]}
+            ]}"#,
+        );
+        let err = load_narrative_rules(&dup, None).unwrap_err();
+        assert!(err.contains("duplicate rule id"), "{err}");
+        // Blank id / blank predicate / blank transition leg reject.
+        let blank_id = write(
+            "blank-id.json",
+            r#"{"rules":[{"id":" ","class":"exclusive","predicate":"p","per":"subject"}]}"#,
+        );
+        assert!(load_narrative_rules(&blank_id, None)
+            .unwrap_err()
+            .contains("blank rule id"));
+        let blank_pred = write(
+            "blank-pred.json",
+            r#"{"rules":[{"id":"r","class":"exclusive","predicate":"","per":"subject"}]}"#,
+        );
+        assert!(load_narrative_rules(&blank_pred, None)
+            .unwrap_err()
+            .contains("blank predicate"));
+        let blank_leg = write(
+            "blank-leg.json",
+            r#"{"rules":[{"id":"r","class":"transition","predicate":"p","allowed":[["a",""]]}]}"#,
+        );
+        assert!(load_narrative_rules(&blank_leg, None)
+            .unwrap_err()
+            .contains("blank leg"));
+        // An unknown class tag is a parse error (serde-tagged, fail-loud).
+        let bad_class = write(
+            "bad-class.json",
+            r#"{"rules":[{"id":"r","class":"implication","predicate":"p"}]}"#,
+        );
+        assert!(load_narrative_rules(&bad_class, None)
+            .unwrap_err()
+            .contains("parse"));
+        // An unknown `per` leg is a parse error too.
+        let bad_per = write(
+            "bad-per.json",
+            r#"{"rules":[{"id":"r","class":"exclusive","predicate":"p","per":"verb"}]}"#,
+        );
+        assert!(load_narrative_rules(&bad_per, None)
+            .unwrap_err()
+            .contains("parse"));
+    }
+
+    /// The rule gate and the frame view read the SAME holds_at: a fact the
+    /// view shows as holding at T is exactly a fact the exclusive rule can
+    /// see co-holding at T (the third-reader contract — no drift possible).
+    #[test]
+    fn rule_gate_and_view_agree_on_co_holding() {
+        let mut l2 = typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("england"));
+        l2.supersedes_in_frame = Some("l1".to_string());
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            l2,
+            typed_fact("bad", "gt", "ch-3", "dracula", "at-location", at("whitby")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        let at_point = report
+            .violations
+            .iter()
+            .find_map(|v| match v {
+                ContinuityViolation::RuleExclusiveOverlap { at, .. } => Some(at.clone()),
+                _ => None,
+            })
+            .expect("overlap expected");
+        let view = frame_view(&store, &order, "gt", MAIN_BRANCH, None, &at_point).unwrap();
+        let held: BTreeSet<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
+        assert!(held.contains("l2") && held.contains("bad"), "{held:?}");
     }
 }

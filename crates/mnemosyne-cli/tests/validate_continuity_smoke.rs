@@ -168,3 +168,130 @@ fn undeclared_order_surfaces_unordered_never_gates() {
     assert_eq!(v["violation_count"], 0);
     assert_eq!(v["unordered_pairs"], 1);
 }
+
+/// Round 449 — narrative-rules workspace: typed location facts with a
+/// forgotten succession chain, an exclusive rule declared via
+/// `[continuity].rules_path`.
+fn write_rules_workspace(workspace: &Path, continuity_table: &str) {
+    fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
+    fs::write(
+        workspace.join("mnemosyne.toml"),
+        format!("[workspace]\n{continuity_table}"),
+    )
+    .unwrap();
+    let atomic = serde_json::json!({
+        "schema_version": 19,
+        "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entities": { "dracula": { "kind": "character" } },
+        "predicates": { "at-location": { "object_kind": "scalar" } },
+        "narrative_facts": {
+            "l1": {
+                "frame": "gt",
+                "entities": ["dracula"],
+                "claim": "Dracula is at the castle",
+                "canon_from": "ch-1",
+                "evidence": ["ch-1"],
+                "typed": { "subject": "dracula", "predicate": "at-location",
+                           "object": { "kind": "value", "value": "castle" } }
+            },
+            "bad": {
+                "frame": "gt",
+                "entities": ["dracula"],
+                "claim": "Dracula is at Whitby",
+                "canon_from": "ch-2",
+                "evidence": ["ch-2"],
+                "typed": { "subject": "dracula", "predicate": "at-location",
+                           "object": { "kind": "value", "value": "whitby" } }
+            }
+        }
+    });
+    fs::write(
+        workspace.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]] }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("narrative-rules.json"),
+        serde_json::json!({
+            "schema": "narrative-rules/v1",
+            "rules": [
+                { "id": "loc", "class": "exclusive",
+                  "predicate": "at-location", "per": "subject" }
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn declared_rules_gate_exclusive_overlap_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_rules_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    );
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(!out.status.success(), "rule violation must gate: {out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["rules"], 1);
+    assert_eq!(v["violation_count"], 1);
+    assert_eq!(v["violations"][0]["kind"], "rule_exclusive_overlap");
+    assert_eq!(v["violations"][0]["rule"], "loc");
+    assert_eq!(v["violations"][0]["fact_a"], "bad");
+    assert_eq!(v["violations"][0]["fact_b"], "l1");
+    // No rules declared (table without rules_path) = pre-R449 behavior.
+    write_rules_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\n",
+    );
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(out.status.success(), "{out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["rules"], 0);
+    // --rules override picks the file up without config.
+    let out = run(
+        tmp.path(),
+        &["validate-continuity", "--rules", "narrative-rules.json"],
+    );
+    assert!(!out.status.success(), "override must gate: {out:?}");
+}
+
+#[test]
+fn rules_pin_mismatch_fails_loud_and_override_bypasses() {
+    let tmp = TempDir::new().unwrap();
+    write_rules_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n\
+         rules_sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
+    );
+    let out = run(tmp.path(), &["validate-continuity"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("narrative-rules sha256 mismatch"),
+        "{stderr}"
+    );
+    // --rules bypasses the pin (the R428 --catalog rule); the violation
+    // itself still gates.
+    let out = run(
+        tmp.path(),
+        &[
+            "validate-continuity",
+            "--rules",
+            "narrative-rules.json",
+            "--json",
+        ],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["violations"][0]["kind"], "rule_exclusive_overlap");
+}

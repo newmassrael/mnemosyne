@@ -189,6 +189,29 @@ fn resolve_canon_order_file(
     }
 }
 
+/// Resolve the declared narrative-rules FILE from a [`ContinuityPolicy`]
+/// (Round 449, the canon-order resolution mirrored): explicit override
+/// (bypasses the sha256 pin — the pin claims nothing about a different
+/// file, the R428 `--catalog` rule) > `[continuity].rules_path` (+ optional
+/// pin) > empty rule set (no rules authored = the recorded-edge gate
+/// alone).
+fn resolve_narrative_rules(
+    policy: &ContinuityPolicy,
+    rules_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::NarrativeRulesFile, OpError> {
+    use mnemosyne_validate::continuity::{load_narrative_rules, NarrativeRulesFile};
+    let cont = policy.continuity.as_ref();
+    match (rules_override, cont.and_then(|c| c.rules_path.as_ref())) {
+        (Some(p), _) => load_narrative_rules(&policy.root.join(p), None).map_err(OpError::Other),
+        (None, Some(p)) => load_narrative_rules(
+            &policy.root.join(p),
+            cont.and_then(|c| c.rules_sha256.as_deref()),
+        )
+        .map_err(OpError::Other),
+        (None, None) => Ok(NarrativeRulesFile::default()),
+    }
+}
+
 /// Compose the declaration with the store's fork ancestry into the
 /// queryable order (Round 438) — one construction path for both reads.
 fn compose_canon_order(
@@ -212,27 +235,37 @@ pub struct ContinuityScanReport {
     pub conflict_pairs_checked: usize,
     pub cross_scope_pairs: usize,
     pub unordered_pairs: usize,
+    /// Declared narrative rules evaluated (Round 449; 0 = no rules file).
+    pub rules: usize,
+    /// Exclusive-rule candidate pairs the declared order cannot compare.
+    pub rule_unordered_pairs: usize,
+    /// Same-frame same-subject typed pairs no succession edge chains —
+    /// surfaced, never gated (Round 449).
+    pub unchained_state_pairs: usize,
     pub violation_count: usize,
     pub violations: Vec<mnemosyne_validate::continuity::ContinuityViolation>,
 }
 
 /// Run the frame-scoped continuity scan (Round 431 gate, read-only half)
-/// over the workspace store with the shared order/severity resolution.
+/// over the workspace store with the shared order/severity/rules
+/// resolution (rules = Round 449).
 pub fn continuity_scan(
     workspace_root: &Path,
     sidecar: Option<&Path>,
     order_override: Option<&str>,
+    rules_override: Option<&str>,
 ) -> Result<ContinuityScanReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
+    let rules = resolve_narrative_rules(&policy, rules_override)?;
     let severity = policy
         .continuity
         .as_ref()
         .map(|c| c.severity.as_str().to_string());
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    let report =
-        mnemosyne_validate::continuity::scan_continuity(&store, &order).map_err(OpError::Other)?;
+    let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
+        .map_err(OpError::Other)?;
     Ok(ContinuityScanReport {
         severity,
         facts: report.facts,
@@ -240,6 +273,9 @@ pub fn continuity_scan(
         conflict_pairs_checked: report.conflict_pairs_checked,
         cross_scope_pairs: report.cross_scope_pairs,
         unordered_pairs: report.unordered_pairs,
+        rules: report.rules,
+        rule_unordered_pairs: report.rule_unordered_pairs,
+        unchained_state_pairs: report.unchained_state_pairs,
         violation_count: report.violations.len(),
         violations: report.violations,
     })
