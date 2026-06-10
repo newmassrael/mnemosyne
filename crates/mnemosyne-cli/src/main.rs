@@ -1975,13 +1975,13 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Round 442 — setup/payoff coverage (`report-payoff-coverage`): per query
-/// world, every setup (`payoff_expectation = expected`) classified paid /
-/// dangling against the world-visible payoff edges; unmarked facts are
-/// exempt. Pure read projection — dangling is the author's todo list,
-/// deliberately never gated (a WIP story has dangling setups by
-/// definition). Order and store resolve through the shared ops path.
-fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
+/// Shared `--json` / `--order` / `--sidecar` parse + workspace-anchor
+/// resolution for the per-world narrative report verbs (Round 456 — the
+/// second identical copy triggered the extraction; `validate-continuity`
+/// keeps its richer parser).
+fn parse_narrative_report_args(
+    args: &[String],
+) -> Result<(bool, Option<String>, Option<String>, std::path::PathBuf)> {
     let mut json = false;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
@@ -2012,6 +2012,17 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(|| loaded.workspace_root.clone());
+    Ok((json, order_override, sidecar_override, anchor))
+}
+
+/// Round 442 — setup/payoff coverage (`report-payoff-coverage`): per query
+/// world, every setup (`payoff_expectation = expected`) classified paid /
+/// dangling against the world-visible payoff edges; unmarked facts are
+/// exempt. Pure read projection — dangling is the author's todo list,
+/// deliberately never gated (a WIP story has dangling setups by
+/// definition). Order and store resolve through the shared ops path.
+fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
+    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
     let report = mnemosyne_ops::payoff_coverage_report(
         &anchor,
         sidecar_override.as_deref().map(std::path::Path::new),
@@ -2074,40 +2085,12 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
 /// Round 455 — dramatic-irony intervals (`report-irony-intervals`, design
 /// sec 7.14): per query world, every recorded CROSS-FRAME conflict edge
 /// classified as a co-hold window (where both ends are simultaneously in
-/// effect under the one holds-semantics), windowless, or undecidable
-/// (B-1). Pure read projection — irony is craft signal, deliberately
-/// never gated. Order and store resolve through the shared ops path.
+/// effect under the one holds-semantics), windowless, unordered (Round
+/// 456), or undecidable (B-1). Pure read projection — irony is craft
+/// signal, deliberately never gated. Order and store resolve through the
+/// shared ops path.
 fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
-    let mut json = false;
-    let mut order_override: Option<String> = None;
-    let mut sidecar_override: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(a) = iter.next() {
-        match a.as_str() {
-            "--json" => json = true,
-            "--order" => {
-                order_override = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--order missing"))?
-                        .clone(),
-                )
-            }
-            "--sidecar" => {
-                sidecar_override = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let loaded = workspace_config()?;
-    let anchor = loaded
-        .config_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
     let report = mnemosyne_ops::irony_intervals_report(
         &anchor,
         sidecar_override.as_deref().map(std::path::Path::new),
@@ -2124,14 +2107,16 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
         for (world, irony) in &report.worlds {
             if irony.windows.is_empty()
                 && irony.windowless.is_empty()
+                && irony.unordered.is_empty()
                 && irony.undecidable.is_empty()
             {
                 continue;
             }
             println!(
-                "world `{world}`: windows={} windowless={} undecidable={}",
+                "world `{world}`: windows={} windowless={} unordered={} undecidable={}",
                 irony.windows.len(),
                 irony.windowless.len(),
+                irony.unordered.len(),
                 irony.undecidable.len()
             );
             for w in &irony.windows {
@@ -2153,6 +2138,12 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
             for e in &irony.windowless {
                 println!(
                     "  [windowless] {} vs {} (visible together, never co-hold)",
+                    e.fact_a, e.fact_b
+                );
+            }
+            for e in &irony.unordered {
+                println!(
+                    "  [unordered] {} vs {} (the declared order cannot compare the starts)",
                     e.fact_a, e.fact_b
                 );
             }

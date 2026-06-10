@@ -237,6 +237,17 @@ impl CanonOrder {
     pub fn declared_branches(&self) -> impl Iterator<Item = &str> {
         self.branch_reach.keys().map(String::as_str)
     }
+
+    /// `node` is a maximal node of `branch`'s declared composed order — a
+    /// world-line end: named by the governing declaration, no strict
+    /// descendant. Sections outside the declaration are isolated
+    /// coordinates, never maximal (Round 456 — order semantics live on
+    /// the order type, not in its readers).
+    pub fn is_maximal(&self, branch: &str, node: &str) -> bool {
+        self.reach_for(branch)
+            .get(node)
+            .is_some_and(BTreeSet::is_empty)
+    }
 }
 
 /// Authority-input pin check (R428 pattern), shared by the canon-order and
@@ -834,6 +845,22 @@ fn for_each_world_pair<'a>(
     }
 }
 
+/// In-frame succession index (predecessor id → superseding facts) — the
+/// [`WorldCtx::holds_at`] input every reader needs, built one way (Round
+/// 456 session review: the third hand-rolled copy triggered the
+/// extraction, per the R440/R452 two-copies rule).
+fn successors_index(
+    facts: &BTreeMap<String, NarrativeFact>,
+) -> BTreeMap<&str, Vec<&NarrativeFact>> {
+    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
+    for fact in facts.values() {
+        if let Some(t) = &fact.supersedes_in_frame {
+            successors.entry(t.as_str()).or_default().push(fact);
+        }
+    }
+    successors
+}
+
 /// Every transitive predecessor of `id` along the `supersedes_in_frame`
 /// chain (each fact carries at most one backward pointer, so this is a
 /// single upward walk). Cycle-guarded: the write path rejects succession
@@ -889,12 +916,7 @@ pub fn scan_continuity(
         }
     }
     let facts = &store.narrative_facts;
-    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
-    for fact in facts.values() {
-        if let Some(t) = &fact.supersedes_in_frame {
-            successors.entry(t.as_str()).or_default().push(fact);
-        }
-    }
+    let successors = successors_index(facts);
     // Lineage per potential query world (every registered branch + main).
     let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
     lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
@@ -1283,12 +1305,7 @@ pub fn frame_view(
         ));
     }
     let facts = &store.narrative_facts;
-    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
-    for fact in facts.values() {
-        if let Some(t) = &fact.supersedes_in_frame {
-            successors.entry(t.as_str()).or_default().push(fact);
-        }
-    }
+    let successors = successors_index(facts);
     let lineage = lineage_of(&store.branches, branch)?;
     let ctx = WorldCtx {
         world: branch,
@@ -1598,15 +1615,21 @@ pub struct IronyWindow {
 }
 
 /// Per-world irony classification (Round 455). `windowless` = both
-/// endpoints visible here but never co-holding (the belief never overlaps
-/// the truth in this world — data, e.g. a belief corrected before the
-/// truth lands); `undecidable` = an endpoint with `Unknown` visibility
-/// (B-1, never classified). An edge with an `Out` endpoint is not this
-/// world's business and reports where it IS visible.
+/// endpoints visible here, comparable starts, never co-holding (the
+/// belief genuinely never overlaps the truth in this world — data, e.g. a
+/// belief corrected before the truth lands); `unordered` = no co-hold AND
+/// the declared order cannot compare the starts (Round 456 — the gate's
+/// `unordered_pairs` idiom mirrored: an incomparable pair is *undeclared*,
+/// not resolved, and calling it windowless would overstate — under a
+/// richer order declaration it may be a window); `undecidable` = an
+/// endpoint with `Unknown` visibility (B-1, never classified). An edge
+/// with an `Out` endpoint is not this world's business and reports where
+/// it IS visible.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct WorldIrony {
     pub windows: Vec<IronyWindow>,
     pub windowless: Vec<IronyEdgeRef>,
+    pub unordered: Vec<IronyEdgeRef>,
     pub undecidable: Vec<IronyEdgeRef>,
 }
 
@@ -1631,21 +1654,17 @@ pub struct IronyIntervalsReport {
 /// visibility), every recorded cross-frame conflict edge with both
 /// endpoints visible classifies as a window (the co-hold node set under
 /// [`WorldCtx::holds_at`] — its 4th reader, no interval algebra of its
-/// own) or as windowless. Missing conflict targets are the scan's
-/// finding (`ConflictTargetMissing`), not the report's — mirrored from
-/// the payoff-coverage precedent.
+/// own), windowless, or unordered (incomparable starts — Round 456).
+/// Missing conflict targets are the scan's finding
+/// (`ConflictTargetMissing`), not the report's — mirrored from the
+/// payoff-coverage precedent.
 pub fn irony_intervals(
     store: &AtomicStore,
     order: &CanonOrder,
 ) -> Result<IronyIntervalsReport, String> {
     check_store_boundary(store, order)?;
     let facts = &store.narrative_facts;
-    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
-    for fact in facts.values() {
-        if let Some(t) = &fact.supersedes_in_frame {
-            successors.entry(t.as_str()).or_default().push(fact);
-        }
-    }
+    let successors = successors_index(facts);
     // Distinct recorded pairs with existing endpoints, id-ordered (the
     // gate's pair key), split by frame locus.
     let mut cross: BTreeSet<(&str, &str)> = BTreeSet::new();
@@ -1705,7 +1724,14 @@ pub fn irony_intervals(
                 .cloned()
                 .collect();
             if nodes.is_empty() {
-                out.windowless.push(edge);
+                // The gate's idiom (Round 456): incomparable starts mean
+                // the declaration cannot order the pair — surfaced as
+                // unordered, never asserted resolved.
+                if order.comparable(&world, &a.canon_from, &b.canon_from) {
+                    out.windowless.push(edge);
+                } else {
+                    out.unordered.push(edge);
+                }
                 continue;
             }
             let starts: Vec<String> = nodes
@@ -1713,14 +1739,7 @@ pub fn irony_intervals(
                 .filter(|n| !nodes.iter().any(|m| m != *n && order.le(&world, m, n)))
                 .cloned()
                 .collect();
-            // Maximal nodes of the world's declared composed order: named
-            // by the declaration governing this world, no strict
-            // descendant. Sections outside the declaration never count —
-            // they are isolated coordinates, not world-line ends.
-            let reach = order.reach_for(&world);
-            let open = nodes
-                .iter()
-                .any(|n| reach.get(n).is_some_and(BTreeSet::is_empty));
+            let open = nodes.iter().any(|n| order.is_maximal(&world, n));
             out.windows.push(IronyWindow {
                 fact_a: (*aid).to_string(),
                 fact_b: (*bid).to_string(),
@@ -3493,7 +3512,10 @@ mod tests {
         assert_eq!(report.worlds["w1"].windows.len(), 1, "inherited window");
         let w2 = &report.worlds["w2"];
         assert!(
-            w2.windows.is_empty() && w2.windowless.is_empty() && w2.undecidable.is_empty(),
+            w2.windows.is_empty()
+                && w2.windowless.is_empty()
+                && w2.unordered.is_empty()
+                && w2.undecidable.is_empty(),
             "pre-fork sibling sees neither endpoint"
         );
     }
@@ -3514,12 +3536,32 @@ mod tests {
         belief.conflicts_with = vec!["ft".to_string()];
         let store = store_with_forks(vec![belief, truth], &[("w1", MAIN_BRANCH, "ch-2")]);
         let report = irony_intervals(&store, &order).unwrap();
-        // main: both In, parallel chains never co-hold -> windowless.
-        assert_eq!(report.worlds[MAIN_BRANCH].windowless.len(), 1);
+        // main: both In, but the parallel-chain starts are incomparable —
+        // UNORDERED, not windowless (Round 456: the declaration cannot
+        // order the pair; asserting "never overlaps" would overstate).
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.unordered.len(), 1);
+        assert!(main.windowless.is_empty());
         // w1: the belief's k-1 start is incomparable with the ch-2 cut.
         let w1 = &report.worlds["w1"];
         assert_eq!(w1.undecidable.len(), 1);
         assert_eq!(w1.undecidable[0].fact_a, "fb");
         assert!(w1.windows.is_empty() && w1.windowless.is_empty());
+    }
+
+    /// Sections outside the declared order are isolated coordinates, not
+    /// world-line ends: a window held only there must not report open
+    /// (Round 456 — pins the `CanonOrder::is_maximal` boundary).
+    #[test]
+    fn irony_window_on_isolated_section_is_not_open() {
+        // ch-4 exists as a section but the order declares only ch-1..ch-3.
+        let truth = fact("ft", "gt", "ch-4", None);
+        let mut belief = fact("fb", "daniel", "ch-4", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let store = store_with(vec![belief, truth]);
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3"])).unwrap();
+        let w = &report.worlds[MAIN_BRANCH].windows[0];
+        assert_eq!(w.nodes, ["ch-4"]);
+        assert!(!w.open, "an isolated coordinate is not a world-line end");
     }
 }
