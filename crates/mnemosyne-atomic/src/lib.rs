@@ -37,7 +37,7 @@ pub use redact::*;
 
 use mnemosyne_core::{
     strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus, Entity, Frame,
-    InventoryStatus, NarrativeFact,
+    InventoryStatus, NarrativeFact, PayoffExpectation,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -1104,7 +1104,7 @@ pub enum AtomicStoreError {
 // NEVER auto-refreshed — `scan_continuity` surfaces a stale pin as
 // `ConflictEdgeStale`, and re-affirmation = amending the edge-owning fact
 // (its outbound judgments restamp as the amender's fresh assertions).
-const CURRENT_SCHEMA_VERSION: u32 = 17;
+const CURRENT_SCHEMA_VERSION: u32 = 18;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3420,6 +3420,15 @@ pub struct FactImport {
     pub conflicts_with: Vec<String>,
     #[serde(default)]
     pub supersedes_in_frame: Option<String>,
+    /// Setup marking (Round 442): the canonical lowercase
+    /// [`PayoffExpectation`] tag (`expected`); omitted = `unmarked`.
+    /// Unknown tags reject (fail-loud, no silent default).
+    #[serde(default)]
+    pub payoff_expectation: Option<String>,
+    /// Setup fact ids this fact pays off (Round 442). Identity refs,
+    /// unpinned (the R439 pin covers claim-text judgments only).
+    #[serde(default)]
+    pub pays_off: Vec<String>,
     #[serde(default)]
     pub quote: Option<String>,
 }
@@ -3461,10 +3470,13 @@ pub struct FactsManifest {
 /// - `canon_from` / `canon_to` / every `evidence` ref must name an existing
 ///   section (canon coordinates ARE structure refs, design sec 7.3/7.5);
 /// - `evidence` >= 1 (a claim without provenance is unauditable);
-/// - no self-reference in `conflicts_with` / `supersedes_in_frame`;
+/// - no self-reference in `conflicts_with` / `supersedes_in_frame` /
+///   `pays_off`, no duplicate `pays_off` refs, `payoff_expectation` tag
+///   must parse (Round 442);
 /// - `quote_sha256` computed here, never caller-supplied.
 ///
-/// Cross-FACT refs (`conflicts_with` / `supersedes_in_frame` targets) are
+/// Cross-FACT refs (`conflicts_with` / `supersedes_in_frame` / `pays_off`
+/// targets) are
 /// validated by the caller against its own visibility set — store ∪ manifest
 /// for `import_facts` (forward refs within one manifest are legal), store
 /// for `add_fact`.
@@ -3605,6 +3617,31 @@ fn build_candidate_fact(
         }
         Some(s) => Some(s.to_string()),
     };
+    let payoff_expectation = match entry.payoff_expectation.as_deref().map(str::trim) {
+        None => PayoffExpectation::default(),
+        Some(tag) => PayoffExpectation::from_tag(tag).ok_or_else(|| {
+            format!(
+                "fact `{fact_id}`: unknown payoff_expectation `{tag}` \
+                 (expected one of: unmarked, expected)"
+            )
+        })?,
+    };
+    let mut pays_off = Vec::with_capacity(entry.pays_off.len());
+    for t in &entry.pays_off {
+        let t = t.trim();
+        if t.is_empty() {
+            return Err(format!("fact `{fact_id}`: blank pays_off ref"));
+        }
+        if t == fact_id {
+            return Err(format!(
+                "fact `{fact_id}`: pays_off itself — a payoff resolves an earlier setup"
+            ));
+        }
+        if pays_off.iter().any(|x| x == t) {
+            return Err(format!("fact `{fact_id}`: duplicate pays_off ref `{t}`"));
+        }
+        pays_off.push(t.to_string());
+    }
     let (quote, quote_sha256) = match entry.quote.as_deref().map(str::trim) {
         None => (None, None),
         Some("") => {
@@ -3626,6 +3663,8 @@ fn build_candidate_fact(
             evidence,
             conflicts_with,
             supersedes_in_frame,
+            payoff_expectation,
+            pays_off,
             quote,
             quote_sha256,
         },
@@ -3636,7 +3675,9 @@ fn build_candidate_fact(
 /// visibility set (the caller's store ∪ manifest view). Conflict targets
 /// must exist, and each assertion is STAMPED with the target's current
 /// claim sha256 (Round 439 — judgment-time content pin, computed here and
-/// never caller-supplied). `supersedes_in_frame` additionally enforces SAME
+/// never caller-supplied). `pays_off` targets must exist but stay
+/// UNPINNED (Round 442 — like succession they relate fact identities,
+/// not wordings). `supersedes_in_frame` additionally enforces SAME
 /// scope — `(frame, branch)`: cross-frame disagreement is data, never
 /// succession (design sec 7.3). Cross-branch succession is world-line data
 /// EXCEPT along the fork lineage (Round 438): a forked world may supersede
@@ -3657,6 +3698,16 @@ fn validate_and_stamp_fact_refs(
             ));
         };
         c.target_claim_sha256 = sha256_hex(target.claim.as_bytes());
+    }
+    for target in &fact.pays_off {
+        if !visible.contains_key(target) {
+            return Err(format!(
+                "fact `{fact_id}`: pays_off `{target}` not present \
+                 (a payoff resolves an existing setup; fail-loud). Identity ref, \
+                 deliberately unpinned — like succession it relates fact \
+                 identities, not wordings"
+            ));
+        }
     }
     if let Some(target) = &fact.supersedes_in_frame {
         match visible.get(target) {
@@ -4189,6 +4240,9 @@ fn inbound_fact_refs<'a>(
         }
         if other.supersedes_in_frame.as_deref() == Some(fact_id) {
             refs.push((other_id, other, "supersedes_in_frame"));
+        }
+        if other.pays_off.iter().any(|t| t == fact_id) {
+            refs.push((other_id, other, "pays_off"));
         }
     }
     refs
@@ -7633,6 +7687,8 @@ mod tests {
             evidence: vec!["ch-1".to_string()],
             conflicts_with: vec![],
             supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
             quote: None,
         }
     }
@@ -7904,6 +7960,42 @@ mod tests {
                     ..sample_fact("p9", "gt")
                 },
             ),
+            // Round 442 — setup/payoff field invariants, same parity set.
+            (
+                "self pays_off",
+                FactImport {
+                    pays_off: vec!["p10".to_string()],
+                    ..sample_fact("p10", "gt")
+                },
+            ),
+            (
+                "blank pays_off ref",
+                FactImport {
+                    pays_off: vec!["  ".to_string()],
+                    ..sample_fact("p11", "gt")
+                },
+            ),
+            (
+                "duplicate pays_off ref",
+                FactImport {
+                    pays_off: vec!["x".to_string(), "x".to_string()],
+                    ..sample_fact("p12", "gt")
+                },
+            ),
+            (
+                "missing pays_off target",
+                FactImport {
+                    pays_off: vec!["never-written".to_string()],
+                    ..sample_fact("p13", "gt")
+                },
+            ),
+            (
+                "unknown payoff_expectation tag",
+                FactImport {
+                    payoff_expectation: Some("chekhov".to_string()),
+                    ..sample_fact("p14", "gt")
+                },
+            ),
         ];
         for (label, entry) in cases {
             let tmp = TempDir::new().unwrap();
@@ -7932,6 +8024,57 @@ mod tests {
                 "write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
             );
         }
+    }
+
+    /// Round 442 — setup/payoff fields: tag parses through the shared
+    /// builder, the edge round-trips, the unmarked default never serializes
+    /// (pre-payoff stores stay byte-stable), and an inbound `pays_off` ref
+    /// blocks retraction exactly like conflict/succession refs.
+    #[test]
+    fn fact_payoff_fields_roundtrip_and_block_retract() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                payoff_expectation: Some("expected".to_string()),
+                ..sample_fact("setup-1", "gt")
+            },
+        )
+        .unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                pays_off: vec!["setup-1".to_string()],
+                ..sample_fact("payoff-1", "gt")
+            },
+        )
+        .unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.narrative_facts["setup-1"].payoff_expectation,
+            PayoffExpectation::Expected
+        );
+        assert_eq!(
+            reloaded.narrative_facts["payoff-1"].pays_off,
+            vec!["setup-1".to_string()]
+        );
+        // The unmarked default stays off the wire (byte-stability).
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("unmarked"));
+        // Inbound pays_off ref blocks retraction (referential fail-loud).
+        let err = retract_fact(&mut store, &path, "setup-1", "test").unwrap_err();
+        assert!(
+            err.to_string().contains("pays_off"),
+            "retract must name the payoff referrer: {err}"
+        );
+        retract_fact(&mut store, &path, "payoff-1", "test").unwrap();
+        retract_fact(&mut store, &path, "setup-1", "test").unwrap();
     }
 
     /// Round 433 — world-line branch axis: omitted branch = MAIN_BRANCH, the

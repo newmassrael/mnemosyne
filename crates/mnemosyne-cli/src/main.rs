@@ -297,6 +297,8 @@ fn run(args: &[String]) -> Result<()> {
         // Round 432 — frame-at-T read projection (Phase 1A Round C).
         "report-frame-view" => cmd_report_frame_view(&args[2..]),
         "report-entity" => cmd_report_entity(&args[2..]),
+        // Round 442 — setup/payoff coverage (read projection, never gated).
+        "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -380,7 +382,7 @@ fn print_help(prog: &str) {
         prog
     );
     println!("   bulk narrative frames + facts (Round 430): manifest = {{frames:[{{frame_id,description?}}],");
-    println!("   facts:[{{fact_id,frame,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,quote?}}]}};");
+    println!("   facts:[{{fact_id,frame,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,quote?}}]}};");
     println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied");
     println!(
         " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
@@ -398,7 +400,11 @@ fn print_help(prog: &str) {
         " {} report-entity --entity <id> [--sidecar <path>] [--json]",
         prog
     );
-    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(
+        " {} report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
         " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
         prog
@@ -1927,6 +1933,90 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
                 "  [{}{}] {} (frame {} / branch {}): {}",
                 f.canon_from, to, f.fact_id, f.frame, f.branch, f.claim
             );
+        }
+    }
+    Ok(())
+}
+
+/// Round 442 — setup/payoff coverage (`report-payoff-coverage`): per query
+/// world, every setup (`payoff_expectation = expected`) classified paid /
+/// dangling against the world-visible payoff edges; unmarked facts are
+/// exempt. Pure read projection — dangling is the author's todo list,
+/// deliberately never gated (a WIP story has dangling setups by
+/// definition). Order and store resolve through the shared ops path.
+fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut order_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::payoff_coverage_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== payoff coverage — {} fact(s), {} setup(s) ===",
+            report.facts, report.setups_total
+        );
+        for (world, cov) in &report.worlds {
+            println!(
+                "world `{world}`: paid={} dangling={} exempt={} unknown={}",
+                cov.paid.len(),
+                cov.dangling.len(),
+                cov.exempt,
+                cov.unknown.len()
+            );
+            for p in &cov.paid {
+                println!("  [paid] {} <- {}", p.setup, p.payoffs.join(", "));
+            }
+            for d in &cov.dangling {
+                println!("  [DANGLING] {d}");
+            }
+            for e in &cov.payoffs_to_unmarked {
+                println!(
+                    "  [payoff->unmarked] {} -> {} (forgotten setup marking?)",
+                    e.payoff, e.setup
+                );
+            }
+            for e in &cov.payoff_before_setup {
+                println!(
+                    "  [payoff-before-setup] {} precedes {} (surfaced, never gated)",
+                    e.payoff, e.setup
+                );
+            }
+            for u in &cov.unknown {
+                println!("  [unknown under declared order] {u}");
+            }
         }
     }
     Ok(())

@@ -542,6 +542,8 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             evidence: vec![],
             conflicts_with: vec![],
             supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
             quote: None,
         },
         sidecar: None,
@@ -617,6 +619,17 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .ok_or_else(|| anyhow!("--quote missing"))?
                         .clone(),
                 )
+            }
+            "--payoff-expectation" => {
+                out.entry.payoff_expectation = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--payoff-expectation missing"))?
+                        .clone(),
+                )
+            }
+            "--pays-off" => {
+                out.entry.pays_off =
+                    csv(iter.next().ok_or_else(|| anyhow!("--pays-off missing"))?)
             }
             "--entities" => {
                 out.entry.entities =

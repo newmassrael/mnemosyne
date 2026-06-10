@@ -153,6 +153,49 @@ pub struct Entity {
     pub description: String,
 }
 
+/// Whether a fact is a narrative SETUP expecting a later payoff (Round 442
+/// — the narrative mirror of the spec side's [`crate::CoverageExpectation`]
+/// axis: a declared expectation plus a read-only coverage classification).
+/// `Unmarked` is the default and means the author has not marked the fact —
+/// absence of marking is *unrecorded*, never an assertion that the fact is
+/// not a setup (the sparse-frame ethos applied to the discourse axis).
+/// `Expected` is Chekhov's gun: a payoff should become visible in every
+/// world-line where the setup is visible; until then the setup is DANGLING
+/// — a report finding (the author's todo list), deliberately never a gate
+/// reject (a WIP story has dangling setups by definition).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PayoffExpectation {
+    #[default]
+    Unmarked,
+    Expected,
+}
+
+impl PayoffExpectation {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PayoffExpectation::Unmarked => "unmarked",
+            PayoffExpectation::Expected => "expected",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a
+    /// value. `None` for any other string. Mirrors
+    /// [`crate::CoverageExpectation::from_tag`].
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "unmarked" => Some(PayoffExpectation::Unmarked),
+            "expected" => Some(PayoffExpectation::Expected),
+            _ => None,
+        }
+    }
+}
+
+fn payoff_unmarked(p: &PayoffExpectation) -> bool {
+    *p == PayoffExpectation::Unmarked
+}
+
 /// One multi-axis narrative fact: a claim held within exactly one epistemic
 /// frame over a canon-time extent, evidenced by structure sections.
 ///
@@ -215,6 +258,23 @@ pub struct NarrativeFact {
     /// mutate primitive). The mechanism for time-indexed belief change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes_in_frame: Option<String>,
+    /// Setup marking (Round 442). `Expected` declares this fact a setup
+    /// whose payoff coverage the read-side report classifies per world;
+    /// the default `Unmarked` serializes to nothing (pre-payoff stores
+    /// stay byte-stable).
+    #[serde(default, skip_serializing_if = "payoff_unmarked")]
+    pub payoff_expectation: PayoffExpectation,
+    /// Setup fact ids this fact PAYS OFF (Round 442) — the backward
+    /// pointer shape of `supersedes_in_frame` (the setup is written first
+    /// and never touched when paid; append-only by genre). A discourse-
+    /// structure relation, so it crosses frames and follows world-line
+    /// visibility like any fact. Identity refs, deliberately UNPINNED:
+    /// like succession they relate fact identities, not wordings (the
+    /// Round 439 pin covers judgments about claim text only). Targets
+    /// must exist (fail-loud at the mutate primitive; the scan re-checks
+    /// out-of-band edits).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pays_off: Vec<String>,
     /// Optional verbatim quote backing the claim (a derived cache of medium
     /// content, EPUB-SSOT symmetric).
     #[serde(default, skip_serializing_if = "Option::is_none")]

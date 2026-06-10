@@ -311,6 +311,11 @@ pub enum ContinuityViolation {
     },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
+    /// `pays_off` names a fact that no longer exists (Round 442; out-of-band
+    /// edit — the write path rejects this, the scan re-checks, fail-loud).
+    /// An evaluable data finding like the conflict/succession variants, not
+    /// a store-corruption `Err` (the Round 440 boundary doctrine).
+    PayoffTargetMissing { fact_id: String, target: String },
 }
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
@@ -639,6 +644,20 @@ pub fn scan_continuity(
             }
         }
     }
+    // Payoff edge integrity (Round 442): identity refs re-checked against
+    // out-of-band edits, exactly like conflict/succession targets.
+    for (aid, a) in facts {
+        for target in &a.pays_off {
+            if !facts.contains_key(target) {
+                report
+                    .violations
+                    .push(ContinuityViolation::PayoffTargetMissing {
+                        fact_id: aid.clone(),
+                        target: target.clone(),
+                    });
+            }
+        }
+    }
     // Distinct recorded conflict pairs (edges are read symmetrically).
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
     for (aid, a) in facts {
@@ -871,6 +890,139 @@ pub fn frame_view(
     Ok(view)
 }
 
+/// One payoff edge reference surfaced by the coverage report (Round 442).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PayoffEdgeRef {
+    pub payoff: String,
+    pub setup: String,
+}
+
+/// One paid setup with the in-world payoffs that credit it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PaidSetup {
+    pub setup: String,
+    pub payoffs: Vec<String>,
+}
+
+/// Per-world payoff coverage (Round 442) — the R390 3-way classification
+/// on the discourse axis: a visible setup with a visible payoff is `paid`,
+/// without one it is `dangling` (the author's todo list — a report
+/// finding, deliberately never a gate reject: a WIP story has dangling
+/// setups by definition), and unmarked facts are `exempt` (counted, not
+/// listed). Honesty counts ride along: `payoffs_to_unmarked` (a payoff
+/// aimed at a fact nobody marked as a setup — often a forgotten marking),
+/// `payoff_before_setup` (legal mystery/flashback structure, surfaced
+/// never gated), and `unknown` (world visibility undecidable under the
+/// declared order — B-1, mirroring the frame view).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorldPayoffCoverage {
+    pub paid: Vec<PaidSetup>,
+    pub dangling: Vec<String>,
+    pub exempt: usize,
+    pub payoffs_to_unmarked: Vec<PayoffEdgeRef>,
+    pub payoff_before_setup: Vec<PayoffEdgeRef>,
+    pub unknown: Vec<String>,
+}
+
+/// Setup/payoff coverage over every query world (Round 442). Pure read
+/// projection — severity/gating policy deliberately does not exist for
+/// dangling setups.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PayoffCoverageReport {
+    pub worlds: BTreeMap<String, WorldPayoffCoverage>,
+    pub facts: usize,
+    /// Distinct facts marked `expected`, store-wide (before world scoping).
+    pub setups_total: usize,
+}
+
+/// Classify setup/payoff coverage per world (Round 442). WORLD-scoped via
+/// the shared [`visibility`] semantics — an inherited setup dangles on a
+/// fork until that world-line itself pays it (each playthrough resolves
+/// its own guns; forking early surfaces all the narrative debt the new
+/// world inherits), and a fork's payoff never credits the ancestor's
+/// world. Payoff edges cross FRAMES freely (setup/payoff is a
+/// discourse-structure relation, not an epistemic judgment) but never
+/// cross worlds (an edge whose other end is not visible here is inert in
+/// this world's classification). Facts with undecidable visibility are
+/// surfaced as `unknown`, never classified (B-1).
+pub fn payoff_coverage(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<PayoffCoverageReport, String> {
+    check_store_boundary(store, order)?;
+    let facts = &store.narrative_facts;
+    let mut report = PayoffCoverageReport {
+        facts: facts.len(),
+        setups_total: facts
+            .values()
+            .filter(|f| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
+            .count(),
+        ..Default::default()
+    };
+    let mut worlds: Vec<String> = vec![mnemosyne_core::MAIN_BRANCH.to_string()];
+    worlds.extend(store.branches.keys().cloned());
+    for world in worlds {
+        let lineage = lineage_of(&store.branches, &world)?;
+        let mut visible: BTreeMap<&str, &NarrativeFact> = BTreeMap::new();
+        let mut unknown: Vec<String> = Vec::new();
+        for (id, fact) in facts {
+            match visibility(&world, &lineage, order, fact) {
+                Vis::In => {
+                    visible.insert(id.as_str(), fact);
+                }
+                Vis::Unknown => unknown.push(id.clone()),
+                Vis::Out => {}
+            }
+        }
+        let mut cov = WorldPayoffCoverage {
+            unknown,
+            ..Default::default()
+        };
+        // In-world payoff index: setup id -> crediting payoff ids. Edges
+        // whose target is not visible here are inert (cross-world edge),
+        // except the honesty counts below.
+        let mut paid_by: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for (pid, p) in &visible {
+            for target in &p.pays_off {
+                let Some(t) = visible.get(target.as_str()) else {
+                    continue;
+                };
+                paid_by
+                    .entry(target.as_str())
+                    .or_default()
+                    .push((*pid).to_string());
+                if t.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
+                    cov.payoffs_to_unmarked.push(PayoffEdgeRef {
+                        payoff: (*pid).to_string(),
+                        setup: target.clone(),
+                    });
+                }
+                if p.canon_from != t.canon_from && order.le(&world, &p.canon_from, &t.canon_from) {
+                    cov.payoff_before_setup.push(PayoffEdgeRef {
+                        payoff: (*pid).to_string(),
+                        setup: target.clone(),
+                    });
+                }
+            }
+        }
+        for (id, fact) in &visible {
+            if fact.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
+                cov.exempt += 1;
+                continue;
+            }
+            match paid_by.get(id) {
+                Some(payoffs) => cov.paid.push(PaidSetup {
+                    setup: (*id).to_string(),
+                    payoffs: payoffs.clone(),
+                }),
+                None => cov.dangling.push((*id).to_string()),
+            }
+        }
+        report.worlds.insert(world, cov);
+    }
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -897,6 +1049,8 @@ mod tests {
             evidence: vec![from.to_string()],
             conflicts_with: vec![],
             supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
             quote: None,
         }
     }
@@ -1622,5 +1776,142 @@ mod tests {
         let view = frame_view(&store, &order, frame, branch, None, at).unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains(&fact_a.as_str()) && held.contains(&fact_b.as_str()));
+    }
+
+    // ========================================================================
+    // Setup/payoff coverage (Round 442).
+    // ========================================================================
+
+    fn setup_fact(id: &str, frame: &str, from: &str) -> FactImport {
+        FactImport {
+            payoff_expectation: Some("expected".to_string()),
+            ..fact(id, frame, from, None)
+        }
+    }
+
+    fn payoff_fact(id: &str, frame: &str, from: &str, pays: &[&str]) -> FactImport {
+        FactImport {
+            pays_off: pays.iter().map(|s| s.to_string()).collect(),
+            ..fact(id, frame, from, None)
+        }
+    }
+
+    /// The 3-way classification on real shapes: paid (multi-payoff,
+    /// cross-frame), dangling, exempt; plus the honesty counts
+    /// (payoff to an unmarked fact, payoff before its setup).
+    #[test]
+    fn payoff_coverage_classifies_paid_dangling_exempt() {
+        let mut paid_twice = payoff_fact("p-b", "gt", "ch-3", &["su-multi"]);
+        paid_twice.frame = "gt".to_string();
+        let store = store_with(vec![
+            setup_fact("su-multi", "seward", "ch-1"), // cross-frame payoffs
+            payoff_fact("p-a", "gt", "ch-2", &["su-multi"]),
+            paid_twice,
+            setup_fact("su-dangling", "gt", "ch-2"),
+            fact("world-state", "gt", "ch-1", None), // exempt
+            payoff_fact("p-unmarked", "gt", "ch-3", &["world-state"]),
+            payoff_fact("p-early", "gt", "ch-1", &["su-late"]),
+            setup_fact("su-late", "gt", "ch-3"),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(report.setups_total, 3);
+        let main = &report.worlds[MAIN_BRANCH];
+        let paid: Vec<&str> = main.paid.iter().map(|p| p.setup.as_str()).collect();
+        assert_eq!(paid, vec!["su-late", "su-multi"], "{main:?}");
+        assert_eq!(
+            main.paid
+                .iter()
+                .find(|p| p.setup == "su-multi")
+                .unwrap()
+                .payoffs,
+            vec!["p-a".to_string(), "p-b".to_string()],
+            "multi-payoff credits every in-world payoff"
+        );
+        assert_eq!(main.dangling, vec!["su-dangling".to_string()]);
+        assert_eq!(main.exempt, 5, "unmarked facts counted, never listed");
+        assert_eq!(
+            main.payoffs_to_unmarked,
+            vec![PayoffEdgeRef {
+                payoff: "p-unmarked".to_string(),
+                setup: "world-state".to_string(),
+            }]
+        );
+        assert_eq!(
+            main.payoff_before_setup,
+            vec![PayoffEdgeRef {
+                payoff: "p-early".to_string(),
+                setup: "su-late".to_string(),
+            }],
+            "mystery structure surfaced, never gated — su-late still classifies paid"
+        );
+    }
+
+    /// World scoping (the probe's central finding): a fork inherits the
+    /// pre-fork setup but NOT main's post-fork payoff — the inherited setup
+    /// dangles on the fork until that world pays it; the fork's payoff
+    /// never credits main's world.
+    #[test]
+    fn payoff_coverage_is_world_scoped_across_forks() {
+        let store = store_with_forks(
+            vec![
+                setup_fact("su", "gt", "ch-1"),
+                payoff_fact("p-main", "gt", "ch-3", &["su"]),
+            ],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(
+            report.worlds[MAIN_BRANCH].paid[0].setup, "su",
+            "main pays its own gun"
+        );
+        assert_eq!(
+            report.worlds["route"].dangling,
+            vec!["su".to_string()],
+            "inherited setup dangles on the fork — each playthrough resolves its own guns"
+        );
+        // Paying it ON the fork flips the fork world only.
+        let store = store_with_forks(
+            vec![
+                setup_fact("su", "gt", "ch-1"),
+                payoff_fact("p-main", "gt", "ch-3", &["su"]),
+                {
+                    let mut p = branch_fact("p-route", "gt", "route", "ch-3");
+                    p.pays_off = vec!["su".to_string()];
+                    p
+                },
+            ],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let report = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(report.worlds["route"].paid[0].payoffs, vec!["p-route"]);
+        assert_eq!(
+            report.worlds[MAIN_BRANCH].paid[0].payoffs,
+            vec!["p-main"],
+            "the fork's payoff never leaks back into main's classification"
+        );
+    }
+
+    /// Out-of-band pays_off target removal = scan violation (the
+    /// conflict/succession symmetry), not a store-corruption Err.
+    #[test]
+    fn scan_recheck_surfaces_missing_payoff_target() {
+        let mut store = store_with(vec![
+            setup_fact("su", "gt", "ch-1"),
+            payoff_fact("p", "gt", "ch-2", &["su"]),
+        ]);
+        store.narrative_facts.remove("su");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::PayoffTargetMissing { fact_id, target }
+                    if fact_id == "p" && target == "su"
+            )),
+            "{:?}",
+            report.violations
+        );
     }
 }

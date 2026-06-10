@@ -358,6 +358,14 @@ pub struct AddFactArgs {
     /// Entity refs (each must be registered — `add_entity` first).
     #[serde(default)]
     pub entities: Vec<String>,
+    /// Setup marking: `expected` declares this fact a setup whose payoff
+    /// coverage `report_payoff_coverage` classifies. Omit for `unmarked`.
+    #[serde(default)]
+    pub payoff_expectation: Option<String>,
+    /// Setup fact ids this fact pays off (existing facts; unpinned
+    /// identity refs).
+    #[serde(default)]
+    pub pays_off: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -405,6 +413,13 @@ pub struct ReportFrameViewArgs {
     pub entity: Option<String>,
     /// Canon point (structure-section id).
     pub at: String,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportPayoffCoverageArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -688,6 +703,8 @@ fn fact_import_from(a: &AddFactArgs) -> atomic::FactImport {
         evidence: a.evidence.clone(),
         conflicts_with: a.conflicts_with.clone(),
         supersedes_in_frame: a.supersedes_in_frame.clone(),
+        payoff_expectation: a.payoff_expectation.clone(),
+        pays_off: a.pays_off.clone(),
         quote: a.quote.clone(),
         entities: a.entities.clone(),
     }
@@ -1285,6 +1302,19 @@ impl MnemosyneServer {
             args.0.order_path.as_deref(),
         ) {
             Ok(view) => self.tool_json(&view),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Setup/payoff coverage (R442, read-only): per query world, every setup fact (payoff_expectation=expected) classified paid/dangling against world-visible pays_off edges; unmarked facts exempt. Dangling = the author's todo list, never gated. Honesty counts: payoffs_to_unmarked, payoff_before_setup, unknown."
+    )]
+    async fn report_payoff_coverage(
+        &self,
+        args: Parameters<ReportPayoffCoverageArgs>,
+    ) -> CallToolResult {
+        match ops::payoff_coverage_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
     }

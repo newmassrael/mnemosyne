@@ -290,6 +290,22 @@ pub fn continuity_frame_view(
     })
 }
 
+/// Run the setup/payoff coverage classification (Round 442) over the
+/// workspace store with the shared order resolution — pure read projection,
+/// per query world (main + every registered branch). Dangling setups are a
+/// report finding (the author's todo list), deliberately never gated.
+pub fn payoff_coverage_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::PayoffCoverageReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)
+}
+
 /// One fact row in an entity dossier (Round 437) — raw authoring-time view
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).
