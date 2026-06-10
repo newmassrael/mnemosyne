@@ -283,6 +283,92 @@ pub struct AddConfirmationEventArgs {
     pub test_sha256: Vec<String>,
 }
 
+// Round 435 — narrative authoring MCP arg structs (design sec 7.10 pull 3:
+// an authoring AI's interface is MCP, the R127 mutate-gate).
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddFrameArgs {
+    /// Frame id — the registry key every fact's `frame` must reference.
+    pub frame_id: String,
+    /// Optional free-form description (whose epistemic frame this is).
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddFactArgs {
+    pub fact_id: String,
+    /// Epistemic frame id (must already be registered — `add_frame` first).
+    pub frame: String,
+    /// World-line branch. Omit for the default branch (`main`).
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// The claim, per-claim granularity (one atomic assertion).
+    pub claim: String,
+    /// Structure-section id where the claim starts holding.
+    pub canon_from: String,
+    /// Explicit canon end for a belief that ends WITHOUT a successor.
+    #[serde(default)]
+    pub canon_to: Option<String>,
+    /// Evidencing structure-section ids (>= 1).
+    pub evidence: Vec<String>,
+    /// Recorded conflict assertions (existing fact ids).
+    #[serde(default)]
+    pub conflicts_with: Vec<String>,
+    /// In-frame predecessor this claim replaces (same frame + branch).
+    #[serde(default)]
+    pub supersedes_in_frame: Option<String>,
+    /// Optional verbatim quote (sha256 stamped by the primitive).
+    #[serde(default)]
+    pub quote: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AmendFactArgs {
+    /// The revised fact content (same shape as `add_fact`; `fact_id` names
+    /// the existing fact to revise — the id never changes).
+    #[serde(flatten)]
+    pub fact: AddFactArgs,
+    /// Mandatory rationale (audit safeguard).
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RetractFactArgs {
+    pub fact_id: String,
+    /// Mandatory rationale (audit safeguard).
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddFactConflictArgs {
+    pub fact_id: String,
+    pub conflicts_with: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ValidateContinuityArgs {
+    /// Canon-order declaration path override (workspace-relative; bypasses
+    /// the configured sha256 pin — the R428 rule). Omit to use
+    /// `[continuity].canon_order_path`.
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportFrameViewArgs {
+    /// Epistemic frame to project.
+    pub frame: String,
+    /// World-line branch. Omit for the default branch (`main`).
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// Canon point (structure-section id).
+    pub at: String,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -545,6 +631,24 @@ fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, St
 fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
     raw.parse::<InventoryStatus>()
         .map_err(|e| format!("status {}", e))
+}
+
+/// Map the MCP fact-shaped args onto the atomic `FactImport` (Round 435).
+/// All invariants live in the shared `build_candidate_fact` path — this is
+/// pure shape translation.
+fn fact_import_from(a: &AddFactArgs) -> atomic::FactImport {
+    atomic::FactImport {
+        fact_id: a.fact_id.clone(),
+        frame: a.frame.clone(),
+        branch: a.branch.clone(),
+        claim: a.claim.clone(),
+        canon_from: a.canon_from.clone(),
+        canon_to: a.canon_to.clone(),
+        evidence: a.evidence.clone(),
+        conflicts_with: a.conflicts_with.clone(),
+        supersedes_in_frame: a.supersedes_in_frame.clone(),
+        quote: a.quote.clone(),
+    }
 }
 
 #[tool_router]
@@ -1011,6 +1115,94 @@ impl MnemosyneServer {
             atomic::append_confirmation_event(store, path, event)
         });
         self.finish_mutate(outcome)
+    }
+
+    // ── Round 435 — narrative authoring verbs (design sec 7.10 pull 3) ──
+
+    #[tool(
+        description = "Register one epistemic frame (R430) — the axis a narrative fact's `frame` must reference. Idempotent on a byte-identical description; a divergent description rejects (no silent overwrite)."
+    )]
+    async fn add_frame(&self, args: Parameters<AddFrameArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_frame(store, path, &a.frame_id, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
+    )]
+    async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
+        let entry = fact_import_from(&args.0);
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_fact(store, path, &entry)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Record one conflict assertion edge between two existing facts (R430). Contradiction is a recorded semantic judgment, never derived from claim text; the continuity gate evaluates it (frame, branch)-scoped — cross-scope edges are data, never gated."
+    )]
+    async fn add_fact_conflict(&self, args: Parameters<AddFactConflictArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_fact_conflict(store, path, &a.fact_id, &a.conflicts_with)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Authorial in-place revision of an existing fact, keeping its id (R434, axis-4 correction: a typo or wrong coordinate; in-world belief change is supersedes_in_frame instead). Same invariants as add_fact; inbound successors must stay same-(frame, branch). Mandatory reason."
+    )]
+    async fn amend_fact(&self, args: Parameters<AmendFactArgs>) -> CallToolResult {
+        let entry = fact_import_from(&args.0.fact);
+        let reason = args.0.reason.clone();
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::amend_fact(store, path, &entry, &reason)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Authorial retract of an unreferenced fact (R434). Any inbound conflict edge / succession pointer blocks it fail-loud with the referrer list; the retraction's transaction-time audit is the git history of the log. Mandatory reason."
+    )]
+    async fn retract_fact(&self, args: Parameters<RetractFactArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::retract_fact(store, path, &a.fact_id, &a.reason)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Frame-scoped continuity scan (R431, read-only): same-(frame, branch) conflicting pairs whose derived canon extents co-hold are violations; cross-scope pairs are data. Returns the JSON report (configured severity, counts, violations); gating policy belongs to the caller."
+    )]
+    async fn validate_continuity(
+        &self,
+        args: Parameters<ValidateContinuityArgs>,
+    ) -> CallToolResult {
+        match ops::continuity_scan(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Frame-at-T read projection (R432): the facts frame F holds on branch B at canon point T, over the SAME holds-semantics as the continuity gate. Three-state honest under the declared partial order: holding / not_holding count / unknown (the declaration cannot decide). Call before writing the next scene to load the in-effect beliefs."
+    )]
+    async fn report_frame_view(&self, args: Parameters<ReportFrameViewArgs>) -> CallToolResult {
+        match ops::continuity_frame_view(
+            &self.workspace,
+            None,
+            &args.0.frame,
+            args.0.branch.as_deref(),
+            &args.0.at,
+            args.0.order_path.as_deref(),
+        ) {
+            Ok(view) => self.tool_json(&view),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(

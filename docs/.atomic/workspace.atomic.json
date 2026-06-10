@@ -7771,6 +7771,48 @@
         "amend keeps the id; renaming a fact id remains retract + re-add (two transactions) - a rename primitive is consumer-pull if id churn materializes",
         "bi-temporal split stays log-history-based (R330): no valid_time/transaction_time columns until the FR-5.1 consumer (game medium) pulls them"
       ]
+    },
+    "Round 435 — MCP narrative verb mirror: the authoring loop is MCP-served (AI-authoring pull 3)": {
+      "decision_summary": "Pull 3 of the sec 7.10 build order, completing the gate set that round's verdict named: the narrative verbs reach MCP, the interface an authoring AI actually holds (R127 mutate-gate; the R430-R434 primitives were CLI-only, which the 7.10 probe flagged as a hard gap). Five write tools (add_frame, add_fact, add_fact_conflict, amend_fact, retract_fact) are mechanical mirrors over the SAME in-process atomic primitives the CLI calls - no new invariants, no second write path (R305 discipline holds: MCP args translate shape-only into FactImport and every rule stays in build_candidate_fact). Two read tools (validate_continuity, report_frame_view) close the authoring loop: write the scene, declare the facts, query the frame's in-effect beliefs for the next scene, gate continuity. Their order/severity resolution was extracted into mnemosyne-ops as the single shared chain (the R319 charter and the workspace_entry_id_prefix precedent) - the CLI's two duplicated resolution blocks collapse onto it, and the report types gain Serialize so both wires emit one byte-compatible JSON contract instead of two hand-built ones.",
+      "changes_bullets": [
+        "7 MCP tools in mnemosyne-mcp (roster 38 -> 45): add_frame / add_fact / add_fact_conflict / amend_fact / retract_fact (writes via run_atomic_mutate, the same in-process primitives as the CLI - zero new invariants) + validate_continuity / report_frame_view (reads)",
+        "shared read orchestration extracted to mnemosyne-ops (R319 charter): continuity_scan + continuity_frame_view + private resolve_canon_order (override > [continuity].canon_order_path + sha256 pin > equality-only; override bypasses the pin per the R428 rule) - ONE resolution chain for CLI and MCP, replacing the two duplicated match blocks in main.rs",
+        "ContinuityViolation/ContinuityReport/FrameView/FrameViewEntry gain Serialize (violation enum serde-tagged kind/snake_case, byte-compatible with the hand-built CLI json); CLI validate-continuity / report-frame-view now serialize the shared ops envelopes (ContinuityScanReport / FrameViewReport) instead of hand-assembling json",
+        "amend_fact MCP args flatten the add_fact shape + reason (one fact shape, two verbs); fact_import_from = pure shape translation, all invariants stay in build_candidate_fact"
+      ],
+      "verification_bullets": [
+        "live stdio handshake: tools/list returns 45 tools including all 7 narrative verbs; tools/call validate_continuity returns the JSON envelope (severity null / facts 0 on the dogfood store - gate opt-in, scan reported)",
+        "existing validate_continuity + report_frame_view CLI smoke suites pass unchanged against the serde-serialized envelopes - the json contract survived the refactor byte-compatibly (kind tags, field names, holding_count)",
+        "full workspace suite green (761 tests, 0 failed), clippy --all-targets clean, fmt clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "import_facts deliberately NOT mirrored to MCP: a bulk manifest is a file-shaped CLI/adapter workflow (the A2 pattern); the incremental authoring loop needs single-fact verbs - mirror it only if an MCP consumer demonstrates the pull",
+        "sec 7.10 pulls 1-3 now COMPLETE: the AI-authoring loop (write scene -> declare facts -> query frame context -> gate) is fully MCP-served; remaining gaps 4 (entity model) and 5 (LLM conflict-discovery adapter) stay scale/consumer-gated",
+        "installed-binary skew: reinstall mnemosyne-mcp + mnemosyne-cli after this round (schema v13 + new verbs)"
+      ],
+      "publishable_decision_summary": "Pull 3 of the sec 7.10 build order, completing the gate set that round's verdict named: the narrative verbs reach MCP, the interface an authoring AI actually holds (R127 mutate-gate; the R430-R434 primitives were CLI-only, which the 7.10 probe flagged as a hard gap). Five write tools (add_frame, add_fact, add_fact_conflict, amend_fact, retract_fact) are mechanical mirrors over the SAME in-process atomic primitives the CLI calls - no new invariants, no second write path (R305 discipline holds: MCP args translate shape-only into FactImport and every rule stays in build_candidate_fact). Two read tools (validate_continuity, report_frame_view) close the authoring loop: write the scene, declare the facts, query the frame's in-effect beliefs for the next scene, gate continuity. Their order/severity resolution was extracted into mnemosyne-ops as the single shared chain (the R319 charter and the workspace_entry_id_prefix precedent) - the CLI's two duplicated resolution blocks collapse onto it, and the report types gain Serialize so both wires emit one byte-compatible JSON contract instead of two hand-built ones.",
+      "publishable_changes_bullets": [
+        "7 MCP tools in mnemosyne-mcp (roster 38 -> 45): add_frame / add_fact / add_fact_conflict / amend_fact / retract_fact (writes via run_atomic_mutate, the same in-process primitives as the CLI - zero new invariants) + validate_continuity / report_frame_view (reads)",
+        "shared read orchestration extracted to mnemosyne-ops (R319 charter): continuity_scan + continuity_frame_view + private resolve_canon_order (override > [continuity].canon_order_path + sha256 pin > equality-only; override bypasses the pin per the R428 rule) - ONE resolution chain for CLI and MCP, replacing the two duplicated match blocks in main.rs",
+        "ContinuityViolation/ContinuityReport/FrameView/FrameViewEntry gain Serialize (violation enum serde-tagged kind/snake_case, byte-compatible with the hand-built CLI json); CLI validate-continuity / report-frame-view now serialize the shared ops envelopes (ContinuityScanReport / FrameViewReport) instead of hand-assembling json",
+        "amend_fact MCP args flatten the add_fact shape + reason (one fact shape, two verbs); fact_import_from = pure shape translation, all invariants stay in build_candidate_fact"
+      ],
+      "publishable_verification_bullets": [
+        "live stdio handshake: tools/list returns 45 tools including all 7 narrative verbs; tools/call validate_continuity returns the JSON envelope (severity null / facts 0 on the dogfood store - gate opt-in, scan reported)",
+        "existing validate_continuity + report_frame_view CLI smoke suites pass unchanged against the serde-serialized envelopes - the json contract survived the refactor byte-compatibly (kind tags, field names, holding_count)",
+        "full workspace suite green (761 tests, 0 failed), clippy --all-targets clean, fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "import_facts deliberately NOT mirrored to MCP: a bulk manifest is a file-shaped CLI/adapter workflow (the A2 pattern); the incremental authoring loop needs single-fact verbs - mirror it only if an MCP consumer demonstrates the pull",
+        "sec 7.10 pulls 1-3 now COMPLETE: the AI-authoring loop (write scene -> declare facts -> query frame context -> gate) is fully MCP-served; remaining gaps 4 (entity model) and 5 (LLM conflict-discovery adapter) stay scale/consumer-gated",
+        "installed-binary skew: reinstall mnemosyne-mcp + mnemosyne-cli after this round (schema v13 + new verbs)"
+      ]
     }
   },
   "inventory_entries": {},

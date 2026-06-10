@@ -141,6 +141,115 @@ pub fn load_atomic_store(
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
+/// Resolve the declared canon order with the precedence chain both wires
+/// share (Round 435; single-path rule, the `workspace_entry_id_prefix`
+/// precedent): explicit override (bypasses the sha256 pin — the pin claims
+/// nothing about a different file, the R428 `--catalog` rule) >
+/// `[continuity].canon_order_path` (+ optional pin) > equality-only.
+fn resolve_canon_order(
+    workspace_root: &Path,
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
+    use mnemosyne_validate::continuity::{load_canon_order, CanonOrder};
+    let loaded = mnemosyne_config::discover_config(workspace_root)?;
+    let (root, cont) = match loaded {
+        Some(l) => (l.workspace_root, l.config.continuity),
+        None => (workspace_root.to_path_buf(), None),
+    };
+    match (
+        order_override,
+        cont.as_ref().and_then(|c| c.canon_order_path.as_ref()),
+    ) {
+        (Some(p), _) => load_canon_order(&root.join(p), None).map_err(OpError::Other),
+        (None, Some(p)) => load_canon_order(
+            &root.join(p),
+            cont.as_ref().and_then(|c| c.canon_order_sha256.as_deref()),
+        )
+        .map_err(OpError::Other),
+        (None, None) => Ok(CanonOrder::empty()),
+    }
+}
+
+/// The continuity-scan envelope both wires emit (Round 435): the configured
+/// severity (None = `[continuity]` absent = gate disabled, scan still
+/// reported) plus the full frame-scoped report. Gating policy (exit code /
+/// MCP error) stays with the caller.
+#[derive(Debug, Clone, Serialize)]
+pub struct ContinuityScanReport {
+    pub severity: Option<String>,
+    pub facts: usize,
+    pub order_nodes: usize,
+    pub conflict_pairs_checked: usize,
+    pub cross_scope_pairs: usize,
+    pub unordered_pairs: usize,
+    pub violation_count: usize,
+    pub violations: Vec<mnemosyne_validate::continuity::ContinuityViolation>,
+}
+
+/// Run the frame-scoped continuity scan (Round 431 gate, read-only half)
+/// over the workspace store with the shared order/severity resolution.
+pub fn continuity_scan(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+) -> Result<ContinuityScanReport, OpError> {
+    let order = resolve_canon_order(workspace_root, order_override)?;
+    let severity = mnemosyne_config::discover_config(workspace_root)?
+        .and_then(|l| l.config.continuity.map(|c| c.severity.as_str().to_string()));
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let report =
+        mnemosyne_validate::continuity::scan_continuity(&store, &order).map_err(OpError::Other)?;
+    Ok(ContinuityScanReport {
+        severity,
+        facts: report.facts,
+        order_nodes: report.order_nodes,
+        conflict_pairs_checked: report.conflict_pairs_checked,
+        cross_scope_pairs: report.cross_scope_pairs,
+        unordered_pairs: report.unordered_pairs,
+        violation_count: report.violations.len(),
+        violations: report.violations,
+    })
+}
+
+/// The frame-view envelope both wires emit (Round 435). `holding_count`
+/// rides beside the full entries so a scanning consumer never counts.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrameViewReport {
+    pub frame: String,
+    pub branch: String,
+    pub at: String,
+    pub holding: Vec<mnemosyne_validate::continuity::FrameViewEntry>,
+    pub holding_count: usize,
+    pub not_holding: usize,
+    pub unknown: Vec<String>,
+}
+
+/// Run the frame-at-T projection (Round 432) over the workspace store with
+/// the shared order resolution. `branch` omitted = the default world-line.
+pub fn continuity_frame_view(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    frame: &str,
+    branch: Option<&str>,
+    at: &str,
+    order_override: Option<&str>,
+) -> Result<FrameViewReport, OpError> {
+    let order = resolve_canon_order(workspace_root, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
+    let view = mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, at)
+        .map_err(OpError::Other)?;
+    Ok(FrameViewReport {
+        frame: view.frame,
+        branch: view.branch,
+        at: view.at,
+        holding_count: view.holding.len(),
+        holding: view.holding,
+        not_holding: view.not_holding,
+        unknown: view.unknown,
+    })
+}
+
 /// Run the convenience-form redact_term primitive (R297). Mirrors
 /// `mnemosyne-cli redact-term` semantics but returns the structured
 /// report instead of printing it.

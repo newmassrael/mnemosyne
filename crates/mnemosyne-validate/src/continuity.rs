@@ -35,7 +35,7 @@ use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_core::NarrativeFact;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The `canon-order/v1` contract — consumer/medium-adapter generated
 /// (guardrail B-1: an explicit declaration, e.g. a chapter chain for a
@@ -208,7 +208,8 @@ pub fn load_canon_order(path: &Path, expected_sha256: Option<&str>) -> Result<Ca
 }
 
 /// One continuity violation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContinuityViolation {
     /// Same-scope conflicting claims co-hold at canon point `at`. Scope =
     /// `(frame, branch)` (Round 433).
@@ -252,7 +253,7 @@ pub enum ContinuityViolation {
 }
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ContinuityReport {
     pub violations: Vec<ContinuityViolation>,
     /// Distinct recorded conflict pairs evaluated.
@@ -438,7 +439,7 @@ pub fn scan_continuity(
 }
 
 /// One fact currently in effect in a frame view.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FrameViewEntry {
     pub fact_id: String,
     pub claim: String,
@@ -453,7 +454,7 @@ pub struct FrameViewEntry {
 /// (counted), or `unknown` — some canon coordinate involved is not
 /// comparable to the query point, so the declaration cannot decide. Scoped
 /// to one world-line (`branch`, Round 433) — a view never mixes branches.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct FrameView {
     pub frame: String,
     pub branch: String,
