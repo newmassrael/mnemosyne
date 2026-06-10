@@ -1544,7 +1544,15 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
     let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-    let gaps = mnemosyne_validate::confirmation::scan_confirmation_gate(&snapshot, &store, &root);
+    // R427 (SCE P3) — when a verifies catalog is configured, its live exact
+    // match is an authoritative confirmation branch.
+    let catalog = load_verifies_catalog_if_configured(&loaded.config, &root)?;
+    let gaps = mnemosyne_validate::confirmation::scan_confirmation_gate(
+        &snapshot,
+        &store,
+        &root,
+        catalog.as_ref(),
+    );
     let status_str = |s: ConfirmationStatus| match s {
         ConfirmationStatus::Proposed => "proposed",
         ConfirmationStatus::Confirmed => "confirmed",
@@ -1592,6 +1600,21 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// R427 — load the `[verifies_catalog]` catalog when configured; `None` when
+/// the table is absent (the catalog branch is opt-in). A CONFIGURED catalog
+/// that fails to load is an error (fail loud), not a silent skip.
+fn load_verifies_catalog_if_configured(
+    config: &mnemosyne_config::WorkspaceConfig,
+    root: &std::path::Path,
+) -> Result<Option<mnemosyne_validate::verifies_linkage::VerifiesCatalog>> {
+    match config.verifies_catalog.as_ref() {
+        None => Ok(None),
+        Some(c) => mnemosyne_validate::verifies_linkage::load_catalog(&root.join(&c.path))
+            .map(Some)
+            .map_err(|e| anyhow!("{}", e)),
+    }
 }
 
 /// R426 — authoritative test-catalog linkage check (SCE field-report P2 + the
@@ -2251,7 +2274,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // breeds complacency, so the gap stays visible by default.
     let unconfirmed_verifies_count = {
         let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-        mnemosyne_validate::confirmation::scan_confirmation_gate(&snapshot, &store, &root).len()
+        let catalog = load_verifies_catalog_if_configured(&loaded.config, &root)?;
+        mnemosyne_validate::confirmation::scan_confirmation_gate(
+            &snapshot,
+            &store,
+            &root,
+            catalog.as_ref(),
+        )
+        .len()
     };
     let inventory_missing_count = get("inventory_missing");
     let inventory_deprecated_count = get("inventory_deprecated");

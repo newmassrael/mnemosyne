@@ -147,6 +147,62 @@ fn write_workspace_drifted(ws: &Path) {
 }
 
 #[test]
+fn gate_passes_via_catalog_live_branch_and_refute_still_blocks() {
+    // R427 (SCE P3) — with [verifies_catalog] configured, an authoritative
+    // exact catalog match confirms the claim with ZERO confirmation events.
+    // An open refutation still blocks regardless (a refute outweighs).
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), false); // no confirmation events at all
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+         [verifies_catalog]\npath = \"verifies-catalog.json\"\n",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("verifies-catalog.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "entries": [ { "file": "t.h", "symbol": "f", "section_ids": ["sec"] } ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let out = run(
+        tmp.path(),
+        &["validate-confirmation", "--severity", "reject"],
+    );
+    assert!(
+        out.status.success(),
+        "catalog exact match confirms without events; stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // Now add an open refutation → blocks despite the catalog match.
+    let store_path = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    let mut store: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&store_path).unwrap()).unwrap();
+    store["confirmation_events"] = serde_json::json!({
+        "r1": {
+            "claim": claim(),
+            "confirmer": { "kind": "model", "id": "claude", "version": "1" },
+            "method": "semantic_review",
+            "authoring_run": "runA", "confirming_run": "runB",
+            "verdict": "refute", "rationale": "test does not exercise it",
+            "timestamp": "t"
+        }
+    });
+    fs::write(&store_path, serde_json::to_string_pretty(&store).unwrap()).unwrap();
+    let out = run(
+        tmp.path(),
+        &["validate-confirmation", "--severity", "reject"],
+    );
+    assert!(
+        !out.status.success(),
+        "an open refute blocks even with a catalog match"
+    );
+}
+
+#[test]
 fn gate_rejects_drifted_confirm() {
     let tmp = TempDir::new().unwrap();
     write_workspace_drifted(tmp.path());

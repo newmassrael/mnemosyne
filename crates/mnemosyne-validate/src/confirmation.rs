@@ -98,6 +98,7 @@ pub fn scan_confirmation_gate(
     snapshot: &AtomicSnapshot,
     store: &AtomicStore,
     workspace_root: &Path,
+    catalog: Option<&crate::verifies_linkage::VerifiesCatalog>,
 ) -> Vec<UnconfirmedBinding> {
     let status_of: HashMap<ConfirmationClaim, ConfirmationStatus> =
         confirmation_report_with(store, |e| !artifact_drifted(e, store, workspace_root))
@@ -131,6 +132,23 @@ pub fn scan_confirmation_gate(
                 .get(&claim)
                 .copied()
                 .unwrap_or(ConfirmationStatus::Proposed);
+            // R427 (SCE P3) — catalog-live branch: an authoritative
+            // deterministic exact match in the configured catalog confirms the
+            // claim, re-verified on EVERY run (stronger than any stored event:
+            // a snapshot can go stale, the live check cannot). An open
+            // refutation still blocks (a refute outweighs, design sec 8).
+            if status != ConfirmationStatus::Refuted {
+                if let Some(cat) = catalog {
+                    if crate::verifies_linkage::catalog_declares(
+                        cat,
+                        &b.file,
+                        b.symbol.as_deref(),
+                        section_id,
+                    ) {
+                        continue;
+                    }
+                }
+            }
             if status != ConfirmationStatus::Confirmed {
                 out.push(UnconfirmedBinding {
                     section_id: section_id.clone(),

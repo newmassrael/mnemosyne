@@ -90,6 +90,22 @@ pub fn load_catalog(path: &Path) -> Result<VerifiesCatalog, String> {
         .map_err(|e| format!("verifies-catalog parse {}: {}", path.display(), e))
 }
 
+/// Whether the catalog declares `section_id` as a target of `(file, symbol)` —
+/// EXACT match only (the R427 confirmed-rule catalog-live branch keys off
+/// this; a finer-than-declared binding does NOT confirm).
+pub fn catalog_declares(
+    catalog: &VerifiesCatalog,
+    file: &str,
+    symbol: Option<&str>,
+    section_id: &str,
+) -> bool {
+    catalog.entries.iter().any(|e| {
+        e.file == file
+            && e.symbol.as_deref() == symbol
+            && e.section_ids.iter().any(|s| s == section_id)
+    })
+}
+
 /// Validate every `verifies` binding against the catalog. A binding matches
 /// iff its section is EXACTLY one of the artifact's declared sections; a child
 /// of a declared section is `FinerThanDeclared` (the P5 granularity lint),

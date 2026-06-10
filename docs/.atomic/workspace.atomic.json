@@ -7429,6 +7429,42 @@
         "R427 confirmed-rule catalog-live branch (SCE P3): when [verifies_catalog] is configured, a live catalog pass satisfies confirmed? for the verifies claim — plus design doc sec 4.2 update",
         "catalog sha256 pinning deferred until SCE asks (their report offered the option)"
       ]
+    },
+    "Round 427": {
+      "decision_summary": "Confirmed-rule catalog-live branch: authoritative deterministic pass confirms (SCE P3)",
+      "changes_bullets": [
+        "confirmed-rule catalog-live branch (SCE P3): scan_confirmation_gate takes the optional verifies catalog; an exact live catalog match confirms a verifies claim with zero stored events, re-verified every run; an open refutation still blocks (refute outweighs)",
+        "declined the authoritative bool on events (producer-asserted flag = the hand-authorable trust sec 4.6 removed); the live re-check IS the provenance",
+        "catalog wired into validate-confirmation and the unconfirmed_verifies count via load_verifies_catalog_if_configured (configured-but-unreadable catalog fails loud); design doc sec 4.2 updated with the branch plus the SCE field-report error-rate data"
+      ],
+      "verification_bullets": [
+        "CLI smoke: catalog exact match passes the reject gate with zero events, then an added refute event blocks despite the match; all prior confirmation/linkage/blanket suites green",
+        "workspace clippy -D warnings clean, all tests green"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "catalog sha256 pinning still deferred until SCE asks",
+        "SCE next: generate the specnum catalog JSON, set [verifies_catalog], enable severity_blanket warn, then severity_confirmation"
+      ],
+      "publishable_decision_summary": "Confirmed-rule catalog-live branch: authoritative deterministic pass confirms (SCE P3)",
+      "publishable_changes_bullets": [
+        "confirmed-rule catalog-live branch (SCE P3): scan_confirmation_gate takes the optional verifies catalog; an exact live catalog match confirms a verifies claim with zero stored events, re-verified every run; an open refutation still blocks (refute outweighs)",
+        "declined the authoritative bool on events (producer-asserted flag = the hand-authorable trust sec 4.6 removed); the live re-check IS the provenance",
+        "catalog wired into validate-confirmation and the unconfirmed_verifies count via load_verifies_catalog_if_configured (configured-but-unreadable catalog fails loud); design doc sec 4.2 updated with the branch plus the SCE field-report error-rate data"
+      ],
+      "publishable_verification_bullets": [
+        "CLI smoke: catalog exact match passes the reject gate with zero events, then an added refute event blocks despite the match; all prior confirmation/linkage/blanket suites green",
+        "workspace clippy -D warnings clean, all tests green"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "catalog sha256 pinning still deferred until SCE asks",
+        "SCE next: generate the specnum catalog JSON, set [verifies_catalog], enable severity_blanket warn, then severity_confirmation"
+      ]
     }
   },
   "inventory_entries": {},
