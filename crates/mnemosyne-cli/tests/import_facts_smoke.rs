@@ -83,11 +83,11 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(out.status.success(), "{:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("2 frames + 0 branches + 0 entities + 2 facts created"),
+        stdout.contains("2 frames + 0 branches + 0 entities + 0 predicates + 2 facts created"),
         "{stdout}"
     );
     let store = read_store(tmp.path());
-    assert_eq!(store["schema_version"], 18);
+    assert_eq!(store["schema_version"], 19);
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"
@@ -108,7 +108,9 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(again.status.success());
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(
-        stdout.contains("0 frames + 0 branches + 0 entities + 0 facts created, 4 no-op"),
+        stdout.contains(
+            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts created, 4 no-op"
+        ),
         "{stdout}"
     );
 }
@@ -276,4 +278,103 @@ fn add_fact_rejects_cross_frame_succession() {
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("in-frame succession only"), "{stderr}");
+}
+
+/// Round 446 — typed-claim verbs end-to-end: `add-predicate` (4th
+/// registry, object_kind fail-loud) and the typed flags on `add-fact`
+/// (all-or-nothing leg, registry + shape enforcement via the shared
+/// builder).
+#[test]
+fn add_predicate_and_typed_fact_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    assert!(run(tmp.path(), &["add-frame", "--frame", "gt"])
+        .status
+        .success());
+    assert!(run(tmp.path(), &["add-entity", "--entity", "kara"])
+        .status
+        .success());
+    // Unknown object_kind rejects (no silent default).
+    let bad = run(
+        tmp.path(),
+        &[
+            "add-predicate",
+            "--predicate",
+            "alive",
+            "--object-kind",
+            "boolean",
+        ],
+    );
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("unknown object_kind"));
+    assert!(run(
+        tmp.path(),
+        &[
+            "add-predicate",
+            "--predicate",
+            "alive",
+            "--object-kind",
+            "scalar",
+            "--description",
+            "life state",
+        ],
+    )
+    .status
+    .success());
+    // Incomplete typed leg rejects at the arg surface.
+    let partial = run(
+        tmp.path(),
+        &[
+            "add-fact",
+            "--fact",
+            "f1",
+            "--frame",
+            "gt",
+            "--claim",
+            "Kara is operational",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "kara",
+            "--typed-subject",
+            "kara",
+        ],
+    );
+    assert!(!partial.status.success());
+    assert!(String::from_utf8_lossy(&partial.stderr).contains("all-or-nothing"));
+    // Full typed leg lands and round-trips.
+    let ok = run(
+        tmp.path(),
+        &[
+            "add-fact",
+            "--fact",
+            "f1",
+            "--frame",
+            "gt",
+            "--claim",
+            "Kara is operational",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "kara",
+            "--typed-subject",
+            "kara",
+            "--typed-predicate",
+            "alive",
+            "--typed-object-value",
+            "operational",
+        ],
+    );
+    assert!(ok.status.success(), "{:?}", ok);
+    let store = read_store(tmp.path());
+    assert_eq!(store["narrative_facts"]["f1"]["typed"]["subject"], "kara");
+    assert_eq!(
+        store["narrative_facts"]["f1"]["typed"]["object"]["kind"],
+        "value"
+    );
+    assert_eq!(store["predicates"]["alive"]["object_kind"], "scalar");
 }

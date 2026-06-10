@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -164,6 +164,7 @@ fn run(args: &[String]) -> Result<()> {
         "add-frame" => atomic_cli::cmd_add_frame(&workspace_anchor()?, &args[2..]),
         "add-branch" => atomic_cli::cmd_add_branch(&workspace_anchor()?, &args[2..]),
         "add-entity" => atomic_cli::cmd_add_entity(&workspace_anchor()?, &args[2..]),
+        "add-predicate" => atomic_cli::cmd_add_predicate(&workspace_anchor()?, &args[2..]),
         "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
         "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
         "amend-fact" => atomic_cli::cmd_amend_fact(&workspace_anchor()?, &args[2..]),
@@ -381,9 +382,11 @@ fn print_help(prog: &str) {
         " {} import-facts --manifest <path.json> [--sidecar <path>] [--json]",
         prog
     );
-    println!("   bulk narrative frames + facts (Round 430): manifest = {{frames:[{{frame_id,description?}}],");
-    println!("   facts:[{{fact_id,frame,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,quote?}}]}};");
-    println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied");
+    println!("   bulk narrative registries + facts (Round 430/446): manifest = {{frames:[{{frame_id,description?}}], branches:[...],");
+    println!("   entities:[...], predicates:[{{predicate_id,object_kind,description?}}],");
+    println!("   facts:[{{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}}]}};");
+    println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied;");
+    println!("   typed = {{subject,predicate,object:{{kind:entity,id}}|{{kind:value,value}}}} (Round 446 typed leg)");
     println!(
         " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
         prog
@@ -397,6 +400,13 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
+        " {} add-predicate --predicate <id> --object-kind entity|scalar [--description <text>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud"
+    );
+    println!(
         " {} report-entity --entity <id> [--sidecar <path>] [--json]",
         prog
     );
@@ -404,7 +414,10 @@ fn print_help(prog: &str) {
         " {} report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
-    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(
+        "   typed leg (Round 446): optional machine-readable subject-predicate-object reading of the claim, authored with it (never NLP-derived)"
+    );
     println!(
         " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
         prog

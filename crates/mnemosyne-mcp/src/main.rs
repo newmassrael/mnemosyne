@@ -330,6 +330,35 @@ pub struct ReportEntityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddPredicateArgs {
+    /// Predicate id — the registry key every TypedClaim predicate must
+    /// name. Load-bearing (narrative rules key off it), hence fail-loud.
+    pub predicate_id: String,
+    /// Declared object shape: `entity` | `scalar`. Unknown tags reject.
+    pub object_kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// The optional typed leg of a fact (R446): the machine-readable
+/// subject–predicate–object reading of the prose claim, authored in the
+/// same act (never NLP-derived). Give exactly ONE of `object_entity` /
+/// `object_value`, matching the predicate's declared `object_kind`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TypedClaimArgs {
+    /// Subject entity id (registered AND listed in the fact's `entities`).
+    pub subject: String,
+    /// Registered predicate id (`add_predicate` first).
+    pub predicate: String,
+    /// Entity-shaped object (predicate `object_kind = entity`).
+    #[serde(default)]
+    pub object_entity: Option<String>,
+    /// Scalar object value, consumer vocabulary (`object_kind = scalar`).
+    #[serde(default)]
+    pub object_value: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactArgs {
     pub fact_id: String,
     /// Epistemic frame id (must already be registered — `add_frame` first).
@@ -366,6 +395,10 @@ pub struct AddFactArgs {
     /// identity refs).
     #[serde(default)]
     pub pays_off: Vec<String>,
+    /// Optional typed leg (R446): subject–predicate–object reading of the
+    /// claim. Omit for a prose-only fact (partial coverage is the design).
+    #[serde(default)]
+    pub typed: Option<TypedClaimArgs>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -690,10 +723,39 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
 }
 
 /// Map the MCP fact-shaped args onto the atomic `FactImport` (Round 435).
-/// All invariants live in the shared `build_candidate_fact` path — this is
-/// pure shape translation.
-fn fact_import_from(a: &AddFactArgs) -> atomic::FactImport {
-    atomic::FactImport {
+/// All registry/shape invariants live in the shared `build_candidate_fact`
+/// path — this is shape translation plus the one arg-surface rule the
+/// builder cannot see: the typed object arrives as exactly one of the two
+/// arg fields (Round 446).
+fn fact_import_from(a: &AddFactArgs) -> Result<atomic::FactImport, String> {
+    let typed = match &a.typed {
+        None => None,
+        Some(t) => {
+            let object = match (&t.object_entity, &t.object_value) {
+                (Some(id), None) => mnemosyne_core::TypedObject::Entity { id: id.clone() },
+                (None, Some(value)) => mnemosyne_core::TypedObject::Value {
+                    value: value.clone(),
+                },
+                (Some(_), Some(_)) => {
+                    return Err(
+                        "typed leg: object_entity and object_value are mutually exclusive"
+                            .to_string(),
+                    );
+                }
+                (None, None) => {
+                    return Err(
+                        "typed leg needs an object: object_entity or object_value".to_string()
+                    );
+                }
+            };
+            Some(mnemosyne_core::TypedClaim {
+                subject: t.subject.clone(),
+                predicate: t.predicate.clone(),
+                object,
+            })
+        }
+    };
+    Ok(atomic::FactImport {
         fact_id: a.fact_id.clone(),
         frame: a.frame.clone(),
         branch: a.branch.clone(),
@@ -705,9 +767,10 @@ fn fact_import_from(a: &AddFactArgs) -> atomic::FactImport {
         supersedes_in_frame: a.supersedes_in_frame.clone(),
         payoff_expectation: a.payoff_expectation.clone(),
         pays_off: a.pays_off.clone(),
+        typed,
         quote: a.quote.clone(),
         entities: a.entities.clone(),
-    }
+    })
 }
 
 #[tool_router]
@@ -1221,6 +1284,17 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape (entity | scalar); the fact builder enforces it. Idempotent on identical content; divergent rejects."
+    )]
+    async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
         description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter."
     )]
     async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
@@ -1234,8 +1308,8 @@ impl MnemosyneServer {
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
     async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
-        let entry = fact_import_from(&args.0);
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            let entry = fact_import_from(&args.0).map_err(atomic::AtomicMutateError::Validation)?;
             atomic::add_fact(store, path, &entry)
         });
         self.finish_mutate(outcome)
@@ -1256,9 +1330,10 @@ impl MnemosyneServer {
         description = "Authorial in-place revision of an existing fact, keeping its id (R434, axis-4 correction: a typo or wrong coordinate; in-world belief change is supersedes_in_frame instead). Same invariants as add_fact; inbound successors must stay same-(frame, branch). Mandatory reason."
     )]
     async fn amend_fact(&self, args: Parameters<AmendFactArgs>) -> CallToolResult {
-        let entry = fact_import_from(&args.0.fact);
         let reason = args.0.reason.clone();
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            let entry =
+                fact_import_from(&args.0.fact).map_err(atomic::AtomicMutateError::Validation)?;
             atomic::amend_fact(store, path, &entry, &reason)
         });
         self.finish_mutate(outcome)

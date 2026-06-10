@@ -38,7 +38,7 @@ pub use fact::{
 mod narrative;
 pub use narrative::{
     fork_chain, Branch, BranchFork, ConflictAssertion, Entity, Frame, NarrativeFact,
-    PayoffExpectation, MAIN_BRANCH,
+    PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject, MAIN_BRANCH,
 };
 
 mod section_ref;

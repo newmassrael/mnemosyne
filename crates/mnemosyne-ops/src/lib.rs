@@ -318,6 +318,9 @@ pub struct EntityFactRow {
     pub canon_from: String,
     pub canon_to: Option<String>,
     pub evidence: Vec<String>,
+    /// Typed leg (Round 446), surfaced verbatim when authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typed: Option<mnemosyne_core::TypedClaim>,
 }
 
 /// "All facts about X" (Round 437, design sec 7.10 gap 4) — every fact
@@ -357,6 +360,7 @@ pub fn entity_dossier(
             canon_from: f.canon_from.clone(),
             canon_to: f.canon_to.clone(),
             evidence: f.evidence.clone(),
+            typed: f.typed.clone(),
         })
         .collect();
     Ok(EntityDossier {

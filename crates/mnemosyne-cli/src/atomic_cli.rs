@@ -518,6 +518,64 @@ pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Round 446 — register one predicate (fourth registry; load-bearing refs
+/// the narrative rules key off). `--object-kind entity|scalar` mandatory.
+pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut predicate_id: Option<String> = None;
+    let mut object_kind: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--predicate" => {
+                predicate_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--predicate missing"))?
+                        .clone(),
+                )
+            }
+            "--object-kind" => {
+                object_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--object-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
+    let object_kind = object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_predicate(
+            &mut store,
+            &sidecar_path,
+            &predicate_id,
+            &object_kind,
+            &description,
+        ),
+        json,
+    )
+}
+
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
 /// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two
@@ -544,6 +602,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             supersedes_in_frame: None,
             payoff_expectation: None,
             pays_off: vec![],
+            typed: None,
             quote: None,
         },
         sidecar: None,
@@ -557,6 +616,10 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             .map(str::to_string)
             .collect()
     };
+    let mut typed_subject: Option<String> = None;
+    let mut typed_predicate: Option<String> = None;
+    let mut typed_object_entity: Option<String> = None;
+    let mut typed_object_value: Option<String> = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -635,6 +698,34 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                 out.entry.entities =
                     csv(iter.next().ok_or_else(|| anyhow!("--entities missing"))?)
             }
+            "--typed-subject" => {
+                typed_subject = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-subject missing"))?
+                        .clone(),
+                )
+            }
+            "--typed-predicate" => {
+                typed_predicate = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-predicate missing"))?
+                        .clone(),
+                )
+            }
+            "--typed-object-entity" => {
+                typed_object_entity = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-entity missing"))?
+                        .clone(),
+                )
+            }
+            "--typed-object-value" => {
+                typed_object_value = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-value missing"))?
+                        .clone(),
+                )
+            }
             "--reason" if accept_reason => {
                 out.reason = Some(
                     iter.next()
@@ -653,6 +744,38 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             other => bail!("unknown flag `{}`", other),
         }
     }
+    // Assemble the optional typed leg (Round 446): all-or-nothing —
+    // subject + predicate + exactly ONE object shape. Shape/registry
+    // validation lives in the shared builder, not here.
+    out.entry.typed = match (
+        typed_subject,
+        typed_predicate,
+        typed_object_entity,
+        typed_object_value,
+    ) {
+        (None, None, None, None) => None,
+        (Some(subject), Some(predicate), object_entity, object_value) => {
+            let object = match (object_entity, object_value) {
+                (Some(id), None) => mnemosyne_core::TypedObject::Entity { id },
+                (None, Some(value)) => mnemosyne_core::TypedObject::Value { value },
+                (Some(_), Some(_)) => {
+                    bail!("--typed-object-entity and --typed-object-value are mutually exclusive")
+                }
+                (None, None) => bail!(
+                    "typed leg needs an object: --typed-object-entity or --typed-object-value"
+                ),
+            };
+            Some(mnemosyne_core::TypedClaim {
+                subject,
+                predicate,
+                object,
+            })
+        }
+        _ => bail!(
+            "typed leg is all-or-nothing: --typed-subject + --typed-predicate + one of \
+             --typed-object-entity | --typed-object-value"
+        ),
+    };
     Ok(out)
 }
 

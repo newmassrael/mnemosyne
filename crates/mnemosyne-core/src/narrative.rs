@@ -153,6 +153,91 @@ pub struct Entity {
     pub description: String,
 }
 
+/// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
+/// `Entity` = the object leg names a registered entity (locations, custody
+/// targets); `Scalar` = the object leg is a consumer-vocabulary value
+/// string (`alive`, `undead` — opaque data, never enumerated here:
+/// ARCHITECTURE.md sec 6 invariant 4). The builder checks the typed leg's
+/// object against this declaration — a shape mismatch is a write-time
+/// reject, not a scan finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PredicateObjectKind {
+    Entity,
+    Scalar,
+}
+
+impl PredicateObjectKind {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PredicateObjectKind::Entity => "entity",
+            PredicateObjectKind::Scalar => "scalar",
+        }
+    }
+
+    /// Parse the canonical lowercase tag back to a value. `None` for any
+    /// other string (fail-loud at the caller; no silent default).
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "entity" => Some(PredicateObjectKind::Entity),
+            "scalar" => Some(PredicateObjectKind::Scalar),
+            _ => None,
+        }
+    }
+}
+
+/// One predicate (registry entry, Round 446 — the FOURTH registry, design
+/// sec 7.12). Keyed by predicate id in `AtomicStore.predicates`; every
+/// [`TypedClaim::predicate`] must reference a registered id. Predicates are
+/// LOAD-BEARING refs — narrative rules key off them, so a typo'd predicate
+/// would silently escape its rule (the R436 write-side-typo lesson) —
+/// hence the same fail-loud registry contract as frames/branches/entities.
+/// Contrast: [`Entity::kind`] stays free-form BECAUSE it is not
+/// load-bearing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Predicate {
+    /// Declared object shape; the builder enforces it on every typed leg.
+    pub object_kind: PredicateObjectKind,
+    /// Free-form description. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
+/// The object leg of a [`TypedClaim`] — two-shaped by real data (design
+/// sec 7.12): locations/custody objects are entities; state values are
+/// consumer-vocabulary scalars. Serde-tagged, no stringly union.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TypedObject {
+    /// A registered entity id (must also be a member of the owning fact's
+    /// `entities` list — the entities list stays THE retrieval key).
+    Entity { id: String },
+    /// An opaque consumer-vocabulary value (`alive`, `undead`, …). Never
+    /// enumerated by the substrate.
+    Value { value: String },
+}
+
+/// Optional machine-readable leg of a [`NarrativeFact`] (Round 446, design
+/// sec 7.12): subject–predicate–object, binary only (n-ary = recorded
+/// revisit trigger). AUTHORED in the same act as the prose claim, never
+/// NLP-derived (guardrail B-1 applied to typing). The prose `claim` stays
+/// required and primary; partial coverage is the design — the
+/// deterministic rule gate (Round B) covers the typed subset, recorded
+/// conflict edges and the future LLM-discovery adapter cover the rest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypedClaim {
+    /// Registered entity id; must be a member of the owning fact's
+    /// `entities` list (a typed leg never silently widens the retrieval
+    /// key).
+    pub subject: String,
+    /// Registered predicate id (`AtomicStore.predicates` key).
+    pub predicate: String,
+    /// Object leg; its shape must match the predicate's declared
+    /// [`PredicateObjectKind`].
+    pub object: TypedObject,
+}
+
 /// Whether a fact is a narrative SETUP expecting a later payoff (Round 442
 /// — the narrative mirror of the spec side's [`crate::CoverageExpectation`]
 /// axis: a declared expectation plus a read-only coverage classification).
@@ -264,6 +349,12 @@ pub struct NarrativeFact {
     /// stay byte-stable).
     #[serde(default, skip_serializing_if = "payoff_unmarked")]
     pub payoff_expectation: PayoffExpectation,
+    /// Optional typed leg (Round 446): the machine-readable
+    /// subject–predicate–object reading of `claim`, authored in the same
+    /// act as the prose (never NLP-derived). Absence means the claim is
+    /// prose-only — partial coverage is the design, not a gap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed: Option<TypedClaim>,
     /// Setup fact ids this fact PAYS OFF (Round 442) — the backward
     /// pointer shape of `supersedes_in_frame` (the setup is written first
     /// and never touched when paid; append-only by genre). A discourse-

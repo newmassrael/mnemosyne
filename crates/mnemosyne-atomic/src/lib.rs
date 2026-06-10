@@ -37,7 +37,8 @@ pub use redact::*;
 
 use mnemosyne_core::{
     strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus, Entity, Frame,
-    InventoryStatus, NarrativeFact, PayoffExpectation,
+    InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
+    TypedObject,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -644,6 +645,13 @@ pub struct AtomicStore {
     /// Empty on pre-v15 stores via `#[serde(default)]`.
     #[serde(default)]
     pub entities: BTreeMap<String, Entity>,
+    /// Predicate registry (Round 446) — the FOURTH registry, keyed by
+    /// predicate id. Every `TypedClaim.predicate` must name a key here
+    /// (fail-loud at the mutate primitives). Predicates are load-bearing
+    /// (narrative rules key off them), hence registry, not free-form.
+    /// Empty on pre-v19 stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub predicates: BTreeMap<String, Predicate>,
     /// Multi-axis narrative facts (Round 430) — append-only perspectival
     /// claims, keyed by fact id. Top-level (the confirmation_events
     /// placement pattern): never nested on a section, no frozen-ledger
@@ -1104,7 +1112,15 @@ pub enum AtomicStoreError {
 // NEVER auto-refreshed — `scan_continuity` surfaces a stale pin as
 // `ConflictEdgeStale`, and re-affirmation = amending the edge-owning fact
 // (its outbound judgments restamp as the amender's fresh assertions).
-const CURRENT_SCHEMA_VERSION: u32 = 18;
+// v18→v19 adds `AtomicStore.predicates` (the 4th registry) and
+// `NarrativeFact.typed` (the optional TypedClaim leg, Round 446 — design
+// sec 7.12 step 2: the machine-readable subject–predicate–object reading
+// authored in the same act as the prose claim, never NLP-derived). Both
+// declarative serde defaults (empty map / `None`, skip-serialized) — every
+// pre-v19 store loads unchanged and stays byte-stable. So there is
+// deliberately NO `schema_version < 19` arm in `load`, and no migration
+// report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 19;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3429,6 +3445,11 @@ pub struct FactImport {
     /// unpinned (the R439 pin covers claim-text judgments only).
     #[serde(default)]
     pub pays_off: Vec<String>,
+    /// Optional typed leg (Round 446): subject–predicate–object reading of
+    /// the prose claim, validated against the predicate/entity registries
+    /// by the shared builder.
+    #[serde(default)]
+    pub typed: Option<TypedClaim>,
     #[serde(default)]
     pub quote: Option<String>,
 }
@@ -3444,9 +3465,21 @@ pub struct EntityImport {
     pub description: String,
 }
 
-/// `import-facts` manifest: frames + branches + facts created in ONE atomic
-/// transaction (registries first, so same-manifest facts can reference
-/// them).
+/// One predicate entry in the [`FactsManifest`] (and the `add_predicate`
+/// shape, Round 446). `object_kind` is the canonical lowercase tag
+/// (`entity` | `scalar`) — unknown tags reject (fail-loud, no silent
+/// default).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredicateImport {
+    pub predicate_id: String,
+    pub object_kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// `import-facts` manifest: frames + branches + entities + predicates +
+/// facts created in ONE atomic transaction (registries first, so
+/// same-manifest facts can reference them).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactsManifest {
     #[serde(default)]
@@ -3455,6 +3488,8 @@ pub struct FactsManifest {
     pub branches: Vec<BranchImport>,
     #[serde(default)]
     pub entities: Vec<EntityImport>,
+    #[serde(default)]
+    pub predicates: Vec<PredicateImport>,
     #[serde(default)]
     pub facts: Vec<FactImport>,
 }
@@ -3651,6 +3686,10 @@ fn build_candidate_fact(
         }
         Some(q) => (Some(q.to_string()), Some(sha256_hex(q.as_bytes()))),
     };
+    let typed = match &entry.typed {
+        None => None,
+        Some(t) => Some(build_typed_claim(store, fact_id, t, &entities)?),
+    };
     Ok((
         fact_id.to_string(),
         NarrativeFact {
@@ -3665,10 +3704,99 @@ fn build_candidate_fact(
             supersedes_in_frame,
             payoff_expectation,
             pays_off,
+            typed,
             quote,
             quote_sha256,
         },
     ))
+}
+
+/// Validate + shape one typed leg against the store (Round 446, design
+/// sec 7.12) — the ONE place typed-claim invariants live, shared by both
+/// fact write paths via [`build_candidate_fact`] (R305 parity):
+/// - subject must be a REGISTERED entity AND a member of the fact's
+///   `entities` list (the entities list stays THE retrieval key; a typed
+///   leg never silently widens it);
+/// - predicate must be a registered predicate id (load-bearing ref —
+///   rules key off it);
+/// - the object leg's shape must match the predicate's declared
+///   `object_kind`; an entity-shaped object obeys the same
+///   registered-and-listed rule as the subject; a scalar value must be
+///   non-empty (opaque consumer vocabulary, never enumerated here).
+fn build_typed_claim(
+    store: &AtomicStore,
+    fact_id: &str,
+    t: &TypedClaim,
+    fact_entities: &[String],
+) -> Result<TypedClaim, String> {
+    let check_entity_leg = |leg: &str, id: &str| -> Result<String, String> {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(format!(
+                "fact `{fact_id}`: typed {leg} mandatory (non-empty)"
+            ));
+        }
+        if !store.entities.contains_key(id) {
+            return Err(format!(
+                "fact `{fact_id}`: typed {leg} `{id}` not present in the entity registry \
+                 (add_entity / manifest entities[] first; fail-loud)"
+            ));
+        }
+        if !fact_entities.iter().any(|e| e == id) {
+            return Err(format!(
+                "fact `{fact_id}`: typed {leg} `{id}` is not a member of the fact's \
+                 entities list — the entities list stays THE retrieval key; list it there too"
+            ));
+        }
+        Ok(id.to_string())
+    };
+    let subject = check_entity_leg("subject", &t.subject)?;
+    let predicate = t.predicate.trim();
+    if predicate.is_empty() {
+        return Err(format!(
+            "fact `{fact_id}`: typed predicate mandatory (non-empty)"
+        ));
+    }
+    let Some(decl) = store.predicates.get(predicate) else {
+        return Err(format!(
+            "fact `{fact_id}`: typed predicate `{predicate}` not present in the predicate \
+             registry (add_predicate / manifest predicates[] first; fail-loud — rules key \
+             off predicate ids, a typo must not silently escape its rule)"
+        ));
+    };
+    let object = match (&t.object, decl.object_kind) {
+        (TypedObject::Entity { id }, PredicateObjectKind::Entity) => TypedObject::Entity {
+            id: check_entity_leg("object", id)?,
+        },
+        (TypedObject::Value { value }, PredicateObjectKind::Scalar) => {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: typed object value mandatory (non-empty)"
+                ));
+            }
+            TypedObject::Value {
+                value: value.to_string(),
+            }
+        }
+        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => {
+            return Err(format!(
+                "fact `{fact_id}`: predicate `{predicate}` declares object_kind=scalar but \
+                 the typed object is an entity — shape mismatch (fix the leg or the declaration)"
+            ));
+        }
+        (TypedObject::Value { .. }, PredicateObjectKind::Entity) => {
+            return Err(format!(
+                "fact `{fact_id}`: predicate `{predicate}` declares object_kind=entity but \
+                 the typed object is a scalar value — shape mismatch (fix the leg or the declaration)"
+            ));
+        }
+    };
+    Ok(TypedClaim {
+        subject,
+        predicate: predicate.to_string(),
+        object,
+    })
 }
 
 /// Cross-fact ref check + judgment stamping for one fact against a
@@ -3749,38 +3877,78 @@ fn validate_and_stamp_fact_refs(
 /// byte-identical → idempotent no-op (written_bytes 0), divergent → reject
 /// (no silent overwrite; description revision = a future setter,
 /// consumer-pull).
+/// THE shared registry staging path (Round 446 — the 4th registry fired
+/// the R440 dedup carry: six hand-rolled copies of this shape, across the
+/// standalone primitives and the manifest loops, collapsed here).
+/// A2-consistent 3-way verdict: absent → create (`Ok(true)`),
+/// byte-identical → idempotent no-op (`Ok(false)`), divergent → reject
+/// (never a silent overwrite). `context` names the caller for the message
+/// (`add_frame` / `import_facts: manifest frame 3`); `kind` is the
+/// registry-entry kind. Ids arrive pre-trimmed (callers trim once and
+/// reuse for receipts); registry-specific prechecks (the `MAIN_BRANCH`
+/// reject, fork shaping, object_kind parsing) stay with their callers —
+/// this helper owns only the verdict every registry shares.
+fn stage_registry_entry<T: PartialEq>(
+    map: &mut BTreeMap<String, T>,
+    context: &str,
+    kind: &str,
+    id: &str,
+    candidate: T,
+) -> Result<bool, String> {
+    if id.is_empty() {
+        return Err(format!(
+            "{context}: {kind}_id mandatory (non-empty after trim)"
+        ));
+    }
+    match map.get(id) {
+        None => {
+            map.insert(id.to_string(), candidate);
+            Ok(true)
+        }
+        Some(existing) if *existing == candidate => Ok(false),
+        Some(_) => Err(format!(
+            "{context}: {kind} `{id}` already exists with DIVERGENT content — \
+             refusing silent overwrite"
+        )),
+    }
+}
+
+/// Receipt half of the standalone registry primitives: save on create,
+/// zero-byte no-op receipt otherwise.
+fn registry_receipt(
+    store: &AtomicStore,
+    sidecar_path: &Path,
+    primitive: &str,
+    target_kind: &'static str,
+    id: &str,
+    created: bool,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if created {
+        save_with_receipt(store, sidecar_path, primitive, target_kind, id)
+    } else {
+        Ok(AtomicMutateReceipt {
+            primitive: primitive.to_string(),
+            target_kind,
+            target_id: format!("{id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        })
+    }
+}
+
 pub fn add_frame(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     frame_id: &str,
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = frame_id.trim();
-    if id.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_frame: frame_id mandatory (non-empty after trim)".to_string(),
-        ));
-    }
+    let id = frame_id.trim().to_string();
     let candidate = Frame {
         description: description.trim().to_string(),
     };
-    match store.frames.get(id) {
-        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
-            primitive: "add_frame".to_string(),
-            target_kind: "frame",
-            target_id: format!("{id} (no-op)"),
-            sidecar_path: sidecar_path.display().to_string(),
-            written_bytes: 0,
-        }),
-        Some(_) => Err(AtomicMutateError::Validation(format!(
-            "add_frame: frame `{id}` already exists with DIVERGENT description — \
-             refusing silent overwrite"
-        ))),
-        None => {
-            store.frames.insert(id.to_string(), candidate);
-            save_with_receipt(store, sidecar_path, "add_frame", "frame", id)
-        }
-    }
+    let created = stage_registry_entry(&mut store.frames, "add_frame", "frame", &id, candidate)
+        .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(store, sidecar_path, "add_frame", "frame", &id, created)
 }
 
 /// Register one world-line branch (Round 436 — the frames-registry symmetry:
@@ -3839,11 +4007,6 @@ pub fn add_branch(
     forks_from: Option<(&str, &str)>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = branch_id.trim();
-    if id.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_branch: branch_id mandatory (non-empty after trim)".to_string(),
-        ));
-    }
     if id == mnemosyne_core::MAIN_BRANCH {
         return Err(AtomicMutateError::Validation(format!(
             "add_branch: `{id}` is the default world-line — known by construction, \
@@ -3855,23 +4018,10 @@ pub fn add_branch(
         forks_from: build_branch_fork(store, id, forks_from)
             .map_err(AtomicMutateError::Validation)?,
     };
-    match store.branches.get(id) {
-        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
-            primitive: "add_branch".to_string(),
-            target_kind: "branch",
-            target_id: format!("{id} (no-op)"),
-            sidecar_path: sidecar_path.display().to_string(),
-            written_bytes: 0,
-        }),
-        Some(_) => Err(AtomicMutateError::Validation(format!(
-            "add_branch: branch `{id}` already exists with DIVERGENT description — \
-             refusing silent overwrite"
-        ))),
-        None => {
-            store.branches.insert(id.to_string(), candidate);
-            save_with_receipt(store, sidecar_path, "add_branch", "branch", id)
-        }
-    }
+    let id = id.to_string();
+    let created = stage_registry_entry(&mut store.branches, "add_branch", "branch", &id, candidate)
+        .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(store, sidecar_path, "add_branch", "branch", &id, created)
 }
 
 /// Register one narrative entity (Round 437 — the third registry, after
@@ -3886,33 +4036,68 @@ pub fn add_entity(
     kind: &str,
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = entity_id.trim();
-    if id.is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "add_entity: entity_id mandatory (non-empty after trim)".to_string(),
-        ));
-    }
+    let id = entity_id.trim().to_string();
     let candidate = Entity {
         kind: kind.trim().to_string(),
         description: description.trim().to_string(),
     };
-    match store.entities.get(id) {
-        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
-            primitive: "add_entity".to_string(),
-            target_kind: "entity",
-            target_id: format!("{id} (no-op)"),
-            sidecar_path: sidecar_path.display().to_string(),
-            written_bytes: 0,
-        }),
-        Some(_) => Err(AtomicMutateError::Validation(format!(
-            "add_entity: entity `{id}` already exists with DIVERGENT content — \
-             refusing silent overwrite"
-        ))),
-        None => {
-            store.entities.insert(id.to_string(), candidate);
-            save_with_receipt(store, sidecar_path, "add_entity", "entity", id)
-        }
-    }
+    let created = stage_registry_entry(&mut store.entities, "add_entity", "entity", &id, candidate)
+        .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(store, sidecar_path, "add_entity", "entity", &id, created)
+}
+
+/// Parse one predicate declaration into its registry value (Round 446) —
+/// the ONE place the `object_kind` tag is interpreted, shared by
+/// `add_predicate` and the manifest path (R305 parity). Unknown tags
+/// reject; there is no silent default for a load-bearing declaration.
+fn build_predicate(
+    context: &str,
+    object_kind: &str,
+    description: &str,
+) -> Result<Predicate, String> {
+    let tag = object_kind.trim();
+    let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
+        format!("{context}: unknown object_kind `{tag}` (expected one of: entity, scalar)")
+    })?;
+    Ok(Predicate {
+        object_kind,
+        description: description.trim().to_string(),
+    })
+}
+
+/// Register one predicate (Round 446 — the FOURTH registry, design sec
+/// 7.12): every `TypedClaim.predicate` must reference a registered id.
+/// Predicates are load-bearing (narrative rules key off them; a typo'd
+/// predicate would silently escape its rule — the R436 write-side-typo
+/// lesson), hence the same fail-loud registry contract as
+/// frames/branches/entities. A2-consistent verdicts via the shared
+/// staging path.
+pub fn add_predicate(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    predicate_id: &str,
+    object_kind: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = predicate_id.trim().to_string();
+    let candidate = build_predicate("add_predicate", object_kind, description)
+        .map_err(AtomicMutateError::Validation)?;
+    let created = stage_registry_entry(
+        &mut store.predicates,
+        "add_predicate",
+        "predicate",
+        &id,
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_predicate",
+        "predicate",
+        &id,
+        created,
+    )
 }
 
 /// Divergent-overwrite reject message, shared by both create paths (Round
@@ -3986,12 +4171,12 @@ pub fn add_fact(
     }
 }
 
-/// Bulk frames + branches + facts create from a manifest, as one atomic
-/// transaction (the `import_sections` A2 pattern). The registries land
-/// first so same-manifest facts can reference them; cross-fact refs are
-/// checked AFTER all facts stage, so forward references within one manifest
-/// are legal. Any rejection returns `Err` before the single save — the
-/// on-disk store is untouched.
+/// Bulk frames + branches + entities + predicates + facts create from a
+/// manifest, as one atomic transaction (the `import_sections` A2 pattern).
+/// The registries land first so same-manifest facts can reference them;
+/// cross-fact refs are checked AFTER all facts stage, so forward references
+/// within one manifest are legal. Any rejection returns `Err` before the
+/// single save — the on-disk store is untouched.
 pub fn import_facts(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -4002,36 +4187,25 @@ pub fn import_facts(
     let mut facts_created = 0usize;
     let mut no_op = 0usize;
     for (idx, f) in manifest.frames.iter().enumerate() {
-        let id = f.frame_id.trim();
-        if id.is_empty() {
-            return Err(AtomicMutateError::Validation(format!(
-                "import_facts: manifest frame {idx}: frame_id mandatory"
-            )));
-        }
         let candidate = Frame {
             description: f.description.trim().to_string(),
         };
-        match store.frames.get(id) {
-            None => {
-                store.frames.insert(id.to_string(), candidate);
-                frames_created += 1;
-            }
-            Some(existing) if *existing == candidate => no_op += 1,
-            Some(_) => {
-                return Err(AtomicMutateError::Validation(format!(
-                    "import_facts: manifest frame {idx} `{id}` already exists with \
-                     DIVERGENT description — refusing silent overwrite"
-                )));
-            }
+        let created = stage_registry_entry(
+            &mut store.frames,
+            &format!("import_facts: manifest frame {idx}"),
+            "frame",
+            f.frame_id.trim(),
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            frames_created += 1;
+        } else {
+            no_op += 1;
         }
     }
     for (idx, b) in manifest.branches.iter().enumerate() {
         let id = b.branch_id.trim();
-        if id.is_empty() {
-            return Err(AtomicMutateError::Validation(format!(
-                "import_facts: manifest branch {idx}: branch_id mandatory"
-            )));
-        }
         if id == mnemosyne_core::MAIN_BRANCH {
             return Err(AtomicMutateError::Validation(format!(
                 "import_facts: manifest branch {idx}: `{id}` is the default world-line — \
@@ -4053,44 +4227,57 @@ pub fn import_facts(
             forks_from: build_branch_fork(store, id, fork_pair)
                 .map_err(AtomicMutateError::Validation)?,
         };
-        match store.branches.get(id) {
-            None => {
-                store.branches.insert(id.to_string(), candidate);
-                branches_created += 1;
-            }
-            Some(existing) if *existing == candidate => no_op += 1,
-            Some(_) => {
-                return Err(AtomicMutateError::Validation(format!(
-                    "import_facts: manifest branch {idx} `{id}` already exists with \
-                     DIVERGENT description — refusing silent overwrite"
-                )));
-            }
+        let created = stage_registry_entry(
+            &mut store.branches,
+            &format!("import_facts: manifest branch {idx}"),
+            "branch",
+            id,
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            branches_created += 1;
+        } else {
+            no_op += 1;
         }
     }
     let mut entities_created = 0usize;
     for (idx, e) in manifest.entities.iter().enumerate() {
-        let id = e.entity_id.trim();
-        if id.is_empty() {
-            return Err(AtomicMutateError::Validation(format!(
-                "import_facts: manifest entity {idx}: entity_id mandatory"
-            )));
-        }
         let candidate = Entity {
             kind: e.kind.trim().to_string(),
             description: e.description.trim().to_string(),
         };
-        match store.entities.get(id) {
-            None => {
-                store.entities.insert(id.to_string(), candidate);
-                entities_created += 1;
-            }
-            Some(existing) if *existing == candidate => no_op += 1,
-            Some(_) => {
-                return Err(AtomicMutateError::Validation(format!(
-                    "import_facts: manifest entity {idx} `{id}` already exists with \
-                     DIVERGENT content — refusing silent overwrite"
-                )));
-            }
+        let created = stage_registry_entry(
+            &mut store.entities,
+            &format!("import_facts: manifest entity {idx}"),
+            "entity",
+            e.entity_id.trim(),
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            entities_created += 1;
+        } else {
+            no_op += 1;
+        }
+    }
+    let mut predicates_created = 0usize;
+    for (idx, p) in manifest.predicates.iter().enumerate() {
+        let context = format!("import_facts: manifest predicate {idx}");
+        let candidate = build_predicate(&context, &p.object_kind, &p.description)
+            .map_err(AtomicMutateError::Validation)?;
+        let created = stage_registry_entry(
+            &mut store.predicates,
+            &context,
+            "predicate",
+            p.predicate_id.trim(),
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            predicates_created += 1;
+        } else {
+            no_op += 1;
         }
     }
     let mut staged: Vec<(String, NarrativeFact)> = Vec::with_capacity(manifest.facts.len());
@@ -4138,9 +4325,14 @@ pub fn import_facts(
     }
     let summary = format!(
         "{frames_created} frames + {branches_created} branches + {entities_created} entities \
-         + {facts_created} facts created, {no_op} no-op"
+         + {predicates_created} predicates + {facts_created} facts created, {no_op} no-op"
     );
-    if frames_created == 0 && branches_created == 0 && entities_created == 0 && facts_created == 0 {
+    if frames_created == 0
+        && branches_created == 0
+        && entities_created == 0
+        && predicates_created == 0
+        && facts_created == 0
+    {
         return Ok(AtomicMutateReceipt {
             primitive: "import_facts".to_string(),
             target_kind: "narrative_fact",
@@ -7689,6 +7881,7 @@ mod tests {
             supersedes_in_frame: None,
             payoff_expectation: None,
             pays_off: vec![],
+            typed: None,
             quote: None,
         }
     }
@@ -7727,12 +7920,13 @@ mod tests {
                     description: String::new(),
                 },
             ],
+            predicates: vec![],
             facts: vec![f_new, f_old],
         };
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(
             receipt.target_id,
-            "2 frames + 0 branches + 0 entities + 2 facts created, 0 no-op"
+            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -7753,7 +7947,7 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         assert_eq!(
             again.target_id,
-            "0 frames + 0 branches + 0 entities + 0 facts created, 4 no-op"
+            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts created, 4 no-op"
         );
     }
 
@@ -7768,6 +7962,7 @@ mod tests {
             entities: vec![],
             branches: vec![],
             frames: vec![],
+            predicates: vec![],
             facts: vec![sample_fact("f1", "nobody")],
         };
         let err = import_facts(&mut store, &path, &manifest).unwrap_err();
@@ -7786,6 +7981,7 @@ mod tests {
                 entities: vec![],
                 frames: frames.clone(),
                 branches: vec![],
+                predicates: vec![],
                 facts: vec![bad_evidence],
             },
         )
@@ -7804,6 +8000,7 @@ mod tests {
                 entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
+                predicates: vec![],
                 facts: vec![no_evidence],
             },
         )
@@ -7819,6 +8016,7 @@ mod tests {
                 entities: vec![],
                 branches: vec![],
                 frames,
+                predicates: vec![],
                 facts: vec![bad_canon],
             },
         )
@@ -7849,6 +8047,7 @@ mod tests {
                     description: String::new(),
                 },
             ],
+            predicates: vec![],
             facts: vec![sample_fact("f1", "jonathan"), successor],
         };
         let err = import_facts(&mut store, &path, &manifest).unwrap_err();
@@ -7876,6 +8075,7 @@ mod tests {
                 entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
+                predicates: vec![],
                 facts: vec![sample_fact("f1", "gt")],
             },
         )
@@ -7890,6 +8090,7 @@ mod tests {
                 entities: vec![],
                 branches: vec![],
                 frames,
+                predicates: vec![],
                 facts: vec![divergent],
             },
         )
@@ -8015,6 +8216,7 @@ mod tests {
                     entities: vec![],
                     frames: vec![],
                     branches: vec![],
+                    predicates: vec![],
                     facts: vec![entry],
                 },
             )
@@ -8077,6 +8279,262 @@ mod tests {
         retract_fact(&mut store, &path, "setup-1", "test").unwrap();
     }
 
+    /// Round 446 — typed-leg invariants, the SAME edge inputs through both
+    /// write paths (R305 field-invariant parity; the rule that caught the
+    /// R295 paste-error). Registry/shape rejects must agree between
+    /// `add_fact` and `import_facts`.
+    #[test]
+    fn typed_claim_write_path_parity_add_vs_import() {
+        let typed = |subject: &str, predicate: &str, object: TypedObject| {
+            Some(TypedClaim {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                object,
+            })
+        };
+        let scalar = |v: &str| TypedObject::Value {
+            value: v.to_string(),
+        };
+        let ent = |id: &str| TypedObject::Entity { id: id.to_string() };
+        let with_entities = |fact_id: &str, ents: &[&str], t| FactImport {
+            entities: ents.iter().map(|s| s.to_string()).collect(),
+            typed: t,
+            ..sample_fact(fact_id, "gt")
+        };
+        let cases: Vec<(&str, FactImport)> = vec![
+            (
+                "valid scalar typed",
+                with_entities(
+                    "t1",
+                    &["kara"],
+                    typed("kara", "alive", scalar("operational")),
+                ),
+            ),
+            (
+                "valid entity typed",
+                with_entities(
+                    "t2",
+                    &["kara", "todd-gun"],
+                    typed("kara", "holds", ent("todd-gun")),
+                ),
+            ),
+            (
+                "unknown predicate",
+                with_entities("t3", &["kara"], typed("kara", "at-locaton", scalar("x"))),
+            ),
+            (
+                "subject not in entities list",
+                with_entities("t4", &[], typed("kara", "alive", scalar("operational"))),
+            ),
+            (
+                "subject unregistered",
+                with_entities("t5", &["kara"], typed("alucard", "alive", scalar("x"))),
+            ),
+            (
+                "object entity not listed",
+                with_entities("t6", &["kara"], typed("kara", "holds", ent("todd-gun"))),
+            ),
+            (
+                "entity object on scalar predicate",
+                with_entities(
+                    "t7",
+                    &["kara", "todd-gun"],
+                    typed("kara", "alive", ent("todd-gun")),
+                ),
+            ),
+            (
+                "value object on entity predicate",
+                with_entities("t8", &["kara"], typed("kara", "holds", scalar("todd-gun"))),
+            ),
+            (
+                "blank subject",
+                with_entities("t9", &["kara"], typed("  ", "alive", scalar("x"))),
+            ),
+            (
+                "blank scalar value",
+                with_entities("t10", &["kara"], typed("kara", "alive", scalar("  "))),
+            ),
+        ];
+        for (label, entry) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path_a = tmp.path().join("a.json");
+            let path_b = tmp.path().join("b.json");
+            let mut store_a = AtomicStore::new();
+            let mut store_b = AtomicStore::new();
+            for s in [&mut store_a, &mut store_b] {
+                seed_chapters(s);
+                s.frames.insert("gt".to_string(), Frame::default());
+                s.entities.insert("kara".to_string(), Entity::default());
+                s.entities.insert("todd-gun".to_string(), Entity::default());
+                s.predicates.insert(
+                    "alive".to_string(),
+                    Predicate {
+                        object_kind: PredicateObjectKind::Scalar,
+                        description: String::new(),
+                    },
+                );
+                s.predicates.insert(
+                    "holds".to_string(),
+                    Predicate {
+                        object_kind: PredicateObjectKind::Entity,
+                        description: String::new(),
+                    },
+                );
+            }
+            let add_ok = add_fact(&mut store_a, &path_a, &entry).is_ok();
+            let import_ok = import_facts(
+                &mut store_b,
+                &path_b,
+                &FactsManifest {
+                    entities: vec![],
+                    frames: vec![],
+                    branches: vec![],
+                    predicates: vec![],
+                    facts: vec![entry],
+                },
+            )
+            .is_ok();
+            assert_eq!(
+                add_ok, import_ok,
+                "typed write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
+            );
+        }
+    }
+
+    /// Round 446 — the predicate registry: tag parse fail-loud, A2 3-way
+    /// verdicts via the shared staging path, and the typed leg round-trips
+    /// while an untyped fact stays byte-stable (no `typed` key on the
+    /// wire).
+    #[test]
+    fn predicate_registry_and_typed_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("kara".to_string(), Entity::default());
+        // Unknown object_kind tag rejects (no silent default).
+        let err = add_predicate(&mut store, &path, "alive", "boolean", "").unwrap_err();
+        assert!(err.to_string().contains("unknown object_kind"), "{err}");
+        // Create, then byte-identical no-op, then divergent reject.
+        add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        let receipt = add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        assert!(receipt.target_id.ends_with("(no-op)"));
+        let err = add_predicate(&mut store, &path, "alive", "entity", "life state").unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+        // Typed fact round-trips; prose-only fact never serializes `typed`.
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["kara".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "kara".to_string(),
+                    predicate: "alive".to_string(),
+                    object: TypedObject::Value {
+                        value: "operational".to_string(),
+                    },
+                }),
+                ..sample_fact("typed-1", "gt")
+            },
+        )
+        .unwrap();
+        add_fact(&mut store, &path, &sample_fact("prose-1", "gt")).unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        let t = reloaded.narrative_facts["typed-1"].typed.as_ref().unwrap();
+        assert_eq!(t.subject, "kara");
+        assert_eq!(t.predicate, "alive");
+        assert_eq!(
+            t.object,
+            TypedObject::Value {
+                value: "operational".to_string()
+            }
+        );
+        assert!(reloaded.narrative_facts["prose-1"].typed.is_none());
+        let raw = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            raw.matches("\"typed\"").count(),
+            1,
+            "prose-only facts stay off the wire"
+        );
+        // Reloaded store carries the bumped schema version.
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// Round 446 — manifest path: predicates land before facts in ONE
+    /// transaction (a fact may use a predicate declared in the same
+    /// manifest), and `amend_fact` can attach a typed leg to an existing
+    /// prose fact (the dogfood typing path).
+    #[test]
+    fn import_facts_predicates_first_and_amend_attaches_typed() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: vec![FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![],
+                entities: vec![EntityImport {
+                    entity_id: "kara".to_string(),
+                    kind: String::new(),
+                    description: String::new(),
+                }],
+                predicates: vec![PredicateImport {
+                    predicate_id: "alive".to_string(),
+                    object_kind: "scalar".to_string(),
+                    description: String::new(),
+                }],
+                facts: vec![FactImport {
+                    entities: vec!["kara".to_string()],
+                    typed: Some(TypedClaim {
+                        subject: "kara".to_string(),
+                        predicate: "alive".to_string(),
+                        object: TypedObject::Value {
+                            value: "operational".to_string(),
+                        },
+                    }),
+                    ..sample_fact("f-1", "gt")
+                }],
+            },
+        )
+        .unwrap();
+        assert!(store.predicates.contains_key("alive"));
+        // Amend a prose fact to attach its typed leg, id unchanged.
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["kara".to_string()],
+                ..sample_fact("f-2", "gt")
+            },
+        )
+        .unwrap();
+        amend_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["kara".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "kara".to_string(),
+                    predicate: "alive".to_string(),
+                    object: TypedObject::Value {
+                        value: "destroyed".to_string(),
+                    },
+                }),
+                ..sample_fact("f-2", "gt")
+            },
+            "typing pass",
+        )
+        .unwrap();
+        assert!(store.narrative_facts["f-2"].typed.is_some());
+    }
+
     /// Round 443 session review — a `pays_off` forward ref WITHIN one
     /// manifest is legal (the store ∪ manifest visibility set, the
     /// succession symmetry), while `add_fact` against the bare store still
@@ -8095,6 +8553,7 @@ mod tests {
                 frames: vec![],
                 branches: vec![],
                 entities: vec![],
+                predicates: vec![],
                 facts: vec![
                     // The payoff lists FIRST, naming a setup later in the
                     // same manifest.
@@ -8194,6 +8653,7 @@ mod tests {
                 entities: vec![],
                 frames: vec![],
                 branches: vec![],
+                predicates: vec![],
                 facts: vec![predecessor, successor],
             },
         )
@@ -8403,6 +8863,7 @@ mod tests {
             }],
             branches: vec![],
             entities: vec![],
+            predicates: vec![],
             facts: vec![a, b],
         };
         import_facts(&mut store, &path, &manifest).unwrap();

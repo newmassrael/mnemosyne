@@ -750,6 +750,9 @@ pub struct FrameViewEntry {
     pub canon_from: String,
     pub canon_to: Option<String>,
     pub evidence: Vec<String>,
+    /// Typed leg (Round 446), surfaced verbatim when authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typed: Option<mnemosyne_core::TypedClaim>,
     pub quote: Option<String>,
 }
 
@@ -863,6 +866,7 @@ pub fn frame_view(
                 canon_from: fact.canon_from.clone(),
                 canon_to: fact.canon_to.clone(),
                 evidence: fact.evidence.clone(),
+                typed: fact.typed.clone(),
                 quote: fact.quote.clone(),
             });
             continue;
@@ -1087,6 +1091,7 @@ mod tests {
             supersedes_in_frame: None,
             payoff_expectation: None,
             pays_off: vec![],
+            typed: None,
             quote: None,
         }
     }
@@ -1132,6 +1137,7 @@ mod tests {
                 entities: vec![],
                 frames,
                 branches,
+                predicates: vec![],
                 facts,
             },
         )
@@ -1489,6 +1495,7 @@ mod tests {
                         kind: "character".to_string(),
                         description: String::new(),
                     }],
+                    predicates: vec![],
                     facts: vec![about_lucy, other],
                 },
             )
@@ -1577,6 +1584,7 @@ mod tests {
                 frames,
                 branches,
                 entities: vec![],
+                predicates: vec![],
                 facts,
             },
         )
