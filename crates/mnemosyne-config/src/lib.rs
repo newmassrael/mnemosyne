@@ -167,6 +167,14 @@ pub struct WorkspaceConfig {
     /// Absent → the check is disabled (opt-in).
     #[serde(default)]
     pub verifies_catalog: Option<VerifiesCatalogSection>,
+    /// `[continuity]` table — frame-scoped narrative continuity gate (Round
+    /// 431; `validate-continuity`). Evaluates recorded conflict edges between
+    /// narrative facts: same-frame overlapping contradictions are violations,
+    /// cross-frame contradictions are data. Absent → the gate is disabled
+    /// (opt-in, the verify-axis pattern: a workspace with no narrative facts
+    /// pays no cost).
+    #[serde(default)]
+    pub continuity: Option<ContinuitySection>,
 }
 
 /// `[atomic]` table — atomic store path override (Round 279).
@@ -931,6 +939,34 @@ pub struct VerifiesCatalogSection {
     pub sha256: Option<String>,
 }
 
+/// `[continuity]` table — policy + canon-order declaration for the
+/// frame-scoped continuity gate (Round 431; the `validate-continuity`
+/// subcommand).
+///
+/// The canon order is DECLARED, never inferred (design sec 7.9 guardrail
+/// B-1): `canon_order_path` points at a consumer/medium-adapter-generated
+/// `canon-order/v1` JSON (a partial-order edge list — a chapter chain for a
+/// linear novel, a quest DAG for a game). Without a declaration the gate
+/// still catches equal-coordinate contradictions (equality needs no order);
+/// non-comparable pairs are surfaced as a count, never gated. Defaults to
+/// `reject` like `[content_drift]`: a same-frame simultaneous contradiction
+/// is wrong data, never a legitimate intermediate state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContinuitySection {
+    /// Workspace-relative path to the `canon-order/v1` declaration. Optional:
+    /// absent = equality-only comparability.
+    #[serde(default)]
+    pub canon_order_path: Option<String>,
+    /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
+    #[serde(default = "default_severity_reject")]
+    pub severity: Severity,
+    /// Optional sha256 pin of the canon-order file (R428 symmetry: the order
+    /// is a gate-authority input; a configured pin re-hashes every load and
+    /// fails LOUDLY on mismatch). Requires `canon_order_path`.
+    #[serde(default)]
+    pub canon_order_sha256: Option<String>,
+}
+
 /// Config discovery + load result.
 #[derive(Debug, Clone)]
 pub struct LoadedConfig {
@@ -997,6 +1033,21 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             if !is_lowercase_sha256_hex(hash) {
                 bail!(
   "mnemosyne.toml: `verifies_catalog.sha256` must be 64-char lowercase hex (got `{}`)",
+  hash
+  );
+            }
+        }
+    }
+    if let Some(cont) = &cfg.continuity {
+        if let Some(hash) = &cont.canon_order_sha256 {
+            if cont.canon_order_path.is_none() {
+                bail!(
+                    "mnemosyne.toml: `continuity.canon_order_sha256` requires `canon_order_path` (a pin with nothing to pin)"
+                );
+            }
+            if !is_lowercase_sha256_hex(hash) {
+                bail!(
+  "mnemosyne.toml: `continuity.canon_order_sha256` must be 64-char lowercase hex (got `{}`)",
   hash
   );
             }
@@ -1735,5 +1786,49 @@ section_namespace = "scxml"
             .and_then(|p| p.set_equality_validator)
             .expect("set_equality_validator missing");
         assert_eq!(sev.section_namespace.as_deref(), Some("scxml"));
+    }
+    #[test]
+    fn continuity_section_parses_with_defaults() {
+        let cfg = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+canon_order_path = "canon-order.json"
+"#,
+        )
+        .unwrap();
+        let cont = cfg.continuity.unwrap();
+        assert_eq!(cont.canon_order_path.as_deref(), Some("canon-order.json"));
+        assert!(cont.severity.is_reject());
+        assert!(cont.canon_order_sha256.is_none());
+    }
+
+    #[test]
+    fn continuity_sha256_requires_path_and_hex() {
+        let err = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+canon_order_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("requires `canon_order_path`"),
+            "{err}"
+        );
+        let err = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+canon_order_path = "canon-order.json"
+canon_order_sha256 = "NOT-HEX"
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("lowercase hex"), "{err}");
     }
 }

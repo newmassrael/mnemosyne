@@ -7587,6 +7587,56 @@
         "MediumAdapter L1 field-composition debt (spec-shaped fields hard-welded on AtomicSection, surfaced by the novel medium) stays flagged, separate round",
         "consumer note: schema v12 is load-transparent (empty maps); global cli+mcp need reinstall at next sync"
       ]
+    },
+    "Round 431 — continuity gate: frame-scoped conflict scan over a declared canon order (Phase 1A Round B)": {
+      "decision_summary": "Phase 1A build Round B: the continuity gate lands — the validation half of the North Star sentence whose storage half was R430. scan_continuity evaluates the RECORDED conflict assertion edges frame-scoped: a same-frame pair whose DERIVED canon extents co-hold at any point is a violation; a cross-frame pair is data, counted and never gated. Effective extents are derived at scan exactly as designed (stored canon_to, cut by any in-frame successor's canon_from — nothing written back); a stored end that outlives its successor's start is itself flagged. Canon order obeys guardrail B-1: it is a DECLARED partial order (canon-order/v1 edge JSON, consumer/medium-adapter generated, cycles reject, optional sha256 pin per the R428 authority-input rule) — section-id spelling is never consulted, non-comparable pairs surface as a count and never gate, and equality needs no declaration so the gate already catches same-coordinate contradictions with no order file. Guardrail B-2 is structural: conflict scoping lives in one same_scope predicate that widens to frame-x-branch when the world-line axis lands. Opt-in via the [continuity] table (severity default reject, the content-drift rationale: a same-frame simultaneous contradiction is wrong data, never a legitimate intermediate state). Proven on the real corpus: the Dracula store's 4 recorded conflict pairs are all cross-frame = 0 violations under reject (the multi-axis thesis executing), and a fabricated same-frame overlap was caught at its exact canon point with exit 1. Round C (frame-at-T projection) remains.",
+      "changes_bullets": [
+        "mnemosyne-validate continuity.rs: CanonOrder (declared partial order from canon-order/v1 edge JSON, transitive closure, cycle reject) + load_canon_order with optional sha256 pin (R428 authority-input symmetry) + scan_continuity",
+        "guardrail B-1 enforced structurally: order is consumer/medium-adapter DECLARED (R426 catalog contract pattern), section-id spelling never consulted; non-comparable pairs surface as unordered_pairs count and never gate; equal coordinates need no declaration so the gate works orderless",
+        "guardrail B-2: conflict scoping isolated in one same_scope predicate (today frame; widens to frame-x-branch as key-widening when the world-line axis lands)",
+        "effective extent DERIVED at scan: stored canon_to, cut by any in-frame successor canon_from; violations FrameConflictOverlap / SuccessionContradiction (stored end outlives successor start) / SuccessionCrossFrame + ConflictTargetMissing / SuccessionTargetMissing fail-loud re-checks",
+        "[continuity] config table (canon_order_path optional, severity default reject, canon_order_sha256 requires path + hex-validated) + validate-continuity CLI verb (--order bypasses pin by design, --severity flag over config over disabled, --sidecar for non-dogfood stores, TTY+--json)",
+        "SCHEMA_GUIDE continuity-gate section with the canon-order contract and toml example"
+      ],
+      "verification_bullets": [
+        "9 continuity unit tests: same-frame overlap violation, cross-frame = data (acceptance 1 shape), derived closure prevents overlap with control (acceptance 3), succession contradiction, undeclared order = unordered not violation, equality needs no declaration, DAG incomparable arms do not overlap (B-1 quest shape), cycle reject, order node must be a section",
+        "2 config unit tests (defaults + sha-requires-path/hex) + 5 CLI smoke tests (validate_continuity_smoke.rs: cross-frame exit 0 with JSON contract keys, same-frame reject exit 1 then warn exit 0, disabled-without-table still reports, pin mismatch loud + --order bypass, undeclared order surfaces unordered)",
+        "workspace: 93 test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus: Dracula store 10 facts under reject = 4 conflict pairs all cross-frame, 0 violations; fabricated same-frame overlap (F-FAB vs F04) caught at dracula-ch-10, exit 1"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Round C next: read projection \"facts of frame F at canon point T\" (report-* verb pattern; reuses CanonOrder + the holds_at semantics — consider hoisting holds_at if the projection needs it)",
+        "validate-continuity stays standalone (not wired into validate-workspace), parity with validate-content-drift",
+        "canon-order for the Dracula PoC = linear 26-edge chain artifact (claudedocs scratch); a game-medium consumer exercises the DAG path live when one arrives",
+        "world-line branch axis (design sec 7.9 axis 2) still consumer-pull; same_scope widens then"
+      ],
+      "publishable_decision_summary": "Phase 1A build Round B: the continuity gate lands — the validation half of the North Star sentence whose storage half was R430. scan_continuity evaluates the RECORDED conflict assertion edges frame-scoped: a same-frame pair whose DERIVED canon extents co-hold at any point is a violation; a cross-frame pair is data, counted and never gated. Effective extents are derived at scan exactly as designed (stored canon_to, cut by any in-frame successor's canon_from — nothing written back); a stored end that outlives its successor's start is itself flagged. Canon order obeys guardrail B-1: it is a DECLARED partial order (canon-order/v1 edge JSON, consumer/medium-adapter generated, cycles reject, optional sha256 pin per the R428 authority-input rule) — section-id spelling is never consulted, non-comparable pairs surface as a count and never gate, and equality needs no declaration so the gate already catches same-coordinate contradictions with no order file. Guardrail B-2 is structural: conflict scoping lives in one same_scope predicate that widens to frame-x-branch when the world-line axis lands. Opt-in via the [continuity] table (severity default reject, the content-drift rationale: a same-frame simultaneous contradiction is wrong data, never a legitimate intermediate state). Proven on the real corpus: the Dracula store's 4 recorded conflict pairs are all cross-frame = 0 violations under reject (the multi-axis thesis executing), and a fabricated same-frame overlap was caught at its exact canon point with exit 1. Round C (frame-at-T projection) remains.",
+      "publishable_changes_bullets": [
+        "mnemosyne-validate continuity.rs: CanonOrder (declared partial order from canon-order/v1 edge JSON, transitive closure, cycle reject) + load_canon_order with optional sha256 pin (R428 authority-input symmetry) + scan_continuity",
+        "guardrail B-1 enforced structurally: order is consumer/medium-adapter DECLARED (R426 catalog contract pattern), section-id spelling never consulted; non-comparable pairs surface as unordered_pairs count and never gate; equal coordinates need no declaration so the gate works orderless",
+        "guardrail B-2: conflict scoping isolated in one same_scope predicate (today frame; widens to frame-x-branch as key-widening when the world-line axis lands)",
+        "effective extent DERIVED at scan: stored canon_to, cut by any in-frame successor canon_from; violations FrameConflictOverlap / SuccessionContradiction (stored end outlives successor start) / SuccessionCrossFrame + ConflictTargetMissing / SuccessionTargetMissing fail-loud re-checks",
+        "[continuity] config table (canon_order_path optional, severity default reject, canon_order_sha256 requires path + hex-validated) + validate-continuity CLI verb (--order bypasses pin by design, --severity flag over config over disabled, --sidecar for non-dogfood stores, TTY+--json)",
+        "SCHEMA_GUIDE continuity-gate section with the canon-order contract and toml example"
+      ],
+      "publishable_verification_bullets": [
+        "9 continuity unit tests: same-frame overlap violation, cross-frame = data (acceptance 1 shape), derived closure prevents overlap with control (acceptance 3), succession contradiction, undeclared order = unordered not violation, equality needs no declaration, DAG incomparable arms do not overlap (B-1 quest shape), cycle reject, order node must be a section",
+        "2 config unit tests (defaults + sha-requires-path/hex) + 5 CLI smoke tests (validate_continuity_smoke.rs: cross-frame exit 0 with JSON contract keys, same-frame reject exit 1 then warn exit 0, disabled-without-table still reports, pin mismatch loud + --order bypass, undeclared order surfaces unordered)",
+        "workspace: 93 test suites green, clippy -D warnings clean, fmt clean",
+        "acceptance on the real corpus: Dracula store 10 facts under reject = 4 conflict pairs all cross-frame, 0 violations; fabricated same-frame overlap (F-FAB vs F04) caught at dracula-ch-10, exit 1"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Round C next: read projection \"facts of frame F at canon point T\" (report-* verb pattern; reuses CanonOrder + the holds_at semantics — consider hoisting holds_at if the projection needs it)",
+        "validate-continuity stays standalone (not wired into validate-workspace), parity with validate-content-drift",
+        "canon-order for the Dracula PoC = linear 26-edge chain artifact (claudedocs scratch); a game-medium consumer exercises the DAG path live when one arrives",
+        "world-line branch axis (design sec 7.9 axis 2) still consumer-pull; same_scope widens then"
+      ]
     }
   },
   "inventory_entries": {},

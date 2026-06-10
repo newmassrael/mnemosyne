@@ -781,6 +781,30 @@ transaction, forward refs within the manifest legal) or `add-frame` /
 so the invariant set cannot diverge. Frames are sparse: a fact absent
 from a frame is *unrecorded*, not false.
 
+### Continuity gate (`[continuity]`, Round 431)
+
+`validate-continuity` evaluates the recorded conflict edges
+frame-scoped: a SAME-frame pair whose derived canon extents co-hold at
+some point is a violation; a CROSS-frame pair is data and never gates.
+A fact's effective end is derived (stored `canon_to`, cut by any
+in-frame successor's `canon_from`); a stored end that outlives a
+successor's start is a `succession_contradiction`.
+
+Canon order is **declared, never inferred**: point
+`canon_order_path` at a consumer/medium-adapter-generated
+`canon-order/v1` JSON (`{ "edges": [["ch-1","ch-2"], …] }` — a partial
+order; a chapter chain for a linear novel, a quest DAG for a game;
+cycles reject at load). Pairs not comparable under the declaration are
+surfaced as `unordered_pairs`, never gated; equal coordinates need no
+declaration. Without the table the gate is off (opt-in).
+
+```toml
+[continuity]
+canon_order_path = "canon-order.json"
+severity = "reject"            # default; warn | info
+# canon_order_sha256 = "<64-hex>"  # optional pin; loud mismatch on load
+```
+
 ## What stays fixed
 
 The store entity types — Section / CrossRef / ChangelogEntry /

@@ -288,6 +288,8 @@ fn run(args: &[String]) -> Result<()> {
         "report-coverage" => cmd_report_coverage(&args[2..]),
         "report-confirmation" => cmd_report_confirmation(&args[2..]),
         "validate-confirmation" => cmd_validate_confirmation(&args[2..]),
+        // Round 431 — frame-scoped narrative continuity gate (Phase 1A Round B).
+        "validate-continuity" => cmd_validate_continuity(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -534,6 +536,14 @@ fn print_help(prog: &str) {
     println!(
         " {} validate-confirmation [--severity reject|warn|info] [--json]",
         prog
+    );
+    println!(
+        " {} validate-continuity [--order <canon-order.json>] [--severity reject|warn|info] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!("   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,");
+    println!(
+        "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred"
     );
     println!(
         " {} validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]",
@@ -1618,6 +1628,159 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
         }
     }
     if matches!(severity, Some(s) if s.is_reject()) && !gaps.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 431 — frame-scoped narrative continuity gate (`validate-continuity`).
+///
+/// Severity: `--severity` flag > `[continuity].severity` > disabled (table
+/// absent = opt-out; the scan still runs read-only and reports). Canon order:
+/// `--order` flag (bypasses the pin — the pin claims nothing about a different
+/// file, the R428 `--catalog` rule) > `[continuity].canon_order_path` (+
+/// optional sha256 pin) > equality-only. `--sidecar` overrides the store path
+/// (narrative facts usually live in non-dogfood stores).
+fn cmd_validate_continuity(args: &[String]) -> Result<()> {
+    use mnemosyne_config::Severity;
+    use mnemosyne_validate::continuity::{
+        load_canon_order, scan_continuity, CanonOrder, ContinuityViolation,
+    };
+    let mut json = false;
+    let mut severity_override: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--severity" => {
+                severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--severity missing"))?
+                        .clone(),
+                )
+            }
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| root.clone());
+    let cont_cfg = loaded.config.continuity.as_ref();
+    let severity = match severity_override {
+        Some(s) => Some(
+            Severity::from_tag(s.trim())
+                .ok_or_else(|| anyhow!("--severity must be `reject`, `warn`, or `info`"))?,
+        ),
+        None => cont_cfg.map(|c| c.severity),
+    };
+    let order = match (
+        &order_override,
+        cont_cfg.and_then(|c| c.canon_order_path.as_ref()),
+    ) {
+        (Some(p), _) => load_canon_order(&root.join(p), None).map_err(|e| anyhow!("{e}"))?,
+        (None, Some(p)) => load_canon_order(
+            &root.join(p),
+            cont_cfg.and_then(|c| c.canon_order_sha256.as_deref()),
+        )
+        .map_err(|e| anyhow!("{e}"))?,
+        (None, None) => CanonOrder::empty(),
+    };
+    let atomic_path =
+        mnemosyne_ops::cascade::resolve_sidecar(&anchor, sidecar_override.as_deref())?;
+    let store = AtomicStore::load(&atomic_path)
+        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
+    let report = scan_continuity(&store, &order).map_err(|e| anyhow!("{e}"))?;
+    let violation_json = |v: &ContinuityViolation| match v {
+        ContinuityViolation::FrameConflictOverlap {
+            frame,
+            fact_a,
+            fact_b,
+            at,
+        } => serde_json::json!({
+            "kind": "frame_conflict_overlap",
+            "frame": frame, "fact_a": fact_a, "fact_b": fact_b, "at": at,
+        }),
+        ContinuityViolation::SuccessionContradiction {
+            frame,
+            predecessor,
+            successor,
+            stored_to,
+            successor_from,
+        } => serde_json::json!({
+            "kind": "succession_contradiction",
+            "frame": frame, "predecessor": predecessor, "successor": successor,
+            "stored_to": stored_to, "successor_from": successor_from,
+        }),
+        ContinuityViolation::SuccessionCrossFrame {
+            successor,
+            predecessor,
+            successor_frame,
+            predecessor_frame,
+        } => serde_json::json!({
+            "kind": "succession_cross_frame",
+            "successor": successor, "predecessor": predecessor,
+            "successor_frame": successor_frame, "predecessor_frame": predecessor_frame,
+        }),
+        ContinuityViolation::ConflictTargetMissing { fact_id, target } => serde_json::json!({
+            "kind": "conflict_target_missing", "fact_id": fact_id, "target": target,
+        }),
+        ContinuityViolation::SuccessionTargetMissing { fact_id, target } => serde_json::json!({
+            "kind": "succession_target_missing", "fact_id": fact_id, "target": target,
+        }),
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "severity": severity.map(|s| s.as_str()),
+                "facts": report.facts,
+                "order_nodes": report.order_nodes,
+                "conflict_pairs_checked": report.conflict_pairs_checked,
+                "cross_frame_pairs": report.cross_frame_pairs,
+                "unordered_pairs": report.unordered_pairs,
+                "violation_count": report.violations.len(),
+                "violations": report.violations.iter().map(violation_json).collect::<Vec<_>>(),
+            })
+        );
+    } else {
+        match severity {
+            None => println!("continuity gate: disabled ([continuity] table absent)"),
+            Some(s) => println!("=== continuity gate ({}) ===", s.as_str()),
+        }
+        println!(
+            "  facts={} order_nodes={} conflict_pairs={} cross_frame(data)={} unordered={}",
+            report.facts,
+            report.order_nodes,
+            report.conflict_pairs_checked,
+            report.cross_frame_pairs,
+            report.unordered_pairs
+        );
+        println!("  violations: {}", report.violations.len());
+        for v in &report.violations {
+            println!("  {}", violation_json(v));
+        }
+    }
+    if matches!(severity, Some(s) if s.is_reject()) && !report.violations.is_empty() {
         std::process::exit(1);
     }
     Ok(())
