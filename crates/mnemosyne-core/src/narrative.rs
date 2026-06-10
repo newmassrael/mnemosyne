@@ -24,6 +24,22 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The default world-line branch every fact belongs to unless authored onto
+/// another (design sec 7.9 axis 2: world-line branch ≠ epistemic frame —
+/// branch answers "which quest-path/playthrough world", frame answers "who
+/// believes it"; per-branch ground truth is the `(branch, frame)` composite).
+/// A single-world corpus never names a branch and its store bytes never
+/// change.
+pub const MAIN_BRANCH: &str = "main";
+
+fn default_branch() -> String {
+    MAIN_BRANCH.to_string()
+}
+
+fn is_main_branch(branch: &str) -> bool {
+    branch == MAIN_BRANCH
+}
+
 /// One epistemic frame (registry entry). Keyed by frame id in
 /// `AtomicStore.frames`; the id is the value every [`NarrativeFact::frame`]
 /// must reference (fail-loud at the mutate primitive).
@@ -50,6 +66,15 @@ pub struct NarrativeFact {
     /// one — a believed-fact and the corresponding ground-truth fact are
     /// distinct facts, never one fact with two frames.
     pub frame: String,
+    /// World-line branch id (Round 433, design sec 7.9 axis 2). Frames are
+    /// sparse epistemic axes; branches are divergent quest-path/playthrough
+    /// worlds. Conflict scoping and in-frame succession are both
+    /// `(frame, branch)`-scoped: same-frame facts on different world-lines
+    /// never conflict, and succession never crosses a branch (divergence is
+    /// data, not succession). Serialization skips the default branch so
+    /// pre-branch stores stay byte-stable.
+    #[serde(default = "default_branch", skip_serializing_if = "is_main_branch")]
+    pub branch: String,
     /// The claim held in this frame, per-claim granularity (atomic,
     /// falsifiable — one assertion, not an entity dossier).
     pub claim: String,

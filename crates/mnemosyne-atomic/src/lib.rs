@@ -1041,7 +1041,15 @@ pub enum AtomicStoreError {
 // them until the continuity gate lands, and that gate is opt-in). So there is
 // deliberately NO `schema_version < 12` arm in `load`, and no migration
 // report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 12;
+// v12→v13 adds `NarrativeFact.branch` (world-line branch axis, Round 433 —
+// design sec 7.9 axis 2). Declarative serde default: a pre-v13 fact has no
+// `branch` key, serde fills `MAIN_BRANCH`, and serialization skips the
+// default — a single-world store round-trips byte-identical. Conflict
+// scoping and succession widen from `frame` to `(frame, branch)` (guardrail
+// B-2 key-widening); a store that never names a branch gates exactly as
+// before. So there is deliberately NO `schema_version < 13` arm in `load`,
+// and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 13;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3323,6 +3331,10 @@ pub struct FrameImport {
 pub struct FactImport {
     pub fact_id: String,
     pub frame: String,
+    /// World-line branch (Round 433). Omitted = `MAIN_BRANCH`; present must
+    /// be non-empty after trim (omit it instead of blanking it).
+    #[serde(default)]
+    pub branch: Option<String>,
     pub claim: String,
     pub canon_from: String,
     #[serde(default)]
@@ -3379,6 +3391,16 @@ fn build_candidate_fact(
              (add_frame / manifest frames[] first; fail-loud)"
         ));
     }
+    let branch = match entry.branch.as_deref().map(str::trim) {
+        None => mnemosyne_core::MAIN_BRANCH.to_string(),
+        Some("") => {
+            return Err(format!(
+                "fact `{fact_id}`: branch must be non-empty when present (omit it for `{}`)",
+                mnemosyne_core::MAIN_BRANCH
+            ));
+        }
+        Some(b) => b.to_string(),
+    };
     let claim = entry.claim.trim();
     if claim.is_empty() {
         return Err(format!("fact `{fact_id}`: claim mandatory (non-empty)"));
@@ -3470,6 +3492,7 @@ fn build_candidate_fact(
         fact_id.to_string(),
         NarrativeFact {
             frame: frame.to_string(),
+            branch,
             claim: claim.to_string(),
             canon_from: canon_from.to_string(),
             canon_to,
@@ -3484,7 +3507,9 @@ fn build_candidate_fact(
 
 /// Cross-fact ref check for one fact against a visibility set (the caller's
 /// store ∪ manifest view). `supersedes_in_frame` additionally enforces SAME
-/// frame: cross-frame disagreement is data, never succession (design sec 7.3).
+/// scope — `(frame, branch)`: cross-frame disagreement is data, never
+/// succession (design sec 7.3), and cross-branch divergence is world-line
+/// data, never succession (Round 433, guardrail B-2 key-widening).
 fn validate_fact_refs(
     fact_id: &str,
     fact: &NarrativeFact,
@@ -3512,6 +3537,14 @@ fn validate_fact_refs(
                      frame `{}` — in-frame succession only (cross-frame disagreement is \
                      data, not succession)",
                     fact.frame, t.frame
+                ));
+            }
+            Some(t) if t.branch != fact.branch => {
+                return Err(format!(
+                    "fact `{fact_id}` (branch `{}`): supersedes_in_frame `{target}` lives on \
+                     branch `{}` — succession never crosses a world-line (branch divergence \
+                     is data, not succession)",
+                    fact.branch, t.branch
                 ));
             }
             Some(_) => {}
@@ -7059,6 +7092,7 @@ mod tests {
         FactImport {
             fact_id: fact_id.to_string(),
             frame: frame.to_string(),
+            branch: None,
             claim: "the count is an eccentric nobleman".to_string(),
             canon_from: "ch-1".to_string(),
             canon_to: None,
@@ -7288,6 +7322,13 @@ mod tests {
                     ..sample_fact("p6", "gt")
                 },
             ),
+            (
+                "blank branch",
+                FactImport {
+                    branch: Some("  ".to_string()),
+                    ..sample_fact("p7", "gt")
+                },
+            ),
         ];
         for (label, entry) in cases {
             let tmp = TempDir::new().unwrap();
@@ -7314,6 +7355,82 @@ mod tests {
                 "write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
             );
         }
+    }
+
+    /// Round 433 — world-line branch axis: omitted branch = MAIN_BRANCH, the
+    /// default never serializes (pre-branch stores stay byte-stable), and a
+    /// declared branch round-trips.
+    #[test]
+    fn fact_branch_defaults_to_main_and_skips_serialization() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-main", "gt")).unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                branch: Some("vampire-route".to_string()),
+                ..sample_fact("f-route", "gt")
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            store.narrative_facts["f-main"].branch,
+            mnemosyne_core::MAIN_BRANCH
+        );
+        assert_eq!(store.narrative_facts["f-route"].branch, "vampire-route");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(
+            json["narrative_facts"]["f-main"].get("branch").is_none(),
+            "default branch must not serialize"
+        );
+        assert_eq!(
+            json["narrative_facts"]["f-route"]["branch"],
+            "vampire-route"
+        );
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.narrative_facts["f-main"].branch,
+            mnemosyne_core::MAIN_BRANCH
+        );
+    }
+
+    /// Round 433 — succession never crosses a world-line (B-2: scope =
+    /// (frame, branch); branch divergence is data, not succession).
+    #[test]
+    fn succession_across_branches_rejected_on_both_write_paths() {
+        let tmp = TempDir::new().unwrap();
+        let path_a = tmp.path().join("a.json");
+        let path_b = tmp.path().join("b.json");
+        let mut store_a = AtomicStore::new();
+        let mut store_b = AtomicStore::new();
+        for s in [&mut store_a, &mut store_b] {
+            seed_chapters(s);
+            s.frames.insert("gt".to_string(), Frame::default());
+        }
+        let predecessor = sample_fact("f-old", "gt");
+        let successor = FactImport {
+            branch: Some("vampire-route".to_string()),
+            supersedes_in_frame: Some("f-old".to_string()),
+            ..sample_fact("f-new", "gt")
+        };
+        add_fact(&mut store_a, &path_a, &predecessor).unwrap();
+        let err = add_fact(&mut store_a, &path_a, &successor).unwrap_err();
+        assert!(err.to_string().contains("world-line"), "{err}");
+        let err = import_facts(
+            &mut store_b,
+            &path_b,
+            &FactsManifest {
+                frames: vec![],
+                facts: vec![predecessor, successor],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("world-line"), "{err}");
     }
 
     #[test]

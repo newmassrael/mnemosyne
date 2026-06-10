@@ -84,7 +84,7 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("2 frames + 2 facts created"), "{stdout}");
     let store = read_store(tmp.path());
-    assert_eq!(store["schema_version"], 12);
+    assert_eq!(store["schema_version"], 13);
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"

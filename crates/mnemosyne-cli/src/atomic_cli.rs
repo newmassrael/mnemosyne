@@ -410,6 +410,7 @@ pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut entry = mnemosyne_atomic::FactImport {
         fact_id: String::new(),
         frame: String::new(),
+        branch: None,
         claim: String::new(),
         canon_from: String::new(),
         canon_to: None,
@@ -441,6 +442,13 @@ pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
                     .next()
                     .ok_or_else(|| anyhow!("--frame missing"))?
                     .clone()
+            }
+            "--branch" => {
+                entry.branch = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--branch missing"))?
+                        .clone(),
+                )
             }
             "--claim" => {
                 entry.claim = iter

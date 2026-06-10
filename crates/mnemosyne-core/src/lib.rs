@@ -36,7 +36,7 @@ pub use fact::{
 };
 
 mod narrative;
-pub use narrative::{Frame, NarrativeFact};
+pub use narrative::{Frame, NarrativeFact, MAIN_BRANCH};
 
 mod section_ref;
 pub use section_ref::{numeric_section_refs, strip_section_marker};

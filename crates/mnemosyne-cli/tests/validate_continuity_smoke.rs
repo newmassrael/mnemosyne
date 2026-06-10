@@ -86,7 +86,7 @@ fn cross_frame_conflict_is_data_exit_zero() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
     assert_eq!(v["severity"], "reject");
     assert_eq!(v["violation_count"], 0);
-    assert_eq!(v["cross_frame_pairs"], 1);
+    assert_eq!(v["cross_scope_pairs"], 1);
     assert_eq!(v["conflict_pairs_checked"], 1);
     assert_eq!(v["order_nodes"], 3);
 }

@@ -7683,11 +7683,57 @@
         "frame_view JSON omits WHY a fact is not holding (ended-by-which-successor); add when a viewer consumer asks",
         "holds_at stays private to continuity.rs by design: frame_view is its only other consumer and lives beside it"
       ]
+    },
+    "Round 433 — world-line branch axis: (frame, branch) scoping + per-branch canon order (AI-authoring pull 1)": {
+      "decision_summary": "AI-authoring greenlit as the live consumer; the sec 7.10 build order executes, pull 1 of 3: the world-line branch axis (sec 7.9 axis 2) lands. A branch is which-world, a frame is who-believes - the four-axis decomposition holds and the two never conflate; per-branch ground truth is the (branch, frame) composite. NarrativeFact gains an additive branch field (serde default main, the default never serializes, so every pre-branch store round-trips byte-identical; schema v12->v13, declarative default, no migration arm). Guardrail B-2 executes exactly as written at R431: same_scope widens frame -> (frame, branch) as a key-widening, not a rewrite - same-frame facts on different world-lines never conflict (cross-branch pairs are data, like cross-frame pairs), and in-frame succession never crosses a branch (world-line divergence is data, not succession; enforced at the write path and re-checked by the scan). Canon order goes branch-relative (B-1 carried): canon-order/v1 gains an optional branches map of per-world-line edge sets, each composed with the shared base - the same quest node can legitimately order differently on two branches, which a single global DAG cannot express (it would be a cycle). frame_view scopes to one world-line (--branch, default main) behind a derived fail-loud unknown-branch boundary (no registry: known = main, fact-carried, or order-declared; a typo'd branch must not read as an empty world).",
+      "changes_bullets": [
+        "NarrativeFact.branch in mnemosyne-core narrative.rs (+ MAIN_BRANCH const, re-exported): serde default \"main\", default never serializes - single-world stores round-trip byte-identical; schema v12->v13 (R413 declarative-default pattern, no migration arm)",
+        "FactImport.branch (Option; omitted = main, blank-after-trim rejected) routed through the ONE shared build_candidate_fact (R305 parity); validate_fact_refs widens succession to same (frame, branch) - cross-branch supersedes rejects on both write paths (divergence is data, not succession)",
+        "continuity gate B-2 key-widening executed as designed: same_scope = (frame, branch); ContinuityReport.cross_frame_pairs renamed cross_scope_pairs (cross-frame OR cross-branch = data, never gated); FrameConflictOverlap carries branch; new SuccessionCrossBranch violation (out-of-band-edit re-check, fail-loud)",
+        "canon-order/v1 gains optional branches{branch_id: edges[]} (lenient-additive): per-branch transitive closure of (shared base UNION branch edges), cycle-checked per composition; CanonOrder.le/comparable take the governing branch; a branch absent from the declaration orders by the base alone",
+        "frame_view(store, order, frame, branch, at) + FrameView.branch: a view never mixes world-lines; unknown branch fails loud via the derived known-set (main, fact-carried, order-declared) - no registry, but a typo'd branch must not read as an empty world",
+        "CLI: add-fact --branch, report-frame-view --branch (default main; json gains branch), validate-continuity json emits cross_scope_pairs + succession_cross_branch"
+      ],
+      "verification_bullets": [
+        "new unit tests: branch defaults to main + default-skip serialization (byte-stability), cross-branch succession rejected on BOTH write paths, blank-branch added to the R305 parity matrix, same-frame cross-branch conflict = data (zero violations), per-branch order gates each world-line under its own reversed order (ch-2/ch-3 ordered oppositely on two branches - inexpressible as one global DAG), frame_view world-line scoping + typo'd-branch fail-loud",
+        "CLI smoke end-to-end: add-fact --branch then report-frame-view --branch sees only that world-line, the default view never mixes it in, typo'd branch errors; import-facts smoke updated to v13",
+        "full workspace suite green (757 tests, 0 failed), clippy --all-targets clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "sec 7.10 build order continues: pull 2 = authorial retract/amend (+ fix the divergent-reject advice that wrongly recommends in-frame supersession for an authorial typo), pull 3 = MCP narrative verb mirror",
+        "no branch registry by design (derived fail-loud known-set instead); a registry entry with description becomes consumer-pull if branch-level metadata materializes",
+        "convergence-B index key (branch_id, entity_id, valid_from) already matches FactKey; the log schema now carries every field that projection will need"
+      ],
+      "publishable_decision_summary": "AI-authoring greenlit as the live consumer; the sec 7.10 build order executes, pull 1 of 3: the world-line branch axis (sec 7.9 axis 2) lands. A branch is which-world, a frame is who-believes - the four-axis decomposition holds and the two never conflate; per-branch ground truth is the (branch, frame) composite. NarrativeFact gains an additive branch field (serde default main, the default never serializes, so every pre-branch store round-trips byte-identical; schema v12->v13, declarative default, no migration arm). Guardrail B-2 executes exactly as written at R431: same_scope widens frame -> (frame, branch) as a key-widening, not a rewrite - same-frame facts on different world-lines never conflict (cross-branch pairs are data, like cross-frame pairs), and in-frame succession never crosses a branch (world-line divergence is data, not succession; enforced at the write path and re-checked by the scan). Canon order goes branch-relative (B-1 carried): canon-order/v1 gains an optional branches map of per-world-line edge sets, each composed with the shared base - the same quest node can legitimately order differently on two branches, which a single global DAG cannot express (it would be a cycle). frame_view scopes to one world-line (--branch, default main) behind a derived fail-loud unknown-branch boundary (no registry: known = main, fact-carried, or order-declared; a typo'd branch must not read as an empty world).",
+      "publishable_changes_bullets": [
+        "NarrativeFact.branch in mnemosyne-core narrative.rs (+ MAIN_BRANCH const, re-exported): serde default \"main\", default never serializes - single-world stores round-trip byte-identical; schema v12->v13 (R413 declarative-default pattern, no migration arm)",
+        "FactImport.branch (Option; omitted = main, blank-after-trim rejected) routed through the ONE shared build_candidate_fact (R305 parity); validate_fact_refs widens succession to same (frame, branch) - cross-branch supersedes rejects on both write paths (divergence is data, not succession)",
+        "continuity gate B-2 key-widening executed as designed: same_scope = (frame, branch); ContinuityReport.cross_frame_pairs renamed cross_scope_pairs (cross-frame OR cross-branch = data, never gated); FrameConflictOverlap carries branch; new SuccessionCrossBranch violation (out-of-band-edit re-check, fail-loud)",
+        "canon-order/v1 gains optional branches{branch_id: edges[]} (lenient-additive): per-branch transitive closure of (shared base UNION branch edges), cycle-checked per composition; CanonOrder.le/comparable take the governing branch; a branch absent from the declaration orders by the base alone",
+        "frame_view(store, order, frame, branch, at) + FrameView.branch: a view never mixes world-lines; unknown branch fails loud via the derived known-set (main, fact-carried, order-declared) - no registry, but a typo'd branch must not read as an empty world",
+        "CLI: add-fact --branch, report-frame-view --branch (default main; json gains branch), validate-continuity json emits cross_scope_pairs + succession_cross_branch"
+      ],
+      "publishable_verification_bullets": [
+        "new unit tests: branch defaults to main + default-skip serialization (byte-stability), cross-branch succession rejected on BOTH write paths, blank-branch added to the R305 parity matrix, same-frame cross-branch conflict = data (zero violations), per-branch order gates each world-line under its own reversed order (ch-2/ch-3 ordered oppositely on two branches - inexpressible as one global DAG), frame_view world-line scoping + typo'd-branch fail-loud",
+        "CLI smoke end-to-end: add-fact --branch then report-frame-view --branch sees only that world-line, the default view never mixes it in, typo'd branch errors; import-facts smoke updated to v13",
+        "full workspace suite green (757 tests, 0 failed), clippy --all-targets clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "sec 7.10 build order continues: pull 2 = authorial retract/amend (+ fix the divergent-reject advice that wrongly recommends in-frame supersession for an authorial typo), pull 3 = MCP narrative verb mirror",
+        "no branch registry by design (derived fail-loud known-set instead); a registry entry with description becomes consumer-pull if branch-level metadata materializes",
+        "convergence-B index key (branch_id, entity_id, valid_from) already matches FactKey; the log schema now carries every field that projection will need"
+      ]
     }
   },
   "inventory_entries": {},
   "confirmation_events": {},
   "frames": {},
   "narrative_facts": {},
-  "schema_version": 12
+  "schema_version": 13
 }

@@ -134,6 +134,75 @@ fn undeclared_coordinates_surface_as_unknown() {
         .any(|u| u == "f-old"));
 }
 
+/// Round 433 — `--branch` end-to-end: a fact authored onto a world-line via
+/// `add-fact --branch` appears only in that branch's view; the default view
+/// never mixes it in; a typo'd branch fails loud.
+#[test]
+fn branch_scopes_the_view_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let out = run(
+        tmp.path(),
+        &[
+            "add-fact",
+            "--fact",
+            "f-route",
+            "--frame",
+            "jonathan",
+            "--branch",
+            "sea-route",
+            "--claim",
+            "the voyage is cursed",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+        ],
+    );
+    assert!(out.status.success(), "{:?}", out);
+    let out = run(
+        tmp.path(),
+        &[
+            "report-frame-view",
+            "--frame",
+            "jonathan",
+            "--branch",
+            "sea-route",
+            "--at",
+            "ch-2",
+            "--json",
+        ],
+    );
+    assert!(out.status.success(), "{:?}", out);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["branch"], "sea-route");
+    assert_eq!(v["holding_count"], 1);
+    assert_eq!(v["holding"][0]["fact_id"], "f-route");
+    // The default-branch view never mixes the world-lines.
+    let main_view = view_json(tmp.path(), "jonathan", "ch-2");
+    assert_eq!(main_view["branch"], "main");
+    assert!(main_view["holding"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|h| h["fact_id"] != "f-route"));
+    // Typo'd branch fails loud rather than reading as an empty world.
+    let out = run(
+        tmp.path(),
+        &[
+            "report-frame-view",
+            "--frame",
+            "jonathan",
+            "--branch",
+            "sea-rotue",
+            "--at",
+            "ch-2",
+        ],
+    );
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unknown"));
+}
+
 #[test]
 fn fail_loud_on_unknown_frame_or_non_section_point() {
     let tmp = TempDir::new().unwrap();

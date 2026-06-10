@@ -381,7 +381,7 @@ fn print_help(prog: &str) {
         " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
         prog
     );
-    println!(" {} add-fact --fact <id> --frame <f> --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
         " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
         prog
@@ -548,7 +548,7 @@ fn print_help(prog: &str) {
         "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred"
     );
     println!(
-        " {} report-frame-view --frame <id> --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        " {} report-frame-view --frame <id> [--branch <id>] --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
@@ -1723,12 +1723,13 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     let violation_json = |v: &ContinuityViolation| match v {
         ContinuityViolation::FrameConflictOverlap {
             frame,
+            branch,
             fact_a,
             fact_b,
             at,
         } => serde_json::json!({
             "kind": "frame_conflict_overlap",
-            "frame": frame, "fact_a": fact_a, "fact_b": fact_b, "at": at,
+            "frame": frame, "branch": branch, "fact_a": fact_a, "fact_b": fact_b, "at": at,
         }),
         ContinuityViolation::SuccessionContradiction {
             frame,
@@ -1751,6 +1752,16 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             "successor": successor, "predecessor": predecessor,
             "successor_frame": successor_frame, "predecessor_frame": predecessor_frame,
         }),
+        ContinuityViolation::SuccessionCrossBranch {
+            successor,
+            predecessor,
+            successor_branch,
+            predecessor_branch,
+        } => serde_json::json!({
+            "kind": "succession_cross_branch",
+            "successor": successor, "predecessor": predecessor,
+            "successor_branch": successor_branch, "predecessor_branch": predecessor_branch,
+        }),
         ContinuityViolation::ConflictTargetMissing { fact_id, target } => serde_json::json!({
             "kind": "conflict_target_missing", "fact_id": fact_id, "target": target,
         }),
@@ -1766,7 +1777,7 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 "facts": report.facts,
                 "order_nodes": report.order_nodes,
                 "conflict_pairs_checked": report.conflict_pairs_checked,
-                "cross_frame_pairs": report.cross_frame_pairs,
+                "cross_scope_pairs": report.cross_scope_pairs,
                 "unordered_pairs": report.unordered_pairs,
                 "violation_count": report.violations.len(),
                 "violations": report.violations.iter().map(violation_json).collect::<Vec<_>>(),
@@ -1778,11 +1789,11 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             Some(s) => println!("=== continuity gate ({}) ===", s.as_str()),
         }
         println!(
-            "  facts={} order_nodes={} conflict_pairs={} cross_frame(data)={} unordered={}",
+            "  facts={} order_nodes={} conflict_pairs={} cross_scope(data)={} unordered={}",
             report.facts,
             report.order_nodes,
             report.conflict_pairs_checked,
-            report.cross_frame_pairs,
+            report.cross_scope_pairs,
             report.unordered_pairs
         );
         println!("  violations: {}", report.violations.len());
@@ -1800,11 +1811,13 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
 /// frame holds at a canon point, over the SAME holds-semantics as the
 /// continuity gate (R390 single-predicate discipline). Read-only; order and
 /// store resolve exactly as `validate-continuity` (`--order` bypasses the
-/// pin; `--sidecar` for non-dogfood stores).
+/// pin; `--sidecar` for non-dogfood stores). `--branch` scopes the view to
+/// one world-line (Round 433; omitted = the default branch).
 fn cmd_report_frame_view(args: &[String]) -> Result<()> {
     use mnemosyne_validate::continuity::{frame_view, load_canon_order, CanonOrder};
     let mut json = false;
     let mut frame: Option<String> = None;
+    let mut branch: Option<String> = None;
     let mut at: Option<String> = None;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
@@ -1816,6 +1829,13 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
                 frame = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--frame missing"))?
+                        .clone(),
+                )
+            }
+            "--branch" => {
+                branch = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--branch missing"))?
                         .clone(),
                 )
             }
@@ -1838,6 +1858,7 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         }
     }
     let frame = frame.ok_or_else(|| anyhow!("--frame arg required"))?;
+    let branch = branch.unwrap_or_else(|| mnemosyne_core::MAIN_BRANCH.to_string());
     let at = at.ok_or_else(|| anyhow!("--at arg required"))?;
     let loaded = workspace_config()?;
     let root = loaded.workspace_root.clone();
@@ -1863,12 +1884,13 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         mnemosyne_ops::cascade::resolve_sidecar(&anchor, sidecar_override.as_deref())?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-    let view = frame_view(&store, &order, &frame, &at).map_err(|e| anyhow!("{e}"))?;
+    let view = frame_view(&store, &order, &frame, &branch, &at).map_err(|e| anyhow!("{e}"))?;
     if json {
         println!(
             "{}",
             serde_json::json!({
                 "frame": view.frame,
+                "branch": view.branch,
                 "at": view.at,
                 "holding": view.holding.iter().map(|e| serde_json::json!({
                     "fact_id": e.fact_id,
@@ -1884,7 +1906,10 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
             })
         );
     } else {
-        println!("=== frame `{}` at `{}` ===", view.frame, view.at);
+        println!(
+            "=== frame `{}` branch `{}` at `{}` ===",
+            view.frame, view.branch, view.at
+        );
         println!(
             "  holding={} not_holding={} unknown={}",
             view.holding.len(),
