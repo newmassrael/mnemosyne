@@ -845,6 +845,19 @@ fn for_each_world_pair<'a>(
     }
 }
 
+/// Lowercase-hex sha256 of a claim's text — the R439 judgment-time
+/// content-pin encoding, one builder (Round 458: the typing-candidates
+/// report became the second site, the two-copy rule fired).
+fn claim_sha256_hex(claim: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(claim.as_bytes());
+    h.finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+}
+
 /// In-frame succession index (predecessor id → superseding facts) — the
 /// [`WorldCtx::holds_at`] input every reader needs, built one way (Round
 /// 456 session review: the third hand-rolled copy triggered the
@@ -1011,15 +1024,7 @@ pub fn scan_continuity(
             };
             // Judgment-time content pin (Round 439): a target claim that
             // changed since the assertion = stale judgment, surfaced.
-            let current = {
-                use sha2::{Digest, Sha256};
-                let mut h = Sha256::new();
-                h.update(t.claim.as_bytes());
-                h.finalize()
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<String>()
-            };
+            let current = claim_sha256_hex(&t.claim);
             if current != assertion.target_claim_sha256 {
                 report
                     .violations
@@ -1753,6 +1758,71 @@ pub fn irony_intervals(
         report.worlds.insert(world, out);
     }
     Ok(report)
+}
+
+/// One untyped fact awaiting a typed-leg proposal (Round 458, design sec
+/// 7.15 Round A): everything the proposer needs about THIS fact, including
+/// the claim text and its sha256 — the R439 judgment-time pin the eventual
+/// proposal must stamp (import re-checks it, so a fact amended after
+/// proposing fails loud as stale).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypingCandidate {
+    pub fact_id: String,
+    pub frame: String,
+    pub branch: String,
+    pub claim: String,
+    pub claim_sha256: String,
+    pub canon_from: String,
+    pub entities: Vec<String>,
+}
+
+/// The typing-discovery input package (Round 458, design sec 7.15): every
+/// untyped fact plus the registered vocabulary, in ONE deterministic call —
+/// the proposer (an LLM agent outside the substrate) never assembles its
+/// own context from N queries and never sees unregistered vocabulary as
+/// proposable. Pure read projection; the substrate contains no LLM client.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TypingCandidatesReport {
+    /// Untyped facts, id-sorted.
+    pub candidates: Vec<TypingCandidate>,
+    pub facts: usize,
+    /// Already-typed count (context, not work).
+    pub typed: usize,
+    /// The 4th registry verbatim — the ONLY predicates a proposal may name.
+    pub predicates: BTreeMap<String, mnemosyne_core::Predicate>,
+    /// The entity registry verbatim — typed subjects/objects must be
+    /// registered AND members of the fact's entities list (R446).
+    pub entities: BTreeMap<String, mnemosyne_core::Entity>,
+}
+
+/// Collect typing candidates (Round 458). Order-independent by design —
+/// typing is a property of the fact, not of any canon declaration — so the
+/// store boundary runs with the empty order (its declaration-side checks
+/// are vacuous; the fact-side out-of-band re-checks still apply, the R440
+/// doctrine).
+pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, String> {
+    check_store_boundary(store, &CanonOrder::empty())?;
+    let facts = &store.narrative_facts;
+    let candidates: Vec<TypingCandidate> = facts
+        .iter()
+        .filter(|(_, f)| f.typed.is_none())
+        .map(|(id, f)| TypingCandidate {
+            fact_id: id.clone(),
+            frame: f.frame.clone(),
+            branch: f.branch.clone(),
+            claim: f.claim.clone(),
+            claim_sha256: claim_sha256_hex(&f.claim),
+            canon_from: f.canon_from.clone(),
+            entities: f.entities.clone(),
+        })
+        .collect();
+    Ok(TypingCandidatesReport {
+        facts: facts.len(),
+        typed: facts.len() - candidates.len(),
+        candidates,
+        predicates: store.predicates.clone(),
+        entities: store.entities.clone(),
+    })
 }
 
 #[cfg(test)]
@@ -3547,6 +3617,48 @@ mod tests {
         assert_eq!(w1.undecidable.len(), 1);
         assert_eq!(w1.undecidable[0].fact_a, "fb");
         assert!(w1.windows.is_empty() && w1.windowless.is_empty());
+    }
+
+    // ---- typing candidates (Round 458, design sec 7.15 Round A) ----
+
+    /// The input-package contract: untyped facts only (id-sorted), each
+    /// carrying the claim sha256 the eventual proposal must stamp (the
+    /// R439 pin), plus the registries verbatim.
+    #[test]
+    fn typing_candidates_lists_untyped_with_claim_pin_and_vocabulary() {
+        let typed = typed_fact("ft", "gt", "ch-1", "lucy", "life-status", at("alive"));
+        let plain_b = fact("fb", "gt", "ch-2", None);
+        let plain_a = fact("fa", "daniel", "ch-1", None);
+        let store = store_with(vec![typed, plain_b, plain_a]);
+        let report = typing_candidates(&store).unwrap();
+        assert_eq!(report.facts, 3);
+        assert_eq!(report.typed, 1);
+        let ids: Vec<&str> = report
+            .candidates
+            .iter()
+            .map(|c| c.fact_id.as_str())
+            .collect();
+        assert_eq!(ids, ["fa", "fb"], "untyped only, id-sorted");
+        assert_eq!(
+            report.candidates[0].claim_sha256,
+            claim_sha256_hex("claim fa"),
+            "the R439 pin the proposal must stamp"
+        );
+        assert!(
+            report.predicates.contains_key("life-status"),
+            "the 4th registry rides verbatim"
+        );
+        assert!(report.entities.contains_key("lucy"));
+    }
+
+    /// Order-independence is the contract: no canon declaration exists,
+    /// the report still runs (boundary's declaration-side checks are
+    /// vacuous under the empty order; fact-side re-checks still apply).
+    #[test]
+    fn typing_candidates_needs_no_canon_order() {
+        let store = store_with(vec![fact("fa", "gt", "ch-1", None)]);
+        let report = typing_candidates(&store).unwrap();
+        assert_eq!(report.candidates.len(), 1);
     }
 
     /// Sections outside the declared order are isolated coordinates, not

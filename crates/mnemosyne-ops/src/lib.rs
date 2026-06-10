@@ -342,6 +342,18 @@ pub fn payoff_coverage_report(
     mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)
 }
 
+/// The typing-discovery input package (Round 458, design sec 7.15 Round
+/// A): every untyped fact + the registered vocabulary in one call. Pure
+/// read projection; order-independent (typing is a property of the fact,
+/// not of any canon declaration), so no order resolution runs.
+pub fn typing_candidates_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<mnemosyne_validate::continuity::TypingCandidatesReport, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    mnemosyne_validate::continuity::typing_candidates(&store).map_err(OpError::Other)
+}
+
 /// Run the dramatic-irony intervals derivation (Round 455, design sec
 /// 7.14) over the workspace store with the shared order resolution —
 /// pure read projection over recorded cross-frame conflict edges, per

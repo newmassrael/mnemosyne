@@ -301,6 +301,7 @@ fn run(args: &[String]) -> Result<()> {
         // Round 442 — setup/payoff coverage (read projection, never gated).
         "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
+        "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -421,6 +422,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
+    );
+    println!(
+        " {} report-typing-candidates [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 458 — typing-discovery input package: untyped facts + claim sha256 + registered vocabulary"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -2154,6 +2162,65 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
                 );
             }
         }
+    }
+    Ok(())
+}
+
+/// Round 458 — typing-discovery input package (`report-typing-candidates`,
+/// design sec 7.15 Round A): every untyped fact with its claim text + sha256
+/// pin + frame/branch/entities, plus the registered predicate and entity
+/// vocabulary, in one deterministic call. Order-independent (no `--order`:
+/// typing is a property of the fact, not of any canon declaration). The
+/// proposer is an LLM agent OUTSIDE the substrate; this verb is its entire
+/// input contract.
+fn cmd_report_typing_candidates(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::typing_candidates_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== typing candidates — {} untyped / {} fact(s) ({} typed) ===",
+            report.candidates.len(),
+            report.facts,
+            report.typed
+        );
+        for c in &report.candidates {
+            println!(
+                "  {} (frame {} / branch {} @ {}): {}",
+                c.fact_id, c.frame, c.branch, c.canon_from, c.claim
+            );
+        }
+        println!("vocabulary: {} predicate(s)", report.predicates.len());
+        for (id, p) in &report.predicates {
+            println!("  {} ({:?}): {}", id, p.object_kind, p.description);
+        }
+        println!("entities: {} registered", report.entities.len());
     }
     Ok(())
 }
