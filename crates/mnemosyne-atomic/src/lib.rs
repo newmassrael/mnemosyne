@@ -2712,10 +2712,17 @@ pub struct ChangelogEntryDraft<'a> {
 /// Frozen ledger semantics: once committed,
 /// existing fields cannot be modified or removed (T2 jaccard); subsequent
 /// mutations to the same `entry_id` are rejected via FrozenLedger error.
+///
+/// `entry_id_prefix` is the workspace's configured
+/// `schema.entry_id_prefix`. A non-empty prefix gates the append:
+/// `entry_id` must start with it. An empty prefix disables the gate
+/// (generic-preset semantics — numeric entry_id capture is off there
+/// too). Round 424.
 pub fn append_changelog_entry(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     draft: ChangelogEntryDraft<'_>,
+    entry_id_prefix: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let ChangelogEntryDraft {
         entry_id,
@@ -2735,6 +2742,18 @@ pub fn append_changelog_entry(
             "entry_id `{}` already exists in atomic store; mutations to existing \
   entries are forbidden (Round 161 §41 frozen ledger)",
             entry_id
+        )));
+    }
+    // Round 424 — entry_id_prefix conformance gate at the primitive
+    // boundary (the same shared CLI / MCP enforcement surface as the
+    // Round 298 gates). Runs after the FrozenLedger duplicate check so
+    // frozen reject wins; existing non-conforming entries stay frozen
+    // history, only NEW appends are gated.
+    if !entry_id_prefix.is_empty() && !entry_id.starts_with(entry_id_prefix) {
+        return Err(AtomicMutateError::Validation(format!(
+            "entry_id `{}` does not start with configured schema.entry_id_prefix \
+  `{}` (Round 424 conformance gate; set entry_id_prefix = \"\" to disable)",
+            entry_id, entry_id_prefix
         )));
     }
     // Round 298 — required-field gate at the primitive boundary so CLI / MCC
@@ -3571,6 +3590,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["carry 1".into()],
             },
+            "Round ",
         )
         .unwrap();
         let err = append_changelog_entry(
@@ -3584,6 +3604,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
         .unwrap_err();
         match err {
@@ -3787,6 +3808,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["appended carry".into()],
             },
+            "Round ",
         )
         .unwrap();
         let entry = store.changelog_entries.get("Round 999").unwrap();
@@ -3822,6 +3844,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
     }
 
@@ -3870,6 +3893,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
         .unwrap_err();
         match err {
@@ -3896,6 +3920,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
         .unwrap_err();
         match err {
@@ -3922,6 +3947,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
         .unwrap_err();
         match err {
@@ -3951,6 +3977,7 @@ mod tests {
                 impact_refs: &["".into()],
                 carry_forward_bullets: &[],
             },
+            "Round ",
         )
         .unwrap_err();
         match err {
@@ -3958,6 +3985,88 @@ mod tests {
                 assert!(msg.contains("impact_refs[0]"), "msg={}", msg);
             }
             other => panic!("expected Validation, got {:?}", other),
+        }
+    }
+
+    // ============ Round 424 entry_id_prefix conformance gate ============
+    //
+    // The 4 tests below pin the append-time prefix gate: a workspace with a
+    // non-empty `schema.entry_id_prefix` rejects entry ids that do not start
+    // with it (the canonical miss is an accidental bare `test` append during
+    // an error bisection). Empty prefix = gate disabled (generic preset);
+    // FrozenLedger still wins so pre-gate non-conforming entries stay frozen
+    // history rather than re-classifying as Validation rejects.
+
+    fn append_minimal(
+        store: &mut AtomicStore,
+        path: &Path,
+        entry_id: &str,
+        entry_id_prefix: &str,
+    ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        append_changelog_entry(
+            store,
+            path,
+            ChangelogEntryDraft {
+                entry_id,
+                decision_summary: Some("decision"),
+                changes_bullets: &["change".into()],
+                verification_bullets: &["verify".into()],
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+            },
+            entry_id_prefix,
+        )
+    }
+
+    #[test]
+    fn r424_nonconforming_entry_id_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let err = append_minimal(&mut store, &path, "test", "Round ").unwrap_err();
+        match err {
+            AtomicMutateError::Validation(msg) => {
+                assert!(msg.contains("entry_id_prefix"), "msg={}", msg);
+                assert!(msg.contains("`test`"), "msg={}", msg);
+            }
+            other => panic!("expected Validation, got {:?}", other),
+        }
+        assert!(store.changelog_entries.is_empty(), "reject must not insert");
+    }
+
+    #[test]
+    fn r424_conforming_entry_id_accepted() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_minimal(&mut store, &path, "Round 424", "Round ").unwrap();
+        assert!(store.changelog_entries.contains_key("Round 424"));
+    }
+
+    #[test]
+    fn r424_empty_prefix_disables_gate() {
+        // Generic preset: entry_id_prefix = "" means no numeric entry_id
+        // convention exists; the gate must not invent one.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_minimal(&mut store, &path, "test", "").unwrap();
+        assert!(store.changelog_entries.contains_key("test"));
+    }
+
+    #[test]
+    fn r424_frozen_ledger_wins_over_prefix_gate() {
+        // A pre-gate non-conforming entry (seeded with the gate disabled)
+        // re-appended under an enforcing prefix must surface FrozenLedger,
+        // not Validation — the duplicate is the stronger fact.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_minimal(&mut store, &path, "test", "").unwrap();
+        let err = append_minimal(&mut store, &path, "test", "Round ").unwrap_err();
+        match err {
+            AtomicMutateError::FrozenLedger(_) => {}
+            other => panic!("expected FrozenLedger, got {:?}", other),
         }
     }
 
@@ -5422,6 +5531,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &["carry".into()],
             },
+            "Round ",
         )
         .unwrap();
         let id_set = store.atomic_section_id_set();
@@ -5442,6 +5552,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["audit carry".into()],
             },
+            "Round ",
         )
         .unwrap();
     }
@@ -5596,6 +5707,7 @@ mod tests {
                 impact_refs: &["1".into()],
                 carry_forward_bullets: &["cf".into()],
             },
+            "Round ",
         )
         .expect("append must accept arbitrary-length decision_summary");
 
@@ -5636,6 +5748,7 @@ mod tests {
                 impact_refs: &bullets,
                 carry_forward_bullets: &bullets,
             },
+            "Round ",
         )
         .expect("append must accept long bullets across all bullet-family fields");
 

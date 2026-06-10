@@ -7317,6 +7317,42 @@
         "the out_of_scope_here vs informational distinction (prose vs unimplemented feature) is NOT machine-gateable; only fresh-context confirmation (coverage_attestation) catches it, so SCE's 48-section reclassification still needs independent review",
         "SCE and pinion: enable severity_classification to surface their conflicts (e.g. SCE scxml-3.11)"
       ]
+    },
+    "Round 424": {
+      "decision_summary": "Append-time entry_id_prefix conformance gate at the append_changelog_entry primitive boundary (CLI+MCP shared surface); empty prefix disables. Canonical miss: accidental bare test entry append.",
+      "changes_bullets": [
+        "append_changelog_entry takes entry_id_prefix; non-empty prefix must open entry_id else Validation",
+        "ops::workspace_entry_id_prefix = single policy resolution path; CLI atomic_cli + MCP consume it",
+        "frozen duplicate check runs before the gate so pre-gate non-conforming ids stay FrozenLedger",
+        "MCP tool description corrected: prefix gate enforced; monotonic id stays convention"
+      ],
+      "verification_bullets": [
+        "4 unit tests r424_* (reject/accept/empty-prefix-off/frozen-wins); workspace 89 suites 0 failed",
+        "empirical dogfood: temp workspace CLI append `test` rejected exit 1, `Round 1` accepted exit 0"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "adopters: reinstall cli+mcp from same HEAD; long-running MCP servers need respawn to pick gate up"
+      ],
+      "publishable_decision_summary": "Append-time entry_id_prefix conformance gate at the append_changelog_entry primitive boundary (CLI+MCP shared surface); empty prefix disables. Canonical miss: accidental bare test entry append.",
+      "publishable_changes_bullets": [
+        "append_changelog_entry takes entry_id_prefix; non-empty prefix must open entry_id else Validation",
+        "ops::workspace_entry_id_prefix = single policy resolution path; CLI atomic_cli + MCP consume it",
+        "frozen duplicate check runs before the gate so pre-gate non-conforming ids stay FrozenLedger",
+        "MCP tool description corrected: prefix gate enforced; monotonic id stays convention"
+      ],
+      "publishable_verification_bullets": [
+        "4 unit tests r424_* (reject/accept/empty-prefix-off/frozen-wins); workspace 89 suites 0 failed",
+        "empirical dogfood: temp workspace CLI append `test` rejected exit 1, `Round 1` accepted exit 0"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "adopters: reinstall cli+mcp from same HEAD; long-running MCP servers need respawn to pick gate up"
+      ]
     }
   },
   "inventory_entries": {},

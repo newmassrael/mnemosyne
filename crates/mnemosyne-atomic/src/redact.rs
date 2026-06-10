@@ -504,6 +504,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["XYZ123 in carry".into()],
             },
+            "Round ",
         )
         .unwrap();
     }
@@ -606,6 +607,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &["c".into()],
             },
+            "Round ",
         )
         .unwrap();
         let mut req = req_literal(r"\b\w+@\w+\.\w+\b", "[EMAIL]");

@@ -1014,7 +1014,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Append a new ChangelogEntry to the atomic store. entry_id must be strictly monotonic (greater than the last entry's id under the configured schema.entry_id_prefix). All five atomic fields are required."
+        description = "Append a new ChangelogEntry to the atomic store. entry_id must start with the configured schema.entry_id_prefix (Round 424 conformance gate; pick the next monotonic id by convention). All five atomic fields are required."
     )]
     async fn append_changelog_entry(
         &self,
@@ -1031,6 +1031,12 @@ impl MnemosyneServer {
             .map(|r| strip_section_marker(r).to_string())
             .collect();
         let carry = args.0.carry_forward_bullets.clone();
+        // Round 424 — append conformance gate policy, resolved through the
+        // single shared path (CLI + MCP parity).
+        let entry_id_prefix = match ops::workspace_entry_id_prefix(&self.workspace) {
+            Ok(p) => p,
+            Err(e) => return self.op_error(e),
+        };
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
             atomic::append_changelog_entry(
                 store,
@@ -1043,6 +1049,7 @@ impl MnemosyneServer {
                     impact_refs: &impact,
                     carry_forward_bullets: &carry,
                 },
+                &entry_id_prefix,
             )
         });
         self.finish_mutate(outcome)

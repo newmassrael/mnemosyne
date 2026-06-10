@@ -59,6 +59,7 @@ fn atomic_changelog_entry_frozen_on_duplicate_append() {
             impact_refs: &[],
             carry_forward_bullets: &[],
         },
+        "Round ",
     )
     .unwrap();
 
@@ -73,6 +74,7 @@ fn atomic_changelog_entry_frozen_on_duplicate_append() {
             impact_refs: &[],
             carry_forward_bullets: &[],
         },
+        "Round ",
     );
     assert!(
         result.is_err(),

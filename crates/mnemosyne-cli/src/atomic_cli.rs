@@ -2095,6 +2095,10 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
         })
         .unwrap_or_default();
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    // Round 424 — append conformance gate policy, resolved through the
+    // single shared path (CLI + MCP parity).
+    let entry_id_prefix =
+        mnemosyne_ops::workspace_entry_id_prefix(workspace_root).map_err(|e| anyhow!("{}", e))?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         append_changelog_entry(
@@ -2108,6 +2112,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 impact_refs: &impact_refs,
                 carry_forward_bullets: &carry_forward,
             },
+            &entry_id_prefix,
         ),
         json,
     )

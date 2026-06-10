@@ -105,6 +105,27 @@ where
     Ok(MutateOutcome { receipt })
 }
 
+/// Resolve the workspace's `schema.entry_id_prefix` for the Round 424
+/// append conformance gate. Single resolution path shared by the CLI and
+/// the MCP server so both wires enforce the identical policy: absent
+/// `[schema]` falls back to [`SchemaSection::mnemosyne_preset`] (pre-143
+/// back-compat, same as the CLI schema cache); a missing mnemosyne.toml or
+/// a malformed config fails loud — the gate cannot know its policy.
+///
+/// [`SchemaSection::mnemosyne_preset`]: mnemosyne_config::SchemaSection::mnemosyne_preset
+pub fn workspace_entry_id_prefix(workspace_root: &Path) -> Result<String, OpError> {
+    let loaded = mnemosyne_config::discover_config(workspace_root)?.ok_or_else(|| {
+        OpError::Other(
+            "mnemosyne.toml not found — entry_id_prefix gate policy unresolvable".to_string(),
+        )
+    })?;
+    Ok(loaded
+        .config
+        .schema
+        .map(|s| s.entry_id_prefix)
+        .unwrap_or_else(|| mnemosyne_config::SchemaSection::mnemosyne_preset().entry_id_prefix))
+}
+
 /// Load the atomic store at the resolved sidecar path.
 ///
 /// A missing sidecar is NOT an error — `AtomicStore::load` already returns an
