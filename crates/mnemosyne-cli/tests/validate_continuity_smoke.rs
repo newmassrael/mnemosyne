@@ -34,7 +34,7 @@ fn write_workspace_with_frames(workspace: &Path, continuity_table: &str, vampire
     )
     .unwrap();
     let atomic = serde_json::json!({
-        "schema_version": 12,
+        "schema_version": 17,
         "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
         "changelog_entries": {},
         "frames": { "seward": {}, "van-helsing": {} },
@@ -43,8 +43,7 @@ fn write_workspace_with_frames(workspace: &Path, continuity_table: &str, vampire
                 "frame": "seward",
                 "claim": "Lucy suffers from an unexplained illness",
                 "canon_from": "ch-1", "canon_to": "ch-2",
-                "evidence": ["ch-1"],
-                "conflicts_with": ["f-vampire"]
+                "evidence": ["ch-1"]
             },
             "f-vampire": {
                 "frame": vampire_frame,
@@ -59,6 +58,19 @@ fn write_workspace_with_frames(workspace: &Path, continuity_table: &str, vampire
         serde_json::to_string_pretty(&atomic).unwrap(),
     )
     .unwrap();
+    // The conflict edge is recorded through the REAL primitive (R439: the
+    // judgment-time claim pin is computed at write, never hand-written).
+    let out = run(
+        workspace,
+        &[
+            "add-fact-conflict",
+            "--fact",
+            "f-illness",
+            "--conflicts-with",
+            "f-vampire",
+        ],
+    );
+    assert!(out.status.success(), "{:?}", out);
     fs::write(
         workspace.join("canon-order.json"),
         serde_json::json!({

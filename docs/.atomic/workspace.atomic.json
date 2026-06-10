@@ -7955,6 +7955,52 @@
         "gate conservatism note: an Unknown-visibility successor does not cut its predecessor (false-negative direction, consistent with B-1 unordered-never-gated); revisit only if a consumer shows a real miss",
         "next: conflict-edge claim-hash drift (tension 2), then the typed-claim/rule-gate design round"
       ]
+    },
+    "Round 439 — conflict-edge claim pins: stale judgments surface, never silently trusted (session-review tension 2 closed)": {
+      "decision_summary": "A conflict edge is a recorded SEMANTIC judgment about claim content (sec 7.4) - but R434's amend could change the judged text out from under the judgment, leaving the gate evaluating an assertion about words that no longer exist. This round applies the codebase's own drift discipline (R404 content pins, R420 drift->Stale) to the judgment layer: every ConflictAssertion pins the target's claim sha256 at judgment time, computed by the primitives and never caller-supplied; the scan compares pins against current claims and surfaces ConflictEdgeStale demanding re-affirmation. The re-affirmation path is the amend itself - amending a fact restamps its OUTBOUND judgments (the amender freshly asserts its own edges) while INBOUND judgments go stale, which is exactly the asymmetry the axis-4 model wants: you can re-state what you believe, you cannot silently keep others' statements about your old text. Clean break v16->v17 with no compat shim (pre-release; no committed store carries an edge; the old shape fails loud). Succession deliberately stays unpinned: it relates fact identities, not wordings.",
+      "changes_bullets": [
+        "NarrativeFact.conflicts_with: bare target ids -> ConflictAssertion{target, target_claim_sha256} (mnemosyne-core), schema v16->v17 - CLEAN BREAK, no compat shim (pre-release rule; no committed consumer store carries an edge; an old-shape store fails to load LOUDLY rather than silently dropping the pin)",
+        "the pin is computed by the primitives, never caller-supplied (R404): validate_fact_refs becomes validate_and_stamp_fact_refs (the one shared pass - add_fact / import_facts post-staging snapshot / amend_fact all route it); add_fact_conflict stamps from the target's current claim; FactImport keeps bare ids (the authoring face is unchanged)",
+        "amend semantics: amending a fact RESTAMPS its outbound judgments (the amender freshly asserts its own edges); inbound judgments pointing AT the amended fact go stale instead - never auto-refreshed",
+        "scan_continuity surfaces ConflictEdgeStale{fact_id, target, stamped_sha256, current_sha256}; the pair is still evaluated (explicit conservatism both ways: staleness gates under reject, the overlap check is not suppressed)",
+        "validate_continuity smoke fixture now records its edge through the real primitive instead of hand-written JSON (the pin cannot be hand-authored)"
+      ],
+      "verification_bullets": [
+        "drift round-trip unit test: fresh stamp = 0 stale; amend the TARGET -> exactly 1 ConflictEdgeStale; amend the edge-owning fact (same content) -> outbound restamp -> 0 stale (the re-affirmation path works end-to-end)",
+        "add_fact_conflict test extended: stored assertion carries target + 64-hex pin equal to sha256(target claim)",
+        "import smoke asserts the staged-manifest edge is stamped through the post-staging snapshot pass; full workspace suite green (774 tests, 0 failed), clippy clean, fmt clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "session-review tension 2 CLOSED: recorded semantic judgments can no longer be silently invalidated by an amend - the drift->Stale shape (R404/R420) now covers conflict edges",
+        "a dedicated re-affirm primitive (re-stamp one edge without a full amend) = consumer-pull if the amend-same-content idiom shows friction",
+        "supersedes_in_frame deliberately NOT content-pinned: succession is an in-world relation between fact IDENTITIES (the successor replaces the belief whatever its exact wording), not a judgment about specific text - pin only where the judgment is about content",
+        "remaining from the AAA map: typed-claim/rule-gate design round (class C), setup/payoff coverage, story-time axis, LLM discovery adapter, pinion adapter (statechart->canon-order, scene-script bindings)"
+      ],
+      "publishable_decision_summary": "A conflict edge is a recorded SEMANTIC judgment about claim content (sec 7.4) - but R434's amend could change the judged text out from under the judgment, leaving the gate evaluating an assertion about words that no longer exist. This round applies the codebase's own drift discipline (R404 content pins, R420 drift->Stale) to the judgment layer: every ConflictAssertion pins the target's claim sha256 at judgment time, computed by the primitives and never caller-supplied; the scan compares pins against current claims and surfaces ConflictEdgeStale demanding re-affirmation. The re-affirmation path is the amend itself - amending a fact restamps its OUTBOUND judgments (the amender freshly asserts its own edges) while INBOUND judgments go stale, which is exactly the asymmetry the axis-4 model wants: you can re-state what you believe, you cannot silently keep others' statements about your old text. Clean break v16->v17 with no compat shim (pre-release; no committed store carries an edge; the old shape fails loud). Succession deliberately stays unpinned: it relates fact identities, not wordings.",
+      "publishable_changes_bullets": [
+        "NarrativeFact.conflicts_with: bare target ids -> ConflictAssertion{target, target_claim_sha256} (mnemosyne-core), schema v16->v17 - CLEAN BREAK, no compat shim (pre-release rule; no committed consumer store carries an edge; an old-shape store fails to load LOUDLY rather than silently dropping the pin)",
+        "the pin is computed by the primitives, never caller-supplied (R404): validate_fact_refs becomes validate_and_stamp_fact_refs (the one shared pass - add_fact / import_facts post-staging snapshot / amend_fact all route it); add_fact_conflict stamps from the target's current claim; FactImport keeps bare ids (the authoring face is unchanged)",
+        "amend semantics: amending a fact RESTAMPS its outbound judgments (the amender freshly asserts its own edges); inbound judgments pointing AT the amended fact go stale instead - never auto-refreshed",
+        "scan_continuity surfaces ConflictEdgeStale{fact_id, target, stamped_sha256, current_sha256}; the pair is still evaluated (explicit conservatism both ways: staleness gates under reject, the overlap check is not suppressed)",
+        "validate_continuity smoke fixture now records its edge through the real primitive instead of hand-written JSON (the pin cannot be hand-authored)"
+      ],
+      "publishable_verification_bullets": [
+        "drift round-trip unit test: fresh stamp = 0 stale; amend the TARGET -> exactly 1 ConflictEdgeStale; amend the edge-owning fact (same content) -> outbound restamp -> 0 stale (the re-affirmation path works end-to-end)",
+        "add_fact_conflict test extended: stored assertion carries target + 64-hex pin equal to sha256(target claim)",
+        "import smoke asserts the staged-manifest edge is stamped through the post-staging snapshot pass; full workspace suite green (774 tests, 0 failed), clippy clean, fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "session-review tension 2 CLOSED: recorded semantic judgments can no longer be silently invalidated by an amend - the drift->Stale shape (R404/R420) now covers conflict edges",
+        "a dedicated re-affirm primitive (re-stamp one edge without a full amend) = consumer-pull if the amend-same-content idiom shows friction",
+        "supersedes_in_frame deliberately NOT content-pinned: succession is an in-world relation between fact IDENTITIES (the successor replaces the belief whatever its exact wording), not a judgment about specific text - pin only where the judgment is about content",
+        "remaining from the AAA map: typed-claim/rule-gate design round (class C), setup/payoff coverage, story-time axis, LLM discovery adapter, pinion adapter (statechart->canon-order, scene-script bindings)"
+      ]
     }
   },
   "inventory_entries": {},
@@ -7963,5 +8009,5 @@
   "branches": {},
   "entities": {},
   "narrative_facts": {},
-  "schema_version": 16
+  "schema_version": 17
 }

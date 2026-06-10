@@ -87,7 +87,7 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
         "{stdout}"
     );
     let store = read_store(tmp.path());
-    assert_eq!(store["schema_version"], 16);
+    assert_eq!(store["schema_version"], 17);
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"
@@ -201,8 +201,16 @@ fn add_frame_add_fact_add_conflict_end_to_end() {
     assert!(ok.status.success(), "{:?}", ok);
     let store = read_store(tmp.path());
     assert_eq!(
-        store["narrative_facts"]["f-illness"]["conflicts_with"][0],
+        store["narrative_facts"]["f-illness"]["conflicts_with"][0]["target"],
         "f-vampire"
+    );
+    // Judgment-time claim pin stamped by the primitive (R439).
+    assert_eq!(
+        store["narrative_facts"]["f-illness"]["conflicts_with"][0]["target_claim_sha256"]
+            .as_str()
+            .unwrap()
+            .len(),
+        64
     );
     // Duplicate edge (either direction) rejects as already-recorded.
     let dup = run(

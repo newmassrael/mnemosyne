@@ -36,8 +36,8 @@ pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
 use mnemosyne_core::{
-    strip_section_marker, Branch, BranchFork, DecisionStatus, Entity, Frame, InventoryStatus,
-    NarrativeFact,
+    strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus, Entity, Frame,
+    InventoryStatus, NarrativeFact,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -1093,7 +1093,18 @@ pub enum AtomicStoreError {
 // registration). Declarative serde default — pre-v16 stores load with
 // fork-less branches and gate identically. So there is deliberately NO
 // `schema_version < 16` arm in `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 16;
+// v16→v17 changes `NarrativeFact.conflicts_with` from bare target ids to
+// [`ConflictAssertion`] rows pinning the target's claim sha256 at judgment
+// time (Round 439 — session-review tension 2: an amend of the target must
+// not leave recorded semantic judgments silently trusted). CLEAN BREAK, no
+// compat shim (pre-release rule): no committed consumer store carries a
+// conflict edge yet, and an old-shape store fails to load LOUDLY (string
+// where a struct is expected) rather than silently dropping the pin. The
+// hash is computed by the primitives, never caller-supplied (R404), and is
+// NEVER auto-refreshed — `scan_continuity` surfaces a stale pin as
+// `ConflictEdgeStale`, and re-affirmation = amending the edge-owning fact
+// (its outbound judgments restamp as the amender's fresh assertions).
+const CURRENT_SCHEMA_VERSION: u32 = 17;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3573,7 +3584,12 @@ fn build_candidate_fact(
                 "fact `{fact_id}`: conflicts_with itself — a fact cannot contradict itself"
             ));
         }
-        conflicts_with.push(c.to_string());
+        // Stamped by `validate_and_stamp_fact_refs` once the target is
+        // known to exist; never caller-supplied (R404).
+        conflicts_with.push(ConflictAssertion {
+            target: c.to_string(),
+            target_claim_sha256: String::new(),
+        });
     }
     let supersedes_in_frame = match entry.supersedes_in_frame.as_deref().map(str::trim) {
         None => None,
@@ -3634,26 +3650,31 @@ pub fn is_fork_ancestor(branches: &BTreeMap<String, Branch>, ancestor: &str, bra
     false
 }
 
-/// Cross-fact ref check for one fact against a visibility set (the caller's
-/// store ∪ manifest view). `supersedes_in_frame` additionally enforces SAME
+/// Cross-fact ref check + judgment stamping for one fact against a
+/// visibility set (the caller's store ∪ manifest view). Conflict targets
+/// must exist, and each assertion is STAMPED with the target's current
+/// claim sha256 (Round 439 — judgment-time content pin, computed here and
+/// never caller-supplied). `supersedes_in_frame` additionally enforces SAME
 /// scope — `(frame, branch)`: cross-frame disagreement is data, never
 /// succession (design sec 7.3). Cross-branch succession is world-line data
 /// EXCEPT along the fork lineage (Round 438): a forked world may supersede
 /// a belief it inherited from an ancestor — that is in-world change inside
 /// ONE world-line, not cross-world divergence.
-fn validate_fact_refs(
+fn validate_and_stamp_fact_refs(
     fact_id: &str,
-    fact: &NarrativeFact,
+    fact: &mut NarrativeFact,
     visible: &BTreeMap<String, NarrativeFact>,
     branches: &BTreeMap<String, Branch>,
 ) -> Result<(), String> {
-    for c in &fact.conflicts_with {
-        if !visible.contains_key(c) {
+    for c in &mut fact.conflicts_with {
+        let Some(target) = visible.get(&c.target) else {
             return Err(format!(
-                "fact `{fact_id}`: conflicts_with `{c}` not present \
-                 (a recorded assertion needs an existing target; fail-loud)"
+                "fact `{fact_id}`: conflicts_with `{}` not present \
+                 (a recorded assertion needs an existing target; fail-loud)",
+                c.target
             ));
-        }
+        };
+        c.target_claim_sha256 = sha256_hex(target.claim.as_bytes());
     }
     if let Some(target) = &fact.supersedes_in_frame {
         match visible.get(target) {
@@ -3870,11 +3891,11 @@ pub fn add_fact(
     sidecar_path: &Path,
     entry: &FactImport,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let (fact_id, candidate) =
+    let (fact_id, mut candidate) =
         build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
-    validate_fact_refs(
+    validate_and_stamp_fact_refs(
         &fact_id,
-        &candidate,
+        &mut candidate,
         &store.narrative_facts,
         &store.branches,
     )
@@ -4038,10 +4059,18 @@ pub fn import_facts(
             }
         }
     }
+    // Refs validate + stamps compute against a post-staging snapshot
+    // (forward refs within one manifest are legal; a judgment pins the
+    // target's claim as staged).
+    let snapshot = store.narrative_facts.clone();
+    let branches_view = store.branches.clone();
     for entry in &manifest.facts {
         let fact_id = entry.fact_id.trim();
-        let fact = &store.narrative_facts[fact_id];
-        validate_fact_refs(fact_id, fact, &store.narrative_facts, &store.branches)
+        let fact = store
+            .narrative_facts
+            .get_mut(fact_id)
+            .expect("staged above");
+        validate_and_stamp_fact_refs(fact_id, fact, &snapshot, &branches_view)
             .map_err(AtomicMutateError::Validation)?;
     }
     let summary = format!(
@@ -4102,22 +4131,26 @@ pub fn add_fact_conflict(
     let already = store.narrative_facts[id]
         .conflicts_with
         .iter()
-        .any(|c| c == other)
+        .any(|c| c.target == other)
         || store.narrative_facts[other]
             .conflicts_with
             .iter()
-            .any(|c| c == id);
+            .any(|c| c.target == id);
     if already {
         return Err(AtomicMutateError::FrozenLedger(format!(
             "conflict edge `{id}` <-> `{other}` already recorded (idempotent)"
         )));
     }
+    let stamp = sha256_hex(store.narrative_facts[other].claim.as_bytes());
     store
         .narrative_facts
         .get_mut(id)
         .expect("checked above")
         .conflicts_with
-        .push(other.to_string());
+        .push(ConflictAssertion {
+            target: other.to_string(),
+            target_claim_sha256: stamp,
+        });
     save_with_receipt(
         store,
         sidecar_path,
@@ -4139,7 +4172,7 @@ fn inbound_fact_refs<'a>(
         if other_id == fact_id {
             continue;
         }
-        if other.conflicts_with.iter().any(|c| c == fact_id) {
+        if other.conflicts_with.iter().any(|c| c.target == fact_id) {
             refs.push((other_id, other, "conflicts_with"));
         }
         if other.supersedes_in_frame.as_deref() == Some(fact_id) {
@@ -4217,7 +4250,7 @@ pub fn amend_fact(
             "amend_fact: --reason mandatory (audit-trail safeguard)".to_string(),
         ));
     }
-    let (fact_id, candidate) =
+    let (fact_id, mut candidate) =
         build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
     if !store.narrative_facts.contains_key(&fact_id) {
         return Err(AtomicMutateError::NotFound(format!(
@@ -4225,9 +4258,12 @@ pub fn amend_fact(
              fact; add_fact creates)"
         )));
     }
-    validate_fact_refs(
+    // Outbound judgments restamp here — an amend is the amender's fresh
+    // assertion of its own edges (inbound edges pointing AT this fact go
+    // stale instead, surfaced by the scan).
+    validate_and_stamp_fact_refs(
         &fact_id,
-        &candidate,
+        &mut candidate,
         &store.narrative_facts,
         &store.branches,
     )
@@ -8212,7 +8248,14 @@ mod tests {
         assert!(err.to_string().contains("itself"), "{err}");
         add_fact_conflict(&mut store, &path, "f1", "f2").unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.narrative_facts["f1"].conflicts_with, vec!["f2"]);
+        let edges = &reloaded.narrative_facts["f1"].conflicts_with;
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].target, "f2");
+        // Judgment-time content pin, computed by the primitive (R439).
+        assert_eq!(
+            edges[0].target_claim_sha256,
+            sha256_hex(reloaded.narrative_facts["f2"].claim.as_bytes())
+        );
         // Already recorded — in EITHER direction.
         let err = add_fact_conflict(&mut store, &path, "f1", "f2").unwrap_err();
         assert!(matches!(err, AtomicMutateError::FrozenLedger(_)), "{err}");

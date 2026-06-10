@@ -299,6 +299,16 @@ pub enum ContinuityViolation {
     /// A recorded edge names a fact that no longer exists (out-of-band
     /// edit; fail-loud).
     ConflictTargetMissing { fact_id: String, target: String },
+    /// The target's claim changed since this judgment was recorded (Round
+    /// 439): the assertion pinned a different text — re-affirm it (amend
+    /// the edge-owning fact restamps its outbound judgments) or retract it.
+    /// The pair is still evaluated; the staleness itself is surfaced.
+    ConflictEdgeStale {
+        fact_id: String,
+        target: String,
+        stamped_sha256: String,
+        current_sha256: String,
+    },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
 }
@@ -588,8 +598,9 @@ pub fn scan_continuity(
     // Distinct recorded conflict pairs (edges are read symmetrically).
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
     for (aid, a) in facts {
-        for target in &a.conflicts_with {
-            if !facts.contains_key(target) {
+        for assertion in &a.conflicts_with {
+            let target = &assertion.target;
+            let Some(t) = facts.get(target) else {
                 report
                     .violations
                     .push(ContinuityViolation::ConflictTargetMissing {
@@ -597,6 +608,27 @@ pub fn scan_continuity(
                         target: target.clone(),
                     });
                 continue;
+            };
+            // Judgment-time content pin (Round 439): a target claim that
+            // changed since the assertion = stale judgment, surfaced.
+            let current = {
+                use sha2::{Digest, Sha256};
+                let mut h = Sha256::new();
+                h.update(t.claim.as_bytes());
+                h.finalize()
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            };
+            if current != assertion.target_claim_sha256 {
+                report
+                    .violations
+                    .push(ContinuityViolation::ConflictEdgeStale {
+                        fact_id: aid.clone(),
+                        target: target.clone(),
+                        stamped_sha256: assertion.target_claim_sha256.clone(),
+                        current_sha256: current,
+                    });
             }
             let key = if aid < target {
                 (aid.clone(), target.clone())
@@ -1426,6 +1458,54 @@ mod tests {
         // f-deep starts at ch-3; ch-3 vs ch-4 undeclared everywhere -> not
         // holding at ch-4 is undecidable => unknown (honesty).
         assert_eq!(view.unknown, vec!["f-deep".to_string()]);
+    }
+
+    /// Round 439 — judgment-time content pin: amending the TARGET of a
+    /// recorded conflict surfaces the edge as stale; amending the
+    /// edge-owning fact restamps its outbound judgments (re-affirmation).
+    #[test]
+    fn amended_conflict_target_surfaces_stale_edge_until_reaffirmed() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for ch in ["ch-1", "ch-2"] {
+            store
+                .sections
+                .insert(ch.to_string(), AtomicSection::default());
+        }
+        store
+            .frames
+            .insert("seward".to_string(), mnemosyne_core::Frame::default());
+        let target = fact("f-target", "seward", "ch-1", None);
+        let mut owner = fact("f-owner", "seward", "ch-2", None);
+        owner.conflicts_with = vec!["f-target".to_string()];
+        mnemosyne_atomic::add_fact(&mut store, &path, &target).unwrap();
+        mnemosyne_atomic::add_fact(&mut store, &path, &owner.clone()).unwrap();
+        let order = chain(&["ch-1", "ch-2"]);
+        // Fresh stamp: no staleness (the overlap violation itself may fire;
+        // filter for the stale kind).
+        let stale_count = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter(|v| matches!(v, ContinuityViolation::ConflictEdgeStale { .. }))
+                .count()
+        };
+        let report = scan_continuity(&store, &order).unwrap();
+        assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
+        // Amend the target's claim: the recorded judgment pinned other text.
+        let revised_target = FactImport {
+            claim: "a materially different claim".to_string(),
+            ..fact("f-target", "seward", "ch-1", None)
+        };
+        mnemosyne_atomic::amend_fact(&mut store, &path, &revised_target, "revision").unwrap();
+        let report = scan_continuity(&store, &order).unwrap();
+        assert_eq!(stale_count(&report), 1, "{:?}", report.violations);
+        // Re-affirm: amend the edge-owning fact (same content) — its
+        // outbound judgments restamp against the target's CURRENT claim.
+        mnemosyne_atomic::amend_fact(&mut store, &path, &owner, "re-affirm edges").unwrap();
+        let report = scan_continuity(&store, &order).unwrap();
+        assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
     }
 
     /// R390-style consistency lock: the gate and the view share holds_at —

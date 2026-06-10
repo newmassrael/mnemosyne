@@ -92,6 +92,20 @@ pub struct BranchFork {
     pub at: String,
 }
 
+/// One recorded conflict assertion (Round 439): the judged target plus a
+/// content pin of the target's claim AT JUDGMENT TIME. The hash is computed
+/// by the mutate primitive, never caller-supplied (the R404 pattern) — so
+/// when `amend_fact` later changes the target's claim, the stale pin is
+/// detectable offline and the scan demands re-affirmation instead of
+/// silently gating on a judgment about text that no longer exists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConflictAssertion {
+    /// The fact this claim was judged to contradict.
+    pub target: String,
+    /// sha256 of the target's `claim` when the judgment was recorded.
+    pub target_claim_sha256: String,
+}
+
 /// One narrative entity (registry entry, Round 437 — design sec 7.10 gap 4).
 /// Keyed by entity id in `AtomicStore.entities`; every
 /// [`NarrativeFact::entities`] ref must name a registered id (fail-loud at
@@ -161,12 +175,15 @@ pub struct NarrativeFact {
     /// mutate primitive). Multi-ref by design — a claim's evidence usually
     /// spans sections.
     pub evidence: Vec<String>,
-    /// Recorded conflict assertions (fact ids). Contradiction is a semantic
-    /// judgment, so edges are recorded — never derived from claim text. The
-    /// continuity gate evaluates them frame-scoped: same-frame overlapping
-    /// conflict = violation; cross-frame conflict = data.
+    /// Recorded conflict assertions. Contradiction is a semantic judgment,
+    /// so edges are recorded — never derived from claim text. The
+    /// continuity gate evaluates them world-scoped: same-scope overlapping
+    /// conflict = violation; cross-scope conflict = data. Each assertion
+    /// pins the TARGET claim it judged (Round 439): an amend of the target
+    /// makes the judgment stale, surfaced by the scan — never silently
+    /// trusted, never auto-refreshed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub conflicts_with: Vec<String>,
+    pub conflicts_with: Vec<ConflictAssertion>,
     /// In-frame predecessor this claim replaces (same frame enforced at the
     /// mutate primitive). The mechanism for time-indexed belief change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
