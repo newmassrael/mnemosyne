@@ -7499,6 +7499,44 @@
       "publishable_carry_forward_bullets": [
         "notify SCE: sha256 field live, pin on next sync as offered"
       ]
+    },
+    "Round 429 — Phase 1 entry ratified: fictional adapter first (pre-reset Round 172 re-audit)": {
+      "decision_summary": "Phase 1 entry is declared and the build order is ratified: fictional medium adapter first. The pre-reset Round 172 priority audit chose the fictional adapter (score 6.00, 3.00x domination over branch) but its audit ledger predates the reset and is absent from this store, so this entry is the post-reset ratification record. A delta-audit against the current substrate confirms the ordering holds and the margin widened: SCE field-proved the spec instance of the North Star (verify axis R412-R428 live at reject), leaving the narrative half (R391 spec-subset-narrative: frame-driven behaviour, frame-scoped validation, prose-to-fact extraction) validatable only by a narrative consumer — which only the fictional adapter provides; its prerequisites are landed (R306 FR-1/FR-2 plugin substrate, R401-R408 EPUB content SSOT), so unmet_deps stays 0, while every competitor is either dependent on the adapter (cascade-narrative, studio-ui), consumer-shape-gated by ARCHITECTURE section 6.3 (branch, bi-temporal), or both plus frozen-ledger conflicted (saga). Phase 0 hardening met its termination conditions (T3 reject 0, T1 orphan 0, atomic orphan refs 0 outside the known-stale ledger) — the substrate is consumer-proven by four live stores. Phase 1A begins with the fictional adapter, Novel medium first dogfood.",
+      "changes_bullets": [
+        "ratify Phase 1 entry: fictional medium adapter first (Novel medium first dogfood), re-verifying the pre-reset Round 172 priority audit (score 6.00, 3.00x domination margin over branch at 2.00)",
+        "the pre-reset audit anchor predates this store (ledger starts at Round 252), so this entry is the post-reset ratification record carrying the decision parameters forward",
+        "delta-audit verdict: ordering holds and the margin widened — SCE field-proved the spec instance (R412-R428 verify axis live at reject), so the open North Star validations (frame-driven behaviour, frame-scoped validation, prose-to-fact extraction, per R391) are validatable only by a narrative consumer, which only the fictional adapter supplies",
+        "competitors stay dominated: cascade-narrative and studio-ui depend on the adapter; branch and bi-temporal are consumer-shape-gated by ARCHITECTURE section 6.3 (narrative branch/saga API designed when a real consumer exists); saga adds a frozen-ledger conflict on top",
+        "adapter unmet_deps stays 0: RFC-003 FR-1/FR-2 substrate landed at R306; EPUB-SSOT content substrate landed R401-R408"
+      ],
+      "verification_bullets": [
+        "Phase 0 termination conditions verified green at aa66c61 before ratifying: T3 reject 0, T1 prose orphan 0, atomic orphan refs 0 outside the known-stale ledger, commit-ledger drift missing 0",
+        "store inspected: no Round 172 key exists (entries span Round 252-428), confirming this is a ratification record, not a duplicate",
+        "validate-workspace green after the append"
+      ],
+      "carry_forward_bullets": [
+        "Phase 1A first build target: fictional medium adapter, Novel medium dogfood (carry shape: 50 chapters, 10 main characters, 200 lore facts)",
+        "FR-5.x substrate (bi-temporal index, branch model, continuity validator) lands as single rounds on adapter pull, not pre-built",
+        "if Phase 1 scope drifts from the ratified ordering, re-run the priority audit as a new round before proceeding"
+      ],
+      "publishable_decision_summary": "Phase 1 entry is declared and the build order is ratified: fictional medium adapter first. The pre-reset Round 172 priority audit chose the fictional adapter (score 6.00, 3.00x domination over branch) but its audit ledger predates the reset and is absent from this store, so this entry is the post-reset ratification record. A delta-audit against the current substrate confirms the ordering holds and the margin widened: SCE field-proved the spec instance of the North Star (verify axis R412-R428 live at reject), leaving the narrative half (R391 spec-subset-narrative: frame-driven behaviour, frame-scoped validation, prose-to-fact extraction) validatable only by a narrative consumer — which only the fictional adapter provides; its prerequisites are landed (R306 FR-1/FR-2 plugin substrate, R401-R408 EPUB content SSOT), so unmet_deps stays 0, while every competitor is either dependent on the adapter (cascade-narrative, studio-ui), consumer-shape-gated by ARCHITECTURE section 6.3 (branch, bi-temporal), or both plus frozen-ledger conflicted (saga). Phase 0 hardening met its termination conditions (T3 reject 0, T1 orphan 0, atomic orphan refs 0 outside the known-stale ledger) — the substrate is consumer-proven by four live stores. Phase 1A begins with the fictional adapter, Novel medium first dogfood.",
+      "publishable_changes_bullets": [
+        "ratify Phase 1 entry: fictional medium adapter first (Novel medium first dogfood), re-verifying the pre-reset Round 172 priority audit (score 6.00, 3.00x domination margin over branch at 2.00)",
+        "the pre-reset audit anchor predates this store (ledger starts at Round 252), so this entry is the post-reset ratification record carrying the decision parameters forward",
+        "delta-audit verdict: ordering holds and the margin widened — SCE field-proved the spec instance (R412-R428 verify axis live at reject), so the open North Star validations (frame-driven behaviour, frame-scoped validation, prose-to-fact extraction, per R391) are validatable only by a narrative consumer, which only the fictional adapter supplies",
+        "competitors stay dominated: cascade-narrative and studio-ui depend on the adapter; branch and bi-temporal are consumer-shape-gated by ARCHITECTURE section 6.3 (narrative branch/saga API designed when a real consumer exists); saga adds a frozen-ledger conflict on top",
+        "adapter unmet_deps stays 0: RFC-003 FR-1/FR-2 substrate landed at R306; EPUB-SSOT content substrate landed R401-R408"
+      ],
+      "publishable_verification_bullets": [
+        "Phase 0 termination conditions verified green at aa66c61 before ratifying: T3 reject 0, T1 prose orphan 0, atomic orphan refs 0 outside the known-stale ledger, commit-ledger drift missing 0",
+        "store inspected: no Round 172 key exists (entries span Round 252-428), confirming this is a ratification record, not a duplicate",
+        "validate-workspace green after the append"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Phase 1A first build target: fictional medium adapter, Novel medium dogfood (carry shape: 50 chapters, 10 main characters, 200 lore facts)",
+        "FR-5.x substrate (bi-temporal index, branch model, continuity validator) lands as single rounds on adapter pull, not pre-built",
+        "if Phase 1 scope drifts from the ratified ordering, re-run the priority audit as a new round before proceeding"
+      ]
     }
   },
   "inventory_entries": {},
