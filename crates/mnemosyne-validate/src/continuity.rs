@@ -469,6 +469,7 @@ pub fn scan_continuity(
 pub struct FrameViewEntry {
     pub fact_id: String,
     pub claim: String,
+    pub entities: Vec<String>,
     pub canon_from: String,
     pub canon_to: Option<String>,
     pub evidence: Vec<String>,
@@ -485,6 +486,8 @@ pub struct FrameView {
     pub frame: String,
     pub branch: String,
     pub at: String,
+    /// Entity filter applied (Round 437), `None` = unfiltered.
+    pub entity: Option<String>,
     pub holding: Vec<FrameViewEntry>,
     pub not_holding: usize,
     pub unknown: Vec<String>,
@@ -495,13 +498,16 @@ pub struct FrameView {
 /// single-predicate discipline: gate and view cannot drift). Fail-loud
 /// boundaries: the frame must be registered, the branch must be
 /// `MAIN_BRANCH` or registered (Round 436 — the branch registry replaced
-/// the R433 derived known-set heuristic), the query point must be a
-/// section, and the order declaration must pass the shared store boundary.
+/// the R433 derived known-set heuristic), an `entity` filter must be
+/// registered (Round 437 — the NPC-context query is frame × branch ×
+/// entity at T), the query point must be a section, and the order
+/// declaration must pass the shared store boundary.
 pub fn frame_view(
     store: &AtomicStore,
     order: &CanonOrder,
     frame: &str,
     branch: &str,
+    entity: Option<&str>,
     at: &str,
 ) -> Result<FrameView, String> {
     check_order_against_store(store, order)?;
@@ -515,6 +521,14 @@ pub fn frame_view(
             "branch `{branch}` not present in the branch registry (fail-loud — a typo'd \
              branch must not read as an empty world)"
         ));
+    }
+    if let Some(e) = entity {
+        if !store.entities.contains_key(e) {
+            return Err(format!(
+                "entity `{e}` not present in the entity registry (fail-loud — a typo'd \
+                 entity must not read as an empty dossier)"
+            ));
+        }
     }
     if !store.sections.contains_key(at) {
         return Err(format!(
@@ -532,16 +546,23 @@ pub fn frame_view(
         frame: frame.to_string(),
         branch: branch.to_string(),
         at: at.to_string(),
+        entity: entity.map(str::to_string),
         ..Default::default()
     };
     for (id, fact) in facts {
         if fact.frame != frame || fact.branch != branch {
             continue;
         }
+        if let Some(e) = entity {
+            if !fact.entities.iter().any(|x| x == e) {
+                continue;
+            }
+        }
         if holds_at(id, fact, at, order, &successors) {
             view.holding.push(FrameViewEntry {
                 fact_id: id.clone(),
                 claim: fact.claim.clone(),
+                entities: fact.entities.clone(),
                 canon_from: fact.canon_from.clone(),
                 canon_to: fact.canon_to.clone(),
                 evidence: fact.evidence.clone(),
@@ -588,6 +609,7 @@ mod tests {
 
     fn fact(id: &str, frame: &str, from: &str, to: Option<&str>) -> FactImport {
         FactImport {
+            entities: vec![],
             fact_id: id.to_string(),
             frame: frame.to_string(),
             branch: None,
@@ -637,6 +659,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 frames,
                 branches,
                 facts,
@@ -851,7 +874,7 @@ mod tests {
         new.supersedes_in_frame = Some("f-old".to_string());
         let store = store_with(vec![old, new]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let at2 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, "ch-2").unwrap();
+        let at2 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-2").unwrap();
         assert_eq!(
             at2.holding
                 .iter()
@@ -860,7 +883,7 @@ mod tests {
             vec!["f-old"]
         );
         assert_eq!(at2.not_holding, 1);
-        let at3 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, "ch-3").unwrap();
+        let at3 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-3").unwrap();
         assert_eq!(
             at3.holding
                 .iter()
@@ -878,11 +901,11 @@ mod tests {
         let other = fact("f-x", "jonathan", "ch-1", None);
         let store = store_with(vec![bounded, other]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let at3 = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-3").unwrap();
+        let at3 = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-3").unwrap();
         assert!(at3.holding.is_empty());
         assert_eq!(at3.not_holding, 1);
         // jonathan's fact never appears in seward's view.
-        let at1 = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-1").unwrap();
+        let at1 = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap();
         assert_eq!(at1.holding.len(), 1);
         assert_eq!(at1.holding[0].fact_id, "f-b");
     }
@@ -897,7 +920,7 @@ mod tests {
         ])
         .unwrap();
         let store = store_with(vec![fact("f-arm", "seward", "ch-2", None)]);
-        let view = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-3").unwrap();
+        let view = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-3").unwrap();
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-arm".to_string()]);
         assert_eq!(view.not_holding, 0);
@@ -907,9 +930,9 @@ mod tests {
     fn frame_view_fail_loud_boundaries() {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let order = chain(&["ch-1", "ch-2"]);
-        let err = frame_view(&store, &order, "nobody", MAIN_BRANCH, "ch-1").unwrap_err();
+        let err = frame_view(&store, &order, "nobody", MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
-        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-99").unwrap_err();
+        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-99").unwrap_err();
         assert!(err.contains("ch-99"), "{err}");
     }
 
@@ -922,15 +945,15 @@ mod tests {
         on_route.branch = Some("sea-route".to_string());
         let store = store_with(vec![on_main, on_route]);
         let order = chain(&["ch-1", "ch-2"]);
-        let main_view = frame_view(&store, &order, "jonathan", MAIN_BRANCH, "ch-2").unwrap();
+        let main_view = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-2").unwrap();
         assert_eq!(main_view.holding.len(), 1);
         assert_eq!(main_view.holding[0].fact_id, "f-main");
         assert_eq!(main_view.branch, MAIN_BRANCH);
-        let route_view = frame_view(&store, &order, "jonathan", "sea-route", "ch-2").unwrap();
+        let route_view = frame_view(&store, &order, "jonathan", "sea-route", None, "ch-2").unwrap();
         assert_eq!(route_view.holding.len(), 1);
         assert_eq!(route_view.holding[0].fact_id, "f-route");
         // Unknown branch fails loud — a typo must not read as an empty world.
-        let err = frame_view(&store, &order, "jonathan", "sea-rotue", "ch-2").unwrap_err();
+        let err = frame_view(&store, &order, "jonathan", "sea-rotue", None, "ch-2").unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
     }
 
@@ -950,7 +973,7 @@ mod tests {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let err = scan_continuity(&store, &order).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
-        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-1").unwrap_err();
+        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
     }
 
@@ -967,6 +990,54 @@ mod tests {
         };
         let err = CanonOrder::from_declaration(&decl).unwrap_err();
         assert!(err.contains("default world-line"), "{err}");
+    }
+
+    #[test]
+    fn frame_view_entity_filter_scopes_the_dossier() {
+        // Round 437: frame × branch × entity at T — the NPC-context query.
+        let mut about_lucy = fact("f-lucy", "seward", "ch-1", None);
+        about_lucy.entities = vec!["lucy".to_string()];
+        let other = fact("f-other", "seward", "ch-1", None);
+        let store = {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let path = tmp.path().join("s.json");
+            let mut st = AtomicStore::new();
+            for ch in ["ch-1", "ch-2"] {
+                st.sections.insert(ch.to_string(), AtomicSection::default());
+            }
+            mnemosyne_atomic::import_facts(
+                &mut st,
+                &path,
+                &FactsManifest {
+                    frames: vec![mnemosyne_atomic::FrameImport {
+                        frame_id: "seward".to_string(),
+                        description: String::new(),
+                    }],
+                    branches: vec![],
+                    entities: vec![mnemosyne_atomic::EntityImport {
+                        entity_id: "lucy".to_string(),
+                        kind: "character".to_string(),
+                        description: String::new(),
+                    }],
+                    facts: vec![about_lucy, other],
+                },
+            )
+            .unwrap();
+            st
+        };
+        let order = chain(&["ch-1", "ch-2"]);
+        let all = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-2").unwrap();
+        assert_eq!(all.holding.len(), 2);
+        let filtered =
+            frame_view(&store, &order, "seward", MAIN_BRANCH, Some("lucy"), "ch-2").unwrap();
+        assert_eq!(filtered.holding.len(), 1);
+        assert_eq!(filtered.holding[0].fact_id, "f-lucy");
+        assert_eq!(filtered.holding[0].entities, vec!["lucy".to_string()]);
+        assert_eq!(filtered.entity.as_deref(), Some("lucy"));
+        // Typo'd entity fails loud, never an empty dossier.
+        let err =
+            frame_view(&store, &order, "seward", MAIN_BRANCH, Some("lucyy"), "ch-2").unwrap_err();
+        assert!(err.contains("entity registry"), "{err}");
     }
 
     /// R390-style consistency lock: the gate and the view share holds_at —
@@ -990,7 +1061,7 @@ mod tests {
         else {
             panic!("expected overlap");
         };
-        let view = frame_view(&store, &order, frame, branch, at).unwrap();
+        let view = frame_view(&store, &order, frame, branch, None, at).unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains(&fact_a.as_str()) && held.contains(&fact_b.as_str()));
     }

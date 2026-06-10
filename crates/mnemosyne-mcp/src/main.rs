@@ -306,6 +306,23 @@ pub struct AddBranchArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddEntityArgs {
+    /// Entity id — the registry key fact `entities` refs must name.
+    pub entity_id: String,
+    /// Free-form kind tag (consumer-defined, e.g. character/location).
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportEntityArgs {
+    /// Entity id to assemble the dossier for.
+    pub entity_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactArgs {
     pub fact_id: String,
     /// Epistemic frame id (must already be registered — `add_frame` first).
@@ -331,6 +348,9 @@ pub struct AddFactArgs {
     /// Optional verbatim quote (sha256 stamped by the primitive).
     #[serde(default)]
     pub quote: Option<String>,
+    /// Entity refs (each must be registered — `add_entity` first).
+    #[serde(default)]
+    pub entities: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -372,6 +392,10 @@ pub struct ReportFrameViewArgs {
     /// World-line branch. Omit for the default branch (`main`).
     #[serde(default)]
     pub branch: Option<String>,
+    /// Entity filter (Round 437) — the NPC-context query is frame ×
+    /// branch × entity at T. Omit for the whole frame.
+    #[serde(default)]
+    pub entity: Option<String>,
     /// Canon point (structure-section id).
     pub at: String,
     /// Canon-order declaration path override (bypasses the pin).
@@ -658,6 +682,7 @@ fn fact_import_from(a: &AddFactArgs) -> atomic::FactImport {
         conflicts_with: a.conflicts_with.clone(),
         supersedes_in_frame: a.supersedes_in_frame.clone(),
         quote: a.quote.clone(),
+        entities: a.entities.clone(),
     }
 }
 
@@ -1152,6 +1177,27 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Register one narrative entity (R437) — the retrieval key for entity-scoped verification (a character's background, a location's lore). Fact `entities` refs must name a registered id (fail-loud). Idempotent on identical content; divergent rejects."
+    )]
+    async fn add_entity(&self, args: Parameters<AddEntityArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_entity(store, path, &a.entity_id, &a.kind, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter."
+    )]
+    async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
+        match ops::entity_dossier(&self.workspace, None, &args.0.entity_id) {
+            Ok(d) => self.tool_json(&d),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
     async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
@@ -1218,6 +1264,7 @@ impl MnemosyneServer {
             None,
             &args.0.frame,
             args.0.branch.as_deref(),
+            args.0.entity.as_deref(),
             &args.0.at,
             args.0.order_path.as_deref(),
         ) {

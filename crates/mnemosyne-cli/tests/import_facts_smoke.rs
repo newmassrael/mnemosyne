@@ -83,11 +83,11 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(out.status.success(), "{:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("2 frames + 0 branches + 2 facts created"),
+        stdout.contains("2 frames + 0 branches + 0 entities + 2 facts created"),
         "{stdout}"
     );
     let store = read_store(tmp.path());
-    assert_eq!(store["schema_version"], 14);
+    assert_eq!(store["schema_version"], 15);
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"
@@ -108,7 +108,7 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(again.status.success());
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(
-        stdout.contains("0 frames + 0 branches + 0 facts created, 4 no-op"),
+        stdout.contains("0 frames + 0 branches + 0 entities + 0 facts created, 4 no-op"),
         "{stdout}"
     );
 }

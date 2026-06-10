@@ -36,7 +36,7 @@ pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
 use mnemosyne_core::{
-    strip_section_marker, Branch, DecisionStatus, Frame, InventoryStatus, NarrativeFact,
+    strip_section_marker, Branch, DecisionStatus, Entity, Frame, InventoryStatus, NarrativeFact,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -636,6 +636,13 @@ pub struct AtomicStore {
     /// stores via `#[serde(default)]`.
     #[serde(default)]
     pub branches: BTreeMap<String, Branch>,
+    /// Narrative entity registry (Round 437) — keyed by entity id. Every
+    /// `NarrativeFact.entities` ref must name a key here (fail-loud at the
+    /// mutate primitives; frames/branches symmetry). The retrieval key for
+    /// entity-scoped verification and the convergence-B `entity_id` seat.
+    /// Empty on pre-v15 stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub entities: BTreeMap<String, Entity>,
     /// Multi-axis narrative facts (Round 430) — append-only perspectival
     /// claims, keyed by fact id. Top-level (the confirmation_events
     /// placement pattern): never nested on a section, no frozen-ledger
@@ -1068,7 +1075,15 @@ pub enum AtomicStoreError {
 // single-world store (every fact on the default branch) loads and gates
 // exactly as before. So there is deliberately NO `schema_version < 14` arm
 // in `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 14;
+// v14→v15 adds `AtomicStore.entities` + `NarrativeFact.entities` (narrative
+// entity axis, Round 437 — design sec 7.10 gap 4, pulled live by the
+// AAA/pinion consumer: entity-scoped verification needs a retrieval key).
+// Same declarative new-field-default pattern: pre-v15 stores load with an
+// empty registry and entity-less facts, and a fact that names no entity
+// serializes no `entities` key — byte-stable round-trip. So there is
+// deliberately NO `schema_version < 15` arm in `load`, and no migration
+// report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 15;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3363,6 +3378,9 @@ pub struct FactImport {
     /// be non-empty after trim (omit it instead of blanking it).
     #[serde(default)]
     pub branch: Option<String>,
+    /// Entity refs (Round 437). Each must name a registered entity.
+    #[serde(default)]
+    pub entities: Vec<String>,
     pub claim: String,
     pub canon_from: String,
     #[serde(default)]
@@ -3377,6 +3395,17 @@ pub struct FactImport {
     pub quote: Option<String>,
 }
 
+/// One entity entry in the [`FactsManifest`] (and the `add_entity` shape,
+/// Round 437).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityImport {
+    pub entity_id: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 /// `import-facts` manifest: frames + branches + facts created in ONE atomic
 /// transaction (registries first, so same-manifest facts can reference
 /// them).
@@ -3387,6 +3416,8 @@ pub struct FactsManifest {
     #[serde(default)]
     pub branches: Vec<BranchImport>,
     #[serde(default)]
+    pub entities: Vec<EntityImport>,
+    #[serde(default)]
     pub facts: Vec<FactImport>,
 }
 
@@ -3396,6 +3427,8 @@ pub struct FactsManifest {
 /// - `frame` must exist in the frames registry (fail-loud, R287 lesson);
 /// - `branch`, when present and not `MAIN_BRANCH`, must exist in the branch
 ///   registry (Round 436 — frames-registry symmetry);
+/// - every `entities` ref must exist in the entity registry, no blanks, no
+///   duplicates (Round 437);
 /// - `canon_from` / `canon_to` / every `evidence` ref must name an existing
 ///   section (canon coordinates ARE structure refs, design sec 7.3/7.5);
 /// - `evidence` >= 1 (a claim without provenance is unauditable);
@@ -3443,6 +3476,23 @@ fn build_candidate_fact(
             b.to_string()
         }
     };
+    let mut entities = Vec::with_capacity(entry.entities.len());
+    for e in &entry.entities {
+        let e = e.trim();
+        if e.is_empty() {
+            return Err(format!("fact `{fact_id}`: blank entity ref"));
+        }
+        if !store.entities.contains_key(e) {
+            return Err(format!(
+                "fact `{fact_id}`: entity `{e}` not present in the entity registry \
+                 (add_entity / manifest entities[] first; fail-loud)"
+            ));
+        }
+        if entities.iter().any(|x| x == e) {
+            return Err(format!("fact `{fact_id}`: duplicate entity ref `{e}`"));
+        }
+        entities.push(e.to_string());
+    }
     let claim = entry.claim.trim();
     if claim.is_empty() {
         return Err(format!("fact `{fact_id}`: claim mandatory (non-empty)"));
@@ -3535,6 +3585,7 @@ fn build_candidate_fact(
         NarrativeFact {
             frame: frame.to_string(),
             branch,
+            entities,
             claim: claim.to_string(),
             canon_from: canon_from.to_string(),
             canon_to,
@@ -3679,6 +3730,47 @@ pub fn add_branch(
     }
 }
 
+/// Register one narrative entity (Round 437 — the third registry, after
+/// frames and branches: every `NarrativeFact.entities` ref must name a
+/// registered id, so a typo'd entity fails loud instead of silently
+/// splitting a dossier). A2-consistent verdicts: absent → create,
+/// byte-identical → idempotent no-op, divergent → reject.
+pub fn add_entity(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    entity_id: &str,
+    kind: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = entity_id.trim();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_entity: entity_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    let candidate = Entity {
+        kind: kind.trim().to_string(),
+        description: description.trim().to_string(),
+    };
+    match store.entities.get(id) {
+        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
+            primitive: "add_entity".to_string(),
+            target_kind: "entity",
+            target_id: format!("{id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        }),
+        Some(_) => Err(AtomicMutateError::Validation(format!(
+            "add_entity: entity `{id}` already exists with DIVERGENT content — \
+             refusing silent overwrite"
+        ))),
+        None => {
+            store.entities.insert(id.to_string(), candidate);
+            save_with_receipt(store, sidecar_path, "add_entity", "entity", id)
+        }
+    }
+}
+
 /// Create one narrative fact. Routes the SAME builder as `import_facts`
 /// (R305 parity); cross-fact refs resolve against the store only (a single
 /// add cannot forward-reference). 3-way verdict mirrors `import_sections`:
@@ -3783,6 +3875,32 @@ pub fn import_facts(
             }
         }
     }
+    let mut entities_created = 0usize;
+    for (idx, e) in manifest.entities.iter().enumerate() {
+        let id = e.entity_id.trim();
+        if id.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest entity {idx}: entity_id mandatory"
+            )));
+        }
+        let candidate = Entity {
+            kind: e.kind.trim().to_string(),
+            description: e.description.trim().to_string(),
+        };
+        match store.entities.get(id) {
+            None => {
+                store.entities.insert(id.to_string(), candidate);
+                entities_created += 1;
+            }
+            Some(existing) if *existing == candidate => no_op += 1,
+            Some(_) => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_facts: manifest entity {idx} `{id}` already exists with \
+                     DIVERGENT content — refusing silent overwrite"
+                )));
+            }
+        }
+    }
     let mut staged: Vec<(String, NarrativeFact)> = Vec::with_capacity(manifest.facts.len());
     for (idx, entry) in manifest.facts.iter().enumerate() {
         let (fact_id, candidate) = build_candidate_fact(store, entry).map_err(|e| {
@@ -3822,10 +3940,10 @@ pub fn import_facts(
             .map_err(AtomicMutateError::Validation)?;
     }
     let summary = format!(
-        "{frames_created} frames + {branches_created} branches + {facts_created} facts \
-         created, {no_op} no-op"
+        "{frames_created} frames + {branches_created} branches + {entities_created} entities \
+         + {facts_created} facts created, {no_op} no-op"
     );
-    if frames_created == 0 && branches_created == 0 && facts_created == 0 {
+    if frames_created == 0 && branches_created == 0 && entities_created == 0 && facts_created == 0 {
         return Ok(AtomicMutateReceipt {
             primitive: "import_facts".to_string(),
             target_kind: "narrative_fact",
@@ -7347,6 +7465,7 @@ mod tests {
     /// Fixture: a valid FactImport against `seed_section`-created chapters.
     fn sample_fact(fact_id: &str, frame: &str) -> FactImport {
         FactImport {
+            entities: vec![],
             fact_id: fact_id.to_string(),
             frame: frame.to_string(),
             branch: None,
@@ -7382,6 +7501,7 @@ mod tests {
         let mut f_old = sample_fact("f-old", "jonathan");
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
+            entities: vec![],
             branches: vec![],
             frames: vec![
                 FrameImport {
@@ -7398,7 +7518,7 @@ mod tests {
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(
             receipt.target_id,
-            "2 frames + 0 branches + 2 facts created, 0 no-op"
+            "2 frames + 0 branches + 0 entities + 2 facts created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -7419,7 +7539,7 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         assert_eq!(
             again.target_id,
-            "0 frames + 0 branches + 0 facts created, 4 no-op"
+            "0 frames + 0 branches + 0 entities + 0 facts created, 4 no-op"
         );
     }
 
@@ -7431,6 +7551,7 @@ mod tests {
         seed_chapters(&mut store);
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
+            entities: vec![],
             branches: vec![],
             frames: vec![],
             facts: vec![sample_fact("f1", "nobody")],
@@ -7448,6 +7569,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 frames: frames.clone(),
                 branches: vec![],
                 facts: vec![bad_evidence],
@@ -7465,6 +7587,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
                 facts: vec![no_evidence],
@@ -7479,6 +7602,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 branches: vec![],
                 frames,
                 facts: vec![bad_canon],
@@ -7499,6 +7623,7 @@ mod tests {
         let mut successor = sample_fact("f2", "seward");
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
+            entities: vec![],
             branches: vec![],
             frames: vec![
                 FrameImport {
@@ -7534,6 +7659,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
                 facts: vec![sample_fact("f1", "gt")],
@@ -7547,6 +7673,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entities: vec![],
                 branches: vec![],
                 frames,
                 facts: vec![divergent],
@@ -7568,6 +7695,7 @@ mod tests {
             (
                 "missing evidence ref",
                 FactImport {
+                    entities: vec![],
                     evidence: vec!["ch-99".to_string()],
                     ..sample_fact("p3", "gt")
                 },
@@ -7575,6 +7703,7 @@ mod tests {
             (
                 "empty evidence",
                 FactImport {
+                    entities: vec![],
                     evidence: vec![],
                     ..sample_fact("p4", "gt")
                 },
@@ -7582,6 +7711,7 @@ mod tests {
             (
                 "self conflict",
                 FactImport {
+                    entities: vec![],
                     conflicts_with: vec!["p5".to_string()],
                     ..sample_fact("p5", "gt")
                 },
@@ -7589,6 +7719,7 @@ mod tests {
             (
                 "blank canon_to",
                 FactImport {
+                    entities: vec![],
                     canon_to: Some("  ".to_string()),
                     ..sample_fact("p6", "gt")
                 },
@@ -7596,6 +7727,7 @@ mod tests {
             (
                 "blank branch",
                 FactImport {
+                    entities: vec![],
                     branch: Some("  ".to_string()),
                     ..sample_fact("p7", "gt")
                 },
@@ -7605,6 +7737,13 @@ mod tests {
                 FactImport {
                     branch: Some("sea-rotue".to_string()),
                     ..sample_fact("p8", "gt")
+                },
+            ),
+            (
+                "unregistered entity",
+                FactImport {
+                    entities: vec!["dracual".to_string()],
+                    ..sample_fact("p9", "gt")
                 },
             ),
         ];
@@ -7623,6 +7762,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    entities: vec![],
                     frames: vec![],
                     branches: vec![],
                     facts: vec![entry],
@@ -7654,6 +7794,7 @@ mod tests {
             &mut store,
             &path,
             &FactImport {
+                entities: vec![],
                 branch: Some("vampire-route".to_string()),
                 ..sample_fact("f-route", "gt")
             },
@@ -7698,6 +7839,7 @@ mod tests {
         }
         let predecessor = sample_fact("f-old", "gt");
         let successor = FactImport {
+            entities: vec![],
             branch: Some("vampire-route".to_string()),
             supersedes_in_frame: Some("f-old".to_string()),
             ..sample_fact("f-new", "gt")
@@ -7709,6 +7851,7 @@ mod tests {
             &mut store_b,
             &path_b,
             &FactsManifest {
+                entities: vec![],
                 frames: vec![],
                 branches: vec![],
                 facts: vec![predecessor, successor],
@@ -7764,6 +7907,7 @@ mod tests {
         assert!(matches!(err, AtomicMutateError::NotFound(_)));
         // Revision lands; quote_sha256 restamped by the builder.
         let revised = FactImport {
+            entities: vec![],
             claim: "the count is a nobleman of the Carpathians".to_string(),
             quote: Some("boyar blood".to_string()),
             ..sample_fact("f1", "gt")
@@ -7780,6 +7924,7 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         // Shared-builder invariants hold on the amend path too (parity).
         let bad = FactImport {
+            entities: vec![],
             evidence: vec![],
             ..revised.clone()
         };
@@ -7787,12 +7932,14 @@ mod tests {
         assert!(err.to_string().contains("evidence"), "{err}");
         // A superseded fact cannot be amended out of its scope.
         let successor = FactImport {
+            entities: vec![],
             canon_from: "ch-3".to_string(),
             supersedes_in_frame: Some("f1".to_string()),
             ..sample_fact("f2", "gt")
         };
         add_fact(&mut store, &path, &successor).unwrap();
         let moved = FactImport {
+            entities: vec![],
             frame: "mina".to_string(),
             ..revised.clone()
         };
@@ -7800,6 +7947,7 @@ mod tests {
         assert!(err.to_string().contains("superseded by `f2`"), "{err}");
         // Divergent add_fact now advises BOTH paths (sec 7.10 finding).
         let divergent = FactImport {
+            entities: vec![],
             claim: "something else".to_string(),
             ..sample_fact("f1", "gt")
         };
@@ -7826,6 +7974,7 @@ mod tests {
         assert!(err.to_string().contains("known by construction"), "{err}");
         // Unregistered branch on a fact rejects at the write path.
         let on_route = FactImport {
+            entities: vec![],
             branch: Some("sea-route".to_string()),
             ..sample_fact("f-route", "gt")
         };
@@ -7845,6 +7994,49 @@ mod tests {
             reloaded.branches["sea-route"].description,
             "the Demeter voyage"
         );
+    }
+
+    /// Round 437 — entity registry: refs fail loud until registered, dup
+    /// refs reject, empty `entities` never serializes (byte-stability), and
+    /// the registry row round-trips.
+    #[test]
+    fn add_entity_registry_gates_fact_refs() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        let about_count = FactImport {
+            entities: vec!["dracula".to_string()],
+            ..sample_fact("f-about", "gt")
+        };
+        let err = add_fact(&mut store, &path, &about_count).unwrap_err();
+        assert!(err.to_string().contains("entity registry"), "{err}");
+        add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
+        add_fact(&mut store, &path, &about_count).unwrap();
+        assert_eq!(
+            store.narrative_facts["f-about"].entities,
+            vec!["dracula".to_string()]
+        );
+        // Duplicate refs reject.
+        let dup = FactImport {
+            entities: vec!["dracula".to_string(), "dracula".to_string()],
+            ..sample_fact("f-dup", "gt")
+        };
+        let err = add_fact(&mut store, &path, &dup).unwrap_err();
+        assert!(err.to_string().contains("duplicate entity"), "{err}");
+        // Entity-less fact serializes no `entities` key (byte-stability).
+        add_fact(&mut store, &path, &sample_fact("f-plain", "gt")).unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(json["narrative_facts"]["f-plain"].get("entities").is_none());
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.entities["dracula"].kind, "character");
+        // Divergent re-register rejects; identical = no-op.
+        let again = add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
+        assert_eq!(again.written_bytes, 0);
+        let err = add_entity(&mut store, &path, "dracula", "location", "").unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
     }
 
     #[test]

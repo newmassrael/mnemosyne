@@ -447,6 +447,56 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Round 437 — register one narrative entity (third registry; the
+/// retrieval key for "all facts about X").
+pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut entity_id: Option<String> = None;
+    let mut kind = String::new();
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--entity" => {
+                entity_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--entity missing"))?
+                        .clone(),
+                )
+            }
+            "--kind" => {
+                kind = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--kind missing"))?
+                    .clone()
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let entity_id = entity_id.ok_or_else(|| anyhow!("--entity arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_entity(&mut store, &sidecar_path, &entity_id, &kind, &description),
+        json,
+    )
+}
+
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
 /// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two
@@ -461,6 +511,7 @@ struct FactVerbArgs {
 fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerbArgs> {
     let mut out = FactVerbArgs {
         entry: mnemosyne_atomic::FactImport {
+            entities: vec![],
             fact_id: String::new(),
             frame: String::new(),
             branch: None,
@@ -545,6 +596,10 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .ok_or_else(|| anyhow!("--quote missing"))?
                         .clone(),
                 )
+            }
+            "--entities" => {
+                out.entry.entities =
+                    csv(iter.next().ok_or_else(|| anyhow!("--entities missing"))?)
             }
             "--reason" if accept_reason => {
                 out.reason = Some(

@@ -7861,12 +7861,61 @@
         "branch lifecycle beyond registration (description setter, remove/merge) = consumer-pull, symmetric with frames",
         "remaining narrative gaps unchanged: entity model (sec 7.10 gap 4) and LLM conflict-discovery adapter (gap 5), scale/consumer-gated"
       ]
+    },
+    "Round 437 — entity axis: the third registry + entity-scoped reads (AAA/pinion pull, gap 4)": {
+      "decision_summary": "Design sec 7.10 gap 4 pulled live by a named consumer: pinion (AI-first game engine) will read narrative state over RPC, and entity-scoped verification - does this scene contradict X's background - needs a retrieval key that flat claims lack. The Entity entity lands as the third registry (frames R430, branches R436, entities now), with the same fail-loud contract: every NarrativeFact.entities ref must be registered, so a typo'd entity cannot silently split a dossier. Multi-ref by design (a relation involves two or more entities; world-level facts carry none), validated in the one shared builder so both write paths and amend inherit the invariant unchanged (R305). Two reads land with it: the entity dossier (all facts about X across frames and branches - raw authoring-time view) and the entity filter on the frame-at-T projection (frame x branch x entity at T - exactly the NPC-context query an AI-first runtime issues: what does this character know about X right now). kind stays a free-form consumer-defined tag - character/location/faction are game vocabulary, and nothing medium-shaped enters L0 (sec 6.4). This is also typed-claim step 1: the subject leg of the future rule-gate (predicate facts) now exists; the predicate leg remains the recorded design round.",
+      "changes_bullets": [
+        "Entity entity (mnemosyne-core: kind + description, both free-form consumer-defined - nothing medium-shaped, sec 6.4) + AtomicStore.entities registry, schema v14->v15 (declarative default; entity-less facts serialize no key - byte-stable round-trip)",
+        "NarrativeFact.entities: Vec<String> (multi-ref by design - a relation involves >= 2 entities; optional - world-level facts carry none); every ref validated in the ONE shared builder: registered, non-blank, no duplicates (R305 parity free; \"unregistered entity\" added to the parity matrix)",
+        "add_entity primitive + manifest entities[] (registries-before-facts atomic transaction) + add-entity CLI verb + add_entity MCP tool, all A2-verdict consistent",
+        "report-entity / entity_dossier (ops shared): every fact referencing X across all frames and branches - the raw authoring-time \"all facts about X\" view, fail-loud on a typo'd entity",
+        "frame_view gains the entity filter (frame x branch x entity at T = the NPC-context query for the pinion AI-first runtime): --entity on report-frame-view CLI, entity arg on report_frame_view MCP; FrameViewEntry carries entities"
+      ],
+      "verification_bullets": [
+        "atomic unit tests: unregistered ref fails loud then registration unlocks the write, duplicate refs reject, entity-less fact serializes no entities key, registry round-trip + divergent/no-op verdicts; parity matrix extended",
+        "continuity unit test: entity filter scopes the view (2 holding -> 1 with filter), entity echoed on FrameView, typo'd filter fails loud",
+        "CLI smoke (entity_dossier_smoke.rs): register -> author -> dossier (kind + fact_count + rows) -> filtered frame-view (unknown surfaced under no order, B-1 honesty) -> typo'd dossier read fails loud",
+        "full workspace suite green (767 tests, 0 failed), clippy --all-targets clean, fmt clean; MCP roster 46 -> 48 (add_entity, report_entity)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "entity kind is a free-form tag by design (medium-neutral); a kind-scoped listing verb (all entities of kind K) is consumer-pull when the dossier workflow demonstrates it",
+        "entity lifecycle beyond registration (description/kind setter, remove with inbound-ref check) = consumer-pull, symmetric with frames/branches",
+        "entities are the typed-claim step 1 (subject typing); the rule-gate class (location exclusivity, alive/dead, conservation) still needs predicate-shaped claims - the recorded design round, do NOT improvise it ad hoc",
+        "next per the agreed order: branch fork-point (shared-history semantics - the session-review tension 1), then conflict-edge claim-hash drift (tension 2)"
+      ],
+      "publishable_decision_summary": "Design sec 7.10 gap 4 pulled live by a named consumer: pinion (AI-first game engine) will read narrative state over RPC, and entity-scoped verification - does this scene contradict X's background - needs a retrieval key that flat claims lack. The Entity entity lands as the third registry (frames R430, branches R436, entities now), with the same fail-loud contract: every NarrativeFact.entities ref must be registered, so a typo'd entity cannot silently split a dossier. Multi-ref by design (a relation involves two or more entities; world-level facts carry none), validated in the one shared builder so both write paths and amend inherit the invariant unchanged (R305). Two reads land with it: the entity dossier (all facts about X across frames and branches - raw authoring-time view) and the entity filter on the frame-at-T projection (frame x branch x entity at T - exactly the NPC-context query an AI-first runtime issues: what does this character know about X right now). kind stays a free-form consumer-defined tag - character/location/faction are game vocabulary, and nothing medium-shaped enters L0 (sec 6.4). This is also typed-claim step 1: the subject leg of the future rule-gate (predicate facts) now exists; the predicate leg remains the recorded design round.",
+      "publishable_changes_bullets": [
+        "Entity entity (mnemosyne-core: kind + description, both free-form consumer-defined - nothing medium-shaped, sec 6.4) + AtomicStore.entities registry, schema v14->v15 (declarative default; entity-less facts serialize no key - byte-stable round-trip)",
+        "NarrativeFact.entities: Vec<String> (multi-ref by design - a relation involves >= 2 entities; optional - world-level facts carry none); every ref validated in the ONE shared builder: registered, non-blank, no duplicates (R305 parity free; \"unregistered entity\" added to the parity matrix)",
+        "add_entity primitive + manifest entities[] (registries-before-facts atomic transaction) + add-entity CLI verb + add_entity MCP tool, all A2-verdict consistent",
+        "report-entity / entity_dossier (ops shared): every fact referencing X across all frames and branches - the raw authoring-time \"all facts about X\" view, fail-loud on a typo'd entity",
+        "frame_view gains the entity filter (frame x branch x entity at T = the NPC-context query for the pinion AI-first runtime): --entity on report-frame-view CLI, entity arg on report_frame_view MCP; FrameViewEntry carries entities"
+      ],
+      "publishable_verification_bullets": [
+        "atomic unit tests: unregistered ref fails loud then registration unlocks the write, duplicate refs reject, entity-less fact serializes no entities key, registry round-trip + divergent/no-op verdicts; parity matrix extended",
+        "continuity unit test: entity filter scopes the view (2 holding -> 1 with filter), entity echoed on FrameView, typo'd filter fails loud",
+        "CLI smoke (entity_dossier_smoke.rs): register -> author -> dossier (kind + fact_count + rows) -> filtered frame-view (unknown surfaced under no order, B-1 honesty) -> typo'd dossier read fails loud",
+        "full workspace suite green (767 tests, 0 failed), clippy --all-targets clean, fmt clean; MCP roster 46 -> 48 (add_entity, report_entity)"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "entity kind is a free-form tag by design (medium-neutral); a kind-scoped listing verb (all entities of kind K) is consumer-pull when the dossier workflow demonstrates it",
+        "entity lifecycle beyond registration (description/kind setter, remove with inbound-ref check) = consumer-pull, symmetric with frames/branches",
+        "entities are the typed-claim step 1 (subject typing); the rule-gate class (location exclusivity, alive/dead, conservation) still needs predicate-shaped claims - the recorded design round, do NOT improvise it ad hoc",
+        "next per the agreed order: branch fork-point (shared-history semantics - the session-review tension 1), then conflict-edge claim-hash drift (tension 2)"
+      ]
     }
   },
   "inventory_entries": {},
   "confirmation_events": {},
   "frames": {},
   "branches": {},
+  "entities": {},
   "narrative_facts": {},
-  "schema_version": 14
+  "schema_version": 15
 }

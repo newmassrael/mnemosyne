@@ -238,6 +238,7 @@ pub struct FrameViewReport {
     pub frame: String,
     pub branch: String,
     pub at: String,
+    pub entity: Option<String>,
     pub holding: Vec<mnemosyne_validate::continuity::FrameViewEntry>,
     pub holding_count: usize,
     pub not_holding: usize,
@@ -251,6 +252,7 @@ pub fn continuity_frame_view(
     sidecar: Option<&Path>,
     frame: &str,
     branch: Option<&str>,
+    entity: Option<&str>,
     at: &str,
     order_override: Option<&str>,
 ) -> Result<FrameViewReport, OpError> {
@@ -258,16 +260,80 @@ pub fn continuity_frame_view(
     let order = resolve_canon_order(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
-    let view = mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, at)
-        .map_err(OpError::Other)?;
+    let view =
+        mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, entity, at)
+            .map_err(OpError::Other)?;
     Ok(FrameViewReport {
         frame: view.frame,
         branch: view.branch,
         at: view.at,
+        entity: view.entity,
         holding_count: view.holding.len(),
         holding: view.holding,
         not_holding: view.not_holding,
         unknown: view.unknown,
+    })
+}
+
+/// One fact row in an entity dossier (Round 437) — raw authoring-time view
+/// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
+/// with the entity filter).
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityFactRow {
+    pub fact_id: String,
+    pub frame: String,
+    pub branch: String,
+    pub claim: String,
+    pub canon_from: String,
+    pub canon_to: Option<String>,
+    pub evidence: Vec<String>,
+}
+
+/// "All facts about X" (Round 437, design sec 7.10 gap 4) — every fact
+/// referencing the entity, across all frames and branches, with the
+/// registry row. Fail-loud on an unregistered entity.
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityDossier {
+    pub entity_id: String,
+    pub kind: String,
+    pub description: String,
+    pub fact_count: usize,
+    pub facts: Vec<EntityFactRow>,
+}
+
+pub fn entity_dossier(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    entity_id: &str,
+) -> Result<EntityDossier, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let id = entity_id.trim();
+    let Some(entity) = store.entities.get(id) else {
+        return Err(OpError::Other(format!(
+            "entity `{id}` not present in the entity registry (fail-loud — a typo'd \
+             entity must not read as an empty dossier)"
+        )));
+    };
+    let facts: Vec<EntityFactRow> = store
+        .narrative_facts
+        .iter()
+        .filter(|(_, f)| f.entities.iter().any(|e| e == id))
+        .map(|(fid, f)| EntityFactRow {
+            fact_id: fid.clone(),
+            frame: f.frame.clone(),
+            branch: f.branch.clone(),
+            claim: f.claim.clone(),
+            canon_from: f.canon_from.clone(),
+            canon_to: f.canon_to.clone(),
+            evidence: f.evidence.clone(),
+        })
+        .collect();
+    Ok(EntityDossier {
+        entity_id: id.to_string(),
+        kind: entity.kind.clone(),
+        description: entity.description.clone(),
+        fact_count: facts.len(),
+        facts,
     })
 }
 

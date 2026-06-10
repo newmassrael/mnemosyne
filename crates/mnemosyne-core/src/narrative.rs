@@ -70,6 +70,26 @@ pub struct Branch {
     pub description: String,
 }
 
+/// One narrative entity (registry entry, Round 437 — design sec 7.10 gap 4).
+/// Keyed by entity id in `AtomicStore.entities`; every
+/// [`NarrativeFact::entities`] ref must name a registered id (fail-loud at
+/// the mutate primitive — the frames/branches registry symmetry). The
+/// entity is the retrieval key for "all facts about X" (a character's
+/// background, a location's lore, an item's chain of custody) and the
+/// `entity_id` seat of the convergence-B index key
+/// `(branch_id, entity_id, valid_from)`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entity {
+    /// Free-form kind tag (consumer-defined values — e.g. a game medium
+    /// uses character/location/faction/item; nothing medium-shaped is
+    /// enforced here, ARCHITECTURE.md sec 6 invariant 4). Optional.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// Free-form description. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
 /// One multi-axis narrative fact: a claim held within exactly one epistemic
 /// frame over a canon-time extent, evidenced by structure sections.
 ///
@@ -97,6 +117,13 @@ pub struct NarrativeFact {
     /// pre-branch stores stay byte-stable.
     #[serde(default = "default_branch", skip_serializing_if = "is_main_branch")]
     pub branch: String,
+    /// Entity ids this claim is about (Round 437) — the retrieval key for
+    /// entity-scoped verification ("does this scene contradict X's
+    /// background"). Multi-ref by design: a relation involves two or more
+    /// entities. Optional — a world-level fact may be about no entity.
+    /// Every ref must be registered (fail-loud at the mutate primitive).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entities: Vec<String>,
     /// The claim held in this frame, per-claim granularity (atomic,
     /// falsifiable — one assertion, not an entity dossier).
     pub claim: String,

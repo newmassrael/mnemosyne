@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -163,6 +163,7 @@ fn run(args: &[String]) -> Result<()> {
         "import-facts" => atomic_cli::cmd_import_facts(&workspace_anchor()?, &args[2..]),
         "add-frame" => atomic_cli::cmd_add_frame(&workspace_anchor()?, &args[2..]),
         "add-branch" => atomic_cli::cmd_add_branch(&workspace_anchor()?, &args[2..]),
+        "add-entity" => atomic_cli::cmd_add_entity(&workspace_anchor()?, &args[2..]),
         "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
         "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
         "amend-fact" => atomic_cli::cmd_amend_fact(&workspace_anchor()?, &args[2..]),
@@ -295,6 +296,7 @@ fn run(args: &[String]) -> Result<()> {
         "validate-continuity" => cmd_validate_continuity(&args[2..]),
         // Round 432 — frame-at-T read projection (Phase 1A Round C).
         "report-frame-view" => cmd_report_frame_view(&args[2..]),
+        "report-entity" => cmd_report_entity(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -388,7 +390,15 @@ fn print_help(prog: &str) {
         " {} add-branch --branch <id> [--description <text>] [--sidecar <path>] [--json]",
         prog
     );
-    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
+    println!(
+        " {} add-entity --entity <id> [--kind <tag>] [--description <text>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} report-entity --entity <id> [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
         " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
         prog
@@ -560,7 +570,7 @@ fn print_help(prog: &str) {
         "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred"
     );
     println!(
-        " {} report-frame-view --frame <id> [--branch <id>] --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        " {} report-frame-view --frame <id> [--branch <id>] [--entity <id>] --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
@@ -1752,6 +1762,7 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
     let mut json = false;
     let mut frame: Option<String> = None;
     let mut branch: Option<String> = None;
+    let mut entity: Option<String> = None;
     let mut at: Option<String> = None;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
@@ -1770,6 +1781,13 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
                 branch = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--branch missing"))?
+                        .clone(),
+                )
+            }
+            "--entity" => {
+                entity = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--entity missing"))?
                         .clone(),
                 )
             }
@@ -1804,6 +1822,7 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         sidecar_override.as_deref().map(std::path::Path::new),
         &frame,
         branch.as_deref(),
+        entity.as_deref(),
         &at,
         order_override.as_deref(),
     )
@@ -1811,9 +1830,14 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(&view)?);
     } else {
+        let entity_tag = view
+            .entity
+            .as_deref()
+            .map(|e| format!(" entity `{e}`"))
+            .unwrap_or_default();
         println!(
-            "=== frame `{}` branch `{}` at `{}` ===",
-            view.frame, view.branch, view.at
+            "=== frame `{}` branch `{}`{} at `{}` ===",
+            view.frame, view.branch, entity_tag, view.at
         );
         println!(
             "  holding={} not_holding={} unknown={}",
@@ -1831,6 +1855,78 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         }
         for u in &view.unknown {
             println!("  [unknown under declared order] {u}");
+        }
+    }
+    Ok(())
+}
+
+/// Round 437 — entity dossier (`report-entity`): every fact referencing the
+/// entity, across all frames and branches — the raw authoring-time view
+/// ("all facts about X"). The frame-at-T projection with an entity filter
+/// is `report-frame-view --entity`.
+fn cmd_report_entity(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut entity: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--entity" => {
+                entity = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--entity missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let entity = entity.ok_or_else(|| anyhow!("--entity arg required"))?;
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let dossier = mnemosyne_ops::entity_dossier(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        &entity,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&dossier)?);
+    } else {
+        let kind_tag = if dossier.kind.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", dossier.kind)
+        };
+        println!(
+            "=== entity `{}`{} — {} fact(s) ===",
+            dossier.entity_id, kind_tag, dossier.fact_count
+        );
+        if !dossier.description.is_empty() {
+            println!("  {}", dossier.description);
+        }
+        for f in &dossier.facts {
+            let to = f
+                .canon_to
+                .as_deref()
+                .map(|t| format!("..{t}"))
+                .unwrap_or_default();
+            println!(
+                "  [{}{}] {} (frame {} / branch {}): {}",
+                f.canon_from, to, f.fact_id, f.frame, f.branch, f.claim
+            );
         }
     }
     Ok(())
