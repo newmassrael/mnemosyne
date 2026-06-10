@@ -406,21 +406,33 @@ pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
-pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
-    let mut entry = mnemosyne_atomic::FactImport {
-        fact_id: String::new(),
-        frame: String::new(),
-        branch: None,
-        claim: String::new(),
-        canon_from: String::new(),
-        canon_to: None,
-        evidence: vec![],
-        conflicts_with: vec![],
-        supersedes_in_frame: None,
-        quote: None,
+/// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two
+/// verbs describe the same fact shape; only the primitive differs).
+struct FactVerbArgs {
+    entry: mnemosyne_atomic::FactImport,
+    sidecar: Option<String>,
+    json: bool,
+    reason: Option<String>,
+}
+
+fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerbArgs> {
+    let mut out = FactVerbArgs {
+        entry: mnemosyne_atomic::FactImport {
+            fact_id: String::new(),
+            frame: String::new(),
+            branch: None,
+            claim: String::new(),
+            canon_from: String::new(),
+            canon_to: None,
+            evidence: vec![],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            quote: None,
+        },
+        sidecar: None,
+        json: false,
+        reason: None,
     };
-    let mut sidecar: Option<String> = None;
-    let mut json = false;
     let csv = |raw: &str| -> Vec<String> {
         raw.split(',')
             .map(str::trim)
@@ -432,61 +444,132 @@ pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--fact" => {
-                entry.fact_id = iter
+                out.entry.fact_id = iter
                     .next()
                     .ok_or_else(|| anyhow!("--fact missing"))?
                     .clone()
             }
             "--frame" => {
-                entry.frame = iter
+                out.entry.frame = iter
                     .next()
                     .ok_or_else(|| anyhow!("--frame missing"))?
                     .clone()
             }
             "--branch" => {
-                entry.branch = Some(
+                out.entry.branch = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--branch missing"))?
                         .clone(),
                 )
             }
             "--claim" => {
-                entry.claim = iter
+                out.entry.claim = iter
                     .next()
                     .ok_or_else(|| anyhow!("--claim missing"))?
                     .clone()
             }
             "--canon-from" => {
-                entry.canon_from = iter
+                out.entry.canon_from = iter
                     .next()
                     .ok_or_else(|| anyhow!("--canon-from missing"))?
                     .clone()
             }
             "--canon-to" => {
-                entry.canon_to = Some(
+                out.entry.canon_to = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--canon-to missing"))?
                         .clone(),
                 )
             }
             "--evidence" => {
-                entry.evidence = csv(iter.next().ok_or_else(|| anyhow!("--evidence missing"))?)
+                out.entry.evidence =
+                    csv(iter.next().ok_or_else(|| anyhow!("--evidence missing"))?)
             }
             "--conflicts" => {
-                entry.conflicts_with =
+                out.entry.conflicts_with =
                     csv(iter.next().ok_or_else(|| anyhow!("--conflicts missing"))?)
             }
             "--supersedes" => {
-                entry.supersedes_in_frame = Some(
+                out.entry.supersedes_in_frame = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--supersedes missing"))?
                         .clone(),
                 )
             }
             "--quote" => {
-                entry.quote = Some(
+                out.entry.quote = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--quote missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" if accept_reason => {
+                out.reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                out.sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => out.json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    Ok(out)
+}
+
+pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let parsed = parse_fact_verb_args(args, false)?;
+    let sidecar_path = resolve_sidecar(workspace_root, parsed.sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_fact(&mut store, &sidecar_path, &parsed.entry),
+        parsed.json,
+    )
+}
+
+/// Round 434 — authorial in-place revision of an existing fact (the
+/// author-correction path; in-world belief change stays `--supersedes`).
+pub fn cmd_amend_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let parsed = parse_fact_verb_args(args, true)?;
+    let reason = parsed
+        .reason
+        .ok_or_else(|| anyhow!("--reason arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, parsed.sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::amend_fact(&mut store, &sidecar_path, &parsed.entry, &reason),
+        parsed.json,
+    )
+}
+
+/// Round 434 — authorial retract of an unreferenced fact (fail-loud on
+/// inbound refs; the retraction's transaction-time audit is git history).
+pub fn cmd_retract_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut fact_id: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" => {
+                reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
                         .clone(),
                 )
             }
@@ -501,10 +584,12 @@ pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
             other => bail!("unknown flag `{}`", other),
         }
     }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let reason = reason.ok_or_else(|| anyhow!("--reason arg required"))?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        mnemosyne_atomic::add_fact(&mut store, &sidecar_path, &entry),
+        mnemosyne_atomic::retract_fact(&mut store, &sidecar_path, &fact_id, &reason),
         json,
     )
 }

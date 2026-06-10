@@ -3594,8 +3594,9 @@ pub fn add_frame(
 /// Create one narrative fact. Routes the SAME builder as `import_facts`
 /// (R305 parity); cross-fact refs resolve against the store only (a single
 /// add cannot forward-reference). 3-way verdict mirrors `import_sections`:
-/// absent → create, byte-identical → no-op, divergent → reject (a wrong
-/// fact is superseded in-frame, never overwritten).
+/// absent → create, byte-identical → no-op, divergent → reject (never a
+/// silent overwrite — in-world belief change is in-frame supersession;
+/// authorial correction is `amend_fact` / `retract_fact`, Round 434).
 pub fn add_fact(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -3615,7 +3616,8 @@ pub fn add_fact(
         }),
         Some(_) => Err(AtomicMutateError::Validation(format!(
             "add_fact: fact `{fact_id}` already exists with DIVERGENT content — \
-             refusing silent overwrite (supersede in-frame to revise a belief)"
+             refusing silent overwrite (in-world belief change: supersede in-frame; \
+             authorial correction: amend_fact / retract_fact)"
         ))),
         None => {
             store.narrative_facts.insert(fact_id.clone(), candidate);
@@ -3687,7 +3689,8 @@ pub fn import_facts(
             Some(false) => {
                 return Err(AtomicMutateError::Validation(format!(
                     "import_facts: fact_id `{fact_id}` already exists with DIVERGENT \
-                     content — refusing silent overwrite (supersede in-frame to revise)"
+                     content — refusing silent overwrite (in-world belief change: \
+                     supersede in-frame; authorial correction: amend_fact / retract_fact)"
                 )));
             }
         }
@@ -3775,6 +3778,137 @@ pub fn add_fact_conflict(
         "add_fact_conflict",
         "narrative_fact",
         &format!("{id} -> {other}"),
+    )
+}
+
+/// Inbound references to `fact_id` from every OTHER fact (conflict edges and
+/// succession pointers). Shared by [`retract_fact`] (any inbound ref blocks
+/// the retract) and [`amend_fact`] (inbound successors must stay same-scope).
+fn inbound_fact_refs<'a>(
+    facts: &'a BTreeMap<String, NarrativeFact>,
+    fact_id: &str,
+) -> Vec<(&'a String, &'a NarrativeFact, &'static str)> {
+    let mut refs = Vec::new();
+    for (other_id, other) in facts {
+        if other_id == fact_id {
+            continue;
+        }
+        if other.conflicts_with.iter().any(|c| c == fact_id) {
+            refs.push((other_id, other, "conflicts_with"));
+        }
+        if other.supersedes_in_frame.as_deref() == Some(fact_id) {
+            refs.push((other_id, other, "supersedes_in_frame"));
+        }
+    }
+    refs
+}
+
+/// Round 434 — authorial retract (design sec 7.9 axis 4). Removes a fact the
+/// AUTHOR no longer asserts — distinct from in-frame supersession, which is
+/// an IN-WORLD belief change and leaves the predecessor in the log. The
+/// transaction-time audit of a retraction is the git history of the log
+/// (R330: transaction time = commit time), so nothing is tombstoned in the
+/// store; `reason` is mandatory as the audit-trail safeguard (the
+/// `remove_section` precedent).
+///
+/// Fail-loud referential integrity: a fact referenced by any other fact
+/// (conflict edge or succession pointer) cannot be retracted — retract or
+/// amend the referrers first, so the scan invariants never see a dangling
+/// target.
+pub fn retract_fact(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "retract_fact: --reason mandatory (audit-trail safeguard)".to_string(),
+        ));
+    }
+    let id = fact_id.trim();
+    if !store.narrative_facts.contains_key(id) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "fact_id `{id}` not present in atomic store"
+        )));
+    }
+    let referrers = inbound_fact_refs(&store.narrative_facts, id);
+    if !referrers.is_empty() {
+        let listing = referrers
+            .iter()
+            .map(|(rid, _, via)| format!("`{rid}` (via {via})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(AtomicMutateError::Validation(format!(
+            "retract_fact: fact `{id}` is referenced by {listing} — retract or amend the \
+             referrers first (a recorded assertion never dangles)"
+        )));
+    }
+    store.narrative_facts.remove(id);
+    save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
+}
+
+/// Round 434 — authorial amend (design sec 7.9 axis 4): replace a fact's
+/// content in place, keeping its id. This is the AUTHOR-correction path (a
+/// typo, a wrong coordinate) — in-world belief change stays in-frame
+/// supersession, never amend. Routes the SAME builder as `add_fact` /
+/// `import_facts` (R305 parity: one closed invariant set, `quote_sha256`
+/// restamped here, never caller-supplied); the authoring-time audit of what
+/// changed is the git history of the log (R330).
+///
+/// Fail-loud boundaries: the fact must exist (creation is `add_fact`), and
+/// inbound successors must remain same-scope — an amend that moves the fact
+/// to another frame or branch while something supersedes it would corrupt
+/// the succession invariant the write paths enforce.
+pub fn amend_fact(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    entry: &FactImport,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "amend_fact: --reason mandatory (audit-trail safeguard)".to_string(),
+        ));
+    }
+    let (fact_id, candidate) =
+        build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
+    if !store.narrative_facts.contains_key(&fact_id) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "fact_id `{fact_id}` not present in atomic store (amend revises an existing \
+             fact; add_fact creates)"
+        )));
+    }
+    validate_fact_refs(&fact_id, &candidate, &store.narrative_facts)
+        .map_err(AtomicMutateError::Validation)?;
+    for (rid, referrer, via) in inbound_fact_refs(&store.narrative_facts, &fact_id) {
+        if via == "supersedes_in_frame"
+            && (referrer.frame != candidate.frame || referrer.branch != candidate.branch)
+        {
+            return Err(AtomicMutateError::Validation(format!(
+                "amend_fact: fact `{fact_id}` is superseded by `{rid}` in scope (frame `{}`, \
+                 branch `{}`) — an amend cannot move it to (frame `{}`, branch `{}`) \
+                 (succession is same-scope; amend the successor first)",
+                referrer.frame, referrer.branch, candidate.frame, candidate.branch
+            )));
+        }
+    }
+    if store.narrative_facts[&fact_id] == candidate {
+        return Ok(AtomicMutateReceipt {
+            primitive: "amend_fact".to_string(),
+            target_kind: "narrative_fact",
+            target_id: format!("{fact_id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        });
+    }
+    store.narrative_facts.insert(fact_id.clone(), candidate);
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "amend_fact",
+        "narrative_fact",
+        &fact_id,
     )
 }
 
@@ -7431,6 +7565,99 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("world-line"), "{err}");
+    }
+
+    /// Round 434 — authorial retract: removes an unreferenced fact, demands
+    /// a reason, fails loud on inbound refs and on a missing fact.
+    #[test]
+    fn retract_fact_removes_unreferenced_and_blocks_referenced() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-typo", "gt")).unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-kept", "gt")).unwrap();
+        // Reason is mandatory (audit-trail safeguard).
+        let err = retract_fact(&mut store, &path, "f-typo", "  ").unwrap_err();
+        assert!(err.to_string().contains("reason"), "{err}");
+        // Referenced fact cannot be retracted (conflict edge inbound).
+        add_fact_conflict(&mut store, &path, "f-kept", "f-typo").unwrap();
+        let err = retract_fact(&mut store, &path, "f-typo", "authorial slip").unwrap_err();
+        assert!(err.to_string().contains("f-kept"), "{err}");
+        // Retract the referrer first, then the target goes cleanly.
+        retract_fact(&mut store, &path, "f-kept", "drop the edge holder").unwrap();
+        retract_fact(&mut store, &path, "f-typo", "authorial slip").unwrap();
+        assert!(store.narrative_facts.is_empty());
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert!(reloaded.narrative_facts.is_empty());
+        // Missing fact = NotFound.
+        let err = retract_fact(&mut store, &path, "f-gone", "x").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::NotFound(_)));
+    }
+
+    /// Round 434 — authorial amend: in-place revision through the shared
+    /// builder (quote hash restamped), no-op on identical content, NotFound
+    /// on a missing fact, and same-scope inbound-successor protection.
+    #[test]
+    fn amend_fact_revises_in_place_with_parity_invariants() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("mina".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
+        // Amend a missing fact = NotFound (creation is add_fact).
+        let err = amend_fact(&mut store, &path, &sample_fact("f-absent", "gt"), "fix").unwrap_err();
+        assert!(matches!(err, AtomicMutateError::NotFound(_)));
+        // Revision lands; quote_sha256 restamped by the builder.
+        let revised = FactImport {
+            claim: "the count is a nobleman of the Carpathians".to_string(),
+            quote: Some("boyar blood".to_string()),
+            ..sample_fact("f1", "gt")
+        };
+        amend_fact(&mut store, &path, &revised, "typo fix").unwrap();
+        let f1 = &store.narrative_facts["f1"];
+        assert_eq!(f1.claim, "the count is a nobleman of the Carpathians");
+        assert_eq!(
+            f1.quote_sha256.as_deref(),
+            Some(sha256_hex("boyar blood".as_bytes()).as_str())
+        );
+        // Byte-identical re-amend = no-op, nothing written.
+        let again = amend_fact(&mut store, &path, &revised, "same").unwrap();
+        assert_eq!(again.written_bytes, 0);
+        // Shared-builder invariants hold on the amend path too (parity).
+        let bad = FactImport {
+            evidence: vec![],
+            ..revised.clone()
+        };
+        let err = amend_fact(&mut store, &path, &bad, "x").unwrap_err();
+        assert!(err.to_string().contains("evidence"), "{err}");
+        // A superseded fact cannot be amended out of its scope.
+        let successor = FactImport {
+            canon_from: "ch-3".to_string(),
+            supersedes_in_frame: Some("f1".to_string()),
+            ..sample_fact("f2", "gt")
+        };
+        add_fact(&mut store, &path, &successor).unwrap();
+        let moved = FactImport {
+            frame: "mina".to_string(),
+            ..revised.clone()
+        };
+        let err = amend_fact(&mut store, &path, &moved, "x").unwrap_err();
+        assert!(err.to_string().contains("superseded by `f2`"), "{err}");
+        // Divergent add_fact now advises BOTH paths (sec 7.10 finding).
+        let divergent = FactImport {
+            claim: "something else".to_string(),
+            ..sample_fact("f1", "gt")
+        };
+        let err = add_fact(&mut store, &path, &divergent).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("supersede in-frame") && msg.contains("amend_fact"),
+            "{msg}"
+        );
     }
 
     #[test]

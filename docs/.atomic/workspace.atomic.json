@@ -7729,6 +7729,48 @@
         "no branch registry by design (derived fail-loud known-set instead); a registry entry with description becomes consumer-pull if branch-level metadata materializes",
         "convergence-B index key (branch_id, entity_id, valid_from) already matches FactKey; the log schema now carries every field that projection will need"
       ]
+    },
+    "Round 434 — authorial retract/amend: axis-4 correction primitives (AI-authoring pull 2)": {
+      "decision_summary": "Pull 2 of the sec 7.10 build order: the authorial correction path lands. The four-axis decomposition (sec 7.9) separates in-world belief change (axis 1/3: in-frame supersession, predecessor stays in the log) from author-time correction (axis 4: the claim itself was mis-written and must stop existing or change in place). Before this round a typo was permanent - any revision of a written fact divergent-rejected with NO alternative path, and the reject message actively gave WRONG advice (recommending in-frame supersession, which fabricates an in-world belief change out of an authorial slip). Two primitives close the gap: retract_fact (remove an unreferenced fact; inbound conflict edges / succession pointers block it fail-loud with the referrer list, so scan invariants never see a dangling target; mandatory reason, the remove_section audit-safeguard precedent; no tombstone - transaction time is the git history of the log per R330) and amend_fact (in-place revision keeping the id, routed through the SAME shared builder as add_fact/import_facts per the R305 parity rule, with inbound successors required to stay same-(frame, branch) so succession scope cannot be corrupted). The divergent-reject messages now advise both paths by name.",
+      "changes_bullets": [
+        "retract_fact(store, sidecar, fact_id, reason) in mnemosyne-atomic: removes a fact the AUTHOR no longer asserts; reason mandatory (remove_section precedent); fail-loud referential integrity - any inbound conflict edge / succession pointer blocks the retract with the referrer list (a recorded assertion never dangles); no tombstone in the store - the transaction-time audit is the git history of the log (R330)",
+        "amend_fact(store, sidecar, entry, reason) in mnemosyne-atomic: in-place authorial revision keeping the id; routes the SAME build_candidate_fact as add_fact/import_facts (R305 parity - one closed invariant set, quote_sha256 restamped, never caller-supplied); NotFound when absent (creation stays add_fact); byte-identical = no-op; inbound successors must stay same-(frame, branch) - an amend cannot move a superseded fact out of its scope",
+        "divergent-reject advice fixed (the sec 7.10 probe FINDING): add_fact and import_facts rejects now name BOTH paths - in-world belief change = supersede in-frame, authorial correction = amend_fact / retract_fact (the old message wrongly recommended supersession for a typo)",
+        "CLI: amend-fact (shares the add-fact flag set via one extracted parser + --reason) and retract-fact (--fact --reason) verbs; usage roster + per-verb help updated"
+      ],
+      "verification_bullets": [
+        "atomic unit tests: retract removes unreferenced + blocks referenced (with referrer named) + reason mandatory + NotFound; amend revises in place with quote hash restamped + no-op on identical + shared-builder invariant (empty evidence rejected on the amend path too) + scope-move blocked while superseded + divergent add advises both paths",
+        "CLI smoke (authorial_revision_smoke.rs): the typo-fix loop end-to-end - amend without --reason rejected, with --reason revises in place; divergent re-add stderr names both paths; retract demands reason then empties the store",
+        "full workspace suite green (761 tests, 0 failed), clippy --all-targets clean, fmt clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "sec 7.10 build order: pull 3 (MCP narrative verb mirror) is next - an authoring AI's interface is MCP (R127 mutate-gate), and the narrative verbs are still CLI-only",
+        "amend keeps the id; renaming a fact id remains retract + re-add (two transactions) - a rename primitive is consumer-pull if id churn materializes",
+        "bi-temporal split stays log-history-based (R330): no valid_time/transaction_time columns until the FR-5.1 consumer (game medium) pulls them"
+      ],
+      "publishable_decision_summary": "Pull 2 of the sec 7.10 build order: the authorial correction path lands. The four-axis decomposition (sec 7.9) separates in-world belief change (axis 1/3: in-frame supersession, predecessor stays in the log) from author-time correction (axis 4: the claim itself was mis-written and must stop existing or change in place). Before this round a typo was permanent - any revision of a written fact divergent-rejected with NO alternative path, and the reject message actively gave WRONG advice (recommending in-frame supersession, which fabricates an in-world belief change out of an authorial slip). Two primitives close the gap: retract_fact (remove an unreferenced fact; inbound conflict edges / succession pointers block it fail-loud with the referrer list, so scan invariants never see a dangling target; mandatory reason, the remove_section audit-safeguard precedent; no tombstone - transaction time is the git history of the log per R330) and amend_fact (in-place revision keeping the id, routed through the SAME shared builder as add_fact/import_facts per the R305 parity rule, with inbound successors required to stay same-(frame, branch) so succession scope cannot be corrupted). The divergent-reject messages now advise both paths by name.",
+      "publishable_changes_bullets": [
+        "retract_fact(store, sidecar, fact_id, reason) in mnemosyne-atomic: removes a fact the AUTHOR no longer asserts; reason mandatory (remove_section precedent); fail-loud referential integrity - any inbound conflict edge / succession pointer blocks the retract with the referrer list (a recorded assertion never dangles); no tombstone in the store - the transaction-time audit is the git history of the log (R330)",
+        "amend_fact(store, sidecar, entry, reason) in mnemosyne-atomic: in-place authorial revision keeping the id; routes the SAME build_candidate_fact as add_fact/import_facts (R305 parity - one closed invariant set, quote_sha256 restamped, never caller-supplied); NotFound when absent (creation stays add_fact); byte-identical = no-op; inbound successors must stay same-(frame, branch) - an amend cannot move a superseded fact out of its scope",
+        "divergent-reject advice fixed (the sec 7.10 probe FINDING): add_fact and import_facts rejects now name BOTH paths - in-world belief change = supersede in-frame, authorial correction = amend_fact / retract_fact (the old message wrongly recommended supersession for a typo)",
+        "CLI: amend-fact (shares the add-fact flag set via one extracted parser + --reason) and retract-fact (--fact --reason) verbs; usage roster + per-verb help updated"
+      ],
+      "publishable_verification_bullets": [
+        "atomic unit tests: retract removes unreferenced + blocks referenced (with referrer named) + reason mandatory + NotFound; amend revises in place with quote hash restamped + no-op on identical + shared-builder invariant (empty evidence rejected on the amend path too) + scope-move blocked while superseded + divergent add advises both paths",
+        "CLI smoke (authorial_revision_smoke.rs): the typo-fix loop end-to-end - amend without --reason rejected, with --reason revises in place; divergent re-add stderr names both paths; retract demands reason then empties the store",
+        "full workspace suite green (761 tests, 0 failed), clippy --all-targets clean, fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "sec 7.10 build order: pull 3 (MCP narrative verb mirror) is next - an authoring AI's interface is MCP (R127 mutate-gate), and the narrative verbs are still CLI-only",
+        "amend keeps the id; renaming a fact id remains retract + re-add (two transactions) - a rename primitive is consumer-pull if id churn materializes",
+        "bi-temporal split stays log-history-based (R330): no valid_time/transaction_time columns until the FR-5.1 consumer (game medium) pulls them"
+      ]
     }
   },
   "inventory_entries": {},
