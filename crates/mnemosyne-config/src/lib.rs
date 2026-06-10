@@ -438,6 +438,17 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub severity_classification: Option<Severity>,
 
+    /// Severity for the blanket-binding violation (`BlanketVerifies`, R425,
+    /// SCE field-report P1): one test artifact (`file`, `symbol`) carrying
+    /// `verifies` bindings on MORE THAN ONE section. A conformance test almost
+    /// always verifies one section; N>1 is the blanket-binding smell that let
+    /// 84/126 semantically-wrong bindings stay structurally green in the SCE
+    /// episode. `None` = the detector is OFF (opt-in). Recommended `warn` —
+    /// a genuine multi-target test is tolerable noise (no opt-out annotation
+    /// in v1, YAGNI).
+    #[serde(default)]
+    pub severity_blanket: Option<Severity>,
+
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
     /// (`//`, `/* */`, `#`); string-literal contents and code identifiers

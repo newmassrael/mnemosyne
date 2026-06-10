@@ -142,6 +142,18 @@ pub enum CodeRefViolation {
         section_id: String,
         decision_status: Option<DecisionStatus>,
     },
+    /// Blanket-binding violation (R425, opt-in — SCE field-report P1): ONE test
+    /// artifact (`file`, `symbol`) carries `verifies` bindings on more than one
+    /// section. A conformance test almost always verifies one section; N>1 is
+    /// the blanket-binding smell (one test stamped across siblings it does not
+    /// exercise). Emitted once per ARTIFACT (not per section), carrying the
+    /// full sorted list of bound sections. Emitted only when
+    /// `severity_blanket` is set.
+    BlanketVerifies {
+        file: PathBuf,
+        symbol: Option<String>,
+        section_ids: Vec<String>,
+    },
 }
 
 /// Whether a binding `kind` satisfies the coverage axiom (`ImplementationMissing`).
@@ -280,6 +292,44 @@ fn is_coverage_misclassified(section: &mnemosyne_core::SectionView) -> bool {
         })
 }
 
+/// Blanket-binding scan (R425, SCE field-report P1) — one test artifact
+/// (`file`, `symbol`) carrying `verifies` bindings on MORE THAN ONE
+/// non-`Removed` section. A conformance test almost always verifies one
+/// section; N>1 is the blanket smell (one test stamped across siblings it does
+/// not exercise — the shape behind the 84/126 wrong-binding episode). Emits one
+/// violation per ARTIFACT with the sorted section list. Single source for the
+/// Step-7 gate and the unit test.
+fn scan_blanket_verifies(snapshot: &mnemosyne_core::AtomicSnapshot) -> Vec<CodeRefViolation> {
+    let mut by_artifact: BTreeMap<(String, Option<String>), Vec<String>> = BTreeMap::new();
+    for (section_id, section) in &snapshot.sections {
+        let removed =
+            section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
+        if removed {
+            continue;
+        }
+        for b in &section.bindings {
+            if matches!(b.kind, mnemosyne_core::BindingKind::Verifies) {
+                by_artifact
+                    .entry((b.file.clone(), b.symbol.clone()))
+                    .or_default()
+                    .push(section_id.clone());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for ((file, symbol), mut section_ids) in by_artifact {
+        if section_ids.len() > 1 {
+            section_ids.sort_unstable();
+            out.push(CodeRefViolation::BlanketVerifies {
+                file: PathBuf::from(file),
+                symbol,
+                section_ids,
+            });
+        }
+    }
+    out
+}
+
 /// The positive coverage projection (Round 390): the 3-way breakdown of every
 /// section into implemented / normative-gap / informative-exempt, plus the
 /// `Removed` tombstones excluded from the denominator. Read-only — derived
@@ -358,6 +408,7 @@ impl CodeRefViolation {
             CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
             CodeRefViolation::VerificationMissing { .. } => "verification_missing",
             CodeRefViolation::MisclassifiedCoverage { .. } => "misclassified_coverage",
+            CodeRefViolation::BlanketVerifies { .. } => "blanket_verifies",
         }
     }
 
@@ -386,6 +437,7 @@ impl CodeRefViolation {
             CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
             CodeRefViolation::VerificationMissing { .. } => DefectClass::Verification,
             CodeRefViolation::MisclassifiedCoverage { .. } => DefectClass::Classification,
+            CodeRefViolation::BlanketVerifies { .. } => DefectClass::Blanket,
         }
     }
 
@@ -457,6 +509,28 @@ impl CodeRefViolation {
                     None => "none(default-active)".into(),
                 };
                 obj.insert("decision_status".into(), Value::String(status_str));
+            }
+            CodeRefViolation::BlanketVerifies {
+                file,
+                symbol,
+                section_ids,
+            } => {
+                obj.insert(
+                    "file".into(),
+                    Value::String(file.to_string_lossy().into_owned()),
+                );
+                if let Some(s) = symbol {
+                    obj.insert("symbol".into(), Value::String(s.clone()));
+                }
+                obj.insert(
+                    "section_ids".into(),
+                    Value::Array(
+                        section_ids
+                            .iter()
+                            .map(|s| Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
             }
         }
         Value::Object(obj)
@@ -534,6 +608,26 @@ impl std::fmt::Display for CodeRefViolation {
                     kind_tag, section_id, status_str
                 )
             }
+            CodeRefViolation::BlanketVerifies {
+                file,
+                symbol,
+                section_ids,
+            } => write!(
+                f,
+                "[{}] {}{} verifies {} sections: {}",
+                kind_tag,
+                file.to_string_lossy(),
+                symbol
+                    .as_deref()
+                    .map(|s| format!(":{}", s))
+                    .unwrap_or_default(),
+                section_ids.len(),
+                section_ids
+                    .iter()
+                    .map(|s| format!("§{}", s))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
@@ -566,6 +660,10 @@ pub enum DefectClass {
     /// `severity_classification` knob — label↔binding consistency layered on the
     /// 3-state `coverage_expectation` enum.
     Classification,
+    /// R425 — blanket-binding violation (`BlanketVerifies`): one test artifact
+    /// bound `verifies` to >1 section. Its own opt-in `severity_blanket` knob
+    /// (SCE field-report P1 — the cheap, metadata-free granularity fence).
+    Blanket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -1940,6 +2038,12 @@ impl SetEqualityValidator {
             }
         }
 
+        // ---- Step 7: blanket-binding detector (R425, opt-in — SCE P1) ----
+        // OFF unless `severity_blanket` is set.
+        if filter_id.is_none() && self.config.severity_blanket.is_some() {
+            violations.extend(scan_blanket_verifies(snapshot));
+        }
+
         sort_violations(&mut violations);
         Ok(violations)
     }
@@ -2346,6 +2450,13 @@ impl CodeRefViolation {
                 secondary: String::new(),
                 tertiary: String::new(),
             },
+            CodeRefViolation::BlanketVerifies { file, symbol, .. } => ViolationSortKey {
+                rank: 5,
+                primary: file.to_string_lossy().into_owned(),
+                line: 0,
+                secondary: symbol.clone().unwrap_or_default(),
+                tertiary: String::new(),
+            },
         }
     }
 }
@@ -2428,6 +2539,7 @@ mod tests {
                 severity_verification: None,
                 severity_confirmation: None,
                 severity_classification: None,
+                severity_blanket: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
@@ -2666,6 +2778,7 @@ mod tests {
                 severity_verification: None,
                 severity_confirmation: None,
                 severity_classification: None,
+                severity_blanket: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -2931,6 +3044,7 @@ mod tests {
                     .map(|s| mnemosyne_config::Severity::from_tag(s).expect("valid severity tag")),
                 severity_confirmation: None,
                 severity_classification: None,
+                severity_blanket: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -3130,6 +3244,55 @@ mod tests {
         )));
         // exempt + no bindings → clean
         assert!(!is_coverage_misclassified(&view(Ce::Informational, &[])));
+    }
+
+    #[test]
+    fn blanket_verifies_flags_one_artifact_bound_to_many_sections() {
+        // R425 (SCE field-report P1) — one test artifact verifies-bound to >1
+        // section is the blanket smell (the Test215-on-five-siblings shape). One
+        // violation per artifact, sorted section list; same-artifact references
+        // bindings and single-section verifies stay clean.
+        use mnemosyne_core::{
+            AtomicSnapshot, BindingKind as Bk, BindingRef, CoverageExpectation as Ce, SectionView,
+        };
+        let sec = |kinds: &[(&str, Bk)]| SectionView {
+            bindings: kinds
+                .iter()
+                .map(|&(file, kind)| BindingRef {
+                    file: file.to_string(),
+                    symbol: None,
+                    kind,
+                })
+                .collect(),
+            decision_status: None,
+            coverage_expectation: Ce::Normative,
+            verification_expectation: Default::default(),
+        };
+        let mut snap = AtomicSnapshot::default();
+        // Test215 stamped onto two sibling sections → flagged once.
+        snap.sections
+            .insert("6.4.1".into(), sec(&[("t/Test215.h", Bk::Verifies)]));
+        snap.sections
+            .insert("6.4.2".into(), sec(&[("t/Test215.h", Bk::Verifies)]));
+        // A single-section verifies → clean.
+        snap.sections
+            .insert("5.1".into(), sec(&[("t/Test100.h", Bk::Verifies)]));
+        // The same file referenced (not verifies) from many sections → clean.
+        snap.sections
+            .insert("a".into(), sec(&[("src/lib.rs", Bk::References)]));
+        snap.sections
+            .insert("b".into(), sec(&[("src/lib.rs", Bk::References)]));
+        let hits = scan_blanket_verifies(&snap);
+        assert_eq!(hits.len(), 1, "exactly the blanket artifact: {hits:?}");
+        match &hits[0] {
+            CodeRefViolation::BlanketVerifies {
+                file, section_ids, ..
+            } => {
+                assert_eq!(file.to_string_lossy(), "t/Test215.h");
+                assert_eq!(section_ids, &vec!["6.4.1".to_string(), "6.4.2".to_string()]);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
     }
 
     #[test]

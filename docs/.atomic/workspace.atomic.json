@@ -7353,6 +7353,46 @@
       "publishable_carry_forward_bullets": [
         "adopters: reinstall cli+mcp from same HEAD; long-running MCP servers need respawn to pick gate up"
       ]
+    },
+    "Round 425": {
+      "decision_summary": "Blanket-binding detector plus unconfirmed-verifies surface (SCE field-report P1 plus P4)",
+      "changes_bullets": [
+        "BlanketVerifies violation plus DefectClass::Blanket plus scan_blanket_verifies: one test artifact (file, symbol) verifies-bound to more than one non-Removed section, one violation per artifact with the sorted section list (SCE field-report P1; the shape behind their 84/126 wrong-binding episode)",
+        "opt-in severity_blanket config plus validate-code-refs --severity-blanket (None means off, R413/R423 knob pattern); usage doc also gains the missing --severity-classification line",
+        "unconfirmed_verifies informational count in default validate-code-refs output (SCE P4 anti-complacency surface) — verifies bindings not yet Confirmed, independent of any severity knob"
+      ],
+      "verification_bullets": [
+        "unit test (Test215-shape artifact on 2 sections flagged once; single-section verifies and multi-section references clean) plus 2 CLI smoke (opt-in off plus unconfirmed surfaced, reject on blanket)",
+        "workspace clippy -D warnings clean, all tests green, dogfood surfaces blanket_verifies=0 unconfirmed_verifies=0"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "R426 verifies-catalog generic contract plus validate-verifies-linkage verb plus granularity docs (SCE P2 plus P5)",
+        "R427 confirmed-rule catalog-live branch (SCE P3) plus design doc sec 4.2 update",
+        "SCE response doc round numbers shifted by one (R424 was taken by the parallel prefix-gate round)",
+        "multi-target opt-out annotation deferred until a consumer accumulates legitimate multi-target tests"
+      ],
+      "publishable_decision_summary": "Blanket-binding detector plus unconfirmed-verifies surface (SCE field-report P1 plus P4)",
+      "publishable_changes_bullets": [
+        "BlanketVerifies violation plus DefectClass::Blanket plus scan_blanket_verifies: one test artifact (file, symbol) verifies-bound to more than one non-Removed section, one violation per artifact with the sorted section list (SCE field-report P1; the shape behind their 84/126 wrong-binding episode)",
+        "opt-in severity_blanket config plus validate-code-refs --severity-blanket (None means off, R413/R423 knob pattern); usage doc also gains the missing --severity-classification line",
+        "unconfirmed_verifies informational count in default validate-code-refs output (SCE P4 anti-complacency surface) — verifies bindings not yet Confirmed, independent of any severity knob"
+      ],
+      "publishable_verification_bullets": [
+        "unit test (Test215-shape artifact on 2 sections flagged once; single-section verifies and multi-section references clean) plus 2 CLI smoke (opt-in off plus unconfirmed surfaced, reject on blanket)",
+        "workspace clippy -D warnings clean, all tests green, dogfood surfaces blanket_verifies=0 unconfirmed_verifies=0"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R426 verifies-catalog generic contract plus validate-verifies-linkage verb plus granularity docs (SCE P2 plus P5)",
+        "R427 confirmed-rule catalog-live branch (SCE P3) plus design doc sec 4.2 update",
+        "SCE response doc round numbers shifted by one (R424 was taken by the parallel prefix-gate round)",
+        "multi-target opt-out annotation deferred until a consumer accumulates legitimate multi-target tests"
+      ]
     }
   },
   "inventory_entries": {},
