@@ -303,6 +303,13 @@ pub struct AddBranchArgs {
     /// Optional free-form description (which quest-path/playthrough world).
     #[serde(default)]
     pub description: String,
+    /// Parent world-line this branch diverges from (R438). Give with
+    /// `forks_at`; omit both for a standalone world.
+    #[serde(default)]
+    pub forks_from: Option<String>,
+    /// Canon point of divergence (structure-section id).
+    #[serde(default)]
+    pub forks_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1171,7 +1178,16 @@ impl MnemosyneServer {
     async fn add_branch(&self, args: Parameters<AddBranchArgs>) -> CallToolResult {
         let a = args.0;
         let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
-            atomic::add_branch(store, path, &a.branch_id, &a.description)
+            let fork = match (&a.forks_from, &a.forks_at) {
+                (None, None) => None,
+                (Some(p), Some(at)) => Some((p.as_str(), at.as_str())),
+                _ => {
+                    return Err(atomic::AtomicMutateError::Validation(
+                        "forks_from and forks_at must be given together".to_string(),
+                    ));
+                }
+            };
+            atomic::add_branch(store, path, &a.branch_id, &a.description, fork)
         });
         self.finish_mutate(outcome)
     }

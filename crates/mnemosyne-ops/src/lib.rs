@@ -163,15 +163,17 @@ fn continuity_policy(workspace_root: &Path) -> Result<ContinuityPolicy, OpError>
     })
 }
 
-/// Resolve the declared canon order from a [`ContinuityPolicy`]: explicit
-/// override (bypasses the sha256 pin — the pin claims nothing about a
-/// different file, the R428 `--catalog` rule) >
-/// `[continuity].canon_order_path` (+ optional pin) > equality-only.
-fn resolve_canon_order(
+/// Resolve the declared canon-order FILE from a [`ContinuityPolicy`]:
+/// explicit override (bypasses the sha256 pin — the pin claims nothing
+/// about a different file, the R428 `--catalog` rule) >
+/// `[continuity].canon_order_path` (+ optional pin) > empty declaration.
+/// Construction into a `CanonOrder` happens after the store loads — the
+/// per-branch composition needs the fork ancestry (Round 438).
+fn resolve_canon_order_file(
     policy: &ContinuityPolicy,
     order_override: Option<&str>,
-) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
-    use mnemosyne_validate::continuity::{load_canon_order, CanonOrder};
+) -> Result<mnemosyne_validate::continuity::CanonOrderFile, OpError> {
+    use mnemosyne_validate::continuity::{load_canon_order, CanonOrderFile};
     let cont = policy.continuity.as_ref();
     match (
         order_override,
@@ -183,8 +185,19 @@ fn resolve_canon_order(
             cont.and_then(|c| c.canon_order_sha256.as_deref()),
         )
         .map_err(OpError::Other),
-        (None, None) => Ok(CanonOrder::empty()),
+        (None, None) => Ok(CanonOrderFile::default()),
     }
+}
+
+/// Compose the declaration with the store's fork ancestry into the
+/// queryable order (Round 438) — one construction path for both reads.
+fn compose_canon_order(
+    decl: &mnemosyne_validate::continuity::CanonOrderFile,
+    store: &AtomicStore,
+) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
+    use mnemosyne_validate::continuity::{fork_ancestry, CanonOrder};
+    let ancestry = fork_ancestry(&store.branches).map_err(OpError::Other)?;
+    CanonOrder::from_declaration(decl, &ancestry).map_err(OpError::Other)
 }
 
 /// The continuity-scan envelope both wires emit (Round 435): the configured
@@ -211,12 +224,13 @@ pub fn continuity_scan(
     order_override: Option<&str>,
 ) -> Result<ContinuityScanReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
-    let order = resolve_canon_order(&policy, order_override)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
     let severity = policy
         .continuity
         .as_ref()
         .map(|c| c.severity.as_str().to_string());
     let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
     let report =
         mnemosyne_validate::continuity::scan_continuity(&store, &order).map_err(OpError::Other)?;
     Ok(ContinuityScanReport {
@@ -257,8 +271,9 @@ pub fn continuity_frame_view(
     order_override: Option<&str>,
 ) -> Result<FrameViewReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
-    let order = resolve_canon_order(&policy, order_override)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
     let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
     let view =
         mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, entity, at)

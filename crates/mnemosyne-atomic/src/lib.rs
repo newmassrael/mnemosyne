@@ -36,7 +36,8 @@ pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
 use mnemosyne_core::{
-    strip_section_marker, Branch, DecisionStatus, Entity, Frame, InventoryStatus, NarrativeFact,
+    strip_section_marker, Branch, BranchFork, DecisionStatus, Entity, Frame, InventoryStatus,
+    NarrativeFact,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -1083,7 +1084,16 @@ pub enum AtomicStoreError {
 // serializes no `entities` key — byte-stable round-trip. So there is
 // deliberately NO `schema_version < 15` arm in `load`, and no migration
 // report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 15;
+// v15→v16 adds `Branch.forks_from` (world-line fork point, Round 438 — the
+// shared-history half of the branch axis the R433 minimal pin deferred,
+// surfaced as session-review tension 1: without it a branching story lost
+// its pre-divergence facts on the branch view). `None` = standalone world
+// (pre-fork semantics preserved exactly); ancestry is a forest by
+// construction (parent must already be registered; fork is immutable after
+// registration). Declarative serde default — pre-v16 stores load with
+// fork-less branches and gate identically. So there is deliberately NO
+// `schema_version < 16` arm in `load`, and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 16;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3363,6 +3373,14 @@ pub struct BranchImport {
     pub branch_id: String,
     #[serde(default)]
     pub description: String,
+    /// Parent world-line (Round 438). Both fork fields or neither; the
+    /// parent must already be registered (earlier in this manifest is fine
+    /// — branches land sequentially, parents first).
+    #[serde(default)]
+    pub forks_from: Option<String>,
+    /// Canon point of divergence (structure-section ref).
+    #[serde(default)]
+    pub forks_at: Option<String>,
 }
 
 /// One fact entry in the import manifest — the authoring face of
@@ -3598,15 +3616,36 @@ fn build_candidate_fact(
     ))
 }
 
+/// Whether `ancestor` is on `branch`'s fork lineage (Round 438) — walks
+/// `forks_from` toward the root. The forest is write-guaranteed (parents
+/// pre-exist, forks immutable), so the walk terminates; the hop cap is a
+/// fail-safe against out-of-band edits.
+pub fn is_fork_ancestor(branches: &BTreeMap<String, Branch>, ancestor: &str, branch: &str) -> bool {
+    let mut current = branch;
+    for _ in 0..=branches.len() {
+        let Some(fork) = branches.get(current).and_then(|b| b.forks_from.as_ref()) else {
+            return false;
+        };
+        if fork.branch == ancestor {
+            return true;
+        }
+        current = &fork.branch;
+    }
+    false
+}
+
 /// Cross-fact ref check for one fact against a visibility set (the caller's
 /// store ∪ manifest view). `supersedes_in_frame` additionally enforces SAME
 /// scope — `(frame, branch)`: cross-frame disagreement is data, never
-/// succession (design sec 7.3), and cross-branch divergence is world-line
-/// data, never succession (Round 433, guardrail B-2 key-widening).
+/// succession (design sec 7.3). Cross-branch succession is world-line data
+/// EXCEPT along the fork lineage (Round 438): a forked world may supersede
+/// a belief it inherited from an ancestor — that is in-world change inside
+/// ONE world-line, not cross-world divergence.
 fn validate_fact_refs(
     fact_id: &str,
     fact: &NarrativeFact,
     visible: &BTreeMap<String, NarrativeFact>,
+    branches: &BTreeMap<String, Branch>,
 ) -> Result<(), String> {
     for c in &fact.conflicts_with {
         if !visible.contains_key(c) {
@@ -3632,11 +3671,15 @@ fn validate_fact_refs(
                     fact.frame, t.frame
                 ));
             }
-            Some(t) if t.branch != fact.branch => {
+            Some(t)
+                if t.branch != fact.branch
+                    && !is_fork_ancestor(branches, &t.branch, &fact.branch) =>
+            {
                 return Err(format!(
                     "fact `{fact_id}` (branch `{}`): supersedes_in_frame `{target}` lives on \
-                     branch `{}` — succession never crosses a world-line (branch divergence \
-                     is data, not succession)",
+                     branch `{}`, which is not on this world-line's fork lineage — \
+                     succession never crosses world-lines (divergence is data, not \
+                     succession)",
                     fact.branch, t.branch
                 ));
             }
@@ -3690,11 +3733,54 @@ pub fn add_frame(
 /// world). `MAIN_BRANCH` is known by construction and rejects registration
 /// (one way to say the default). A2-consistent verdicts: absent → create,
 /// byte-identical → idempotent no-op, divergent → reject.
+/// Validate + shape one fork declaration against the store (Round 438) —
+/// the ONE place fork invariants live, shared by `add_branch` and the
+/// manifest path. Parent must be `MAIN_BRANCH` or already registered (and
+/// not the branch itself); the divergence point must be a section. Because
+/// the parent must pre-exist and the fork is immutable after registration,
+/// ancestry is a forest by construction.
+fn build_branch_fork(
+    store: &AtomicStore,
+    branch_id: &str,
+    forks_from: Option<(&str, &str)>,
+) -> Result<Option<BranchFork>, String> {
+    let Some((parent, at)) = forks_from else {
+        return Ok(None);
+    };
+    let parent = parent.trim();
+    let at = at.trim();
+    if parent.is_empty() || at.is_empty() {
+        return Err(format!(
+            "branch `{branch_id}`: forks_from needs both a parent branch and a canon point"
+        ));
+    }
+    if parent == branch_id {
+        return Err(format!("branch `{branch_id}`: cannot fork from itself"));
+    }
+    if parent != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(parent) {
+        return Err(format!(
+            "branch `{branch_id}`: fork parent `{parent}` not present in the branch \
+             registry (register parents first; fail-loud)"
+        ));
+    }
+    if !store.sections.contains_key(at) {
+        return Err(format!(
+            "branch `{branch_id}`: fork point `{at}` not present as a section \
+             (canon coordinates are structure refs)"
+        ));
+    }
+    Ok(Some(BranchFork {
+        branch: parent.to_string(),
+        at: at.to_string(),
+    }))
+}
+
 pub fn add_branch(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     branch_id: &str,
     description: &str,
+    forks_from: Option<(&str, &str)>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = branch_id.trim();
     if id.is_empty() {
@@ -3710,6 +3796,8 @@ pub fn add_branch(
     }
     let candidate = Branch {
         description: description.trim().to_string(),
+        forks_from: build_branch_fork(store, id, forks_from)
+            .map_err(AtomicMutateError::Validation)?,
     };
     match store.branches.get(id) {
         Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
@@ -3784,8 +3872,13 @@ pub fn add_fact(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let (fact_id, candidate) =
         build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
-    validate_fact_refs(&fact_id, &candidate, &store.narrative_facts)
-        .map_err(AtomicMutateError::Validation)?;
+    validate_fact_refs(
+        &fact_id,
+        &candidate,
+        &store.narrative_facts,
+        &store.branches,
+    )
+    .map_err(AtomicMutateError::Validation)?;
     match store.narrative_facts.get(&fact_id) {
         Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
             primitive: "add_fact".to_string(),
@@ -3858,8 +3951,20 @@ pub fn import_facts(
                  known by construction, never registered"
             )));
         }
+        let fork_pair = match (&b.forks_from, &b.forks_at) {
+            (None, None) => None,
+            (Some(p), Some(a)) => Some((p.as_str(), a.as_str())),
+            _ => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_facts: manifest branch {idx} `{id}`: forks_from and forks_at \
+                     must be declared together"
+                )));
+            }
+        };
         let candidate = Branch {
             description: b.description.trim().to_string(),
+            forks_from: build_branch_fork(store, id, fork_pair)
+                .map_err(AtomicMutateError::Validation)?,
         };
         match store.branches.get(id) {
             None => {
@@ -3936,7 +4041,7 @@ pub fn import_facts(
     for entry in &manifest.facts {
         let fact_id = entry.fact_id.trim();
         let fact = &store.narrative_facts[fact_id];
-        validate_fact_refs(fact_id, fact, &store.narrative_facts)
+        validate_fact_refs(fact_id, fact, &store.narrative_facts, &store.branches)
             .map_err(AtomicMutateError::Validation)?;
     }
     let summary = format!(
@@ -4120,8 +4225,13 @@ pub fn amend_fact(
              fact; add_fact creates)"
         )));
     }
-    validate_fact_refs(&fact_id, &candidate, &store.narrative_facts)
-        .map_err(AtomicMutateError::Validation)?;
+    validate_fact_refs(
+        &fact_id,
+        &candidate,
+        &store.narrative_facts,
+        &store.branches,
+    )
+    .map_err(AtomicMutateError::Validation)?;
     for (rid, referrer, via) in inbound_fact_refs(&store.narrative_facts, &fact_id) {
         if via == "supersedes_in_frame"
             && (referrer.frame != candidate.frame || referrer.branch != candidate.branch)
@@ -7970,7 +8080,7 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         // The default world-line is known by construction, never registered.
-        let err = add_branch(&mut store, &path, mnemosyne_core::MAIN_BRANCH, "").unwrap_err();
+        let err = add_branch(&mut store, &path, mnemosyne_core::MAIN_BRANCH, "", None).unwrap_err();
         assert!(err.to_string().contains("known by construction"), "{err}");
         // Unregistered branch on a fact rejects at the write path.
         let on_route = FactImport {
@@ -7981,19 +8091,64 @@ mod tests {
         let err = add_fact(&mut store, &path, &on_route).unwrap_err();
         assert!(err.to_string().contains("branch registry"), "{err}");
         // Register, then the same write lands.
-        add_branch(&mut store, &path, "sea-route", "the Demeter voyage").unwrap();
+        add_branch(&mut store, &path, "sea-route", "the Demeter voyage", None).unwrap();
         add_fact(&mut store, &path, &on_route).unwrap();
         assert_eq!(store.narrative_facts["f-route"].branch, "sea-route");
         // Idempotent re-register = no-op; divergent description rejects.
-        let again = add_branch(&mut store, &path, "sea-route", "the Demeter voyage").unwrap();
+        let again = add_branch(&mut store, &path, "sea-route", "the Demeter voyage", None).unwrap();
         assert_eq!(again.written_bytes, 0);
-        let err = add_branch(&mut store, &path, "sea-route", "something else").unwrap_err();
+        let err = add_branch(&mut store, &path, "sea-route", "something else", None).unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
             reloaded.branches["sea-route"].description,
             "the Demeter voyage"
         );
+    }
+
+    /// Round 438 — fork registration invariants + lineage succession on the
+    /// write path.
+    #[test]
+    fn add_branch_fork_validation_and_lineage_succession() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        // Parent must pre-exist; fork point must be a section; no self-fork.
+        let err = add_branch(&mut store, &path, "deep", "", Some(("route", "ch-2"))).unwrap_err();
+        assert!(err.to_string().contains("fork parent"), "{err}");
+        let err = add_branch(&mut store, &path, "route", "", Some(("route", "ch-2"))).unwrap_err();
+        assert!(err.to_string().contains("itself"), "{err}");
+        let err = add_branch(&mut store, &path, "route", "", Some(("main", "ch-99"))).unwrap_err();
+        assert!(err.to_string().contains("ch-99"), "{err}");
+        // Valid fork round-trips; immutable thereafter (divergent reject).
+        add_branch(&mut store, &path, "route", "", Some(("main", "ch-2"))).unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        let fork = reloaded.branches["route"].forks_from.as_ref().unwrap();
+        assert_eq!((fork.branch.as_str(), fork.at.as_str()), ("main", "ch-2"));
+        let err = add_branch(&mut store, &path, "route", "", Some(("main", "ch-3"))).unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+        // Lineage succession: a route fact may supersede an inherited main
+        // fact (in-world change inside one world-line); an unrelated
+        // standalone branch still rejects.
+        add_fact(&mut store, &path, &sample_fact("f-old", "gt")).unwrap();
+        let revision = FactImport {
+            branch: Some("route".to_string()),
+            canon_from: "ch-3".to_string(),
+            supersedes_in_frame: Some("f-old".to_string()),
+            ..sample_fact("f-new", "gt")
+        };
+        add_fact(&mut store, &path, &revision).unwrap();
+        add_branch(&mut store, &path, "standalone", "", None).unwrap();
+        let stray = FactImport {
+            branch: Some("standalone".to_string()),
+            canon_from: "ch-3".to_string(),
+            supersedes_in_frame: Some("f-old".to_string()),
+            ..sample_fact("f-stray", "gt")
+        };
+        let err = add_fact(&mut store, &path, &stray).unwrap_err();
+        assert!(err.to_string().contains("fork lineage"), "{err}");
     }
 
     /// Round 437 — entity registry: refs fail loud until registered, dup

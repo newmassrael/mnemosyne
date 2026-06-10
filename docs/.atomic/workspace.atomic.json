@@ -7909,6 +7909,52 @@
         "entities are the typed-claim step 1 (subject typing); the rule-gate class (location exclusivity, alive/dead, conservation) still needs predicate-shaped claims - the recorded design round, do NOT improvise it ad hoc",
         "next per the agreed order: branch fork-point (shared-history semantics - the session-review tension 1), then conflict-edge claim-hash drift (tension 2)"
       ]
+    },
+    "Round 438 — branch fork-point: shared-history world-lines (session-review tension 1 closed)": {
+      "decision_summary": "The R433 branch axis shipped scoping without divergence semantics - the design's own justification for branch != frame was copy-on-write shared history, yet a branch view was as sparse as a frame: a story forking at chapter 30 lost chapters 1-29 on the branch view, the gate under-detected contradictions against inherited facts, and the module-doc claim that the log carries everything the index needs was false without a fork datum. This round closes that tension the way the four-axis decomposition wants it closed: Branch.forks_from records WHERE a world-line diverged (forest by construction - parents must pre-exist, forks are immutable), visibility becomes a three-state world-membership judgment (inherited-In / definitively-Out / order-cannot-decide-Unknown, surfaced never gated), holds_at evaluates in the QUERY world with successor visibility filtering (a fork's revision of an inherited belief is in-world change that never leaks back into the ancestor's view), conflicts evaluate in the pair's JOIN world (siblings share no world = data), succession may point along the lineage, and a branch's composed canon order inherits every ancestor's declared edges. forks_from = None preserves the standalone-world semantics exactly - every pre-fork store and test gates identically. For the pinion AI-first runtime this is the primitive that makes playthrough-as-branch and route-divergence authoring representable.",
+      "changes_bullets": [
+        "Branch.forks_from{branch, at} (mnemosyne-core BranchFork), schema v15->v16; None = standalone world (R433 semantics preserved exactly); parent must pre-exist + fork immutable after registration = ancestry is a forest BY CONSTRUCTION, no cycle writable; build_branch_fork = the one fork-invariant place shared by add_branch and the manifest path",
+        "world visibility (3-state, B-1 honest): a fact on an ancestor branch is In iff canon_from <= that lineage's departure point, Out when comparable-and-after, Unknown when the declared order cannot decide (surfaced, never gated); holds_at is now world-relative and a successor ends a predecessor ONLY where the successor itself is visible - a fork's revision never leaks back into the ancestor's view",
+        "conflict scoping generalizes to the JOIN world: same frame + one branch on the other's lineage = evaluated in the deeper world (violation names it); siblings/unrelated = cross-scope data; succession may point along the lineage (write path + scan agree) - revising an inherited belief is in-world change",
+        "per-branch order composes the full ancestry: branch reach = closure(base + every ancestor's declared edges + own), cycle-checked per composition; load_canon_order now returns the FILE and construction happens post-store-load (ops compose_canon_order, single path for CLI/MCP)",
+        "CLI add-branch --forks-from/--forks-at + MCP add_branch fork args; lineage_of/fork_ancestry hop-capped fail-loud against out-of-band cyclic edits"
+      ],
+      "verification_bullets": [
+        "new semantics tests: fork inherits pre-fork facts but not later main facts (and main view unaffected), conflict with an inherited fact gates in the join world while sibling forks stay data, lineage succession revises without leak-back (route sees f-new, main still sees f-old), undecidable fork comparison surfaces as unknown, grandchild inherits ancestor branch order (deep gets route's edges, main does not)",
+        "atomic write-path tests: fork parent must pre-exist / no self-fork / fork point must be a section / immutable after registration (divergent reject) / lineage succession accepted while standalone-branch succession still rejects",
+        "ALL pre-fork tests pass unchanged - standalone-world semantics byte-preserved; full workspace suite green (773 tests, 0 failed), clippy clean, fmt clean"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "session-review tension 1 CLOSED: the log now carries the fork datum the CoW projection needs - the \"log carries every field the index will ever need\" claim holds again; convergence-B branch dimension maps onto this ancestry",
+        "playthrough-as-branch (pinion save slots) is now representable; runtime read scale stays flat-scan until convergence-B pulls",
+        "gate conservatism note: an Unknown-visibility successor does not cut its predecessor (false-negative direction, consistent with B-1 unordered-never-gated); revisit only if a consumer shows a real miss",
+        "next: conflict-edge claim-hash drift (tension 2), then the typed-claim/rule-gate design round"
+      ],
+      "publishable_decision_summary": "The R433 branch axis shipped scoping without divergence semantics - the design's own justification for branch != frame was copy-on-write shared history, yet a branch view was as sparse as a frame: a story forking at chapter 30 lost chapters 1-29 on the branch view, the gate under-detected contradictions against inherited facts, and the module-doc claim that the log carries everything the index needs was false without a fork datum. This round closes that tension the way the four-axis decomposition wants it closed: Branch.forks_from records WHERE a world-line diverged (forest by construction - parents must pre-exist, forks are immutable), visibility becomes a three-state world-membership judgment (inherited-In / definitively-Out / order-cannot-decide-Unknown, surfaced never gated), holds_at evaluates in the QUERY world with successor visibility filtering (a fork's revision of an inherited belief is in-world change that never leaks back into the ancestor's view), conflicts evaluate in the pair's JOIN world (siblings share no world = data), succession may point along the lineage, and a branch's composed canon order inherits every ancestor's declared edges. forks_from = None preserves the standalone-world semantics exactly - every pre-fork store and test gates identically. For the pinion AI-first runtime this is the primitive that makes playthrough-as-branch and route-divergence authoring representable.",
+      "publishable_changes_bullets": [
+        "Branch.forks_from{branch, at} (mnemosyne-core BranchFork), schema v15->v16; None = standalone world (R433 semantics preserved exactly); parent must pre-exist + fork immutable after registration = ancestry is a forest BY CONSTRUCTION, no cycle writable; build_branch_fork = the one fork-invariant place shared by add_branch and the manifest path",
+        "world visibility (3-state, B-1 honest): a fact on an ancestor branch is In iff canon_from <= that lineage's departure point, Out when comparable-and-after, Unknown when the declared order cannot decide (surfaced, never gated); holds_at is now world-relative and a successor ends a predecessor ONLY where the successor itself is visible - a fork's revision never leaks back into the ancestor's view",
+        "conflict scoping generalizes to the JOIN world: same frame + one branch on the other's lineage = evaluated in the deeper world (violation names it); siblings/unrelated = cross-scope data; succession may point along the lineage (write path + scan agree) - revising an inherited belief is in-world change",
+        "per-branch order composes the full ancestry: branch reach = closure(base + every ancestor's declared edges + own), cycle-checked per composition; load_canon_order now returns the FILE and construction happens post-store-load (ops compose_canon_order, single path for CLI/MCP)",
+        "CLI add-branch --forks-from/--forks-at + MCP add_branch fork args; lineage_of/fork_ancestry hop-capped fail-loud against out-of-band cyclic edits"
+      ],
+      "publishable_verification_bullets": [
+        "new semantics tests: fork inherits pre-fork facts but not later main facts (and main view unaffected), conflict with an inherited fact gates in the join world while sibling forks stay data, lineage succession revises without leak-back (route sees f-new, main still sees f-old), undecidable fork comparison surfaces as unknown, grandchild inherits ancestor branch order (deep gets route's edges, main does not)",
+        "atomic write-path tests: fork parent must pre-exist / no self-fork / fork point must be a section / immutable after registration (divergent reject) / lineage succession accepted while standalone-branch succession still rejects",
+        "ALL pre-fork tests pass unchanged - standalone-world semantics byte-preserved; full workspace suite green (773 tests, 0 failed), clippy clean, fmt clean"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "session-review tension 1 CLOSED: the log now carries the fork datum the CoW projection needs - the \"log carries every field the index will ever need\" claim holds again; convergence-B branch dimension maps onto this ancestry",
+        "playthrough-as-branch (pinion save slots) is now representable; runtime read scale stays flat-scan until convergence-B pulls",
+        "gate conservatism note: an Unknown-visibility successor does not cut its predecessor (false-negative direction, consistent with B-1 unordered-never-gated); revisit only if a consumer shows a real miss",
+        "next: conflict-edge claim-hash drift (tension 2), then the typed-claim/rule-gate design round"
+      ]
     }
   },
   "inventory_entries": {},
@@ -7917,5 +7963,5 @@
   "branches": {},
   "entities": {},
   "narrative_facts": {},
-  "schema_version": 15
+  "schema_version": 16
 }

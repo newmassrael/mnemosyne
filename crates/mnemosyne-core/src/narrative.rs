@@ -68,6 +68,28 @@ pub struct Branch {
     /// Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// Where this world-line diverged (Round 438). `None` = a standalone
+    /// world sharing no history (the pre-fork R433 semantics, preserved
+    /// exactly). `Some` = this branch inherits the parent world's facts up
+    /// to (and including) the fork point: a fact on an ancestor branch is
+    /// visible here iff its `canon_from` is at or before the point where
+    /// this lineage departed that ancestor. Immutable after registration
+    /// (divergent-reject), and the parent must already be registered — so
+    /// fork ancestry is a forest by construction, no cycle is writable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forks_from: Option<BranchFork>,
+}
+
+/// The divergence coordinate of a forked world-line (Round 438): the parent
+/// branch and the canon point (structure-section ref) where the child's
+/// history departs it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BranchFork {
+    /// Parent world-line (`MAIN_BRANCH` or a registered branch).
+    pub branch: String,
+    /// Canon point of divergence — facts on the parent starting at or
+    /// before this point are part of this world's inherited history.
+    pub at: String,
 }
 
 /// One narrative entity (registry entry, Round 437 — design sec 7.10 gap 4).

@@ -409,6 +409,8 @@ pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
 pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut branch_id: Option<String> = None;
     let mut description = String::new();
+    let mut forks_from: Option<String> = None;
+    let mut forks_at: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
@@ -427,6 +429,20 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
                     .ok_or_else(|| anyhow!("--description missing"))?
                     .clone()
             }
+            "--forks-from" => {
+                forks_from = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--forks-from missing"))?
+                        .clone(),
+                )
+            }
+            "--forks-at" => {
+                forks_at = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--forks-at missing"))?
+                        .clone(),
+                )
+            }
             "--sidecar" => {
                 sidecar = Some(
                     iter.next()
@@ -439,10 +455,15 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
         }
     }
     let branch_id = branch_id.ok_or_else(|| anyhow!("--branch arg required"))?;
+    let fork = match (&forks_from, &forks_at) {
+        (None, None) => None,
+        (Some(p), Some(a)) => Some((p.as_str(), a.as_str())),
+        _ => bail!("--forks-from and --forks-at must be given together"),
+    };
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        mnemosyne_atomic::add_branch(&mut store, &sidecar_path, &branch_id, &description),
+        mnemosyne_atomic::add_branch(&mut store, &sidecar_path, &branch_id, &description, fork),
         json,
     )
 }

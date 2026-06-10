@@ -36,7 +36,7 @@ pub use fact::{
 };
 
 mod narrative;
-pub use narrative::{Branch, Entity, Frame, NarrativeFact, MAIN_BRANCH};
+pub use narrative::{Branch, BranchFork, Entity, Frame, NarrativeFact, MAIN_BRANCH};
 
 mod section_ref;
 pub use section_ref::{numeric_section_refs, strip_section_marker};

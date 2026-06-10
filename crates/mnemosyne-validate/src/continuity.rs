@@ -29,6 +29,20 @@
 //! per-branch edge sets (`branches`), each composed with the shared `edges`
 //! base — the same quest node can legitimately order differently on two
 //! world-lines.
+//!
+//! **Shared history (Round 438):** a branch registered with `forks_from`
+//! INHERITS its ancestor world's facts up to the fork point — visibility is
+//! per query world ([`visibility`]): a fact on an ancestor branch is `In`
+//! iff its `canon_from` is at or before the point where this lineage
+//! departed that ancestor, `Unknown` when the declared order cannot decide
+//! (B-1 honesty — surfaced, never gated). Conflicts evaluate in the JOIN
+//! world (the deeper branch when one is the other's ancestor; siblings
+//! share no world = data), succession may point along the lineage (a fork
+//! superseding an inherited belief is in-world change), and a successor
+//! ends a predecessor only in worlds where the successor itself is
+//! visible — main never sees a fork's revisions. A branch's composed order
+//! also inherits every ancestor's edge set. `forks_from = None` keeps the
+//! standalone-world semantics exactly.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -48,7 +62,7 @@ use serde::{Deserialize, Serialize};
 /// legitimately precede X on one world-line and follow it on another, which
 /// a single global DAG cannot express (it would be a cycle). A branch
 /// absent from `branches` orders by the base alone.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CanonOrderFile {
     #[serde(default)]
     pub edges: Vec<[String; 2]>,
@@ -121,16 +135,27 @@ impl CanonOrder {
 
     /// Base-only order (no per-branch edge sets) — every branch orders by it.
     pub fn from_edges(edges: &[[String; 2]]) -> Result<Self, String> {
-        Self::from_declaration(&CanonOrderFile {
-            edges: edges.to_vec(),
-            branches: BTreeMap::new(),
-        })
+        Self::from_declaration(
+            &CanonOrderFile {
+                edges: edges.to_vec(),
+                branches: BTreeMap::new(),
+            },
+            &BTreeMap::new(),
+        )
     }
 
-    pub fn from_declaration(decl: &CanonOrderFile) -> Result<Self, String> {
+    /// Construct from a declaration + the fork ancestry (Round 438:
+    /// `ancestry` maps branch → ancestor chain nearest-first, derived from
+    /// the registry by [`fork_ancestry`]). A branch's order = closure of
+    /// (base ∪ every ancestor's declared edges ∪ its own), cycle-checked
+    /// per composition — an inherited world segment keeps its declared
+    /// order without redeclaration.
+    pub fn from_declaration(
+        decl: &CanonOrderFile,
+        ancestry: &BTreeMap<String, Vec<String>>,
+    ) -> Result<Self, String> {
         let base = closure_of(&decl.edges, "base")?;
-        let mut branch_reach = BTreeMap::new();
-        for (branch, edges) in &decl.branches {
+        for branch in decl.branches.keys() {
             let branch = branch.trim();
             if branch.is_empty() {
                 return Err("canon-order: blank branch id in `branches`".to_string());
@@ -141,8 +166,24 @@ impl CanonOrder {
                      default world-line's order (one way to say it)"
                 ));
             }
+        }
+        let mut branch_reach = BTreeMap::new();
+        let all_branches: BTreeSet<&str> = decl
+            .branches
+            .keys()
+            .map(String::as_str)
+            .chain(ancestry.keys().map(String::as_str))
+            .collect();
+        for branch in all_branches {
             let mut combined = decl.edges.clone();
-            combined.extend(edges.iter().cloned());
+            for ancestor in ancestry.get(branch).into_iter().flatten() {
+                if let Some(edges) = decl.branches.get(ancestor) {
+                    combined.extend(edges.iter().cloned());
+                }
+            }
+            if let Some(edges) = decl.branches.get(branch) {
+                combined.extend(edges.iter().cloned());
+            }
             branch_reach.insert(
                 branch.to_string(),
                 closure_of(&combined, &format!("branch `{branch}`"))?,
@@ -186,10 +227,15 @@ impl CanonOrder {
     }
 }
 
-/// Load + construct a declared canon order, with the optional sha256 pin
-/// (R428 pattern: the order is a gate-authority input; a configured pin
-/// re-hashes every load and fails LOUDLY on mismatch).
-pub fn load_canon_order(path: &Path, expected_sha256: Option<&str>) -> Result<CanonOrder, String> {
+/// Load a declared canon order FILE, with the optional sha256 pin (R428
+/// pattern: the order is a gate-authority input; a configured pin re-hashes
+/// every load and fails LOUDLY on mismatch). Construction into a
+/// [`CanonOrder`] happens after the store loads — the per-branch
+/// composition needs the fork ancestry (Round 438).
+pub fn load_canon_order(
+    path: &Path,
+    expected_sha256: Option<&str>,
+) -> Result<CanonOrderFile, String> {
     let bytes =
         std::fs::read(path).map_err(|e| format!("canon-order read {}: {}", path.display(), e))?;
     if let Some(expected) = expected_sha256 {
@@ -208,9 +254,8 @@ pub fn load_canon_order(path: &Path, expected_sha256: Option<&str>) -> Result<Ca
             ));
         }
     }
-    let parsed: CanonOrderFile = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("canon-order parse {}: {}", path.display(), e))?;
-    CanonOrder::from_declaration(&parsed)
+    serde_json::from_slice(&bytes)
+        .map_err(|e| format!("canon-order parse {}: {}", path.display(), e))
 }
 
 /// One continuity violation.
@@ -274,43 +319,159 @@ pub struct ContinuityReport {
     pub order_nodes: usize,
 }
 
-/// B-2 scope predicate — the ONE place conflict scoping is decided:
-/// `(frame, branch)` since Round 433. Same-frame facts on different
-/// world-lines never conflict (branch divergence is data, like frame
-/// divergence).
-fn same_scope(a: &NarrativeFact, b: &NarrativeFact) -> bool {
-    a.frame == b.frame && a.branch == b.branch
+/// Fork lineage of one query world (Round 438): for each ancestor branch,
+/// the canon point where this world's lineage departed it. Empty for
+/// `MAIN_BRANCH`, standalone branches, and pre-fork stores.
+#[derive(Debug, Clone, Default)]
+pub struct Lineage {
+    /// ancestor branch id -> departure point (the child's `forks_from.at`).
+    cut: BTreeMap<String, String>,
 }
 
-/// Whether `fact` (id `fact_id`) holds at canon point `p` under the derived
-/// extent: started (`canon_from <= p`), not past a stored `canon_to`, and
-/// not yet replaced by any in-frame successor. All precedence is evaluated
-/// under the fact's OWN branch order (Round 433: canon order is
-/// branch-relative; successors are same-scope by write-path invariant).
+/// Walk `forks_from` toward the root. The forest is write-guaranteed
+/// (parents pre-exist, forks immutable); the hop cap fails loud on an
+/// out-of-band cyclic edit.
+pub fn lineage_of(
+    branches: &BTreeMap<String, mnemosyne_core::Branch>,
+    world: &str,
+) -> Result<Lineage, String> {
+    let mut cut = BTreeMap::new();
+    let mut current = world.to_string();
+    for _ in 0..=branches.len() {
+        let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
+            return Ok(Lineage { cut });
+        };
+        if cut.insert(fork.branch.clone(), fork.at.clone()).is_some() {
+            return Err(format!(
+                "branch fork ancestry of `{world}` revisits `{}` — cyclic out-of-band edit",
+                fork.branch
+            ));
+        }
+        current = fork.branch;
+    }
+    Err(format!(
+        "branch fork ancestry of `{world}` exceeds the registry size — cyclic out-of-band edit"
+    ))
+}
+
+/// Ancestor chains (nearest-first) for every registered branch — the
+/// [`CanonOrder::from_declaration`] composition input.
+pub fn fork_ancestry(
+    branches: &BTreeMap<String, mnemosyne_core::Branch>,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let mut out = BTreeMap::new();
+    for branch in branches.keys() {
+        let mut chain = Vec::new();
+        let mut current = branch.clone();
+        for _ in 0..=branches.len() {
+            let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
+                out.insert(branch.clone(), chain);
+                chain = Vec::new();
+                break;
+            };
+            chain.push(fork.branch.clone());
+            current = fork.branch;
+        }
+        if !chain.is_empty() {
+            return Err(format!(
+                "branch fork ancestry of `{branch}` exceeds the registry size — cyclic \
+                 out-of-band edit"
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// Three-state world-visibility of a fact in query world `world` (Round
+/// 438, B-1 honest): `In` = part of this world (its own branch, or an
+/// ancestor branch at-or-before the departure point); `Out` = definitively
+/// another world; `Unknown` = on an ancestor, but the declared order cannot
+/// compare its start to the fork point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vis {
+    In,
+    Out,
+    Unknown,
+}
+
+fn visibility(world: &str, lineage: &Lineage, order: &CanonOrder, fact: &NarrativeFact) -> Vis {
+    if fact.branch == world {
+        return Vis::In;
+    }
+    match lineage.cut.get(&fact.branch) {
+        None => Vis::Out,
+        Some(at) => {
+            if order.le(world, &fact.canon_from, at) {
+                Vis::In
+            } else if order.comparable(world, &fact.canon_from, at) {
+                Vis::Out
+            } else {
+                Vis::Unknown
+            }
+        }
+    }
+}
+
+/// B-2 scope resolution — the ONE place conflict scoping is decided:
+/// `(frame, world-line)` with fork lineage (Rounds 433 + 438). Same frame
+/// required; the pair's JOIN world is the deeper branch when one branch is
+/// the other's ancestor (or both equal), else there is no shared world —
+/// sibling/unrelated world-lines are data, like cross-frame pairs.
+fn join_world<'a>(
+    a: &'a NarrativeFact,
+    b: &'a NarrativeFact,
+    lineages: &BTreeMap<String, Lineage>,
+) -> Option<&'a str> {
+    if a.frame != b.frame {
+        return None;
+    }
+    if a.branch == b.branch {
+        return Some(&a.branch);
+    }
+    if lineages[&a.branch].cut.contains_key(&b.branch) {
+        return Some(&a.branch);
+    }
+    if lineages[&b.branch].cut.contains_key(&a.branch) {
+        return Some(&b.branch);
+    }
+    None
+}
+
+/// Whether `fact` (id `fact_id`) holds at canon point `p` IN QUERY WORLD
+/// `world` (Round 438): visible in that world, started (`canon_from <= p`),
+/// not past a stored `canon_to`, and not yet replaced by an in-frame
+/// successor THAT IS ITSELF VISIBLE in this world — a fork's revision never
+/// ends the inherited belief in the ancestor's own world. All precedence is
+/// evaluated under the query world's composed order.
 ///
 /// THE single holds-semantics — shared by the continuity gate and the
 /// frame-at-T projection ([`frame_view`]) so the two can never drift (the
 /// R390 single-predicate discipline).
+#[allow(clippy::too_many_arguments)]
 fn holds_at(
+    world: &str,
+    lineage: &Lineage,
     fact_id: &str,
     fact: &NarrativeFact,
     p: &str,
     order: &CanonOrder,
     successors: &BTreeMap<&str, Vec<&NarrativeFact>>,
 ) -> bool {
-    if !order.le(&fact.branch, &fact.canon_from, p) {
+    if visibility(world, lineage, order, fact) != Vis::In {
+        return false;
+    }
+    if !order.le(world, &fact.canon_from, p) {
         return false;
     }
     if let Some(to) = &fact.canon_to {
-        if !order.le(&fact.branch, p, to) {
+        if !order.le(world, p, to) {
             return false;
         }
     }
     if let Some(succ) = successors.get(fact_id) {
-        if succ
-            .iter()
-            .any(|s| order.le(&fact.branch, &s.canon_from, p))
-        {
+        if succ.iter().any(|s| {
+            visibility(world, lineage, order, s) == Vis::In && order.le(world, &s.canon_from, p)
+        }) {
             return false;
         }
     }
@@ -360,6 +521,12 @@ pub fn scan_continuity(
             successors.entry(t.as_str()).or_default().push(fact);
         }
     }
+    // Lineage per potential query world (every registered branch + main).
+    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
+    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
+    for branch in store.branches.keys() {
+        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
+    }
     let mut report = ContinuityReport {
         facts: facts.len(),
         order_nodes: order.node_count(),
@@ -385,7 +552,12 @@ pub fn scan_continuity(
                             predecessor_frame: t.frame.clone(),
                         })
                 }
-                Some(t) if t.branch != s.branch => {
+                Some(t)
+                    if t.branch != s.branch
+                        && !lineages
+                            .get(&s.branch)
+                            .is_some_and(|l| l.cut.contains_key(&t.branch)) =>
+                {
                     report
                         .violations
                         .push(ContinuityViolation::SuccessionCrossBranch {
@@ -437,25 +609,28 @@ pub fn scan_continuity(
     report.conflict_pairs_checked = pairs.len();
     for (aid, bid) in &pairs {
         let (a, b) = (&facts[aid], &facts[bid]);
-        if !same_scope(a, b) {
+        let Some(world) = join_world(a, b, &lineages) else {
             report.cross_scope_pairs += 1;
             continue;
-        }
+        };
+        let world = world.to_string();
+        let lineage = &lineages[&world];
         let co_hold = store.sections.keys().find(|p| {
-            holds_at(aid, a, p, order, &successors) && holds_at(bid, b, p, order, &successors)
+            holds_at(&world, lineage, aid, a, p, order, &successors)
+                && holds_at(&world, lineage, bid, b, p, order, &successors)
         });
         match co_hold {
             Some(p) => report
                 .violations
                 .push(ContinuityViolation::FrameConflictOverlap {
                     frame: a.frame.clone(),
-                    branch: a.branch.clone(),
+                    branch: world.clone(),
                     fact_a: aid.clone(),
                     fact_b: bid.clone(),
                     at: p.clone(),
                 }),
             None => {
-                if !order.comparable(&a.branch, &a.canon_from, &b.canon_from) {
+                if !order.comparable(&world, &a.canon_from, &b.canon_from) {
                     report.unordered_pairs += 1;
                 }
             }
@@ -493,12 +668,14 @@ pub struct FrameView {
     pub unknown: Vec<String>,
 }
 
-/// "Facts of frame F on branch B at canon point T" — the read projection
-/// over the SAME `holds_at` semantics the continuity gate uses (R390
-/// single-predicate discipline: gate and view cannot drift). Fail-loud
+/// "Facts of frame F in world-line B at canon point T" — the read
+/// projection over the SAME `holds_at` semantics the continuity gate uses
+/// (R390 single-predicate discipline: gate and view cannot drift). The
+/// world includes inherited history (Round 438): facts on ancestor
+/// branches up to each fork point are part of this view; a fork's own
+/// revisions never leak back into the ancestor's view. Fail-loud
 /// boundaries: the frame must be registered, the branch must be
-/// `MAIN_BRANCH` or registered (Round 436 — the branch registry replaced
-/// the R433 derived known-set heuristic), an `entity` filter must be
+/// `MAIN_BRANCH` or registered (Round 436), an `entity` filter must be
 /// registered (Round 437 — the NPC-context query is frame × branch ×
 /// entity at T), the query point must be a section, and the order
 /// declaration must pass the shared store boundary.
@@ -542,6 +719,7 @@ pub fn frame_view(
             successors.entry(t.as_str()).or_default().push(fact);
         }
     }
+    let lineage = lineage_of(&store.branches, branch)?;
     let mut view = FrameView {
         frame: frame.to_string(),
         branch: branch.to_string(),
@@ -550,7 +728,7 @@ pub fn frame_view(
         ..Default::default()
     };
     for (id, fact) in facts {
-        if fact.frame != frame || fact.branch != branch {
+        if fact.frame != frame {
             continue;
         }
         if let Some(e) = entity {
@@ -558,7 +736,18 @@ pub fn frame_view(
                 continue;
             }
         }
-        if holds_at(id, fact, at, order, &successors) {
+        // World membership (Round 438): own branch, or inherited from an
+        // ancestor up to the fork point. Definitively other worlds drop out
+        // silently; an undecidable fork comparison is honest `unknown`.
+        let vis = visibility(branch, &lineage, order, fact);
+        if vis == Vis::Out {
+            continue;
+        }
+        if vis == Vis::Unknown {
+            view.unknown.push(id.clone());
+            continue;
+        }
+        if holds_at(branch, &lineage, id, fact, at, order, &successors) {
             view.holding.push(FrameViewEntry {
                 fact_id: id.clone(),
                 claim: fact.claim.clone(),
@@ -579,11 +768,9 @@ pub fn frame_view(
                 .canon_to
                 .as_ref()
                 .is_some_and(|to| !order.comparable(branch, at, to));
-        let succ_cut = successors
-            .get(id.as_str())
-            .into_iter()
-            .flatten()
-            .any(|s| order.le(branch, &s.canon_from, at));
+        let succ_cut = successors.get(id.as_str()).into_iter().flatten().any(|s| {
+            visibility(branch, &lineage, order, s) == Vis::In && order.le(branch, &s.canon_from, at)
+        });
         if from_unknown || (to_unknown && !succ_cut) {
             view.unknown.push(id.clone());
         } else {
@@ -653,6 +840,8 @@ mod tests {
             .map(|branch_id| mnemosyne_atomic::BranchImport {
                 branch_id,
                 description: String::new(),
+                forks_from: None,
+                forks_at: None,
             })
             .collect();
         mnemosyne_atomic::import_facts(
@@ -733,7 +922,7 @@ mod tests {
                 ),
             ]),
         };
-        let order = CanonOrder::from_declaration(&decl).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let mk = |id: &str, branch: &str, from: &str, to: Option<&str>| {
             let mut f = fact(id, "seward", from, to);
             f.branch = Some(branch.to_string());
@@ -969,7 +1158,7 @@ mod tests {
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
         };
-        let order = CanonOrder::from_declaration(&decl).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let err = scan_continuity(&store, &order).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
@@ -988,7 +1177,7 @@ mod tests {
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
         };
-        let err = CanonOrder::from_declaration(&decl).unwrap_err();
+        let err = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap_err();
         assert!(err.contains("default world-line"), "{err}");
     }
 
@@ -1038,6 +1227,205 @@ mod tests {
         let err =
             frame_view(&store, &order, "seward", MAIN_BRANCH, Some("lucyy"), "ch-2").unwrap_err();
         assert!(err.contains("entity registry"), "{err}");
+    }
+
+    /// Round 438 fixture: a store with chapters, frames/branches/entities
+    /// derived from the facts PLUS explicit fork declarations.
+    fn store_with_forks(
+        facts: Vec<FactImport>,
+        forks: &[(&str, &str, &str)], // (branch, parent, at)
+    ) -> AtomicStore {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for ch in ["ch-1", "ch-2", "ch-3", "ch-4"] {
+            store
+                .sections
+                .insert(ch.to_string(), AtomicSection::default());
+        }
+        let frames = facts
+            .iter()
+            .map(|f| f.frame.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|frame_id| mnemosyne_atomic::FrameImport {
+                frame_id,
+                description: String::new(),
+            })
+            .collect();
+        let mut branch_ids: BTreeSet<String> = facts
+            .iter()
+            .filter_map(|f| f.branch.clone())
+            .filter(|b| b != MAIN_BRANCH)
+            .collect();
+        for (b, parent, _) in forks {
+            branch_ids.insert(b.to_string());
+            if *parent != MAIN_BRANCH {
+                branch_ids.insert(parent.to_string());
+            }
+        }
+        // Parents-first: standalone branches, then forks in declaration
+        // order (the registry requires parents to pre-exist).
+        let mut ordered: Vec<String> = branch_ids
+            .iter()
+            .filter(|b| !forks.iter().any(|(f, _, _)| f == *b))
+            .cloned()
+            .collect();
+        ordered.extend(
+            forks
+                .iter()
+                .filter(|(b, _, _)| branch_ids.contains(*b))
+                .map(|(b, _, _)| b.to_string()),
+        );
+        let branches = ordered
+            .into_iter()
+            .map(|branch_id| {
+                let fork = forks.iter().find(|(b, _, _)| *b == branch_id);
+                mnemosyne_atomic::BranchImport {
+                    branch_id,
+                    description: String::new(),
+                    forks_from: fork.map(|(_, p, _)| p.to_string()),
+                    forks_at: fork.map(|(_, _, a)| a.to_string()),
+                }
+            })
+            .collect();
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames,
+                branches,
+                entities: vec![],
+                facts,
+            },
+        )
+        .unwrap();
+        store
+    }
+
+    fn branch_fact(id: &str, frame: &str, branch: &str, from: &str) -> FactImport {
+        FactImport {
+            branch: Some(branch.to_string()),
+            ..fact(id, frame, from, None)
+        }
+    }
+
+    #[test]
+    fn fork_inherits_pre_fork_facts_but_not_later_main_facts() {
+        // Round 438: route forks from main at ch-2. A main fact from ch-1
+        // is part of route's world; a main fact from ch-3 (post-fork) is
+        // not — main continued without route.
+        let early = fact("f-early", "gt", "ch-1", None);
+        let late = fact("f-late", "gt", "ch-3", None);
+        let store = store_with_forks(vec![early, late], &[("route", MAIN_BRANCH, "ch-2")]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let view = frame_view(&store, &order, "gt", "route", None, "ch-3").unwrap();
+        let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
+        assert_eq!(held, vec!["f-early"], "unknown={:?}", view.unknown);
+        // Main's own view still sees both.
+        let main_view = frame_view(&store, &order, "gt", MAIN_BRANCH, None, "ch-3").unwrap();
+        assert_eq!(main_view.holding.len(), 2);
+    }
+
+    #[test]
+    fn fork_conflict_with_inherited_fact_gates_in_the_join_world() {
+        // A route fact contradicting an inherited (pre-fork) main fact IS a
+        // violation — same frame, one world by ancestry; the report names
+        // the join world. Sibling routes never share a world = data.
+        let inherited = fact("f-main", "gt", "ch-1", None);
+        let mut on_route = branch_fact("f-route", "gt", "route", "ch-3");
+        on_route.conflicts_with = vec!["f-main".to_string()];
+        let store = store_with_forks(vec![inherited, on_route], &[("route", MAIN_BRANCH, "ch-2")]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order).unwrap();
+        assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
+        match &report.violations[0] {
+            ContinuityViolation::FrameConflictOverlap { branch, .. } => {
+                assert_eq!(branch, "route");
+            }
+            v => panic!("wrong violation: {v:?}"),
+        }
+        // Siblings: same shape across two forks of main = cross-scope data.
+        let mut on_a = branch_fact("f-a", "gt", "route-a", "ch-3");
+        on_a.conflicts_with = vec!["f-b".to_string()];
+        let on_b = branch_fact("f-b", "gt", "route-b", "ch-3");
+        let store = store_with_forks(
+            vec![on_a, on_b],
+            &[
+                ("route-a", MAIN_BRANCH, "ch-2"),
+                ("route-b", MAIN_BRANCH, "ch-2"),
+            ],
+        );
+        let report = scan_continuity(&store, &order).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        assert_eq!(report.cross_scope_pairs, 1);
+    }
+
+    #[test]
+    fn fork_succession_revises_inherited_belief_without_leaking_back() {
+        // The fork may supersede an inherited belief (in-world change inside
+        // ONE world-line); the ancestor's own view never sees the revision.
+        let old = fact("f-old", "jonathan", "ch-1", None);
+        let mut new = branch_fact("f-new", "jonathan", "route", "ch-3");
+        new.supersedes_in_frame = Some("f-old".to_string());
+        let store = store_with_forks(vec![old, new], &[("route", MAIN_BRANCH, "ch-2")]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // No SuccessionCrossBranch: the predecessor is on the lineage.
+        let report = scan_continuity(&store, &order).unwrap();
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+        // Route at ch-3: revised belief holds, inherited one derived-closed.
+        let route = frame_view(&store, &order, "jonathan", "route", None, "ch-3").unwrap();
+        let held: Vec<&str> = route.holding.iter().map(|e| e.fact_id.as_str()).collect();
+        assert_eq!(held, vec!["f-new"]);
+        // Main at ch-3: the original belief STILL holds — no leak-back.
+        let main_view = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-3").unwrap();
+        let held: Vec<&str> = main_view
+            .holding
+            .iter()
+            .map(|e| e.fact_id.as_str())
+            .collect();
+        assert_eq!(held, vec!["f-old"]);
+    }
+
+    #[test]
+    fn fork_visibility_unknown_when_order_cannot_decide() {
+        // No declared order: ch-1 vs the fork point ch-2 is incomparable —
+        // the inherited fact surfaces as unknown (B-1), never silently out.
+        let early = fact("f-early", "gt", "ch-1", None);
+        let store = store_with_forks(vec![early], &[("route", MAIN_BRANCH, "ch-2")]);
+        let view = frame_view(&store, &CanonOrder::empty(), "gt", "route", None, "ch-2").unwrap();
+        assert!(view.holding.is_empty());
+        assert_eq!(view.unknown, vec!["f-early".to_string()]);
+    }
+
+    #[test]
+    fn fork_grandchild_inherits_ancestor_branch_order() {
+        // Ancestry order composition: deep forks inherit every ancestor's
+        // declared edge set without redeclaration.
+        let decl = CanonOrderFile {
+            edges: vec![["ch-1".to_string(), "ch-2".to_string()]],
+            branches: BTreeMap::from([(
+                "route".to_string(),
+                vec![["ch-2".to_string(), "ch-3".to_string()]],
+            )]),
+        };
+        let store = store_with_forks(
+            vec![branch_fact("f-deep", "gt", "deep", "ch-3")],
+            &[("route", MAIN_BRANCH, "ch-2"), ("deep", "route", "ch-3")],
+        );
+        let ancestry = fork_ancestry(&store.branches).unwrap();
+        assert_eq!(
+            ancestry["deep"],
+            vec!["route".to_string(), MAIN_BRANCH.to_string()]
+        );
+        let order = CanonOrder::from_declaration(&decl, &ancestry).unwrap();
+        // ch-2 -> ch-3 was declared on `route`; `deep` inherits it.
+        assert!(order.le("deep", "ch-2", "ch-3"));
+        assert!(!order.le(MAIN_BRANCH, "ch-2", "ch-3"));
+        let view = frame_view(&store, &order, "gt", "deep", None, "ch-4").unwrap();
+        // f-deep starts at ch-3; ch-3 vs ch-4 undeclared everywhere -> not
+        // holding at ch-4 is undecidable => unknown (honesty).
+        assert_eq!(view.unknown, vec!["f-deep".to_string()]);
     }
 
     /// R390-style consistency lock: the gate and the view share holds_at —

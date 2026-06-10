@@ -387,7 +387,7 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
-        " {} add-branch --branch <id> [--description <text>] [--sidecar <path>] [--json]",
+        " {} add-branch --branch <id> [--description <text>] [--forks-from <branch> --forks-at <section>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
