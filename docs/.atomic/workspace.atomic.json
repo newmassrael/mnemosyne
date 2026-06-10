@@ -8471,6 +8471,46 @@
         "recorded observation (probe-verbatim): two transition rules naming one predicate double-count unchained_state_pairs (the dedup set is per rule); and a fact with Unknown world-visibility does not participate in that world's rule evaluation (it always participates in its home world) — both are the R441 executable model as frozen",
         "R449 carry items unchanged: unchained transitive-pair noise revisit trigger; AAA map (story-time, LLM discovery, pinion adapter); Intercept converter spike next"
       ]
+    },
+    "Round 451 — Intercept converter spike: ink to canon-order/v1, the pinion adapter contract dry run": {
+      "decision_summary": "R444 build order step 3 executed: a scratch converter maps inkle's The Intercept (MIT, 30 narrative knots) onto the declared-artifact contract — section-manifest (beats) + canon-order/v1 (knot-level divert edges) — and the whole R449 stack consumes the generated artifacts UNMODIFIED through the real primitives: import-sections, import-facts (a typed custody arc + the interrogation pair), validate-continuity with rules. The spike validates the CONTRACT, not scale, and it returned four findings. (1) Beat granularity is an adapter DECISION: section = knot, stitches are sub-beat (71 stitch-local diverts deliberately out of scope) — the R445 Finding 5 clause extended from order declarations to section granularity. (2) Computation nodes are not discourse: the first run imported ink function knots as isolated sections, falsified by the store boundary surfacing them as never-named order nodes; the converter now excludes functions (pinion analog: statechart actions vs states). (3) The binding one: knot-level CYCLES are real (two interrogation answers divertable in either order) and the honest mapping is SCC condensation — intra-cycle edges drop, the hub stays mutually unordered, and the live gate surfaced exactly that pair as rule_unordered_pairs = 1, never gated. Inventing an order would have been the B-1 violation; instead converter honesty propagated through to gate honesty on real data. (4) The Intercept's reconvergent flag-carried variation maps to ONE world with zero branch registrations — R445 Finding 4 (carried flags are typed state, not world divergence) confirmed from the opposite direction, a choice-driven medium landing on one world + a DAG order. Negative control: stripping the custody succession fires rule_exclusive_overlap at a converted beat. Branch emission and flag-to-typed-fact extraction were deliberately not exercised; productizing the converter is consumer-pull with the SCE-A1 separate-repo precedent. No production code this round.",
+      "changes_bullets": [
+        "converter spike claudedocs/phase1-intercept-spike/ink-to-canon-order.py (scratch, gitignored): ink knots -> section-manifest (30 beats), knot-level diverts -> canon-order/v1 edges (56), ink function knots excluded (finding 2), SCC condensation drops intra-cycle edges (2 dropped, finding 3); spike-report.md = findings SSOT",
+        "scratch store intercept.atomic.json built through the REAL primitives: import-sections 30 created, import-facts custody arc (you -> reveal-location, cross-subject succession) + interrogation pair typed, 2 rules (holds per object, at-location per subject)",
+        "no production code, no store schema change (the store mutation is this entry)"
+      ],
+      "verification_bullets": [
+        "green run over the converted artifacts: violations 0, rule_unordered_pairs 1 — exactly the interrogation cycle pair the converter left mutually unordered, surfaced never gated (converter B-1 honesty propagated through the R449 gate on real ink data)",
+        "broken-chain probe: stripping the custody succession fires rule_exclusive_overlap (component-custody) at converted beat intercept-left_alone — the rules gate consumed the generated order unmodified",
+        "first-run falsification folded back: ink function knots (lower/raise) imported as isolated sections; converter now excludes them (computation is not discourse)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "pinion adapter contract shape confirmed: {section-manifest + canon-order/v1}, granularity and function-node exclusion are ADAPTER decisions (the R445 Finding 5 clause extended); branch emission and flag-to-typed-fact extraction deliberately not exercised (The Intercept is one-world flag-carried reconvergence — R445 Finding 4 confirmed from the choice-medium direction)",
+        "scale untested (30 knots); the converter is a contract dry run, not a tool — productizing it is consumer-pull (pinion or a real ink consumer), repo placement per the SCE-A1 separate-repo precedent",
+        "R444 build order complete (slice R445, pull confirm R446-R449, converter spike this round); AAA map unchanged: story-time, LLM discovery, pinion adapter all gated"
+      ],
+      "publishable_decision_summary": "R444 build order step 3 executed: a scratch converter maps inkle's The Intercept (MIT, 30 narrative knots) onto the declared-artifact contract — section-manifest (beats) + canon-order/v1 (knot-level divert edges) — and the whole R449 stack consumes the generated artifacts UNMODIFIED through the real primitives: import-sections, import-facts (a typed custody arc + the interrogation pair), validate-continuity with rules. The spike validates the CONTRACT, not scale, and it returned four findings. (1) Beat granularity is an adapter DECISION: section = knot, stitches are sub-beat (71 stitch-local diverts deliberately out of scope) — the R445 Finding 5 clause extended from order declarations to section granularity. (2) Computation nodes are not discourse: the first run imported ink function knots as isolated sections, falsified by the store boundary surfacing them as never-named order nodes; the converter now excludes functions (pinion analog: statechart actions vs states). (3) The binding one: knot-level CYCLES are real (two interrogation answers divertable in either order) and the honest mapping is SCC condensation — intra-cycle edges drop, the hub stays mutually unordered, and the live gate surfaced exactly that pair as rule_unordered_pairs = 1, never gated. Inventing an order would have been the B-1 violation; instead converter honesty propagated through to gate honesty on real data. (4) The Intercept's reconvergent flag-carried variation maps to ONE world with zero branch registrations — R445 Finding 4 (carried flags are typed state, not world divergence) confirmed from the opposite direction, a choice-driven medium landing on one world + a DAG order. Negative control: stripping the custody succession fires rule_exclusive_overlap at a converted beat. Branch emission and flag-to-typed-fact extraction were deliberately not exercised; productizing the converter is consumer-pull with the SCE-A1 separate-repo precedent. No production code this round.",
+      "publishable_changes_bullets": [
+        "converter spike claudedocs/phase1-intercept-spike/ink-to-canon-order.py (scratch, gitignored): ink knots -> section-manifest (30 beats), knot-level diverts -> canon-order/v1 edges (56), ink function knots excluded (finding 2), SCC condensation drops intra-cycle edges (2 dropped, finding 3); spike-report.md = findings SSOT",
+        "scratch store intercept.atomic.json built through the REAL primitives: import-sections 30 created, import-facts custody arc (you -> reveal-location, cross-subject succession) + interrogation pair typed, 2 rules (holds per object, at-location per subject)",
+        "no production code, no store schema change (the store mutation is this entry)"
+      ],
+      "publishable_verification_bullets": [
+        "green run over the converted artifacts: violations 0, rule_unordered_pairs 1 — exactly the interrogation cycle pair the converter left mutually unordered, surfaced never gated (converter B-1 honesty propagated through the R449 gate on real ink data)",
+        "broken-chain probe: stripping the custody succession fires rule_exclusive_overlap (component-custody) at converted beat intercept-left_alone — the rules gate consumed the generated order unmodified",
+        "first-run falsification folded back: ink function knots (lower/raise) imported as isolated sections; converter now excludes them (computation is not discourse)"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "pinion adapter contract shape confirmed: {section-manifest + canon-order/v1}, granularity and function-node exclusion are ADAPTER decisions (the R445 Finding 5 clause extended); branch emission and flag-to-typed-fact extraction deliberately not exercised (The Intercept is one-world flag-carried reconvergence — R445 Finding 4 confirmed from the choice-medium direction)",
+        "scale untested (30 knots); the converter is a contract dry run, not a tool — productizing it is consumer-pull (pinion or a real ink consumer), repo placement per the SCE-A1 separate-repo precedent",
+        "R444 build order complete (slice R445, pull confirm R446-R449, converter spike this round); AAA map unchanged: story-time, LLM discovery, pinion adapter all gated"
+      ]
     }
   },
   "inventory_entries": {},
