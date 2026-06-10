@@ -354,6 +354,34 @@ pub fn typing_candidates_report(
     mnemosyne_validate::continuity::typing_candidates(&store).map_err(OpError::Other)
 }
 
+/// Import typed legs from a reviewed `typing-proposals/v1` artifact
+/// (Round 459, design sec 7.15 Round B) — load + shape-check the file,
+/// then run the all-or-nothing import (or its dry-run twin) against the
+/// resolved store. Returns the full verdict report; gating policy (exit
+/// code / MCP error) stays with the caller. Not routed through
+/// [`run_atomic_mutate`] because the outcome is a verdict report, not a
+/// bare receipt — the MCP wire still serializes it under the server
+/// mutate lock.
+pub fn import_typing_proposals_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    proposals_path: &Path,
+    dry_run: bool,
+) -> Result<mnemosyne_atomic::TypingImportReport, OpError> {
+    let (file, file_sha256) =
+        mnemosyne_atomic::load_typing_proposals(proposals_path).map_err(OpError::Other)?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
+    let mut store =
+        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
+    Ok(mnemosyne_atomic::import_typing_proposals(
+        &mut store,
+        &sidecar_path,
+        &file,
+        &file_sha256,
+        dry_run,
+    )?)
+}
+
 /// Run the dramatic-irony intervals derivation (Round 455, design sec
 /// 7.14) over the workspace store with the shared order resolution —
 /// pure read projection over recorded cross-frame conflict edges, per

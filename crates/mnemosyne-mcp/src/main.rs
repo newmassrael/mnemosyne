@@ -470,6 +470,16 @@ pub struct ReportIronyIntervalsArgs {
     pub order_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportTypingProposalsArgs {
+    /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
+    /// or absolute).
+    pub proposals_path: String,
+    /// Validate only — full verdicts, nothing written.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1418,6 +1428,38 @@ impl MnemosyneServer {
     async fn report_typing_candidates(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::typing_candidates_report(&self.workspace, None) {
             Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Import reviewed typed-leg proposals from a typing-proposals/v1 artifact (R459, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, claim_sha256 staleness re-checked, predicates/entities validated by the one builder). dry_run=true validates without writing. Returns the verdict report; applied=true only when every proposal accepted on a real run."
+    )]
+    async fn import_typing_proposals(
+        &self,
+        args: Parameters<ImportTypingProposalsArgs>,
+    ) -> CallToolResult {
+        // Verdict-report mutate: holds the same server mutate lock as
+        // run_mutate (Round 448), but returns the full report rather than
+        // a bare receipt.
+        let _guard = self
+            .mutate_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match ops::import_typing_proposals_report(
+            &self.workspace,
+            None,
+            std::path::Path::new(&args.0.proposals_path),
+            args.0.dry_run,
+        ) {
+            Ok(report) => {
+                if report.applied {
+                    if let Err(e) = self.sync_read_models_after_mutate() {
+                        return self.op_error(e);
+                    }
+                }
+                self.tool_json(&report)
+            }
             Err(e) => self.op_error(e),
         }
     }

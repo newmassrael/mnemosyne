@@ -4574,6 +4574,197 @@ pub fn amend_fact(
     )
 }
 
+// ============================================================================
+// Typing-proposals import (Round 459, design sec 7.15 Round B).
+// ============================================================================
+
+/// One proposed typed leg for an existing untyped fact — authored OUTSIDE
+/// the substrate (an LLM agent reading `report-typing-candidates`) and
+/// quarantined in this reviewable artifact; it enters the store only
+/// through [`import_typing_proposals`], the declared import act (B-1:
+/// "never NLP-inferred" precisely means "never SILENTLY NLP-inferred").
+/// `deny_unknown_fields`: a new artifact carries no lenient-parse legacy —
+/// a typo'd key fails loud, never a silently dropped proposal field.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TypingProposal {
+    /// Target fact id (must exist and be untyped — fill-blanks only).
+    pub fact: String,
+    /// The proposed leg, validated by THE one builder at import.
+    pub typed: TypedClaim,
+    /// sha256 of the claim text the proposer interpreted (the R439
+    /// judgment-time pin re-targeted): import re-checks, so a fact
+    /// amended after proposing fails loud as stale.
+    pub claim_sha256: String,
+    /// Prose justification for the reviewer — the reviewable substance
+    /// (deliberately no confidence score, the Goodhart guard).
+    pub rationale: String,
+}
+
+/// The `typing-proposals/v1` artifact (design sec 7.15).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TypingProposalsFile {
+    /// Must be exactly `typing-proposals/v1`.
+    pub schema: String,
+    /// Optional free-form note from the proposer.
+    #[serde(default)]
+    pub comment: String,
+    pub proposals: Vec<TypingProposal>,
+}
+
+/// Load + shape-check a `typing-proposals/v1` file; returns the parsed
+/// artifact with the file content's sha256 (the audit anchor the import
+/// receipt carries).
+pub fn load_typing_proposals(path: &Path) -> Result<(TypingProposalsFile, String), String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("typing-proposals: cannot read `{}`: {e}", path.display()))?;
+    let file: TypingProposalsFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("typing-proposals: `{}` does not parse: {e}", path.display()))?;
+    if file.schema != "typing-proposals/v1" {
+        return Err(format!(
+            "typing-proposals: schema `{}` is not `typing-proposals/v1` (fail-loud — \
+             an unknown schema must not half-apply)",
+            file.schema
+        ));
+    }
+    if file.proposals.is_empty() {
+        return Err("typing-proposals: empty proposals list (nothing to import)".to_string());
+    }
+    Ok((file, sha256_hex(raw.as_bytes())))
+}
+
+/// One per-proposal verdict (full list always surfaced — no silent caps).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypingProposalVerdict {
+    pub fact: String,
+    /// `accepted`, or the reject reason verbatim.
+    pub verdict: String,
+}
+
+/// The import outcome both wires emit. `applied` is true only when this
+/// was a real run AND every proposal accepted (all-or-nothing: the file
+/// is the reviewed artifact — make it fully valid; no half-applied state).
+#[derive(Debug, Clone, Serialize)]
+pub struct TypingImportReport {
+    /// sha256 of the proposals file content (audit anchor).
+    pub file_sha256: String,
+    pub verdicts: Vec<TypingProposalVerdict>,
+    pub accepted: usize,
+    pub rejected: usize,
+    pub dry_run: bool,
+    pub applied: bool,
+    pub written_bytes: usize,
+}
+
+/// Import typed legs from a reviewed `typing-proposals/v1` artifact
+/// (Round 459, design sec 7.15 Round B). ALL-OR-NOTHING with full
+/// per-proposal verdicts; `dry_run` runs the identical validation and
+/// writes nothing. Every typed invariant rides [`build_typed_claim`] —
+/// the ONE builder site both fact write paths share (R305/R446 parity);
+/// this path adds ZERO new invariant sites. Fill-blanks only: a proposal
+/// targeting an already-typed fact rejects (overwrite is manual author
+/// territory). The R439 staleness pin re-checks per proposal: a claim
+/// amended after proposing rejects loud instead of silently mis-typing
+/// revised prose.
+pub fn import_typing_proposals(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    file: &TypingProposalsFile,
+    file_sha256: &str,
+    dry_run: bool,
+) -> Result<TypingImportReport, AtomicMutateError> {
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut verdicts: Vec<TypingProposalVerdict> = Vec::new();
+    let mut built: Vec<(String, TypedClaim)> = Vec::new();
+    for p in &file.proposals {
+        let fact_id = p.fact.trim();
+        let verdict = (|| -> Result<TypedClaim, String> {
+            if fact_id.is_empty() {
+                return Err("fact id mandatory (non-empty)".to_string());
+            }
+            if !seen.insert(fact_id) {
+                return Err(format!(
+                    "duplicate proposal for fact `{fact_id}` in one file — ambiguous, \
+                     keep exactly one"
+                ));
+            }
+            let Some(fact) = store.narrative_facts.get(fact_id) else {
+                return Err(format!(
+                    "fact `{fact_id}` not present in atomic store (proposals target \
+                     existing facts; add_fact creates)"
+                ));
+            };
+            if fact.typed.is_some() {
+                return Err(format!(
+                    "fact `{fact_id}` already carries a typed leg — fill-blanks only \
+                     (overwrite is manual author territory: amend-fact)"
+                ));
+            }
+            let current = sha256_hex(fact.claim.as_bytes());
+            if current != p.claim_sha256 {
+                return Err(format!(
+                    "stale proposal: fact `{fact_id}` claim sha256 is `{current}` but the \
+                     proposal interpreted `{}` — the claim changed after proposing; \
+                     re-run discovery against the current text",
+                    p.claim_sha256
+                ));
+            }
+            if p.rationale.trim().is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: rationale mandatory (the reviewable substance)"
+                ));
+            }
+            build_typed_claim(store, fact_id, &p.typed, &fact.entities)
+        })();
+        match verdict {
+            Ok(leg) => {
+                verdicts.push(TypingProposalVerdict {
+                    fact: fact_id.to_string(),
+                    verdict: "accepted".to_string(),
+                });
+                built.push((fact_id.to_string(), leg));
+            }
+            Err(reason) => verdicts.push(TypingProposalVerdict {
+                fact: fact_id.to_string(),
+                verdict: reason,
+            }),
+        }
+    }
+    let accepted = built.len();
+    let rejected = verdicts.len() - accepted;
+    let apply = !dry_run && rejected == 0;
+    let mut written = 0;
+    if apply {
+        for (fact_id, leg) in built {
+            // Unwrap is total: every id was validated present above and
+            // nothing mutates the map in between.
+            store.narrative_facts.get_mut(&fact_id).unwrap().typed = Some(leg);
+        }
+        let receipt = save_with_receipt(
+            store,
+            sidecar_path,
+            "import_typing_proposals",
+            "narrative_fact",
+            &format!(
+                "typing-proposals {} ({} leg(s))",
+                file_sha256.get(..16).unwrap_or(file_sha256),
+                accepted
+            ),
+        )?;
+        written = receipt.written_bytes;
+    }
+    Ok(TypingImportReport {
+        file_sha256: file_sha256.to_string(),
+        verdicts,
+        accepted,
+        rejected,
+        dry_run,
+        applied: apply,
+        written_bytes: written,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7907,6 +8098,187 @@ mod tests {
         seed_section(store, "ch-1");
         seed_section(store, "ch-2");
         seed_section(store, "ch-3");
+    }
+
+    // ---- typing-proposals import (Round 459, design sec 7.15 Round B) ----
+
+    /// Substrate for the import tests: one frame, one entity, one scalar
+    /// predicate, two untyped facts about the entity.
+    fn typing_substrate(path: &Path) -> AtomicStore {
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        import_facts(
+            &mut store,
+            path,
+            &FactsManifest {
+                frames: vec![FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![],
+                entities: vec![EntityImport {
+                    entity_id: "kara".to_string(),
+                    kind: String::new(),
+                    description: String::new(),
+                }],
+                predicates: vec![PredicateImport {
+                    predicate_id: "alive".to_string(),
+                    object_kind: "scalar".to_string(),
+                    description: String::new(),
+                }],
+                facts: vec![
+                    FactImport {
+                        entities: vec!["kara".to_string()],
+                        ..sample_fact("f-1", "gt")
+                    },
+                    FactImport {
+                        entities: vec!["kara".to_string()],
+                        claim: "kara is alive".to_string(),
+                        ..sample_fact("f-2", "gt")
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        store
+    }
+
+    fn proposal(fact: &str, claim: &str, rationale: &str) -> TypingProposal {
+        TypingProposal {
+            fact: fact.to_string(),
+            typed: TypedClaim {
+                subject: "kara".to_string(),
+                predicate: "alive".to_string(),
+                object: TypedObject::Value {
+                    value: "alive".to_string(),
+                },
+            },
+            claim_sha256: sha256_hex(claim.as_bytes()),
+            rationale: rationale.to_string(),
+        }
+    }
+
+    fn proposals_file(proposals: Vec<TypingProposal>) -> TypingProposalsFile {
+        TypingProposalsFile {
+            schema: "typing-proposals/v1".to_string(),
+            comment: String::new(),
+            proposals,
+        }
+    }
+
+    /// All-or-nothing: one stale proposal blocks the whole file (store
+    /// untouched, both verdicts surfaced); the corrected file applies
+    /// atomically; dry-run validates identically and never writes.
+    #[test]
+    fn typing_proposals_import_is_all_or_nothing_with_staleness_pin() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = typing_substrate(&path);
+        // f-2's proposal stamps the WRONG claim text — the R439 staleness pin.
+        let file = proposals_file(vec![
+            proposal("f-1", "the count is an eccentric nobleman", "state claim"),
+            proposal("f-2", "an outdated claim text", "state claim"),
+        ]);
+        let report = import_typing_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert_eq!((report.accepted, report.rejected), (1, 1));
+        assert!(!report.applied);
+        assert!(report.verdicts[1].verdict.contains("stale proposal"));
+        assert!(
+            store.narrative_facts["f-1"].typed.is_none(),
+            "all-or-nothing: nothing applies while any proposal rejects"
+        );
+        // Corrected file: dry-run first (validates, writes nothing) ...
+        let file = proposals_file(vec![
+            proposal("f-1", "the count is an eccentric nobleman", "state claim"),
+            proposal("f-2", "kara is alive", "state claim"),
+        ]);
+        let dry = import_typing_proposals(&mut store, &path, &file, "sha", true).unwrap();
+        assert_eq!((dry.accepted, dry.rejected), (2, 0));
+        assert!(dry.dry_run && !dry.applied && dry.written_bytes == 0);
+        assert!(store.narrative_facts["f-1"].typed.is_none());
+        // ... then the real run applies both in one transaction.
+        let real = import_typing_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(real.applied && real.written_bytes > 0);
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert!(reloaded.narrative_facts["f-1"].typed.is_some());
+        assert!(reloaded.narrative_facts["f-2"].typed.is_some());
+    }
+
+    /// Every reject class carries its own named verdict: duplicate
+    /// in-file, missing fact, already-typed target (fill-blanks only),
+    /// empty rationale, and a builder reject (the one R305/R446 site —
+    /// no new invariant logic in the import path).
+    #[test]
+    fn typing_proposals_reject_classes_are_named() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = typing_substrate(&path);
+        // Pre-type f-1 so the fill-blanks reject fires.
+        let ok = proposals_file(vec![proposal(
+            "f-1",
+            "the count is an eccentric nobleman",
+            "r",
+        )]);
+        assert!(
+            import_typing_proposals(&mut store, &path, &ok, "sha", false)
+                .unwrap()
+                .applied
+        );
+        let mut unregistered = proposal("f-2", "kara is alive", "r");
+        unregistered.typed.predicate = "deviancy".to_string();
+        let mut no_rationale = proposal("f-2", "kara is alive", "");
+        no_rationale.fact = "f-2".to_string();
+        let file = proposals_file(vec![
+            proposal("f-1", "the count is an eccentric nobleman", "r"), // already typed
+            proposal("f-ghost", "x", "r"),                              // missing fact
+            no_rationale,                                               // empty rationale
+            unregistered, // duplicate f-2 AND unregistered predicate — dup wins (first seen)
+        ]);
+        let report = import_typing_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(!report.applied);
+        assert_eq!(report.rejected, 4);
+        assert!(report.verdicts[0]
+            .verdict
+            .contains("already carries a typed leg"));
+        assert!(report.verdicts[1]
+            .verdict
+            .contains("not present in atomic store"));
+        assert!(report.verdicts[2].verdict.contains("rationale mandatory"));
+        assert!(report.verdicts[3].verdict.contains("duplicate proposal"));
+    }
+
+    /// Loader boundary: schema tag mismatch, unknown fields
+    /// (deny_unknown_fields — no lenient-parse legacy on a new artifact),
+    /// and an empty proposals list all fail loud.
+    #[test]
+    fn typing_proposals_loader_fails_loud() {
+        let tmp = TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            fs::write(&p, body).unwrap();
+            p
+        };
+        let bad_schema = write(
+            "a.json",
+            r#"{"schema":"typing-proposals/v2","proposals":[]}"#,
+        );
+        assert!(load_typing_proposals(&bad_schema)
+            .unwrap_err()
+            .contains("not `typing-proposals/v1`"));
+        let unknown_key = write(
+            "b.json",
+            r#"{"schema":"typing-proposals/v1","proposals":[],"confidence":0.9}"#,
+        );
+        assert!(load_typing_proposals(&unknown_key)
+            .unwrap_err()
+            .contains("does not parse"));
+        let empty = write(
+            "c.json",
+            r#"{"schema":"typing-proposals/v1","proposals":[]}"#,
+        );
+        assert!(load_typing_proposals(&empty)
+            .unwrap_err()
+            .contains("empty proposals list"));
     }
 
     #[test]
