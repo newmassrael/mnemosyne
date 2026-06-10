@@ -463,6 +463,13 @@ pub struct ReportPayoffCoverageArgs {
     pub order_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportIronyIntervalsArgs {
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1400,6 +1407,19 @@ impl MnemosyneServer {
         args: Parameters<ReportPayoffCoverageArgs>,
     ) -> CallToolResult {
         match ops::payoff_coverage_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Dramatic-irony intervals (R455, read-only): per query world, every recorded CROSS-FRAME conflict edge classified as a co-hold window (node set where both ends hold under the one holds-semantics, with starts + open-at-world-line-end flag), windowless, or undecidable (B-1). Same-frame edges are the continuity gate's territory (counted, skipped). Craft signal, never gated."
+    )]
+    async fn report_irony_intervals(
+        &self,
+        args: Parameters<ReportIronyIntervalsArgs>,
+    ) -> CallToolResult {
+        match ops::irony_intervals_report(&self.workspace, None, args.0.order_path.as_deref()) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

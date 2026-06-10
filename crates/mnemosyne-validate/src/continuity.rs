@@ -1567,6 +1567,175 @@ pub fn payoff_coverage(
     Ok(report)
 }
 
+/// One recorded cross-frame conflict edge (read symmetrically; endpoints
+/// id-ordered like the gate's pair key).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IronyEdgeRef {
+    pub fact_a: String,
+    pub fact_b: String,
+}
+
+/// One dramatic-irony window (Round 455, design sec 7.14): the canon
+/// region of a query world where both ends of a recorded CROSS-FRAME
+/// conflict edge are simultaneously in effect. Deliberately a node SET,
+/// not a span — under a partial (DAG) order the co-hold region need not
+/// be contiguous, and a (from, to) pair would lie about that.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IronyWindow {
+    pub fact_a: String,
+    pub fact_b: String,
+    pub frame_a: String,
+    pub frame_b: String,
+    /// Sections where both endpoints hold, sorted.
+    pub nodes: Vec<String>,
+    /// Minimal co-hold nodes under this world's composed order (where the
+    /// window opens; several when the region starts on incomparable nodes).
+    pub starts: Vec<String>,
+    /// The window contains a maximal node of this world's declared
+    /// composed order — the divergence is never resolved on this
+    /// world-line (the R454 headline insight, "the belief never closes").
+    pub open: bool,
+}
+
+/// Per-world irony classification (Round 455). `windowless` = both
+/// endpoints visible here but never co-holding (the belief never overlaps
+/// the truth in this world — data, e.g. a belief corrected before the
+/// truth lands); `undecidable` = an endpoint with `Unknown` visibility
+/// (B-1, never classified). An edge with an `Out` endpoint is not this
+/// world's business and reports where it IS visible.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorldIrony {
+    pub windows: Vec<IronyWindow>,
+    pub windowless: Vec<IronyEdgeRef>,
+    pub undecidable: Vec<IronyEdgeRef>,
+}
+
+/// Dramatic-irony intervals over every query world (Round 455) — pure
+/// read projection, never gated (irony is craft signal, not defect).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct IronyIntervalsReport {
+    pub worlds: BTreeMap<String, WorldIrony>,
+    pub facts: usize,
+    /// Distinct recorded cross-frame conflict pairs (the report's input).
+    pub cross_frame_edges: usize,
+    /// Distinct same-frame pairs skipped — the continuity gate's
+    /// territory (`frame_conflict_overlap`), surfaced so the split is
+    /// never silent.
+    pub same_frame_edges: usize,
+}
+
+/// Derive dramatic-irony windows (Round 455, design sec 7.14): for every
+/// query world (main + every registered branch — the derived-finding
+/// scoping of the R452 pin: a cross-frame edge has no join world by
+/// construction, so the window exists only relative to a world's
+/// visibility), every recorded cross-frame conflict edge with both
+/// endpoints visible classifies as a window (the co-hold node set under
+/// [`WorldCtx::holds_at`] — its 4th reader, no interval algebra of its
+/// own) or as windowless. Missing conflict targets are the scan's
+/// finding (`ConflictTargetMissing`), not the report's — mirrored from
+/// the payoff-coverage precedent.
+pub fn irony_intervals(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<IronyIntervalsReport, String> {
+    check_store_boundary(store, order)?;
+    let facts = &store.narrative_facts;
+    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
+    for fact in facts.values() {
+        if let Some(t) = &fact.supersedes_in_frame {
+            successors.entry(t.as_str()).or_default().push(fact);
+        }
+    }
+    // Distinct recorded pairs with existing endpoints, id-ordered (the
+    // gate's pair key), split by frame locus.
+    let mut cross: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut same: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for (aid, a) in facts {
+        for assertion in &a.conflicts_with {
+            let Some(t) = facts.get(&assertion.target) else {
+                continue;
+            };
+            let key = if aid.as_str() < assertion.target.as_str() {
+                (aid.as_str(), assertion.target.as_str())
+            } else {
+                (assertion.target.as_str(), aid.as_str())
+            };
+            if a.frame == t.frame {
+                same.insert(key);
+            } else {
+                cross.insert(key);
+            }
+        }
+    }
+    let mut report = IronyIntervalsReport {
+        facts: facts.len(),
+        cross_frame_edges: cross.len(),
+        same_frame_edges: same.len(),
+        ..Default::default()
+    };
+    let mut worlds: Vec<String> = vec![mnemosyne_core::MAIN_BRANCH.to_string()];
+    worlds.extend(store.branches.keys().cloned());
+    for world in worlds {
+        let lineage = lineage_of(&store.branches, &world)?;
+        let ctx = WorldCtx {
+            world: &world,
+            lineage: &lineage,
+            order,
+            successors: &successors,
+        };
+        let mut out = WorldIrony::default();
+        for (aid, bid) in &cross {
+            let (a, b) = (&facts[*aid], &facts[*bid]);
+            let (va, vb) = (ctx.visibility(a), ctx.visibility(b));
+            if va == Vis::Out || vb == Vis::Out {
+                continue; // not this world's business — reports where visible
+            }
+            let edge = IronyEdgeRef {
+                fact_a: (*aid).to_string(),
+                fact_b: (*bid).to_string(),
+            };
+            if va == Vis::Unknown || vb == Vis::Unknown {
+                out.undecidable.push(edge);
+                continue;
+            }
+            let nodes: Vec<String> = store
+                .sections
+                .keys()
+                .filter(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p))
+                .cloned()
+                .collect();
+            if nodes.is_empty() {
+                out.windowless.push(edge);
+                continue;
+            }
+            let starts: Vec<String> = nodes
+                .iter()
+                .filter(|n| !nodes.iter().any(|m| m != *n && order.le(&world, m, n)))
+                .cloned()
+                .collect();
+            // Maximal nodes of the world's declared composed order: named
+            // by the declaration governing this world, no strict
+            // descendant. Sections outside the declaration never count —
+            // they are isolated coordinates, not world-line ends.
+            let reach = order.reach_for(&world);
+            let open = nodes
+                .iter()
+                .any(|n| reach.get(n).is_some_and(BTreeSet::is_empty));
+            out.windows.push(IronyWindow {
+                fact_a: (*aid).to_string(),
+                fact_b: (*bid).to_string(),
+                frame_a: a.frame.clone(),
+                frame_b: b.frame.clone(),
+                nodes,
+                starts,
+                open,
+            });
+        }
+        report.worlds.insert(world, out);
+    }
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3229,5 +3398,128 @@ mod tests {
         // (s1,s3) path-connected through m -> not counted; (s1,loose),
         // (s3,loose) disconnected -> 2.
         assert_eq!(report.unchained_state_pairs, 2);
+    }
+
+    // ---- dramatic-irony intervals (Round 455, design sec 7.14) ----
+
+    /// The R454 spike's headline insight as a regression: an uncorrected
+    /// false belief co-holds with the truth all the way to the world-line
+    /// end — the window is OPEN.
+    #[test]
+    fn irony_window_open_at_world_line_end() {
+        let truth = fact("ft", "gt", "ch-2", None);
+        let mut belief = fact("fb", "daniel", "ch-2", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let store = store_with(vec![belief, truth]);
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        assert_eq!(report.cross_frame_edges, 1);
+        assert_eq!(report.same_frame_edges, 0);
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.windows.len(), 1);
+        let w = &main.windows[0];
+        assert_eq!((w.fact_a.as_str(), w.fact_b.as_str()), ("fb", "ft"));
+        assert_eq!((w.frame_a.as_str(), w.frame_b.as_str()), ("daniel", "gt"));
+        assert_eq!(w.nodes, ["ch-2", "ch-3", "ch-4"]);
+        assert_eq!(w.starts, ["ch-2"]);
+        assert!(w.open, "uncorrected divergence must report open");
+    }
+
+    /// Succession closes the window (the half-open cut: the superseded
+    /// truth stops holding AT its successor's node, so the last co-hold
+    /// node is the one before).
+    #[test]
+    fn irony_window_closed_by_succession() {
+        let truth = fact("ft", "gt", "ch-2", None);
+        let mut revised = fact("fz", "gt", "ch-3", None);
+        revised.supersedes_in_frame = Some("ft".to_string());
+        let mut belief = fact("fb", "daniel", "ch-2", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let store = store_with(vec![belief, truth, revised]);
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let w = &report.worlds[MAIN_BRANCH].windows[0];
+        assert_eq!(w.nodes, ["ch-2"]);
+        assert!(!w.open, "a closed divergence must not report open");
+    }
+
+    /// Same-frame edges are the continuity gate's territory
+    /// (`frame_conflict_overlap`) — skipped here, surfaced as a count.
+    #[test]
+    fn irony_skips_same_frame_edges_counted() {
+        let a = fact("fa", "gt", "ch-1", Some("ch-2"));
+        let mut b = fact("fb", "gt", "ch-3", None);
+        b.conflicts_with = vec!["fa".to_string()];
+        let store = store_with(vec![a, b]);
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        assert_eq!(report.cross_frame_edges, 0);
+        assert_eq!(report.same_frame_edges, 1);
+        assert!(report.worlds[MAIN_BRANCH].windows.is_empty());
+        assert!(report.worlds[MAIN_BRANCH].windowless.is_empty());
+    }
+
+    /// A belief corrected BEFORE the truth lands never co-holds with it:
+    /// both endpoints visible, no window — surfaced as windowless (data,
+    /// not absence).
+    #[test]
+    fn irony_windowless_when_belief_corrected_first() {
+        let mut belief = fact("fb", "daniel", "ch-1", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let mut corrected = fact("fc", "daniel", "ch-2", None);
+        corrected.supersedes_in_frame = Some("fb".to_string());
+        let truth = fact("ft", "gt", "ch-3", None);
+        let store = store_with(vec![belief, corrected, truth]);
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert!(main.windows.is_empty());
+        assert_eq!(main.windowless.len(), 1);
+        assert_eq!(main.windowless[0].fact_a, "fb");
+        assert_eq!(main.windowless[0].fact_b, "ft");
+    }
+
+    /// World scoping: an inherited window reports in BOTH the parent
+    /// world and the inheriting fork (the world is part of the finding —
+    /// the R450 per-world contract); a sibling fork cut BEFORE the facts
+    /// has an Out endpoint and is not that world's business.
+    #[test]
+    fn irony_windows_are_world_scoped() {
+        let truth = fact("ft", "gt", "ch-2", None);
+        let mut belief = fact("fb", "daniel", "ch-2", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let store = store_with_forks(
+            vec![belief, truth],
+            &[("w1", MAIN_BRANCH, "ch-2"), ("w2", MAIN_BRANCH, "ch-1")],
+        );
+        let report = irony_intervals(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"])).unwrap();
+        assert_eq!(report.worlds[MAIN_BRANCH].windows.len(), 1);
+        assert_eq!(report.worlds["w1"].windows.len(), 1, "inherited window");
+        let w2 = &report.worlds["w2"];
+        assert!(
+            w2.windows.is_empty() && w2.windowless.is_empty() && w2.undecidable.is_empty(),
+            "pre-fork sibling sees neither endpoint"
+        );
+    }
+
+    /// An endpoint the declared order cannot place against the fork cut
+    /// is `Unknown` there — the edge surfaces as undecidable in that
+    /// world (B-1), never classified either way.
+    #[test]
+    fn irony_undecidable_under_incomparable_fork_cut() {
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-2".to_string(), "ch-3".to_string()],
+            ["k-1".to_string(), "k-2".to_string()],
+        ])
+        .unwrap();
+        let truth = fact("ft", "gt", "ch-2", None);
+        let mut belief = fact("fb", "daniel", "k-1", None);
+        belief.conflicts_with = vec!["ft".to_string()];
+        let store = store_with_forks(vec![belief, truth], &[("w1", MAIN_BRANCH, "ch-2")]);
+        let report = irony_intervals(&store, &order).unwrap();
+        // main: both In, parallel chains never co-hold -> windowless.
+        assert_eq!(report.worlds[MAIN_BRANCH].windowless.len(), 1);
+        // w1: the belief's k-1 start is incomparable with the ch-2 cut.
+        let w1 = &report.worlds["w1"];
+        assert_eq!(w1.undecidable.len(), 1);
+        assert_eq!(w1.undecidable[0].fact_a, "fb");
+        assert!(w1.windows.is_empty() && w1.windowless.is_empty());
     }
 }

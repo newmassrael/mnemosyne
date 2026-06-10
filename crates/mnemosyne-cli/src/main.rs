@@ -300,6 +300,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-entity" => cmd_report_entity(&args[2..]),
         // Round 442 — setup/payoff coverage (read projection, never gated).
         "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
+        "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -413,6 +414,13 @@ fn print_help(prog: &str) {
     println!(
         " {} report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
+    );
+    println!(
+        " {} report-irony-intervals [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -2057,6 +2065,102 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
             }
             for u in &cov.unknown {
                 println!("  [unknown under declared order] {u}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Round 455 — dramatic-irony intervals (`report-irony-intervals`, design
+/// sec 7.14): per query world, every recorded CROSS-FRAME conflict edge
+/// classified as a co-hold window (where both ends are simultaneously in
+/// effect under the one holds-semantics), windowless, or undecidable
+/// (B-1). Pure read projection — irony is craft signal, deliberately
+/// never gated. Order and store resolve through the shared ops path.
+fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut order_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::irony_intervals_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== irony intervals — {} fact(s), {} cross-frame edge(s), {} same-frame (gate territory) ===",
+            report.facts, report.cross_frame_edges, report.same_frame_edges
+        );
+        for (world, irony) in &report.worlds {
+            if irony.windows.is_empty()
+                && irony.windowless.is_empty()
+                && irony.undecidable.is_empty()
+            {
+                continue;
+            }
+            println!(
+                "world `{world}`: windows={} windowless={} undecidable={}",
+                irony.windows.len(),
+                irony.windowless.len(),
+                irony.undecidable.len()
+            );
+            for w in &irony.windows {
+                println!(
+                    "  [window{}] {} ({}) vs {} ({}): {} node(s), opens at {}",
+                    if w.open {
+                        ", OPEN at world-line end"
+                    } else {
+                        ""
+                    },
+                    w.fact_a,
+                    w.frame_a,
+                    w.fact_b,
+                    w.frame_b,
+                    w.nodes.len(),
+                    w.starts.join(", ")
+                );
+            }
+            for e in &irony.windowless {
+                println!(
+                    "  [windowless] {} vs {} (visible together, never co-hold)",
+                    e.fact_a, e.fact_b
+                );
+            }
+            for e in &irony.undecidable {
+                println!(
+                    "  [undecidable under declared order] {} vs {}",
+                    e.fact_a, e.fact_b
+                );
             }
         }
     }
