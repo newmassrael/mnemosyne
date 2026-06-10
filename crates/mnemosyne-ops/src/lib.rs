@@ -141,29 +141,46 @@ pub fn load_atomic_store(
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
-/// Resolve the declared canon order with the precedence chain both wires
-/// share (Round 435; single-path rule, the `workspace_entry_id_prefix`
-/// precedent): explicit override (bypasses the sha256 pin — the pin claims
-/// nothing about a different file, the R428 `--catalog` rule) >
+/// The `[continuity]` policy view both read ops resolve from ONE config
+/// discovery (Round 435 single-path rule, the `workspace_entry_id_prefix`
+/// precedent; folded to a single `discover_config` in Round 436).
+struct ContinuityPolicy {
+    root: PathBuf,
+    continuity: Option<mnemosyne_config::ContinuitySection>,
+}
+
+fn continuity_policy(workspace_root: &Path) -> Result<ContinuityPolicy, OpError> {
+    let loaded = mnemosyne_config::discover_config(workspace_root)?;
+    Ok(match loaded {
+        Some(l) => ContinuityPolicy {
+            root: l.workspace_root,
+            continuity: l.config.continuity,
+        },
+        None => ContinuityPolicy {
+            root: workspace_root.to_path_buf(),
+            continuity: None,
+        },
+    })
+}
+
+/// Resolve the declared canon order from a [`ContinuityPolicy`]: explicit
+/// override (bypasses the sha256 pin — the pin claims nothing about a
+/// different file, the R428 `--catalog` rule) >
 /// `[continuity].canon_order_path` (+ optional pin) > equality-only.
 fn resolve_canon_order(
-    workspace_root: &Path,
+    policy: &ContinuityPolicy,
     order_override: Option<&str>,
 ) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
     use mnemosyne_validate::continuity::{load_canon_order, CanonOrder};
-    let loaded = mnemosyne_config::discover_config(workspace_root)?;
-    let (root, cont) = match loaded {
-        Some(l) => (l.workspace_root, l.config.continuity),
-        None => (workspace_root.to_path_buf(), None),
-    };
+    let cont = policy.continuity.as_ref();
     match (
         order_override,
-        cont.as_ref().and_then(|c| c.canon_order_path.as_ref()),
+        cont.and_then(|c| c.canon_order_path.as_ref()),
     ) {
-        (Some(p), _) => load_canon_order(&root.join(p), None).map_err(OpError::Other),
+        (Some(p), _) => load_canon_order(&policy.root.join(p), None).map_err(OpError::Other),
         (None, Some(p)) => load_canon_order(
-            &root.join(p),
-            cont.as_ref().and_then(|c| c.canon_order_sha256.as_deref()),
+            &policy.root.join(p),
+            cont.and_then(|c| c.canon_order_sha256.as_deref()),
         )
         .map_err(OpError::Other),
         (None, None) => Ok(CanonOrder::empty()),
@@ -193,9 +210,12 @@ pub fn continuity_scan(
     sidecar: Option<&Path>,
     order_override: Option<&str>,
 ) -> Result<ContinuityScanReport, OpError> {
-    let order = resolve_canon_order(workspace_root, order_override)?;
-    let severity = mnemosyne_config::discover_config(workspace_root)?
-        .and_then(|l| l.config.continuity.map(|c| c.severity.as_str().to_string()));
+    let policy = continuity_policy(workspace_root)?;
+    let order = resolve_canon_order(&policy, order_override)?;
+    let severity = policy
+        .continuity
+        .as_ref()
+        .map(|c| c.severity.as_str().to_string());
     let store = load_atomic_store(workspace_root, sidecar)?;
     let report =
         mnemosyne_validate::continuity::scan_continuity(&store, &order).map_err(OpError::Other)?;
@@ -234,7 +254,8 @@ pub fn continuity_frame_view(
     at: &str,
     order_override: Option<&str>,
 ) -> Result<FrameViewReport, OpError> {
-    let order = resolve_canon_order(workspace_root, order_override)?;
+    let policy = continuity_policy(workspace_root)?;
+    let order = resolve_canon_order(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
     let view = mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, at)

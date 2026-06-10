@@ -16,11 +16,15 @@
 //! structure-section id (the medium's discourse order); a story-time axis is a
 //! recorded revisit trigger, deliberately not pre-built.
 //!
-//! Frame-divergence queries ("facts of frame F at canon point T") are
-//! read-side projections; at index-materialization scale the frame maps onto
-//! the bitemporal/branch KV's branch dimension ([`crate::FactKey`] already
-//! carries `branch_id` + `valid_from` for exactly this projection). The JSON
-//! log stays the SSOT and carries every field the index will ever need.
+//! Frame-divergence queries ("facts of frame F on branch B at canon point
+//! T") are read-side projections. At index-materialization scale the
+//! WORLD-LINE branch (Round 433) maps onto the bitemporal/branch KV's branch
+//! dimension ([`crate::FactKey`] already carries `branch_id` + `valid_from`
+//! for exactly this projection); the epistemic frame is a separate scope key
+//! beside it — per-branch ground truth is the `(branch, frame)` composite
+//! (design sec 7.9 axis 2 superseded the pre-branch reading that mapped the
+//! frame itself onto that dimension). The JSON log stays the SSOT and
+//! carries every field the index will ever need.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,14 +56,32 @@ pub struct Frame {
     pub description: String,
 }
 
+/// One world-line branch (registry entry, Round 436). Keyed by branch id in
+/// `AtomicStore.branches`; every non-default [`NarrativeFact::branch`] must
+/// reference a registered id (fail-loud at the mutate primitive, symmetric
+/// with the frames registry — a write-side typo must not silently create a
+/// world). [`MAIN_BRANCH`] is known by construction (it is the default axis
+/// value) and is never registered.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Branch {
+    /// Free-form description of which quest-path/playthrough world this is.
+    /// Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
 /// One multi-axis narrative fact: a claim held within exactly one epistemic
 /// frame over a canon-time extent, evidenced by structure sections.
 ///
-/// Append-only by genre: a belief that changes is not edited — a successor
-/// fact in the same frame records `supersedes_in_frame`, and the
-/// predecessor's effective end is DERIVED from the successor's `canon_from`
-/// (never written back). The stored `canon_to` is for beliefs that end
-/// without a successor.
+/// Append-only by genre for IN-WORLD change: a belief that changes is not
+/// edited — a successor fact in the same frame records
+/// `supersedes_in_frame`, and the predecessor's effective end is DERIVED
+/// from the successor's `canon_from` (never written back). The stored
+/// `canon_to` is for beliefs that end without a successor. The one
+/// exception is AUTHOR-time correction (Round 434, design sec 7.9 axis 4):
+/// `amend_fact` / `retract_fact` revise or remove a mis-written claim —
+/// that is transaction-time history (the git log of the store), not
+/// in-world belief change, and never routes through succession.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NarrativeFact {
     /// Epistemic frame id (registry key in `AtomicStore.frames`). Exactly

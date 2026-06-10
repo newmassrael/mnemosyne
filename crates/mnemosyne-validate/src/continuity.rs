@@ -135,6 +135,12 @@ impl CanonOrder {
             if branch.is_empty() {
                 return Err("canon-order: blank branch id in `branches`".to_string());
             }
+            if branch == mnemosyne_core::MAIN_BRANCH {
+                return Err(format!(
+                    "canon-order: `branches` declares `{branch}` — the base `edges` ARE the \
+                     default world-line's order (one way to say it)"
+                ));
+            }
             let mut combined = decl.edges.clone();
             combined.extend(edges.iter().cloned());
             branch_reach.insert(
@@ -311,14 +317,13 @@ fn holds_at(
     true
 }
 
-/// Frame-scoped continuity scan over the narrative facts. Returns `Err` only
-/// on a malformed input boundary (an order node that is not a section —
-/// likely a typo in the declaration; fail loud). All data findings are
-/// violations/counts in the report.
-pub fn scan_continuity(
-    store: &AtomicStore,
-    order: &CanonOrder,
-) -> Result<ContinuityReport, String> {
+/// Fail-loud declaration↔store boundary shared by the gate and the view
+/// (Round 436, single check — the two read paths cannot drift): every order
+/// node must be a section (canon coordinates are structure refs), and every
+/// declared per-branch edge set must name a REGISTERED world-line — the
+/// declaration is a consumer artifact, and a typo in it must not silently
+/// order nothing.
+fn check_order_against_store(store: &AtomicStore, order: &CanonOrder) -> Result<(), String> {
     for n in order.nodes() {
         if !store.sections.contains_key(n) {
             return Err(format!(
@@ -327,6 +332,27 @@ pub fn scan_continuity(
             ));
         }
     }
+    for b in order.declared_branches() {
+        if !store.branches.contains_key(b) {
+            return Err(format!(
+                "canon-order declares an edge set for branch `{b}`, which is not in the \
+                 branch registry — register it (add_branch) or fix the declaration"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Frame-scoped continuity scan over the narrative facts. Returns `Err` only
+/// on a malformed input boundary (an order node that is not a section, or a
+/// declared branch that is not registered — likely a typo in the
+/// declaration; fail loud). All data findings are violations/counts in the
+/// report.
+pub fn scan_continuity(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<ContinuityReport, String> {
+    check_order_against_store(store, order)?;
     let facts = &store.narrative_facts;
     let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
     for fact in facts.values() {
@@ -467,11 +493,10 @@ pub struct FrameView {
 /// "Facts of frame F on branch B at canon point T" — the read projection
 /// over the SAME `holds_at` semantics the continuity gate uses (R390
 /// single-predicate discipline: gate and view cannot drift). Fail-loud
-/// boundaries: the frame must be registered, the query point must be a
-/// section, the order declaration must name only sections, and the branch
-/// must be KNOWN — `MAIN_BRANCH`, carried by some fact, or declared in the
-/// order (there is no branch registry; this derived check is what keeps a
-/// typo'd branch from reading as an empty world).
+/// boundaries: the frame must be registered, the branch must be
+/// `MAIN_BRANCH` or registered (Round 436 — the branch registry replaced
+/// the R433 derived known-set heuristic), the query point must be a
+/// section, and the order declaration must pass the shared store boundary.
 pub fn frame_view(
     store: &AtomicStore,
     order: &CanonOrder,
@@ -479,26 +504,16 @@ pub fn frame_view(
     branch: &str,
     at: &str,
 ) -> Result<FrameView, String> {
-    for n in order.nodes() {
-        if !store.sections.contains_key(n) {
-            return Err(format!(
-                "canon-order names `{n}`, which is not a section in the store — \
-                 canon coordinates are structure refs; fix the declaration"
-            ));
-        }
-    }
+    check_order_against_store(store, order)?;
     if !store.frames.contains_key(frame) {
         return Err(format!(
             "frame `{frame}` not present in the frames registry (fail-loud)"
         ));
     }
-    let branch_known = branch == mnemosyne_core::MAIN_BRANCH
-        || store.narrative_facts.values().any(|f| f.branch == branch)
-        || order.declared_branches().any(|b| b == branch);
-    if !branch_known {
+    if branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(branch) {
         return Err(format!(
-            "branch `{branch}` unknown — no fact carries it and the canon-order declaration \
-             has no edge set for it (a typo'd branch must not read as an empty world)"
+            "branch `{branch}` not present in the branch registry (fail-loud — a typo'd \
+             branch must not read as an empty world)"
         ));
     }
     if !store.sections.contains_key(at) {
@@ -607,8 +622,27 @@ mod tests {
                 description: String::new(),
             })
             .collect();
-        mnemosyne_atomic::import_facts(&mut store, &path, &FactsManifest { frames, facts })
-            .unwrap();
+        let branches = facts
+            .iter()
+            .filter_map(|f| f.branch.clone())
+            .filter(|b| b != MAIN_BRANCH)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|branch_id| mnemosyne_atomic::BranchImport {
+                branch_id,
+                description: String::new(),
+            })
+            .collect();
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames,
+                branches,
+                facts,
+            },
+        )
+        .unwrap();
         store
     }
 
@@ -897,7 +931,42 @@ mod tests {
         assert_eq!(route_view.holding[0].fact_id, "f-route");
         // Unknown branch fails loud — a typo must not read as an empty world.
         let err = frame_view(&store, &order, "jonathan", "sea-rotue", "ch-2").unwrap_err();
-        assert!(err.contains("unknown"), "{err}");
+        assert!(err.contains("branch registry"), "{err}");
+    }
+
+    #[test]
+    fn order_declared_branch_must_be_registered() {
+        // Round 436: the declaration is a consumer artifact — an edge set
+        // for an unregistered branch is a typo, surfaced loud by gate AND
+        // view (shared boundary), never a silently inert order.
+        let decl = CanonOrderFile {
+            edges: vec![],
+            branches: BTreeMap::from([(
+                "sea-rotue".to_string(),
+                vec![["ch-1".to_string(), "ch-2".to_string()]],
+            )]),
+        };
+        let order = CanonOrder::from_declaration(&decl).unwrap();
+        let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        let err = scan_continuity(&store, &order).unwrap_err();
+        assert!(err.contains("sea-rotue"), "{err}");
+        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, "ch-1").unwrap_err();
+        assert!(err.contains("sea-rotue"), "{err}");
+    }
+
+    #[test]
+    fn order_cannot_redeclare_the_default_branch() {
+        // The base edges ARE the default world-line's order — one way to
+        // say it.
+        let decl = CanonOrderFile {
+            edges: vec![],
+            branches: BTreeMap::from([(
+                MAIN_BRANCH.to_string(),
+                vec![["ch-1".to_string(), "ch-2".to_string()]],
+            )]),
+        };
+        let err = CanonOrder::from_declaration(&decl).unwrap_err();
+        assert!(err.contains("default world-line"), "{err}");
     }
 
     /// R390-style consistency lock: the gate and the view share holds_at —

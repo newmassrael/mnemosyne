@@ -7813,11 +7813,60 @@
         "sec 7.10 pulls 1-3 now COMPLETE: the AI-authoring loop (write scene -> declare facts -> query frame context -> gate) is fully MCP-served; remaining gaps 4 (entity model) and 5 (LLM conflict-discovery adapter) stay scale/consumer-gated",
         "installed-binary skew: reinstall mnemosyne-mcp + mnemosyne-cli after this round (schema v13 + new verbs)"
       ]
+    },
+    "Round 436 — branch registry: frames-registry symmetry closes the write-side typo gap": {
+      "decision_summary": "Session-review finding executed: the R433 minimal pin left branches as free-form strings - frame refs failed loud against a registry while a typo'd branch silently created a world, and the read-side derived known-set (main / fact-carried / order-declared) could not catch write-side typos because the typo'd fact itself made the branch look known. The asymmetry had no principled justification; under lifetime-project standards the registry is the textbook shape (the same R-1 / R416 fail-loud-refs reasoning that gave frames their registry applies verbatim to world-lines). This round lands the Branch entity + AtomicStore.branches (v13->v14), write-path enforcement in the ONE shared builder, an add_branch primitive mirrored through CLI and MCP, and a single shared declaration<->store boundary for the gate and the view (order nodes must be sections; declared branch edge sets must be registered; declaring the default branch rejects - the base edges ARE its order). MAIN_BRANCH stays known by construction, never registered: the default axis value exists structurally, and requiring its registration would invalidate every existing single-world store. The R433 derived known-set heuristic is deleted - this round also pays two doc drifts the review surfaced (FactKey.branch_id now correctly documented as hosting the world-line branch, not the frame; the append-only genre doc names its axis-4 exception) and folds the duplicate config discovery in ops.",
+      "changes_bullets": [
+        "Branch entity (mnemosyne-core) + AtomicStore.branches registry, schema v13->v14 (declarative serde default, no migration arm; a single-world store loads and gates exactly as before); MAIN_BRANCH is known by construction and REJECTS registration (one way to say the default)",
+        "build_candidate_fact: a non-default fact branch must be registered (fail-loud on both write paths via the shared builder - R305 parity holds with zero extra work); FactsManifest gains branches[] (registries land before facts, one atomic transaction); receipt summary now counts branches",
+        "frame_view: the R433 derived known-set heuristic (main / fact-carried / order-declared) is REMOVED, replaced by the registry lookup; check_order_against_store = ONE shared boundary for gate and view (order nodes must be sections AND declared branch edge sets must name registered world-lines); canon-order branches{} declaring the default branch rejects (base edges ARE its order)",
+        "add_branch primitive + add-branch CLI verb + add_branch MCP tool (roster 45->46), all A2-verdict consistent (absent create / identical no-op / divergent reject)",
+        "doc drift fixed: narrative.rs module doc now maps the WORLD-LINE branch (not the frame) onto FactKey.branch_id per sec 7.9 axis 2; NarrativeFact struct doc names the axis-4 amend/retract exception to the append-only genre",
+        "ops: continuity_scan/continuity_frame_view fold to ONE discover_config via the ContinuityPolicy view (was two discoveries per scan)"
+      ],
+      "verification_bullets": [
+        "atomic unit tests: add_branch full verdict matrix (main rejects registration, divergent rejects, no-op idempotent, registration unlocks the fact write), unregistered branch added to the R305 parity matrix (both write paths reject identically)",
+        "continuity unit tests: order declaring an unregistered branch fails loud through BOTH the gate and the view (shared boundary), branches{main} declaration rejects, typo'd view branch errors with the registry message",
+        "CLI smoke: branch end-to-end now registers sea-route first then authors onto it; typo'd branch stderr names the registry; import smoke v14 + branch-counting receipt",
+        "full workspace suite green (764 tests, 0 failed), clippy --all-targets clean, fmt clean; live MCP tools/list = 46 with add_branch present"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "branch registry closes the session-review finding (write-side typo silently created a world under the R433 minimal pin); the R433 carry line \"no branch registry by design\" is superseded by this round",
+        "branch lifecycle beyond registration (description setter, remove/merge) = consumer-pull, symmetric with frames",
+        "remaining narrative gaps unchanged: entity model (sec 7.10 gap 4) and LLM conflict-discovery adapter (gap 5), scale/consumer-gated"
+      ],
+      "publishable_decision_summary": "Session-review finding executed: the R433 minimal pin left branches as free-form strings - frame refs failed loud against a registry while a typo'd branch silently created a world, and the read-side derived known-set (main / fact-carried / order-declared) could not catch write-side typos because the typo'd fact itself made the branch look known. The asymmetry had no principled justification; under lifetime-project standards the registry is the textbook shape (the same R-1 / R416 fail-loud-refs reasoning that gave frames their registry applies verbatim to world-lines). This round lands the Branch entity + AtomicStore.branches (v13->v14), write-path enforcement in the ONE shared builder, an add_branch primitive mirrored through CLI and MCP, and a single shared declaration<->store boundary for the gate and the view (order nodes must be sections; declared branch edge sets must be registered; declaring the default branch rejects - the base edges ARE its order). MAIN_BRANCH stays known by construction, never registered: the default axis value exists structurally, and requiring its registration would invalidate every existing single-world store. The R433 derived known-set heuristic is deleted - this round also pays two doc drifts the review surfaced (FactKey.branch_id now correctly documented as hosting the world-line branch, not the frame; the append-only genre doc names its axis-4 exception) and folds the duplicate config discovery in ops.",
+      "publishable_changes_bullets": [
+        "Branch entity (mnemosyne-core) + AtomicStore.branches registry, schema v13->v14 (declarative serde default, no migration arm; a single-world store loads and gates exactly as before); MAIN_BRANCH is known by construction and REJECTS registration (one way to say the default)",
+        "build_candidate_fact: a non-default fact branch must be registered (fail-loud on both write paths via the shared builder - R305 parity holds with zero extra work); FactsManifest gains branches[] (registries land before facts, one atomic transaction); receipt summary now counts branches",
+        "frame_view: the R433 derived known-set heuristic (main / fact-carried / order-declared) is REMOVED, replaced by the registry lookup; check_order_against_store = ONE shared boundary for gate and view (order nodes must be sections AND declared branch edge sets must name registered world-lines); canon-order branches{} declaring the default branch rejects (base edges ARE its order)",
+        "add_branch primitive + add-branch CLI verb + add_branch MCP tool (roster 45->46), all A2-verdict consistent (absent create / identical no-op / divergent reject)",
+        "doc drift fixed: narrative.rs module doc now maps the WORLD-LINE branch (not the frame) onto FactKey.branch_id per sec 7.9 axis 2; NarrativeFact struct doc names the axis-4 amend/retract exception to the append-only genre",
+        "ops: continuity_scan/continuity_frame_view fold to ONE discover_config via the ContinuityPolicy view (was two discoveries per scan)"
+      ],
+      "publishable_verification_bullets": [
+        "atomic unit tests: add_branch full verdict matrix (main rejects registration, divergent rejects, no-op idempotent, registration unlocks the fact write), unregistered branch added to the R305 parity matrix (both write paths reject identically)",
+        "continuity unit tests: order declaring an unregistered branch fails loud through BOTH the gate and the view (shared boundary), branches{main} declaration rejects, typo'd view branch errors with the registry message",
+        "CLI smoke: branch end-to-end now registers sea-route first then authors onto it; typo'd branch stderr names the registry; import smoke v14 + branch-counting receipt",
+        "full workspace suite green (764 tests, 0 failed), clippy --all-targets clean, fmt clean; live MCP tools/list = 46 with add_branch present"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "branch registry closes the session-review finding (write-side typo silently created a world under the R433 minimal pin); the R433 carry line \"no branch registry by design\" is superseded by this round",
+        "branch lifecycle beyond registration (description setter, remove/merge) = consumer-pull, symmetric with frames",
+        "remaining narrative gaps unchanged: entity model (sec 7.10 gap 4) and LLM conflict-discovery adapter (gap 5), scale/consumer-gated"
+      ]
     }
   },
   "inventory_entries": {},
   "confirmation_events": {},
   "frames": {},
+  "branches": {},
   "narrative_facts": {},
-  "schema_version": 13
+  "schema_version": 14
 }

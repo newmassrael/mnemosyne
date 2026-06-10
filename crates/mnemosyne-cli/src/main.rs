@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -162,6 +162,7 @@ fn run(args: &[String]) -> Result<()> {
         // Round 430 — narrative fact primitives (Phase 1A).
         "import-facts" => atomic_cli::cmd_import_facts(&workspace_anchor()?, &args[2..]),
         "add-frame" => atomic_cli::cmd_add_frame(&workspace_anchor()?, &args[2..]),
+        "add-branch" => atomic_cli::cmd_add_branch(&workspace_anchor()?, &args[2..]),
         "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
         "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
         "amend-fact" => atomic_cli::cmd_amend_fact(&workspace_anchor()?, &args[2..]),
@@ -381,6 +382,10 @@ fn print_help(prog: &str) {
     println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied");
     println!(
         " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} add-branch --branch <id> [--description <text>] [--sidecar <path>] [--json]",
         prog
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--conflicts <id,id>] [--supersedes <id>] [--quote <text>] [--sidecar <path>] [--json]", prog);

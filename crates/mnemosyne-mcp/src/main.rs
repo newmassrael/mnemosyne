@@ -296,6 +296,16 @@ pub struct AddFrameArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddBranchArgs {
+    /// Branch id — the registry key every non-default fact `branch` must
+    /// reference. `main` is known by construction and never registered.
+    pub branch_id: String,
+    /// Optional free-form description (which quest-path/playthrough world).
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactArgs {
     pub fact_id: String,
     /// Epistemic frame id (must already be registered — `add_frame` first).
@@ -1131,7 +1141,18 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
+        description = "Register one world-line branch (R436) — the registry key every non-default fact branch must reference (fail-loud at the write path; `main` never registers). Idempotent on a byte-identical description; divergent rejects."
+    )]
+    async fn add_branch(&self, args: Parameters<AddBranchArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = run_atomic_mutate(&self.workspace, None, |store, path| {
+            atomic::add_branch(store, path, &a.branch_id, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
     async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
         let entry = fact_import_from(&args.0);

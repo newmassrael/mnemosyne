@@ -35,7 +35,9 @@ pub mod redact;
 pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
-use mnemosyne_core::{strip_section_marker, DecisionStatus, Frame, InventoryStatus, NarrativeFact};
+use mnemosyne_core::{
+    strip_section_marker, Branch, DecisionStatus, Frame, InventoryStatus, NarrativeFact,
+};
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -626,6 +628,14 @@ pub struct AtomicStore {
     /// mutate primitives). Empty on pre-v12 stores via `#[serde(default)]`.
     #[serde(default)]
     pub frames: BTreeMap<String, Frame>,
+    /// World-line branch registry (Round 436) — keyed by branch id. Every
+    /// non-default `NarrativeFact.branch` must reference a key here
+    /// (fail-loud at the mutate primitives, symmetric with `frames` — a
+    /// write-side typo must never silently create a world). `MAIN_BRANCH`
+    /// is known by construction and never registered. Empty on pre-v14
+    /// stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub branches: BTreeMap<String, Branch>,
     /// Multi-axis narrative facts (Round 430) — append-only perspectival
     /// claims, keyed by fact id. Top-level (the confirmation_events
     /// placement pattern): never nested on a section, no frozen-ledger
@@ -1049,7 +1059,16 @@ pub enum AtomicStoreError {
 // B-2 key-widening); a store that never names a branch gates exactly as
 // before. So there is deliberately NO `schema_version < 13` arm in `load`,
 // and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 13;
+// v13→v14 adds `AtomicStore.branches` (world-line branch registry, Round
+// 436) — the frames-registry symmetry the R433 minimal pin deferred: branch
+// refs now fail loud at the write path (`MAIN_BRANCH` ∪ registry) instead of
+// free-form strings, closing the write-side-typo-creates-a-world gap the
+// session review surfaced. Same declarative new-field-default pattern: a
+// pre-v14 store has no `branches` key, serde fills an empty map, and a
+// single-world store (every fact on the default branch) loads and gates
+// exactly as before. So there is deliberately NO `schema_version < 14` arm
+// in `load`, and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 14;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3322,6 +3341,15 @@ pub struct FrameImport {
     pub description: String,
 }
 
+/// One branch entry in the [`FactsManifest`] (and the `add_branch` shape,
+/// Round 436).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchImport {
+    pub branch_id: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 /// One fact entry in the import manifest — the authoring face of
 /// [`NarrativeFact`] plus its map key. `quote_sha256` is deliberately NOT
 /// accepted from the caller: the primitive computes it from `quote` at write
@@ -3349,12 +3377,15 @@ pub struct FactImport {
     pub quote: Option<String>,
 }
 
-/// `import-facts` manifest: frames + facts created in ONE atomic
-/// transaction (frames first, so same-manifest facts can reference them).
+/// `import-facts` manifest: frames + branches + facts created in ONE atomic
+/// transaction (registries first, so same-manifest facts can reference
+/// them).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactsManifest {
     #[serde(default)]
     pub frames: Vec<FrameImport>,
+    #[serde(default)]
+    pub branches: Vec<BranchImport>,
     #[serde(default)]
     pub facts: Vec<FactImport>,
 }
@@ -3363,6 +3394,8 @@ pub struct FactsManifest {
 /// (R305 parity). Enforces the scalar invariants:
 /// - `fact_id` / `frame` / `claim` / `canon_from` non-empty after trim;
 /// - `frame` must exist in the frames registry (fail-loud, R287 lesson);
+/// - `branch`, when present and not `MAIN_BRANCH`, must exist in the branch
+///   registry (Round 436 — frames-registry symmetry);
 /// - `canon_from` / `canon_to` / every `evidence` ref must name an existing
 ///   section (canon coordinates ARE structure refs, design sec 7.3/7.5);
 /// - `evidence` >= 1 (a claim without provenance is unauditable);
@@ -3399,7 +3432,16 @@ fn build_candidate_fact(
                 mnemosyne_core::MAIN_BRANCH
             ));
         }
-        Some(b) => b.to_string(),
+        Some(b) => {
+            if b != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(b) {
+                return Err(format!(
+                    "fact `{fact_id}`: branch `{b}` not present in the branch registry \
+                     (add_branch / manifest branches[] first; fail-loud — a typo'd branch \
+                     must not silently create a world)"
+                ));
+            }
+            b.to_string()
+        }
     };
     let claim = entry.claim.trim();
     if claim.is_empty() {
@@ -3591,6 +3633,52 @@ pub fn add_frame(
     }
 }
 
+/// Register one world-line branch (Round 436 — the frames-registry symmetry:
+/// every non-default fact branch must reference a registered id, so a typo'd
+/// branch fails loud at the write path instead of silently creating a
+/// world). `MAIN_BRANCH` is known by construction and rejects registration
+/// (one way to say the default). A2-consistent verdicts: absent → create,
+/// byte-identical → idempotent no-op, divergent → reject.
+pub fn add_branch(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    branch_id: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = branch_id.trim();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_branch: branch_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    if id == mnemosyne_core::MAIN_BRANCH {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_branch: `{id}` is the default world-line — known by construction, \
+             never registered"
+        )));
+    }
+    let candidate = Branch {
+        description: description.trim().to_string(),
+    };
+    match store.branches.get(id) {
+        Some(existing) if *existing == candidate => Ok(AtomicMutateReceipt {
+            primitive: "add_branch".to_string(),
+            target_kind: "branch",
+            target_id: format!("{id} (no-op)"),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        }),
+        Some(_) => Err(AtomicMutateError::Validation(format!(
+            "add_branch: branch `{id}` already exists with DIVERGENT description — \
+             refusing silent overwrite"
+        ))),
+        None => {
+            store.branches.insert(id.to_string(), candidate);
+            save_with_receipt(store, sidecar_path, "add_branch", "branch", id)
+        }
+    }
+}
+
 /// Create one narrative fact. Routes the SAME builder as `import_facts`
 /// (R305 parity); cross-fact refs resolve against the store only (a single
 /// add cannot forward-reference). 3-way verdict mirrors `import_sections`:
@@ -3626,17 +3714,19 @@ pub fn add_fact(
     }
 }
 
-/// Bulk frames + facts create from a manifest, as one atomic transaction
-/// (the `import_sections` A2 pattern). Frames land first so same-manifest
-/// facts can reference them; cross-fact refs are checked AFTER all facts
-/// stage, so forward references within one manifest are legal. Any rejection
-/// returns `Err` before the single save — the on-disk store is untouched.
+/// Bulk frames + branches + facts create from a manifest, as one atomic
+/// transaction (the `import_sections` A2 pattern). The registries land
+/// first so same-manifest facts can reference them; cross-fact refs are
+/// checked AFTER all facts stage, so forward references within one manifest
+/// are legal. Any rejection returns `Err` before the single save — the
+/// on-disk store is untouched.
 pub fn import_facts(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     manifest: &FactsManifest,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let mut frames_created = 0usize;
+    let mut branches_created = 0usize;
     let mut facts_created = 0usize;
     let mut no_op = 0usize;
     for (idx, f) in manifest.frames.iter().enumerate() {
@@ -3658,6 +3748,36 @@ pub fn import_facts(
             Some(_) => {
                 return Err(AtomicMutateError::Validation(format!(
                     "import_facts: manifest frame {idx} `{id}` already exists with \
+                     DIVERGENT description — refusing silent overwrite"
+                )));
+            }
+        }
+    }
+    for (idx, b) in manifest.branches.iter().enumerate() {
+        let id = b.branch_id.trim();
+        if id.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest branch {idx}: branch_id mandatory"
+            )));
+        }
+        if id == mnemosyne_core::MAIN_BRANCH {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest branch {idx}: `{id}` is the default world-line — \
+                 known by construction, never registered"
+            )));
+        }
+        let candidate = Branch {
+            description: b.description.trim().to_string(),
+        };
+        match store.branches.get(id) {
+            None => {
+                store.branches.insert(id.to_string(), candidate);
+                branches_created += 1;
+            }
+            Some(existing) if *existing == candidate => no_op += 1,
+            Some(_) => {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_facts: manifest branch {idx} `{id}` already exists with \
                      DIVERGENT description — refusing silent overwrite"
                 )));
             }
@@ -3701,8 +3821,11 @@ pub fn import_facts(
         validate_fact_refs(fact_id, fact, &store.narrative_facts)
             .map_err(AtomicMutateError::Validation)?;
     }
-    let summary = format!("{frames_created} frames + {facts_created} facts created, {no_op} no-op");
-    if frames_created == 0 && facts_created == 0 {
+    let summary = format!(
+        "{frames_created} frames + {branches_created} branches + {facts_created} facts \
+         created, {no_op} no-op"
+    );
+    if frames_created == 0 && branches_created == 0 && facts_created == 0 {
         return Ok(AtomicMutateReceipt {
             primitive: "import_facts".to_string(),
             target_kind: "narrative_fact",
@@ -7259,6 +7382,7 @@ mod tests {
         let mut f_old = sample_fact("f-old", "jonathan");
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
+            branches: vec![],
             frames: vec![
                 FrameImport {
                     frame_id: "jonathan".to_string(),
@@ -7272,7 +7396,10 @@ mod tests {
             facts: vec![f_new, f_old],
         };
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
-        assert_eq!(receipt.target_id, "2 frames + 2 facts created, 0 no-op");
+        assert_eq!(
+            receipt.target_id,
+            "2 frames + 0 branches + 2 facts created, 0 no-op"
+        );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(reloaded.frames.len(), 2);
@@ -7290,7 +7417,10 @@ mod tests {
         // Idempotent re-import: pure no-op, nothing written.
         let again = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(again.written_bytes, 0);
-        assert_eq!(again.target_id, "0 frames + 0 facts created, 4 no-op");
+        assert_eq!(
+            again.target_id,
+            "0 frames + 0 branches + 0 facts created, 4 no-op"
+        );
     }
 
     #[test]
@@ -7301,6 +7431,7 @@ mod tests {
         seed_chapters(&mut store);
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
+            branches: vec![],
             frames: vec![],
             facts: vec![sample_fact("f1", "nobody")],
         };
@@ -7318,6 +7449,7 @@ mod tests {
             &path,
             &FactsManifest {
                 frames: frames.clone(),
+                branches: vec![],
                 facts: vec![bad_evidence],
             },
         )
@@ -7333,6 +7465,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                branches: vec![],
                 frames: frames.clone(),
                 facts: vec![no_evidence],
             },
@@ -7346,6 +7479,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                branches: vec![],
                 frames,
                 facts: vec![bad_canon],
             },
@@ -7365,6 +7499,7 @@ mod tests {
         let mut successor = sample_fact("f2", "seward");
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
+            branches: vec![],
             frames: vec![
                 FrameImport {
                     frame_id: "jonathan".to_string(),
@@ -7399,6 +7534,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                branches: vec![],
                 frames: frames.clone(),
                 facts: vec![sample_fact("f1", "gt")],
             },
@@ -7411,6 +7547,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                branches: vec![],
                 frames,
                 facts: vec![divergent],
             },
@@ -7463,6 +7600,13 @@ mod tests {
                     ..sample_fact("p7", "gt")
                 },
             ),
+            (
+                "unregistered branch",
+                FactImport {
+                    branch: Some("sea-rotue".to_string()),
+                    ..sample_fact("p8", "gt")
+                },
+            ),
         ];
         for (label, entry) in cases {
             let tmp = TempDir::new().unwrap();
@@ -7480,6 +7624,7 @@ mod tests {
                 &path_b,
                 &FactsManifest {
                     frames: vec![],
+                    branches: vec![],
                     facts: vec![entry],
                 },
             )
@@ -7501,6 +7646,9 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
+        store
+            .branches
+            .insert("vampire-route".to_string(), Branch::default());
         add_fact(&mut store, &path, &sample_fact("f-main", "gt")).unwrap();
         add_fact(
             &mut store,
@@ -7545,6 +7693,8 @@ mod tests {
         for s in [&mut store_a, &mut store_b] {
             seed_chapters(s);
             s.frames.insert("gt".to_string(), Frame::default());
+            s.branches
+                .insert("vampire-route".to_string(), Branch::default());
         }
         let predecessor = sample_fact("f-old", "gt");
         let successor = FactImport {
@@ -7560,6 +7710,7 @@ mod tests {
             &path_b,
             &FactsManifest {
                 frames: vec![],
+                branches: vec![],
                 facts: vec![predecessor, successor],
             },
         )
@@ -7657,6 +7808,42 @@ mod tests {
         assert!(
             msg.contains("supersede in-frame") && msg.contains("amend_fact"),
             "{msg}"
+        );
+    }
+
+    /// Round 436 — branch registry: the default never registers, divergent
+    /// descriptions reject, idempotent no-op, and registration is what
+    /// unlocks authoring onto the world-line (write-side typo gate).
+    #[test]
+    fn add_branch_registry_gates_fact_writes() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        // The default world-line is known by construction, never registered.
+        let err = add_branch(&mut store, &path, mnemosyne_core::MAIN_BRANCH, "").unwrap_err();
+        assert!(err.to_string().contains("known by construction"), "{err}");
+        // Unregistered branch on a fact rejects at the write path.
+        let on_route = FactImport {
+            branch: Some("sea-route".to_string()),
+            ..sample_fact("f-route", "gt")
+        };
+        let err = add_fact(&mut store, &path, &on_route).unwrap_err();
+        assert!(err.to_string().contains("branch registry"), "{err}");
+        // Register, then the same write lands.
+        add_branch(&mut store, &path, "sea-route", "the Demeter voyage").unwrap();
+        add_fact(&mut store, &path, &on_route).unwrap();
+        assert_eq!(store.narrative_facts["f-route"].branch, "sea-route");
+        // Idempotent re-register = no-op; divergent description rejects.
+        let again = add_branch(&mut store, &path, "sea-route", "the Demeter voyage").unwrap();
+        assert_eq!(again.written_bytes, 0);
+        let err = add_branch(&mut store, &path, "sea-route", "something else").unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            reloaded.branches["sea-route"].description,
+            "the Demeter voyage"
         );
     }
 

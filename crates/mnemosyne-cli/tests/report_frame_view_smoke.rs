@@ -141,6 +141,18 @@ fn undeclared_coordinates_surface_as_unknown() {
 fn branch_scopes_the_view_end_to_end() {
     let tmp = TempDir::new().unwrap();
     write_workspace(tmp.path());
+    // R436: the world-line must be registered before authoring onto it.
+    let out = run(
+        tmp.path(),
+        &[
+            "add-branch",
+            "--branch",
+            "sea-route",
+            "--description",
+            "the Demeter voyage",
+        ],
+    );
+    assert!(out.status.success(), "{:?}", out);
     let out = run(
         tmp.path(),
         &[
@@ -200,7 +212,7 @@ fn branch_scopes_the_view_end_to_end() {
         ],
     );
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("unknown"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("branch registry"));
 }
 
 #[test]

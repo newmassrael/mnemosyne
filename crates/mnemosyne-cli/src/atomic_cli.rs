@@ -404,6 +404,49 @@ pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Round 436 — register one world-line branch (the frames-registry
+/// symmetry; `main` is known by construction and never registered).
+pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut branch_id: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--branch" => {
+                branch_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--branch missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let branch_id = branch_id.ok_or_else(|| anyhow!("--branch arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_branch(&mut store, &sidecar_path, &branch_id, &description),
+        json,
+    )
+}
+
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
 /// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two
