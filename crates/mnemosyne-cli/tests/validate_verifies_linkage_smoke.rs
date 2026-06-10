@@ -114,6 +114,51 @@ fn finer_than_declared_is_the_granularity_lint() {
     assert_eq!(j["mismatches"][0]["kind"], "finer_than_declared");
 }
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn write_toml_with_pin(ws: &Path, pin: &str) {
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        format!(
+            "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+             [verifies_catalog]\npath = \"verifies-catalog.json\"\nsha256 = \"{pin}\"\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn catalog_sha256_pin_match_passes_and_mismatch_fails_loud() {
+    // R428 — the pinned catalog loads when the hash matches; a stale/tampered
+    // catalog (pin != file) fails LOUDLY rather than silently driving the gate.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), "6.4");
+    let catalog_bytes = fs::read(tmp.path().join("verifies-catalog.json")).unwrap();
+    // Match → passes.
+    write_toml_with_pin(tmp.path(), &sha256_hex(&catalog_bytes));
+    let (out, json) = run(tmp.path(), &["validate-verifies-linkage", "--json"]);
+    assert!(
+        out.status.success(),
+        "pinned + matching catalog passes; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(json.unwrap()["mismatch_count"], 0);
+    // Mismatch (stale pin) → loud failure, not a silent gate decision.
+    write_toml_with_pin(tmp.path(), &"0".repeat(64));
+    let (out, _) = run(tmp.path(), &["validate-verifies-linkage", "--json"]);
+    assert!(!out.status.success(), "sha256 mismatch must fail loudly");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("sha256 mismatch"),
+        "stderr names the mismatch: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 #[test]
 fn exact_match_passes() {
     let tmp = TempDir::new().unwrap();

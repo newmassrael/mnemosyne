@@ -7465,6 +7465,40 @@
         "catalog sha256 pinning still deferred until SCE asks",
         "SCE next: generate the specnum catalog JSON, set [verifies_catalog], enable severity_blanket warn, then severity_confirmation"
       ]
+    },
+    "Round 428": {
+      "decision_summary": "Catalog sha256 pin: the catalog-live authority input gains the same hash guard as every other gate input",
+      "changes_bullets": [
+        "[verifies_catalog].sha256 optional pin (epub_sha256 symmetry, hex-validated at config load): load_catalog re-hashes the file bytes and a mismatch fails LOUDLY — the catalog is the authority input of the R427 catalog-live confirmed branch, the last gate input without a hash guard",
+        "single load path (verb plus confirmation gate both route load_catalog) so neither can skip the pin; a --catalog override bypasses the pin by design (the pin makes no claim about a different file)",
+        "SCHEMA_GUIDE documents the pin plus re-pin flow; closes the SCE reply's open offer (they pin on next sync)"
+      ],
+      "verification_bullets": [
+        "config unit (non-hex pin rejected at load) plus CLI smoke (pinned-matching catalog passes, stale pin fails loud naming the mismatch)",
+        "workspace clippy -D warnings clean, all tests green"
+      ],
+      "impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "notify SCE: sha256 field live, pin on next sync as offered"
+      ],
+      "publishable_decision_summary": "Catalog sha256 pin: the catalog-live authority input gains the same hash guard as every other gate input",
+      "publishable_changes_bullets": [
+        "[verifies_catalog].sha256 optional pin (epub_sha256 symmetry, hex-validated at config load): load_catalog re-hashes the file bytes and a mismatch fails LOUDLY — the catalog is the authority input of the R427 catalog-live confirmed branch, the last gate input without a hash guard",
+        "single load path (verb plus confirmation gate both route load_catalog) so neither can skip the pin; a --catalog override bypasses the pin by design (the pin makes no claim about a different file)",
+        "SCHEMA_GUIDE documents the pin plus re-pin flow; closes the SCE reply's open offer (they pin on next sync)"
+      ],
+      "publishable_verification_bullets": [
+        "config unit (non-hex pin rejected at load) plus CLI smoke (pinned-matching catalog passes, stale pin fails loud naming the mismatch)",
+        "workspace clippy -D warnings clean, all tests green"
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "notify SCE: sha256 field live, pin on next sync as offered"
+      ]
     }
   },
   "inventory_entries": {},

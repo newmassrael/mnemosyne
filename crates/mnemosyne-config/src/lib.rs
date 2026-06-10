@@ -921,6 +921,14 @@ pub struct VerifiesCatalogSection {
     /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
     #[serde(default = "default_severity_reject")]
     pub severity: Severity,
+    /// Optional sha256 pin of the catalog file (R428; `epub_sha256` symmetry).
+    /// When set, every catalog load re-hashes the file and fails LOUDLY on
+    /// mismatch — tamper/drift evidence at the Mnemosyne layer. The catalog is
+    /// the AUTHORITY input of the R427 catalog-live confirmed branch; with the
+    /// pin, it is the last gate input without a hash guard no longer.
+    /// Re-pin on every legitimate catalog change (same flow as `epub_sha256`).
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 /// Config discovery + load result.
@@ -982,6 +990,16 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             bail!(
                 "mnemosyne.toml: `workspace.spec_source.epub_path` and `epub_sha256` must be set together (or neither)"
             );
+        }
+    }
+    if let Some(cat) = &cfg.verifies_catalog {
+        if let Some(hash) = &cat.sha256 {
+            if !is_lowercase_sha256_hex(hash) {
+                bail!(
+  "mnemosyne.toml: `verifies_catalog.sha256` must be 64-char lowercase hex (got `{}`)",
+  hash
+  );
+            }
         }
     }
     // The `spec_drift` / `commit_ledger` / `content_drift` severities are now
@@ -1340,6 +1358,24 @@ severity = "block"
         assert!(
             chain.contains("unknown variant") && chain.contains("block"),
             "serde must reject the invalid severity value, got: {chain}"
+        );
+    }
+
+    #[test]
+    fn verifies_catalog_sha256_rejects_non_hex() {
+        // R428 — a malformed pin is a config error at load, not a silent skip.
+        let content = r#"
+[workspace]
+docs = ["docs/spec.md"]
+
+[verifies_catalog]
+path = "verifies-catalog.json"
+sha256 = "not-a-hash"
+"#;
+        let err = parse_config(content).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("64-char lowercase hex"),
+            "got: {err:#}"
         );
     }
 

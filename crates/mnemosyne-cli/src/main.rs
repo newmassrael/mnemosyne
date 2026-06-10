@@ -1611,9 +1611,12 @@ fn load_verifies_catalog_if_configured(
 ) -> Result<Option<mnemosyne_validate::verifies_linkage::VerifiesCatalog>> {
     match config.verifies_catalog.as_ref() {
         None => Ok(None),
-        Some(c) => mnemosyne_validate::verifies_linkage::load_catalog(&root.join(&c.path))
-            .map(Some)
-            .map_err(|e| anyhow!("{}", e)),
+        Some(c) => mnemosyne_validate::verifies_linkage::load_catalog(
+            &root.join(&c.path),
+            c.sha256.as_deref(),
+        )
+        .map(Some)
+        .map_err(|e| anyhow!("{}", e)),
     }
 }
 
@@ -1675,7 +1678,14 @@ fn cmd_validate_verifies_linkage(args: &[String]) -> Result<()> {
         None => cfg_section.map(|c| c.severity).unwrap_or(Severity::Reject),
     };
     let catalog_abs = root.join(&catalog_rel);
-    let catalog = load_catalog(&catalog_abs).map_err(|e| anyhow!("{}", e))?;
+    // The sha256 pin applies only to the CONFIG path — a `--catalog` override
+    // points at a different file the pin makes no claim about (R428).
+    let pin = if catalog_override.is_some() {
+        None
+    } else {
+        cfg_section.and_then(|c| c.sha256.as_deref())
+    };
+    let catalog = load_catalog(&catalog_abs, pin).map_err(|e| anyhow!("{}", e))?;
     let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;

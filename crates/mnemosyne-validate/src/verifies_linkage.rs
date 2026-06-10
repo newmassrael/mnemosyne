@@ -82,11 +82,33 @@ pub struct LinkageReport {
     pub examined: usize,
 }
 
-/// Load a catalog from disk (JSON, lenient on unknown fields).
-pub fn load_catalog(path: &Path) -> Result<VerifiesCatalog, String> {
-    let raw = std::fs::read_to_string(path)
+/// Load a catalog from disk (JSON, lenient on unknown fields). When
+/// `expected_sha256` is pinned (R428, `[verifies_catalog].sha256`), the file
+/// bytes are re-hashed first and a mismatch fails LOUDLY — the catalog is the
+/// authority input of the R427 catalog-live confirmed branch, so it gets the
+/// same tamper/drift evidence as every other gate input (`epub_sha256`
+/// symmetry). Single load path: the verb and the confirmation gate both come
+/// through here, so neither can skip the pin.
+pub fn load_catalog(path: &Path, expected_sha256: Option<&str>) -> Result<VerifiesCatalog, String> {
+    let bytes = std::fs::read(path)
         .map_err(|e| format!("verifies-catalog read {}: {}", path.display(), e))?;
-    serde_json::from_str(&raw)
+    if let Some(expected) = expected_sha256 {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        let actual: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        if actual != expected {
+            return Err(format!(
+                "verifies-catalog sha256 mismatch at {}: pinned {} but file hashes {} — \
+                 the catalog changed without a re-pin (or was tampered); re-generate, \
+                 review, and update [verifies_catalog].sha256",
+                path.display(),
+                expected,
+                actual
+            ));
+        }
+    }
+    serde_json::from_slice(&bytes)
         .map_err(|e| format!("verifies-catalog parse {}: {}", path.display(), e))
 }
 

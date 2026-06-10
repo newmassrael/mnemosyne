@@ -740,7 +740,11 @@ section) and `[verifies_catalog]` + `validate-verifies-linkage`
 targets; a child-of-declared binding is flagged `finer_than_declared`).
 The catalog is consumer-generated — Mnemosyne takes the neutral
 `verifies-catalog/v1` JSON (`entries[] = { file, symbol?, section_ids }`),
-never format-specific parsers.
+never format-specific parsers. Optionally pin the catalog file with
+`[verifies_catalog].sha256` (R428): every load re-hashes the file and a
+mismatch fails loudly — the catalog is the authority input of the
+catalog-live confirmed branch, so it carries the same tamper/drift
+evidence as `epub_sha256`. Re-pin on each legitimate catalog change.
 
 **Verification method precedence.** Where authoritative metadata
 exists, the deterministic linkage check is *primary*; model
