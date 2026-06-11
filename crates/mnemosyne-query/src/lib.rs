@@ -279,10 +279,13 @@ pub struct ChangelogLedgerView {
 
 /// `list_changelog` — the changelog ledger projected to views, in
 /// round-number order. `changelog_entries` is keyed by the prose entry_id
-/// (`Round <n> — …`) and iterates lexicographically — that key's string order
-/// is not numeric (digits compare left-to-right), so this sorts by the parsed
-/// round number, making the timeline chronological (ascending = oldest first;
-/// a viewer reverses
+/// (`Round <n><suffix> — …`) and the `BTreeMap` iterates lexicographically,
+/// which is NOT creation order — neither the numeric part (digits compare
+/// left-to-right) nor the alpha suffix (a base-26 column: `z` then `aa` then
+/// `ab` …, where lexicographic order wrongly puts `aa < lq < z`). So this
+/// sorts by [`round_order_key`]: numeric round, then the alpha suffix as a
+/// bijective base-26 column ordinal, then any sub-step tail — making the
+/// timeline chronological (ascending = oldest first; a viewer reverses
 /// client-side for newest-first). Entries whose key has no leading
 /// `Round <n>` sort last, then by key for stability. `limit` keeps only the
 /// LAST n entries (the newest — the session-load read; Round 470, pulled by
@@ -297,11 +300,7 @@ pub fn list_changelog(atomic_store: &AtomicStore, limit: Option<usize>) -> Chang
         .iter()
         .map(|(entry_id, atomic)| build_entry_view(entry_id, atomic, 0))
         .collect();
-    entries.sort_by(|a, b| {
-        let ka = round_number(&a.entry_id).unwrap_or(u32::MAX);
-        let kb = round_number(&b.entry_id).unwrap_or(u32::MAX);
-        ka.cmp(&kb).then_with(|| a.entry_id.cmp(&b.entry_id))
-    });
+    entries.sort_by_key(|e| round_order_key(&e.entry_id));
     let total = entries.len();
     if let Some(n) = limit {
         if n < total {
@@ -322,6 +321,48 @@ pub fn round_number(entry_id: &str) -> Option<u32> {
         .find(|c: char| !c.is_ascii_digit())
         .unwrap_or(rest.len());
     rest[..end].parse::<u32>().ok()
+}
+
+/// Round 474 — total-order sort key for a changelog entry_id, fixing the
+/// round ordering for the bijective base-26 alpha suffix the round labels
+/// carry.
+/// `round_number` alone groups every `Round 311*` at the same numeric round,
+/// so a lexicographic tiebreak on the raw id wrongly orders `311aa < 311lq <
+/// 311z` — yet creation order is `311z` (column 26) then `311aa` (27) then
+/// `311lq` (329). Returns `(round_num, alpha_column, tail)`:
+///
+/// - `round_num` — the leading numeric round (`311`); non-`Round <n>` keys
+///   (e.g. the stray `test`) get `u32::MAX` so they sort last, matching the
+///   prior `unwrap_or(u32::MAX)` placement.
+/// - `alpha_column` — the leading lowercase-alpha run read as an Excel-column
+///   ordinal (`""`=0, `"a"`=1, `"z"`=26, `"aa"`=27, `"lq"`=329); empty suffix
+///   sorts before `"a"` so `Round 311 < Round 311a`.
+/// - `tail` — whatever follows the alpha run (a `.1` dotted sub-round, a `-pre`
+///   prep step, an `a1` enumerated sub-step), compared lexicographically. All
+///   `311az*` share column 52 and stay grouped before `311ba` (column 53).
+///
+/// This is the single home for entry_id ORDERING; [`round_number`] stays the
+/// single home for entry_id -> numeric round (its other caller, the CLI
+/// ledger-round scan, wants exactly the numeric part), so the two do not drift.
+pub fn round_order_key(entry_id: &str) -> (u32, u64, String) {
+    let Some(rest) = entry_id.strip_prefix("Round ") else {
+        return (u32::MAX, u64::MAX, entry_id.to_string());
+    };
+    let digit_end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    let Ok(round_num) = rest[..digit_end].parse::<u32>() else {
+        return (u32::MAX, u64::MAX, entry_id.to_string());
+    };
+    let after_num = &rest[digit_end..];
+    let alpha_end = after_num
+        .find(|c: char| !c.is_ascii_lowercase())
+        .unwrap_or(after_num.len());
+    let mut alpha_column: u64 = 0;
+    for byte in after_num[..alpha_end].bytes() {
+        alpha_column = alpha_column * 26 + u64::from(byte - b'a' + 1);
+    }
+    (round_num, alpha_column, after_num[alpha_end..].to_string())
 }
 
 /// `parent_doc` marker for changelog entry views — entries live in the atomic
@@ -1334,6 +1375,73 @@ mod tests {
         assert_eq!(hits[0].target_kind, TermTargetKind::ChangelogEntry);
         assert_eq!(hits[0].field_path, "entry_id");
         assert_eq!(hits[0].line_context, "Round 466 — playthrough manuscript");
+    }
+
+    #[test]
+    fn round_order_key_reads_alpha_suffix_as_base26_column() {
+        // The cross-round bug this closes: lexicographic ties put 311aa < 311lq
+        // < 311z, but creation order is 311z (col 26) < 311aa (27) < 311lq (329).
+        assert!(round_order_key("Round 311z") < round_order_key("Round 311aa"));
+        assert!(round_order_key("Round 311aa") < round_order_key("Round 311lq"));
+        // empty suffix precedes the first column.
+        assert!(round_order_key("Round 311") < round_order_key("Round 311a"));
+        // an enumerated sub-step of `a` precedes the `aa` column.
+        assert!(round_order_key("Round 311a1") < round_order_key("Round 311aa"));
+        // a `-pre` sub-step stays grouped with its column, before the next one.
+        assert!(round_order_key("Round 311az-pre") < round_order_key("Round 311ba"));
+        // a non-`Round <n>` key (the stray `test`) sorts last.
+        assert!(round_order_key("Round 999zz") < round_order_key("test"));
+    }
+
+    #[test]
+    fn list_changelog_orders_alpha_suffix_by_creation_not_lexicographic() {
+        // The BTreeMap iterates keys lexicographically, which is NOT creation
+        // order for the base-26 alpha suffix. list_changelog must reflect
+        // creation order so a session-load `--limit N` read picks the
+        // genuinely-newest entries.
+        let mut store = AtomicStore::default();
+        for id in [
+            "Round 311aa",
+            "Round 311z",
+            "Round 311lq",
+            "Round 311",
+            "Round 47",
+            "test",
+            "Round 311a",
+        ] {
+            store
+                .changelog_entries
+                .insert(id.to_string(), AtomicChangelogEntry::default());
+        }
+
+        let view = list_changelog(&store, None);
+        let order: Vec<&str> = view.entries.iter().map(|e| e.entry_id.as_str()).collect();
+        assert_eq!(
+            order,
+            vec![
+                "Round 47",
+                "Round 311",
+                "Round 311a",
+                "Round 311z",
+                "Round 311aa",
+                "Round 311lq",
+                "test",
+            ],
+        );
+
+        // `--limit` keeps the newest N by creation order. The pre-fix bug
+        // returned the lexicographic tail `["Round 311z", "test"]`.
+        let limited = list_changelog(&store, Some(2));
+        let newest: Vec<&str> = limited
+            .entries
+            .iter()
+            .map(|e| e.entry_id.as_str())
+            .collect();
+        assert_eq!(newest, vec!["Round 311lq", "test"]);
+        assert_eq!(
+            limited.total, 7,
+            "total reports the full ledger, not the limited slice"
+        );
     }
 
     #[test]

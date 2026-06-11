@@ -9319,6 +9319,38 @@
         "confirmatory-venue bias recorded as an honesty bound, not hidden: the experiment is built where the ledger should pay off, so a null result (notes still suffice at 60 scenes) is the strong finding and a confirmation is expected-direction; cost (12 authoring sessions + 2x-volume extraction + 3 judges, several times the A/B ~$90) recorded as an accepted precondition",
         "this design session is barred from the execution legs — a session that knows the hypothesis, premise, and rubric may not author Belvoir prose or its store (S1-S17 are session-separated blind runs, the R453/R469 keystone)"
       ]
+    },
+    "Round 474": {
+      "decision_summary": "R474 list_changelog round-order fix: sort by round_order_key (numeric round + base-26 alpha column + tail) so 311z<311aa<311lq; --limit N returns the genuinely-newest, not lexicographic.",
+      "changes_bullets": [
+        "mnemosyne-query list_changelog: sort by new round_order_key, not round_number + lexicographic id tiebreak.",
+        "round_order_key parses Round <n><alpha><tail>: numeric round, alpha suffix as bijective base-26 column, then tail lex.",
+        "round_number left intact (numeric-only) for the CLI ledger-round scan; no SSOT drift."
+      ],
+      "verification_bullets": [
+        "new unit tests: round_order_key base-26 column ordering + list_changelog creation-order (311z<311aa<311lq).",
+        "--limit N now returns the genuinely-newest entries, not the lexicographic tail.",
+        "cargo test -p mnemosyne-query: 35 passed; fmt --check clean; clippy -D warnings clean."
+      ],
+      "carry_forward_bullets": [
+        "changelog_entries is a BTreeMap (insertion order lost); ordering relies on entry_id parse, not a stored ordinal.",
+        "sub-step tail (.1 / -pre / a1) orders lexicographically within its alpha column; deterministic, exact intra-round order is best-effort."
+      ],
+      "publishable_decision_summary": "R474 list_changelog round-order fix: sort by round_order_key (numeric round + base-26 alpha column + tail) so 311z<311aa<311lq; --limit N returns the genuinely-newest, not lexicographic.",
+      "publishable_changes_bullets": [
+        "mnemosyne-query list_changelog: sort by new round_order_key, not round_number + lexicographic id tiebreak.",
+        "round_order_key parses Round <n><alpha><tail>: numeric round, alpha suffix as bijective base-26 column, then tail lex.",
+        "round_number left intact (numeric-only) for the CLI ledger-round scan; no SSOT drift."
+      ],
+      "publishable_verification_bullets": [
+        "new unit tests: round_order_key base-26 column ordering + list_changelog creation-order (311z<311aa<311lq).",
+        "--limit N now returns the genuinely-newest entries, not the lexicographic tail.",
+        "cargo test -p mnemosyne-query: 35 passed; fmt --check clean; clippy -D warnings clean."
+      ],
+      "publishable_carry_forward_bullets": [
+        "changelog_entries is a BTreeMap (insertion order lost); ordering relies on entry_id parse, not a stored ordinal.",
+        "sub-step tail (.1 / -pre / a1) orders lexicographically within its alpha column; deterministic, exact intra-round order is best-effort."
+      ]
     }
   },
   "inventory_entries": {},
