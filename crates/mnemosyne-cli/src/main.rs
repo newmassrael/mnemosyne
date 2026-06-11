@@ -304,6 +304,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
+        "import-edge-proposals" => cmd_import_edge_proposals(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -445,6 +446,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 462 — edge-discovery input package: every fact row (claim sha256 + recorded edges) + succession-gap hints"
+    );
+    println!(
+        " {} import-edge-proposals --proposals <edge-proposals.json> [--dry-run] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 463 — all-or-nothing reviewed import of proposed succession/conflict edges (two-sided claim-sha staleness, fill-blanks, cycle-guarded)"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -2301,6 +2309,78 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
         );
         for v in &report.verdicts {
             println!("  [{}] {}", v.fact, v.verdict);
+        }
+        println!(
+            "accepted={} rejected={} applied={}",
+            report.accepted, report.rejected, report.applied
+        );
+    }
+    if report.rejected > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 463 — reviewed import of proposed succession/conflict edges
+/// (`import-edge-proposals`, design sec 7.16 Round B): all-or-nothing
+/// with full per-proposal verdicts, `--dry-run` for the review loop.
+/// Exit 1 whenever any proposal rejects (both modes — scripts must see
+/// it), exit 0 only on a fully-accepted file.
+fn cmd_import_edge_proposals(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut dry_run = false;
+    let mut proposals: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--dry-run" => dry_run = true,
+            "--proposals" => {
+                proposals = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--proposals missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let proposals = proposals.ok_or_else(|| anyhow!("--proposals <path> arg required"))?;
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::import_edge_proposals_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        std::path::Path::new(&proposals),
+        dry_run,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== edge proposals {} — file sha256 {} ===",
+            if report.dry_run {
+                "(dry run)"
+            } else {
+                "import"
+            },
+            report.file_sha256.get(..16).unwrap_or(&report.file_sha256)
+        );
+        for v in &report.verdicts {
+            println!("  [{} {} -> {}] {}", v.kind, v.fact, v.target, v.verdict);
         }
         println!(
             "accepted={} rejected={} applied={}",

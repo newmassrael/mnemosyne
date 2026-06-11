@@ -3766,18 +3766,113 @@ fn build_typed_claim(
     })
 }
 
+/// THE closed invariant set of one succession edge (Round 463 extraction —
+/// every write path that can produce `successor --supersedes--> target`
+/// routes here: `add_fact` / `import_facts` / `amend_fact` via
+/// [`validate_and_stamp_fact_refs`], and [`import_edge_proposals`]
+/// directly; the R305/R446 one-builder-site rule applied to edges):
+/// the target exists, succession is in-frame (cross-frame disagreement is
+/// data, design sec 7.3), the target's branch is this world-line or on its
+/// fork lineage (Round 438), and the resulting chain is ACYCLIC.
+///
+/// The cycle walk closes a hole verified live in Round 461: `add_fact` is
+/// cycle-safe only by construction (the target must pre-exist), but
+/// `amend_fact` retargeting and `import_facts` forward refs could both
+/// close an A⇄B loop with exit 0 — after which the cycle's facts silently
+/// never hold anywhere (each derives the other's end). `staged_edges` is
+/// the outbound overlay for edges not yet in `visible` (the edge-proposals
+/// import validates jointly — two proposals must not close what each alone
+/// would not); the candidate edge itself is overlaid internally.
+fn check_succession_edge(
+    fact_id: &str,
+    frame: &str,
+    branch: &str,
+    target: &str,
+    visible: &BTreeMap<String, NarrativeFact>,
+    branches: &BTreeMap<String, Branch>,
+    staged_edges: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    match visible.get(target) {
+        None => {
+            return Err(format!(
+                "fact `{fact_id}`: supersedes_in_frame `{target}` not present \
+                 (succession needs an existing predecessor; fail-loud)"
+            ));
+        }
+        Some(t) if t.frame != frame => {
+            return Err(format!(
+                "fact `{fact_id}` (frame `{frame}`): supersedes_in_frame `{target}` lives in \
+                 frame `{}` — in-frame succession only (cross-frame disagreement is \
+                 data, not succession)",
+                t.frame
+            ));
+        }
+        Some(t)
+            if t.branch != branch
+                && !mnemosyne_core::fork_chain(branches, branch)?
+                    .iter()
+                    .any(|(ancestor, _)| *ancestor == t.branch) =>
+        {
+            return Err(format!(
+                "fact `{fact_id}` (branch `{branch}`): supersedes_in_frame `{target}` lives on \
+                 branch `{}`, which is not on this world-line's fork lineage — \
+                 succession never crosses world-lines (divergence is data, not \
+                 succession)",
+                t.branch
+            ));
+        }
+        Some(_) => {}
+    }
+    // Acyclicity: walk the outbound chain from the candidate edge. Each
+    // fact carries at most one outbound pointer, so the walk is linear; a
+    // revisit means the candidate closes (or runs into) a loop — reject
+    // loud either way (a pre-existing loop is out-of-band corruption).
+    let outbound = |id: &str| -> Option<String> {
+        if id == fact_id {
+            Some(target.to_string())
+        } else if let Some(staged) = staged_edges.get(id) {
+            Some(staged.clone())
+        } else {
+            visible.get(id).and_then(|f| f.supersedes_in_frame.clone())
+        }
+    };
+    let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    visited.insert(fact_id.to_string());
+    let mut cur = outbound(fact_id);
+    while let Some(next) = cur {
+        if !visited.insert(next.clone()) {
+            return Err(format!(
+                "fact `{fact_id}`: supersedes_in_frame `{target}` closes a succession \
+                 cycle through `{next}` — a fact cannot (transitively) supersede \
+                 itself; in-world change is a NEW successor fact, never a loop"
+            ));
+        }
+        cur = outbound(&next);
+    }
+    Ok(())
+}
+
+/// Whether a conflict edge between `a` and `b` is already recorded on
+/// EITHER side (edges are read symmetrically — the Round 463 shared
+/// predicate both conflict write paths consult).
+fn conflict_edge_recorded(facts: &BTreeMap<String, NarrativeFact>, a: &str, b: &str) -> bool {
+    facts
+        .get(a)
+        .is_some_and(|f| f.conflicts_with.iter().any(|c| c.target == b))
+        || facts
+            .get(b)
+            .is_some_and(|f| f.conflicts_with.iter().any(|c| c.target == a))
+}
+
 /// Cross-fact ref check + judgment stamping for one fact against a
 /// visibility set (the caller's store ∪ manifest view). Conflict targets
 /// must exist, and each assertion is STAMPED with the target's current
 /// claim sha256 (Round 439 — judgment-time content pin, computed here and
 /// never caller-supplied). `pays_off` targets must exist but stay
 /// UNPINNED (Round 442 — like succession they relate fact identities,
-/// not wordings). `supersedes_in_frame` additionally enforces SAME
-/// scope — `(frame, branch)`: cross-frame disagreement is data, never
-/// succession (design sec 7.3). Cross-branch succession is world-line data
-/// EXCEPT along the fork lineage (Round 438): a forked world may supersede
-/// a belief it inherited from an ancestor — that is in-world change inside
-/// ONE world-line, not cross-world divergence.
+/// not wordings). `supersedes_in_frame` rides the full shared invariant
+/// set ([`check_succession_edge`]): in-frame, fork-lineage branch, and
+/// acyclic chain.
 fn validate_and_stamp_fact_refs(
     fact_id: &str,
     fact: &mut NarrativeFact,
@@ -3805,37 +3900,15 @@ fn validate_and_stamp_fact_refs(
         }
     }
     if let Some(target) = &fact.supersedes_in_frame {
-        match visible.get(target) {
-            None => {
-                return Err(format!(
-                    "fact `{fact_id}`: supersedes_in_frame `{target}` not present \
-                     (succession needs an existing predecessor; fail-loud)"
-                ));
-            }
-            Some(t) if t.frame != fact.frame => {
-                return Err(format!(
-                    "fact `{fact_id}` (frame `{}`): supersedes_in_frame `{target}` lives in \
-                     frame `{}` — in-frame succession only (cross-frame disagreement is \
-                     data, not succession)",
-                    fact.frame, t.frame
-                ));
-            }
-            Some(t)
-                if t.branch != fact.branch
-                    && !mnemosyne_core::fork_chain(branches, &fact.branch)?
-                        .iter()
-                        .any(|(ancestor, _)| *ancestor == t.branch) =>
-            {
-                return Err(format!(
-                    "fact `{fact_id}` (branch `{}`): supersedes_in_frame `{target}` lives on \
-                     branch `{}`, which is not on this world-line's fork lineage — \
-                     succession never crosses world-lines (divergence is data, not \
-                     succession)",
-                    fact.branch, t.branch
-                ));
-            }
-            Some(_) => {}
-        }
+        check_succession_edge(
+            fact_id,
+            &fact.frame,
+            &fact.branch,
+            target,
+            visible,
+            branches,
+            &BTreeMap::new(),
+        )?;
     }
     Ok(())
 }
@@ -4367,15 +4440,7 @@ pub fn add_fact_conflict(
             "conflicts_with `{other}` not present in atomic store"
         )));
     }
-    let already = store.narrative_facts[id]
-        .conflicts_with
-        .iter()
-        .any(|c| c.target == other)
-        || store.narrative_facts[other]
-            .conflicts_with
-            .iter()
-            .any(|c| c.target == id);
-    if already {
+    if conflict_edge_recorded(&store.narrative_facts, id, other) {
         return Err(AtomicMutateError::FrozenLedger(format!(
             "conflict edge `{id}` <-> `{other}` already recorded (idempotent)"
         )));
@@ -4722,6 +4787,329 @@ pub fn import_typing_proposals(
         written = receipt.written_bytes;
     }
     Ok(TypingImportReport {
+        file_sha256: file_sha256.to_string(),
+        verdicts,
+        accepted,
+        rejected,
+        dry_run,
+        applied: apply,
+        written_bytes: written,
+    })
+}
+
+// ============================================================================
+// Edge-proposals import (Round 463, design sec 7.16 Round B).
+// ============================================================================
+
+/// One proposed succession edge: `successor --supersedes--> predecessor`,
+/// authored OUTSIDE the substrate and quarantined here (the sec 7.15
+/// pattern). The R439 judgment-time pin goes TWO-SIDED: an edge judgment
+/// interprets two claim texts, so the proposal stamps both and import
+/// re-checks both — either fact amended after proposing fails loud as
+/// stale. `deny_unknown_fields`: a stray key (e.g. a confidence score the
+/// Goodhart guard bans) fails loud, never silently dropped.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SuccessionProposal {
+    /// The fact gaining the backward pointer (must currently carry none —
+    /// fill-blanks only; retargeting is manual amend territory).
+    pub successor: String,
+    /// The predecessor it supersedes in-frame.
+    pub predecessor: String,
+    /// sha256 of the successor's claim as interpreted.
+    pub successor_claim_sha256: String,
+    /// sha256 of the predecessor's claim as interpreted.
+    pub predecessor_claim_sha256: String,
+    /// Prose justification for the reviewer (the reviewable substance).
+    pub rationale: String,
+}
+
+/// One proposed conflict edge (recorded semantic judgment, stored on
+/// `fact` and read symmetrically) — both endpoint claims pinned, like
+/// [`SuccessionProposal`].
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConflictProposal {
+    /// The fact the edge is stored on.
+    pub fact: String,
+    /// The fact it is judged to contradict.
+    pub target: String,
+    /// sha256 of `fact`'s claim as interpreted.
+    pub fact_claim_sha256: String,
+    /// sha256 of `target`'s claim as interpreted.
+    pub target_claim_sha256: String,
+    /// Prose justification for the reviewer (the reviewable substance).
+    pub rationale: String,
+}
+
+/// The `edge-proposals/v1` artifact (design sec 7.16). As-built deviation
+/// from the R461 "kind-tagged" wording, declared in Round 463: serde does
+/// not support `deny_unknown_fields` on internally tagged enums, and
+/// fail-loud parsing outranks the cosmetic tag (a silently-dropped
+/// `confidence` key would defeat the Goodhart guard) — so the two kinds
+/// are two typed arrays, each entry strictly parsed.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EdgeProposalsFile {
+    /// Must be exactly `edge-proposals/v1`.
+    pub schema: String,
+    /// Optional free-form note from the proposer.
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default)]
+    pub succession: Vec<SuccessionProposal>,
+    #[serde(default)]
+    pub conflicts: Vec<ConflictProposal>,
+}
+
+/// Load + shape-check an `edge-proposals/v1` file; returns the parsed
+/// artifact with the file content's sha256 (the audit anchor the import
+/// receipt carries).
+pub fn load_edge_proposals(path: &Path) -> Result<(EdgeProposalsFile, String), String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("edge-proposals: cannot read `{}`: {e}", path.display()))?;
+    let file: EdgeProposalsFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("edge-proposals: `{}` does not parse: {e}", path.display()))?;
+    if file.schema != "edge-proposals/v1" {
+        return Err(format!(
+            "edge-proposals: schema `{}` is not `edge-proposals/v1` (fail-loud — \
+             an unknown schema must not half-apply)",
+            file.schema
+        ));
+    }
+    if file.succession.is_empty() && file.conflicts.is_empty() {
+        return Err("edge-proposals: no proposals (nothing to import)".to_string());
+    }
+    Ok((file, sha256_hex(raw.as_bytes())))
+}
+
+/// One per-proposal verdict (full list always surfaced — no silent caps).
+/// `kind` = `succession` | `conflict`; for succession `fact` is the
+/// successor and `target` the predecessor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EdgeProposalVerdict {
+    pub kind: &'static str,
+    pub fact: String,
+    pub target: String,
+    /// `accepted`, or the reject reason verbatim.
+    pub verdict: String,
+}
+
+/// The import outcome both wires emit (the [`TypingImportReport`] shape).
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeImportReport {
+    /// sha256 of the proposals file content (audit anchor).
+    pub file_sha256: String,
+    pub verdicts: Vec<EdgeProposalVerdict>,
+    pub accepted: usize,
+    pub rejected: usize,
+    pub dry_run: bool,
+    pub applied: bool,
+    pub written_bytes: usize,
+}
+
+/// Re-check one proposal-side claim pin against the current store text
+/// (the R439 staleness rule, two-sided for edges).
+fn check_edge_pin(
+    facts: &BTreeMap<String, NarrativeFact>,
+    fact_id: &str,
+    stamped: &str,
+    side: &str,
+) -> Result<(), String> {
+    let current = sha256_hex(facts[fact_id].claim.as_bytes());
+    if current != stamped {
+        return Err(format!(
+            "stale proposal: {side} `{fact_id}` claim sha256 is `{current}` but the \
+             proposal interpreted `{stamped}` — the claim changed after proposing; \
+             re-run discovery against the current text"
+        ));
+    }
+    Ok(())
+}
+
+/// Import succession + conflict edges from a reviewed `edge-proposals/v1`
+/// artifact (Round 463, design sec 7.16 Round B). ALL-OR-NOTHING with full
+/// per-proposal verdicts; `dry_run` runs the identical validation and
+/// writes nothing. Succession invariants ride [`check_succession_edge`] —
+/// the ONE site every succession write path shares — with the staged-edge
+/// overlay, so two proposals cannot jointly close a cycle each alone would
+/// not. Conflict invariants ride the same predicates as
+/// [`add_fact_conflict`]. Fill-blanks only; both endpoint pins re-checked
+/// per proposal (a claim amended after proposing rejects loud).
+pub fn import_edge_proposals(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    file: &EdgeProposalsFile,
+    file_sha256: &str,
+    dry_run: bool,
+) -> Result<EdgeImportReport, AtomicMutateError> {
+    let facts = &store.narrative_facts;
+    let mut verdicts: Vec<EdgeProposalVerdict> = Vec::new();
+    // Every successor seen, ACCEPTED OR NOT (the R459 rule: a duplicate is
+    // ambiguous regardless of either verdict).
+    let mut seen_successors: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // Accepted succession edges, successor -> predecessor (the joint-
+    // validation overlay AND the apply list).
+    let mut staged_succession: BTreeMap<String, String> = BTreeMap::new();
+    for p in &file.succession {
+        let successor = p.successor.trim();
+        let predecessor = p.predecessor.trim();
+        let verdict = (|| -> Result<(), String> {
+            if successor.is_empty() || predecessor.is_empty() {
+                return Err("successor and predecessor both mandatory (non-empty)".to_string());
+            }
+            if !seen_successors.insert(successor.to_string()) {
+                return Err(format!(
+                    "duplicate proposal for successor `{successor}` in one file — \
+                     ambiguous, keep exactly one"
+                ));
+            }
+            let Some(s) = facts.get(successor) else {
+                return Err(format!(
+                    "successor `{successor}` not present in atomic store (proposals \
+                     target existing facts; add_fact creates)"
+                ));
+            };
+            if s.supersedes_in_frame.is_some() {
+                return Err(format!(
+                    "successor `{successor}` already carries a succession pointer — \
+                     fill-blanks only (retargeting is manual author territory: \
+                     amend-fact)"
+                ));
+            }
+            if !facts.contains_key(predecessor) {
+                return Err(format!(
+                    "predecessor `{predecessor}` not present in atomic store"
+                ));
+            }
+            check_edge_pin(facts, successor, &p.successor_claim_sha256, "successor")?;
+            check_edge_pin(
+                facts,
+                predecessor,
+                &p.predecessor_claim_sha256,
+                "predecessor",
+            )?;
+            if p.rationale.trim().is_empty() {
+                return Err("rationale mandatory (the reviewable substance)".to_string());
+            }
+            check_succession_edge(
+                successor,
+                &s.frame,
+                &s.branch,
+                predecessor,
+                facts,
+                &store.branches,
+                &staged_succession,
+            )?;
+            staged_succession.insert(successor.to_string(), predecessor.to_string());
+            Ok(())
+        })();
+        verdicts.push(EdgeProposalVerdict {
+            kind: "succession",
+            fact: successor.to_string(),
+            target: predecessor.to_string(),
+            verdict: verdict.map_or_else(|reason| reason, |()| "accepted".to_string()),
+        });
+    }
+    // Accepted conflict pairs, canonical order (dedup within the file).
+    let mut staged_conflicts: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    let mut conflict_applies: Vec<(String, String)> = Vec::new();
+    for p in &file.conflicts {
+        let fact_id = p.fact.trim();
+        let target = p.target.trim();
+        let verdict = (|| -> Result<(), String> {
+            if fact_id.is_empty() || target.is_empty() {
+                return Err("fact and target both mandatory (non-empty)".to_string());
+            }
+            if fact_id == target {
+                return Err("a fact cannot conflict with itself".to_string());
+            }
+            for (id, side) in [(fact_id, "fact"), (target, "target")] {
+                if !facts.contains_key(id) {
+                    return Err(format!("{side} `{id}` not present in atomic store"));
+                }
+            }
+            let key = if fact_id < target {
+                (fact_id.to_string(), target.to_string())
+            } else {
+                (target.to_string(), fact_id.to_string())
+            };
+            // Seen regardless of verdict (the R459 duplicate rule).
+            if !staged_conflicts.insert(key) {
+                return Err(format!(
+                    "duplicate proposal for conflict pair `{fact_id}` <-> `{target}` \
+                     in one file — ambiguous, keep exactly one"
+                ));
+            }
+            if conflict_edge_recorded(facts, fact_id, target) {
+                return Err(format!(
+                    "conflict edge `{fact_id}` <-> `{target}` already recorded — \
+                     never re-propose existing structure"
+                ));
+            }
+            check_edge_pin(facts, fact_id, &p.fact_claim_sha256, "fact")?;
+            check_edge_pin(facts, target, &p.target_claim_sha256, "target")?;
+            if p.rationale.trim().is_empty() {
+                return Err("rationale mandatory (the reviewable substance)".to_string());
+            }
+            conflict_applies.push((fact_id.to_string(), target.to_string()));
+            Ok(())
+        })();
+        verdicts.push(EdgeProposalVerdict {
+            kind: "conflict",
+            fact: fact_id.to_string(),
+            target: target.to_string(),
+            verdict: verdict.map_or_else(|reason| reason, |()| "accepted".to_string()),
+        });
+    }
+    let accepted = staged_succession.len() + conflict_applies.len();
+    let rejected = verdicts.len() - accepted;
+    let apply = !dry_run && rejected == 0;
+    let mut written = 0;
+    if apply {
+        let succession_count = staged_succession.len();
+        let conflict_count = conflict_applies.len();
+        for (successor, predecessor) in staged_succession {
+            // Unwrap is total: validated present above, nothing mutates
+            // the map in between.
+            store
+                .narrative_facts
+                .get_mut(&successor)
+                .unwrap()
+                .supersedes_in_frame = Some(predecessor);
+        }
+        for (fact_id, target) in conflict_applies {
+            // The write-time stamp equals the verified pin by construction
+            // (the pin was checked against the current claim above); it is
+            // still COMPUTED here, never copied from the proposal — the
+            // R439 never-caller-supplied rule.
+            let stamp = sha256_hex(store.narrative_facts[&target].claim.as_bytes());
+            store
+                .narrative_facts
+                .get_mut(&fact_id)
+                .unwrap()
+                .conflicts_with
+                .push(ConflictAssertion {
+                    target,
+                    target_claim_sha256: stamp,
+                });
+        }
+        let receipt = save_with_receipt(
+            store,
+            sidecar_path,
+            "import_edge_proposals",
+            "narrative_fact",
+            &format!(
+                "edge-proposals {} ({} succession + {} conflict edge(s))",
+                file_sha256.get(..16).unwrap_or(file_sha256),
+                succession_count,
+                conflict_count
+            ),
+        )?;
+        written = receipt.written_bytes;
+    }
+    Ok(EdgeImportReport {
         file_sha256: file_sha256.to_string(),
         verdicts,
         accepted,
@@ -8246,6 +8634,452 @@ mod tests {
         assert!(load_typing_proposals(&empty)
             .unwrap_err()
             .contains("empty proposals list"));
+    }
+
+    // ---- edge-proposals import (Round 463, design sec 7.16 Round B) ----
+
+    /// Substrate for the edge-import tests: two frames, two untyped gt
+    /// facts in chain position, one cross-frame fact.
+    fn edge_substrate(path: &Path) -> AtomicStore {
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        import_facts(
+            &mut store,
+            path,
+            &FactsManifest {
+                frames: vec![
+                    FrameImport {
+                        frame_id: "gt".to_string(),
+                        description: String::new(),
+                    },
+                    FrameImport {
+                        frame_id: "kara".to_string(),
+                        description: String::new(),
+                    },
+                ],
+                branches: vec![],
+                entities: vec![],
+                predicates: vec![],
+                facts: vec![
+                    sample_fact("f-1", "gt"),
+                    FactImport {
+                        claim: "kara is alive".to_string(),
+                        canon_from: "ch-2".to_string(),
+                        evidence: vec!["ch-2".to_string()],
+                        ..sample_fact("f-2", "gt")
+                    },
+                    sample_fact("f-3", "kara"),
+                ],
+            },
+        )
+        .unwrap();
+        store
+    }
+
+    fn succession_proposal(
+        successor: &str,
+        s_claim: &str,
+        predecessor: &str,
+        p_claim: &str,
+    ) -> SuccessionProposal {
+        SuccessionProposal {
+            successor: successor.to_string(),
+            predecessor: predecessor.to_string(),
+            successor_claim_sha256: sha256_hex(s_claim.as_bytes()),
+            predecessor_claim_sha256: sha256_hex(p_claim.as_bytes()),
+            rationale: "r".to_string(),
+        }
+    }
+
+    fn conflict_proposal(
+        fact: &str,
+        f_claim: &str,
+        target: &str,
+        t_claim: &str,
+    ) -> ConflictProposal {
+        ConflictProposal {
+            fact: fact.to_string(),
+            target: target.to_string(),
+            fact_claim_sha256: sha256_hex(f_claim.as_bytes()),
+            target_claim_sha256: sha256_hex(t_claim.as_bytes()),
+            rationale: "r".to_string(),
+        }
+    }
+
+    fn edge_file(
+        succession: Vec<SuccessionProposal>,
+        conflicts: Vec<ConflictProposal>,
+    ) -> EdgeProposalsFile {
+        EdgeProposalsFile {
+            schema: "edge-proposals/v1".to_string(),
+            comment: String::new(),
+            succession,
+            conflicts,
+        }
+    }
+
+    /// Round 461 regression, hole 1: amend-fact retargeting can no longer
+    /// close an A⇄B succession cycle (verified live exit-0 before the
+    /// shared cycle guard).
+    #[test]
+    fn amend_fact_succession_cycle_rejects() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = edge_substrate(&path);
+        // f-2 supersedes f-1 (legal), then amend f-1 to supersede f-2.
+        amend_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                claim: "kara is alive".to_string(),
+                canon_from: "ch-2".to_string(),
+                evidence: vec!["ch-2".to_string()],
+                supersedes_in_frame: Some("f-1".to_string()),
+                ..sample_fact("f-2", "gt")
+            },
+            "chain it",
+        )
+        .unwrap();
+        let err = amend_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                supersedes_in_frame: Some("f-2".to_string()),
+                ..sample_fact("f-1", "gt")
+            },
+            "cycle attempt",
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("cycle"),
+            "the shared guard rejects: {err}"
+        );
+        assert!(
+            store.narrative_facts["f-1"].supersedes_in_frame.is_none(),
+            "store untouched"
+        );
+    }
+
+    /// Round 461 regression, hole 2: import-facts forward refs can no
+    /// longer close a mutual-supersession cycle in one manifest.
+    #[test]
+    fn import_facts_forward_ref_succession_cycle_rejects() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let err = import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: vec![FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![],
+                entities: vec![],
+                predicates: vec![],
+                facts: vec![
+                    FactImport {
+                        supersedes_in_frame: Some("f-d".to_string()),
+                        ..sample_fact("f-c", "gt")
+                    },
+                    FactImport {
+                        supersedes_in_frame: Some("f-c".to_string()),
+                        ..sample_fact("f-d", "gt")
+                    },
+                ],
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("cycle"), "{err}");
+        assert!(store.narrative_facts.is_empty(), "nothing staged survives");
+    }
+
+    /// Field-invariant parity (the R305 rule applied to succession): the
+    /// fact write path and the proposals import accept and reject the
+    /// SAME edge cases — cross-frame target, missing target, cycle.
+    #[test]
+    fn succession_invariant_parity_across_write_paths() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        // Cross-frame: both paths reject with the in-frame rule.
+        let mut store = edge_substrate(&path);
+        let via_fact = add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                supersedes_in_frame: Some("f-3".to_string()),
+                ..sample_fact("f-new", "gt")
+            },
+        )
+        .unwrap_err();
+        let file = edge_file(
+            vec![succession_proposal(
+                "f-1",
+                "the count is an eccentric nobleman",
+                "f-3",
+                "the count is an eccentric nobleman",
+            )],
+            vec![],
+        );
+        let report = import_edge_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(via_fact.to_string().contains("in-frame succession only"));
+        assert!(report.verdicts[0]
+            .verdict
+            .contains("in-frame succession only"));
+        // Missing target: both paths reject on existence.
+        let via_fact = add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                supersedes_in_frame: Some("f-ghost".to_string()),
+                ..sample_fact("f-new", "gt")
+            },
+        )
+        .unwrap_err();
+        let file = edge_file(
+            vec![succession_proposal(
+                "f-1",
+                "the count is an eccentric nobleman",
+                "f-ghost",
+                "x",
+            )],
+            vec![],
+        );
+        let report = import_edge_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(via_fact.to_string().contains("not present"));
+        assert!(report.verdicts[0].verdict.contains("not present"));
+        // Legal in-frame edge: both paths accept (the positive half of
+        // parity — same inputs, same verdict).
+        let mut store_b = edge_substrate(&tmp.path().join("b.json"));
+        add_fact(
+            &mut store_b,
+            &tmp.path().join("b.json"),
+            &FactImport {
+                supersedes_in_frame: Some("f-1".to_string()),
+                claim: "via fact path".to_string(),
+                ..sample_fact("f-new", "gt")
+            },
+        )
+        .unwrap();
+        let file = edge_file(
+            vec![succession_proposal(
+                "f-2",
+                "kara is alive",
+                "f-1",
+                "the count is an eccentric nobleman",
+            )],
+            vec![],
+        );
+        let report = import_edge_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(report.applied, "{:?}", report.verdicts);
+    }
+
+    /// All-or-nothing with the TWO-SIDED staleness pin: one stale endpoint
+    /// blocks the whole file; the corrected file dry-runs (no write) then
+    /// applies atomically — succession pointer set, conflict edge stamped.
+    #[test]
+    fn edge_proposals_import_all_or_nothing_two_sided_pins() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = edge_substrate(&path);
+        let stale = edge_file(
+            vec![succession_proposal(
+                "f-2",
+                "kara is alive",
+                "f-1",
+                "the count is an eccentric nobleman",
+            )],
+            vec![conflict_proposal(
+                "f-3",
+                "an outdated claim text",
+                "f-1",
+                "the count is an eccentric nobleman",
+            )],
+        );
+        let report = import_edge_proposals(&mut store, &path, &stale, "sha", false).unwrap();
+        assert_eq!((report.accepted, report.rejected), (1, 1));
+        assert!(!report.applied);
+        assert!(report.verdicts[1].verdict.contains("stale proposal"));
+        assert!(
+            store.narrative_facts["f-2"].supersedes_in_frame.is_none(),
+            "all-or-nothing: nothing applies while any proposal rejects"
+        );
+        let good = edge_file(
+            vec![succession_proposal(
+                "f-2",
+                "kara is alive",
+                "f-1",
+                "the count is an eccentric nobleman",
+            )],
+            vec![conflict_proposal(
+                "f-3",
+                "the count is an eccentric nobleman",
+                "f-1",
+                "the count is an eccentric nobleman",
+            )],
+        );
+        let dry = import_edge_proposals(&mut store, &path, &good, "sha", true).unwrap();
+        assert!(dry.dry_run && !dry.applied && dry.rejected == 0);
+        assert_eq!(dry.written_bytes, 0);
+        assert!(store.narrative_facts["f-2"].supersedes_in_frame.is_none());
+        let real = import_edge_proposals(&mut store, &path, &good, "sha", false).unwrap();
+        assert!(real.applied);
+        assert!(real.written_bytes > 0);
+        assert_eq!(
+            store.narrative_facts["f-2"].supersedes_in_frame.as_deref(),
+            Some("f-1")
+        );
+        let edge = &store.narrative_facts["f-3"].conflicts_with[0];
+        assert_eq!(edge.target, "f-1");
+        assert_eq!(
+            edge.target_claim_sha256,
+            sha256_hex("the count is an eccentric nobleman".as_bytes()),
+            "write-time stamp computed, never copied from the proposal"
+        );
+    }
+
+    /// Every reject class is named in its verdict; conflict dedup is
+    /// parity with add_fact_conflict (either side, either order).
+    #[test]
+    fn edge_proposals_reject_classes_are_named() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = edge_substrate(&path);
+        // Record one conflict edge through the manual path.
+        add_fact_conflict(&mut store, &path, "f-1", "f-3").unwrap();
+        // And chain f-2 onto f-1 so fill-blanks fires.
+        amend_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                claim: "kara is alive".to_string(),
+                canon_from: "ch-2".to_string(),
+                evidence: vec!["ch-2".to_string()],
+                supersedes_in_frame: Some("f-1".to_string()),
+                ..sample_fact("f-2", "gt")
+            },
+            "chain",
+        )
+        .unwrap();
+        let mut no_rationale = conflict_proposal(
+            "f-2",
+            "kara is alive",
+            "f-3",
+            "the count is an eccentric nobleman",
+        );
+        no_rationale.rationale = "  ".to_string();
+        let file = edge_file(
+            vec![
+                // fill-blanks: f-2 already carries a pointer
+                succession_proposal(
+                    "f-2",
+                    "kara is alive",
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                ),
+                // duplicate successor in one file
+                succession_proposal(
+                    "f-2",
+                    "kara is alive",
+                    "f-3",
+                    "the count is an eccentric nobleman",
+                ),
+            ],
+            vec![
+                // already recorded — REVERSED side (symmetric dedup, the
+                // add_fact_conflict parity)
+                conflict_proposal(
+                    "f-3",
+                    "the count is an eccentric nobleman",
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                ),
+                // self-conflict
+                conflict_proposal(
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                ),
+                no_rationale,
+            ],
+        );
+        let report = import_edge_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(!report.applied);
+        assert_eq!(report.rejected, 5);
+        assert!(report.verdicts[0]
+            .verdict
+            .contains("already carries a succession pointer"));
+        assert!(report.verdicts[1].verdict.contains("duplicate proposal"));
+        assert!(report.verdicts[2].verdict.contains("already recorded"));
+        assert!(report.verdicts[3].verdict.contains("conflict with itself"));
+        assert!(report.verdicts[4].verdict.contains("rationale mandatory"));
+        // Parity check: the manual path rejects the same recorded pair.
+        assert!(matches!(
+            add_fact_conflict(&mut store, &path, "f-3", "f-1"),
+            Err(AtomicMutateError::FrozenLedger(_))
+        ));
+    }
+
+    /// Two proposals that are each fine alone must not jointly close a
+    /// cycle — the staged-edge overlay (R461 pin) catches the second.
+    #[test]
+    fn edge_proposals_joint_cycle_rejects() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = edge_substrate(&path);
+        let file = edge_file(
+            vec![
+                succession_proposal(
+                    "f-2",
+                    "kara is alive",
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                ),
+                succession_proposal(
+                    "f-1",
+                    "the count is an eccentric nobleman",
+                    "f-2",
+                    "kara is alive",
+                ),
+            ],
+            vec![],
+        );
+        let report = import_edge_proposals(&mut store, &path, &file, "sha", false).unwrap();
+        assert!(!report.applied);
+        assert_eq!(report.verdicts[0].verdict, "accepted");
+        assert!(report.verdicts[1].verdict.contains("cycle"));
+        assert!(store.narrative_facts["f-2"].supersedes_in_frame.is_none());
+    }
+
+    /// Loader boundary: schema tag mismatch, unknown fields (a stray
+    /// confidence score must fail loud, never silently drop — the
+    /// Goodhart guard), and a fully empty file.
+    #[test]
+    fn edge_proposals_loader_fails_loud() {
+        let tmp = TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            fs::write(&p, body).unwrap();
+            p
+        };
+        let bad_schema = write("a.json", r#"{"schema":"edge-proposals/v0"}"#);
+        assert!(load_edge_proposals(&bad_schema)
+            .unwrap_err()
+            .contains("not `edge-proposals/v1`"));
+        let unknown_key = write(
+            "b.json",
+            r#"{"schema":"edge-proposals/v1","succession":[{"successor":"a","predecessor":"b","successor_claim_sha256":"x","predecessor_claim_sha256":"y","rationale":"r","confidence":0.9}]}"#,
+        );
+        assert!(load_edge_proposals(&unknown_key)
+            .unwrap_err()
+            .contains("does not parse"));
+        let empty = write("c.json", r#"{"schema":"edge-proposals/v1"}"#);
+        assert!(load_edge_proposals(&empty)
+            .unwrap_err()
+            .contains("no proposals"));
     }
 
     #[test]

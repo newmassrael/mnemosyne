@@ -382,6 +382,31 @@ pub fn import_typing_proposals_report(
     )?)
 }
 
+/// Import succession + conflict edges from a reviewed `edge-proposals/v1`
+/// artifact (Round 463, design sec 7.16 Round B) — load + shape-check the
+/// file, then run the all-or-nothing import (or its dry-run twin). Returns
+/// the full verdict report; gating policy stays with the caller (the
+/// import_typing_proposals_report shape).
+pub fn import_edge_proposals_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    proposals_path: &Path,
+    dry_run: bool,
+) -> Result<mnemosyne_atomic::EdgeImportReport, OpError> {
+    let (file, file_sha256) =
+        mnemosyne_atomic::load_edge_proposals(proposals_path).map_err(OpError::Other)?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
+    let mut store =
+        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
+    Ok(mnemosyne_atomic::import_edge_proposals(
+        &mut store,
+        &sidecar_path,
+        &file,
+        &file_sha256,
+        dry_run,
+    )?)
+}
+
 /// The edge-discovery input package (Round 462, design sec 7.16 Round A):
 /// every fact row (claim + sha256 pin + all recorded edges) plus the
 /// deterministic succession-gap hints, with the shared order resolution

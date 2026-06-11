@@ -509,6 +509,12 @@ pub enum ContinuityViolation {
     },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
+    /// Succession edges close a loop (Round 463; out-of-band edit — every
+    /// write path rejects this via the shared edge check, the scan
+    /// re-checks). A cycle's facts silently never hold anywhere, so this
+    /// is a violation, not a count. Reported once per cycle, members in
+    /// walk order from the minimum id.
+    SuccessionCycle { cycle: Vec<String> },
     /// `pays_off` names a fact that no longer exists (Round 442; out-of-band
     /// edit — the write path rejects this, the scan re-checks, fail-loud).
     /// An evaluable data finding like the conflict/succession variants, not
@@ -984,6 +990,46 @@ pub fn scan_continuity(
                         }
                     }
                 }
+            }
+        }
+    }
+    // Succession-cycle detection (Round 463): every write path rejects
+    // cycles since the shared edge check landed, but the scan re-reads
+    // out-of-band-edited stores (the Round 440 boundary doctrine). A
+    // cycle's facts silently never hold anywhere (each derives the
+    // other's end) — the exact silent-broken-state the R461 probe found.
+    // Reported once per cycle, anchored at its minimum member id.
+    for (sid, s) in facts {
+        if s.supersedes_in_frame.is_none() {
+            continue;
+        }
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        seen.insert(sid.as_str());
+        let mut cur = s.supersedes_in_frame.as_deref();
+        let mut closes = false;
+        while let Some(p) = cur {
+            if p == sid {
+                closes = true;
+                break;
+            }
+            if !seen.insert(p) {
+                break; // runs into a cycle that excludes sid — anchored there
+            }
+            cur = facts.get(p).and_then(|f| f.supersedes_in_frame.as_deref());
+        }
+        if closes {
+            let mut cycle = vec![sid.clone()];
+            let mut cur = s.supersedes_in_frame.as_deref().expect("checked above");
+            while cur != sid {
+                cycle.push(cur.to_string());
+                // Total: every member was reached through an existing edge
+                // in the closing walk above.
+                cur = facts[cur].supersedes_in_frame.as_deref().expect("walked");
+            }
+            if cycle.iter().min().map(String::as_str) == Some(sid.as_str()) {
+                report
+                    .violations
+                    .push(ContinuityViolation::SuccessionCycle { cycle });
             }
         }
     }
@@ -3929,5 +3975,36 @@ mod tests {
             1,
             "same-branch co-visibility needs no declared order"
         );
+    }
+
+    /// An out-of-band-planted succession cycle is a VIOLATION, reported
+    /// once per cycle (Round 463 — before the shared write guard landed,
+    /// the R461 probe showed a cyclic store scanning at 0 violations while
+    /// its facts silently never held anywhere).
+    #[test]
+    fn out_of_band_succession_cycle_is_a_violation_reported_once() {
+        let a = fact("fa", "gt", "ch-1", None);
+        let mut b = fact("fb", "gt", "ch-2", None);
+        b.supersedes_in_frame = Some("fa".to_string());
+        let mut store = store_with(vec![a, b]);
+        // Close the loop out-of-band (the write paths reject this).
+        store
+            .narrative_facts
+            .get_mut("fa")
+            .unwrap()
+            .supersedes_in_frame = Some("fb".to_string());
+        let report = scan_continuity(&store, &chain(&["ch-1", "ch-2"]), &[]).unwrap();
+        let cycles: Vec<_> = report
+            .violations
+            .iter()
+            .filter(|v| matches!(v, ContinuityViolation::SuccessionCycle { .. }))
+            .collect();
+        assert_eq!(cycles.len(), 1, "one cycle, one violation: {cycles:?}");
+        match cycles[0] {
+            ContinuityViolation::SuccessionCycle { cycle } => {
+                assert_eq!(cycle, &["fa", "fb"], "anchored at the minimum member");
+            }
+            _ => unreachable!(),
+        }
     }
 }

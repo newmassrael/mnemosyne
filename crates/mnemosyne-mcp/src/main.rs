@@ -487,6 +487,16 @@ pub struct ReportEdgeCandidatesArgs {
     pub order_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportEdgeProposalsArgs {
+    /// Path to an `edge-proposals/v1` JSON artifact (workspace-relative
+    /// or absolute).
+    pub proposals_path: String,
+    /// Validate only — full verdicts, nothing written.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1486,6 +1496,35 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         match ops::edge_candidates_report(&self.workspace, None, args.0.order_path.as_deref()) {
             Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Import reviewed succession/conflict edge proposals from an edge-proposals/v1 artifact (R463, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, BOTH endpoint claim_sha256 pins re-checked, in-frame/fork-lineage/cycle invariants ride the shared succession check). dry_run=true validates without writing. applied=true only when every proposal accepted on a real run."
+    )]
+    async fn import_edge_proposals(
+        &self,
+        args: Parameters<ImportEdgeProposalsArgs>,
+    ) -> CallToolResult {
+        // Verdict-report mutate: same single lock site as every other
+        // mutate (Round 460 — with_mutate_lock), report-shaped return.
+        match self.with_mutate_lock(|| {
+            ops::import_edge_proposals_report(
+                &self.workspace,
+                None,
+                std::path::Path::new(&args.0.proposals_path),
+                args.0.dry_run,
+            )
+        }) {
+            Ok(report) => {
+                if report.applied {
+                    if let Err(e) = self.sync_read_models_after_mutate() {
+                        return self.op_error(e);
+                    }
+                }
+                self.tool_json(&report)
+            }
             Err(e) => self.op_error(e),
         }
     }
