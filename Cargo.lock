@@ -1056,7 +1056,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -1077,6 +1076,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 1.0.69",
  "toml",
 ]
@@ -1189,7 +1189,6 @@ name = "mnemosyne-schema"
 version = "0.1.0"
 dependencies = [
  "mnemosyne-core",
- "sha2",
 ]
 
 [[package]]
@@ -1269,7 +1268,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror 1.0.69",
 ]

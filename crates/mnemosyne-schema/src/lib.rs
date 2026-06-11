@@ -181,19 +181,6 @@ pub fn parsed_doc_canonical(doc: &ParsedDoc) -> String {
     out
 }
 
-/// Sha256 hex digest of arbitrary string (deterministic content hash).
-pub fn sha256_hex(s: &str) -> String {
-    use sha2::Digest;
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(s.as_bytes());
-    let digest = hasher.finalize();
-    let mut out = String::with_capacity(64);
-    for b in digest.iter() {
-        out.push_str(&format!("{:02x}", b));
-    }
-    out
-}
-
 /// Build a `BTreeMap<section_id, &Section>` lookup index over a `ParsedDoc`.
 ///
 /// This is a *map builder* (returns an index), distinct from the
@@ -230,13 +217,5 @@ mod tests {
         let b = parsed_doc_canonical(&doc);
         assert_eq!(a, b);
         assert!(a.contains("section_id=39"));
-    }
-
-    #[test]
-    fn sha256_hex_stable_64_chars() {
-        let h = sha256_hex("test");
-        assert_eq!(h.len(), 64);
-        assert_eq!(h, sha256_hex("test"));
-        assert_ne!(h, sha256_hex("other"));
     }
 }

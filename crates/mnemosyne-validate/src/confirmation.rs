@@ -38,11 +38,8 @@ pub struct UnconfirmedBinding {
 }
 
 fn hash_file(path: &Path) -> Option<String> {
-    use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path).ok()?;
-    let mut h = Sha256::new();
-    h.update(&bytes);
-    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Some(mnemosyne_core::sha256_hex(&bytes))
 }
 
 /// R420 drift check: has any artifact the event examined changed since? Returns

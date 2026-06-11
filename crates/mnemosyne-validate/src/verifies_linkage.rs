@@ -93,10 +93,7 @@ pub fn load_catalog(path: &Path, expected_sha256: Option<&str>) -> Result<Verifi
     let bytes = std::fs::read(path)
         .map_err(|e| format!("verifies-catalog read {}: {}", path.display(), e))?;
     if let Some(expected) = expected_sha256 {
-        use sha2::{Digest, Sha256};
-        let mut h = Sha256::new();
-        h.update(&bytes);
-        let actual: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let actual = mnemosyne_core::sha256_hex(&bytes);
         if actual != expected {
             return Err(format!(
                 "verifies-catalog sha256 mismatch at {}: pinned {} but file hashes {} — \

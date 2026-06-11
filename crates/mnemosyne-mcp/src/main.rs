@@ -656,10 +656,23 @@ impl MnemosyneServer {
         })
     }
 
-    /// THE single mutate entry for every tool (Round 448): acquire the
-    /// server mutate lock, then run the primitive in-process. CLI
-    /// invocations are process-per-call and need no lock; cross-PROCESS
-    /// concurrency on one store stays the filesystem/git domain.
+    /// THE single mutate-lock acquisition site (Rounds 448 + 460): every
+    /// store-writing tool runs inside this guard, whatever its return
+    /// shape — a second hand-rolled lock acquisition is how two mutate
+    /// paths drift (the half-enforced-invariant class). CLI invocations
+    /// are process-per-call and need no lock; cross-PROCESS concurrency
+    /// on one store stays the filesystem/git domain.
+    fn with_mutate_lock<T>(&self, f: impl FnOnce() -> T) -> T {
+        let _guard = self
+            .mutate_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        f()
+    }
+
+    /// The receipt-shaped mutate entry (Round 448): lock + run the
+    /// primitive in-process. Verdict-report mutates (e.g.
+    /// `import_typing_proposals`) use [`Self::with_mutate_lock`] directly.
     fn run_mutate<F>(&self, primitive: F) -> Result<ops::MutateOutcome, ops::OpError>
     where
         F: FnOnce(
@@ -667,11 +680,7 @@ impl MnemosyneServer {
             &std::path::Path,
         ) -> Result<atomic::AtomicMutateReceipt, atomic::AtomicMutateError>,
     {
-        let _guard = self
-            .mutate_lock
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        run_atomic_mutate(&self.workspace, None, primitive)
+        self.with_mutate_lock(|| run_atomic_mutate(&self.workspace, None, primitive))
     }
 
     fn tool_text(s: String) -> CallToolResult {
@@ -1439,19 +1448,16 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ImportTypingProposalsArgs>,
     ) -> CallToolResult {
-        // Verdict-report mutate: holds the same server mutate lock as
-        // run_mutate (Round 448), but returns the full report rather than
-        // a bare receipt.
-        let _guard = self
-            .mutate_lock
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        match ops::import_typing_proposals_report(
-            &self.workspace,
-            None,
-            std::path::Path::new(&args.0.proposals_path),
-            args.0.dry_run,
-        ) {
+        // Verdict-report mutate: same single lock site as every other
+        // mutate (Round 460 — with_mutate_lock), report-shaped return.
+        match self.with_mutate_lock(|| {
+            ops::import_typing_proposals_report(
+                &self.workspace,
+                None,
+                std::path::Path::new(&args.0.proposals_path),
+                args.0.dry_run,
+            )
+        }) {
             Ok(report) => {
                 if report.applied {
                     if let Err(e) = self.sync_read_models_after_mutate() {

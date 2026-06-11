@@ -115,10 +115,7 @@ fn finer_than_declared_is_the_granularity_lint() {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(bytes);
-    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+    mnemosyne_core::sha256_hex(bytes)
 }
 
 fn write_toml_with_pin(ws: &Path, pin: &str) {

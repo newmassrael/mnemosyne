@@ -3314,20 +3314,9 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// SHA-256 (lowercase hex) of a byte slice — re-hashes the committed EPUB file
-/// against the pinned `[workspace.spec_source].epub_sha256` (R405).
-fn sha256_hex_bytes(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(bytes);
-    let out = h.finalize();
-    let mut s = String::with_capacity(out.len() * 2);
-    for b in out {
-        use std::fmt::Write;
-        let _ = write!(&mut s, "{:02x}", b);
-    }
-    s
-}
+// The EPUB-file re-hash against `[workspace.spec_source].epub_sha256`
+// (R405) uses THE one hash encoding, `mnemosyne_core::sha256_hex`
+// (Round 460 consolidation).
 
 // ============================================================================
 // validate-content-drift — R404 offline content-integrity scan + R405 EPUB-file
@@ -3405,7 +3394,7 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
         epub_pinned = Some(pinned.clone());
         match std::fs::read(root.join(&rel)) {
             Ok(bytes) => {
-                let computed = sha256_hex_bytes(&bytes);
+                let computed = mnemosyne_core::sha256_hex(&bytes);
                 if computed != pinned {
                     epub_drift = Some(format!(
                         "committed EPUB `{rel}` hash diverges from pinned epub_sha256 (swapped/updated)"

@@ -262,10 +262,7 @@ fn verify_authority_pin(
     pin_key: &str,
     path: &Path,
 ) -> Result<(), String> {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(bytes);
-    let actual: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let actual = mnemosyne_core::sha256_hex(bytes);
     if actual != expected {
         return Err(format!(
             "{what} sha256 mismatch at {}: pinned {expected} but file hashes {actual} — the \
@@ -845,17 +842,13 @@ fn for_each_world_pair<'a>(
     }
 }
 
-/// Lowercase-hex sha256 of a claim's text — the R439 judgment-time
-/// content-pin encoding, one builder (Round 458: the typing-candidates
-/// report became the second site, the two-copy rule fired).
+/// The R439 judgment-time content pin of a claim's text — delegates to
+/// THE one hash encoding, `mnemosyne_core::sha256_hex` (Round 460
+/// consolidation: this pin is stamped here and re-checked by the
+/// proposals import in mnemosyne-atomic; two implementations of one
+/// cross-crate invariant is the half-enforced-invariant class).
 fn claim_sha256_hex(claim: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(claim.as_bytes());
-    h.finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>()
+    mnemosyne_core::sha256_hex(claim.as_bytes())
 }
 
 /// In-frame succession index (predecessor id → superseding facts) — the
@@ -3267,15 +3260,7 @@ mod tests {
         let err = load_narrative_rules(&ok, Some(&"0".repeat(64))).unwrap_err();
         assert!(err.contains("rules_sha256"), "{err}");
         // Matching pin passes.
-        let hash = {
-            use sha2::{Digest, Sha256};
-            let mut h = Sha256::new();
-            h.update(std::fs::read(&ok).unwrap());
-            h.finalize()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        };
+        let hash = { mnemosyne_core::sha256_hex(&std::fs::read(&ok).unwrap()) };
         assert!(load_narrative_rules(&ok, Some(&hash)).is_ok());
         // Duplicate rule ids reject (ids name findings).
         let dup = write(

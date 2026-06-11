@@ -568,9 +568,42 @@ impl SymbolResolver for CliResolver {
     }
 }
 
+/// Lowercase-hex sha256 digest — THE one content-hash encoding (Round
+/// 460 consolidation: six hand-rolled copies across four crates included
+/// the cross-crate claim-pin invariant, stamped by the typing-candidates
+/// report and re-checked by the proposals import — two implementations
+/// of one invariant is the half-enforced-invariant class, R305). Every
+/// sha256 pin in the system (claim pins, authority-artifact pins,
+/// content-drift hashes, quote pins) routes here.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(64);
+    for b in digest {
+        use std::fmt::Write;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The encoding is load-bearing for every stored pin: 64 lowercase
+    /// hex chars, deterministic.
+    #[test]
+    fn sha256_hex_stable_64_lowercase_chars() {
+        let h = sha256_hex(b"test");
+        assert_eq!(h.len(), 64);
+        assert_eq!(h, sha256_hex(b"test"));
+        assert_ne!(h, sha256_hex(b"other"));
+        assert!(h
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
 
     struct AlwaysNoneResolver;
 

@@ -36,9 +36,9 @@ pub use project::{section_entity_id, MAIN_BRANCH_ID, SECTION_VALID_FROM};
 pub use redact::*;
 
 use mnemosyne_core::{
-    strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus, Entity, Frame,
-    InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
-    TypedObject,
+    sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
+    Entity, Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate,
+    PredicateObjectKind, TypedClaim, TypedObject,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -512,7 +512,6 @@ impl AtomicChangelogEntry {
     /// Mutating publishable_* without re-anchoring the ledger row produces
     /// a hash mismatch — the ledger is forge-resistant by construction.
     pub fn publishable_hash_hex(&self) -> String {
-        use sha2::{Digest, Sha256};
         // Inline shape (not the full struct, only the publishable half) so
         // that adding new audit fields later does not silently invalidate
         // every prior content_hash_after anchor.
@@ -523,25 +522,16 @@ impl AtomicChangelogEntry {
         "publishable_impact_refs": self.publishable_impact_refs,
         "publishable_carry_forward_bullets": self.publishable_carry_forward_bullets,
         });
-        let mut hasher = Sha256::new();
-        hasher.update(
-            serde_json::to_vec(&payload)
+        sha256_hex(
+            &serde_json::to_vec(&payload)
                 .expect("serializing owned publishable strings to JSON is infallible"),
-        );
-        let bytes = hasher.finalize();
-        let mut s = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            use std::fmt::Write;
-            let _ = write!(&mut s, "{:02x}", b);
-        }
-        s
+        )
     }
 
     /// Round 296 — SHA256 of the audit half, hex-encoded. Optional
     /// content_hash_before anchor in the ledger; informational since the
     /// audit half is immutable post-append.
     pub fn audit_hash_hex(&self) -> String {
-        use sha2::{Digest, Sha256};
         let payload = serde_json::json!({
         "decision_summary": self.decision_summary,
         "changes_bullets": self.changes_bullets,
@@ -549,18 +539,10 @@ impl AtomicChangelogEntry {
         "impact_refs": self.impact_refs,
         "carry_forward_bullets": self.carry_forward_bullets,
         });
-        let mut hasher = Sha256::new();
-        hasher.update(
-            serde_json::to_vec(&payload)
+        sha256_hex(
+            &serde_json::to_vec(&payload)
                 .expect("serializing owned audit strings to JSON is infallible"),
-        );
-        let bytes = hasher.finalize();
-        let mut s = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            use std::fmt::Write;
-            let _ = write!(&mut s, "{:02x}", b);
-        }
-        s
+        )
     }
 }
 
@@ -2227,27 +2209,12 @@ pub fn set_section_decision_status(
     )
 }
 
-/// External-spec mirror — anchor a vendored normative excerpt onto a
-/// Section (RFC-002 FR-1). **Append-only / frozen-ledger semantic**:
-/// the primitive accepts `None → Some` but refuses `Some → Some`. To
-/// model spec revision drift, the caller transitions the existing
-/// Section to `decision_status = Superseded` and creates a new
-/// Section carrying the updated excerpt — same pattern as audit-half
-/// immutability in `append_changelog_entry`.
-/// SHA-256 of `bytes`, lowercase hex. Shared by [`build_normative_excerpt`]'s
-/// EPUB-cache hash check.
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let out = hasher.finalize();
-    let mut s = String::with_capacity(out.len() * 2);
-    for b in out {
-        use std::fmt::Write;
-        let _ = write!(&mut s, "{:02x}", b);
-    }
-    s
-}
+// Lowercase-hex sha256: THE one implementation is `mnemosyne_core::
+// sha256_hex` (Round 460 consolidation — the claim pin is stamped in one
+// crate and re-checked in another; two implementations of one invariant
+// is the half-enforced-invariant class). The stale "external-spec
+// mirror" doc that sat here described the R403-deleted
+// set-section-normative-excerpt primitive and is gone with it.
 
 /// Validate the four normative-excerpt fields and build the value.
 ///

@@ -91,12 +91,8 @@ mod tests {
     use super::*;
     use mnemosyne_atomic::{AtomicSection, NormativeExcerpt};
     use mnemosyne_core::{DecisionStatus, SectionSkeleton};
-    use sha2::{Digest, Sha256};
-
     fn sha256_hex(s: &str) -> String {
-        let mut h = Sha256::new();
-        h.update(s.as_bytes());
-        h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+        mnemosyne_core::sha256_hex(s.as_bytes())
     }
 
     fn section(text: &str, hash: &str, status: Option<DecisionStatus>) -> AtomicSection {
