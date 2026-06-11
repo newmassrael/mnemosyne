@@ -9057,6 +9057,40 @@
         "next pulls per the sec 10 backlog: the Tier-3 A/B authoring experiment (its blind-preference grading interface now exists — this round was its enabler) or the fate matrix (T1-B half-rendered); tension curve stays no-evidence",
         "non-goals pinned in sec 7.17 (revisit triggers): prose inlining (EPUB stays the content-SSOT, epub_locator is the pointer), per-frame manuscript splits, tension-curve integration, any HTML/Markdown rendering (projection is the interface — the verb's JSON is the contract)"
       ]
+    },
+    "Round 467 — session-load reads: identifier keys join query_term, the R410 ledger listing gets its surface": {
+      "decision_summary": "A live session-load miss exposed two gaps with one root. query --term \"Round 466\" --scope changelog returned [] against a store whose latest entry IS Round 466 — indistinguishable from the entry being absent, the silent-miss failure mode this codebase repays on sight. Cause 1: the R292 term scan never matched identifier keys. That was an omission, not a recorded exclusion — the v1 out-of-scope list names pointer fields and enums but never IDs, no test pinned the absence, and IDs are exactly what an agent greps for at session start. Cause 2: the R410 list_changelog read model (round-number-ordered whole-ledger projection, built for the deferred Studio timeline) had no CLI or MCP surface, which is what pushed a listing need through a substring search in the first place. Both repaid in one round: identifier keys become searched fields symmetric across the three kinds under kind-qualified names (section_id / entry_id / inventory_id — one shared filter namespace, no ambiguity, opt-out via the same field filter); and the existing projection is exposed verbatim as query --list-changelog plus the list_changelog MCP tool — no new read model, wiring only. The honesty payoff: an ID-pattern search that returns 0 hits now means the ID does not exist, and the session-load question 'what are the latest rounds' is a listing verb, not a grep idiom.",
+      "changes_bullets": [
+        "mnemosyne-query: scan_section / scan_changelog_entry / scan_inventory_entry each match their identifier key as a searched text field — kind-qualified field names (section_id / entry_id / inventory_id) so the one shared field filter stays unambiguous across scopes, opt-out via that same filter; R292 module doc records the v1 omission and the repair; 4 unit tests (per-kind ID match + filter-excludes-identifier-keys)",
+        "mnemosyne-ops: list_changelog(workspace) wrapper over the R410 mnemosyne_query::list_changelog projection (round-number order, oldest first — tail = latest rounds), re-exported; no new read model, the verb is pure wiring of an existing tested function that only the deferred Studio timeline consumed",
+        "mnemosyne-cli: query --list-changelog [--json] — TTY = entry_id per line + stderr total (the list-sections idiom), JSON = full ChangelogEntryView array; help gains the new flag line and the identifier-key note on --term",
+        "mnemosyne-mcp: list_changelog tool (56 -> 57); query_term tool description + fields-arg doc name the identifier keys"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace: 850 passed, 0 failed (846 -> 850: 4 query unit); cargo clippy --workspace --all-targets clean",
+        "live repo store: query --term \"Round 466\" --scope changelog = 1 hit on entry_id — the exact session-load search that returned [] before this round; query --list-changelog prints 213 entries oldest-first with Round 466 last; --json round-trips the full view array",
+        "MCP stdio live: tools/list = 57 with list_changelog present; tools/call list_changelog returns 213 entries newest-last; query_term description carries the identifier-key contract"
+      ],
+      "carry_forward_bullets": [
+        "--field with an unknown field name still returns 0 hits silently (no field-name validation) — the same silent-miss class this round repaired for IDs, surfaced here not fixed; candidate: fail-loud unknown-field reject on the shared ops path",
+        "next session = Tier-3 A/B authoring experiment design round (owner decision 2026-06-11) — this round was a session-load friction repair surfaced by live dogfood, not a backlog pull; the backlog order stands"
+      ],
+      "publishable_decision_summary": "A live session-load miss exposed two gaps with one root. query --term \"Round 466\" --scope changelog returned [] against a store whose latest entry IS Round 466 — indistinguishable from the entry being absent, the silent-miss failure mode this codebase repays on sight. Cause 1: the R292 term scan never matched identifier keys. That was an omission, not a recorded exclusion — the v1 out-of-scope list names pointer fields and enums but never IDs, no test pinned the absence, and IDs are exactly what an agent greps for at session start. Cause 2: the R410 list_changelog read model (round-number-ordered whole-ledger projection, built for the deferred Studio timeline) had no CLI or MCP surface, which is what pushed a listing need through a substring search in the first place. Both repaid in one round: identifier keys become searched fields symmetric across the three kinds under kind-qualified names (section_id / entry_id / inventory_id — one shared filter namespace, no ambiguity, opt-out via the same field filter); and the existing projection is exposed verbatim as query --list-changelog plus the list_changelog MCP tool — no new read model, wiring only. The honesty payoff: an ID-pattern search that returns 0 hits now means the ID does not exist, and the session-load question 'what are the latest rounds' is a listing verb, not a grep idiom.",
+      "publishable_changes_bullets": [
+        "mnemosyne-query: scan_section / scan_changelog_entry / scan_inventory_entry each match their identifier key as a searched text field — kind-qualified field names (section_id / entry_id / inventory_id) so the one shared field filter stays unambiguous across scopes, opt-out via that same filter; R292 module doc records the v1 omission and the repair; 4 unit tests (per-kind ID match + filter-excludes-identifier-keys)",
+        "mnemosyne-ops: list_changelog(workspace) wrapper over the R410 mnemosyne_query::list_changelog projection (round-number order, oldest first — tail = latest rounds), re-exported; no new read model, the verb is pure wiring of an existing tested function that only the deferred Studio timeline consumed",
+        "mnemosyne-cli: query --list-changelog [--json] — TTY = entry_id per line + stderr total (the list-sections idiom), JSON = full ChangelogEntryView array; help gains the new flag line and the identifier-key note on --term",
+        "mnemosyne-mcp: list_changelog tool (56 -> 57); query_term tool description + fields-arg doc name the identifier keys"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace: 850 passed, 0 failed (846 -> 850: 4 query unit); cargo clippy --workspace --all-targets clean",
+        "live repo store: query --term \"Round 466\" --scope changelog = 1 hit on entry_id — the exact session-load search that returned [] before this round; query --list-changelog prints 213 entries oldest-first with Round 466 last; --json round-trips the full view array",
+        "MCP stdio live: tools/list = 57 with list_changelog present; tools/call list_changelog returns 213 entries newest-last; query_term description carries the identifier-key contract"
+      ],
+      "publishable_carry_forward_bullets": [
+        "--field with an unknown field name still returns 0 hits silently (no field-name validation) — the same silent-miss class this round repaired for IDs, surfaced here not fixed; candidate: fail-loud unknown-field reject on the shared ops path",
+        "next session = Tier-3 A/B authoring experiment design round (owner decision 2026-06-11) — this round was a session-load friction repair surfaced by live dogfood, not a backlog pull; the backlog order stands"
+      ]
     }
   },
   "inventory_entries": {},

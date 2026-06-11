@@ -395,6 +395,12 @@ pub fn build_envelope(atomic_store: &AtomicStore, section_id: &str) -> Option<Qu
 // store-aware search that knows field provenance — required substrate for
 // the deferred `redact_term` mutate primitive, also useful standalone.
 //
+// Round 467 — identifier keys (`section_id` / `entry_id` / `inventory_id`)
+// are scanned too, symmetric across all three kinds. The v1 omission made
+// an ID-pattern search return 0 hits indistinguishably from "entry absent"
+// (silent miss); IDs are exactly what agents grep for at session load.
+// Restrict via the same field filter when ID matches are unwanted.
+//
 // Out of scope (v1):
 //   - Legacy parser-side `sub_bullets` (handled by separate parser query).
 //   - Structural pointer fields (parent_doc, parent_section) — these are
@@ -597,6 +603,18 @@ fn scan_section(
     filter: Option<&BTreeSet<String>>,
     out: &mut Vec<TermHit>,
 ) {
+    // Round 467 — identifier key scanned like any text field (kind-qualified
+    // field name so a shared filter set stays unambiguous across scopes).
+    if field_allowed(filter, "section_id") {
+        push_simple_hit(
+            TermTargetKind::Section,
+            section_id,
+            "section_id".to_string(),
+            section_id,
+            m,
+            out,
+        );
+    }
     if field_allowed(filter, "title") && !s.skeleton.title.is_empty() {
         push_simple_hit(
             TermTargetKind::Section,
@@ -727,6 +745,18 @@ fn scan_changelog_entry(
     filter: Option<&BTreeSet<String>>,
     out: &mut Vec<TermHit>,
 ) {
+    // Round 467 — entry_id (`Round <n> — …`) scanned; a round-number search
+    // must find its entry rather than silently missing.
+    if field_allowed(filter, "entry_id") {
+        push_simple_hit(
+            TermTargetKind::ChangelogEntry,
+            entry_id,
+            "entry_id".to_string(),
+            entry_id,
+            m,
+            out,
+        );
+    }
     if field_allowed(filter, "decision_summary") {
         if let Some(s) = e.decision_summary.as_deref() {
             push_simple_hit(
@@ -784,6 +814,17 @@ fn scan_inventory_entry(
     filter: Option<&BTreeSet<String>>,
     out: &mut Vec<TermHit>,
 ) {
+    // Round 467 — identifier key scanned, symmetric with the other kinds.
+    if field_allowed(filter, "inventory_id") {
+        push_simple_hit(
+            TermTargetKind::Inventory,
+            inv_id,
+            "inventory_id".to_string(),
+            inv_id,
+            m,
+            out,
+        );
+    }
     if field_allowed(filter, "source") {
         if let Some(s) = inv.source.as_deref() {
             push_simple_hit(
@@ -1160,6 +1201,61 @@ mod tests {
         assert!(paths.contains(&"changes_bullets[0]"));
         assert!(paths.contains(&"verification_bullets[0]"));
         assert!(paths.contains(&"impact_refs[0]"));
+    }
+
+    // --- Round 467: identifier keys are searched fields ---
+
+    #[test]
+    fn query_term_matches_changelog_entry_id() {
+        let entry = AtomicChangelogEntry {
+            decision_summary: Some("nothing relevant".to_string()),
+            ..Default::default()
+        };
+        let store = store_with_one_entry("Round 466 — playthrough manuscript", entry);
+        let hits = query_term(&store, &literal_q("Round 466")).expect("ok");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].target_kind, TermTargetKind::ChangelogEntry);
+        assert_eq!(hits[0].field_path, "entry_id");
+        assert_eq!(hits[0].line_context, "Round 466 — playthrough manuscript");
+    }
+
+    #[test]
+    fn query_term_matches_section_id() {
+        let store = store_with_one_section("orphan-ledger", AtomicSection::default());
+        let hits = query_term(&store, &literal_q("orphan-ledger")).expect("ok");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].target_kind, TermTargetKind::Section);
+        assert_eq!(hits[0].field_path, "section_id");
+    }
+
+    #[test]
+    fn query_term_matches_inventory_id() {
+        let mut store = AtomicStore::default();
+        store
+            .inventory_entries
+            .insert("INV-7".to_string(), InventoryEntry::default());
+        let hits = query_term(&store, &literal_q("INV-7")).expect("ok");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].target_kind, TermTargetKind::Inventory);
+        assert_eq!(hits[0].field_path, "inventory_id");
+    }
+
+    #[test]
+    fn query_term_field_filter_can_exclude_identifier_keys() {
+        let section = AtomicSection {
+            intent: Some("mentions sec-x here".to_string()),
+            ..Default::default()
+        };
+        let store = store_with_one_section("sec-x", section);
+        let mut filter = BTreeSet::new();
+        filter.insert("intent".to_string());
+        let q = TermQuery {
+            field_filter: Some(filter),
+            ..literal_q("sec-x")
+        };
+        let hits = query_term(&store, &q).expect("ok");
+        assert_eq!(hits.len(), 1, "filter restricts to intent only");
+        assert_eq!(hits[0].field_path, "intent");
     }
 
     #[test]

@@ -348,6 +348,10 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
+        " {} query --list-changelog [--json] whole changelog ledger in round order, oldest first (Round 467; tail = latest rounds)",
+        prog
+    );
+    println!(
         " {} query --list-inventory [--json] Phase 1A inventory entries (Round 278)",
         prog
     );
@@ -360,7 +364,7 @@ fn print_help(prog: &str) {
  prog
  );
     println!(
- "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields (preview for redact_term carry)"
+ "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467)"
  );
     println!(
         " {} style-check [--doc <path>] [--severity t3|t4|all] [--json]",
@@ -704,6 +708,8 @@ struct QueryArgs {
     include_changelog: bool,
     json: bool,
     list_sections: bool,
+    // Round 467 — whole-ledger changelog listing (R410 read model exposed).
+    list_changelog: bool,
     // Round 278 — Phase 1A inventory query surface.
     list_inventory: bool,
     inventory_id: Option<String>,
@@ -724,6 +730,7 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
             "--include-changelog" => out.include_changelog = true,
             "--json" => out.json = true,
             "--list-sections" => out.list_sections = true,
+            "--list-changelog" => out.list_changelog = true,
             "--list-inventory" => out.list_inventory = true,
             "--inventory" => {
                 out.inventory_id = Some(
@@ -788,6 +795,22 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             println!("{}", id);
         }
         eprintln!("# total {} section(s)", set.len());
+        return Ok(());
+    }
+
+    // Round 467 — whole changelog ledger, round-number order (oldest first;
+    // tail = latest rounds). Exposes the R410 read model that previously
+    // had no CLI surface, which forced ID searches through `--term`.
+    if qargs.list_changelog {
+        let entries = mnemosyne_query::list_changelog(&atomic_store);
+        if qargs.json {
+            println!("{}", serde_json::to_string_pretty(&entries)?);
+        } else {
+            for e in &entries {
+                println!("{}", e.entry_id);
+            }
+            eprintln!("# total {} changelog entry(ies)", entries.len());
+        }
         return Ok(());
     }
 

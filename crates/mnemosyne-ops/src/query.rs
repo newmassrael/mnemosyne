@@ -9,9 +9,10 @@ use anyhow::{anyhow, Result};
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::{discover_config, LoadedConfig};
 use mnemosyne_query::{
-    build_envelope, changelog_entries_for_section, query_term as query_term_inner,
-    related_sections_with_atomic, section_by_id, ChangelogEntryView, QueryEnvelope,
-    RelatedSections, SectionView, TermHit, TermMode, TermQuery, TermScope,
+    build_envelope, changelog_entries_for_section, list_changelog as list_changelog_inner,
+    query_term as query_term_inner, related_sections_with_atomic, section_by_id,
+    ChangelogEntryView, QueryEnvelope, RelatedSections, SectionView, TermHit, TermMode, TermQuery,
+    TermScope,
 };
 use serde::Serialize;
 
@@ -114,6 +115,14 @@ pub fn query_section(
             Ok(QuerySectionPayload::Envelope(envelope))
         }
     }
+}
+
+/// The whole changelog ledger in round-number order, oldest first (R467
+/// exposure of the R410 read model). The session-load "what are the latest
+/// rounds" read — callers take the tail for newest entries.
+pub fn list_changelog(workspace_root: &Path) -> Result<Vec<ChangelogEntryView>, OpError> {
+    let atomic_store = load_atomic_store(workspace_root, None)?;
+    Ok(list_changelog_inner(&atomic_store))
 }
 
 /// Literal/regex search across atomic Section + ChangelogEntry +

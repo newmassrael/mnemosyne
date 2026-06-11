@@ -22,8 +22,8 @@ use thiserror::Error;
 
 pub use cascade::{validate_atomic_store, AtomicValidationSummary};
 pub use query::{
-    list_inventory, list_sections, query_inventory, query_section, query_term, InventoryEntryView,
-    ListSectionsReport, QuerySectionMode, QueryTermInput,
+    list_changelog, list_inventory, list_sections, query_inventory, query_section, query_term,
+    InventoryEntryView, ListSectionsReport, QuerySectionMode, QueryTermInput,
 };
 pub use style::{style_check, StyleCheckInput, StyleCheckReport};
 pub use validate::{validate_workspace, ValidateWorkspaceReport};

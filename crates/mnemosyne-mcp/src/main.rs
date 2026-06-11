@@ -95,7 +95,8 @@ pub struct QueryTermArgs {
     /// listed fields are returned. Use base field names: `"intent"`,
     /// `"rationale_bullets"`, `"decision_summary"`,
     /// `"changes_bullets"`, `"alternatives_rejected"`, `"examples"`,
-    /// `"implementations"`, `"source"`, `"reason"`, etc.
+    /// `"implementations"`, `"source"`, `"reason"`, and the identifier
+    /// keys `"section_id"` / `"entry_id"` / `"inventory_id"` (Round 467).
     #[serde(default)]
     pub fields: Vec<String>,
 }
@@ -891,6 +892,16 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "List the whole changelog ledger as JSON views, in round-number order (oldest first — take the tail for the latest rounds). The session-start read for 'where did the last session leave off'; per-section history is query_section with include_changelog."
+    )]
+    async fn list_changelog(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::list_changelog(&self.workspace) {
+            Ok(entries) => self.tool_json(&entries),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
         description = "Look up a single section. Returns the SectionView (atomic fields rendered as JSON). Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections."
     )]
     async fn query_section(&self, args: Parameters<QuerySectionArgs>) -> CallToolResult {
@@ -906,7 +917,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Literal/regex search across atomic Section + ChangelogEntry + Inventory text fields. Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`), line_context. Read-only. Use before redact_term or before mutating prose, to know which entries cite a term."
+        description = "Literal/regex search across atomic Section + ChangelogEntry + Inventory text fields, including identifier keys (section_id / entry_id / inventory_id). Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`), line_context. Read-only. Use before redact_term or before mutating prose, to know which entries cite a term."
     )]
     async fn query_term(&self, args: Parameters<QueryTermArgs>) -> CallToolResult {
         let input = QueryTermInput {
