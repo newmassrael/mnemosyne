@@ -11,8 +11,8 @@ use mnemosyne_config::{discover_config, LoadedConfig};
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, list_changelog as list_changelog_inner,
     query_term as query_term_inner, related_sections_with_atomic, section_by_id,
-    ChangelogEntryView, QueryEnvelope, RelatedSections, SectionView, TermHit, TermMode, TermQuery,
-    TermScope,
+    ChangelogEntryView, ChangelogLedgerView, QueryEnvelope, RelatedSections, SectionView, TermHit,
+    TermMode, TermQuery, TermScope,
 };
 use serde::Serialize;
 
@@ -117,12 +117,16 @@ pub fn query_section(
     }
 }
 
-/// The whole changelog ledger in round-number order, oldest first (R467
-/// exposure of the R410 read model). The session-load "what are the latest
-/// rounds" read — callers take the tail for newest entries.
-pub fn list_changelog(workspace_root: &Path) -> Result<Vec<ChangelogEntryView>, OpError> {
+/// The changelog ledger in round-number order, oldest first (R467 exposure
+/// of the R410 read model). The session-load "what are the latest rounds"
+/// read — `limit` keeps only the newest n entries while the returned
+/// `total` stays the full ledger count (no-silent-caps, R470).
+pub fn list_changelog(
+    workspace_root: &Path,
+    limit: Option<usize>,
+) -> Result<ChangelogLedgerView, OpError> {
     let atomic_store = load_atomic_store(workspace_root, None)?;
-    Ok(list_changelog_inner(&atomic_store))
+    Ok(list_changelog_inner(&atomic_store, limit))
 }
 
 /// Literal/regex search across atomic Section + ChangelogEntry +

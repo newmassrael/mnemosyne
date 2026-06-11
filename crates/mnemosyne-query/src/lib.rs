@@ -267,29 +267,48 @@ pub fn changelog_entries_for_section(
     out
 }
 
-/// `list_changelog` — the whole changelog ledger projected to views, in
+/// ChangelogLedgerView — [`list_changelog`] carry form. `entries` is
+/// ascending round order (oldest first); `total` always reports the full
+/// ledger size, so a `limit`-bounded read is never mistaken for the whole
+/// ledger (no-silent-caps — Round 470).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ChangelogLedgerView {
+    pub total: usize,
+    pub entries: Vec<ChangelogEntryView>,
+}
+
+/// `list_changelog` — the changelog ledger projected to views, in
 /// round-number order. `changelog_entries` is keyed by the prose entry_id
 /// (`Round <n> — …`) and iterates lexicographically — that key's string order
 /// is not numeric (digits compare left-to-right), so this sorts by the parsed
 /// round number, making the timeline chronological (ascending = oldest first;
 /// a viewer reverses
 /// client-side for newest-first). Entries whose key has no leading
-/// `Round <n>` sort last, then by key for stability. Drives the Studio
-/// changelog timeline and any full-ledger read; the per-section view is
-/// [`changelog_entries_for_section`]. `citation_count` is `0` — it is a
-/// per-section relevance metric, not applicable to the whole-ledger projection.
-pub fn list_changelog(atomic_store: &AtomicStore) -> Vec<ChangelogEntryView> {
-    let mut out: Vec<ChangelogEntryView> = atomic_store
+/// `Round <n>` sort last, then by key for stability. `limit` keeps only the
+/// LAST n entries (the newest — the session-load read; Round 470, pulled by
+/// the ledger's monotonic growth) while `total` stays the full count. Drives
+/// the Studio changelog timeline and any full-ledger read; the per-section
+/// view is [`changelog_entries_for_section`]. `citation_count` is `0` — it is
+/// a per-section relevance metric, not applicable to the whole-ledger
+/// projection.
+pub fn list_changelog(atomic_store: &AtomicStore, limit: Option<usize>) -> ChangelogLedgerView {
+    let mut entries: Vec<ChangelogEntryView> = atomic_store
         .changelog_entries
         .iter()
         .map(|(entry_id, atomic)| build_entry_view(entry_id, atomic, 0))
         .collect();
-    out.sort_by(|a, b| {
+    entries.sort_by(|a, b| {
         let ka = round_number(&a.entry_id).unwrap_or(u32::MAX);
         let kb = round_number(&b.entry_id).unwrap_or(u32::MAX);
         ka.cmp(&kb).then_with(|| a.entry_id.cmp(&b.entry_id))
     });
-    out
+    let total = entries.len();
+    if let Some(n) = limit {
+        if n < total {
+            entries.drain(..total - n);
+        }
+    }
+    ChangelogLedgerView { total, entries }
 }
 
 /// Parse the leading `Round <n>` of a changelog entry_id into its round
@@ -491,10 +510,12 @@ pub enum QueryTermError {
 }
 
 /// Field-name rosters per entity kind — the validation vocabulary for
-/// [`TermQuery::field_filter`]. Single-sourced with the scanners by test:
-/// `query_term_field_roster_matches_scanners` runs every roster name
-/// against a fully-populated store and asserts it produces a hit, so a
-/// scanner field that leaves the roster (or vice versa) fails CI.
+/// [`TermQuery::field_filter`]. Single-sourced with the scanners by a test
+/// PAIR, one per direction: `query_term_field_roster_matches_scanners`
+/// (every roster name produces a hit — roster ⊆ scanned) and
+/// `query_term_every_scanned_field_is_in_its_roster` (every emitted field
+/// path's base name is in its roster — scanned ⊆ roster). Either drift
+/// direction fails CI.
 const SECTION_FIELDS: &[&str] = &[
     "section_id",
     "title",
@@ -549,7 +570,8 @@ fn validate_field_filter(
 /// `query_term` — literal/regex scan over the atomic store.
 ///
 /// Returns hits in deterministic order: target_kind variant order ×
-/// `BTreeMap` key order × field declaration order × bullet index order.
+/// `BTreeMap` key order × field scan order (identifier key first, then
+/// declared fields in declaration order) × bullet index order.
 /// Pure read — `store` is not modified.
 pub fn query_term(store: &AtomicStore, q: &TermQuery) -> Result<Vec<TermHit>, QueryTermError> {
     if let Some(filter) = &q.field_filter {
@@ -1071,11 +1093,31 @@ mod tests {
                 },
             );
         }
-        let all = list_changelog(&store);
-        let ids: Vec<&str> = all.iter().map(|v| v.entry_id.as_str()).collect();
+        let view = list_changelog(&store, None);
+        let ids: Vec<&str> = view.entries.iter().map(|v| v.entry_id.as_str()).collect();
         // round-number order, NOT lexicographic: a two-digit round key sorts
         // before a one-digit one as a string, but parses to a larger number.
         assert_eq!(ids, ["Round 1", "Round 2", "Round 10"]);
+        assert_eq!(view.total, 3);
+    }
+
+    #[test]
+    fn list_changelog_limit_keeps_newest_with_honest_total() {
+        let mut store = AtomicStore::default();
+        for id in ["Round 2", "Round 10", "Round 1"] {
+            store
+                .changelog_entries
+                .insert(id.into(), AtomicChangelogEntry::default());
+        }
+        let view = list_changelog(&store, Some(2));
+        let ids: Vec<&str> = view.entries.iter().map(|v| v.entry_id.as_str()).collect();
+        assert_eq!(ids, ["Round 2", "Round 10"], "last n = newest, order kept");
+        assert_eq!(
+            view.total, 3,
+            "total reports the full ledger, not the slice"
+        );
+        let all = list_changelog(&store, Some(99));
+        assert_eq!(all.entries.len(), 3, "limit beyond len = whole ledger");
     }
 
     #[test]
@@ -1379,12 +1421,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn query_term_field_roster_matches_scanners() {
-        // Single-sourcing pin: every roster name, run as a filter against a
-        // fully-populated store, must produce a hit in that very field. A
-        // scanner field missing from its roster (or a roster name no scanner
-        // checks) fails here.
+    /// Every text field of every kind populated, every value containing the
+    /// `zz` marker — the fixture for the two roster<->scanner direction pins.
+    fn fully_populated_store() -> AtomicStore {
         let mut store = AtomicStore::default();
         store.sections.insert(
             "zz-sec".to_string(),
@@ -1435,12 +1474,22 @@ mod tests {
                 ..Default::default()
             },
         );
-        let cases: &[(TermScope, &[&str])] = &[
-            (TermScope::Sections, SECTION_FIELDS),
-            (TermScope::ChangelogEntries, CHANGELOG_FIELDS),
-            (TermScope::Inventory, INVENTORY_FIELDS),
-        ];
-        for (scope, roster) in cases {
+        store
+    }
+
+    const ROSTER_CASES: &[(TermScope, &[&str])] = &[
+        (TermScope::Sections, SECTION_FIELDS),
+        (TermScope::ChangelogEntries, CHANGELOG_FIELDS),
+        (TermScope::Inventory, INVENTORY_FIELDS),
+    ];
+
+    #[test]
+    fn query_term_field_roster_matches_scanners() {
+        // Direction 1 (roster ⊆ scanned): every roster name, run as a filter
+        // against the fully-populated store, must produce a hit in that very
+        // field — a roster name no scanner checks fails here.
+        let store = fully_populated_store();
+        for (scope, roster) in ROSTER_CASES {
             for field in *roster {
                 let mut filter = BTreeSet::new();
                 filter.insert(field.to_string());
@@ -1463,6 +1512,36 @@ mod tests {
                         field
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn query_term_every_scanned_field_is_in_its_roster() {
+        // Direction 2 (scanned ⊆ roster): an unfiltered scan of the
+        // fully-populated store may only emit field paths whose base name the
+        // kind's roster knows — a scanner field missing from its roster fails
+        // here (R470; the R468 comment had claimed this direction untested).
+        let store = fully_populated_store();
+        for (scope, roster) in ROSTER_CASES {
+            let q = TermQuery {
+                scope: *scope,
+                ..literal_q("zz")
+            };
+            let hits = query_term(&store, &q).expect("ok");
+            assert!(!hits.is_empty());
+            for h in &hits {
+                let base = h
+                    .field_path
+                    .split('[')
+                    .next()
+                    .expect("split yields at least one part");
+                assert!(
+                    roster.contains(&base),
+                    "scanned field `{}` (base `{}`) missing from its roster",
+                    h.field_path,
+                    base
+                );
             }
         }
     }

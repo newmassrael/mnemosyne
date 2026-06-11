@@ -348,7 +348,7 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
-        " {} query --list-changelog [--json] whole changelog ledger in round order, oldest first (Round 467; tail = latest rounds)",
+        " {} query --list-changelog [--limit N] [--json] changelog ledger in round order, oldest first (Round 467; --limit keeps the newest N beside the honest total, Round 470)",
         prog
     );
     println!(
@@ -710,6 +710,9 @@ struct QueryArgs {
     list_sections: bool,
     // Round 467 — whole-ledger changelog listing (R410 read model exposed).
     list_changelog: bool,
+    // Round 470 — newest-n bound for --list-changelog (no-silent-caps:
+    // the report carries the full total beside the slice).
+    changelog_limit: Option<usize>,
     // Round 278 — Phase 1A inventory query surface.
     list_inventory: bool,
     inventory_id: Option<String>,
@@ -731,6 +734,15 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
             "--json" => out.json = true,
             "--list-sections" => out.list_sections = true,
             "--list-changelog" => out.list_changelog = true,
+            "--limit" => {
+                let v = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--limit missing value (a positive integer)"))?;
+                let n: usize = v
+                    .parse()
+                    .map_err(|_| anyhow!("--limit expects a positive integer (got `{}`)", v))?;
+                out.changelog_limit = Some(n);
+            }
             "--list-inventory" => out.list_inventory = true,
             "--inventory" => {
                 out.inventory_id = Some(
@@ -778,6 +790,42 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
             }
         }
     }
+    // Round 470 — query modes are mutually exclusive; a second mode used to
+    // be silently outranked by dispatch order (parse-then-ignore, the class
+    // the Round 466 --world guard rejects). Mode-scoped flags follow the
+    // same rule.
+    let modes: Vec<&str> = [
+        ("--list-sections", out.list_sections),
+        ("--list-changelog", out.list_changelog),
+        ("--list-inventory", out.list_inventory),
+        ("--inventory", out.inventory_id.is_some()),
+        ("--term", out.term_pattern.is_some()),
+        ("§<section_id>", out.section_id.is_some()),
+    ]
+    .iter()
+    .filter(|(_, on)| *on)
+    .map(|(name, _)| *name)
+    .collect();
+    if modes.len() > 1 {
+        bail!(
+            "query modes are mutually exclusive — pick one of {}",
+            modes.join(", ")
+        );
+    }
+    if out.changelog_limit.is_some() && !out.list_changelog {
+        bail!("--limit only applies to --list-changelog");
+    }
+    if out.term_pattern.is_none()
+        && (out.term_regex
+            || out.term_case_insensitive
+            || out.term_scope.is_some()
+            || !out.term_fields.is_empty())
+    {
+        bail!("--regex / --case-insensitive / --scope / --field only apply to --term");
+    }
+    if out.section_id.is_none() && (out.include_related || out.include_changelog) {
+        bail!("--include-related / --include-changelog only apply to a §<section_id> query");
+    }
     Ok(out)
 }
 
@@ -802,14 +850,22 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     // tail = latest rounds). Exposes the R410 read model that previously
     // had no CLI surface, which forced ID searches through `--term`.
     if qargs.list_changelog {
-        let entries = mnemosyne_query::list_changelog(&atomic_store);
+        let view = mnemosyne_query::list_changelog(&atomic_store, qargs.changelog_limit);
         if qargs.json {
-            println!("{}", serde_json::to_string_pretty(&entries)?);
+            println!("{}", serde_json::to_string_pretty(&view)?);
         } else {
-            for e in &entries {
+            for e in &view.entries {
                 println!("{}", e.entry_id);
             }
-            eprintln!("# total {} changelog entry(ies)", entries.len());
+            if view.entries.len() < view.total {
+                eprintln!(
+                    "# showing newest {} of {} changelog entry(ies)",
+                    view.entries.len(),
+                    view.total
+                );
+            } else {
+                eprintln!("# total {} changelog entry(ies)", view.total);
+            }
         }
         return Ok(());
     }
@@ -3769,4 +3825,51 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_query_args;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    // Round 470 — query modes reject loudly instead of silent dispatch
+    // precedence (the Round 466 --world guard class).
+    #[test]
+    fn parse_query_rejects_two_modes() {
+        let err = parse_query_args(&args(&["--list-sections", "--list-changelog"]))
+            .expect_err("two modes must reject");
+        assert!(err.to_string().contains("mutually exclusive"));
+        let err = parse_query_args(&args(&["--term", "x", "39"])).expect_err("term + section");
+        assert!(err.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn parse_query_rejects_mode_scoped_flags_without_their_mode() {
+        let err = parse_query_args(&args(&["--limit", "5"])).expect_err("limit needs list mode");
+        assert!(err.to_string().contains("--list-changelog"));
+        let err = parse_query_args(&args(&["--regex"])).expect_err("regex needs term");
+        assert!(err.to_string().contains("--term"));
+        let err =
+            parse_query_args(&args(&["--include-related"])).expect_err("related needs section");
+        assert!(err.to_string().contains("section_id"));
+    }
+
+    #[test]
+    fn parse_query_accepts_each_mode_with_its_flags() {
+        let q = parse_query_args(&args(&["--list-changelog", "--limit", "5", "--json"]))
+            .expect("valid combo");
+        assert!(q.list_changelog);
+        assert_eq!(q.changelog_limit, Some(5));
+        let q = parse_query_args(&args(&["--term", "x", "--regex", "--scope", "changelog"]))
+            .expect("valid term combo");
+        assert!(q.term_regex);
+        let q = parse_query_args(&args(&["39", "--include-related"])).expect("valid section");
+        assert_eq!(q.section_id.as_deref(), Some("39"));
+        let err = parse_query_args(&args(&["--limit", "abc", "--list-changelog"]))
+            .expect_err("non-numeric limit");
+        assert!(err.to_string().contains("positive integer"));
+    }
 }

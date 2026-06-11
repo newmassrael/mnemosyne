@@ -72,6 +72,16 @@ pub struct QuerySectionArgs {
     pub include_changelog: bool,
 }
 
+// Round 467/470 — whole-ledger changelog listing (R410 read model exposed).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListChangelogArgs {
+    /// Keep only the newest N entries (the returned `total` still reports
+    /// the full ledger size — a bounded read is never mistaken for the
+    /// whole ledger). Omit for the complete ledger.
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
 // Round 292 — query_term read primitive (literal/regex search across the
 // atomic store). Pure read; preview substrate for the deferred redact_term
 // mutate primitive but useful standalone for verifying a term's footprint
@@ -894,11 +904,11 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "List the whole changelog ledger as JSON views, in round-number order (oldest first — take the tail for the latest rounds). The session-start read for 'where did the last session leave off'; per-section history is query_section with include_changelog."
+        description = "List the changelog ledger as JSON {total, entries}, in round-number order (oldest first). `limit` keeps only the newest N entries while `total` reports the full ledger size — pass a small limit for the session-start 'where did the last session leave off' read instead of pulling the whole ledger into context. Per-section history is query_section with include_changelog."
     )]
-    async fn list_changelog(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        match ops::list_changelog(&self.workspace) {
-            Ok(entries) => self.tool_json(&entries),
+    async fn list_changelog(&self, args: Parameters<ListChangelogArgs>) -> CallToolResult {
+        match ops::list_changelog(&self.workspace, args.0.limit) {
+            Ok(view) => self.tool_json(&view),
             Err(e) => self.op_error(e),
         }
     }
