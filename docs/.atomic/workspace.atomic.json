@@ -9245,6 +9245,44 @@
         "rules subjects/objects scoping: deferred until a second consumer pulls (S7's comment workaround kept D1 exact)",
         "next floor experiment moves to where improvised notes break: longer corpus / more worlds / more sessions / weaker authoring tier"
       ]
+    },
+    "Round 472 — narrative-rules loader strict-parse: unknown and class-incoherent keys reject loud": {
+      "decision_summary": "The narrative-rules/v1 loader rejects unknown and class-incoherent JSON keys instead of silently dropping them — the R471 A/B run surfaced a transition rule carrying a dead per scope (the author had to encode recipe scoping in comments). The lenient flatten-based parse is replaced by flat wire DTOs under deny_unknown_fields, with leg/class coherence and a validated schema tag checked explicitly. This closes the R450/R468 silent-no-op class for the second declared gate-authority artifact.",
+      "changes_bullets": [
+        "Replaced the `flatten`-based `NarrativeRule`/`NarrativeRuleSpec` deserialize with flat `NarrativeRulesWire`/`NarrativeRuleWire` DTOs under serde `deny_unknown_fields` (continuity.rs) — `deny_unknown_fields` is incompatible with `flatten`, which is exactly how the lenient parse swallowed unknown keys.",
+        "`narrative_rule_from_wire` checks leg/class coherence: a transition carrying `per` (the R471 S7 miss, live in saltglass-studio) or an exclusive carrying `allowed` now rejects by name; a missing leg is named, not defaulted.",
+        "Modeled the file-level `schema` tag (validated equal to narrative-rules/v1 — the wrong-version silent-no-op closed) and the `comment` annotation slot; a third unknown file-level key fails loud. The R449 in-module test had drifted to a non-canonical `version` key; the real dogfood corpus (Detroit/Intercept/saltglass) uses `schema`, now ratified canonical.",
+        "Dropped the now-unused `Deserialize` from internal `NarrativeRulesFile`/`NarrativeRule`/`NarrativeRuleSpec`; deserialization lives only in the wire DTOs (single parse path, no half-enforced invariant).",
+        "Same silent-no-op class already closed for the padded predicate (R450) and the unknown `--field` (R468); the registry-typo lesson is R436, the authority-input pin contract R428."
+      ],
+      "verification_bullets": [
+        "New `rules_loader_rejects_unknown_and_incoherent_fields` test pins the S7 reproduction (transition + `per`), the symmetric exclusive + `allowed`, an unknown rule-level key, an unknown file-level key, a wrong `schema` value, and both missing legs.",
+        "Existing `rules_loader_validates_shape_and_pin` happy path moved to the canonical `schema`/`comment` shape; whitespace-normalization and rule-gate tests unchanged and green.",
+        "cargo clippy --workspace --all-targets clean; full suite 859 tests 0 fail (was 858, +1)."
+      ],
+      "carry_forward_bullets": [
+        "Rule subjects/objects scoping stays deferred — the comment workaround held D1 at one-violation-per-defect in the A/B run; build on the second consumer pull.",
+        "Fork-seam audit and selectional-promise payoff generalization remain sec 10 backlog candidates, now with quantified pull from both A/B arms; gate on the next corpus, do not build speculatively.",
+        "canon-order/v1's loader shares the identical lenient shape (no deny_unknown_fields, `schema` ignored); not field-proven and not the named debt, recorded here as a sibling tightening trigger."
+      ],
+      "publishable_decision_summary": "The narrative-rules/v1 loader rejects unknown and class-incoherent JSON keys instead of silently dropping them — the R471 A/B run surfaced a transition rule carrying a dead per scope (the author had to encode recipe scoping in comments). The lenient flatten-based parse is replaced by flat wire DTOs under deny_unknown_fields, with leg/class coherence and a validated schema tag checked explicitly. This closes the R450/R468 silent-no-op class for the second declared gate-authority artifact.",
+      "publishable_changes_bullets": [
+        "Replaced the `flatten`-based `NarrativeRule`/`NarrativeRuleSpec` deserialize with flat `NarrativeRulesWire`/`NarrativeRuleWire` DTOs under serde `deny_unknown_fields` (continuity.rs) — `deny_unknown_fields` is incompatible with `flatten`, which is exactly how the lenient parse swallowed unknown keys.",
+        "`narrative_rule_from_wire` checks leg/class coherence: a transition carrying `per` (the R471 S7 miss, live in saltglass-studio) or an exclusive carrying `allowed` now rejects by name; a missing leg is named, not defaulted.",
+        "Modeled the file-level `schema` tag (validated equal to narrative-rules/v1 — the wrong-version silent-no-op closed) and the `comment` annotation slot; a third unknown file-level key fails loud. The R449 in-module test had drifted to a non-canonical `version` key; the real dogfood corpus (Detroit/Intercept/saltglass) uses `schema`, now ratified canonical.",
+        "Dropped the now-unused `Deserialize` from internal `NarrativeRulesFile`/`NarrativeRule`/`NarrativeRuleSpec`; deserialization lives only in the wire DTOs (single parse path, no half-enforced invariant).",
+        "Same silent-no-op class already closed for the padded predicate (R450) and the unknown `--field` (R468); the registry-typo lesson is R436, the authority-input pin contract R428."
+      ],
+      "publishable_verification_bullets": [
+        "New `rules_loader_rejects_unknown_and_incoherent_fields` test pins the S7 reproduction (transition + `per`), the symmetric exclusive + `allowed`, an unknown rule-level key, an unknown file-level key, a wrong `schema` value, and both missing legs.",
+        "Existing `rules_loader_validates_shape_and_pin` happy path moved to the canonical `schema`/`comment` shape; whitespace-normalization and rule-gate tests unchanged and green.",
+        "cargo clippy --workspace --all-targets clean; full suite 859 tests 0 fail (was 858, +1)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Rule subjects/objects scoping stays deferred — the comment workaround held D1 at one-violation-per-defect in the A/B run; build on the second consumer pull.",
+        "Fork-seam audit and selectional-promise payoff generalization remain sec 10 backlog candidates, now with quantified pull from both A/B arms; gate on the next corpus, do not build speculatively.",
+        "canon-order/v1's loader shares the identical lenient shape (no deny_unknown_fields, `schema` ignored); not field-proven and not the named debt, recorded here as a sibling tightening trigger."
+      ]
     }
   },
   "inventory_entries": {},

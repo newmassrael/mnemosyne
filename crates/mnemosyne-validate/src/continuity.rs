@@ -341,14 +341,20 @@ pub fn load_canon_order(
 /// (Round 449, design sec 7.12). Rule semantics are game/world vocabulary
 /// and never enter L0 (ARCHITECTURE sec 6 invariant 4); like canon order,
 /// the artifact arrives declared (guardrail B-1) with an optional sha256
-/// pin. Extra JSON fields are ignored (lenient, the canon-order precedent).
-/// Authoring the file IS the opt-in — there is no separate severity knob;
-/// rule violations ride the existing continuity severity (the R431
+/// pin. Authoring the file IS the opt-in — there is no separate severity
+/// knob; rule violations ride the existing continuity severity (the R431
 /// rationale: a same-frame rule violation is wrong data, never a
 /// legitimate intermediate state).
-#[derive(Debug, Clone, Default, Deserialize)]
+///
+/// Deserialization goes through [`NarrativeRulesWire`] with
+/// `deny_unknown_fields` (Round 472): the prior `flatten`-based parse was
+/// lenient and SILENTLY dropped unknown keys — a transition rule carrying
+/// `per` (the S7 authoring miss in the A/B run), an `allowed` leg on an
+/// exclusive rule, or a typo'd schema tag all passed unremarked. Those now
+/// reject loudly, the same silent-no-op class already closed for the padded
+/// predicate (R450) and the unknown `--field` (R468).
+#[derive(Debug, Clone, Default)]
 pub struct NarrativeRulesFile {
-    #[serde(default)]
     pub rules: Vec<NarrativeRule>,
 }
 
@@ -356,19 +362,17 @@ pub struct NarrativeRulesFile {
 /// a registered predicate id (predicates are LOAD-BEARING refs — a typo'd
 /// predicate would silently escape its rule, the R436 write-side-typo
 /// lesson — so the scan boundary fail-louds on an unknown one).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct NarrativeRule {
     pub id: String,
     pub predicate: String,
-    #[serde(flatten)]
     pub spec: NarrativeRuleSpec,
 }
 
 /// The TWO rule classes (design sec 7.12 — probe-verified sufficient for
 /// the named trio: location exclusivity, conservation/custody, state
 /// machines).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "class", rename_all = "snake_case")]
+#[derive(Debug, Clone)]
 pub enum NarrativeRuleSpec {
     /// At most one co-holding value per subject (`per: subject` — location
     /// exclusivity) or one holder per object (`per: object` —
@@ -427,11 +431,59 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     }
 }
 
+/// The schema tag every `narrative-rules` file carries; a present-but-wrong
+/// value fails loud (the wrong-version silent-no-op, the same class as an
+/// unknown field).
+const NARRATIVE_RULES_SCHEMA: &str = "narrative-rules/v1";
+
+/// Wire form of the rules file — flat (no `flatten`) so `deny_unknown_fields`
+/// applies; serde forbids that attribute under `flatten`, which is exactly
+/// how the lenient parse swallowed unknown keys. `schema` is the version tag
+/// and `comment` a free-text annotation slot the dogfood files carry; both
+/// are modeled so a THIRD unknown file-level key fails loud.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NarrativeRulesWire {
+    #[serde(default)]
+    schema: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)] // annotation slot: parsed so it is allowed, never read
+    comment: Option<String>,
+    #[serde(default)]
+    rules: Vec<NarrativeRuleWire>,
+}
+
+/// Wire form of one rule — flat, `deny_unknown_fields`. `per` and `allowed`
+/// are optional here and checked against `class` in
+/// [`narrative_rule_from_wire`], so a transition carrying `per` (the S7
+/// miss) or an exclusive carrying `allowed` rejects rather than silently
+/// dropping the stray leg, and a missing leg is named.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NarrativeRuleWire {
+    id: String,
+    predicate: String,
+    class: RuleClass,
+    #[serde(default)]
+    per: Option<ExclusiveKey>,
+    #[serde(default)]
+    allowed: Option<Vec<[String; 2]>>,
+}
+
+/// The class tag, split from its leg so leg/class coherence is checked
+/// explicitly instead of by the lenient `flatten`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RuleClass {
+    Exclusive,
+    Transition,
+}
+
 /// Load a declared narrative-rules FILE, with the optional sha256 pin
 /// (Round 449; same R428 authority-input contract as the canon order).
-/// File-shape validation is here (blank/duplicate ids, blank legs);
-/// registry checks (the predicate must exist) happen at the scan boundary,
-/// where the store is in hand.
+/// File-shape validation is here (unknown keys, schema tag, blank/duplicate
+/// ids, blank legs, leg/class coherence); registry checks (the predicate
+/// must exist) happen at the scan boundary, where the store is in hand.
 pub fn load_narrative_rules(
     path: &Path,
     expected_sha256: Option<&str>,
@@ -447,52 +499,92 @@ pub fn load_narrative_rules(
             path,
         )?;
     }
-    let mut file: NarrativeRulesFile = serde_json::from_slice(&bytes)
+    let wire: NarrativeRulesWire = serde_json::from_slice(&bytes)
         .map_err(|e| format!("narrative-rules parse {}: {}", path.display(), e))?;
-    // Whitespace normalizes INTO the stored values (R450 session review):
-    // boundary check and evaluation both compare exact, so a padded
-    // `" alive"` that only a trimmed registry check accepted would match
-    // no typed fact and silently disarm its rule — the precise
-    // silent-escape class the boundary check exists to prevent.
-    for rule in &mut file.rules {
-        rule.id = rule.id.trim().to_string();
-        rule.predicate = rule.predicate.trim().to_string();
-        if let NarrativeRuleSpec::Transition { allowed } = &mut rule.spec {
-            for pair in allowed {
-                pair[0] = pair[0].trim().to_string();
-                pair[1] = pair[1].trim().to_string();
-            }
+    if let Some(schema) = wire.schema.as_deref() {
+        if schema.trim() != NARRATIVE_RULES_SCHEMA {
+            return Err(format!(
+                "narrative-rules: schema `{}` is not `{NARRATIVE_RULES_SCHEMA}` — the engine \
+                 knows only that contract",
+                schema.trim()
+            ));
         }
     }
-    let mut seen_ids: BTreeSet<&str> = BTreeSet::new();
-    for rule in &file.rules {
-        let id = rule.id.as_str();
-        if id.is_empty() {
-            return Err("narrative-rules: blank rule id".to_string());
-        }
-        if !seen_ids.insert(id) {
+    let mut rules: Vec<NarrativeRule> = Vec::with_capacity(wire.rules.len());
+    let mut seen_ids: BTreeSet<String> = BTreeSet::new();
+    for w in wire.rules {
+        let rule = narrative_rule_from_wire(w)?;
+        if !seen_ids.insert(rule.id.clone()) {
             return Err(format!(
-                "narrative-rules: duplicate rule id `{id}` — ids name findings, so they \
-                 must be unique"
+                "narrative-rules: duplicate rule id `{}` — ids name findings, so they \
+                 must be unique",
+                rule.id
             ));
         }
-        if rule.predicate.is_empty() {
-            return Err(format!(
-                "narrative-rules: rule `{id}` has a blank predicate"
-            ));
+        rules.push(rule);
+    }
+    Ok(NarrativeRulesFile { rules })
+}
+
+/// Convert one wire rule to the internal [`NarrativeRule`], checking
+/// leg/class coherence and trimming whitespace INTO the stored values
+/// (R450: the boundary check and the evaluation both compare exact, so a
+/// padded `" alive"` that only a trimmed registry check accepted would match
+/// no typed fact and silently disarm its rule).
+fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, String> {
+    let id = w.id.trim().to_string();
+    if id.is_empty() {
+        return Err("narrative-rules: blank rule id".to_string());
+    }
+    let predicate = w.predicate.trim().to_string();
+    if predicate.is_empty() {
+        return Err(format!(
+            "narrative-rules: rule `{id}` has a blank predicate"
+        ));
+    }
+    let spec = match w.class {
+        RuleClass::Exclusive => {
+            if w.allowed.is_some() {
+                return Err(format!(
+                    "narrative-rules: exclusive rule `{id}` carries an `allowed` leg \
+                     (that field belongs to a transition rule)"
+                ));
+            }
+            let per = w.per.ok_or_else(|| {
+                format!("narrative-rules: exclusive rule `{id}` is missing its `per` leg")
+            })?;
+            NarrativeRuleSpec::Exclusive { per }
         }
-        if let NarrativeRuleSpec::Transition { allowed } = &rule.spec {
-            for pair in allowed {
-                if pair[0].is_empty() || pair[1].is_empty() {
+        RuleClass::Transition => {
+            if w.per.is_some() {
+                return Err(format!(
+                    "narrative-rules: transition rule `{id}` carries a `per` field \
+                     (that leg belongs to an exclusive rule)"
+                ));
+            }
+            let raw = w.allowed.ok_or_else(|| {
+                format!("narrative-rules: transition rule `{id}` is missing its `allowed` legs")
+            })?;
+            let mut allowed: Vec<[String; 2]> = Vec::with_capacity(raw.len());
+            for pair in raw {
+                let from = pair[0].trim().to_string();
+                let to = pair[1].trim().to_string();
+                if from.is_empty() || to.is_empty() {
                     return Err(format!(
                         "narrative-rules: rule `{id}` has a blank leg in an allowed \
                          transition pair"
                     ));
                 }
+                allowed.push([from, to]);
             }
+            NarrativeRuleSpec::Transition { allowed }
         }
-    }
-    Ok(file)
+    };
+    Ok(NarrativeRule {
+        id,
+        predicate,
+        spec,
+    })
 }
 
 /// One continuity violation.
@@ -3745,14 +3837,15 @@ mod tests {
             std::fs::write(&p, body).unwrap();
             p
         };
-        // Happy path: both classes, extra fields ignored (lenient).
+        // Happy path: both classes, the canonical `schema` tag and the
+        // `comment` annotation slot accepted (Round 472 — strict otherwise).
         let ok = write(
             "ok.json",
-            r#"{"rules":[
+            r#"{"schema":"narrative-rules/v1","comment":"dogfood shape","rules":[
                 {"id":"loc","class":"exclusive","predicate":"at-location","per":"subject"},
                 {"id":"life","class":"transition","predicate":"life-status",
-                 "allowed":[["alive","dead"]],"note":"extra ignored"}
-            ],"version":"narrative-rules/v1"}"#,
+                 "allowed":[["alive","dead"]]}
+            ]}"#,
         );
         let file = load_narrative_rules(&ok, None).unwrap();
         assert_eq!(file.rules.len(), 2);
@@ -3810,6 +3903,81 @@ mod tests {
         assert!(load_narrative_rules(&bad_per, None)
             .unwrap_err()
             .contains("parse"));
+    }
+
+    /// Round 472 — the loader rejects unknown and class-incoherent keys
+    /// loudly instead of dropping them (the lenient `flatten` parse let the
+    /// A/B run's transition rule carry a `per` scope that did nothing). The
+    /// silent-no-op class already closed for R450 (padded predicate) and
+    /// R468 (unknown `--field`).
+    #[test]
+    fn rules_loader_rejects_unknown_and_incoherent_fields() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        // The S7 field-proof: a `per` scope on a TRANSITION rule was
+        // silently ignored; now it names the misplaced leg.
+        let s7 = write(
+            "s7.json",
+            r#"{"rules":[{"id":"r","class":"transition","predicate":"p",
+                "per":"subject","allowed":[["a","b"]]}]}"#,
+        );
+        let err = load_narrative_rules(&s7, None).unwrap_err();
+        assert!(err.contains("transition") && err.contains("per"), "{err}");
+        // Symmetric: an `allowed` leg on an EXCLUSIVE rule.
+        let stray_allowed = write(
+            "stray-allowed.json",
+            r#"{"rules":[{"id":"r","class":"exclusive","predicate":"p",
+                "per":"subject","allowed":[["a","b"]]}]}"#,
+        );
+        let err = load_narrative_rules(&stray_allowed, None).unwrap_err();
+        assert!(
+            err.contains("exclusive") && err.contains("allowed"),
+            "{err}"
+        );
+        // An unknown RULE-level key (not just a misplaced known one).
+        let unknown_rule = write(
+            "unknown-rule.json",
+            r#"{"rules":[{"id":"r","class":"exclusive","predicate":"p",
+                "per":"subject","subject":"x"}]}"#,
+        );
+        assert!(load_narrative_rules(&unknown_rule, None)
+            .unwrap_err()
+            .contains("parse"));
+        // An unknown FILE-level key.
+        let unknown_file = write(
+            "unknown-file.json",
+            r#"{"schema":"narrative-rules/v1","rules":[],"bogus":1}"#,
+        );
+        assert!(load_narrative_rules(&unknown_file, None)
+            .unwrap_err()
+            .contains("parse"));
+        // A present-but-wrong schema tag (the wrong-version silent-no-op).
+        let bad_schema = write(
+            "bad-schema.json",
+            r#"{"schema":"narrative-rules/v2","rules":[]}"#,
+        );
+        assert!(load_narrative_rules(&bad_schema, None)
+            .unwrap_err()
+            .contains("schema"));
+        // A missing leg is named, not defaulted.
+        let no_per = write(
+            "no-per.json",
+            r#"{"rules":[{"id":"r","class":"exclusive","predicate":"p"}]}"#,
+        );
+        assert!(load_narrative_rules(&no_per, None)
+            .unwrap_err()
+            .contains("missing"));
+        let no_allowed = write(
+            "no-allowed.json",
+            r#"{"rules":[{"id":"r","class":"transition","predicate":"p"}]}"#,
+        );
+        assert!(load_narrative_rules(&no_allowed, None)
+            .unwrap_err()
+            .contains("missing"));
     }
 
     /// The rule gate and the frame view read the SAME holds_at: a fact the
