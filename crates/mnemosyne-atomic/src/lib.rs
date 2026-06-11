@@ -4733,15 +4733,7 @@ pub fn import_typing_proposals(
                      (overwrite is manual author territory: amend-fact)"
                 ));
             }
-            let current = sha256_hex(fact.claim.as_bytes());
-            if current != p.claim_sha256 {
-                return Err(format!(
-                    "stale proposal: fact `{fact_id}` claim sha256 is `{current}` but the \
-                     proposal interpreted `{}` — the claim changed after proposing; \
-                     re-run discovery against the current text",
-                    p.claim_sha256
-                ));
-            }
+            check_claim_pin(&store.narrative_facts, fact_id, &p.claim_sha256, "fact")?;
             if p.rationale.trim().is_empty() {
                 return Err(format!(
                     "fact `{fact_id}`: rationale mandatory (the reviewable substance)"
@@ -4908,9 +4900,12 @@ pub struct EdgeImportReport {
     pub written_bytes: usize,
 }
 
-/// Re-check one proposal-side claim pin against the current store text
-/// (the R439 staleness rule, two-sided for edges).
-fn check_edge_pin(
+/// Re-check one proposal-side claim pin against the current store text —
+/// THE R439 staleness re-check both proposal imports share (Round 465
+/// dedup: typing carried an inline copy; R460 unified the hash ENCODING
+/// and this unifies the re-check itself). `side` names the endpoint for
+/// the message (`fact` / `successor` / `predecessor` / `target`).
+fn check_claim_pin(
     facts: &BTreeMap<String, NarrativeFact>,
     fact_id: &str,
     stamped: &str,
@@ -4982,8 +4977,8 @@ pub fn import_edge_proposals(
                     "predecessor `{predecessor}` not present in atomic store"
                 ));
             }
-            check_edge_pin(facts, successor, &p.successor_claim_sha256, "successor")?;
-            check_edge_pin(
+            check_claim_pin(facts, successor, &p.successor_claim_sha256, "successor")?;
+            check_claim_pin(
                 facts,
                 predecessor,
                 &p.predecessor_claim_sha256,
@@ -5048,8 +5043,8 @@ pub fn import_edge_proposals(
                      never re-propose existing structure"
                 ));
             }
-            check_edge_pin(facts, fact_id, &p.fact_claim_sha256, "fact")?;
-            check_edge_pin(facts, target, &p.target_claim_sha256, "target")?;
+            check_claim_pin(facts, fact_id, &p.fact_claim_sha256, "fact")?;
+            check_claim_pin(facts, target, &p.target_claim_sha256, "target")?;
             if p.rationale.trim().is_empty() {
                 return Err("rationale mandatory (the reviewable substance)".to_string());
             }

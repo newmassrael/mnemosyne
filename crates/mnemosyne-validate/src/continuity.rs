@@ -811,6 +811,18 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
     Ok(())
 }
 
+/// Lineage per potential query world (main + every registered branch) —
+/// THE single construction (Round 465; the scan and the edge-candidates
+/// report carried the second copy, the two-copies rule).
+fn query_world_lineages(store: &AtomicStore) -> Result<BTreeMap<String, Lineage>, String> {
+    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
+    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
+    for branch in store.branches.keys() {
+        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
+    }
+    Ok(lineages)
+}
+
 /// The per-world pair space both rule surfaces sweep (Round 452 — the
 /// second copy triggered the extraction): for every query world, every
 /// same-frame pair of `typed` facts visible together there, visited with
@@ -929,12 +941,7 @@ pub fn scan_continuity(
     }
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
-    // Lineage per potential query world (every registered branch + main).
-    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
-    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
-    for branch in store.branches.keys() {
-        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
-    }
+    let lineages = query_world_lineages(store)?;
     let mut report = ContinuityReport {
         facts: facts.len(),
         order_nodes: order.node_count(),
@@ -1000,37 +1007,25 @@ pub fn scan_continuity(
     // other's end) — the exact silent-broken-state the R461 probe found.
     // Reported once per cycle, anchored at its minimum member id.
     for (sid, s) in facts {
-        if s.supersedes_in_frame.is_none() {
+        // A fact is ON a cycle exactly when it appears among its own
+        // transitive predecessors — THE existing cycle-guarded walk
+        // (`succession_ancestors`), not a second hand-rolled one.
+        if s.supersedes_in_frame.is_none()
+            || !succession_ancestors(facts, sid).contains(sid.as_str())
+        {
             continue;
         }
-        let mut seen: BTreeSet<&str> = BTreeSet::new();
-        seen.insert(sid.as_str());
-        let mut cur = s.supersedes_in_frame.as_deref();
-        let mut closes = false;
-        while let Some(p) = cur {
-            if p == sid {
-                closes = true;
-                break;
-            }
-            if !seen.insert(p) {
-                break; // runs into a cycle that excludes sid — anchored there
-            }
-            cur = facts.get(p).and_then(|f| f.supersedes_in_frame.as_deref());
+        let mut cycle = vec![sid.clone()];
+        let mut cur = s.supersedes_in_frame.as_deref().expect("checked above");
+        while cur != sid {
+            cycle.push(cur.to_string());
+            // Total: the membership test above walked these exact edges.
+            cur = facts[cur].supersedes_in_frame.as_deref().expect("walked");
         }
-        if closes {
-            let mut cycle = vec![sid.clone()];
-            let mut cur = s.supersedes_in_frame.as_deref().expect("checked above");
-            while cur != sid {
-                cycle.push(cur.to_string());
-                // Total: every member was reached through an existing edge
-                // in the closing walk above.
-                cur = facts[cur].supersedes_in_frame.as_deref().expect("walked");
-            }
-            if cycle.iter().min().map(String::as_str) == Some(sid.as_str()) {
-                report
-                    .violations
-                    .push(ContinuityViolation::SuccessionCycle { cycle });
-            }
+        if cycle.iter().min().map(String::as_str) == Some(sid.as_str()) {
+            report
+                .violations
+                .push(ContinuityViolation::SuccessionCycle { cycle });
         }
     }
     // Payoff edge integrity (Round 442): identity refs re-checked against
@@ -1934,14 +1929,8 @@ pub fn edge_candidates(
     check_store_boundary(store, order)?;
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
-    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
-    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
-    for branch in store.branches.keys() {
-        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
-    }
-    let worlds: Vec<&str> = std::iter::once(mnemosyne_core::MAIN_BRANCH)
-        .chain(store.branches.keys().map(String::as_str))
-        .collect();
+    let lineages = query_world_lineages(store)?;
+    let worlds: Vec<&str> = lineages.keys().map(String::as_str).collect();
     let typed: Vec<(&String, &NarrativeFact)> =
         facts.iter().filter(|(_, f)| f.typed.is_some()).collect();
     let ancestors: BTreeMap<&str, BTreeSet<&str>> = typed
