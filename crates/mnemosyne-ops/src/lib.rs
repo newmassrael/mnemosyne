@@ -382,6 +382,22 @@ pub fn import_typing_proposals_report(
     )?)
 }
 
+/// The edge-discovery input package (Round 462, design sec 7.16 Round A):
+/// every fact row (claim + sha256 pin + all recorded edges) plus the
+/// deterministic succession-gap hints, with the shared order resolution
+/// (the hints need world visibility; the facts table never degrades).
+pub fn edge_candidates_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::EdgeCandidatesReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::edge_candidates(&store, &order).map_err(OpError::Other)
+}
+
 /// Run the dramatic-irony intervals derivation (Round 455, design sec
 /// 7.14) over the workspace store with the shared order resolution —
 /// pure read projection over recorded cross-frame conflict edges, per

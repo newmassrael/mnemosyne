@@ -480,6 +480,13 @@ pub struct ImportTypingProposalsArgs {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportEdgeCandidatesArgs {
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1466,6 +1473,19 @@ impl MnemosyneServer {
                 }
                 self.tool_json(&report)
             }
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Edge-discovery input package (R462, read-only): every fact row (claim text + claim_sha256 pin + frame/branch/entities + ALL recorded edges) plus deterministic succession-gap hints (same-frame same typed predicate+subject pairs no succession path connects). The contract for edge-proposals/v1 authoring: propose succession/conflict edges between listed facts only, stamp BOTH endpoint claim_sha256 pins, never re-propose a recorded edge."
+    )]
+    async fn report_edge_candidates(
+        &self,
+        args: Parameters<ReportEdgeCandidatesArgs>,
+    ) -> CallToolResult {
+        match ops::edge_candidates_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
     }

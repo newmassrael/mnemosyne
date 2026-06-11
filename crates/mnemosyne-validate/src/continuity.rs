@@ -1818,6 +1818,164 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
     })
 }
 
+/// One fact row of the edge-discovery input package (Round 462, design sec
+/// 7.16 Round A): the claim text with its sha256 (the R439 judgment-time
+/// pin, TWO-SIDED for edges — a proposal stamps both endpoints) and every
+/// recorded edge, so the proposer never re-proposes existing structure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EdgeCandidateFact {
+    pub fact_id: String,
+    pub frame: String,
+    pub branch: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub entities: Vec<String>,
+    pub claim: String,
+    pub claim_sha256: String,
+    pub canon_from: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canon_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typed: Option<mnemosyne_core::TypedClaim>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supersedes_in_frame: Option<String>,
+    /// Recorded conflict TARGETS (identity only — staleness of the stored
+    /// pins is the scan's territory, not the proposer's).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts_with: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pays_off: Vec<String>,
+}
+
+/// One deterministic succession-gap hint (Round 462, design sec 7.16): a
+/// same-frame pair with the same typed `(predicate, subject)`, co-visible
+/// in some world, that no succession PATH connects either way — the
+/// rule-free generalization of the `unchained_state_pairs` count, surfaced
+/// as PAIRS because the proposer needs the candidates, not a number.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SuccessionGap {
+    pub fact_a: String,
+    pub fact_b: String,
+    pub predicate: String,
+    pub subject: String,
+}
+
+/// The edge-discovery input package (Round 462, design sec 7.16 Round A):
+/// every fact row (claims + pins + all recorded edges) plus the
+/// deterministic succession-gap hints, in ONE call. Typed-only hints by
+/// construction — untyped facts carry no machine-comparable state key;
+/// their candidate surface is the facts table itself (the LLM's reading
+/// job). Pure read projection; the substrate contains no LLM client.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EdgeCandidatesReport {
+    /// Every fact, id-sorted.
+    pub facts: Vec<EdgeCandidateFact>,
+    pub fact_count: usize,
+    /// Recorded succession edges (context, not work).
+    pub succession_edges: usize,
+    /// Distinct recorded conflict pairs (edges read symmetrically).
+    pub conflict_pairs: usize,
+    pub succession_gaps: Vec<SuccessionGap>,
+}
+
+/// Collect edge candidates (Round 462). Order-resolved like every
+/// narrative read: without a declared canon order the gap hints degrade
+/// honestly (fork visibility goes unknown, pairs skip) while the facts
+/// table stays complete.
+pub fn edge_candidates(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<EdgeCandidatesReport, String> {
+    check_store_boundary(store, order)?;
+    let facts = &store.narrative_facts;
+    let successors = successors_index(facts);
+    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
+    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
+    for branch in store.branches.keys() {
+        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
+    }
+    let worlds: Vec<&str> = std::iter::once(mnemosyne_core::MAIN_BRANCH)
+        .chain(store.branches.keys().map(String::as_str))
+        .collect();
+    let typed: Vec<(&String, &NarrativeFact)> =
+        facts.iter().filter(|(_, f)| f.typed.is_some()).collect();
+    let ancestors: BTreeMap<&str, BTreeSet<&str>> = typed
+        .iter()
+        .map(|(id, _)| (id.as_str(), succession_ancestors(facts, id)))
+        .collect();
+    // Same-(predicate, subject) pairs no succession path connects — the
+    // scan's unchained computation (path not edge, Round 452) swept over
+    // ALL typed facts instead of one rule's predicate, deduplicated
+    // across worlds exactly like the count.
+    let mut gaps: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for_each_world_pair(
+        &worlds,
+        &lineages,
+        order,
+        &successors,
+        &typed,
+        |_, aid, a, bid, b| {
+            let (ta, tb) = (a.typed.as_ref().unwrap(), b.typed.as_ref().unwrap());
+            if ta.predicate != tb.predicate || ta.subject != tb.subject {
+                return;
+            }
+            if ancestors[aid].contains(bid) || ancestors[bid].contains(aid) {
+                return; // connected through the succession chain
+            }
+            gaps.insert((aid, bid));
+        },
+    );
+    let succession_gaps: Vec<SuccessionGap> = gaps
+        .into_iter()
+        .map(|(aid, bid)| {
+            let t = facts[aid].typed.as_ref().unwrap();
+            SuccessionGap {
+                fact_a: aid.to_string(),
+                fact_b: bid.to_string(),
+                predicate: t.predicate.clone(),
+                subject: t.subject.clone(),
+            }
+        })
+        .collect();
+    let mut conflict_pairs: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for (aid, a) in facts {
+        for c in &a.conflicts_with {
+            let key = if aid.as_str() < c.target.as_str() {
+                (aid.as_str(), c.target.as_str())
+            } else {
+                (c.target.as_str(), aid.as_str())
+            };
+            conflict_pairs.insert(key);
+        }
+    }
+    let rows: Vec<EdgeCandidateFact> = facts
+        .iter()
+        .map(|(id, f)| EdgeCandidateFact {
+            fact_id: id.clone(),
+            frame: f.frame.clone(),
+            branch: f.branch.clone(),
+            entities: f.entities.clone(),
+            claim: f.claim.clone(),
+            claim_sha256: claim_sha256_hex(&f.claim),
+            canon_from: f.canon_from.clone(),
+            canon_to: f.canon_to.clone(),
+            typed: f.typed.clone(),
+            supersedes_in_frame: f.supersedes_in_frame.clone(),
+            conflicts_with: f.conflicts_with.iter().map(|c| c.target.clone()).collect(),
+            pays_off: f.pays_off.clone(),
+        })
+        .collect();
+    Ok(EdgeCandidatesReport {
+        fact_count: rows.len(),
+        succession_edges: facts
+            .values()
+            .filter(|f| f.supersedes_in_frame.is_some())
+            .count(),
+        conflict_pairs: conflict_pairs.len(),
+        facts: rows,
+        succession_gaps,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3660,5 +3818,116 @@ mod tests {
         let w = &report.worlds[MAIN_BRANCH].windows[0];
         assert_eq!(w.nodes, ["ch-4"]);
         assert!(!w.open, "an isolated coordinate is not a world-line end");
+    }
+
+    // ---- edge candidates (Round 462, design sec 7.16 Round A) ----
+
+    /// The input-package contract: every fact row carries the claim text +
+    /// sha256 pin (two-sided proposal stamping) and EVERY recorded edge —
+    /// the proposer must never re-propose existing structure.
+    #[test]
+    fn edge_candidates_rows_carry_pins_and_all_recorded_edges() {
+        let a = fact("fa", "gt", "ch-1", None);
+        let mut b = fact("fb", "gt", "ch-2", None);
+        b.supersedes_in_frame = Some("fa".to_string());
+        let mut c = fact("fc", "gt", "ch-2", None);
+        c.conflicts_with = vec!["fa".to_string()];
+        c.pays_off = vec!["fa".to_string()];
+        let store = store_with(vec![a, b, c]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2"])).unwrap();
+        assert_eq!(report.fact_count, 3);
+        assert_eq!(report.succession_edges, 1);
+        assert_eq!(report.conflict_pairs, 1);
+        let ids: Vec<&str> = report.facts.iter().map(|f| f.fact_id.as_str()).collect();
+        assert_eq!(ids, ["fa", "fb", "fc"], "id-sorted");
+        assert_eq!(
+            report.facts[0].claim_sha256,
+            claim_sha256_hex("claim fa"),
+            "the pin a proposal must stamp"
+        );
+        assert_eq!(report.facts[1].supersedes_in_frame.as_deref(), Some("fa"));
+        assert_eq!(report.facts[2].conflicts_with, ["fa"]);
+        assert_eq!(report.facts[2].pays_off, ["fa"]);
+    }
+
+    /// The hint contract: a same-frame same-(predicate, subject) pair with
+    /// no succession path is a gap; chaining it removes the gap.
+    #[test]
+    fn succession_gap_detected_then_closed_by_the_edge() {
+        let a = typed_fact("fa", "gt", "ch-1", "todd", "life-status", at("alive"));
+        let b = typed_fact("fb", "gt", "ch-2", "todd", "life-status", at("dead"));
+        let store = store_with(vec![a.clone(), b.clone()]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2"])).unwrap();
+        assert_eq!(report.succession_gaps.len(), 1);
+        let gap = &report.succession_gaps[0];
+        assert_eq!((gap.fact_a.as_str(), gap.fact_b.as_str()), ("fa", "fb"));
+        assert_eq!(gap.predicate, "life-status");
+        assert_eq!(gap.subject, "todd");
+        let mut chained = b;
+        chained.supersedes_in_frame = Some("fa".to_string());
+        let store = store_with(vec![a, chained]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2"])).unwrap();
+        assert!(report.succession_gaps.is_empty(), "the edge closes the gap");
+    }
+
+    /// Path, not direct edge (the Round 452 unchained semantics mirrored):
+    /// a correctly chained A→B→C arc transitively connects (A, C).
+    #[test]
+    fn succession_gap_respects_transitive_chains() {
+        let a = typed_fact("fa", "gt", "ch-1", "todd", "life-status", at("alive"));
+        let mut b = typed_fact("fb", "gt", "ch-2", "todd", "life-status", at("wounded"));
+        b.supersedes_in_frame = Some("fa".to_string());
+        let mut c = typed_fact("fc", "gt", "ch-3", "todd", "life-status", at("dead"));
+        c.supersedes_in_frame = Some("fb".to_string());
+        let store = store_with(vec![a, b, c]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2", "ch-3"])).unwrap();
+        assert!(report.succession_gaps.is_empty(), "chained arc has no gap");
+    }
+
+    /// Cross-frame pairs and different-(predicate, subject) pairs are not
+    /// gaps — succession is in-frame, and state comparability needs the
+    /// same typed key. Untyped facts never hint (no machine state key).
+    #[test]
+    fn succession_gap_scope_boundaries() {
+        let a = typed_fact("fa", "gt", "ch-1", "todd", "life-status", at("alive"));
+        let cross = typed_fact("fb", "kara", "ch-2", "todd", "life-status", at("dead"));
+        let other_subj = typed_fact("fc", "gt", "ch-2", "alice", "life-status", at("dead"));
+        let other_pred = typed_fact("fd", "gt", "ch-2", "todd", "deviancy", at("deviant"));
+        let untyped = fact("fe", "gt", "ch-2", None);
+        let store = store_with(vec![a, cross, other_subj, other_pred, untyped]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2"])).unwrap();
+        assert!(report.succession_gaps.is_empty());
+    }
+
+    /// A pair co-visible in two worlds (fork lineage) hints once — the
+    /// dedup the unchained count applies, mirrored.
+    #[test]
+    fn succession_gap_deduplicated_across_worlds() {
+        let a = typed_fact("fa", "gt", "ch-1", "todd", "life-status", at("alive"));
+        let b = typed_fact("fb", "gt", "ch-1", "todd", "life-status", at("dead"));
+        let store = store_with_forks(vec![a, b], &[("w1", MAIN_BRANCH, "ch-2")]);
+        let report = edge_candidates(&store, &chain(&["ch-1", "ch-2"])).unwrap();
+        assert_eq!(
+            report.succession_gaps.len(),
+            1,
+            "visible in main AND w1, one hint"
+        );
+    }
+
+    /// Without a declared canon order the facts table stays complete and
+    /// same-branch hints still fire (visibility inside one branch needs no
+    /// order); only fork-inheritance visibility degrades.
+    #[test]
+    fn edge_candidates_facts_complete_without_order() {
+        let a = typed_fact("fa", "gt", "ch-1", "todd", "life-status", at("alive"));
+        let b = typed_fact("fb", "gt", "ch-2", "todd", "life-status", at("dead"));
+        let store = store_with(vec![a, b]);
+        let report = edge_candidates(&store, &CanonOrder::empty()).unwrap();
+        assert_eq!(report.fact_count, 2, "facts table never degrades");
+        assert_eq!(
+            report.succession_gaps.len(),
+            1,
+            "same-branch co-visibility needs no declared order"
+        );
     }
 }

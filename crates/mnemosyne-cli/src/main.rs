@@ -303,6 +303,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
         "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
+        "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -437,6 +438,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 459 — all-or-nothing reviewed import of proposed typed legs (claim-sha staleness re-checked, fill-blanks only)"
+    );
+    println!(
+        " {} report-edge-candidates [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 462 — edge-discovery input package: every fact row (claim sha256 + recorded edges) + succession-gap hints"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -2301,6 +2309,67 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
     }
     if report.rejected > 0 {
         std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 462 — edge-discovery input package (`report-edge-candidates`,
+/// design sec 7.16 Round A): every fact row with claim text + sha256 pin
+/// (proposals stamp BOTH endpoints) + every recorded edge, plus the
+/// deterministic succession-gap hints. Order-resolved like the other
+/// narrative reads — the hints need world visibility; the facts table
+/// never degrades.
+fn cmd_report_edge_candidates(args: &[String]) -> Result<()> {
+    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
+    let report = mnemosyne_ops::edge_candidates_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== edge candidates — {} fact(s), {} succession edge(s), {} conflict pair(s) ===",
+            report.fact_count, report.succession_edges, report.conflict_pairs
+        );
+        for f in &report.facts {
+            let mut edges = Vec::new();
+            if let Some(p) = &f.supersedes_in_frame {
+                edges.push(format!("supersedes {p}"));
+            }
+            if !f.conflicts_with.is_empty() {
+                edges.push(format!("conflicts {}", f.conflicts_with.join(",")));
+            }
+            if !f.pays_off.is_empty() {
+                edges.push(format!("pays-off {}", f.pays_off.join(",")));
+            }
+            println!(
+                "  {} (frame {} / branch {} @ {}{}): {}{}",
+                f.fact_id,
+                f.frame,
+                f.branch,
+                f.canon_from,
+                f.canon_to
+                    .as_deref()
+                    .map(|t| format!("..{t}"))
+                    .unwrap_or_default(),
+                f.claim,
+                if edges.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", edges.join("; "))
+                }
+            );
+        }
+        println!("succession gaps: {}", report.succession_gaps.len());
+        for g in &report.succession_gaps {
+            println!(
+                "  {} <-> {} ({} / {}): no succession path connects the pair",
+                g.fact_a, g.fact_b, g.predicate, g.subject
+            );
+        }
     }
     Ok(())
 }
