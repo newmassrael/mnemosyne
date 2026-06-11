@@ -95,8 +95,10 @@ pub struct QueryTermArgs {
     /// listed fields are returned. Use base field names: `"intent"`,
     /// `"rationale_bullets"`, `"decision_summary"`,
     /// `"changes_bullets"`, `"alternatives_rejected"`, `"examples"`,
-    /// `"implementations"`, `"source"`, `"reason"`, and the identifier
+    /// `"bindings"`, `"source"`, `"reason"`, and the identifier
     /// keys `"section_id"` / `"entry_id"` / `"inventory_id"` (Round 467).
+    /// Unknown names reject loudly with the scope's valid-field list
+    /// (Round 468), never a silent 0-hit result.
     #[serde(default)]
     pub fields: Vec<String>,
 }

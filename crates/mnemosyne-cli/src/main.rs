@@ -364,7 +364,7 @@ fn print_help(prog: &str) {
  prog
  );
     println!(
- "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467)"
+ "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467); unknown --field names reject loudly (Round 468)"
  );
     println!(
         " {} style-check [--doc <path>] [--severity t3|t4|all] [--json]",

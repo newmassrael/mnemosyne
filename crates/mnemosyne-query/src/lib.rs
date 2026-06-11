@@ -401,6 +401,10 @@ pub fn build_envelope(atomic_store: &AtomicStore, section_id: &str) -> Option<Qu
 // (silent miss); IDs are exactly what agents grep for at session load.
 // Restrict via the same field filter when ID matches are unwanted.
 //
+// Round 468 — field-filter names are validated against the scope's field
+// rosters; an unknown name (typo, or a field outside the scanned kinds)
+// rejects loudly instead of silently matching nothing.
+//
 // Out of scope (v1):
 //   - Legacy parser-side `sub_bullets` (handled by separate parser query).
 //   - Structural pointer fields (parent_doc, parent_section) — these are
@@ -449,6 +453,9 @@ pub struct TermQuery {
     /// Field names use the base name (no `[i]` index suffix); for struct
     /// sub-fields, the *containing list* name applies (e.g. `"alternatives_rejected"`
     /// covers both `.alternative` and `.reason` sub-paths).
+    /// Names are validated against the scope's rosters (Round 468): a name
+    /// no scanned kind knows is `QueryTermError::UnknownField`, never a
+    /// silent 0-hit result.
     pub field_filter: Option<BTreeSet<String>>,
 }
 
@@ -466,12 +473,77 @@ pub struct TermHit {
     pub line_context: String,
 }
 
-/// Failure modes for [`query_term`]. Only one path can fail today (regex
-/// compile); kept as an enum for forward compatibility.
+/// Failure modes for [`query_term`].
 #[derive(Debug, Error)]
 pub enum QueryTermError {
     #[error("invalid regex pattern: {0}")]
     InvalidRegex(#[from] regex::Error),
+    /// Round 468 — an unknown field name in the filter is a caller error,
+    /// not an empty result. Before this, a typo'd `--field` silently
+    /// returned 0 hits, indistinguishable from "term absent" — the same
+    /// silent-miss class the R467 identifier-key repair closed for IDs.
+    #[error("unknown field `{field}` for scope {scope}; valid fields: {valid}")]
+    UnknownField {
+        field: String,
+        scope: &'static str,
+        valid: String,
+    },
+}
+
+/// Field-name rosters per entity kind — the validation vocabulary for
+/// [`TermQuery::field_filter`]. Single-sourced with the scanners by test:
+/// `query_term_field_roster_matches_scanners` runs every roster name
+/// against a fully-populated store and asserts it produces a hit, so a
+/// scanner field that leaves the roster (or vice versa) fails CI.
+const SECTION_FIELDS: &[&str] = &[
+    "section_id",
+    "title",
+    "intent",
+    "rationale_bullets",
+    "inputs_bullets",
+    "outputs_bullets",
+    "caveats_bullets",
+    "impact_scope",
+    "alternatives_rejected",
+    "examples",
+    "bindings",
+];
+const CHANGELOG_FIELDS: &[&str] = &[
+    "entry_id",
+    "decision_summary",
+    "changes_bullets",
+    "verification_bullets",
+    "impact_refs",
+    "carry_forward_bullets",
+];
+const INVENTORY_FIELDS: &[&str] = &["inventory_id", "source", "reason"];
+
+/// Validate a field filter against the kinds the scope will scan. A field
+/// name outside the scanned kinds' rosters can never produce a hit — that
+/// is a caller error surfaced loudly, never an empty result.
+fn validate_field_filter(
+    scope: TermScope,
+    filter: &BTreeSet<String>,
+) -> Result<(), QueryTermError> {
+    let (rosters, scope_label): (&[&[&str]], &'static str) = match scope {
+        TermScope::All => (&[SECTION_FIELDS, CHANGELOG_FIELDS, INVENTORY_FIELDS], "all"),
+        TermScope::Sections => (&[SECTION_FIELDS], "sections"),
+        TermScope::ChangelogEntries => (&[CHANGELOG_FIELDS], "changelog"),
+        TermScope::Inventory => (&[INVENTORY_FIELDS], "inventory"),
+    };
+    for field in filter {
+        let known = rosters.iter().any(|r| r.contains(&field.as_str()));
+        if !known {
+            let mut valid: Vec<&str> = rosters.iter().flat_map(|r| r.iter().copied()).collect();
+            valid.sort_unstable();
+            return Err(QueryTermError::UnknownField {
+                field: field.clone(),
+                scope: scope_label,
+                valid: valid.join(", "),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// `query_term` — literal/regex scan over the atomic store.
@@ -480,6 +552,9 @@ pub enum QueryTermError {
 /// `BTreeMap` key order × field declaration order × bullet index order.
 /// Pure read — `store` is not modified.
 pub fn query_term(store: &AtomicStore, q: &TermQuery) -> Result<Vec<TermHit>, QueryTermError> {
+    if let Some(filter) = &q.field_filter {
+        validate_field_filter(q.scope, filter)?;
+    }
     let matcher = Matcher::build(&q.pattern, q.mode, q.case_insensitive)?;
     let mut hits = Vec::new();
 
@@ -1256,6 +1331,140 @@ mod tests {
         let hits = query_term(&store, &q).expect("ok");
         assert_eq!(hits.len(), 1, "filter restricts to intent only");
         assert_eq!(hits[0].field_path, "intent");
+    }
+
+    // --- Round 468: field-filter names fail loud, single-sourced rosters ---
+
+    #[test]
+    fn query_term_unknown_field_rejects() {
+        let store = AtomicStore::default();
+        let mut filter = BTreeSet::new();
+        filter.insert("intnet".to_string());
+        let q = TermQuery {
+            field_filter: Some(filter),
+            ..literal_q("x")
+        };
+        match query_term(&store, &q) {
+            Err(QueryTermError::UnknownField { field, scope, .. }) => {
+                assert_eq!(field, "intnet");
+                assert_eq!(scope, "all");
+            }
+            other => panic!("expected UnknownField, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn query_term_field_outside_scope_rejects() {
+        // `intent` is a Section field; under changelog scope it can never
+        // hit, so it is a caller error, not an empty result.
+        let store = AtomicStore::default();
+        let mut filter = BTreeSet::new();
+        filter.insert("intent".to_string());
+        let q = TermQuery {
+            scope: TermScope::ChangelogEntries,
+            field_filter: Some(filter),
+            ..literal_q("x")
+        };
+        match query_term(&store, &q) {
+            Err(QueryTermError::UnknownField {
+                field,
+                scope,
+                valid,
+            }) => {
+                assert_eq!(field, "intent");
+                assert_eq!(scope, "changelog");
+                assert!(valid.contains("entry_id"), "error lists valid names");
+            }
+            other => panic!("expected UnknownField, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn query_term_field_roster_matches_scanners() {
+        // Single-sourcing pin: every roster name, run as a filter against a
+        // fully-populated store, must produce a hit in that very field. A
+        // scanner field missing from its roster (or a roster name no scanner
+        // checks) fails here.
+        let mut store = AtomicStore::default();
+        store.sections.insert(
+            "zz-sec".to_string(),
+            AtomicSection {
+                skeleton: mnemosyne_core::SectionSkeleton {
+                    title: "zz title".into(),
+                    parent_doc: "spec".into(),
+                    ..Default::default()
+                },
+                intent: Some("zz intent".to_string()),
+                rationale_bullets: vec!["zz r".to_string()],
+                inputs_bullets: vec!["zz i".to_string()],
+                outputs_bullets: vec!["zz o".to_string()],
+                caveats_bullets: vec!["zz c".to_string()],
+                impact_scope: vec!["zz-target".to_string()],
+                alternatives_rejected: vec![RejectedAlternative {
+                    alternative: "zz alt".to_string(),
+                    reason: "zz why".to_string(),
+                }],
+                examples: vec![ExampleBlock {
+                    language: "rust".to_string(),
+                    code: "zz code".to_string(),
+                }],
+                bindings: vec![Binding {
+                    kind: BindingKind::Implements,
+                    file: "zz/file.rs".to_string(),
+                    symbol: Some("zz_sym".to_string()),
+                }],
+                ..Default::default()
+            },
+        );
+        store.changelog_entries.insert(
+            "Round 1 zz".to_string(),
+            AtomicChangelogEntry {
+                decision_summary: Some("zz summary".to_string()),
+                changes_bullets: vec!["zz ch".to_string()],
+                verification_bullets: vec!["zz v".to_string()],
+                impact_refs: vec!["zz-ref".to_string()],
+                carry_forward_bullets: vec!["zz carry".to_string()],
+                ..Default::default()
+            },
+        );
+        store.inventory_entries.insert(
+            "zz-inv".to_string(),
+            InventoryEntry {
+                source: Some("zz src".to_string()),
+                reason: Some("zz reason".to_string()),
+                ..Default::default()
+            },
+        );
+        let cases: &[(TermScope, &[&str])] = &[
+            (TermScope::Sections, SECTION_FIELDS),
+            (TermScope::ChangelogEntries, CHANGELOG_FIELDS),
+            (TermScope::Inventory, INVENTORY_FIELDS),
+        ];
+        for (scope, roster) in cases {
+            for field in *roster {
+                let mut filter = BTreeSet::new();
+                filter.insert(field.to_string());
+                let q = TermQuery {
+                    scope: *scope,
+                    field_filter: Some(filter),
+                    ..literal_q("zz")
+                };
+                let hits = query_term(&store, &q).expect("roster name validates");
+                assert!(
+                    !hits.is_empty(),
+                    "roster field `{}` produced no hit — scanner/roster drift",
+                    field
+                );
+                for h in &hits {
+                    assert!(
+                        h.field_path.starts_with(field),
+                        "hit field_path `{}` outside filtered field `{}`",
+                        h.field_path,
+                        field
+                    );
+                }
+            }
+        }
     }
 
     #[test]

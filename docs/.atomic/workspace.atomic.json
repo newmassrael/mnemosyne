@@ -9091,6 +9091,40 @@
         "--field with an unknown field name still returns 0 hits silently (no field-name validation) — the same silent-miss class this round repaired for IDs, surfaced here not fixed; candidate: fail-loud unknown-field reject on the shared ops path",
         "next session = Tier-3 A/B authoring experiment design round (owner decision 2026-06-11) — this round was a session-load friction repair surfaced by live dogfood, not a backlog pull; the backlog order stands"
       ]
+    },
+    "Round 468 — query_term field filter fails loud: rosters at the one shared site, the R467 carry repaid": {
+      "decision_summary": "The R467 carry named the surviving member of the silent-miss class it had just repaid for identifier keys: a --field name no scanner checks (a typo, a field outside the scanned scope, or a stale doc vocabulary) returned 0 hits indistinguishable from a true empty result. This round closes it at the only correct site — inside query_term itself, ahead of the scan, where CLI and MCP both arrive — because validating in ops or the CLI parser would re-create the half-enforced-invariant shape the R295 paste-error made canonical: one write path strict, the sibling permissive, the invariant effectively absent. Three per-kind field rosters become the validation vocabulary; scope decides which rosters apply, so a Section-only field under changelog scope is rejected as loudly as a typo, and the error message hands back the scope's complete valid-name list (fail fast, fail informatively). The roster cannot drift from the scanners on discipline alone, so a test pins the equivalence: every roster name, filtered against a fully-populated store, must hit its own field. The sweep also caught a live instance of the class: the MCP fields-arg doc had advertised implementations — a name no scanner has checked since the bindings rename — meaning an agent following the tool's own documentation got the silent 0-hit forever. Doc corrected, contract stated. The query_term read path now has no silent-miss surface: IDs scan (R467), names validate (R468), the advertised vocabulary is the real one (R468).",
+      "changes_bullets": [
+        "mnemosyne-query: per-kind field rosters (SECTION_FIELDS 11 / CHANGELOG_FIELDS 6 / INVENTORY_FIELDS 3) + validate_field_filter at the head of query_term — the single shared site both CLI and MCP route through, so the invariant cannot half-enforce (the R295/R305 lesson applied at design time); QueryTermError::UnknownField carries the offending name, the scope label, and the scope's full valid-field list",
+        "roster <-> scanner single-sourcing is pinned by test, not by discipline: query_term_field_roster_matches_scanners runs every roster name as a filter against a fully-populated store and asserts a hit in that very field, so a scanner field leaving the roster (or a roster name no scanner checks) fails CI; 2 more tests pin the typo reject and the scope-aware reject (intent under changelog scope = error listing entry_id et al.)",
+        "mnemosyne-mcp: query_term fields-arg doc drift repaid — it advertised \"implementations\", a field no scanner checks (the actual name is \"bindings\" post-R387); same silent-miss class as the typo case, an agent following the doc got 0 hits forever; doc now names the fail-loud contract",
+        "mnemosyne-cli: --term help line notes the loud reject"
+      ],
+      "verification_bullets": [
+        "cargo test --workspace: 853 passed, 0 failed (850 -> 853: 3 query unit); cargo clippy --workspace --all-targets clean",
+        "CLI live: --field intnet rejects naming all 20 scope-all fields; --scope changelog --field intent rejects naming the 6 changelog fields; --scope changelog --field entry_id \"Round 467\" still 1 hit",
+        "MCP stdio live: query_term fields=[\"intnet\"] returns isError=true with the same message (shared-path parity, no second vocabulary); valid entry_id search returns the hit"
+      ],
+      "carry_forward_bullets": [
+        "R467 carry repaid in full — no surviving silent-miss surface on the query_term path (IDs scanned R467, field names validated R468, doc vocabulary corrected R468)",
+        "next session = Tier-3 A/B authoring experiment design round (owner decision 2026-06-11), unchanged"
+      ],
+      "publishable_decision_summary": "The R467 carry named the surviving member of the silent-miss class it had just repaid for identifier keys: a --field name no scanner checks (a typo, a field outside the scanned scope, or a stale doc vocabulary) returned 0 hits indistinguishable from a true empty result. This round closes it at the only correct site — inside query_term itself, ahead of the scan, where CLI and MCP both arrive — because validating in ops or the CLI parser would re-create the half-enforced-invariant shape the R295 paste-error made canonical: one write path strict, the sibling permissive, the invariant effectively absent. Three per-kind field rosters become the validation vocabulary; scope decides which rosters apply, so a Section-only field under changelog scope is rejected as loudly as a typo, and the error message hands back the scope's complete valid-name list (fail fast, fail informatively). The roster cannot drift from the scanners on discipline alone, so a test pins the equivalence: every roster name, filtered against a fully-populated store, must hit its own field. The sweep also caught a live instance of the class: the MCP fields-arg doc had advertised implementations — a name no scanner has checked since the bindings rename — meaning an agent following the tool's own documentation got the silent 0-hit forever. Doc corrected, contract stated. The query_term read path now has no silent-miss surface: IDs scan (R467), names validate (R468), the advertised vocabulary is the real one (R468).",
+      "publishable_changes_bullets": [
+        "mnemosyne-query: per-kind field rosters (SECTION_FIELDS 11 / CHANGELOG_FIELDS 6 / INVENTORY_FIELDS 3) + validate_field_filter at the head of query_term — the single shared site both CLI and MCP route through, so the invariant cannot half-enforce (the R295/R305 lesson applied at design time); QueryTermError::UnknownField carries the offending name, the scope label, and the scope's full valid-field list",
+        "roster <-> scanner single-sourcing is pinned by test, not by discipline: query_term_field_roster_matches_scanners runs every roster name as a filter against a fully-populated store and asserts a hit in that very field, so a scanner field leaving the roster (or a roster name no scanner checks) fails CI; 2 more tests pin the typo reject and the scope-aware reject (intent under changelog scope = error listing entry_id et al.)",
+        "mnemosyne-mcp: query_term fields-arg doc drift repaid — it advertised \"implementations\", a field no scanner checks (the actual name is \"bindings\" post-R387); same silent-miss class as the typo case, an agent following the doc got 0 hits forever; doc now names the fail-loud contract",
+        "mnemosyne-cli: --term help line notes the loud reject"
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace: 853 passed, 0 failed (850 -> 853: 3 query unit); cargo clippy --workspace --all-targets clean",
+        "CLI live: --field intnet rejects naming all 20 scope-all fields; --scope changelog --field intent rejects naming the 6 changelog fields; --scope changelog --field entry_id \"Round 467\" still 1 hit",
+        "MCP stdio live: query_term fields=[\"intnet\"] returns isError=true with the same message (shared-path parity, no second vocabulary); valid entry_id search returns the hit"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R467 carry repaid in full — no surviving silent-miss surface on the query_term path (IDs scanned R467, field names validated R468, doc vocabulary corrected R468)",
+        "next session = Tier-3 A/B authoring experiment design round (owner decision 2026-06-11), unchanged"
+      ]
     }
   },
   "inventory_entries": {},
