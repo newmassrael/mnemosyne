@@ -301,6 +301,7 @@ fn run(args: &[String]) -> Result<()> {
         // Round 442 — setup/payoff coverage (read projection, never gated).
         "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
+        "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
         "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
@@ -425,6 +426,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
+    );
+    println!(
+        " {} report-playthrough-manuscript [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 466 — per-world linear scene walk with declared fact events (reading surface, never gated)"
     );
     println!(
         " {} report-typing-candidates [--sidecar <path>] [--json]",
@@ -2007,16 +2015,29 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Shared `--json` / `--order` / `--sidecar` parse + workspace-anchor
-/// resolution for the per-world narrative report verbs (Round 456 — the
-/// second identical copy triggered the extraction; `validate-continuity`
-/// keeps its richer parser).
-fn parse_narrative_report_args(
-    args: &[String],
-) -> Result<(bool, Option<String>, Option<String>, std::path::PathBuf)> {
+/// Parsed flags shared by the per-world narrative report verbs (Round
+/// 456 extraction; struct form since Round 466 — the tuple stopped
+/// scaling at the fifth field).
+struct NarrativeReportArgs {
+    json: bool,
+    order_override: Option<String>,
+    sidecar_override: Option<String>,
+    /// Single-world filter (Round 466) — only verbs that opt in accept it.
+    world: Option<String>,
+    anchor: std::path::PathBuf,
+}
+
+/// Shared `--json` / `--order` / `--sidecar` (+ opt-in `--world`) parse +
+/// workspace-anchor resolution for the per-world narrative report verbs
+/// (Round 456 — the second identical copy triggered the extraction;
+/// `validate-continuity` keeps its richer parser). A verb that does not
+/// take a world filter passes `allow_world = false` and the flag rejects
+/// loudly instead of parsing-then-ignoring.
+fn parse_narrative_report_args(args: &[String], allow_world: bool) -> Result<NarrativeReportArgs> {
     let mut json = false;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
+    let mut world: Option<String> = None;
     let mut iter = args.iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -2035,6 +2056,13 @@ fn parse_narrative_report_args(
                         .clone(),
                 )
             }
+            "--world" if allow_world => {
+                world = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--world missing"))?
+                        .clone(),
+                )
+            }
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2044,7 +2072,13 @@ fn parse_narrative_report_args(
         .parent()
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(|| loaded.workspace_root.clone());
-    Ok((json, order_override, sidecar_override, anchor))
+    Ok(NarrativeReportArgs {
+        json,
+        order_override,
+        sidecar_override,
+        world,
+        anchor,
+    })
 }
 
 /// Round 442 — setup/payoff coverage (`report-payoff-coverage`): per query
@@ -2054,11 +2088,12 @@ fn parse_narrative_report_args(
 /// deliberately never gated (a WIP story has dangling setups by
 /// definition). Order and store resolve through the shared ops path.
 fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
-    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
+    let a = parse_narrative_report_args(args, false)?;
+    let json = a.json;
     let report = mnemosyne_ops::payoff_coverage_report(
-        &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.order_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -2122,11 +2157,12 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
 /// signal, deliberately never gated. Order and store resolve through the
 /// shared ops path.
 fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
-    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
+    let a = parse_narrative_report_args(args, false)?;
+    let json = a.json;
     let report = mnemosyne_ops::irony_intervals_report(
-        &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.order_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -2185,6 +2221,92 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
                     e.fact_a, e.fact_b
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+/// Round 466 — playthrough manuscript (`report-playthrough-manuscript`,
+/// design sec 7.17): per query world (or the single `--world` filter), the
+/// composed canon order's deterministic topological walk with declared
+/// fact events placed on it — begins, ends (expired / superseded), and the
+/// holds-judged count per scene. The answer to "a human cannot read the
+/// graph": N worlds = N linear manuscripts. Pure read projection — a
+/// reading surface, deliberately never gated. Order and store resolve
+/// through the shared ops path.
+fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(args, true)?;
+    let report = mnemosyne_ops::playthrough_manuscript_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.world.as_deref(),
+        a.order_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if a.json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== playthrough manuscript — {} fact(s), {} world(s) ===",
+        report.facts,
+        report.worlds.len()
+    );
+    for (world, m) in &report.worlds {
+        println!(
+            "world `{world}`: {} scene(s), undeclared adjacencies={}, unplaced={}, \
+             undecidable={}, outside order={}",
+            m.scenes.len(),
+            m.undeclared_adjacencies.len(),
+            m.unplaced_facts.len(),
+            m.undecidable.len(),
+            m.sections_outside_order.len()
+        );
+        for s in &m.scenes {
+            let title = if s.title.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", s.title)
+            };
+            println!(
+                "  {}{} [begins={} ends={} holding={}]",
+                s.section,
+                title,
+                s.begins.len(),
+                s.ends.len(),
+                s.holding_count
+            );
+            for e in &s.begins {
+                println!("    + {} ({}): {}", e.fact_id, e.frame, e.claim);
+            }
+            for e in &s.ends {
+                match &e.by {
+                    Some(by) => println!("    - {} ({}): superseded by {}", e.fact_id, e.frame, by),
+                    None => println!("    - {} ({}): expires here", e.fact_id, e.frame),
+                }
+            }
+        }
+        for adj in &m.undeclared_adjacencies {
+            println!(
+                "  [undeclared adjacency] {} | {} (one valid reading — the order does not \
+                 compare them)",
+                adj[0], adj[1]
+            );
+        }
+        for u in &m.unplaced_facts {
+            println!(
+                "  [unplaced] {} {} -> {}{} (coordinate outside this world's order)",
+                u.fact_id,
+                u.field,
+                u.coordinate,
+                u.successor
+                    .as_deref()
+                    .map(|s| format!(" (successor {s})"))
+                    .unwrap_or_default()
+            );
+        }
+        for f in &m.undecidable {
+            println!("  [undecidable under declared order] {f}");
         }
     }
     Ok(())
@@ -2400,11 +2522,12 @@ fn cmd_import_edge_proposals(args: &[String]) -> Result<()> {
 /// narrative reads — the hints need world visibility; the facts table
 /// never degrades.
 fn cmd_report_edge_candidates(args: &[String]) -> Result<()> {
-    let (json, order_override, sidecar_override, anchor) = parse_narrative_report_args(args)?;
+    let a = parse_narrative_report_args(args, false)?;
+    let json = a.json;
     let report = mnemosyne_ops::edge_candidates_report(
-        &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.order_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {

@@ -471,6 +471,17 @@ pub struct ReportIronyIntervalsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportPlaythroughManuscriptArgs {
+    /// Single-world filter (a registered branch id or `main`); omitted =
+    /// every query world. Fail-loud on an unregistered id.
+    #[serde(default)]
+    pub world: Option<String>,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -1537,6 +1548,24 @@ impl MnemosyneServer {
         args: Parameters<ReportIronyIntervalsArgs>,
     ) -> CallToolResult {
         match ops::irony_intervals_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Playthrough manuscript (R466, read-only): per query world (or the single `world` filter), the composed canon order's deterministic topological walk with declared fact events placed on each scene — begins, ends (expired / superseded-by), holds-judged holding_count, skeleton title + EPUB locator. Honesty surfaces: undeclared_adjacencies (incomparable emitted neighbors — one valid reading, never the only one), unplaced_facts, undecidable (B-1), sections_outside_order. Reading surface, never gated."
+    )]
+    async fn report_playthrough_manuscript(
+        &self,
+        args: Parameters<ReportPlaythroughManuscriptArgs>,
+    ) -> CallToolResult {
+        match ops::playthrough_manuscript_report(
+            &self.workspace,
+            None,
+            args.0.world.as_deref(),
+            args.0.order_path.as_deref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

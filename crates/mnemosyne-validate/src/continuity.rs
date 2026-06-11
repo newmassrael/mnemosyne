@@ -248,6 +248,45 @@ impl CanonOrder {
             .get(node)
             .is_some_and(BTreeSet::is_empty)
     }
+
+    /// Deterministic topological linearization of `branch`'s composed
+    /// order (Round 466, design sec 7.17): every node the governing
+    /// declaration names, lexicographically smallest first among nodes
+    /// whose declared strict predecessors are all emitted (Kahn over the
+    /// closure — the closure of a DAG topo-sorts identically to it).
+    /// ONE valid reading of a partial order, never the only one; the
+    /// manuscript surfaces the undeclared adjacencies beside it.
+    pub fn linearize(&self, branch: &str) -> Vec<String> {
+        let reach = self.reach_for(branch);
+        let mut pred_count: BTreeMap<&str, usize> = reach.keys().map(|k| (k.as_str(), 0)).collect();
+        for descendants in reach.values() {
+            for d in descendants {
+                *pred_count
+                    .get_mut(d.as_str())
+                    .expect("closure names every node") += 1;
+            }
+        }
+        let mut ready: BTreeSet<&str> = pred_count
+            .iter()
+            .filter(|(_, c)| **c == 0)
+            .map(|(n, _)| *n)
+            .collect();
+        let mut out = Vec::with_capacity(pred_count.len());
+        while let Some(&n) = ready.iter().next() {
+            ready.remove(n);
+            out.push(n.to_string());
+            for d in &reach[n] {
+                let c = pred_count
+                    .get_mut(d.as_str())
+                    .expect("closure names every node");
+                *c -= 1;
+                if *c == 0 {
+                    ready.insert(d.as_str());
+                }
+            }
+        }
+        out
+    }
 }
 
 /// Authority-input pin check (R428 pattern), shared by the canon-order and
@@ -686,7 +725,7 @@ struct WorldCtx<'a> {
     world: &'a str,
     lineage: &'a Lineage,
     order: &'a CanonOrder,
-    successors: &'a BTreeMap<&'a str, Vec<&'a NarrativeFact>>,
+    successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
 }
 
 impl WorldCtx<'_> {
@@ -717,7 +756,7 @@ impl WorldCtx<'_> {
             }
         }
         if let Some(succ) = self.successors.get(fact_id) {
-            if succ.iter().any(|s| {
+            if succ.iter().any(|(_, s)| {
                 self.visibility(s) == Vis::In && self.order.le(self.world, &s.canon_from, p)
             }) {
                 return false;
@@ -834,7 +873,7 @@ fn for_each_world_pair<'a>(
     worlds: &[&'a str],
     lineages: &'a BTreeMap<String, Lineage>,
     order: &'a CanonOrder,
-    successors: &'a BTreeMap<&'a str, Vec<&'a NarrativeFact>>,
+    successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
     typed: &[(&'a String, &'a NarrativeFact)],
     mut visit: impl FnMut(&WorldCtx<'_>, &'a str, &'a NarrativeFact, &'a str, &'a NarrativeFact),
 ) {
@@ -869,17 +908,22 @@ fn claim_sha256_hex(claim: &str) -> String {
     mnemosyne_core::sha256_hex(claim.as_bytes())
 }
 
-/// In-frame succession index (predecessor id → superseding facts) — the
-/// [`WorldCtx::holds_at`] input every reader needs, built one way (Round
-/// 456 session review: the third hand-rolled copy triggered the
-/// extraction, per the R440/R452 two-copies rule).
+/// In-frame succession index (predecessor id → superseding facts, each
+/// with its own id) — the [`WorldCtx::holds_at`] input every reader
+/// needs, built one way (Round 456 session review: the third hand-rolled
+/// copy triggered the extraction, per the R440/R452 two-copies rule; the
+/// id rides along since Round 466 — the manuscript names the cutting
+/// successor in its end events).
 fn successors_index(
     facts: &BTreeMap<String, NarrativeFact>,
-) -> BTreeMap<&str, Vec<&NarrativeFact>> {
-    let mut successors: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
-    for fact in facts.values() {
+) -> BTreeMap<&str, Vec<(&str, &NarrativeFact)>> {
+    let mut successors: BTreeMap<&str, Vec<(&str, &NarrativeFact)>> = BTreeMap::new();
+    for (sid, fact) in facts {
         if let Some(t) = &fact.supersedes_in_frame {
-            successors.entry(t.as_str()).or_default().push(fact);
+            successors
+                .entry(t.as_str())
+                .or_default()
+                .push((sid.as_str(), fact));
         }
     }
     successors
@@ -1405,7 +1449,7 @@ pub fn frame_view(
             .get(id.as_str())
             .into_iter()
             .flatten()
-            .any(|s| ctx.visibility(s) == Vis::In && order.le(branch, &s.canon_from, at));
+            .any(|(_, s)| ctx.visibility(s) == Vis::In && order.le(branch, &s.canon_from, at));
         if from_unknown || (to_unknown && !succ_cut) {
             view.unknown.push(id.clone());
         } else {
@@ -1788,6 +1832,269 @@ pub fn irony_intervals(
                 starts,
                 open,
             });
+        }
+        report.worlds.insert(world, out);
+    }
+    Ok(report)
+}
+
+/// One fact event in a playthrough scene (Round 466, design sec 7.17) —
+/// the [`FrameViewEntry`] mirror + the frame label: the manuscript is
+/// world-scoped, so frame is data on the event (a renderer splits
+/// reader-knowledge from character-belief without a second query).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManuscriptFactEvent {
+    pub fact_id: String,
+    pub frame: String,
+    pub claim: String,
+    pub entities: Vec<String>,
+    pub canon_from: String,
+    pub canon_to: Option<String>,
+    pub evidence: Vec<String>,
+    /// Typed leg (Round 446), surfaced verbatim when authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub typed: Option<mnemosyne_core::TypedClaim>,
+    pub quote: Option<String>,
+}
+
+/// Why a fact's effect ends at a scene (Round 466) — two DECLARED kinds
+/// with distinct semantics, surfaced verbatim (no derived algebra):
+/// `Expired` = `canon_to` equals the scene node (the fact still holds AT
+/// it, through it — this is its last scene); `Superseded` = a visible
+/// successor's `canon_from` equals the scene node (the replaced fact no
+/// longer holds FROM it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManuscriptEndKind {
+    Expired,
+    Superseded,
+}
+
+/// One end event in a playthrough scene (Round 466).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManuscriptEndEvent {
+    pub fact_id: String,
+    pub frame: String,
+    pub kind: ManuscriptEndKind,
+    /// The cutting successor (`Superseded` only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+}
+
+/// One scene of a world's manuscript (Round 466): the order node, its
+/// skeleton title, the EPUB pointer verbatim when authored (the
+/// renderer's prose source — facts alone are a wireframe; prose stays in
+/// the content-SSOT), the declared fact events, and the holds-judged
+/// count (the delta story and the holds semantics cross-check each
+/// other — a delta reconstruction that disagrees with the count has hit
+/// an unplaced coordinate, never a second semantics).
+#[derive(Debug, Clone, Serialize)]
+pub struct ManuscriptScene {
+    pub section: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epub_locator: Option<mnemosyne_atomic::EpubLocator>,
+    pub begins: Vec<ManuscriptFactEvent>,
+    pub ends: Vec<ManuscriptEndEvent>,
+    pub holding_count: usize,
+}
+
+/// A visible fact the manuscript cannot place (Round 466, B-1): the named
+/// coordinate is a section, but this world's composed order never names
+/// it, so no scene carries the event — surfaced, never silently dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManuscriptUnplacedFact {
+    pub fact_id: String,
+    /// Which declared field points outside the order: `canon_from`,
+    /// `canon_to`, or `successor_canon_from`.
+    pub field: String,
+    pub coordinate: String,
+    /// The cutting successor (`successor_canon_from` only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub successor: Option<String>,
+}
+
+/// One world's linear manuscript (Round 466, design sec 7.17).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorldManuscript {
+    pub scenes: Vec<ManuscriptScene>,
+    /// Adjacent emitted pairs the composed order cannot compare — the
+    /// linearization is ONE valid reading; a rendering may reorder inside
+    /// such an adjacency freely (the 7.14 span lesson carried to
+    /// sequences: silently totalizing an incomparable pair would lie).
+    pub undeclared_adjacencies: Vec<[String; 2]>,
+    pub unplaced_facts: Vec<ManuscriptUnplacedFact>,
+    /// `Vis::Unknown` facts (B-1) — never placed, never counted holding.
+    pub undecidable: Vec<String>,
+    /// Store sections this world's declaration never names — isolated
+    /// coordinates (Round 456), never scenes.
+    pub sections_outside_order: Vec<String>,
+}
+
+/// Playthrough manuscripts over query worlds (Round 466) — pure read
+/// projection, never gated (a manuscript is a reading surface, not a
+/// defect detector).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PlaythroughManuscriptReport {
+    pub worlds: BTreeMap<String, WorldManuscript>,
+    pub facts: usize,
+}
+
+/// Linearize query worlds into readable scene sequences (Round 466,
+/// design sec 7.17): per world (main + every registered branch, or the
+/// `world` filter — fail-loud on an unregistered id, the [`frame_view`]
+/// branch-check idiom), the composed order's deterministic topological
+/// walk with declared fact events placed on it. `begins`/`ends` are
+/// exact-match declared coordinates; `holding_count` is judged by
+/// [`WorldCtx::holds_at`] VERBATIM (its 5th reader — one semantics, no
+/// drift). Everything the walk cannot place is surfaced (B-1, no silent
+/// caps).
+pub fn playthrough_manuscript(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    world: Option<&str>,
+) -> Result<PlaythroughManuscriptReport, String> {
+    check_store_boundary(store, order)?;
+    if let Some(w) = world {
+        if w != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(w) {
+            return Err(format!(
+                "world `{w}` not present in the branch registry (fail-loud — a typo'd \
+                 world must not read as an empty manuscript)"
+            ));
+        }
+    }
+    let facts = &store.narrative_facts;
+    let successors = successors_index(facts);
+    let mut report = PlaythroughManuscriptReport {
+        facts: facts.len(),
+        ..Default::default()
+    };
+    let worlds: Vec<String> = match world {
+        Some(w) => vec![w.to_string()],
+        None => std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string())
+            .chain(store.branches.keys().cloned())
+            .collect(),
+    };
+    for world in worlds {
+        let lineage = lineage_of(&store.branches, &world)?;
+        let ctx = WorldCtx {
+            world: &world,
+            lineage: &lineage,
+            order,
+            successors: &successors,
+        };
+        let sequence = order.linearize(&world);
+        let node_set: BTreeSet<&str> = sequence.iter().map(String::as_str).collect();
+        let mut out = WorldManuscript {
+            undeclared_adjacencies: sequence
+                .windows(2)
+                .filter(|w| !order.comparable(&world, &w[0], &w[1]))
+                .map(|w| [w[0].clone(), w[1].clone()])
+                .collect(),
+            sections_outside_order: store
+                .sections
+                .keys()
+                .filter(|s| !node_set.contains(s.as_str()))
+                .cloned()
+                .collect(),
+            ..Default::default()
+        };
+        // Visibility split + placement honesty, one pass (facts iterate
+        // id-sorted, so every surface below is deterministic).
+        for (id, fact) in facts {
+            match ctx.visibility(fact) {
+                Vis::Out => continue,
+                Vis::Unknown => {
+                    out.undecidable.push(id.clone());
+                    continue;
+                }
+                Vis::In => {}
+            }
+            if !node_set.contains(fact.canon_from.as_str()) {
+                out.unplaced_facts.push(ManuscriptUnplacedFact {
+                    fact_id: id.clone(),
+                    field: "canon_from".to_string(),
+                    coordinate: fact.canon_from.clone(),
+                    successor: None,
+                });
+            }
+            if let Some(to) = &fact.canon_to {
+                if !node_set.contains(to.as_str()) {
+                    out.unplaced_facts.push(ManuscriptUnplacedFact {
+                        fact_id: id.clone(),
+                        field: "canon_to".to_string(),
+                        coordinate: to.clone(),
+                        successor: None,
+                    });
+                }
+            }
+            for (sid, s) in successors.get(id.as_str()).into_iter().flatten() {
+                if ctx.visibility(s) == Vis::In && !node_set.contains(s.canon_from.as_str()) {
+                    out.unplaced_facts.push(ManuscriptUnplacedFact {
+                        fact_id: id.clone(),
+                        field: "successor_canon_from".to_string(),
+                        coordinate: s.canon_from.clone(),
+                        successor: Some((*sid).to_string()),
+                    });
+                }
+            }
+        }
+        for node in &sequence {
+            let mut scene = ManuscriptScene {
+                section: node.clone(),
+                title: store
+                    .sections
+                    .get(node)
+                    .map(|s| s.skeleton.title.clone())
+                    .unwrap_or_default(),
+                epub_locator: store
+                    .sections
+                    .get(node)
+                    .and_then(|s| s.epub_locator.clone()),
+                begins: Vec::new(),
+                ends: Vec::new(),
+                holding_count: 0,
+            };
+            for (id, fact) in facts {
+                if ctx.visibility(fact) != Vis::In {
+                    continue;
+                }
+                if fact.canon_from == *node {
+                    scene.begins.push(ManuscriptFactEvent {
+                        fact_id: id.clone(),
+                        frame: fact.frame.clone(),
+                        claim: fact.claim.clone(),
+                        entities: fact.entities.clone(),
+                        canon_from: fact.canon_from.clone(),
+                        canon_to: fact.canon_to.clone(),
+                        evidence: fact.evidence.clone(),
+                        typed: fact.typed.clone(),
+                        quote: fact.quote.clone(),
+                    });
+                }
+                if fact.canon_to.as_deref() == Some(node.as_str()) {
+                    scene.ends.push(ManuscriptEndEvent {
+                        fact_id: id.clone(),
+                        frame: fact.frame.clone(),
+                        kind: ManuscriptEndKind::Expired,
+                        by: None,
+                    });
+                }
+                for (sid, s) in successors.get(id.as_str()).into_iter().flatten() {
+                    if ctx.visibility(s) == Vis::In && s.canon_from == *node {
+                        scene.ends.push(ManuscriptEndEvent {
+                            fact_id: id.clone(),
+                            frame: fact.frame.clone(),
+                            kind: ManuscriptEndKind::Superseded,
+                            by: Some((*sid).to_string()),
+                        });
+                    }
+                }
+                if ctx.holds_at(id, fact, node) {
+                    scene.holding_count += 1;
+                }
+            }
+            out.scenes.push(scene);
         }
         report.worlds.insert(world, out);
     }
@@ -3995,5 +4302,150 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    // ---- playthrough manuscript (Round 466, design sec 7.17) ----
+
+    /// Deterministic topological walk: a diamond linearizes smallest-first
+    /// among ready nodes, and the incomparable emitted neighbors surface
+    /// as an undeclared adjacency (one valid reading, never the only one).
+    #[test]
+    fn manuscript_diamond_linearizes_and_surfaces_undeclared_adjacency() {
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-1".to_string(), "ch-3".to_string()],
+            ["ch-2".to_string(), "ch-4".to_string()],
+            ["ch-3".to_string(), "ch-4".to_string()],
+        ])
+        .unwrap();
+        assert_eq!(
+            order.linearize(MAIN_BRANCH),
+            ["ch-1", "ch-2", "ch-3", "ch-4"]
+        );
+        let store = store_with(vec![fact("fa", "gt", "ch-1", None)]);
+        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(
+            main.undeclared_adjacencies,
+            vec![["ch-2".to_string(), "ch-3".to_string()]],
+            "the diamond's incomparable middle is surfaced, not silently totalized"
+        );
+        assert_eq!(main.scenes.len(), 4);
+    }
+
+    /// Scene events are declared coordinates verbatim: begins at
+    /// `canon_from`, expired at `canon_to` (still holding AT it), and a
+    /// supersession ends the predecessor at the successor's `canon_from`,
+    /// naming the cutting fact. `holding_count` is the holds_at judgment.
+    #[test]
+    fn manuscript_places_begins_ends_and_holding_counts() {
+        let f1 = fact("f1", "gt", "ch-1", None);
+        let f2 = fact("f2", "gt", "ch-1", Some("ch-2"));
+        let mut f3 = fact("f3", "gt", "ch-3", None);
+        f3.supersedes_in_frame = Some("f1".to_string());
+        let store = store_with(vec![f1, f2, f3]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert!(main.unplaced_facts.is_empty() && main.undecidable.is_empty());
+        let s = &main.scenes;
+        assert_eq!(s[0].section, "ch-1");
+        let begins: Vec<&str> = s[0].begins.iter().map(|e| e.fact_id.as_str()).collect();
+        assert_eq!(begins, ["f1", "f2"]);
+        assert_eq!(s[0].holding_count, 2);
+        // ch-2: f2 expires here — it still holds AT ch-2, through it.
+        assert_eq!(s[1].ends.len(), 1);
+        assert_eq!(s[1].ends[0].fact_id, "f2");
+        assert_eq!(s[1].ends[0].kind, ManuscriptEndKind::Expired);
+        assert_eq!(s[1].holding_count, 2);
+        // ch-3: f3 begins and cuts f1 — the end event names the successor.
+        assert_eq!(s[2].begins[0].fact_id, "f3");
+        assert_eq!(s[2].ends[0].fact_id, "f1");
+        assert_eq!(s[2].ends[0].kind, ManuscriptEndKind::Superseded);
+        assert_eq!(s[2].ends[0].by.as_deref(), Some("f3"));
+        assert_eq!(s[2].holding_count, 1, "f1 cut, f2 expired — f3 alone");
+    }
+
+    /// A visible fact whose coordinate the order never names emits no
+    /// event — surfaced as unplaced beside the outside-order sections,
+    /// never silently dropped (B-1, no silent caps).
+    #[test]
+    fn manuscript_surfaces_unplaced_facts_and_outside_order_sections() {
+        let store = store_with(vec![fact("f-out", "gt", "ch-3", None)]);
+        let order = chain(&["ch-1", "ch-2"]);
+        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.scenes.len(), 2);
+        assert_eq!(main.unplaced_facts.len(), 1);
+        assert_eq!(main.unplaced_facts[0].fact_id, "f-out");
+        assert_eq!(main.unplaced_facts[0].field, "canon_from");
+        assert_eq!(main.unplaced_facts[0].coordinate, "ch-3");
+        assert_eq!(
+            main.sections_outside_order,
+            ["ch-3".to_string(), "ch-4".to_string()]
+        );
+        assert!(main.scenes.iter().all(|s| s.begins.is_empty()));
+    }
+
+    /// World scoping (Round 438 carried): a fork's revision cuts the
+    /// inherited fact in the fork's own manuscript only — the ancestor's
+    /// manuscript never sees the fork's end event.
+    #[test]
+    fn manuscript_fork_supersession_stays_in_the_fork_world() {
+        let f_main = fact("f-main", "gt", "ch-1", None);
+        let mut f_rev = branch_fact("f-rev", "gt", "route", "ch-3");
+        f_rev.supersedes_in_frame = Some("f-main".to_string());
+        let store = store_with_forks(vec![f_main, f_rev], &[("route", MAIN_BRANCH, "ch-2")]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert!(
+            main.scenes.iter().all(|s| s.ends.is_empty()),
+            "the fork's revision never leaks into the ancestor's manuscript"
+        );
+        assert!(main.scenes[2].holding_count == 1, "f-main holds on in main");
+        let route = &report.worlds["route"];
+        let ch3 = route.scenes.iter().find(|s| s.section == "ch-3").unwrap();
+        assert_eq!(ch3.ends[0].fact_id, "f-main");
+        assert_eq!(ch3.ends[0].by.as_deref(), Some("f-rev"));
+        assert_eq!(ch3.begins[0].fact_id, "f-rev");
+    }
+
+    /// The `world` filter is the consumption unit (one manuscript per
+    /// reading session): a registered id narrows the sweep; a typo fails
+    /// loud instead of reading as an empty manuscript.
+    #[test]
+    fn manuscript_world_filter_narrows_and_fails_loud() {
+        let store = store_with_forks(
+            vec![fact("fa", "gt", "ch-1", None)],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let order = chain(&["ch-1", "ch-2"]);
+        let all = playthrough_manuscript(&store, &order, None).unwrap();
+        assert_eq!(all.worlds.len(), 2);
+        let one = playthrough_manuscript(&store, &order, Some("route")).unwrap();
+        assert_eq!(one.worlds.len(), 1);
+        assert!(one.worlds.contains_key("route"));
+        let err = playthrough_manuscript(&store, &order, Some("nope")).unwrap_err();
+        assert!(err.contains("branch registry"), "{err}");
+    }
+
+    /// B-1: a fact the fork comparison cannot place is undecidable —
+    /// listed, never placed as an event, never counted holding (the
+    /// irony-report idiom carried).
+    #[test]
+    fn manuscript_undecidable_under_incomparable_fork_cut() {
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["k-1".to_string(), "k-2".to_string()],
+        ])
+        .unwrap();
+        let parallel = fact("fk", "gt", "k-1", None);
+        let store = store_with_forks(vec![parallel], &[("w1", MAIN_BRANCH, "ch-2")]);
+        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let w1 = &report.worlds["w1"];
+        assert_eq!(w1.undecidable, ["fk"]);
+        assert!(w1.scenes.iter().all(|s| s.begins.is_empty()));
+        assert!(w1.scenes.iter().all(|s| s.holding_count == 0));
     }
 }

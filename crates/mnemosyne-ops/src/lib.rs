@@ -439,6 +439,25 @@ pub fn irony_intervals_report(
     mnemosyne_validate::continuity::irony_intervals(&store, &order).map_err(OpError::Other)
 }
 
+/// Run the playthrough-manuscript linearization (Round 466, design sec
+/// 7.17) over the workspace store with the shared order resolution —
+/// pure read projection: per query world (or the single `world` filter),
+/// the composed order's deterministic topological walk with declared
+/// fact events placed on it. Reading surface, deliberately never gated.
+pub fn playthrough_manuscript_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    world: Option<&str>,
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::PlaythroughManuscriptReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world)
+        .map_err(OpError::Other)
+}
+
 /// One fact row in an entity dossier (Round 437) — raw authoring-time view
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).
