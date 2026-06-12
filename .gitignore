@@ -4,4 +4,7 @@ Cargo.lock.bak
 .mnemosyne/
 .claude/
 # Claude working scratch (RFC drafts, maintainer replies) — local only
-/claudedocs/
+/claudedocs/*
+# Exception: experiment evidence is permanent audit record (not transient
+# scratch) — preserved as git SSOT so conclusions stay re-checkable.
+!/claudedocs/phase1-scale-floor-experiment/

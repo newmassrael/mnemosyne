@@ -1,0 +1,4 @@
+Belvoir scale-floor experiment (R473) — S13 label map
+SEALED at S13 by coin flip; reveal only at S17.
+story-A = belvoir-plain
+story-B = belvoir-loop

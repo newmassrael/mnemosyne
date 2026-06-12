@@ -1,0 +1,123 @@
+{
+  "manifest": "scale-floor-experiment/v1",
+  "designed": "2026-06-11 (design round; sha256 pinned in the design-round ledger entry BEFORE any execution session). Successor to ab-authoring-experiment/v1 (sec 7.18, R469/R470/R471): the A/B trial REFUTED the floor hypothesis at 29-30 scenes / Fable tier because the plain control self-organized a freeform 'paper Mnemosyne' that sufficed at that scale. This experiment moves the single variable the A/B verdict named first — corpus length x session count — past the point where improvised notes stay cheap and lossless, holding every other A/B parameter fixed (2 arms, blind re-extraction referee, D1-D4 endpoint, preference leg, single directional pin, model tier, genre, world-line count, fork structure).",
+  "variable_under_test": {
+    "moved": "cumulative corpus size (scenes_total_min 24 -> 60, +150%) x authoring sessions (3 -> 6 per arm) x required-setup tracking load (6 -> 12). The session-handoff information regime makes the scale bite: each session starts fresh-context with ONLY {premise, brief, the author's own handoff artifact, the immediately-preceding session's prose} auto-injected; all earlier prose is on disk, reachable by deliberate re-read but NOT auto-loaded.",
+    "held_fixed_from_ab": "2 arms (plain vs loop); blind re-extraction as the graded artifact; D1-D4 deterministic endpoint; preference leg (3 blind judges, outcome NEVER pinned, V9); a single directional pin; design/execution session separation with the manifest sha256-pinned pre-execution; model tier (same family as the A/B run); genre (branching mystery — an intentional isomorph of Saltglass so genre is not a confound); world_lines = 3; fork structure = 2 forks yielding 3 world-lines (the exact A/B branching shape, each limb ~2.5x longer)",
+    "why_this_isolates_scale": "world-line count and fork shape are HELD at the A/B values, so the corpus grows by lengthening each world-line (~10 -> ~20-25 scenes/world), not by branching wider. Branch complexity is the SEPARATE backlog variable (sec 10 'more worlds'); mixing it in would confound this measurement.",
+    "the_horizon_is_retrieval_not_blackout": "BOTH arms may open and re-read any earlier prose file (fair, identical access). The asymmetry under test is purely TOOL efficiency: the loop arm answers 'where is object X now / is the timeline consistent' by query/validate-continuity in O(1) over a persistent store; the plain arm answers it by linear re-read of growing prose, whose cost and miss-rate rise with corpus length. The hypothesis is that this gap, invisible at 30 scenes, becomes a defect source at 60. Recorded honesty bound: this is the ledger's claimed value (persistence past the context horizon), so the experiment is built to test exactly where it should pay off, not a neutral arena."
+  },
+  "question": {
+    "primary": "At ~60 scenes across 6 sessions, does a Mnemosyne-loop authoring agent produce a long branching story with fewer deterministic consistency defects than a plain LLM agent given the identical premise and budget? (the floor hypothesis, re-tried past the context horizon that the A/B run did not reach)",
+    "secondary": "Do blind judges prefer either output at this length? (ceiling/fun hypothesis — no directional pin, sec 10 honest bounds: ceiling stays with the model)",
+    "tertiary": "How does the loop's token/time overhead PER DELIVERED SCENE change with scale relative to the A/B 1.48x? (authoring economics — measured, not pinned; hypothesis recorded that plain's re-read tax rises with length, narrowing or inverting the ratio)"
+  },
+  "design_lineage": "blind protocol = R453 trap-corpus pattern (sha256 pre-commit, design/execution session separation); two-arm authoring shell = R469 ab-authoring-experiment/v1 (this manifest reuses its grading machinery verbatim where unchanged and CITES the A/B section rather than re-deriving it); grading interface = R466 report-playthrough-manuscript; outcome-pinning discipline = R464 V9 lesson (pin the deterministic half only); loop-protocol upgrade = R471 A/B finding 2 ('author under the grader's recipe' — track every object two parties touch and every state the prose asserts, scenery included)",
+
+  "premise": {
+    "title": "Belvoir",
+    "text": "An alpine tuberculosis sanatorium converted from an old grand hotel, winter 1909. The last patients and staff of the season are cut off when an avalanche severs the telegraph line and stops the funicular; the snow will not clear for about three weeks. The senior physician, Augustin Roeder, is found dead in his locked consulting room the morning after the storm — apparent heart failure. The investigator (Cendre, a younger physician newly posted; the natural second epistemic frame is Cendre's working theory) must reach the truth before the thaw lets anyone descend. READER-KNOWN SECRETS (shown to the reader early, kept from Cendre): (S1) one patient was admitted under a forged name — she is the surviving relative of a subject of Roeder's earlier experimental treatments, in the house to settle a score; (S2) the head nurse burned a single patient chart in the consulting-room stove minutes after Roeder was found — the reader sees it; Cendre does not. Who entered the locked room, what the burned chart recorded, what Roeder's experiments were, and what Cendre certifies in the end are the author's to decide — differently per world-line if the forks demand it.",
+    "required_setups": [
+      "the morphine ledger discrepancy (custody of the ledger book is a trackable object state)",
+      "the single patient chart burned in the stove (reader knows; Cendre does not)",
+      "Roeder's locked diary",
+      "the forged admission papers of the false-name patient",
+      "the master key's whereabouts (a trackable custody object)",
+      "the last telegram received before the line was cut",
+      "a poison-suspect medicine vial (trackable custody)",
+      "a name on the patient register that matches an entry in the sanatorium's own burial record",
+      "Roeder's unsent letter of resignation",
+      "the gap in the funicular maintenance log",
+      "the second patient's abrupt change in clinical record (recovery or collapse, author's choice per limb)",
+      "a single pair of snow-wet boots found where their owner claims never to have gone (the A/B boots-custody class, replanted deliberately to field-test the R471 recipe upgrade)"
+    ],
+    "required_structure": {
+      "scenes_total_min": 60,
+      "scene_prose_words": "150-400 per scene",
+      "fork_points": 2,
+      "fork_1": "around scene 20: Cendre CONFRONTS the head nurse with the morphine-ledger discrepancy, or QUIETLY interviews the patients instead",
+      "fork_2": "around scene 40 on the QUIET limb: the false-name patient CONFESSES, or a second death ESCALATES the case",
+      "world_lines_min": 3,
+      "world_lines_note": "the three matched lines = {confront-spine}, {quiet-confess}, {quiet-escalate} — identical branching shape to the A/B run, each limb roughly 2.5x longer",
+      "endings_min": 3,
+      "epistemic_frames_min": 2,
+      "frames_note": "ground truth vs at least one named character's belief (Cendre's working theory is the natural second frame); the reader-known secrets S1/S2 must create at least one sustained dramatic-irony window (reader knows, Cendre does not)",
+      "deliverable_format": "numbered scenes with stable ids (sc-01...), fork points marked 'CHOICE:' with labeled options and which scene each option continues to, endings marked; plain text/markdown"
+    }
+  },
+
+  "agents": {
+    "shared_constraints": "same model tier (the A/B family), 6 authoring sessions each, FRESH context per session, even scene budget per session (~10 scenes/session: s1 scenes 1-10; s2 11-20 incl fork-1 declaration; s3 21-30 incl both fork-1 limbs; s4 31-40 incl the fork-2 declaration; s5 41-50; s6 51 to >=60, all remaining limbs and endings). Each session's full token usage is recorded, SPLIT into generation vs re-read/query input (the economics-per-scale measure). No internet. Session-handoff regime (identical for both arms): the auto-injected context each session = {premise, brief, the author's own handoff artifact, the immediately-preceding session's delivered prose}; ALL earlier prose sits in named files on disk that the agent MAY open and re-read at its own token cost but which are NOT auto-loaded. The author agents never see this manifest, the rubric, the predictions, or each other's output.",
+    "agent_plain_prompt": "You are writing a long branching mystery novella across 6 sessions. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. In each continuation session you receive the premise, this brief, your own handoff notes, and the prose from your immediately preceding session only; everything you wrote earlier is in numbered scene files you may open if you need them. Keep the story consistent across the whole arc: character knowledge, object locations and custody, who is alive, what has been revealed on each branch. Every required setup must pay off in every world-line where it appears (a payoff may differ per world-line). You may keep any notes you like to carry state between sessions. Deliver scenes in the required format.",
+    "agent_loop_prompt": "You are writing a long branching mystery novella across 6 sessions using the Mnemosyne narrative substrate as your working memory. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. Author store-first as you write: register frames/branches/entities/predicates; record facts with canon coordinates and evidence as you commit each scene; declare succession edges for every state change and belief revision; declare fork points with forks_from/forks_at; mark required setups payoff_expectation=expected and credit pays_off when paid; maintain a narrative-rules file (exclusive/transition classes only) for the story's own state predicates. R471 RECIPE UPGRADE (author under the grader's recipe): track EVERY physical object two parties touch, EVERY state the prose asserts about a person or place, scenery included — not only the named required setups. Run validate-continuity + report-payoff-coverage at least at every session end and repair what the gates catch BEFORE delivering the session's scenes (log each catch+repair as a prevented defect). In each continuation session you receive the premise, this brief, your prose from the preceding session, and your STORE (use query/report verbs freely instead of re-reading old prose — report-playthrough-manuscript per world to re-read your own structure; this is the retrieval channel under test). Deliver the same scene format the brief requires.",
+    "delivery_note": "the graded deliverable for BOTH agents is the prose scene network alone; the loop agent's store is its tool and is NOT the graded artifact (see grading.deterministic.why_reextract). Both arms keep notes/store between sessions; that is the point of the comparison at scale."
+  },
+
+  "grading": {
+    "inherits": "grading.shuffle, grading.deterministic.*, grading.preference.*, grading.untyped_residue_bridge are taken VERBATIM from ab-authoring-experiment/v1 (sec 7.18) except the scale-driven deltas listed below. The blind re-extraction fairness keystone, the <=N-rule fixed recipe, the D1-D4 definitions, the R470 preference-symmetry amendment, and the V9 outcome-pin discipline all carry unchanged.",
+    "shuffle": "before any grading session, an orchestration step renames the two deliverables story-A/story-B by coin flip; mapping written to label-map.txt, its sha256 recorded immediately in the run log; revealed only in the reveal round",
+    "deterministic": {
+      "why_reextract": "grading the loop agent's own store would let its referee grade its own match AND leave the plain story ungraded; ONE blind extractor re-extracts BOTH proses into fresh stores under the identical procedure — the graded artifact is the re-extraction, symmetric by construction",
+      "extraction_procedure": "same six steps as ab/v1 grading.deterministic.extraction_procedure (frames; entities/predicates via report-typing-candidates -> import-typing-proposals; facts via import-facts from explicit text only, B-1; edges via report-edge-candidates -> import-edge-proposals; canon order from each story's own explicit scene graph, interleaved at forks per R445-F5; branches forks_from/forks_at = last shared scene). Applied identically to both stories; the only change is volume (≈60 scenes/story).",
+      "rule_derivation": "extractor derives rules by the SAME fixed recipe as ab/v1, ratified classes only (one alive-arc transition rule per character who dies on any limb; one exclusive-custody rule per unique physical object two parties hold; one location-exclusive rule per principal character the text asserts simultaneously present; nothing else). The rule CAP scales with the cast and object count rather than a fixed 8 — the recipe is per-entity, so a 2x corpus admits more rules WITHOUT changing the recipe; the cap is recorded post-hoc, not pre-fixed, and the same recipe governs both arms (parity preserved).",
+      "defect_metrics": {
+        "D1": "gated rule violations (rule_transition_invalid + rule_exclusive_overlap), all worlds",
+        "D2": "unchained_state_pairs, all worlds",
+        "D3": "dangling among the 12 REQUIRED setups at story end, per world-line where the setup appears (other dangling = craft signal, recorded, NOT counted)",
+        "D4": "fork-boundary faults: succession_cross_branch + SuccessionCycle findings",
+        "primary_endpoint": "D1+D2+D3+D4 summed per story",
+        "recorded_not_counted": "payoffs_to_unmarked, payoff_before_setup, cross_scope_pairs, undecidable/unknown counts (B-1 honesty, reported alongside)"
+      },
+      "prevented_defects": "from the loop agent's session logs: gate catches it repaired before delivery — reported as a separate economics row, never mixed into the defect endpoint"
+    },
+    "preference": {
+      "reading_copies": "per matched world-line, a linear reading copy assembled by ONE procedure for BOTH stories (R470 symmetry rule, verbatim): the world's scene sequence from report-playthrough-manuscript run on that story's blind RE-EXTRACTED store; prose injected by scene id from the original deliverable; formatting normalized (plain titled scenes, ids/tool artifacts stripped); honesty surfaces (undeclared_adjacencies/unplaced/undecidable) logged for both arms. World-lines matched by fork-choice correspondence (confront/quiet x confess/escalate); spine = confront path if structures diverge. SCALE NOTE: judges read ONE matched world-line per session (each is now ~20-25 scenes); a judge session covers one matched pair, three judge-rounds cover the three lines — read-fatigue is itself recorded as a finding if it appears.",
+      "judges": "3 fresh LLM judge sessions, no experiment context, labels A/B only; optional owner read as judge 4 (recorded separately)",
+      "rubric_per_matched_pair": [
+        "continuity errors you noticed (count them and cite scene ids)",
+        "setup/payoff satisfaction 1-5",
+        "stakes and tension 1-5",
+        "character-knowledge believability (does anyone act on what they cannot know) 1-5",
+        "does the story sag or drift over its length (a scale-specific axis) 1-5",
+        "overall forced choice: A or B, one paragraph why"
+      ],
+      "judge_prompt": "You are judging two versions (A and B) of the same branching mystery, one world-line at a time. Read both linear versions of the matched world-line, then answer the rubric. Do not speculate about how either was produced.",
+      "outcome_pin": "NONE (V9 discipline). Procedure pinned; any preference direction is an honest headline."
+    },
+    "untyped_residue_bridge": "judge-cited continuity errors NOT matched by any D-metric finding estimate the V7/V8 untyped-miss residue on real authored prose at scale — reported per story, compared against the A/B residue to see whether longer corpora widen the gated-vs-felt gap (R471 finding 4 follow-up)"
+  },
+
+  "predictions_preregistered": {
+    "PRED-1_floor": "the plain story's re-extracted store shows >= 3 primary-endpoint defects AND the loop story shows fewer than the plain story (directional: loop < plain). SAME threshold as ab/v1 PRED-1 (which was refuted with plain=0) — the bar is deliberately held constant so the only thing that changed is the corpus scale and session count. This is the ONLY pinned outcome.",
+    "PRED-2_ceiling": "no pin; recorded expectation = near-tie, possibly tilting to the loop on the new sag/drift axis if plain's improvised notes lose track of long-range threads",
+    "PRED-3_economics": "loop per-delivered-scene token cost falls BELOW the A/B 1.48x (recorded expectation, not pinned) because plain's re-read tax grows with corpus length while the loop queries; record actual ratio + the generation-vs-reread token split for both arms + prevented-defect count",
+    "PRED-4_residue": "judges cite >= 1 continuity error in the plain story that no D-metric caught, AND the per-story residue count is >= the A/B residue (untyped residue does not shrink with scale)"
+  },
+
+  "validity_conditions": {
+    "quota": "both deliverables meet scenes_total_min(60)/fork_points(2)/world_lines_min(3)/endings_min(3) and contain all 12 required setups; a quota failure is itself an economics finding — report it, run the deterministic leg on what exists, skip the preference leg if scales are incomparable. A scale-specific failure mode (an arm that cannot sustain 60 coherent scenes in budget) is a PRIMARY result, not a discard.",
+    "extraction_parity": "identical prompts/verbs/recipe across A and B, labels blind, claim-sha pins intact, all-or-nothing imports only; the per-entity rule recipe (not a fixed count) applied identically",
+    "no_manifest_contact": "author/extractor/judge sessions never receive this manifest; their prompts are extracted from it verbatim by the orchestrator",
+    "handoff_parity": "the session-handoff auto-injection regime is byte-identical across arms (same {premise, brief, own handoff artifact, preceding-session prose}); only the TOOL each arm uses to recover older state differs (free-form notes + manual re-read vs store + query). Any deviation in what is auto-injected is a parity break and voids the run."
+  },
+
+  "honesty_bounds_recorded": [
+    "n=1 premise, one model family — existence evidence past the context horizon, not a distribution",
+    "designer == orchestrator == premise author knows the hypothesis (R453 analog: the pin + blinding cover tampering and peeking, not design-stage selection bias)",
+    "extraction is LLM work; only the gates after it are deterministic — parity + claim-sha pins mitigate, variance does not vanish (R464 lesson); at 2x volume extraction variance has more room, so the re-extraction is run with the same all-or-nothing dry-run discipline and its undecidable/unknown counts are reported, not hidden",
+    "prose style may fingerprint the loop agent to judges despite normalization (recorded)",
+    "the loop agent's in-session repairs mean the floor comparison measures the LOOP (agent+gates as a system) vs plain agent — exactly the authoring-economics question, not raw model capability",
+    "the horizon is operationalized as RETRIEVAL cost, not information blackout: both arms can re-read everything, so a null result means improvised notes + manual re-read still suffice at 60 scenes (a real finding about where the ledger's value begins), NOT that the store is useless",
+    "the experiment is built where the ledger SHOULD pay off (long multi-session branching work) — a confirmatory venue by design; a refutation here is strong, a confirmation is expected-direction and must be reported as such",
+    "cost: 12 authoring sessions + 2x-volume blind extraction + 3 judge rounds is several times the A/B run's ~$90 — the scale is the point, but the spend is a real precondition the owner accepted when choosing this variable"
+  ],
+
+  "session_map_runbook": [
+    "S0 (this design round): manifest authored, sha256 pinned in the design-round ledger entry",
+    "S1-S6: agent-plain authoring sessions 1-6",
+    "S7-S12: agent-loop authoring sessions 1-6 (order of S1-6 vs S7-12 irrelevant; no shared context)",
+    "S13: shuffle labels; blind extraction of story-A and story-B (≈60 scenes each); deterministic defect tables; record the post-hoc rule cap",
+    "S14-S16: judge sessions 1-3 (one matched world-line each; parallel, independent)",
+    "S17 (reveal round): unblind label-map, grade PRED-1/3/4 against this manifest, compile report (SSOT claudedocs/phase1-scale-floor-experiment/scale-floor-report.md), ledger entry restates the result table (R452 self-containment)"
+  ]
+}
