@@ -1,0 +1,11 @@
+{
+ "frames":[{"frame_id":"truth","description":"ground truth"},{"frame_id":"household","description":"what the household believes"}],
+ "branches":[],
+ "entities":[{"entity_id":"helene","kind":"person"},{"entity_id":"letter","kind":"object"}],
+ "predicates":[{"predicate_id":"at-location","object_kind":"scalar"}],
+ "facts":[
+  {"fact_id":"f-truth-study","frame":"truth","claim":"Helene was in the study that night","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"study"}}},
+  {"fact_id":"f-letter","frame":"truth","claim":"Helene burned the letter in the study grate","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["letter"],"typed":{"subject":"letter","predicate":"at-location","object":{"kind":"value","value":"study"}}},
+  {"fact_id":"f-household-sickroom","frame":"household","claim":"The household believed Helene confined to the sickroom","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["helene"],"conflicts_with":["f-truth-study"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"sickroom"}}}
+ ]
+}

@@ -1,0 +1,9 @@
+{
+ "frames":[{"frame_id":"truth","description":"ground truth"}],
+ "branches":[], "entities":[{"entity_id":"helene","kind":"person"}],
+ "predicates":[{"predicate_id":"at-location","object_kind":"scalar"}],
+ "facts":[
+  {"fact_id":"f-truth-study","frame":"truth","claim":"Helene was in the study","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"study"}}},
+  {"fact_id":"f-truth-conservatory","frame":"truth","claim":"AUTHORING ERROR: Helene also placed in the conservatory in the same frame","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"conservatory"}}}
+ ]
+}

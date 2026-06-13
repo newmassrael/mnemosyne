@@ -17,3 +17,5 @@ Cargo.lock.bak
 /claudedocs/phase1-rung3-poc/*.atomic.json
 !/claudedocs/phase1-selfextract-poc/
 /claudedocs/phase1-selfextract-poc/*.atomic.json
+!/claudedocs/phase1-factsfirst-poc/
+/claudedocs/phase1-factsfirst-poc/*.atomic.json
