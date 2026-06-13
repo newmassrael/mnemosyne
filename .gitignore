@@ -21,3 +21,5 @@ Cargo.lock.bak
 /claudedocs/phase1-factsfirst-poc/*.atomic.json
 !/claudedocs/phase1-factsfirst-craft-experiment/
 /claudedocs/phase1-factsfirst-craft-experiment/*.atomic.json
+!/claudedocs/phase1-disclosure-craft-experiment/
+/claudedocs/phase1-disclosure-craft-experiment/*.atomic.json

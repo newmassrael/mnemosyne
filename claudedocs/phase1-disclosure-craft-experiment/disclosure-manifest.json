@@ -1,0 +1,118 @@
+{
+  "manifest": "disclosure-craft-experiment/v1",
+  "designed": "2026-06-14 (R503 design round; sha256 of this manifest pinned in the R503 ledger entry BEFORE any execution session exists — the R453/R499 pre-commit pattern)",
+  "lineage_note": "DESIGNED by the same lineage that designed the disclosure layer (R501) + sharpened its gate (R502). Per the R500 contamination bound that lineage may NOT author the disclosure render or blind-judge; it writes this manifest + the pinned disclosure brief (specifying the treatment, exactly as the R500 orchestrator wrote the facts-first method prompt) and orchestrates the deterministic harness only.",
+
+  "question": {
+    "primary": "Does a facts-first render guided by an explicit DISCLOSURE BRIEF (the R501/R502 disclosure axis as a hand-authored render discipline — focal-frame limiting + per-fact state/hint/imply/withhold + first_at timing, ZERO new substrate) CLOSE the R500 craft gap? R500 baseline: plain swept preference 3-0 over facts-first; prose-quality means facts-first 3.11 vs plain 4.33. The disclosure arm renders the SAME R500 fact-base under the brief; the gap closing is the success signal.",
+    "pinned_fidelity": "DETERMINISTIC PIN 1 (R500 carry): the disclosure arm's prose, blind re-extracted under the R469 recipe, shows D1 + D2 + D4 = 0. A disclosure render is still a PROJECTION of the gate-checked base, so a gated finding is a render LEAK (fidelity broken), audited leak-vs-noise on the cited scene-id + quote.",
+    "pinned_premature_leak": "DETERMINISTIC PIN 2 (the NEW R502 leg, the whole point): from the blind re-extracted disclosure store, every WITHHELD solution fact (who climbed the stair / the true cause / the true custody of the forged telegram + drained account — the ground-truth-frame facts the brief marks withhold-until-reveal) must have its earliest re-extracted canon coordinate AT-OR-AFTER its reveal scene. A solution fact re-extractable BEFORE its reveal = a premature LEAK and PIN-2 FAILS. This is the R502 gate exactly: the deterministic check is the exposed/withheld binary + first_at timing, mode-independent; the state/hint/imply CRAFT is NOT checked here (it is the judges').",
+    "open": "CRAFT preference (NO pin, V9): does the disclosure render close the 3-0 gap? 3 fresh blind judges, the R500 5-axis rubric (keystone axis 'told story with a voice vs assembled / list-like statements of fact'), forced choice disclosure vs plain per matched world-line.",
+    "secondary": "Untyped-residue (R476 ceiling) per arm; render economics — and crucially the FRICTION of the hand-authored disclosure brief, which is the pull signal for building the rung-2 substrate (the stored disclosure plan + render-brief carrier + the premature-leak gate)."
+  },
+
+  "design_lineage": "blind protocol = the R453 trap-corpus / R469 A-B / R499 facts-first-craft pattern: sha256 pinned pre-execution, design and execution sessions separated, authors/extractor/judges blind. This is the FOURTH use of the sec 7.18/7.19/7.22 experiment family. Code: 0 lines — the disclosure layer is tested as a render DISCIPLINE (a hand-authored brief in the render prompt) BEFORE any substrate (rung-1 or rung-2) is built; the result decides whether to build.",
+
+  "ladder_note": "rung-1 (render from a LIMITED focal frame) and rung-2 (explicit per-fact state/hint/imply/withhold + first_at) are exercised TOGETHER here, because 'The Meridian Vane' needs BOTH dramatic irony (reader shown the secrets early, ahead of Hale) AND mystery (the solution withheld) — a single focal frame (rung-1 alone) cannot express that combination. A clean rung-1-only test would need a PURE-mystery premise (reader discovers with the detective, no reader-known secrets) and is recorded as a cheaper future option. If this combined test closes the gap, rung-2 substrate is justified; if not, do not build.",
+
+  "premise": {
+    "title": "The Meridian Vane (REUSED from R499/R500, DELIBERATELY)",
+    "reuse_rationale": "Holding the premise AND the fact-base constant isolates the one variable under test: the RENDER. The disclosure arm reuses the R500 facts-first scratch store (run/factsfirst/ff.atomic.json from phase1-factsfirst-craft-experiment) so its facts are byte-identical to R500's; only the render instruction differs (omniscient/free-frame -> disclosure brief). Judges are FRESH, so premise reuse is judge-clean. Honesty bound: this trades novelty-control (R499 excluded familiar premises) for render-isolation; recorded, not hidden.",
+    "text": "A remote hilltop observatory, the Vane Observatory, the winter of 1898 - snow-cut from the valley for the season, only its small resident staff on the summit. At dawn the director, Dr. Aurel Crane, is found dead at the foot of the iron stair beneath the great refractor, the dome shutter frozen open and the meridian clock stopped at 3:14. The patron sends Lewin Hale, a methodical insurance adjuster, to certify whether the instrument policy pays for an accident - or for something else. READER-KNOWN SECRETS (the brief decides HOW/WHEN the reader gets these): (S1) the bursar, Onslow Pike, forged the patron's telegram recalling Crane to dismissal, to cover a fund he drained from the instrument account - Crane never knew, but Pike believed he did; (S2) Junia Frost was on the dome gallery that night, not at the spectroscope - she saw who climbed the iron stair, and she lies to shield them.",
+    "required_setups": [
+      "the night-log written in a hand that is not Crane's",
+      "the plate-camera with no exposures (contradicts Junia's alibi)",
+      "the meridian clock stopped at 3:14, wound only hours before",
+      "the drained instrument account (the bursar's motive)",
+      "a spare dome key reported lost a month before, that turns up",
+      "Crane's unsent letter resigning his own post"
+    ],
+    "required_structure": {
+      "scenes_total_min": 24,
+      "scene_prose_words": "150-400 per scene",
+      "fork_points": 2,
+      "fork_1": "around scene 8: Hale CONFRONTS Pike with the account discrepancy, or QUIETLY audits the ledgers and watches",
+      "fork_2": "around scene 16 on one declared limb: Junia REVEALS what she saw, or BURNS the night-log",
+      "world_lines_min": 3,
+      "endings_min": 3,
+      "epistemic_frames_min": 2,
+      "deliverable_format": "numbered scenes with stable ids (sc-01...), fork points marked 'CHOICE:' with labeled options + continuation scene, endings marked; plain markdown - IDENTICAL to the R500 deliverable so the harness + matched reading copies work unchanged"
+    }
+  },
+
+  "arms": {
+    "shared_constraints": "same model tier as each other; the disclosure arm runs 1-3 authoring/render sessions (the store is PRE-BUILT, so this is render-not-author; combine sessions if budget allows - record the count for the economics leg). The graded deliverable for BOTH arms is the PROSE scene network ALONE.",
+    "arm_plain": {
+      "label": "plain (control) = the R500 plain arm, REUSED verbatim (run/plain/story.md from phase1-factsfirst-craft-experiment)",
+      "source": "RECORDED BASELINE, not re-authored this run. Honesty bound: this is a cross-run baseline, not a same-run twin; rigor mode (optional) re-authors a fresh blind plain arm at +3 sessions. The deterministic PINS do not use plain at all (they are intrinsic to the disclosure arm); only the OPEN craft preference does, and it is not pinned.",
+      "prompt": "NONE (reused). Copy run/plain/story.md from the factsfirst-craft-experiment into this experiment's run/plain/."
+    },
+    "arm_disclosure": {
+      "label": "disclosure (treatment) = facts-first render guided by the pinned DISCLOSURE BRIEF, over the REUSED R500 fact-base",
+      "store_source": "COPY phase1-factsfirst-craft-experiment/run/factsfirst/ff.atomic.json -> this experiment's run/disclosure/ff.atomic.json (gitignored). The render author reads facts FROM it; it never re-authors facts.",
+      "disclosure_brief_PINNED": {
+        "policy_default": "WITHHELD - the reader learns only what the focal frame of each scene surfaces (the sparse-frame default; the telling-dial starts at MINIMUM, the opposite of R500's max).",
+        "focal_frame": "render each scene in a named character's CLOSE-THIRD (Hale on the investigation spine; the scene's focal character elsewhere), NEVER the omniscient ground-truth frame. The ground-truth frame is the GATE's, not the narrator's.",
+        "reader_secrets_S1_S2": "mode = SHOWN EARLY but via a DISCLOSURE SURFACE the reader witnesses (a half-burnt telegram draft in a grate; a second set of prints on the gallery stair), NOT a narrator statement. first_at = early. This preserves the dramatic-irony window (the reader sees the clue; Hale has not yet read it). Show, do not tell.",
+        "solution_facts": "mode = WITHHELD until each fact's reveal scene (who climbed the stair; the true cause of death; the true custody of the forged telegram + drained account). Before reveal, HINT only through the planted objects (clock at 3:14, the empty plate-camera, the wrong-hand night-log, the spare key, the unsent letter) - never state the conclusion. The omniscient truth is for gate-checking, never for the narrator.",
+        "required_setups": "each of the 6 disclosed (planted) before its payoff; the payoff withheld until its scene (= payoff/R442 timing, a disclosure special case)."
+      },
+      "prompt": "You are rendering the prose of a branching mystery novella from a PRE-BUILT Mnemosyne fact-base (run/disclosure/ff.atomic.json - query it with `mnemosyne-cli --sidecar <that file> query ...`; it holds the frames, entities, facts with canon coordinates + evidence, succession edges, fork points, branches, and narrative-rules for the whole story). The facts are FIXED - do NOT add, remove, or re-author facts; your job is the PROSE. Render scene by scene following this DISCLOSURE BRIEF exactly: [BRIEF policy_default + focal_frame + reader_secrets_S1_S2 + solution_facts + required_setups, inlined verbatim]. For each scene: pick the focal character; write 150-400 words of close-third prose that surfaces ONLY what the brief permits at that scene; plant the clues as objects (show, do not tell); keep the >= 24-scene / 2-fork / >= 3-world / >= 3-ending / 'CHOICE:'-marked structure the fact-base's fork points imply. Deliver the scene network to story.md. Your store is your source of truth; only story.md is delivered.",
+      "render_economics_note": "FOR THE ORCHESTRATOR: record the disclosure arm's render token cost and whether following the hand-authored brief was high-friction - that friction is the rung-2-substrate pull signal (sec 7.21 step 2 / R501 render-brief carrier)."
+    },
+    "delivery_note": "graded deliverable = prose ALONE for both arms; the disclosure store is the render's source only, graded only via the blind re-extraction PINS."
+  },
+
+  "grading": {
+    "harness": "REUSE tools/experiment-harness verbatim (the R480 harness): `shuffle` relabels plain/disclosure -> A/B and seals the map (sha256); `assemble` builds the matched linear reading copies; `verify-seal` at reveal. No new harness code.",
+    "shuffle": "before any grading, shuffle plain + disclosure -> A/B, record the sha256 SEAL in disclosure-report.md PRE-REVEAL. Downstream uses story-A / story-B only.",
+    "deterministic": {
+      "blind_reextraction": "ONE blind extractor subagent re-extracts BOTH stories (story-A, story-B) into fresh stores (A.atomic.json, B.atomic.json) by the R469 extraction recipe VERBATIM (frames from evident knowledge structure; entities+predicates via report-typing-candidates -> import-typing-proposals dry-run; facts via import-facts from EXPLICIT text only, scene id = canon coordinate, quote = evidence; edges via report-edge-candidates -> import-edge-proposals; canon order from the story's own fork graph; branches forks_at = last shared scene; <= 8 rules by the fixed recipe). Cite scene-id + quote for EVERY finding. The extractor is blind to which story is which and to the hypothesis.",
+      "fidelity_metrics": "per story: D1 = rule_transition_invalid + rule_exclusive_overlap; D2 = unchained_state_pairs; D4 = succession_cross_branch + SuccessionCycle. PIN-1 = the disclosure story's D1+D2+D4 = 0 (plain's recorded beside it as common-mode control).",
+      "premature_leak_metric": "PIN-2 (R502): the orchestrator lists the WITHHELD solution facts + their reveal scenes FROM the source ff store (pre-pinned in disclosure-report.md). In the disclosure story's BLIND re-extraction, for each solution fact, find its earliest canon coordinate; assert >= its reveal scene. Any earlier = a premature LEAK (PIN-2 fails), audited leak-vs-noise (cited scene-id + quote: a leak is the solution STATED in pre-reveal prose; extractor over-inference or a hint the extractor over-read is noise). report-irony-intervals on the re-extraction is recorded (PRED-2b, NOT pinned): do the early-shown secrets produce >= 1 reader-knows / Hale-doesn't window (was the irony delivered) - fuzzy by show-don't-tell, so recorded not pinned.",
+      "leak_vs_noise_audit": "cited scene-id + quote disambiguates a real leak from extractor noise (R500 carry)."
+    },
+    "preference": {
+      "reading_copies": "per matched world-line (match by fork choice: confront/quiet x reveal/burn; spine = confront+reveal), assemble a linear reading copy with the R480 harness `assemble` over each story's re-extracted playthrough manuscript.",
+      "judges": "3 fresh blind LLM judge sessions, no experiment context, labels A / B only.",
+      "judge_prompt": "You are judging two versions (A and B) of the same branching mystery, one world-line at a time. For each matched world-line read both, then answer: (1) continuity/causality errors you noticed (count + cite scene ids); (2) prose quality - does it read as a TOLD STORY with a voice, or as assembled / list-like statements of fact? 1-5; (3) stakes and tension 1-5; (4) setup/payoff satisfaction 1-5; (5) character-knowledge believability (does anyone act on what they cannot know) 1-5; (6) overall forced choice A or B, one paragraph why. Do not speculate about how either version was produced.",
+      "baseline_crossref": "FREE isolation signal (no extra judging): the report compares the disclosure arm's judge scores against R500's RECORDED facts-first-omniscient scores (prose-quality 3.11, stakes 3.00, payoff 3.78, knowledge 4.00) and plain (4.33 / 4.00 / 4.78 / 4.78). Did disclosure move prose-quality above 3.11 toward plain's 4.33? That is the disclosure-vs-omniscient isolation, gotten from the historical record.",
+      "outcome_pin": "NONE (V9). The procedure is pinned; any preference direction is an honest headline."
+    },
+    "untyped_residue_bridge": "judge-cited continuity/causality errors not matched by any D-metric estimate the R476 ceiling per arm."
+  },
+
+  "predictions_preregistered": {
+    "PRED-1_fidelity": "PIN. The disclosure story's blind re-extraction shows D1+D2+D4 = 0 (projection of a gate-checked base).",
+    "PRED-2_premature_leak": "PIN (the NEW R502 demonstration). 0 premature leaks - no withheld solution fact re-extractable before its reveal scene. (PRED-2b, recorded not pinned: the early-shown secrets open >= 1 irony window.)",
+    "PRED-3_craft": "NO pin (V9, the OPEN question). Two hypotheses held in tension: disclosure-CLOSES (prose-quality rises clearly above the R500 omniscient 3.11 toward plain's 4.33; the 3-0 gap narrows or closes) vs disclosure-INSUFFICIENT (still reads list-like, or the win is marginal, or the hand-brief friction is so high it is not a real workflow).",
+    "PRED-4_economics_residue": "the disclosure render's cost + the hand-brief friction = the rung-2-substrate pull signal; untyped residue per arm bounds the R476 ceiling."
+  },
+
+  "decision_rule": "if PRED-3 shows the gap CLOSES (disclosure ties/beats plain AND prose-quality clearly exceeds the R500 omniscient 3.11) AND PRED-1 + PRED-2 hold -> the disclosure concept is VALIDATED as a render discipline -> the NEXT round builds the rung-2 substrate (stored disclosure plan + render-brief carrier + the deterministic premature-leak gate, sec 7.21 step 2 / R501-R502). If the gap does NOT close -> disclosure-as-render-discipline is insufficient; do NOT build the substrate; reconsider (the ceiling may be model craft, not disclosure). Either way the result is recorded; no build is authorized by this manifest.",
+
+  "validity_conditions": {
+    "quota": "the disclosure deliverable meets scenes_total_min / fork_points / world_lines_min / endings_min / epistemic_frames_min / the 6 setups; a miss is itself an economics finding (run the deterministic legs on what exists, skip preference if scales are incomparable).",
+    "extraction_parity": "identical extraction prompt / verbs / recipe across A and B; labels blind; claim-sha pins intact.",
+    "no_manifest_contact": "author(render) / extractor / judge sessions never receive this manifest, the runbook, the hypothesis, or the other arm; their prompts are the extracted brief blocks + the firewall only.",
+    "brief_faithfulness": "the disclosure render must FOLLOW the pinned brief's modes; PIN-2 (premature-leak) is itself the faithfulness check on the withhold+timing half - a render that leaks the solution early fails the pin, not the judges."
+  },
+
+  "honesty_bounds_recorded": [
+    "the plain arm is the R500 RECORDED baseline, not re-authored this run - a cross-run comparison; rigor mode re-authors a fresh blind plain (+3 sessions).",
+    "the disclosure arm reuses the R500 ff.atomic.json fact-base - this isolates the render variable but inherits R500's fact coverage / gaps.",
+    "premise reuse is deliberate (render isolation), judge-clean (fresh judges), but trades the R499 novelty-control.",
+    "the orchestrator (this lineage) wrote the pinned DISCLOSURE BRIEF (the treatment) - the design-stage selection bias the sha-pin does NOT cover (R469/R499 carry).",
+    "rung-1 and rung-2 are tested TOGETHER (the premise needs both); a clean rung-1-only test needs a pure-mystery premise (recorded future option).",
+    "PRED-2b (irony delivery) is recorded not pinned because show-don't-tell makes the early-secret re-extraction fuzzy (that fuzziness is craft, not a deterministic signal).",
+    "this lineage designed disclosure (R501/R502) so it may not author the render or blind-judge; the sha pin + blinding cover tampering/peeking, not design-stage selection."
+  ],
+
+  "session_map_runbook": [
+    "S0 = the design round (this manifest, sha pinned in the ledger entry before execution)",
+    "S1-S3 = the disclosure render (1-3 sessions over the reused ff store; plain = reused, no sessions)",
+    "S4 = blind re-extraction of BOTH stories + defect tables + the premature-leak check",
+    "S5-S7 = 3 blind judges over matched reading copies",
+    "S8 = reveal (verify-seal), grade PIN-1 + PIN-2, report the craft preference + the R500-baseline cross-ref, economics + residue, write disclosure-report.md, append the execution ledger entry (R452 self-containment). Commit; push on owner consent."
+  ]
+}
