@@ -233,6 +233,13 @@ impl CanonOrder {
             .map(String::as_str)
     }
 
+    /// `node` is named in `branch`'s composed order (Round 488). Catches a fact
+    /// whose canon coordinate is positioned in the store's canon but not in its
+    /// own branch's world-line — the wrong-branch authoring footgun.
+    pub fn names(&self, branch: &str, node: &str) -> bool {
+        self.reach_for(branch).contains_key(node)
+    }
+
     /// Branch ids carrying a declared edge set.
     pub fn declared_branches(&self) -> impl Iterator<Item = &str> {
         self.branch_reach.keys().map(String::as_str)
@@ -599,6 +606,19 @@ pub enum ContinuityViolation {
         fact_a: String,
         fact_b: String,
         at: String,
+    },
+    /// A fact's canon coordinate is named in the store's canon (some branch's
+    /// order positions it) but NOT in this fact's OWN branch order — the fact
+    /// is on the wrong world-line (Round 488). The silent wrong-branch
+    /// authoring error made loud: e.g. a fact defaulting to `main` when the
+    /// trunk is a named branch the forks inherit, so its canon node lives
+    /// elsewhere and the conflict gate never compares it where it should. A
+    /// coordinate named by no branch's order is the orderless/forward-declared
+    /// mode and is tolerated (not flagged).
+    FactCanonOffBranch {
+        fact: String,
+        branch: String,
+        coord: String,
     },
     /// A stored `canon_to` lets the predecessor outlive its successor's
     /// start — the stored end contradicts the derived one (design sec 7.3).
@@ -1083,6 +1103,28 @@ pub fn scan_continuity(
         order_nodes: order.node_count(),
         ..Default::default()
     };
+    // Canon-coordinate integrity (Round 488): a fact's canon coordinate must be
+    // a node in its OWN branch's composed order. A coordinate the store's canon
+    // positions ELSEWHERE (some branch names it) but that is absent from this
+    // fact's branch order means the fact sits on the wrong world-line — the
+    // silent wrong-branch error (e.g. defaulting to `main` when the trunk is a
+    // named branch the forks inherit), which then keeps the conflict gate from
+    // ever comparing it where it belongs. A coordinate named by NO branch's
+    // order is the orderless/forward-declared mode, tolerated unchanged.
+    let positioned: BTreeSet<&str> = order.nodes().collect();
+    for (id, fact) in facts {
+        for coord in std::iter::once(&fact.canon_from).chain(fact.canon_to.as_ref()) {
+            if positioned.contains(coord.as_str()) && !order.names(&fact.branch, coord) {
+                report
+                    .violations
+                    .push(ContinuityViolation::FactCanonOffBranch {
+                        fact: id.clone(),
+                        branch: fact.branch.clone(),
+                        coord: coord.clone(),
+                    });
+            }
+        }
+    }
     // Succession integrity (derived-extent preconditions).
     for (sid, s) in facts {
         if let Some(t_id) = &s.supersedes_in_frame {
@@ -3517,6 +3559,63 @@ mod tests {
         let mut unver = names(&w.unverifiable);
         unver.sort();
         assert_eq!(unver, vec!["su-letter".to_string(), "su-safe".to_string()]);
+    }
+
+    /// Round 488 — the wrong-branch authoring footgun made loud. A canon
+    /// coordinate positioned in some branch's order, but on a fact whose own
+    /// branch does not name it, is FactCanonOffBranch. (The R486 acceptance
+    /// hit exactly this: a trunk fact defaulted to `main` while the trunk was
+    /// the named branch `spine`, so the conflict gate never compared it.)
+    #[test]
+    fn fact_canon_off_branch_caught_on_branch_clean() {
+        let order = CanonOrder::from_declaration(
+            &CanonOrderFile {
+                edges: vec![],
+                branches: BTreeMap::from([(
+                    "spine".to_string(),
+                    vec![
+                        ["ch-1".to_string(), "ch-2".to_string()],
+                        ["ch-2".to_string(), "ch-3".to_string()],
+                    ],
+                )]),
+            },
+            &BTreeMap::from([("spine".to_string(), vec![])]),
+        )
+        .unwrap();
+        // ch-3 is positioned in `spine`; a fact on `main` (the default) does not
+        // name it -> off-branch (the silent wrong-branch error). An anchor fact
+        // registers the `spine` branch the order declares.
+        let off = store_with(vec![
+            FactImport {
+                branch: Some("spine".to_string()),
+                ..fact("f-anchor", "gt", "ch-1", None)
+            },
+            fact("f-stray", "gt", "ch-3", None),
+        ]);
+        let report = scan_continuity(&off, &order, &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::FactCanonOffBranch { fact, branch, coord }
+                    if fact == "f-stray" && branch == MAIN_BRANCH && coord == "ch-3"
+            )),
+            "off-branch canon coordinate must be caught: {:?}",
+            report.violations
+        );
+        // The same coordinate on `spine` (which names ch-3) is clean.
+        let on = store_with(vec![FactImport {
+            branch: Some("spine".to_string()),
+            ..fact("f-ok", "gt", "ch-3", None)
+        }]);
+        let report = scan_continuity(&on, &order, &[]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::FactCanonOffBranch { .. })),
+            "on-branch coordinate must be clean: {:?}",
+            report.violations
+        );
     }
 
     /// Round 443 session review: a payoff edge between SIBLING branches
