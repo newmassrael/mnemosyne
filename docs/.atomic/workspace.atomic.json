@@ -10215,6 +10215,40 @@
         "the Detroit unplaced fork point is an adapter declaration choice (R445 F5), not a substrate bug; fixing it = declaring det-sn-confront in w-kara-gun's order, the adapter's call",
         "installed cli+mcp binaries refreshed for the new verb + tool"
       ]
+    },
+    "Round 498 — session review of R496/R497: nested-fork resolution regression test + two doc-precision nits, no SSOT or structural findings": {
+      "decision_summary": "Session review of this session's work (R496 facts->prose render-loop design, R497 report-fork-tree build) against the textbook-grade / long-term-correct / SSOT / North-Star bar, with an independent adversarial code-review pass. Verdict: no hacks, no SSOT violation, structurally long-term-correct — report-fork-tree is a pure projection of store.branches reusing CanonOrder::names (R488) and the stored Branch (R438), unplaced_fork_points is the R466 honesty idiom (a redundant index of the at_placed=false cases, single-pass, not a second source), and the R496 layer split sits on the North-Star facts->prose->playable loop with the AI confined to the Layer-B render step. ONE should-fix repaid: the headline nested-fork resolution (at_placed resolving against a NON-main parent's composed order — the R497 Detroit dogfood lead finding) rode only on a manually-run dogfood with no regression test; added fork_tree_resolves_nested_parent_composed_order. TWO doc-precision nits repaid: fork_tree now documents that it guards only the dangling-parent case and delegates cycle/self-fork integrity upstream to fork_chain; ForkTreeBranch.description no longer over-commits 'choice label' to the standalone world. The R497 entry's 'reuses fork_chain' is pipeline-level precise only (fork_tree reads forks_from directly + resolves via CanonOrder::names; fork_chain runs upstream in compose_canon_order) — recorded here since R497 is frozen.",
+      "changes_bullets": [
+        "continuity test fork_tree_resolves_nested_parent_composed_order: the nested child-of-child SUCCESS path (parent = a registered non-main branch), at_placed resolved against the parent's COMPOSED order vs base — same node k-1 placed for parent=route, unplaced for parent=main (parent-specific resolution, the R497 Detroit dogfood lead finding now a regression guard)",
+        "fork_tree doc: the fail-loud guards ONLY the dangling-parent case; cycle/self-fork integrity is delegated upstream to fork_chain (not a complete registry validator)",
+        "ForkTreeBranch.description doc: no longer over-commits \"choice label\" to the standalone (forks_from=None) world"
+      ],
+      "verification_bullets": [
+        "mnemosyne-validate fork_tree tests 3 -> 4 (the nested case is now a regression guard); full suite green; clippy --all-targets clean; cargo fmt --check clean",
+        "independent adversarial review pass (refactoring lens) confirmed no hacks / no SSOT violation / structurally long-term-correct; the only above-NIT finding was the missing nested-fork test",
+        "R497 build code is touched again here as a NEW commit, not a frozen-ledger edit (the ledger ENTRIES are frozen; the code is not)"
+      ],
+      "carry_forward_bullets": [
+        "no outstanding R497 findings; sec 7.21 step 1 stays DONE",
+        "remaining per-half follow-ons unchanged: render-brief (--frame filter, authoring-loop pull), Layer A assembler (play-it gated), Layer B prose craft (R469 blind judge)",
+        "the R497 entry's \"reuses fork_chain\" phrasing is pipeline-level precise only (fork_tree reads forks_from directly + resolves via CanonOrder::names; fork_chain runs upstream in compose_canon_order) — corrected statement recorded here, per frozen-ledger (correct by new entry, never rewrite)"
+      ],
+      "publishable_decision_summary": "Session review of this session's work (R496 facts->prose render-loop design, R497 report-fork-tree build) against the textbook-grade / long-term-correct / SSOT / North-Star bar, with an independent adversarial code-review pass. Verdict: no hacks, no SSOT violation, structurally long-term-correct — report-fork-tree is a pure projection of store.branches reusing CanonOrder::names (R488) and the stored Branch (R438), unplaced_fork_points is the R466 honesty idiom (a redundant index of the at_placed=false cases, single-pass, not a second source), and the R496 layer split sits on the North-Star facts->prose->playable loop with the AI confined to the Layer-B render step. ONE should-fix repaid: the headline nested-fork resolution (at_placed resolving against a NON-main parent's composed order — the R497 Detroit dogfood lead finding) rode only on a manually-run dogfood with no regression test; added fork_tree_resolves_nested_parent_composed_order. TWO doc-precision nits repaid: fork_tree now documents that it guards only the dangling-parent case and delegates cycle/self-fork integrity upstream to fork_chain; ForkTreeBranch.description no longer over-commits 'choice label' to the standalone world. The R497 entry's 'reuses fork_chain' is pipeline-level precise only (fork_tree reads forks_from directly + resolves via CanonOrder::names; fork_chain runs upstream in compose_canon_order) — recorded here since R497 is frozen.",
+      "publishable_changes_bullets": [
+        "continuity test fork_tree_resolves_nested_parent_composed_order: the nested child-of-child SUCCESS path (parent = a registered non-main branch), at_placed resolved against the parent's COMPOSED order vs base — same node k-1 placed for parent=route, unplaced for parent=main (parent-specific resolution, the R497 Detroit dogfood lead finding now a regression guard)",
+        "fork_tree doc: the fail-loud guards ONLY the dangling-parent case; cycle/self-fork integrity is delegated upstream to fork_chain (not a complete registry validator)",
+        "ForkTreeBranch.description doc: no longer over-commits \"choice label\" to the standalone (forks_from=None) world"
+      ],
+      "publishable_verification_bullets": [
+        "mnemosyne-validate fork_tree tests 3 -> 4 (the nested case is now a regression guard); full suite green; clippy --all-targets clean; cargo fmt --check clean",
+        "independent adversarial review pass (refactoring lens) confirmed no hacks / no SSOT violation / structurally long-term-correct; the only above-NIT finding was the missing nested-fork test",
+        "R497 build code is touched again here as a NEW commit, not a frozen-ledger edit (the ledger ENTRIES are frozen; the code is not)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "no outstanding R497 findings; sec 7.21 step 1 stays DONE",
+        "remaining per-half follow-ons unchanged: render-brief (--frame filter, authoring-loop pull), Layer A assembler (play-it gated), Layer B prose craft (R469 blind judge)",
+        "the R497 entry's \"reuses fork_chain\" phrasing is pipeline-level precise only (fork_tree reads forks_from directly + resolves via CanonOrder::names; fork_chain runs upstream in compose_canon_order) — corrected statement recorded here, per frozen-ledger (correct by new entry, never rewrite)"
+      ]
     }
   },
   "inventory_entries": {},

@@ -2944,7 +2944,9 @@ pub struct ForkTreeEdge {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForkTreeBranch {
     pub branch_id: String,
-    /// The branch's free-form description (the choice label; may be empty).
+    /// The branch's free-form description — the CYOA choice label for a
+    /// forked world, a plain world description for a standalone one; may be
+    /// empty.
     pub description: String,
     /// Divergence coordinate (Round 438). `None` = a standalone world
     /// sharing no history (the pre-fork R433 semantics).
@@ -2976,7 +2978,11 @@ pub struct ForkTreeReport {
 /// one node-membership semantics, no parallel fork engine; the R441 binding
 /// rule). Fail-loud on a fork whose parent is neither [`MAIN_BRANCH`] nor a
 /// registered branch (a store-integrity violation the write path forbids —
-/// a typo'd parent must not read as a silent root). Pure read projection —
+/// a typo'd parent must not read as a silent root). This guard covers ONLY
+/// the dangling-parent case; cycle and self-fork integrity are delegated
+/// upstream to the order composition ([`fork_chain`] fails loud on a cyclic
+/// registry before `compose_canon_order` hands this verb an order), so this
+/// is not a complete registry validator. Pure read projection —
 /// `store.branches` unchanged, deliberately never gated.
 pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeReport, String> {
     check_store_boundary(store, order)?;
@@ -5684,6 +5690,53 @@ mod tests {
         );
         let err = fork_tree(&store, &CanonOrder::empty()).unwrap_err();
         assert!(err.contains("neither `main` nor a registered"), "{err}");
+    }
+
+    /// The headline nested case (R497 Detroit dogfood, locked as a
+    /// regression): `at_placed` resolves against the PARENT's COMPOSED order,
+    /// not the base / `main`. `route` forks `main` and declares its own edge
+    /// `ch-2 -> k-1`, so `k-1` is named by route's composition but never by
+    /// the base; `deep` forks `route` at `k-1` (placed via the parent's
+    /// composition) while `side` forks `main` at the SAME `k-1` (unplaced —
+    /// base never names it). Without this, a refactor of `reach_for`/`names`
+    /// or the `from_declaration` ancestry composition could silently flip
+    /// every nested fork to unplaced and the main-parent tests would stay
+    /// green.
+    #[test]
+    fn fork_tree_resolves_nested_parent_composed_order() {
+        let store = store_with_forks(
+            vec![fact("f-main", "gt", "ch-1", None)],
+            &[
+                ("route", MAIN_BRANCH, "ch-2"),
+                ("side", MAIN_BRANCH, "k-1"),
+                ("deep", "route", "k-1"),
+            ],
+        );
+        let decl = CanonOrderFile {
+            edges: vec![["ch-1".to_string(), "ch-2".to_string()]],
+            branches: BTreeMap::from([(
+                "route".to_string(),
+                vec![["ch-2".to_string(), "k-1".to_string()]],
+            )]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &fork_ancestry(&store.branches).unwrap()).unwrap();
+        let report = fork_tree(&store, &order).unwrap();
+        let by_id = |id: &str| report.branches.iter().find(|b| b.branch_id == id).unwrap();
+
+        let deep = by_id("deep").fork.as_ref().unwrap();
+        assert_eq!(deep.parent, "route");
+        assert!(
+            deep.at_placed,
+            "k-1 is named by route's COMPOSED order (route's own edge), so the nested fork is placed"
+        );
+        let side = by_id("side").fork.as_ref().unwrap();
+        assert_eq!(side.parent, MAIN_BRANCH);
+        assert!(
+            !side.at_placed,
+            "the SAME node k-1 is not in main's base order — resolution is parent-specific"
+        );
+        assert_eq!(report.unplaced_fork_points, ["side"]);
     }
 
     // ====================================================================
