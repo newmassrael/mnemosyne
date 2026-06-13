@@ -1,0 +1,3 @@
+{"facts":[
+ {"fact_id":"fa-crane-alive","frame":"ground","branch":"main","entities":["crane","iron_stair"],"claim":"Crane is alive on the dark stair at three in the morning before the fall.","canon_from":"sc-01","evidence":["sc-01"],"quote":"A blind man on a dark stair at three in the morning."}
+]}

@@ -1,0 +1,928 @@
+{
+ "schema": "typing-proposals/v1",
+ "proposals": [
+  {
+   "fact": "fb-840-pounds",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "840_pounds_gone"
+    }
+   },
+   "claim_sha256": "e2298f1d4acb7ce50d50afc7ab1ecaab6345f5a316901b277f8f65efac9bbba3",
+   "rationale": "explicit reading of fb-840-pounds into declared vocabulary"
+  },
+  {
+   "fact": "fb-cert-loud",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_human_agency_not_accident"
+    }
+   },
+   "claim_sha256": "966da3ee0b1a32369619a0ecc9c3463c2d67639ab63238e41a67096fa7f2349a",
+   "rationale": "explicit reading of fb-cert-loud into declared vocabulary"
+  },
+  {
+   "fact": "fb-cert-quiet",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_something_else_not_accident"
+    }
+   },
+   "claim_sha256": "3a9756f92a48713e8c35f8df06b1016cfcb55025fdb2dc44fe145abb2ceea914",
+   "rationale": "explicit reading of fb-cert-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-cert-unknown",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_human_agency_agent_unestablished"
+    }
+   },
+   "claim_sha256": "5ae2be9270e9557d41bf3725d0ec0765ee1b15b85745ff084555e5d5533260ac",
+   "rationale": "explicit reading of fb-cert-unknown into declared vocabulary"
+  },
+  {
+   "fact": "fb-clock-by-hand",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "clock_stopped_by_hand"
+    }
+   },
+   "claim_sha256": "c3414f6d17da57271b173ec2ce65dea6ea8994136ff5d7c5b6ffc2d8feadf0ac",
+   "rationale": "explicit reading of fb-clock-by-hand into declared vocabulary"
+  },
+  {
+   "fact": "fb-clock-gripped-rc",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "stopped_by_pike_grip"
+    }
+   },
+   "claim_sha256": "d8eb1e8adb3055982b5dd72708f37f2a12a9453229d582021f5a2cf67332de1f",
+   "rationale": "explicit reading of fb-clock-gripped-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-clock-gripped-rq",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "stopped_by_pike_grip"
+    }
+   },
+   "claim_sha256": "d8eb1e8adb3055982b5dd72708f37f2a12a9453229d582021f5a2cf67332de1f",
+   "rationale": "explicit reading of fb-clock-gripped-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-clock-stopped",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "stopped_at_3_14"
+    }
+   },
+   "claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "rationale": "explicit reading of fb-clock-stopped into declared vocabulary"
+  },
+  {
+   "fact": "fb-clock-wound",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "wound_ran_six_hours"
+    }
+   },
+   "claim_sha256": "d505a0fc299ed5be2812e0326a01170dddd0d35324b1e96406759884661faeee",
+   "rationale": "explicit reading of fb-clock-wound into declared vocabulary"
+  },
+  {
+   "fact": "fb-crane-alive",
+   "typed": {
+    "subject": "crane",
+    "predicate": "alive",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   },
+   "claim_sha256": "815f9396ce7d85d344c3972d08d254cc73881f9af6434c49bba5944d58c0c34e",
+   "rationale": "explicit reading of fb-crane-alive into declared vocabulary"
+  },
+  {
+   "fact": "fb-crane-bewildered-rc",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "bewildered_knew_nothing"
+    }
+   },
+   "claim_sha256": "f3af9e54147cfe336d94d1b11ee2d460efa8bf5ea4f47154df8b4a3add7737ee",
+   "rationale": "explicit reading of fb-crane-bewildered-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-crane-dead",
+   "typed": {
+    "subject": "crane",
+    "predicate": "alive",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   },
+   "claim_sha256": "4aa66f36a367536c96a5fcd7dfc0b908dae2a9eeaa2c583da536557ff5788f70",
+   "rationale": "explicit reading of fb-crane-dead into declared vocabulary"
+  },
+  {
+   "fact": "fb-crane-never-knew",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "never_knew_recall"
+    }
+   },
+   "claim_sha256": "3dfe5f7ff9ed4fb4c6968bdf2b8542b1ca4c49a0b05e1b8c27487e1fb52abc56",
+   "rationale": "explicit reading of fb-crane-never-knew into declared vocabulary"
+  },
+  {
+   "fact": "fb-drawer-stratagem",
+   "typed": {
+    "subject": "unsent_letter",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "signed_dated_unsent"
+    }
+   },
+   "claim_sha256": "eb8481f8c4f6cada2027b9079dcb9a604bf4ae2809383dd7f34f4eefe20165eb",
+   "rationale": "explicit reading of fb-drawer-stratagem into declared vocabulary"
+  },
+  {
+   "fact": "fb-goodnight",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "feigns_uncaught_goodnight"
+    }
+   },
+   "claim_sha256": "bf2f4fca07a97aa04a424aee5e0ec27d9cde726f257164b17c20a50310d6d01d",
+   "rationale": "explicit reading of fb-goodnight into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-distrust",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "distrusts_too_neat_accident"
+    }
+   },
+   "claim_sha256": "6ad15fefc99687774adb2ff6e79ab0c045f06d601abc834db954628c35098587",
+   "rationale": "explicit reading of fb-hale-distrust into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-door-opened",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "door_already_opened"
+    }
+   },
+   "claim_sha256": "8816dfc9b01f3006cc815bef57e8ce7fdfbafd6576267fd78f0890bb23263f2a",
+   "rationale": "explicit reading of fb-hale-door-opened into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-fear-with-death",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "fear_has_a_death_in_it"
+    }
+   },
+   "claim_sha256": "2d3229b65f1de9f91969c25f0ea0cbbeebcd0da9efc180ae69f4c997c7df21cc",
+   "rationale": "explicit reading of fb-hale-fear-with-death into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-takes-pike-rc",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "confronts_pike_never_seen_it"
+    }
+   },
+   "claim_sha256": "9f44df2e1bc5b13016e8aab3eb514b6c2d9a7ccb78bb1ae7204b0e6c7177e2af",
+   "rationale": "explicit reading of fb-hale-takes-pike-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-theory",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_shields_someone"
+    }
+   },
+   "claim_sha256": "2ca5301ab58742e4b5ab1e5634456ca6f66856862823459887cf59718373b9a3",
+   "rationale": "explicit reading of fb-hale-theory into declared vocabulary"
+  },
+  {
+   "fact": "fb-hale-theory-quiet",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "has_everything_but_name"
+    }
+   },
+   "claim_sha256": "ce5934ad54dadae0d3a19d79af00fe0497a83b85ab2d747ecbf8bdf332dee119",
+   "rationale": "explicit reading of fb-hale-theory-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-hole-name",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "hole_size_of_a_name"
+    }
+   },
+   "claim_sha256": "d6bd04cd31eb33c41021104b20600550e8f817081ca3b1d556fabd1aca556b15",
+   "rationale": "explicit reading of fb-hole-name into declared vocabulary"
+  },
+  {
+   "fact": "fb-irony-loud",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "already_walking_through_door"
+    }
+   },
+   "claim_sha256": "94ea04957916fab072fd855615b7c2918d0d15718075ac803561b5c53ead87f4",
+   "rationale": "explicit reading of fb-irony-loud into declared vocabulary"
+  },
+  {
+   "fact": "fb-irony-quiet",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "never_read_wire_resigned_own_will"
+    }
+   },
+   "claim_sha256": "0d0e11d7e776114870d62834621bf9895e0cb3b9e414a97574d0ea38877b33e8",
+   "rationale": "explicit reading of fb-irony-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-irony-unknown",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "door_already_opened_provable"
+    }
+   },
+   "claim_sha256": "9ee0241653804b89c5a08c38338a0a25f709537a68233fd8afb0f6f277830d8c",
+   "rationale": "explicit reading of fb-irony-unknown into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-alibi",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "claims_annexe_spectroscope"
+    }
+   },
+   "claim_sha256": "8c9878b6daa17d63e0654ce3b6cc8fc2fcadce1a271a5ed7f6b381874226184d",
+   "rationale": "explicit reading of fb-junia-alibi into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-hinge-confront",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "hinge_speak_or_burn"
+    }
+   },
+   "claim_sha256": "b7cd7030a9026798c98cedcec12647c0b299c1508f4eaebcd3c9bd8285f7fade",
+   "rationale": "explicit reading of fb-junia-hinge-confront into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-hinge-quiet",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "hinge_speak_or_burn"
+    }
+   },
+   "claim_sha256": "0b5c0192fab4ca416895e3d0a59a92d023d34e07e39a2966916fb915527aec61",
+   "rationale": "explicit reading of fb-junia-hinge-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-judged-rq",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "shielded_pike_judged"
+    }
+   },
+   "claim_sha256": "b2ec1cdffb215dc65fa4c433b52eadbb943c33b66639f396166f87dd1a9c0abd",
+   "rationale": "explicit reading of fb-junia-judged-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-not-annexe-rc",
+   "typed": {
+    "subject": "junia",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "dome_gallery"
+    }
+   },
+   "claim_sha256": "65853490177ff1024b4d34652cbd7d56e271dab5c8934c6b03c68cd1f25cbc34",
+   "rationale": "explicit reading of fb-junia-not-annexe-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-not-annexe-rq",
+   "typed": {
+    "subject": "junia",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "dome_gallery"
+    }
+   },
+   "claim_sha256": "65853490177ff1024b4d34652cbd7d56e271dab5c8934c6b03c68cd1f25cbc34",
+   "rationale": "explicit reading of fb-junia-not-annexe-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-not-at-camera",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_maybe_not_at_camera"
+    }
+   },
+   "claim_sha256": "4b1bbc9e8efd96d1a3ced1f47cd01af33c7098beb41b0cca21cc34587a15965c",
+   "rationale": "explicit reading of fb-junia-not-at-camera into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-on-gallery",
+   "typed": {
+    "subject": "junia",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "dome_gallery"
+    }
+   },
+   "claim_sha256": "38065923df8cac859c8c7d64c0b66c549225eaa1a63f3951c99b4ffd9e6bcd08",
+   "rationale": "explicit reading of fb-junia-on-gallery into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-prop-gone",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "prop_of_silence_gone"
+    }
+   },
+   "claim_sha256": "8a0d6c07f121690d8a2ab46951dc68454d893b562f813b9cedd807f0d8d5d35e",
+   "rationale": "explicit reading of fb-junia-prop-gone into declared vocabulary"
+  },
+  {
+   "fact": "fb-junia-weighs-roads",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "weighs_tell_or_bury"
+    }
+   },
+   "claim_sha256": "eb6ba09f4c06f584fc330a6f913fba17fa950aad52992bdc76e1854ea2bb2fd4",
+   "rationale": "explicit reading of fb-junia-weighs-roads into declared vocabulary"
+  },
+  {
+   "fact": "fb-key-behind-clock",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "behind_clock_gallery"
+    }
+   },
+   "claim_sha256": "bfbd678588194890987e92777a492a037bb1a189a95eecc0b710d5ea1540adf1",
+   "rationale": "explicit reading of fb-key-behind-clock into declared vocabulary"
+  },
+  {
+   "fact": "fb-key-behind-clock-quiet",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "behind_clock_gallery"
+    }
+   },
+   "claim_sha256": "c9dc7975c0bb6fe64a323943a176b78248af0a748594fc0ca2b4bb2d80414224",
+   "rationale": "explicit reading of fb-key-behind-clock-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-key-carried-up",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "key_carried_to_gallery"
+    }
+   },
+   "claim_sha256": "012051a4d8cd339fd31492ae98c2d51b628b3499b3af366b7885f7e30beb9ae2",
+   "rationale": "explicit reading of fb-key-carried-up into declared vocabulary"
+  },
+  {
+   "fact": "fb-key-lost",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "reported_lost_month_before"
+    }
+   },
+   "claim_sha256": "72d0bb69a7f1ebd8105a9a723acd48b6a4ec2c5fec1cf2771d15c1e3c142a0f5",
+   "rationale": "explicit reading of fb-key-lost into declared vocabulary"
+  },
+  {
+   "fact": "fb-ledger-false",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "figures_false_provision_gone"
+    }
+   },
+   "claim_sha256": "3d41244b5b6f24aa55fe42f0c3cfa5b039ce59937b4eba0601fd8b186a5d8835",
+   "rationale": "explicit reading of fb-ledger-false into declared vocabulary"
+  },
+  {
+   "fact": "fb-letter-quiet-work",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "prop_of_silence_gone"
+    }
+   },
+   "claim_sha256": "588f99d593c80336adba959ab66a19f7024a2595b1f91b3b08387e7d2a4f305b",
+   "rationale": "explicit reading of fb-letter-quiet-work into declared vocabulary"
+  },
+  {
+   "fact": "fb-log-burned",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "burned_to_ash"
+    }
+   },
+   "claim_sha256": "f49920160b4cfb38795829232acfb738a9b7b7fc344c813284843f0ac24f2407",
+   "rationale": "explicit reading of fb-log-burned into declared vocabulary"
+  },
+  {
+   "fact": "fb-log-found-quiet",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "junia"
+    }
+   },
+   "claim_sha256": "8dc11ee91e43355a480298aa4248e0aa3733513320b9cb62a999d6cca8da8c01",
+   "rationale": "explicit reading of fb-log-found-quiet into declared vocabulary"
+  },
+  {
+   "fact": "fb-log-manufactured",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_manufactured_record"
+    }
+   },
+   "claim_sha256": "ffcce00e3372fc053b9f38d0935b635f78748137baade45427d025cfc72cc09b",
+   "rationale": "explicit reading of fb-log-manufactured into declared vocabulary"
+  },
+  {
+   "fact": "fb-log-wrong-hand",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "junia"
+    }
+   },
+   "claim_sha256": "0daf78a01b57e9bf50539834051d19a5dca6e899c8e564a6c05276b3baba12ba",
+   "rationale": "explicit reading of fb-log-wrong-hand into declared vocabulary"
+  },
+  {
+   "fact": "fb-name-in-memory",
+   "typed": {
+    "subject": "junia",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "name_in_memory_alone"
+    }
+   },
+   "claim_sha256": "e83e6a72d88addbc41b1b33c3ae5403fcb077fdebb2b565b7f56f7c3a85059ec",
+   "rationale": "explicit reading of fb-name-in-memory into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-believes-knew",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "believes_crane_knew"
+    }
+   },
+   "claim_sha256": "8111606cd57fbe63460cd18a24c30e077a5b6018e133741dfdbe7c4eeaefd9da",
+   "rationale": "explicit reading of fb-pike-believes-knew into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-breaks-rc",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "realizes_crane_didnt_know"
+    }
+   },
+   "claim_sha256": "4e005d277036f5fac24b7e6348c2995c817646a577943257787ddcf581dd64ac",
+   "rationale": "explicit reading of fb-pike-breaks-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-certain-rc",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "certain_crane_read_recall"
+    }
+   },
+   "claim_sha256": "131b08aca16f2950260ad6eabf4a0032427f9422f89f17e222f6e8183b5255fc",
+   "rationale": "explicit reading of fb-pike-certain-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-certain-rq",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "certain_crane_read_recall"
+    }
+   },
+   "claim_sha256": "131b08aca16f2950260ad6eabf4a0032427f9422f89f17e222f6e8183b5255fc",
+   "rationale": "explicit reading of fb-pike-certain-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-crane-knew",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "claims_crane_knew_approved"
+    }
+   },
+   "claim_sha256": "2746ac2002a7341b6a1af7c8452f4c4bd6479b732154bbed8851149a649826c5",
+   "rationale": "explicit reading of fb-pike-crane-knew into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-didnt-know",
+   "typed": {
+    "subject": "pike",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "did_not_know_crane_resigned"
+    }
+   },
+   "claim_sha256": "3b9f1ffd7fa9ee669c1bfa175ef68b99557795b328ca167dc4840979c12f3c23",
+   "rationale": "explicit reading of fb-pike-didnt-know into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-drained",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "drained_three_years"
+    }
+   },
+   "claim_sha256": "9849178094adad86760b924545fa2a2e27198e4038c185355092110ad21dd777",
+   "rationale": "explicit reading of fb-pike-drained into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-forged",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "forged_by_pike"
+    }
+   },
+   "claim_sha256": "fc0a21f8a05872f65c3da52781b6bdfab5f6cf83d48e23c22feba2cf65bcb2ee",
+   "rationale": "explicit reading of fb-pike-forged into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-glance-drawer",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "marks_glance_to_drawer"
+    }
+   },
+   "claim_sha256": "d48fa476fb0274ca1018b60a7ee3e98e5edab21997e76301406af5a06cc5e5ba",
+   "rationale": "explicit reading of fb-pike-glance-drawer into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-goes-study",
+   "typed": {
+    "subject": "pike",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "study_in_the_dark"
+    }
+   },
+   "claim_sha256": "63467111de4f3e3084503ce0b2f4b2aa19648eb72f60c30165ad575cf4572db4",
+   "rationale": "explicit reading of fb-pike-goes-study into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-keeps-proof-rq",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "8a6e6b1071f70cacd48ea1b9ee6e60b9caa97ebd7f120114e9e949571de54359",
+   "rationale": "explicit reading of fb-pike-keeps-proof-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-on-stair-rc",
+   "typed": {
+    "subject": "pike",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "iron_stair"
+    }
+   },
+   "claim_sha256": "4c82bd2ac5a0776694aafe106e389eca32d801aa5cb5fa5a089b5ae9d8d11306",
+   "rationale": "explicit reading of fb-pike-on-stair-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-on-stair-rq",
+   "typed": {
+    "subject": "pike",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "iron_stair"
+    }
+   },
+   "claim_sha256": "4c82bd2ac5a0776694aafe106e389eca32d801aa5cb5fa5a089b5ae9d8d11306",
+   "rationale": "explicit reading of fb-pike-on-stair-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-pike-puts-back",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "5e761783fe437c194dd16044e79fd9ac4c9d35b9128c02033f153a7fa75c7d0e",
+   "rationale": "explicit reading of fb-pike-puts-back into declared vocabulary"
+  },
+  {
+   "fact": "fb-plates-blank",
+   "typed": {
+    "subject": "plates",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "blank_unexposed"
+    }
+   },
+   "claim_sha256": "935f953bdcc2116711b52e69d5ac663c03217fc0275823b476aa0b7595ed78a3",
+   "rationale": "explicit reading of fb-plates-blank into declared vocabulary"
+  },
+  {
+   "fact": "fb-recall-slips",
+   "typed": {
+    "subject": "pike",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "lets_slip_recall"
+    }
+   },
+   "claim_sha256": "415da602c90593e60d5c56db781fb3fa2aa4c266929541feef8b866b3e114b07",
+   "rationale": "explicit reading of fb-recall-slips into declared vocabulary"
+  },
+  {
+   "fact": "fb-resignation-found",
+   "typed": {
+    "subject": "unsent_letter",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "signed_dated_unsent"
+    }
+   },
+   "claim_sha256": "deda96c1c488cfe8e7fa142502c05b626c747bcd3a277c1a610d80640623dc2f",
+   "rationale": "explicit reading of fb-resignation-found into declared vocabulary"
+  },
+  {
+   "fact": "fb-shutter-open",
+   "typed": {
+    "subject": "iron_stair",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "dome_shutter_open"
+    }
+   },
+   "claim_sha256": "4a9c9a7d974707addd2632b52476ccfcc9c9d420fe3a1f2426b14b993db6fac6",
+   "rationale": "explicit reading of fb-shutter-open into declared vocabulary"
+  },
+  {
+   "fact": "fb-struggle-rc",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "struggle_foot_on_frost"
+    }
+   },
+   "claim_sha256": "ee8292a8cf7b4ea15785fd06f2d41a449973560179eeac488207f9a90a79599b",
+   "rationale": "explicit reading of fb-struggle-rc into declared vocabulary"
+  },
+  {
+   "fact": "fb-struggle-rq",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "struggle_foot_on_frost"
+    }
+   },
+   "claim_sha256": "ee8292a8cf7b4ea15785fd06f2d41a449973560179eeac488207f9a90a79599b",
+   "rationale": "explicit reading of fb-struggle-rq into declared vocabulary"
+  },
+  {
+   "fact": "fb-telegram-undelivered",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "drawer_undelivered"
+    }
+   },
+   "claim_sha256": "d962ac4fd803ff33f7a69eb4687d31762e52dd159b509f6851625fec3d77d896",
+   "rationale": "explicit reading of fb-telegram-undelivered into declared vocabulary"
+  },
+  {
+   "fact": "fb-thread-in-works",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "thread_caught_in_works"
+    }
+   },
+   "claim_sha256": "b5a1ea9edc52dd805902865ccc2a32b4cda783ede50d192553b5f2b2dc59de21",
+   "rationale": "explicit reading of fb-thread-in-works into declared vocabulary"
+  },
+  {
+   "fact": "fb-three-secrets",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "ignorant_of_three_secrets"
+    }
+   },
+   "claim_sha256": "69d10ad8c6f2d7b4b62ab6a45d209df576a2b5e51bf7b93fc00dfa210f247d5c",
+   "rationale": "explicit reading of fb-three-secrets into declared vocabulary"
+  },
+  {
+   "fact": "fb-unsent-letter-exists",
+   "typed": {
+    "subject": "unsent_letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "crane"
+    }
+   },
+   "claim_sha256": "35b428c9d707d57b4017decf424f6d4b19a7fdbc329100f1618d3c11225d4b06",
+   "rationale": "explicit reading of fb-unsent-letter-exists into declared vocabulary"
+  },
+  {
+   "fact": "fb-wrist-bruise",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "wrist_band_bruise"
+    }
+   },
+   "claim_sha256": "276c21c7a39a93916ef82ed52bf16c7e2a8c48b2a922ac09c346b11620ec77a1",
+   "rationale": "explicit reading of fb-wrist-bruise into declared vocabulary"
+  }
+ ]
+}

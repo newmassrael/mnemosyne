@@ -1,0 +1,34 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "genuine in-frame state successions",
+ "succession": [
+  {
+   "predecessor": "fb-crane-alive",
+   "successor": "fb-crane-dead",
+   "predecessor_claim_sha256": "815f9396ce7d85d344c3972d08d254cc73881f9af6434c49bba5944d58c0c34e",
+   "successor_claim_sha256": "4aa66f36a367536c96a5fcd7dfc0b908dae2a9eeaa2c583da536557ff5788f70",
+   "rationale": "Crane alive on the stair then found dead at its foot"
+  },
+  {
+   "predecessor": "fb-clock-wound",
+   "successor": "fb-clock-stopped",
+   "predecessor_claim_sha256": "d505a0fc299ed5be2812e0326a01170dddd0d35324b1e96406759884661faeee",
+   "successor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "rationale": "clock wound and running then stopped at 3:14"
+  },
+  {
+   "predecessor": "fb-clock-stopped",
+   "successor": "fb-clock-gripped-rc",
+   "predecessor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "successor_claim_sha256": "d8eb1e8adb3055982b5dd72708f37f2a12a9453229d582021f5a2cf67332de1f",
+   "rationale": "stopped clock revealed as Pike's grip in the struggle (WL-1)"
+  },
+  {
+   "predecessor": "fb-clock-stopped",
+   "successor": "fb-clock-gripped-rq",
+   "predecessor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "successor_claim_sha256": "d8eb1e8adb3055982b5dd72708f37f2a12a9453229d582021f5a2cf67332de1f",
+   "rationale": "stopped clock revealed as Pike's grip in the struggle (WL-2)"
+  }
+ ]
+}

@@ -1,0 +1,117 @@
+{
+  "entities": [
+    {"entity_id": "crane", "kind": "person"},
+    {"entity_id": "hale", "kind": "person"},
+    {"entity_id": "junia", "kind": "person"},
+    {"entity_id": "pike", "kind": "person"},
+    {"entity_id": "night_log", "kind": "object"},
+    {"entity_id": "plate_camera", "kind": "object"},
+    {"entity_id": "plate", "kind": "object"},
+    {"entity_id": "meridian_clock", "kind": "object"},
+    {"entity_id": "instrument_account", "kind": "object"},
+    {"entity_id": "spare_dome_key", "kind": "object"},
+    {"entity_id": "unsent_letter", "kind": "object"},
+    {"entity_id": "telegram", "kind": "object"},
+    {"entity_id": "iron_stair", "kind": "place"},
+    {"entity_id": "dome_gallery", "kind": "place"},
+    {"entity_id": "spectroscope", "kind": "object"},
+    {"entity_id": "duplicate_books", "kind": "object"}
+  ],
+  "predicates": [
+    {"predicate_id": "alive", "object_kind": "scalar"},
+    {"predicate_id": "located_at", "object_kind": "scalar"},
+    {"predicate_id": "held_by", "object_kind": "entity"},
+    {"predicate_id": "object_state", "object_kind": "scalar"},
+    {"predicate_id": "belief", "object_kind": "scalar"},
+    {"predicate_id": "at_work", "object_kind": "scalar"}
+  ],
+  "facts": [
+    {"fact_id": "fa-crane-dead", "frame": "ground", "branch": "main", "entities": ["crane"], "claim": "Crane is found dead at the foot of the iron stair.", "canon_from": "sc-01", "evidence": ["sc-01"], "quote": "Crane had fallen from the top."},
+    {"fact_id": "fa-crane-blind", "frame": "ground", "branch": "main", "entities": ["crane"], "claim": "Crane the director was blind for two years.", "canon_from": "sc-01", "evidence": ["sc-01"], "quote": "the man had been blind these two years"},
+    {"fact_id": "fa-telegram-corner", "frame": "ground", "branch": "main", "entities": ["telegram"], "claim": "A half-burnt telegram form lies unread in the dead grate.", "canon_from": "sc-01", "evidence": ["sc-01"], "quote": "the printed banding of a telegraph form and three or four words"},
+    {"fact_id": "fa-hale-writes-fall", "frame": "hale", "branch": "main", "entities": ["hale", "crane"], "claim": "Hale writes the death down as a fall.", "canon_from": "sc-01", "evidence": ["sc-01"], "quote": "the adjuster wrote fall in the first clean line of his book"},
+
+    {"fact_id": "fa-junia-alibi-claim", "frame": "junia", "branch": "main", "entities": ["junia"], "claim": "Junia means to claim she worked at the spectroscope all night.", "canon_from": "sc-02", "evidence": ["sc-02"], "quote": "She had been at the spectroscope, she would say. All night"},
+    {"fact_id": "fa-junia-on-gallery", "frame": "ground", "branch": "main", "entities": ["junia", "dome_gallery"], "claim": "Junia was on the dome gallery in the night, pressed to the wall.", "canon_from": "sc-02", "evidence": ["sc-02"], "quote": "she had stood pressed to the curve of the wall with her breath held"},
+    {"fact_id": "fa-junia-saw-climber", "frame": "ground", "branch": "main", "entities": ["junia"], "claim": "Junia saw who climbed the stair that night.", "canon_from": "sc-02", "evidence": ["sc-02"], "quote": "She had seen who climbed the stair."},
+
+    {"fact_id": "fa-log-strange-hand", "frame": "hale", "branch": "main", "entities": ["night_log"], "claim": "The night-log's final entry is in a hand other than Crane's.", "canon_from": "sc-03", "evidence": ["sc-03"], "quote": "the hand was wrong"},
+    {"fact_id": "fa-hale-asks-who", "frame": "hale", "branch": "main", "entities": ["hale", "night_log"], "claim": "Hale suspects a second presence and writes 'Who?'", "canon_from": "sc-03", "evidence": ["sc-03"], "quote": "he wrote a single word and underlined it: Who?"},
+
+    {"fact_id": "fa-plate-blank", "frame": "ground", "branch": "main", "entities": ["plate", "plate_camera"], "claim": "The plate in the camera is blank, never exposed to the sky.", "canon_from": "sc-04", "evidence": ["sc-04"], "quote": "the plate was blank — clean grey gelatine, never drawn back to the sky"},
+    {"fact_id": "fa-junia-witness-not-suspect", "frame": "hale", "branch": "main", "entities": ["hale", "junia"], "claim": "Hale lets Junia stand as a witness and not a suspect.", "canon_from": "sc-04", "evidence": ["sc-04"], "quote": "let her stand, in his book, as a witness and not a suspect"},
+
+    {"fact_id": "fa-clock-stopped", "frame": "ground", "branch": "main", "entities": ["meridian_clock"], "claim": "The meridian clock is stopped at fourteen minutes past three.", "canon_from": "sc-05", "evidence": ["sc-05"], "quote": "Fourteen minutes past three. The hands held it there"},
+    {"fact_id": "fa-clock-wound", "frame": "ground", "branch": "main", "entities": ["meridian_clock"], "claim": "The clock had been wound only hours before it stopped.", "canon_from": "sc-05", "evidence": ["sc-05"], "quote": "the clock had been wound, and wound recently, only hours before it stopped"},
+    {"fact_id": "fa-clock-frame-rigid", "frame": "ground", "branch": "main", "entities": ["meridian_clock", "iron_stair"], "claim": "The clock-case is bolted into the same iron framing as the foot of the stair.", "canon_from": "sc-05", "evidence": ["sc-05"], "quote": "pier and stair and clock-case all married into one rigid skeleton of metal"},
+
+    {"fact_id": "fa-account-soft", "frame": "hale", "branch": "main", "entities": ["instrument_account"], "claim": "The instrument account has a soft place where figures do not carry.", "canon_from": "sc-06", "evidence": ["sc-06"], "quote": "a place where the figures did not quite carry"},
+    {"fact_id": "fa-unsent-letter", "frame": "ground", "branch": "main", "entities": ["unsent_letter", "crane"], "claim": "Crane wrote a resignation in his own hand, never sent, abandoned in the desk.", "canon_from": "sc-06", "evidence": ["sc-06"], "quote": "A resignation. The director's own, private ... set down and not sent."},
+    {"fact_id": "fa-pike-blanches", "frame": "ground", "branch": "main", "entities": ["pike"], "claim": "Pike goes white when he sees Hale reading the unsent letter.", "canon_from": "sc-06", "evidence": ["sc-06"], "quote": "went the colour of the snow at the window, and turned away"},
+
+    {"fact_id": "fa-key-bare-hook", "frame": "ground", "branch": "main", "entities": ["spare_dome_key"], "claim": "The spare dome key is reported lost a month before, off the board.", "canon_from": "sc-07", "evidence": ["sc-07"], "quote": "spare dome key mislaid, to replace"},
+    {"fact_id": "fa-key-door", "frame": "ground", "branch": "main", "entities": ["spare_dome_key", "iron_stair"], "claim": "The spare key opens the lower dome door at the foot of the iron stair.", "canon_from": "sc-07", "evidence": ["sc-07"], "quote": "A key to the lower dome door, the door that gave on the foot of the iron stair"},
+
+    {"fact_id": "fa-account-drained", "frame": "ground", "branch": "main", "entities": ["instrument_account"], "claim": "The instrument account has been bled of money over two years.", "canon_from": "sc-08", "evidence": ["sc-08"], "quote": "the account had been bled"},
+    {"fact_id": "fa-motive-seen", "frame": "hale", "branch": "main", "entities": ["hale", "pike"], "claim": "Hale sees a motive lying open beneath his palm.", "canon_from": "sc-08", "evidence": ["sc-08"], "quote": "there was a motive lying open on the page beneath his palm"},
+
+    {"fact_id": "fa-pike-confesses-theft", "frame": "ground", "branch": "confront", "entities": ["pike", "instrument_account"], "claim": "Pike confesses he took the money guinea by guinea.", "canon_from": "sc-09a", "evidence": ["sc-09a"], "quote": "He had taken the money."},
+    {"fact_id": "fa-pike-confesses-forgery", "frame": "ground", "branch": "confront", "entities": ["pike", "telegram"], "claim": "Pike confesses he forged the patron's recall telegram and sent it up.", "canon_from": "sc-09a", "evidence": ["sc-09a"], "quote": "I wrote it. I forged the patron's hand and sent it up"},
+    {"fact_id": "fa-hale-pike-cause", "frame": "hale", "branch": "confront", "entities": ["hale", "pike", "crane"], "claim": "Hale concludes Pike was the cause of the death, not accident.", "canon_from": "sc-09a", "evidence": ["sc-09a"], "quote": "The bursar was the cause of the death."},
+
+    {"fact_id": "fa-hale-ugly-question", "frame": "hale", "branch": "confront", "entities": ["hale", "telegram"], "claim": "Hale resolves to find the telegram whole down the hill.", "canon_from": "sc-10a", "evidence": ["sc-10a"], "quote": "In the morning, he decided, he would go down the hill and find it whole."},
+
+    {"fact_id": "fa-telegram-undelivered", "frame": "ground", "branch": "confront", "entities": ["telegram"], "claim": "The recall telegram lies undelivered in the post-box, never carried to the dome.", "canon_from": "sc-11a", "evidence": ["sc-11a"], "quote": "franked and ready and undelivered, snowed in a clean month"},
+    {"fact_id": "fa-crane-never-read", "frame": "ground", "branch": "confront", "entities": ["crane", "telegram"], "claim": "Crane never held nor read the recall.", "canon_from": "sc-11a", "evidence": ["sc-11a"], "quote": "Crane had never held it. Crane had never read a word of it."},
+    {"fact_id": "fa-hale-certainty-cracks", "frame": "hale", "branch": "confront", "entities": ["hale"], "claim": "Hale's certainty of Pike's guilt cracks across.", "canon_from": "sc-11a", "evidence": ["sc-11a"], "quote": "felt his hard certainty of the night before crack straight across"},
+
+    {"fact_id": "fa-pike-believes-murderer", "frame": "pike", "branch": "confront", "entities": ["pike"], "claim": "Pike believes himself a murderer, sure he sent the wire up.", "canon_from": "sc-12a", "evidence": ["sc-12a"], "quote": "in his own mind, a murderer"},
+    {"fact_id": "fa-pike-kept-key", "frame": "ground", "branch": "confront", "entities": ["pike", "spare_dome_key"], "claim": "Pike kept the key warm in his coat-lining the whole month.", "canon_from": "sc-12a", "evidence": ["sc-12a"], "quote": "the key warm in his coat-lining all this month"},
+
+    {"fact_id": "fa-hale-back-to-dome", "frame": "hale", "branch": "confront", "entities": ["hale"], "claim": "Hale returns to the dome to re-read each thing he left.", "canon_from": "sc-13", "evidence": ["sc-13"], "quote": "to go back to each thing he had been content to leave"},
+
+    {"fact_id": "fa-plate-developed-blank", "frame": "ground", "branch": "confront", "entities": ["plate"], "claim": "The developed plate shows nothing; not one second of sky touched it.", "canon_from": "sc-14", "evidence": ["sc-14"], "quote": "not one second of the night's sky had ever touched this glass"},
+    {"fact_id": "fa-junia-not-at-instrument", "frame": "hale", "branch": "confront", "entities": ["hale", "junia"], "claim": "Hale concludes Junia was not at the instrument; the witness turns liar.", "canon_from": "sc-14", "evidence": ["sc-14"], "quote": "the woman had not been at the instrument"},
+
+    {"fact_id": "fa-clock-struck", "frame": "ground", "branch": "confront", "entities": ["meridian_clock", "iron_stair"], "claim": "The clock was struck by the shock of the fall, recording the instant 3:14.", "canon_from": "sc-15", "evidence": ["sc-15"], "quote": "The clock had been struck. ... it was the recorded instant of the fall itself"},
+
+    {"fact_id": "fa-log-was-kindness", "frame": "ground", "branch": "confront", "entities": ["night_log", "junia", "crane"], "claim": "The strange log hand is Junia's, writing the figures at blind Crane's dictation.", "canon_from": "sc-16", "evidence": ["sc-16"], "quote": "The log is my hand ... he would dictate, and I would write the figures down for him"},
+    {"fact_id": "fa-log-innocent", "frame": "hale", "branch": "confront", "entities": ["hale", "night_log"], "claim": "Hale sets the log down as innocent; no forger, no second watcher.", "canon_from": "sc-16", "evidence": ["sc-16"], "quote": "The log was innocent."},
+
+    {"fact_id": "fa-junia-names-pike", "frame": "ground", "branch": "reveal", "entities": ["junia", "pike"], "claim": "Junia names Pike as the shape that climbed the iron stair.", "canon_from": "sc-17r", "evidence": ["sc-17r"], "quote": "It was Pike, she said. On the stair."},
+    {"fact_id": "fa-pike-had-key-reveal", "frame": "ground", "branch": "reveal", "entities": ["pike", "spare_dome_key"], "claim": "Pike came in by the lower door with a key Junia had locked.", "canon_from": "sc-17r", "evidence": ["sc-17r"], "quote": "He came in by the lower door — he had a key"},
+    {"fact_id": "fa-no-murder", "frame": "ground", "branch": "reveal", "entities": ["crane", "pike"], "claim": "Crane was already on the stair; Pike never laid a hand on him; no murder.", "canon_from": "sc-17r", "evidence": ["sc-17r"], "quote": "Pike never laid a hand on him. ... it was no murder."},
+
+    {"fact_id": "fa-key-not-mislaid", "frame": "ground", "branch": "reveal", "entities": ["spare_dome_key", "pike"], "claim": "The key was never mislaid; Pike took it into his coat the day he reported it lost.", "canon_from": "sc-18r", "evidence": ["sc-18r"], "quote": "It had never been mislaid. ... gone off the board into the lining of the bursar's coat"},
+    {"fact_id": "fa-rest-falls-true", "frame": "hale", "branch": "reveal", "entities": ["hale"], "claim": "With the key in place the blank plate, struck clock and undelivered wire fall true for Hale.", "canon_from": "sc-18r", "evidence": ["sc-18r"], "quote": "with the key in its place the rest fell true behind it"},
+
+    {"fact_id": "fa-cert-reveal", "frame": "ground", "branch": "reveal", "entities": ["hale", "crane", "pike"], "claim": "Hale certifies a fall occasioned by unlawful intrusion, not accidental, no malice.", "canon_from": "sc-19r", "evidence": ["sc-19r"], "quote": "a fall, occasioned by unlawful intrusion upon the deceased; not accidental within the meaning of the policy"},
+
+    {"fact_id": "fa-log-burned", "frame": "ground", "branch": "burn", "entities": ["night_log", "junia"], "claim": "Junia feeds the night-log to the stove and it burns to nothing.", "canon_from": "sc-17w", "evidence": ["sc-17w"], "quote": "she had put the log in. ... curl and blacken and fall to nothing"},
+    {"fact_id": "fa-name-lost", "frame": "ground", "branch": "burn", "entities": ["junia"], "claim": "The summit keeps the climber's name; the one record that could speak is ash.", "canon_from": "sc-17w", "evidence": ["sc-17w"], "quote": "the summit would keep him now"},
+
+    {"fact_id": "fa-cert-burn", "frame": "ground", "branch": "burn", "entities": ["hale", "crane"], "claim": "Hale certifies death by fall, cause undetermined, no unlawful act established; policy pays.", "canon_from": "sc-18w", "evidence": ["sc-18w"], "quote": "death by fall; cause undetermined; no unlawful act against the deceased established"},
+
+    {"fact_id": "fa-quiet-chosen", "frame": "hale", "branch": "quiet", "entities": ["hale"], "claim": "Hale says nothing and turns back to the ledgers to reconstruct the theft.", "canon_from": "sc-09b", "evidence": ["sc-09b"], "quote": "he closed his own book softly and turned back to the ledgers, and said nothing at all"},
+    {"fact_id": "fa-quiet-reconstruct", "frame": "hale", "branch": "quiet", "entities": ["hale", "instrument_account"], "claim": "Hale reconstructs the whole theft from the page, leaving Pike unsuspected.", "canon_from": "sc-09b", "evidence": ["sc-09b"], "quote": "He built the whole drained shape of it on his own clean page"},
+
+    {"fact_id": "fa-pike-moves-dark", "frame": "ground", "branch": "quiet", "entities": ["pike", "duplicate_books"], "claim": "Pike comes out in the dark carrying duplicate books, patting something at his lining.", "canon_from": "sc-10b", "evidence": ["sc-10b"], "quote": "carrying something against his chest ... something smaller that the man kept patting at through his coat"},
+
+    {"fact_id": "fa-key-found-warm", "frame": "ground", "branch": "quiet", "entities": ["spare_dome_key", "pike"], "claim": "Pike draws the 'lost' key from his coat-lining and unlocks the lower dome.", "canon_from": "sc-11b", "evidence": ["sc-11b"], "quote": "drew out a key. ... The lost key was not lost."},
+    {"fact_id": "fa-accident-not-accident", "frame": "hale", "branch": "quiet", "entities": ["hale", "crane"], "claim": "Seeing the hidden key, Hale sets down that the accident was no accident.", "canon_from": "sc-11b", "evidence": ["sc-11b"], "quote": "the accident was no accident"},
+
+    {"fact_id": "fa-pike-buries-books", "frame": "ground", "branch": "quiet", "entities": ["pike", "duplicate_books"], "claim": "Pike buries the duplicate books in the dome foundations in the dark.", "canon_from": "sc-12b", "evidence": ["sc-12b"], "quote": "the rustle of the duplicate books going down into the dark of the foundations"},
+    {"fact_id": "fa-quiet-case-whole", "frame": "hale", "branch": "quiet", "entities": ["hale", "pike"], "claim": "Hale holds the whole proved case in his head, every line carried to a thing seen.", "canon_from": "sc-12b", "evidence": ["sc-12b"], "quote": "held the whole of it in his head, complete"},
+
+    {"fact_id": "fa-plate-quiet-blank", "frame": "ground", "branch": "quiet", "entities": ["plate"], "claim": "Hale develops the plate alone; nothing came, the alibi breaks.", "canon_from": "sc-17b", "evidence": ["sc-17b"], "quote": "Not one second of sky had ever touched it."},
+    {"fact_id": "fa-junia-liar-quiet", "frame": "hale", "branch": "quiet", "entities": ["hale", "junia"], "claim": "The witness turns liar in Hale's book; she was elsewhere in the dome.", "canon_from": "sc-17b", "evidence": ["sc-17b"], "quote": "the witness he had let stand turned, in his book, into the liar"},
+
+    {"fact_id": "fa-clock-struck-quiet", "frame": "ground", "branch": "quiet", "entities": ["meridian_clock", "iron_stair"], "claim": "The clock was struck through the shared frame; 3:14 is the instant of the fall.", "canon_from": "sc-18b", "evidence": ["sc-18b"], "quote": "3:14 was no planted alibi but the recorded instant of the fall itself"},
+    {"fact_id": "fa-log-kindness-quiet", "frame": "ground", "branch": "quiet", "entities": ["night_log", "junia", "crane"], "claim": "Hale reasons the strange hand was Junia's kindness at blind Crane's dictation.", "canon_from": "sc-18b", "evidence": ["sc-18b"], "quote": "someone had stood at his elbow and taken them down at his dictation"},
+
+    {"fact_id": "fa-wire-undelivered-quiet", "frame": "ground", "branch": "quiet", "entities": ["telegram"], "claim": "The forged wire lies undelivered and snowed-in at the post-box; Crane never read it.", "canon_from": "sc-19b", "evidence": ["sc-19b"], "quote": "franked and snowed-in and undelivered ... Crane had never held it."},
+    {"fact_id": "fa-crane-meant-leave-quiet", "frame": "ground", "branch": "quiet", "entities": ["crane", "unsent_letter"], "claim": "The unsent resignation shows Crane meant to leave of his own grief.", "canon_from": "sc-19b", "evidence": ["sc-19b"], "quote": "The old astronomer had meant to lay down his post — of his own grief"},
+
+    {"fact_id": "fa-cert-quiet", "frame": "ground", "branch": "quiet", "entities": ["hale", "crane", "pike"], "claim": "Hale certifies a fall occasioned by unlawful unobserved intrusion, not accident, no malice.", "canon_from": "sc-20b", "evidence": ["sc-20b"], "quote": "a fall, occasioned by the deceased being startled by an unlawful and unobserved intrusion"}
+  ]
+}

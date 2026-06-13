@@ -1,0 +1,48 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "cross-frame divergence (reader-knows / character-doesn't)",
+ "conflicts": [
+  {
+   "fact": "fb-junia-alibi",
+   "target": "fb-junia-on-gallery",
+   "fact_claim_sha256": "8c9878b6daa17d63e0654ce3b6cc8fc2fcadce1a271a5ed7f6b381874226184d",
+   "target_claim_sha256": "38065923df8cac859c8c7d64c0b66c549225eaa1a63f3951c99b4ffd9e6bcd08",
+   "rationale": "Junia claims the annexe (her frame) while ground has her on the gallery (S2)"
+  },
+  {
+   "fact": "fb-junia-alibi",
+   "target": "fb-plates-blank",
+   "fact_claim_sha256": "8c9878b6daa17d63e0654ce3b6cc8fc2fcadce1a271a5ed7f6b381874226184d",
+   "target_claim_sha256": "935f953bdcc2116711b52e69d5ac663c03217fc0275823b476aa0b7595ed78a3",
+   "rationale": "Junia claims all-night plates while ground plates are blank/unopened"
+  },
+  {
+   "fact": "fb-pike-believes-knew",
+   "target": "fb-crane-never-knew",
+   "fact_claim_sha256": "8111606cd57fbe63460cd18a24c30e077a5b6018e133741dfdbe7c4eeaefd9da",
+   "target_claim_sha256": "3dfe5f7ff9ed4fb4c6968bdf2b8542b1ca4c49a0b05e1b8c27487e1fb52abc56",
+   "rationale": "Pike believes Crane knew while ground holds Crane never knew (S1)"
+  },
+  {
+   "fact": "fb-pike-certain-rc",
+   "target": "fb-crane-bewildered-rc",
+   "fact_claim_sha256": "131b08aca16f2950260ad6eabf4a0032427f9422f89f17e222f6e8183b5255fc",
+   "target_claim_sha256": "f3af9e54147cfe336d94d1b11ee2d460efa8bf5ea4f47154df8b4a3add7737ee",
+   "rationale": "Pike certain Crane read the recall while ground Crane is bewildered, knew nothing"
+  },
+  {
+   "fact": "fb-pike-certain-rq",
+   "target": "fb-crane-never-knew",
+   "fact_claim_sha256": "131b08aca16f2950260ad6eabf4a0032427f9422f89f17e222f6e8183b5255fc",
+   "target_claim_sha256": "3dfe5f7ff9ed4fb4c6968bdf2b8542b1ca4c49a0b05e1b8c27487e1fb52abc56",
+   "rationale": "Pike certain Crane read the recall while ground Crane never knew (WL-2)"
+  },
+  {
+   "fact": "fb-hale-distrust",
+   "target": "fb-pike-drained",
+   "fact_claim_sha256": "6ad15fefc99687774adb2ff6e79ab0c045f06d601abc834db954628c35098587",
+   "target_claim_sha256": "9849178094adad86760b924545fa2a2e27198e4038c185355092110ad21dd777",
+   "rationale": "Hale's frame only distrusts neatness while ground holds Pike's drained account"
+  }
+ ]
+}

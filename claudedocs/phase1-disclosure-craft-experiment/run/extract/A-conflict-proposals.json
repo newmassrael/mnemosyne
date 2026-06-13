@@ -1,0 +1,48 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "cross-frame divergence (reader-knows / character-doesn't) conflict edges",
+ "conflicts": [
+  {
+   "fact": "fa-junia-alibi-claim",
+   "target": "fa-junia-on-gallery",
+   "fact_claim_sha256": "df6bc980de224ee419b93e66503555f6053fbc0ecff3912165faab759104b1d2",
+   "target_claim_sha256": "62a64ec38eb6784dedfa93aacaca4518364691d77b15cfadb6927548d831234b",
+   "rationale": "Junia claims spectroscope (her frame) while ground has her on the gallery"
+  },
+  {
+   "fact": "fa-junia-alibi-claim",
+   "target": "fa-plate-blank",
+   "fact_claim_sha256": "df6bc980de224ee419b93e66503555f6053fbc0ecff3912165faab759104b1d2",
+   "target_claim_sha256": "6ac5b4a72ad4762042426af85ced388721b6c48d352e9c8493cdf369af07922f",
+   "rationale": "Junia claims all-night plates while ground plate is blank/unexposed"
+  },
+  {
+   "fact": "fa-pike-believes-murderer",
+   "target": "fa-no-murder",
+   "fact_claim_sha256": "da5b5a1b1c3f2f92f41c27df123fb69c0d68874bacedeffb3c2cbd8d941bc1f2",
+   "target_claim_sha256": "1b5786288597a043cc6d17c0be636db48dd67599860386ee3e441356403a397e",
+   "rationale": "Pike believes himself a murderer while ground holds no murder occurred"
+  },
+  {
+   "fact": "fa-pike-believes-murderer",
+   "target": "fa-crane-never-read",
+   "fact_claim_sha256": "da5b5a1b1c3f2f92f41c27df123fb69c0d68874bacedeffb3c2cbd8d941bc1f2",
+   "target_claim_sha256": "4f63fe499c1ffa95a8f357faeec6bb4c641a01423dfd51902c4ab9b845611c14",
+   "rationale": "Pike is sure he sent the recall while ground has Crane never reading it"
+  },
+  {
+   "fact": "fa-hale-writes-fall",
+   "target": "fa-account-drained",
+   "fact_claim_sha256": "9153fc184bc4e4c6565dea7f4bbf2650f3f969f127f2aec766bfc929ef0481db",
+   "target_claim_sha256": "76ce27f829cd89a074286d53951e18462fb73922cf2eb3c2f1316564a308adf4",
+   "rationale": "Hale's frame writes plain fall while ground holds a drained-account motive"
+  },
+  {
+   "fact": "fa-hale-pike-cause",
+   "target": "fa-no-murder",
+   "fact_claim_sha256": "1d05fcc830a2a1e6f5bd87af34c205fa5249c4db3fc258a0c0a92047f1138d05",
+   "target_claim_sha256": "1b5786288597a043cc6d17c0be636db48dd67599860386ee3e441356403a397e",
+   "rationale": "Hale (confront) believes Pike caused the death while ground holds no murder"
+  }
+ ]
+}

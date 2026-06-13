@@ -1,0 +1,69 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "genuine explicit state successions, fill-blanks",
+ "succession": [
+  {
+   "predecessor": "fa-crane-alive",
+   "successor": "fa-crane-dead",
+   "predecessor_claim_sha256": "25d32a14ec1d7a34f43c9910381ca21e19b95b0f0614465c1d51fd6f344e339d",
+   "successor_claim_sha256": "66d586c8a3a1a2e5040be7f82be29e3575a2af01739725a64308d5dadce7f395",
+   "rationale": "Crane alive on the stair then found dead at its foot"
+  },
+  {
+   "predecessor": "fa-clock-wound",
+   "successor": "fa-clock-stopped",
+   "predecessor_claim_sha256": "4cb6f6999813e4604196c1836c8bae932f35dba2e4ae3bfc77545d5d591009b5",
+   "successor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "rationale": "clock wound hours before then stopped at 3:14"
+  },
+  {
+   "predecessor": "fa-clock-stopped",
+   "successor": "fa-clock-struck",
+   "predecessor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "successor_claim_sha256": "fde59ce02489c867e2a58f5fdf8821540e6cd912feaf6cb8cacfbc866c99a751",
+   "rationale": "stopped clock revealed as struck by the fall (confront re-read)"
+  },
+  {
+   "predecessor": "fa-clock-stopped",
+   "successor": "fa-clock-struck-quiet",
+   "predecessor_claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "successor_claim_sha256": "e851183486f62a07a44197b053b7a3b62a669e91ea91569ed444d78852d6542b",
+   "rationale": "stopped clock revealed as struck by the fall (quiet re-read)"
+  },
+  {
+   "predecessor": "fa-key-bare-hook",
+   "successor": "fa-pike-kept-key",
+   "predecessor_claim_sha256": "a93f126b98dc0a5ca6fc73ef0a67468ec312b7290ee0374ce0c750c750a63b76",
+   "successor_claim_sha256": "d13100b00cdc480b1d783604bae11f12e38005bd61809646bc01e4a815e73402",
+   "rationale": "key reported lost then found kept warm in Pike's coat (confront)"
+  },
+  {
+   "predecessor": "fa-key-bare-hook",
+   "successor": "fa-key-found-warm",
+   "predecessor_claim_sha256": "a93f126b98dc0a5ca6fc73ef0a67468ec312b7290ee0374ce0c750c750a63b76",
+   "successor_claim_sha256": "c13ebf222cf12e0e74fe107bbf15e244deeeafc5647a8d1b934cde0ddd74a9fb",
+   "rationale": "key reported lost then drawn from Pike's lining (quiet)"
+  },
+  {
+   "predecessor": "fa-key-bare-hook",
+   "successor": "fa-key-not-mislaid",
+   "predecessor_claim_sha256": "a93f126b98dc0a5ca6fc73ef0a67468ec312b7290ee0374ce0c750c750a63b76",
+   "successor_claim_sha256": "db1cd35158a1bc562420766d15f9dd59b3099e64735bfad0ebcf74453b1e63d5",
+   "rationale": "key reported lost then shown never mislaid, in Pike's coat (reveal)"
+  },
+  {
+   "predecessor": "fa-plate-blank",
+   "successor": "fa-plate-developed-blank",
+   "predecessor_claim_sha256": "6ac5b4a72ad4762042426af85ced388721b6c48d352e9c8493cdf369af07922f",
+   "successor_claim_sha256": "fe99d1e0f24c6280f862135af79bfd8a63a2b2589b7385dd50e963cb1499b707",
+   "rationale": "blank plate confirmed blank on development (confront)"
+  },
+  {
+   "predecessor": "fa-plate-blank",
+   "successor": "fa-plate-quiet-blank",
+   "predecessor_claim_sha256": "6ac5b4a72ad4762042426af85ced388721b6c48d352e9c8493cdf369af07922f",
+   "successor_claim_sha256": "1d1fa281b8d4d18a368d76f9265792f0fd419bfa1804eac084b6fce6c7b7355d",
+   "rationale": "blank plate confirmed blank on development (quiet)"
+  }
+ ]
+}

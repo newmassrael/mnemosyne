@@ -1,0 +1,785 @@
+{
+ "schema": "typing-proposals/v1",
+ "proposals": [
+  {
+   "fact": "fa-accident-not-accident",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "no_accident"
+    }
+   },
+   "claim_sha256": "5a00ed711e3e8521a8f04ce8bcb5e859acb4ff3a5de156c0f040b6eb898d83ff",
+   "rationale": "explicit reading of fa-accident-not-accident claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-account-drained",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "drained_over_two_years"
+    }
+   },
+   "claim_sha256": "76ce27f829cd89a074286d53951e18462fb73922cf2eb3c2f1316564a308adf4",
+   "rationale": "explicit reading of fa-account-drained claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-account-soft",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "figures_soft"
+    }
+   },
+   "claim_sha256": "f762d7e751c0bbdca8a3094fd536e3d143e5b3846084367ec77abd5dbfc3adf7",
+   "rationale": "explicit reading of fa-account-soft claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-cert-burn",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_cause_undetermined_policy_pays"
+    }
+   },
+   "claim_sha256": "5848856082d73352de1262eecec828b5156d5a757efcd304369ed8397cf0fd59",
+   "rationale": "explicit reading of fa-cert-burn claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-cert-quiet",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_unlawful_intrusion_not_accident"
+    }
+   },
+   "claim_sha256": "0c7ae53e8862496c098ae2e8328f93bf3728ed93c4e42e5b5729a79a3b762e36",
+   "rationale": "explicit reading of fa-cert-quiet claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-cert-reveal",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "cert_unlawful_intrusion_not_accident"
+    }
+   },
+   "claim_sha256": "337b2875f4ca786f1fc31ce9fac900b55a1131dd15fdd7c2bfcc7f6afdcc48f8",
+   "rationale": "explicit reading of fa-cert-reveal claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-clock-frame-rigid",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "bolted_to_stair_frame"
+    }
+   },
+   "claim_sha256": "c1f9c573f6c38c001c209f6e9a4ebf645b94c2e2a1e595b6a482cb72229d77e6",
+   "rationale": "explicit reading of fa-clock-frame-rigid claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-clock-stopped",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "stopped_at_3_14"
+    }
+   },
+   "claim_sha256": "57b93350bece2b2bf69518b0432da266557e37d033e013553a4159a6064b2515",
+   "rationale": "explicit reading of fa-clock-stopped claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-clock-struck",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "struck_by_fall"
+    }
+   },
+   "claim_sha256": "fde59ce02489c867e2a58f5fdf8821540e6cd912feaf6cb8cacfbc866c99a751",
+   "rationale": "explicit reading of fa-clock-struck claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-clock-struck-quiet",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "struck_by_fall"
+    }
+   },
+   "claim_sha256": "e851183486f62a07a44197b053b7a3b62a669e91ea91569ed444d78852d6542b",
+   "rationale": "explicit reading of fa-clock-struck-quiet claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-clock-wound",
+   "typed": {
+    "subject": "meridian_clock",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "wound_hours_before"
+    }
+   },
+   "claim_sha256": "4cb6f6999813e4604196c1836c8bae932f35dba2e4ae3bfc77545d5d591009b5",
+   "rationale": "explicit reading of fa-clock-wound claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-crane-alive",
+   "typed": {
+    "subject": "crane",
+    "predicate": "alive",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   },
+   "claim_sha256": "25d32a14ec1d7a34f43c9910381ca21e19b95b0f0614465c1d51fd6f344e339d",
+   "rationale": "explicit reading of fa-crane-alive claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-crane-blind",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "blind"
+    }
+   },
+   "claim_sha256": "4458d81f1fd6bdc051ce649b06c280a8cfb0efc9d335d3899fe049d48df84c97",
+   "rationale": "explicit reading of fa-crane-blind claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-crane-dead",
+   "typed": {
+    "subject": "crane",
+    "predicate": "alive",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   },
+   "claim_sha256": "66d586c8a3a1a2e5040be7f82be29e3575a2af01739725a64308d5dadce7f395",
+   "rationale": "explicit reading of fa-crane-dead claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-crane-meant-leave-quiet",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "meant_to_resign_freely"
+    }
+   },
+   "claim_sha256": "1ed98b448b798f6dcfe01032a44e30570ed1fe6fd6bdd02780d5d115b4af3a96",
+   "rationale": "explicit reading of fa-crane-meant-leave-quiet claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-crane-never-read",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "never_read_recall"
+    }
+   },
+   "claim_sha256": "4f63fe499c1ffa95a8f357faeec6bb4c641a01423dfd51902c4ab9b845611c14",
+   "rationale": "explicit reading of fa-crane-never-read claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-asks-who",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "suspects_second_presence"
+    }
+   },
+   "claim_sha256": "caaf36b35e9b27fa31b9fc9dbbd67ddd72cfec5a396196955190363c39abf676",
+   "rationale": "explicit reading of fa-hale-asks-who claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-back-to-dome",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "reread_each_object"
+    }
+   },
+   "claim_sha256": "6911e47bb82be6acf84eb990d9fdc5f05fb687f9c21c987207fdd078c89d7efa",
+   "rationale": "explicit reading of fa-hale-back-to-dome claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-certainty-cracks",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "certainty_cracks"
+    }
+   },
+   "claim_sha256": "84634115d4434b58fbbf6d5fe8c719002469307e5be556ebb826905a897577a6",
+   "rationale": "explicit reading of fa-hale-certainty-cracks claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-pike-cause",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "pike_caused_death"
+    }
+   },
+   "claim_sha256": "1d05fcc830a2a1e6f5bd87af34c205fa5249c4db3fc258a0c0a92047f1138d05",
+   "rationale": "explicit reading of fa-hale-pike-cause claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-ugly-question",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "seek_telegram_whole"
+    }
+   },
+   "claim_sha256": "5d320fea7138858d44df47ab04dc205db632e6875332a2d82dcd6b62e7cb462e",
+   "rationale": "explicit reading of fa-hale-ugly-question claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-hale-writes-fall",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "death_is_a_fall"
+    }
+   },
+   "claim_sha256": "9153fc184bc4e4c6565dea7f4bbf2650f3f969f127f2aec766bfc929ef0481db",
+   "rationale": "explicit reading of fa-hale-writes-fall claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-alibi-claim",
+   "typed": {
+    "subject": "junia",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "claims_at_spectroscope_all_night"
+    }
+   },
+   "claim_sha256": "df6bc980de224ee419b93e66503555f6053fbc0ecff3912165faab759104b1d2",
+   "rationale": "explicit reading of fa-junia-alibi-claim claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-liar-quiet",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_turns_liar"
+    }
+   },
+   "claim_sha256": "0b9858a3548321f549130eee4c4908e51b372b4053ca82e53f43d41cf8625f36",
+   "rationale": "explicit reading of fa-junia-liar-quiet claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-names-pike",
+   "typed": {
+    "subject": "junia",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "names_pike_on_stair"
+    }
+   },
+   "claim_sha256": "3f64473a4de83f668ae023eb61c94a77ece56e3c7f7b0a9bbeb00a56c3cd1358",
+   "rationale": "explicit reading of fa-junia-names-pike claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-not-at-instrument",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_not_at_instrument"
+    }
+   },
+   "claim_sha256": "59b05e5eb3c3b399f83fa3477c816322535c590d900dacb63976788eed0e9a99",
+   "rationale": "explicit reading of fa-junia-not-at-instrument claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-on-gallery",
+   "typed": {
+    "subject": "junia",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "dome_gallery"
+    }
+   },
+   "claim_sha256": "62a64ec38eb6784dedfa93aacaca4518364691d77b15cfadb6927548d831234b",
+   "rationale": "explicit reading of fa-junia-on-gallery claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-saw-climber",
+   "typed": {
+    "subject": "junia",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "saw_who_climbed"
+    }
+   },
+   "claim_sha256": "8bd58b5800927486cf7f6be7259821c9ab90799fb8a67e1eb4846ff5842860f7",
+   "rationale": "explicit reading of fa-junia-saw-climber claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-junia-witness-not-suspect",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "junia_is_witness_not_suspect"
+    }
+   },
+   "claim_sha256": "3d4244a967500523ccd3d4881be5f27c4e2240d2b053dca523070b5b2d8b0e6a",
+   "rationale": "explicit reading of fa-junia-witness-not-suspect claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-key-bare-hook",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "reported_lost_month_before"
+    }
+   },
+   "claim_sha256": "a93f126b98dc0a5ca6fc73ef0a67468ec312b7290ee0374ce0c750c750a63b76",
+   "rationale": "explicit reading of fa-key-bare-hook claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-key-door",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "opens_lower_dome_door"
+    }
+   },
+   "claim_sha256": "6be8e9b96f610d47980c32b2c17c5f9d3dbfd1c1b91b42579676e09f464f5bc6",
+   "rationale": "explicit reading of fa-key-door claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-key-found-warm",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "c13ebf222cf12e0e74fe107bbf15e244deeeafc5647a8d1b934cde0ddd74a9fb",
+   "rationale": "explicit reading of fa-key-found-warm claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-key-not-mislaid",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "db1cd35158a1bc562420766d15f9dd59b3099e64735bfad0ebcf74453b1e63d5",
+   "rationale": "explicit reading of fa-key-not-mislaid claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-log-burned",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "burned_to_ash"
+    }
+   },
+   "claim_sha256": "59c8f11d21f19b6840003e07c6876843196903ee18984e151ec282da45ff1fe8",
+   "rationale": "explicit reading of fa-log-burned claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-log-innocent",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "log_innocent"
+    }
+   },
+   "claim_sha256": "00990ee1692217faab7463971a726cfd45869b450314f5168216d587ecaa4d92",
+   "rationale": "explicit reading of fa-log-innocent claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-log-kindness-quiet",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "junia"
+    }
+   },
+   "claim_sha256": "5f92c94770e69696dc3be820b2a1ddeee9f37542c28518055b9eea81ed4f3187",
+   "rationale": "explicit reading of fa-log-kindness-quiet claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-log-strange-hand",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "final_entry_other_hand"
+    }
+   },
+   "claim_sha256": "976cb3efc85c006dfe9d72e74e321606d367f46e1ff2cb22e226baa01482240f",
+   "rationale": "explicit reading of fa-log-strange-hand claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-log-was-kindness",
+   "typed": {
+    "subject": "night_log",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "junia"
+    }
+   },
+   "claim_sha256": "3c4a6fa3a239a574dc6d4783bb71e0a84e88ab5d19a3db6172c100adcd3d66a5",
+   "rationale": "explicit reading of fa-log-was-kindness claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-motive-seen",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "motive_seen"
+    }
+   },
+   "claim_sha256": "d36e1d35195e92f0ba9b39dcd8c09ae57d3f6371b657968abff78e1ad52ae955",
+   "rationale": "explicit reading of fa-motive-seen claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-name-lost",
+   "typed": {
+    "subject": "junia",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "keeps_name_secret"
+    }
+   },
+   "claim_sha256": "5dc94369a826de548727b4b8fd8eb2cf3db38ed0bb0363bb8c941455f3b4c3e3",
+   "rationale": "explicit reading of fa-name-lost claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-no-murder",
+   "typed": {
+    "subject": "crane",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "died_without_being_touched"
+    }
+   },
+   "claim_sha256": "1b5786288597a043cc6d17c0be636db48dd67599860386ee3e441356403a397e",
+   "rationale": "explicit reading of fa-no-murder claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-believes-murderer",
+   "typed": {
+    "subject": "pike",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "believes_self_murderer"
+    }
+   },
+   "claim_sha256": "da5b5a1b1c3f2f92f41c27df123fb69c0d68874bacedeffb3c2cbd8d941bc1f2",
+   "rationale": "explicit reading of fa-pike-believes-murderer claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-blanches",
+   "typed": {
+    "subject": "pike",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "blanches_at_letter"
+    }
+   },
+   "claim_sha256": "4df31248e6c9fae25cac240dc19e5c9fa61942b98a7cf701de103662fdb171a1",
+   "rationale": "explicit reading of fa-pike-blanches claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-buries-books",
+   "typed": {
+    "subject": "duplicate_books",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "buried_in_foundations"
+    }
+   },
+   "claim_sha256": "664af06848d89cf5e4b6ec5523674741514fea56a6a24f69d142b7f775a9e962",
+   "rationale": "explicit reading of fa-pike-buries-books claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-confesses-forgery",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "forged_by_pike"
+    }
+   },
+   "claim_sha256": "eeed13daa7e6624630a264eb49b42afb419952ce1a78249c281c9d4d7ffc3cf8",
+   "rationale": "explicit reading of fa-pike-confesses-forgery claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-confesses-theft",
+   "typed": {
+    "subject": "pike",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "confessed_theft"
+    }
+   },
+   "claim_sha256": "05511c68ac1e3bc58183735b1d887ae0d496863c8294074544fa4cf68f00cc9f",
+   "rationale": "explicit reading of fa-pike-confesses-theft claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-had-key-reveal",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "0a6ccbee1b52bb8a4008d54f55ec34c2d69496f0273d4d2dbb941844095ca202",
+   "rationale": "explicit reading of fa-pike-had-key-reveal claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-kept-key",
+   "typed": {
+    "subject": "spare_dome_key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "pike"
+    }
+   },
+   "claim_sha256": "d13100b00cdc480b1d783604bae11f12e38005bd61809646bc01e4a815e73402",
+   "rationale": "explicit reading of fa-pike-kept-key claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-pike-moves-dark",
+   "typed": {
+    "subject": "pike",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "crossing_to_dome_in_dark"
+    }
+   },
+   "claim_sha256": "ca4c10cf9dea82df80d85d5ce39a87088f3b2546451f0bca55d23393cc709a34",
+   "rationale": "explicit reading of fa-pike-moves-dark claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-plate-blank",
+   "typed": {
+    "subject": "plate",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "blank_unexposed"
+    }
+   },
+   "claim_sha256": "6ac5b4a72ad4762042426af85ced388721b6c48d352e9c8493cdf369af07922f",
+   "rationale": "explicit reading of fa-plate-blank claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-plate-developed-blank",
+   "typed": {
+    "subject": "plate",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "developed_blank"
+    }
+   },
+   "claim_sha256": "fe99d1e0f24c6280f862135af79bfd8a63a2b2589b7385dd50e963cb1499b707",
+   "rationale": "explicit reading of fa-plate-developed-blank claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-plate-quiet-blank",
+   "typed": {
+    "subject": "plate",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "developed_blank"
+    }
+   },
+   "claim_sha256": "1d1fa281b8d4d18a368d76f9265792f0fd419bfa1804eac084b6fce6c7b7355d",
+   "rationale": "explicit reading of fa-plate-quiet-blank claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-quiet-case-whole",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "case_whole_in_head"
+    }
+   },
+   "claim_sha256": "4057b6f092d2057fd85257352ebeff9b8baa3a9124775d3142f019afbd96d330",
+   "rationale": "explicit reading of fa-quiet-case-whole claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-quiet-chosen",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "audit_quietly"
+    }
+   },
+   "claim_sha256": "3b9b30fd00ee58b58a5b7c14ef49955aadde5ed03dcf48ffd013b58047b7550b",
+   "rationale": "explicit reading of fa-quiet-chosen claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-quiet-reconstruct",
+   "typed": {
+    "subject": "instrument_account",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "theft_reconstructed_from_page"
+    }
+   },
+   "claim_sha256": "79ad953d2afaeec18d8afad1bda29eb07bcaf4bc75941168685055db8cf64172",
+   "rationale": "explicit reading of fa-quiet-reconstruct claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-rest-falls-true",
+   "typed": {
+    "subject": "hale",
+    "predicate": "belief",
+    "object": {
+     "kind": "value",
+     "value": "case_falls_true"
+    }
+   },
+   "claim_sha256": "b26d4155ab5d540460e27b219f0189c0a8e85156cf149eb5bc903dd6a8b6a9e2",
+   "rationale": "explicit reading of fa-rest-falls-true claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-telegram-corner",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "object_state",
+    "object": {
+     "kind": "value",
+     "value": "half_burnt_unread"
+    }
+   },
+   "claim_sha256": "21e95cc72bbbd8e2cda9c4ca2e740811c10bb42cd701a6475e4284623af8d54f",
+   "rationale": "explicit reading of fa-telegram-corner claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-telegram-undelivered",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "postbox_undelivered"
+    }
+   },
+   "claim_sha256": "3196ac834d9ae926fe63ac5ba2212b00329478aa3495a1665d996ae21e754ef9",
+   "rationale": "explicit reading of fa-telegram-undelivered claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-unsent-letter",
+   "typed": {
+    "subject": "unsent_letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "crane"
+    }
+   },
+   "claim_sha256": "ed81709cd313726a0fe74c91af2135a7d06a8e285296f7fcc4c1d9bd809302cc",
+   "rationale": "explicit reading of fa-unsent-letter claim into declared vocabulary"
+  },
+  {
+   "fact": "fa-wire-undelivered-quiet",
+   "typed": {
+    "subject": "telegram",
+    "predicate": "located_at",
+    "object": {
+     "kind": "value",
+     "value": "postbox_undelivered"
+    }
+   },
+   "claim_sha256": "801c9636a8c9a51afa85302a741fd8d8fe8b2f71f93431a34d261615689665db",
+   "rationale": "explicit reading of fa-wire-undelivered-quiet claim into declared vocabulary"
+  }
+ ]
+}

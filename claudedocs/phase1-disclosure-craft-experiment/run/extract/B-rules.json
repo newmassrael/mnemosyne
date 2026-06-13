@@ -1,0 +1,22 @@
+{
+  "rules": [
+    {
+      "id": "crane-alive-arc",
+      "predicate": "alive",
+      "class": "transition",
+      "allowed": [["alive", "dead"]]
+    },
+    {
+      "id": "custody-exclusive",
+      "predicate": "held_by",
+      "class": "exclusive",
+      "per": "subject"
+    },
+    {
+      "id": "location-exclusive",
+      "predicate": "located_at",
+      "class": "exclusive",
+      "per": "subject"
+    }
+  ]
+}

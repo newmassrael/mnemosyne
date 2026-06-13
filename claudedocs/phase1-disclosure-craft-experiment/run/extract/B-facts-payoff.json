@@ -1,0 +1,4 @@
+{"facts":[
+ {"fact_id":"fb-clock-struck-burn","frame":"ground","branch":"burn","entities":["meridian_clock"],"claim":"In the burn world the clock stopped by a human hand at 3:14, thread in its works, is certified real.","canon_from":"sc-18b","evidence":["sc-18b"],"quote":"The clock stopped by a human hand at three-fourteen, the thread of cloth caught in its works: real.","pays_off":["fb-clock-wound"]},
+ {"fact_id":"fb-account-quiet-proved","frame":"ground","branch":"quiet","entities":["instrument_account"],"claim":"The quiet road wins the falsified instrument account, dated and sourced.","canon_from":"sc-14b","evidence":["sc-14b"],"quote":"the falsified instrument account","pays_off":["fb-pike-drained"]}
+]}

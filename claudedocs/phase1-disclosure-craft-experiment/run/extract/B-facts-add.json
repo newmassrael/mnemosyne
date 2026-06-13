@@ -1,0 +1,3 @@
+{"facts":[
+ {"fact_id":"fb-crane-alive","frame":"ground","branch":"main","entities":["crane","iron_stair"],"claim":"Crane was alive, the old man on the iron stair at three in the morning the night he died.","canon_from":"sc-04","evidence":["sc-04"],"quote":"the old man on the iron stair at three in the morning was a man with nothing left to lose"}
+]}
