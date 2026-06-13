@@ -295,3 +295,104 @@ fn rules_pin_mismatch_fails_loud_and_override_bypasses() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
     assert_eq!(v["violations"][0]["kind"], "rule_exclusive_overlap");
 }
+
+/// Round 491 — a single-world store with one INTERVAL violation (a codicil
+/// ratified 5 days after signing against a 42-day rule) and no structural
+/// violations. The per-class gating: `severity` (reject) does NOT gate the
+/// interval violation (surface-not-gate), only `interval_severity` does.
+fn write_interval_workspace(workspace: &Path, continuity_table: &str) {
+    fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
+    fs::write(
+        workspace.join("mnemosyne.toml"),
+        format!("[workspace]\n{continuity_table}"),
+    )
+    .unwrap();
+    let scalar = |p: &str, v: &str, from: &str| {
+        serde_json::json!({
+            "frame": "gt", "entities": ["codicil"],
+            "claim": format!("{p}={v}"), "canon_from": from, "evidence": [from],
+            "typed": {"subject": "codicil", "predicate": p, "object": {"kind": "value", "value": v}}
+        })
+    };
+    let atomic = serde_json::json!({
+        "schema_version": 21,
+        "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+        "changelog_entries": {}, "inventory_entries": {}, "confirmation_events": {},
+        "frames": { "gt": {} },
+        "branches": {},
+        "entities": { "codicil": {} },
+        "predicates": {
+            "min-ratify-gap-days": { "object_kind": "scalar" },
+            "signed-on-day": { "object_kind": "scalar" },
+            "ratified-on-day": { "object_kind": "scalar" }
+        },
+        "narrative_facts": {
+            "f-rule": scalar("min-ratify-gap-days", "42", "ch-1"),
+            "f-sign": scalar("signed-on-day", "10", "ch-1"),
+            "f-rat": scalar("ratified-on-day", "15", "ch-2")
+        }
+    });
+    fs::write(
+        workspace.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("canon-order.json"),
+        serde_json::json!({
+            "schema": "canon-order/v1",
+            "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("narrative-rules.json"),
+        serde_json::json!({
+            "schema": "narrative-rules/v1",
+            "rules": [{
+                "id": "ratify-term", "class": "interval",
+                "predicate": "ratified-on-day", "right": "signed-on-day",
+                "op": "ge", "bound": { "predicate": "min-ratify-gap-days" }
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn interval_violation_is_surface_not_gate_under_severity_but_gates_on_interval_severity() {
+    let tmp = TempDir::new().unwrap();
+    write_interval_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\nrules_path = \"narrative-rules.json\"\n",
+    );
+    // `severity` defaults to reject, but the lone violation is an interval one:
+    // surface-not-gate -> exit 0, the violation still reported.
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(
+        out.status.success(),
+        "interval violation must NOT gate under `severity`: {:?}",
+        out
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["violation_count"], 1);
+    assert_eq!(v["interval_violation_count"], 1);
+    assert_eq!(v["violations"][0]["kind"], "rule_interval_violation");
+    // Opt in: `--interval-severity reject` gates it.
+    let out = run(
+        tmp.path(),
+        &["validate-continuity", "--interval-severity", "reject"],
+    );
+    assert!(
+        !out.status.success(),
+        "interval violation must gate under `--interval-severity reject`"
+    );
+    // `warn` surfaces without gating.
+    let out = run(
+        tmp.path(),
+        &["validate-continuity", "--interval-severity", "warn"],
+    );
+    assert!(out.status.success(), "{:?}", out);
+}

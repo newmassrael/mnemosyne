@@ -649,7 +649,7 @@ fn print_help(prog: &str) {
         prog
     );
     println!(
-        " {} validate-continuity [--order <canon-order.json>] [--rules <narrative-rules.json>] [--severity reject|warn|info] [--sidecar <path>] [--json]",
+        " {} validate-continuity [--order <canon-order.json>] [--rules <narrative-rules.json>] [--severity reject|warn|info] [--interval-severity reject|warn|info] [--sidecar <path>] [--json]",
         prog
     );
     println!("   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,");
@@ -1840,6 +1840,7 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     use mnemosyne_config::Severity;
     let mut json = false;
     let mut severity_override: Option<String> = None;
+    let mut interval_severity_override: Option<String> = None;
     let mut order_override: Option<String> = None;
     let mut rules_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
@@ -1851,6 +1852,13 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 severity_override = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--severity missing"))?
+                        .clone(),
+                )
+            }
+            "--interval-severity" => {
+                interval_severity_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--interval-severity missing"))?
                         .clone(),
                 )
             }
@@ -1896,7 +1904,22 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             .ok_or_else(|| anyhow!("--severity must be `reject`, `warn`, or `info`"))?;
         report.severity = Some(parsed.as_str().to_string());
     }
+    if let Some(s) = &interval_severity_override {
+        let parsed = Severity::from_tag(s.trim())
+            .ok_or_else(|| anyhow!("--interval-severity must be `reject`, `warn`, or `info`"))?;
+        report.interval_severity = Some(parsed.as_str().to_string());
+    }
     let severity = report.severity.as_deref().and_then(Severity::from_tag);
+    let interval_severity = report
+        .interval_severity
+        .as_deref()
+        .and_then(Severity::from_tag);
+    // Per-class gating (Round 491): structural violations (conflict / off-branch
+    // / succession / exclusive / transition) ride `severity`; interval (timeline)
+    // violations ride `interval_severity`, OFF by default (surface-not-gate).
+    let structural_count = report
+        .violation_count
+        .saturating_sub(report.interval_violation_count);
     if json {
         println!("{}", serde_json::to_string(&report)?);
     } else {
@@ -1914,19 +1937,26 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         );
         if report.rules > 0 {
             println!(
-                "  rules={} rule_unordered={} unchained_state_pairs={} interval_unverifiable={}",
+                "  rules={} rule_unordered={} unchained_state_pairs={} interval_unverifiable={} interval_severity={}",
                 report.rules,
                 report.rule_unordered_pairs,
                 report.unchained_state_pairs,
-                report.interval_unverifiable
+                report.interval_unverifiable,
+                interval_severity.map_or("off", Severity::as_str)
             );
         }
-        println!("  violations: {}", report.violation_count);
+        println!(
+            "  violations: {} (structural={} interval={})",
+            report.violation_count, structural_count, report.interval_violation_count
+        );
         for v in &report.violations {
             println!("  {}", serde_json::to_string(v)?);
         }
     }
-    if matches!(severity, Some(s) if s.is_reject()) && report.violation_count > 0 {
+    let structural_gates = matches!(severity, Some(s) if s.is_reject()) && structural_count > 0;
+    let interval_gates = matches!(interval_severity, Some(s) if s.is_reject())
+        && report.interval_violation_count > 0;
+    if structural_gates || interval_gates {
         std::process::exit(1);
     }
     Ok(())

@@ -230,6 +230,12 @@ fn compose_canon_order(
 #[derive(Debug, Clone, Serialize)]
 pub struct ContinuityScanReport {
     pub severity: Option<String>,
+    /// Per-class severity for interval (timeline) violations (Round 491,
+    /// design sec 7.20 step 3). `None` = OFF: an interval violation is
+    /// surfaced (here and in `report-timeline-gaps`) but never gates —
+    /// unlike exclusive/transition, a timeline gap can be a legitimate
+    /// authored time-bend, so gating is the author's opt-in.
+    pub interval_severity: Option<String>,
     pub facts: usize,
     pub order_nodes: usize,
     pub conflict_pairs_checked: usize,
@@ -247,6 +253,10 @@ pub struct ContinuityScanReport {
     /// gated (Round 489, the R485 `unverifiable` class).
     pub interval_unverifiable: usize,
     pub violation_count: usize,
+    /// Interval (timeline) violations within `violation_count` (Round 491):
+    /// these gate under `interval_severity`, the structural remainder
+    /// (`violation_count - interval_violation_count`) under `severity`.
+    pub interval_violation_count: usize,
     pub violations: Vec<mnemosyne_validate::continuity::ContinuityViolation>,
 }
 
@@ -266,12 +276,28 @@ pub fn continuity_scan(
         .continuity
         .as_ref()
         .map(|c| c.severity.as_str().to_string());
+    let interval_severity = policy
+        .continuity
+        .as_ref()
+        .and_then(|c| c.interval_severity)
+        .map(|s| s.as_str().to_string());
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
     let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
         .map_err(OpError::Other)?;
+    let interval_violation_count = report
+        .violations
+        .iter()
+        .filter(|v| {
+            matches!(
+                v,
+                mnemosyne_validate::continuity::ContinuityViolation::RuleIntervalViolation { .. }
+            )
+        })
+        .count();
     Ok(ContinuityScanReport {
         severity,
+        interval_severity,
         facts: report.facts,
         order_nodes: report.order_nodes,
         conflict_pairs_checked: report.conflict_pairs_checked,
@@ -282,6 +308,7 @@ pub fn continuity_scan(
         unchained_state_pairs: report.unchained_state_pairs,
         interval_unverifiable: report.interval_unverifiable,
         violation_count: report.violations.len(),
+        interval_violation_count,
         violations: report.violations,
     })
 }

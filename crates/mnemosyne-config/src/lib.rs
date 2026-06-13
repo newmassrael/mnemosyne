@@ -967,10 +967,12 @@ pub struct ContinuitySection {
     pub canon_order_sha256: Option<String>,
     /// Workspace-relative path to the `narrative-rules/v1` declaration
     /// (Round 449, design sec 7.12) — consumer-vocabulary exclusivity/
-    /// transition rules over typed claims. Optional: authoring the file IS
-    /// the opt-in; rule violations ride `severity` (no separate knob — a
-    /// same-frame rule violation is wrong data, never a legitimate
-    /// intermediate state).
+    /// transition/interval rules over typed claims. Optional: authoring the
+    /// file IS the opt-in. EXCLUSIVE and TRANSITION violations ride `severity`
+    /// (no separate knob — a same-frame rule violation of those classes is
+    /// wrong data, never a legitimate intermediate state). INTERVAL (timeline)
+    /// violations are the exception: they ride `interval_severity` (Round 491),
+    /// because a timeline gap can be a legitimate authored time-bend.
     #[serde(default)]
     pub rules_path: Option<String>,
     /// Optional sha256 pin of the narrative-rules file (the same R428
@@ -978,6 +980,16 @@ pub struct ContinuitySection {
     /// `rules_path`.
     #[serde(default)]
     pub rules_sha256: Option<String>,
+    /// Per-class severity for INTERVAL (timeline) rule violations (Round 491,
+    /// design sec 7.20 step 3). `reject` | `warn` | `info`; absent = OFF.
+    /// Default OFF (surface-not-gate): an interval violation is surfaced by
+    /// the gate and by `report-timeline-gaps`, but gates the exit code only
+    /// when set. Distinct from `severity` because — unlike a same-frame
+    /// exclusive/transition contradiction — a scalar timeline gap can be an
+    /// intentional authored time-bend (games bend time deliberately), so the
+    /// author opts in to gating it (the `SpecDriftSection` rationale).
+    #[serde(default)]
+    pub interval_severity: Option<Severity>,
 }
 
 /// Config discovery + load result.
@@ -1834,6 +1846,25 @@ canon_order_path = "canon-order.json"
         assert_eq!(cont.canon_order_path.as_deref(), Some("canon-order.json"));
         assert!(cont.severity.is_reject());
         assert!(cont.canon_order_sha256.is_none());
+        // interval_severity is OFF by default (surface-not-gate, Round 491).
+        assert!(cont.interval_severity.is_none());
+    }
+
+    #[test]
+    fn continuity_interval_severity_parses() {
+        let cfg = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+interval_severity = "warn"
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.continuity.unwrap().interval_severity,
+            Some(Severity::Warn)
+        );
     }
 
     #[test]
