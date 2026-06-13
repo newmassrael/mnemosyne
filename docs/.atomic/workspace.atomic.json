@@ -9951,6 +9951,42 @@
         "rung-3 correction: the PoC ordering fault (signed-on-day vs coming-of-age-day) is CROSS-subject (codicil vs edmund), so it is NOT a const-0 bound on this same-subject class; cross-subject relations are a wider shape, deferred (sec 7.20 boundary refined)",
         "follow-ons unbuilt (owner/pull-gated): report-timeline-gaps read verb (sec 7.20 step 2, reuses scan_interval_rule), a per-class opt-in severity (step 3), cross-unit normalization weeks/days/years (v2), the R453 trap-corpus blind grade for external credibility"
       ]
+    },
+    "Round 491 — report-timeline-gaps built: the interval evaluator as a read surface, sec 7.20 step 2": {
+      "decision_summary": "R489 designed the timeline-scalar interval gate and R490 built it (the gate, under validate-continuity opt-in severity); R491 builds design sec 7.20 step 2, the report-timeline-gaps READ surface. Surface-not-gate: per query world the same interval evaluator is presented as a read report — each declared interval rule outcome classified violated / unverifiable / satisfied, never gating (no severity, exit 0). Single-evaluator no-drift (R305/R390): scan_interval_rule was refactored to return one IntervalOutcome per (world x holding left fact) with a Satisfied/Violated/Unverifiable verdict; the continuity gate ADAPTS those outcomes (Violated to a RuleIntervalViolation, distinct (frame,world,subject) Unverifiable to the count) and the read verb groups them per world, so the gate and the report consume ONE evaluator and cannot diverge — a parity test pins it. The predicate-existence check was extracted to one shared check_rule_predicates used by both readers (no half-enforced check, R436). report-timeline-gaps is the next holds_at reader after irony (R455) and playthrough (R466), owning no time algebra. Wired: ops timeline_gaps_report (resolves the same narrative-rules artifact as the gate), CLI report-timeline-gaps (--order/--rules/--world/--sidecar/--json), MCP report_timeline_gaps. Live on the timeline PoC store: hasty world violated=1 (ratified 31 minus signed 10 >= 42 fails), lawful satisfied=1 (84-42=42), main empty — the per-world dashboard the gate bare count could not give. 2 new unit tests + clippy clean + 242 validate tests; no store-schema change (v21). Remaining sec 7.20 follow-ons: per-class opt-in severity (step 3), cross-unit normalization (v2), rung-3 cross-subject.",
+      "changes_bullets": [
+        "report-timeline-gaps READ surface (sec 7.20 step 2): per world, the interval-rule outcomes classified violated/unverifiable/satisfied, never gated (no severity, exit 0)",
+        "scan_interval_rule refactored to return Vec<IntervalOutcome> (verdict Satisfied/Violated/Unverifiable); the gate ADAPTS outcomes (Violated to a violation, distinct unverifiable subjects to the count) and the read verb groups them per world — ONE evaluator, no drift (R305/R390), pinned by a parity test",
+        "predicate-existence check extracted to one shared check_rule_predicates used by both the gate and the read surface (no half-enforced check, R436)",
+        "wired: ops timeline_gaps_report + CLI report-timeline-gaps (--order/--rules/--world/--sidecar/--json) + MCP report_timeline_gaps; the next holds_at reader after irony (R455) and playthrough (R466), owning no time algebra",
+        "read-first like report-payoff-substantiation (R485); no store-schema change (v21)"
+      ],
+      "verification_bullets": [
+        "live on the timeline PoC store: hasty violated=1 (ratified 31 minus signed 10 >= 42 fails), lawful satisfied=1 (84 minus 42 = 42), main empty; --world filter, --json, and exit 0 (read-only, never gates) confirmed",
+        "2 new unit tests (per-world grouping; gate/report parity proving the single-evaluator no-drift property); cargo test --workspace green, clippy clean, 242 validate tests",
+        "the cited rounds were verified present in the changelog before writing (R255 citation hygiene)"
+      ],
+      "carry_forward_bullets": [
+        "the interval surface is now complete both ways: the gate (validate-continuity, opt-in severity) and the read dashboard (report-timeline-gaps); projection-is-the-interface holds — humans get the per-world dashboard, AI gets the same report-verb JSON",
+        "remaining sec 7.20 follow-ons (owner/pull-gated): per-class opt-in severity into validate-continuity (step 3, the same evaluator), cross-unit normalization weeks/days/years (v2), the rung-3 cross-subject relation, the R453 trap-corpus blind grade for external credibility"
+      ],
+      "publishable_decision_summary": "R489 designed the timeline-scalar interval gate and R490 built it (the gate, under validate-continuity opt-in severity); R491 builds design sec 7.20 step 2, the report-timeline-gaps READ surface. Surface-not-gate: per query world the same interval evaluator is presented as a read report — each declared interval rule outcome classified violated / unverifiable / satisfied, never gating (no severity, exit 0). Single-evaluator no-drift (R305/R390): scan_interval_rule was refactored to return one IntervalOutcome per (world x holding left fact) with a Satisfied/Violated/Unverifiable verdict; the continuity gate ADAPTS those outcomes (Violated to a RuleIntervalViolation, distinct (frame,world,subject) Unverifiable to the count) and the read verb groups them per world, so the gate and the report consume ONE evaluator and cannot diverge — a parity test pins it. The predicate-existence check was extracted to one shared check_rule_predicates used by both readers (no half-enforced check, R436). report-timeline-gaps is the next holds_at reader after irony (R455) and playthrough (R466), owning no time algebra. Wired: ops timeline_gaps_report (resolves the same narrative-rules artifact as the gate), CLI report-timeline-gaps (--order/--rules/--world/--sidecar/--json), MCP report_timeline_gaps. Live on the timeline PoC store: hasty world violated=1 (ratified 31 minus signed 10 >= 42 fails), lawful satisfied=1 (84-42=42), main empty — the per-world dashboard the gate bare count could not give. 2 new unit tests + clippy clean + 242 validate tests; no store-schema change (v21). Remaining sec 7.20 follow-ons: per-class opt-in severity (step 3), cross-unit normalization (v2), rung-3 cross-subject.",
+      "publishable_changes_bullets": [
+        "report-timeline-gaps READ surface (sec 7.20 step 2): per world, the interval-rule outcomes classified violated/unverifiable/satisfied, never gated (no severity, exit 0)",
+        "scan_interval_rule refactored to return Vec<IntervalOutcome> (verdict Satisfied/Violated/Unverifiable); the gate ADAPTS outcomes (Violated to a violation, distinct unverifiable subjects to the count) and the read verb groups them per world — ONE evaluator, no drift (R305/R390), pinned by a parity test",
+        "predicate-existence check extracted to one shared check_rule_predicates used by both the gate and the read surface (no half-enforced check, R436)",
+        "wired: ops timeline_gaps_report + CLI report-timeline-gaps (--order/--rules/--world/--sidecar/--json) + MCP report_timeline_gaps; the next holds_at reader after irony (R455) and playthrough (R466), owning no time algebra",
+        "read-first like report-payoff-substantiation (R485); no store-schema change (v21)"
+      ],
+      "publishable_verification_bullets": [
+        "live on the timeline PoC store: hasty violated=1 (ratified 31 minus signed 10 >= 42 fails), lawful satisfied=1 (84 minus 42 = 42), main empty; --world filter, --json, and exit 0 (read-only, never gates) confirmed",
+        "2 new unit tests (per-world grouping; gate/report parity proving the single-evaluator no-drift property); cargo test --workspace green, clippy clean, 242 validate tests",
+        "the cited rounds were verified present in the changelog before writing (R255 citation hygiene)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the interval surface is now complete both ways: the gate (validate-continuity, opt-in severity) and the read dashboard (report-timeline-gaps); projection-is-the-interface holds — humans get the per-world dashboard, AI gets the same report-verb JSON",
+        "remaining sec 7.20 follow-ons (owner/pull-gated): per-class opt-in severity into validate-continuity (step 3, the same evaluator), cross-unit normalization weeks/days/years (v2), the rung-3 cross-subject relation, the R453 trap-corpus blind grade for external credibility"
+      ]
     }
   },
   "inventory_entries": {},

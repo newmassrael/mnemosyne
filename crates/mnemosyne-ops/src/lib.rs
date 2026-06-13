@@ -403,6 +403,25 @@ pub fn payoff_substantiation_report(
     mnemosyne_validate::continuity::payoff_substantiation(&store, &order).map_err(OpError::Other)
 }
 
+/// Timeline-gap projection (Round 490, design sec 7.20 step 2) — the
+/// deterministic interval evaluator surfaced as a READ report, per world,
+/// never gated. Resolves the same `narrative-rules` artifact as the gate
+/// (`continuity_scan`); only `interval` rules contribute.
+pub fn timeline_gaps_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+    rules_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::TimelineGapsReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let rules = resolve_narrative_rules(&policy, rules_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::timeline_gaps(&store, &order, &rules.rules)
+        .map_err(OpError::Other)
+}
+
 /// Import succession + conflict edges from a reviewed `edge-proposals/v1`
 /// artifact (Round 463, design sec 7.16 Round B) — load + shape-check the
 /// file, then run the all-or-nothing import (or its dry-run twin). Returns

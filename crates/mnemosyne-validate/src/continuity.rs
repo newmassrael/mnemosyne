@@ -1347,16 +1347,115 @@ fn resolve_operand<'a>(
     }
 }
 
-/// Evaluate one interval rule across all query worlds (Round 489, design sec
-/// 7.20 — depth-ladder rung 1). Returns its violations and the count of
-/// `(frame × world × subject)` resolutions that were unverifiable (an operand
-/// absent on the `right`/bound leg, non-numeric, or ambiguous). THE single
-/// interval evaluator: `scan_continuity` calls it now, and the
-/// `report-timeline-gaps` read surface (the follow-on build step) will call
-/// the same function so the gate and the report can never drift (the R305/R390
-/// single-reader discipline). Per (frame × world × subject), keyed on the LEFT
-/// operand's fact, evaluated at THAT fact's canon coordinate — so the earlier
-/// `right`/bound facts are read where the left event lands.
+/// One interval-rule evaluation for a left-operand fact in a query world, at
+/// that fact's canon coordinate (Round 489/490). The shared output of THE
+/// single interval evaluator: the continuity gate maps `Violated` to a
+/// `RuleIntervalViolation` and counts distinct `Unverifiable` subjects;
+/// `report-timeline-gaps` (the read surface) presents all three. So the gate
+/// and the report can never drift (R305/R390 single-reader discipline).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IntervalOutcome {
+    pub rule: String,
+    /// Left operand predicate (the rule's primary `predicate`).
+    pub predicate: String,
+    pub right: String,
+    pub op: String,
+    pub frame: String,
+    pub world: String,
+    pub subject: String,
+    pub left_fact: String,
+    pub left_value: String,
+    /// The left operand's canon coordinate — the evaluation point.
+    pub at: String,
+    pub verdict: IntervalVerdict,
+}
+
+/// The three deterministic interval verdicts (Round 489/490).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IntervalVerdict {
+    /// Both operands and the bound resolved; the relation HELD.
+    Satisfied {
+        right_fact: String,
+        right_value: String,
+        bound: String,
+    },
+    /// Both resolved; the relation FAILED — the gate's violation.
+    Violated {
+        right_fact: String,
+        right_value: String,
+        bound: String,
+    },
+    /// An operand was absent on the right/bound leg, non-numeric, or ambiguous
+    /// (>1 distinct holding value) — surfaced, never silently passed.
+    Unverifiable { reason: String },
+}
+
+/// Resolve the verdict for one left fact (Round 489/490): parse the left
+/// value, resolve the `right` operand and the bound at the left fact's canon
+/// point, and compare. The scalar parse fail-louds — a non-numeric / absent /
+/// ambiguous operand is `Unverifiable` with a reason, never silently skipped.
+#[allow(clippy::too_many_arguments)]
+fn interval_verdict(
+    facts: &BTreeMap<String, NarrativeFact>,
+    ctx: &WorldCtx<'_>,
+    frame: &str,
+    subject: &str,
+    left_raw: &str,
+    right_pred: &str,
+    op: IntervalOp,
+    bound: &IntervalBound,
+    at: &str,
+) -> IntervalVerdict {
+    let unver = |reason: String| IntervalVerdict::Unverifiable { reason };
+    let Some(left_num) = parse_scalar(left_raw) else {
+        return unver(format!("left operand value `{left_raw}` is not numeric"));
+    };
+    let (right_num, right_value, right_fact) =
+        match resolve_operand(facts, ctx, frame, subject, right_pred, at) {
+            Operand::Value { num, value, fact } => (num, value.to_string(), fact.to_string()),
+            Operand::Absent => {
+                return unver(format!("right operand `{right_pred}` has no holding value"))
+            }
+            Operand::Unverifiable => {
+                return unver(format!(
+                    "right operand `{right_pred}` is non-numeric or ambiguous"
+                ))
+            }
+        };
+    let (bound_num, bound_str) = match bound {
+        IntervalBound::Const(c) => (*c, c.to_string()),
+        IntervalBound::Predicate(bp) => match resolve_operand(facts, ctx, frame, subject, bp, at) {
+            Operand::Value { num, value, .. } => (num, value.to_string()),
+            Operand::Absent => return unver(format!("bound `{bp}` has no holding value")),
+            Operand::Unverifiable => {
+                return unver(format!("bound `{bp}` is non-numeric or ambiguous"))
+            }
+        },
+    };
+    let legs = (right_fact, right_value, bound_str);
+    if op.holds(left_num - right_num, bound_num) {
+        IntervalVerdict::Satisfied {
+            right_fact: legs.0,
+            right_value: legs.1,
+            bound: legs.2,
+        }
+    } else {
+        IntervalVerdict::Violated {
+            right_fact: legs.0,
+            right_value: legs.1,
+            bound: legs.2,
+        }
+    }
+}
+
+/// Evaluate one interval rule across all query worlds (Round 489/490, design
+/// sec 7.20 — depth-ladder rung 1). Returns one [`IntervalOutcome`] per
+/// (query world × holding left-operand fact), evaluated at the left fact's
+/// canon coordinate so the earlier `right`/bound facts are read where the left
+/// event lands. THE single interval evaluator — both `scan_continuity` (the
+/// gate) and `timeline_gaps` (the read surface) consume these outcomes, so
+/// they can never drift (R305/R390).
 #[allow(clippy::too_many_arguments)]
 fn scan_interval_rule(
     rule_id: &str,
@@ -1369,11 +1468,8 @@ fn scan_interval_rule(
     lineages: &BTreeMap<String, Lineage>,
     order: &CanonOrder,
     successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
-) -> (Vec<ContinuityViolation>, usize) {
-    let mut violations = Vec::new();
-    // Deduplicated per (frame, world, subject): several left facts for one
-    // subject in one world should not multiply-count the same gap.
-    let mut unverifiable: BTreeSet<(String, String, String)> = BTreeSet::new();
+) -> Vec<IntervalOutcome> {
+    let mut outcomes = Vec::new();
     for world in worlds {
         let ctx = WorldCtx {
             world,
@@ -1391,79 +1487,48 @@ fn scan_interval_rule(
             if !ctx.holds_at(lid, lf, &lf.canon_from) {
                 continue;
             }
-            let subject = lt.subject.as_str();
-            let frame = lf.frame.as_str();
-            let at = lf.canon_from.as_str();
-            let mark_unverifiable = |set: &mut BTreeSet<(String, String, String)>| {
-                set.insert((
-                    frame.to_string(),
-                    ctx.world.to_string(),
-                    subject.to_string(),
-                ));
-            };
             let left_raw = typed_object_key(&lt.object);
-            let Some(left_num) = parse_scalar(left_raw) else {
-                mark_unverifiable(&mut unverifiable);
-                continue;
-            };
-            let (right_num, right_value, right_fact) =
-                match resolve_operand(facts, &ctx, frame, subject, right_pred, at) {
-                    Operand::Value { num, value, fact } => (num, value, fact),
-                    Operand::Absent | Operand::Unverifiable => {
-                        mark_unverifiable(&mut unverifiable);
-                        continue;
-                    }
-                };
-            let (bound_num, bound_str) = match bound {
-                IntervalBound::Const(c) => (*c, c.to_string()),
-                IntervalBound::Predicate(bp) => {
-                    match resolve_operand(facts, &ctx, frame, subject, bp, at) {
-                        Operand::Value { num, value, .. } => (num, value.to_string()),
-                        Operand::Absent | Operand::Unverifiable => {
-                            mark_unverifiable(&mut unverifiable);
-                            continue;
-                        }
-                    }
-                }
-            };
-            if !op.holds(left_num - right_num, bound_num) {
-                violations.push(ContinuityViolation::RuleIntervalViolation {
-                    rule: rule_id.to_string(),
-                    predicate: left_pred.to_string(),
-                    right: right_pred.to_string(),
-                    op: op.symbol().to_string(),
-                    frame: frame.to_string(),
-                    branch: ctx.world.to_string(),
-                    subject: subject.to_string(),
-                    left_fact: lid.clone(),
-                    right_fact: right_fact.to_string(),
-                    left_value: left_raw.to_string(),
-                    right_value: right_value.to_string(),
-                    bound: bound_str,
-                    at: at.to_string(),
-                });
-            }
+            let verdict = interval_verdict(
+                facts,
+                &ctx,
+                &lf.frame,
+                &lt.subject,
+                left_raw,
+                right_pred,
+                op,
+                bound,
+                &lf.canon_from,
+            );
+            outcomes.push(IntervalOutcome {
+                rule: rule_id.to_string(),
+                predicate: left_pred.to_string(),
+                right: right_pred.to_string(),
+                op: op.symbol().to_string(),
+                frame: lf.frame.clone(),
+                world: ctx.world.to_string(),
+                subject: lt.subject.clone(),
+                left_fact: lid.clone(),
+                left_value: left_raw.to_string(),
+                at: lf.canon_from.clone(),
+                verdict,
+            });
         }
     }
-    (violations, unverifiable.len())
+    outcomes
 }
 
-pub fn scan_continuity(
-    store: &AtomicStore,
-    order: &CanonOrder,
-    rules: &[NarrativeRule],
-) -> Result<ContinuityReport, String> {
-    check_store_boundary(store, order)?;
-    // EXACT registry compare, deliberately untrimmed (R450): the loader
-    // normalizes whitespace into the stored values, so a padded predicate
-    // arriving here (a programmatic rule that skipped the loader) fails
-    // loud instead of passing a trimmed check while the evaluation below
-    // compares exact and silently matches nothing.
+/// Every predicate a rule references is a load-bearing ref — the left operand
+/// (`rule.predicate`) AND, for an interval rule, its `right` operand and
+/// predicate-bound (Round 489). Checked in ONE place so no ref escapes the
+/// typo guard, and SHARED by the gate (`scan_continuity`) and the read surface
+/// (`timeline_gaps`) so neither can drift to a weaker check (the R436 lesson).
+/// EXACT registry compare, deliberately untrimmed (R450): the loader
+/// normalizes whitespace into the stored values, so a padded predicate
+/// arriving here (a programmatic rule that skipped the loader) fails loud
+/// instead of passing a trimmed check while the evaluation compares exact and
+/// silently matches nothing.
+fn check_rule_predicates(store: &AtomicStore, rules: &[NarrativeRule]) -> Result<(), String> {
     for rule in rules {
-        // Every predicate a rule references is a load-bearing ref — the left
-        // operand (`rule.predicate`) AND, for an interval rule, its `right`
-        // operand and predicate-bound (Round 489). Checked in ONE place so no
-        // ref escapes the typo guard.
         for p in rule.referenced_predicates() {
             if !store.predicates.contains_key(p) {
                 return Err(format!(
@@ -1475,6 +1540,86 @@ pub fn scan_continuity(
             }
         }
     }
+    Ok(())
+}
+
+/// One world's interval outcomes (Round 490). Every query world appears, so a
+/// world with no gaps shows an explicit empty list (a clean dashboard).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorldTimelineGaps {
+    pub outcomes: Vec<IntervalOutcome>,
+}
+
+/// Whole-store timeline-gap projection (Round 490, design sec 7.20 step 2):
+/// the deterministic interval evaluator surfaced as a READ report, never
+/// gated. Only `interval` rules contribute; exclusive/transition rules are
+/// the continuity gate's, not a timeline surface.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TimelineGapsReport {
+    pub worlds: BTreeMap<String, WorldTimelineGaps>,
+    /// Interval rules evaluated (0 = no interval rules declared).
+    pub interval_rules: usize,
+}
+
+/// Run the interval rules as a read projection (Round 490). Same store
+/// boundary + predicate-existence checks as the gate, the SAME evaluator
+/// (`scan_interval_rule`) — the report is the gate's findings without the
+/// gating, grouped per world. Surface-not-gate: no severity, no exit.
+pub fn timeline_gaps(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    rules: &[NarrativeRule],
+) -> Result<TimelineGapsReport, String> {
+    check_store_boundary(store, order)?;
+    check_rule_predicates(store, rules)?;
+    let facts = &store.narrative_facts;
+    let successors = successors_index(facts);
+    let lineages = query_world_lineages(store)?;
+    let worlds: Vec<&str> = std::iter::once(mnemosyne_core::MAIN_BRANCH)
+        .chain(store.branches.keys().map(String::as_str))
+        .collect();
+    let mut report = TimelineGapsReport::default();
+    // Every world present, even the clean ones (explicit empty list).
+    for w in &worlds {
+        report
+            .worlds
+            .insert((*w).to_string(), WorldTimelineGaps::default());
+    }
+    for rule in rules {
+        if let NarrativeRuleSpec::Interval { right, op, bound } = &rule.spec {
+            report.interval_rules += 1;
+            let outcomes = scan_interval_rule(
+                &rule.id,
+                &rule.predicate,
+                right,
+                *op,
+                bound,
+                facts,
+                &worlds,
+                &lineages,
+                order,
+                &successors,
+            );
+            for o in outcomes {
+                report
+                    .worlds
+                    .entry(o.world.clone())
+                    .or_default()
+                    .outcomes
+                    .push(o);
+            }
+        }
+    }
+    Ok(report)
+}
+
+pub fn scan_continuity(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    rules: &[NarrativeRule],
+) -> Result<ContinuityReport, String> {
+    check_store_boundary(store, order)?;
+    check_rule_predicates(store, rules)?;
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
     let lineages = query_world_lineages(store)?;
@@ -1821,7 +1966,7 @@ pub fn scan_continuity(
                 report.unchained_state_pairs += seen.len();
             }
             NarrativeRuleSpec::Interval { right, op, bound } => {
-                let (violations, unverifiable) = scan_interval_rule(
+                let outcomes = scan_interval_rule(
                     &rule.id,
                     &rule.predicate,
                     right,
@@ -1833,8 +1978,40 @@ pub fn scan_continuity(
                     order,
                     &successors,
                 );
-                report.violations.extend(violations);
-                report.interval_unverifiable += unverifiable;
+                // Gate adapter: a Violated outcome gates; Unverifiable surfaces
+                // as a count deduplicated per (frame, world, subject) — several
+                // left facts for one subject must not multiply-count.
+                let mut unverifiable: BTreeSet<(&str, &str, &str)> = BTreeSet::new();
+                for o in &outcomes {
+                    match &o.verdict {
+                        IntervalVerdict::Violated {
+                            right_fact,
+                            right_value,
+                            bound,
+                        } => report
+                            .violations
+                            .push(ContinuityViolation::RuleIntervalViolation {
+                                rule: o.rule.clone(),
+                                predicate: o.predicate.clone(),
+                                right: o.right.clone(),
+                                op: o.op.clone(),
+                                frame: o.frame.clone(),
+                                branch: o.world.clone(),
+                                subject: o.subject.clone(),
+                                left_fact: o.left_fact.clone(),
+                                right_fact: right_fact.clone(),
+                                left_value: o.left_value.clone(),
+                                right_value: right_value.clone(),
+                                bound: bound.clone(),
+                                at: o.at.clone(),
+                            }),
+                        IntervalVerdict::Unverifiable { .. } => {
+                            unverifiable.insert((&o.frame, &o.world, &o.subject));
+                        }
+                        IntervalVerdict::Satisfied { .. } => {}
+                    }
+                }
+                report.interval_unverifiable += unverifiable.len();
             }
         }
     }
@@ -5622,5 +5799,135 @@ mod tests {
         assert!(load_narrative_rules(&bad_op, None)
             .unwrap_err()
             .contains("parse"));
+    }
+
+    /// `report-timeline-gaps` groups outcomes per world: every world present
+    /// (clean ones explicitly empty), the hasty gap surfaces as Violated, the
+    /// lawful gap as Satisfied, main (no left fact) empty.
+    #[test]
+    fn timeline_gaps_groups_outcomes_per_world() {
+        let store = store_with_forks(
+            vec![
+                typed_fact(
+                    "f-rule",
+                    "gt",
+                    "ch-1",
+                    "codicil",
+                    "min-ratify-gap-days",
+                    at("42"),
+                ),
+                scalar_branch(
+                    "f-sign-l",
+                    "lawful",
+                    "ch-3",
+                    "codicil",
+                    "signed-on-day",
+                    "42",
+                ),
+                scalar_branch(
+                    "f-rat-l",
+                    "lawful",
+                    "ch-4",
+                    "codicil",
+                    "ratified-on-day",
+                    "84",
+                ),
+                scalar_branch(
+                    "f-sign-h",
+                    "hasty",
+                    "ch-3",
+                    "codicil",
+                    "signed-on-day",
+                    "10",
+                ),
+                scalar_branch(
+                    "f-rat-h",
+                    "hasty",
+                    "ch-4",
+                    "codicil",
+                    "ratified-on-day",
+                    "31",
+                ),
+            ],
+            &[
+                ("lawful", MAIN_BRANCH, "ch-2"),
+                ("hasty", MAIN_BRANCH, "ch-2"),
+            ],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = timeline_gaps(&store, &order, &[ratify_term()]).unwrap();
+        assert_eq!(report.interval_rules, 1);
+        assert!(
+            report.worlds.contains_key(MAIN_BRANCH),
+            "every world present"
+        );
+        assert!(
+            report.worlds[MAIN_BRANCH].outcomes.is_empty(),
+            "main has no left fact"
+        );
+        let hasty = &report.worlds["hasty"].outcomes;
+        assert_eq!(hasty.len(), 1);
+        assert!(matches!(hasty[0].verdict, IntervalVerdict::Violated { .. }));
+        let lawful = &report.worlds["lawful"].outcomes;
+        assert_eq!(lawful.len(), 1);
+        assert!(matches!(
+            lawful[0].verdict,
+            IntervalVerdict::Satisfied { .. }
+        ));
+    }
+
+    /// Parity (the single-evaluator no-drift property): the gate's interval
+    /// violations and the read report's Violated outcomes are the same set —
+    /// both consume `scan_interval_rule`, so they cannot diverge (R305/R390).
+    #[test]
+    fn timeline_gaps_and_gate_agree_on_violations() {
+        let store = store_with_forks(
+            vec![
+                typed_fact(
+                    "f-rule",
+                    "gt",
+                    "ch-1",
+                    "codicil",
+                    "min-ratify-gap-days",
+                    at("42"),
+                ),
+                scalar_branch(
+                    "f-sign-h",
+                    "hasty",
+                    "ch-3",
+                    "codicil",
+                    "signed-on-day",
+                    "10",
+                ),
+                scalar_branch(
+                    "f-rat-h",
+                    "hasty",
+                    "ch-4",
+                    "codicil",
+                    "ratified-on-day",
+                    "31",
+                ),
+            ],
+            &[("hasty", MAIN_BRANCH, "ch-2")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let gate = scan_continuity(&store, &order, &[ratify_term()]).unwrap();
+        let read = timeline_gaps(&store, &order, &[ratify_term()]).unwrap();
+        let gate_violations = gate
+            .violations
+            .iter()
+            .filter(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. }))
+            .count();
+        let read_violated = read
+            .worlds
+            .values()
+            .flat_map(|w| &w.outcomes)
+            .filter(|o| matches!(o.verdict, IntervalVerdict::Violated { .. }))
+            .count();
+        assert_eq!(gate_violations, 1);
+        assert_eq!(
+            gate_violations, read_violated,
+            "gate and read surface must agree"
+        );
     }
 }

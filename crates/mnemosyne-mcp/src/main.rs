@@ -452,6 +452,17 @@ pub struct ValidateContinuityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportTimelineGapsArgs {
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+    /// `narrative-rules/v1` declaration path override (Round 490; the
+    /// interval rules). Omit to use `[continuity].rules_path`.
+    #[serde(default)]
+    pub rules_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportFrameViewArgs {
     /// Epistemic frame to project.
     pub frame: String,
@@ -1530,6 +1541,24 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         match ops::payoff_substantiation_report(&self.workspace, None, args.0.order_path.as_deref())
         {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Timeline-gap projection (R490, read-only, surface-not-gate): the interval-rule evaluator as a READ report. Per query world, each declared interval rule (value(left) - value(right) op bound, op ge/le/eq/gt/lt, bound a const or a same-subject scalar predicate) is evaluated at the left fact's canon point, classified violated / unverifiable (an operand non-numeric, absent on the right/bound leg, or ambiguous — type it) / satisfied. Same narrative-rules artifact as the continuity gate, only interval rules contribute. Deterministic, no LLM; never gates (the gate is validate_continuity under opt-in severity)."
+    )]
+    async fn report_timeline_gaps(
+        &self,
+        args: Parameters<ReportTimelineGapsArgs>,
+    ) -> CallToolResult {
+        match ops::timeline_gaps_report(
+            &self.workspace,
+            None,
+            args.0.order_path.as_deref(),
+            args.0.rules_path.as_deref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

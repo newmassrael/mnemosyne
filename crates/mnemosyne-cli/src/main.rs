@@ -307,6 +307,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
         "import-edge-proposals" => cmd_import_edge_proposals(&args[2..]),
         "report-payoff-substantiation" => cmd_report_payoff_substantiation(&args[2..]),
+        "report-timeline-gaps" => cmd_report_timeline_gaps(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -473,6 +474,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 485 — deterministic payoff substantiation: each credited setup is substantiated (a typed state-change discharges it) / unsubstantiated (typed setup, hollow payoff) / unverifiable (untyped — type it); no LLM"
+    );
+    println!(
+        " {} report-timeline-gaps [--order <canon-order.json>] [--rules <narrative-rules.json>] [--world <branch>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 490 — timeline-gap projection (read, never gated): the interval-rule evaluator per world — violated / unverifiable / satisfied scalar relations (value(left) - value(right) op bound)"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -2578,6 +2586,131 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
                     p.setup,
                     p.payoffs.join(", ")
                 );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Round 490 — timeline-gap projection (`report-timeline-gaps`, design sec
+/// 7.20 step 2): the deterministic interval evaluator surfaced as a READ
+/// report, per world, never gated (surface-not-gate). Resolves the same
+/// `narrative-rules` artifact as the continuity gate; only `interval` rules
+/// contribute. `--world` filters to one world-line.
+fn cmd_report_timeline_gaps(args: &[String]) -> Result<()> {
+    use mnemosyne_validate::continuity::IntervalVerdict;
+    let mut json = false;
+    let mut order_override: Option<String> = None;
+    let mut rules_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut world_filter: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--rules" => {
+                rules_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rules missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--world" => {
+                world_filter = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--world missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::timeline_gaps_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+        rules_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== timeline gaps — {} interval rule(s) ===",
+        report.interval_rules
+    );
+    for (world, gaps) in &report.worlds {
+        if world_filter.as_deref().is_some_and(|f| f != world) {
+            continue;
+        }
+        let mut violated = 0;
+        let mut unverifiable = 0;
+        let mut satisfied = 0;
+        for o in &gaps.outcomes {
+            match &o.verdict {
+                IntervalVerdict::Violated { .. } => violated += 1,
+                IntervalVerdict::Unverifiable { .. } => unverifiable += 1,
+                IntervalVerdict::Satisfied { .. } => satisfied += 1,
+            }
+        }
+        println!(
+            "world `{world}`: violated={violated} unverifiable={unverifiable} satisfied={satisfied}"
+        );
+        for o in &gaps.outcomes {
+            match &o.verdict {
+                IntervalVerdict::Violated {
+                    right_value, bound, ..
+                } => println!(
+                    "  [VIOLATED] {} {}: {}({}) - {}({}) {} {} @{}",
+                    o.subject,
+                    o.rule,
+                    o.predicate,
+                    o.left_value,
+                    o.right,
+                    right_value,
+                    o.op,
+                    bound,
+                    o.at
+                ),
+                IntervalVerdict::Unverifiable { reason } => println!(
+                    "  [unverifiable] {} {}: {} (type it to verify)",
+                    o.subject, o.rule, reason
+                ),
+                IntervalVerdict::Satisfied {
+                    right_value, bound, ..
+                } => println!(
+                    "  [ok] {} {}: {}({}) - {}({}) {} {} @{}",
+                    o.subject,
+                    o.rule,
+                    o.predicate,
+                    o.left_value,
+                    o.right,
+                    right_value,
+                    o.op,
+                    bound,
+                    o.at
+                ),
             }
         }
     }
