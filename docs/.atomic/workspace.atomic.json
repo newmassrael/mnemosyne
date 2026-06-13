@@ -10133,6 +10133,50 @@
         "two open, deferred problems remain (NOT the extraction gap, which is gone): prose CRAFT from facts (the blind session-separated judge, R469) and fact RELEVANCE/completeness (the R476 commonsense ceiling — facts-first forces declaration but not relevance)",
         "session through-line: rung-1 (timeline) the only causal band needing new substrate (R490-492); causes/rung-3 decompose (R493); the coverage bottleneck is prose-first extraction (R494); facts-first dissolves it (R495) — the leverage is the authoring ORDER + an eventual facts→prose renderer, not more gates"
       ]
+    },
+    "Round 496 — facts-first render loop designed as one pipeline: the CYOA reading end and the authoring end, layer split B/A, build deferred per-half": {
+      "decision_summary": "The sec 10 Tier-3 CYOA renderer and the R495 facts-first authoring render step are the SAME facts->prose->playable pipeline seen from two ends; designed as one loop (sec 7.21). Layer B = the LLM prose-generation render step (a protocol, not a verb; craft deferred to the R469 blind judge); Layer A = the deterministic assembler (an L3 presentation consumer + the one new read verb report-fork-tree, the choice graph the backlog assumes but no surface emits). The contract between them: the render-brief (a frame-filtered playthrough_manuscript slice = the sec 7.17 deferred per-frame split, no new substrate) and report-fork-tree (pure projection over store.branches, schema unchanged, fork_ancestry reuse). Prose round-trips to the content-SSOT, not the fact base, so the extraction gap stays dissolved (R495). The fork-tree verb has a present pull; the playable assembler stays behind sec 10's play-it gate. Design-only, code 0.",
+      "changes_bullets": [
+        "sec 7.21 added: the full facts-first render loop (facts->prose->playable) designed as ONE pipeline, layer split + contract the spine",
+        "Layer B = LLM prose-generation render step (a protocol, not a verb; prose craft deferred to the R469 blind judge); Layer A = deterministic assembler (an L3 presentation consumer + the one new read verb report-fork-tree)",
+        "the contract = render-brief (a frame-filtered playthrough_manuscript slice = the sec 7.17 deferred per-frame split, no new substrate) + report-fork-tree (pure projection over store.branches, schema unchanged, fork_ancestry reuse)",
+        "the one substrate GAP identified: no read surface emits the cross-world choice graph today (per-world manuscripts exist, the fork tree does not)",
+        "sec 10 Tier-3 CYOA backlog marked DESIGNED R496"
+      ],
+      "verification_bullets": [
+        "design-only, code 0; no build this round (each half build-deferred behind its own gate)",
+        "substrate FIT confirmed against playthrough_manuscript (R466), report-irony-intervals (R455), the branch registry, and holds_at — only the choice-graph surface is missing",
+        "determinism boundary preserved: AI sits only in Layer B (a render, never a judge); the fork-tree verb and the assembler are pure deterministic projections (R484/R485 carry)",
+        "prose round-trips to the content-SSOT, not the fact base, so the extraction gap stays dissolved end to end (R495)",
+        "citation hygiene: cited rounds verified against the design doc and changelog before writing"
+      ],
+      "carry_forward_bullets": [
+        "report-fork-tree read verb = the part with a PRESENT pull; build when the assembler or another consumer pulls (CLI + MCP mirror, forks_at->parent-node resolution, fork_ancestry reuse, fail-loud on unregistered parent, never gates)",
+        "render-brief = a --frame filter on report-playthrough-manuscript (NOT a new verb), built when the authoring loop pulls",
+        "Layer A playable assembler gated on sec 10's play-it consumer (canon-order -> ink/HTML/Twine, the R451 converter mirrored)",
+        "Layer B prose craft = the open R469 blind, session-separated judge question (never self-graded)"
+      ],
+      "publishable_decision_summary": "The sec 10 Tier-3 CYOA renderer and the R495 facts-first authoring render step are the SAME facts->prose->playable pipeline seen from two ends; designed as one loop (sec 7.21). Layer B = the LLM prose-generation render step (a protocol, not a verb; craft deferred to the R469 blind judge); Layer A = the deterministic assembler (an L3 presentation consumer + the one new read verb report-fork-tree, the choice graph the backlog assumes but no surface emits). The contract between them: the render-brief (a frame-filtered playthrough_manuscript slice = the sec 7.17 deferred per-frame split, no new substrate) and report-fork-tree (pure projection over store.branches, schema unchanged, fork_ancestry reuse). Prose round-trips to the content-SSOT, not the fact base, so the extraction gap stays dissolved (R495). The fork-tree verb has a present pull; the playable assembler stays behind sec 10's play-it gate. Design-only, code 0.",
+      "publishable_changes_bullets": [
+        "sec 7.21 added: the full facts-first render loop (facts->prose->playable) designed as ONE pipeline, layer split + contract the spine",
+        "Layer B = LLM prose-generation render step (a protocol, not a verb; prose craft deferred to the R469 blind judge); Layer A = deterministic assembler (an L3 presentation consumer + the one new read verb report-fork-tree)",
+        "the contract = render-brief (a frame-filtered playthrough_manuscript slice = the sec 7.17 deferred per-frame split, no new substrate) + report-fork-tree (pure projection over store.branches, schema unchanged, fork_ancestry reuse)",
+        "the one substrate GAP identified: no read surface emits the cross-world choice graph today (per-world manuscripts exist, the fork tree does not)",
+        "sec 10 Tier-3 CYOA backlog marked DESIGNED R496"
+      ],
+      "publishable_verification_bullets": [
+        "design-only, code 0; no build this round (each half build-deferred behind its own gate)",
+        "substrate FIT confirmed against playthrough_manuscript (R466), report-irony-intervals (R455), the branch registry, and holds_at — only the choice-graph surface is missing",
+        "determinism boundary preserved: AI sits only in Layer B (a render, never a judge); the fork-tree verb and the assembler are pure deterministic projections (R484/R485 carry)",
+        "prose round-trips to the content-SSOT, not the fact base, so the extraction gap stays dissolved end to end (R495)",
+        "citation hygiene: cited rounds verified against the design doc and changelog before writing"
+      ],
+      "publishable_carry_forward_bullets": [
+        "report-fork-tree read verb = the part with a PRESENT pull; build when the assembler or another consumer pulls (CLI + MCP mirror, forks_at->parent-node resolution, fork_ancestry reuse, fail-loud on unregistered parent, never gates)",
+        "render-brief = a --frame filter on report-playthrough-manuscript (NOT a new verb), built when the authoring loop pulls",
+        "Layer A playable assembler gated on sec 10's play-it consumer (canon-order -> ink/HTML/Twine, the R451 converter mirrored)",
+        "Layer B prose craft = the open R469 blind, session-separated judge question (never self-graded)"
+      ]
     }
   },
   "inventory_entries": {},
