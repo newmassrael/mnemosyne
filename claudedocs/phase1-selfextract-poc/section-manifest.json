@@ -1,0 +1,5 @@
+[
+ {"section_id":"s1-sickroom","parent_doc":"bl","title":"The sickroom","coverage_expectation":"informational"},
+ {"section_id":"s2-conservatory","parent_doc":"bl","title":"The conservatory","coverage_expectation":"informational"},
+ {"section_id":"s3-grate","parent_doc":"bl","title":"The grate","coverage_expectation":"informational"}
+]

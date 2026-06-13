@@ -1,0 +1,8 @@
+{
+ "frames":[{"frame_id":"gt","description":"ground truth"}],
+ "branches":[], "entities":[{"entity_id":"helene","kind":"person"}],
+ "predicates":[{"predicate_id":"at-location","object_kind":"scalar"}],
+ "facts":[
+  {"fact_id":"f-helene-study","frame":"gt","claim":"INFERRED precondition: to have burned the letter in the study, Helene must have been in the study","canon_from":"s3-grate","evidence":["s3-grate"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"study"}}}
+ ]
+}

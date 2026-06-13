@@ -1,0 +1,12 @@
+{
+ "frames":[{"frame_id":"gt","description":"ground truth"}],
+ "branches":[],
+ "entities":[{"entity_id":"helene","kind":"person"},{"entity_id":"marsh","kind":"person"},{"entity_id":"sickroom-key","kind":"object"},{"entity_id":"letter","kind":"object"}],
+ "predicates":[{"predicate_id":"at-location","object_kind":"scalar"},{"predicate_id":"holds","object_kind":"entity"}],
+ "facts":[
+  {"fact_id":"f-confined","frame":"gt","claim":"Helene has not left the sickroom since the fever","canon_from":"s1-sickroom","evidence":["s1-sickroom"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"sickroom"}}},
+  {"fact_id":"f-key","frame":"gt","claim":"Dr. Marsh keeps the only key to the bolted sickroom","canon_from":"s1-sickroom","evidence":["s1-sickroom"],"entities":["marsh","sickroom-key"],"typed":{"subject":"marsh","predicate":"holds","object":{"kind":"entity","id":"sickroom-key"}}},
+  {"fact_id":"f-conservatory","frame":"gt","claim":"Helene was seen at the conservatory that evening","canon_from":"s2-conservatory","evidence":["s2-conservatory"],"entities":["helene"],"typed":{"subject":"helene","predicate":"at-location","object":{"kind":"value","value":"conservatory"}}},
+  {"fact_id":"f-letter","frame":"gt","claim":"The letter lay burned in the study grate","canon_from":"s3-grate","evidence":["s3-grate"],"entities":["letter"],"typed":{"subject":"letter","predicate":"at-location","object":{"kind":"value","value":"study"}}}
+ ]
+}
