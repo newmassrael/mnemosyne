@@ -2921,6 +2921,101 @@ pub fn playthrough_manuscript(
     Ok(report)
 }
 
+/// A fork's divergence coordinate, resolved against the parent world's
+/// composed order (Round 497, design sec 7.21).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForkTreeEdge {
+    /// Parent world-line (`MAIN_BRANCH` or a registered branch).
+    pub parent: String,
+    /// The canon point of divergence — the CYOA choice-point scene.
+    pub at: String,
+    /// `at` is a node of the PARENT's composed order ([`CanonOrder::names`],
+    /// Round 488) — the scene the assembler hangs the choice on. `false` =
+    /// a declaration gap (the parent's order never names the fork point);
+    /// the branch id is also listed in `unplaced_fork_points`, never
+    /// silently dropped (the R466 `unplaced_facts` idiom).
+    pub at_placed: bool,
+}
+
+/// One registered world-line in the fork tree (Round 497, design sec 7.21).
+/// The CYOA mapping (design sec 10): `branch_id` = a reachable world (save
+/// state), the `fork` = the choice point, `description` = the choice label.
+/// Pure projection of the stored [`mnemosyne_core::Branch`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForkTreeBranch {
+    pub branch_id: String,
+    /// The branch's free-form description (the choice label; may be empty).
+    pub description: String,
+    /// Divergence coordinate (Round 438). `None` = a standalone world
+    /// sharing no history (the pre-fork R433 semantics).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fork: Option<ForkTreeEdge>,
+}
+
+/// Fork tree over the registered world-lines (Round 497, design sec 7.21) —
+/// the cross-world CHOICE GRAPH the CYOA renderer assumes. Per-world
+/// manuscripts (R466) gave N linear readings; this is the tree that
+/// stitches them at the fork points. Pure read projection, never gated (a
+/// choice graph is a reading surface, not a defect detector).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ForkTreeReport {
+    /// Every registered branch, branch-id sorted (the `BTreeMap` order;
+    /// `MAIN_BRANCH` is the default axis, never registered, so never listed).
+    pub branches: Vec<ForkTreeBranch>,
+    /// Branch ids whose fork point is not a node of the parent's composed
+    /// order — surfaced, never dropped (B-1, the R466 idiom).
+    pub unplaced_fork_points: Vec<String>,
+    /// Registered branch count (`branches.len()`).
+    pub branch_count: usize,
+}
+
+/// Project the fork tree over the registered world-lines (Round 497, design
+/// sec 7.21): each registered branch's divergence coordinate (parent + fork
+/// point + the choice-label description), the fork point resolved against
+/// the PARENT world's composed order via [`CanonOrder::names`] (Round 488 —
+/// one node-membership semantics, no parallel fork engine; the R441 binding
+/// rule). Fail-loud on a fork whose parent is neither [`MAIN_BRANCH`] nor a
+/// registered branch (a store-integrity violation the write path forbids —
+/// a typo'd parent must not read as a silent root). Pure read projection —
+/// `store.branches` unchanged, deliberately never gated.
+pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeReport, String> {
+    check_store_boundary(store, order)?;
+    let mut report = ForkTreeReport::default();
+    for (branch_id, branch) in &store.branches {
+        let fork = match &branch.forks_from {
+            None => None,
+            Some(f) => {
+                if f.branch != mnemosyne_core::MAIN_BRANCH
+                    && !store.branches.contains_key(&f.branch)
+                {
+                    return Err(format!(
+                        "branch `{branch_id}` forks from `{}`, which is neither `main` nor a \
+                         registered branch — fail-loud (a typo'd parent must not read as a \
+                         silent root); fix the registry",
+                        f.branch
+                    ));
+                }
+                let at_placed = order.names(&f.branch, &f.at);
+                if !at_placed {
+                    report.unplaced_fork_points.push(branch_id.clone());
+                }
+                Some(ForkTreeEdge {
+                    parent: f.branch.clone(),
+                    at: f.at.clone(),
+                    at_placed,
+                })
+            }
+        };
+        report.branches.push(ForkTreeBranch {
+            branch_id: branch_id.clone(),
+            description: branch.description.clone(),
+            fork,
+        });
+    }
+    report.branch_count = report.branches.len();
+    Ok(report)
+}
+
 /// One untyped fact awaiting a typed-leg proposal (Round 458, design sec
 /// 7.15 Round A): everything the proposer needs about THIS fact, including
 /// the claim text and its sha256 — the R439 judgment-time pin the eventual
@@ -5503,6 +5598,92 @@ mod tests {
         assert_eq!(w1.undecidable, ["fk"]);
         assert!(w1.scenes.iter().all(|s| s.begins.is_empty()));
         assert!(w1.scenes.iter().all(|s| s.holding_count == 0));
+    }
+
+    // ====================================================================
+    // Round 497 — fork tree (the cross-world choice graph, design sec 7.21).
+    // ====================================================================
+
+    /// The choice graph: a placed fork (its point is a node of the parent's
+    /// order), a standalone world, and an UNPLACED fork (its point is a
+    /// section the parent's order never names — surfaced, never dropped, the
+    /// R466 idiom).
+    #[test]
+    fn fork_tree_projects_forks_standalone_and_unplaced() {
+        let store = store_with_forks(
+            vec![
+                fact("f-main", "gt", "ch-1", None),
+                branch_fact("f-solo", "gt", "solo", "k-1"),
+            ],
+            // route forks on the main chain (placed); side forks at k-2,
+            // which the ch chain never names (unplaced).
+            &[("route", MAIN_BRANCH, "ch-2"), ("side", MAIN_BRANCH, "k-2")],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = fork_tree(&store, &order).unwrap();
+
+        assert_eq!(report.branch_count, 3); // route, side, solo (id-sorted)
+        let by_id = |id: &str| report.branches.iter().find(|b| b.branch_id == id).unwrap();
+
+        let route = by_id("route").fork.as_ref().unwrap();
+        assert_eq!(route.parent, MAIN_BRANCH);
+        assert_eq!(route.at, "ch-2");
+        assert!(route.at_placed, "ch-2 is a node of main's order");
+
+        let side = by_id("side").fork.as_ref().unwrap();
+        assert_eq!(side.at, "k-2");
+        assert!(!side.at_placed, "k-2 is not named by the ch chain");
+        assert_eq!(report.unplaced_fork_points, ["side"]);
+
+        assert!(
+            by_id("solo").fork.is_none(),
+            "a standalone world has no fork point"
+        );
+    }
+
+    /// The branch description is the CYOA choice label — emitted verbatim.
+    #[test]
+    fn fork_tree_emits_choice_label_description() {
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        store.branches.insert(
+            "alt".to_string(),
+            mnemosyne_core::Branch {
+                description: "take the side door".to_string(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.to_string(),
+                    at: "s1".to_string(),
+                }),
+            },
+        );
+        let order = chain(&["s1", "s2"]);
+        let report = fork_tree(&store, &order).unwrap();
+        assert_eq!(report.branches[0].description, "take the side door");
+        assert!(report.branches[0].fork.as_ref().unwrap().at_placed);
+    }
+
+    /// A fork whose parent is neither `main` nor registered fails loud — a
+    /// typo'd parent must not read as a silent root (the write path forbids
+    /// this; the read surface guards the out-of-band edit).
+    #[test]
+    fn fork_tree_fails_loud_on_unregistered_parent() {
+        let mut store = AtomicStore::new();
+        store.branches.insert(
+            "child".to_string(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: "ghost".to_string(),
+                    at: "s1".to_string(),
+                }),
+            },
+        );
+        let err = fork_tree(&store, &CanonOrder::empty()).unwrap_err();
+        assert!(err.contains("neither `main` nor a registered"), "{err}");
     }
 
     // ====================================================================

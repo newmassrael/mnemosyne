@@ -506,6 +506,13 @@ pub struct ReportPlaythroughManuscriptArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportForkTreeArgs {
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -1632,6 +1639,16 @@ impl MnemosyneServer {
             args.0.world.as_deref(),
             args.0.order_path.as_deref(),
         ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated."
+    )]
+    async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
+        match ops::fork_tree_report(&self.workspace, None, args.0.order_path.as_deref()) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

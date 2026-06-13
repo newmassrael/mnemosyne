@@ -525,6 +525,24 @@ pub fn playthrough_manuscript_report(
         .map_err(OpError::Other)
 }
 
+/// Project the fork tree (Round 497, design sec 7.21) over the workspace
+/// store with the shared order resolution — the cross-world choice graph
+/// the CYOA renderer assumes: every registered world-line with its
+/// divergence coordinate (parent + fork point + the choice-label
+/// description), the fork point resolved against the parent's composed
+/// order. Pure read projection, deliberately never gated.
+pub fn fork_tree_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::ForkTreeReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::fork_tree(&store, &order).map_err(OpError::Other)
+}
+
 /// One fact row in an entity dossier (Round 437) — raw authoring-time view
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).

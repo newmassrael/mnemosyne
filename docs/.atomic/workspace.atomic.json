@@ -10177,6 +10177,44 @@
         "Layer A playable assembler gated on sec 10's play-it consumer (canon-order -> ink/HTML/Twine, the R451 converter mirrored)",
         "Layer B prose craft = the open R469 blind, session-separated judge question (never self-graded)"
       ]
+    },
+    "Round 497 — report-fork-tree built: the cross-world choice graph read verb (sec 7.21 build step 1), Detroit dogfood surfaces one unplaced fork point": {
+      "decision_summary": "Built report-fork-tree (sec 7.21 build step 1, the part with the present pull): the cross-world CHOICE GRAPH the CYOA renderer assumes — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the choice label), the fork point resolved against the PARENT world's composed order via CanonOrder::names (R488 — one node-membership semantics, no parallel fork engine; the R441 binding rule). Reuses fork_chain / the stored Branch (R438/R440); store schema UNCHANGED, pure read projection, deliberately never gated; fail-loud on a fork whose parent is neither main nor registered. Four layers: continuity::fork_tree (+ ForkTreeReport/ForkTreeBranch/ForkTreeEdge), ops::fork_tree_report, CLI report-fork-tree, MCP report_fork_tree. Per-world manuscripts (R466) gave N linear readings; this is the tree that stitches them at the fork points. Detroit dogfood (live): the full 7-world-line graph incl nested child-of-child forks with labels, and ONE honest unplaced fork point — w-kara-shot-todd's fork point det-sn-confront is declared only in the child's own edge set, never in parent w-kara-gun's composed order, so the choice hangs on a scene the parent never reaches (the R445 F5 adapter-declaration property, surfaced not guessed; consistent across base + interleaved orders).",
+      "changes_bullets": [
+        "continuity::fork_tree + ForkTreeReport/ForkTreeBranch/ForkTreeEdge: pure projection of store.branches, the fork point resolved against the PARENT's composed order via CanonOrder::names (R488), fail-loud on an unregistered parent, unplaced_fork_points honesty surface (the R466 idiom)",
+        "reuses fork_chain / the stored Branch (R438/R440) — no parallel fork engine (the R441 binding rule); store schema UNCHANGED, never gated",
+        "ops::fork_tree_report (shared order/store resolution); CLI report-fork-tree (--order/--sidecar/--json + usage line); MCP report_fork_tree tool",
+        "3 unit tests: placed + standalone + unplaced shape, choice-label description pass-through, fail-loud on an unregistered parent"
+      ],
+      "verification_bullets": [
+        "cargo build clean; mnemosyne-validate 245 + 3 new tests green; clippy --all-targets clean",
+        "Detroit dogfood (live): the full 7-world-line choice graph incl nested child-of-child forks with labels; ONE unplaced fork point (w-kara-shot-todd at det-sn-confront), consistent across base + interleaved orders",
+        "cross-checked the finding: det-sn-confront is declared only in the child's own edge set, absent from w-kara-gun's manuscript scenes — a real adapter declaration property (R445 F5), surfaced not guessed",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0)"
+      ],
+      "carry_forward_bullets": [
+        "sec 7.21 build step 1 = DONE; remaining per-half follow-ons: render-brief (a --frame filter on report-playthrough-manuscript, on the authoring-loop pull), Layer A assembler (play-it gated), Layer B prose craft (the R469 blind judge, a separate session)",
+        "the Detroit unplaced fork point is an adapter declaration choice (R445 F5), not a substrate bug; fixing it = declaring det-sn-confront in w-kara-gun's order, the adapter's call",
+        "installed cli+mcp binaries refreshed for the new verb + tool"
+      ],
+      "publishable_decision_summary": "Built report-fork-tree (sec 7.21 build step 1, the part with the present pull): the cross-world CHOICE GRAPH the CYOA renderer assumes — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the choice label), the fork point resolved against the PARENT world's composed order via CanonOrder::names (R488 — one node-membership semantics, no parallel fork engine; the R441 binding rule). Reuses fork_chain / the stored Branch (R438/R440); store schema UNCHANGED, pure read projection, deliberately never gated; fail-loud on a fork whose parent is neither main nor registered. Four layers: continuity::fork_tree (+ ForkTreeReport/ForkTreeBranch/ForkTreeEdge), ops::fork_tree_report, CLI report-fork-tree, MCP report_fork_tree. Per-world manuscripts (R466) gave N linear readings; this is the tree that stitches them at the fork points. Detroit dogfood (live): the full 7-world-line graph incl nested child-of-child forks with labels, and ONE honest unplaced fork point — w-kara-shot-todd's fork point det-sn-confront is declared only in the child's own edge set, never in parent w-kara-gun's composed order, so the choice hangs on a scene the parent never reaches (the R445 F5 adapter-declaration property, surfaced not guessed; consistent across base + interleaved orders).",
+      "publishable_changes_bullets": [
+        "continuity::fork_tree + ForkTreeReport/ForkTreeBranch/ForkTreeEdge: pure projection of store.branches, the fork point resolved against the PARENT's composed order via CanonOrder::names (R488), fail-loud on an unregistered parent, unplaced_fork_points honesty surface (the R466 idiom)",
+        "reuses fork_chain / the stored Branch (R438/R440) — no parallel fork engine (the R441 binding rule); store schema UNCHANGED, never gated",
+        "ops::fork_tree_report (shared order/store resolution); CLI report-fork-tree (--order/--sidecar/--json + usage line); MCP report_fork_tree tool",
+        "3 unit tests: placed + standalone + unplaced shape, choice-label description pass-through, fail-loud on an unregistered parent"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build clean; mnemosyne-validate 245 + 3 new tests green; clippy --all-targets clean",
+        "Detroit dogfood (live): the full 7-world-line choice graph incl nested child-of-child forks with labels; ONE unplaced fork point (w-kara-shot-todd at det-sn-confront), consistent across base + interleaved orders",
+        "cross-checked the finding: det-sn-confront is declared only in the child's own edge set, absent from w-kara-gun's manuscript scenes — a real adapter declaration property (R445 F5), surfaced not guessed",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0)"
+      ],
+      "publishable_carry_forward_bullets": [
+        "sec 7.21 build step 1 = DONE; remaining per-half follow-ons: render-brief (a --frame filter on report-playthrough-manuscript, on the authoring-loop pull), Layer A assembler (play-it gated), Layer B prose craft (the R469 blind judge, a separate session)",
+        "the Detroit unplaced fork point is an adapter declaration choice (R445 F5), not a substrate bug; fixing it = declaring det-sn-confront in w-kara-gun's order, the adapter's call",
+        "installed cli+mcp binaries refreshed for the new verb + tool"
+      ]
     }
   },
   "inventory_entries": {},

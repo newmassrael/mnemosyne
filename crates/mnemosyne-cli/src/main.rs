@@ -302,6 +302,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
         "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
+        "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
         "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
@@ -435,6 +436,10 @@ fn print_help(prog: &str) {
     );
     println!(
         " {} report-playthrough-manuscript [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
@@ -2435,6 +2440,53 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
         }
         for f in &m.undecidable {
             println!("  [undecidable under declared order] {f}");
+        }
+    }
+    Ok(())
+}
+
+/// Round 497 — fork tree (`report-fork-tree`, design sec 7.21): the
+/// cross-world CHOICE GRAPH the CYOA renderer assumes — every registered
+/// world-line with its divergence coordinate (parent + fork point + the
+/// branch description = the CYOA choice label), the fork point resolved
+/// against the parent's composed order. Per-world manuscripts (R466) gave N
+/// linear readings; this is the tree that stitches them at the fork points.
+/// Pure read projection — a reading surface, deliberately never gated. Order
+/// and store resolve through the shared ops path.
+fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(args, false)?;
+    let report = mnemosyne_ops::fork_tree_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.order_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if a.json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== fork tree — {} registered world-line(s), {} unplaced fork point(s) ===",
+        report.branch_count,
+        report.unplaced_fork_points.len()
+    );
+    for b in &report.branches {
+        match &b.fork {
+            None => println!("  `{}` (standalone world)", b.branch_id),
+            Some(f) => println!(
+                "  `{}` forks from `{}` at {}{}",
+                b.branch_id,
+                f.parent,
+                f.at,
+                if f.at_placed {
+                    ""
+                } else {
+                    " [UNPLACED — not a node of the parent's order]"
+                }
+            ),
+        }
+        if !b.description.is_empty() {
+            println!("      choice: {}", b.description);
         }
     }
     Ok(())
