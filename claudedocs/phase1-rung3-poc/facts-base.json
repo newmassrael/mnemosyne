@@ -1,0 +1,12 @@
+{
+ "frames":[{"frame_id":"gt","description":"ground truth"}],
+ "branches":[],
+ "entities":[{"entity_id":"surel","kind":"person"},{"entity_id":"draught","kind":"object"},{"entity_id":"doctor","kind":"person"},{"entity_id":"doctor-key","kind":"object"}],
+ "predicates":[{"predicate_id":"at-location","object_kind":"scalar"},{"predicate_id":"holds","object_kind":"entity"},{"predicate_id":"administers","object_kind":"entity"}],
+ "facts":[
+  {"fact_id":"f-surel-loc","frame":"gt","claim":"Surel is a bed patient on the ground ward","canon_from":"sc-intro","evidence":["sc-intro"],"entities":["surel"],"typed":{"subject":"surel","predicate":"at-location","object":{"kind":"value","value":"ground-ward"}}},
+  {"fact_id":"f-draught-loc","frame":"gt","claim":"The poisoned draught sits in the locked consulting room","canon_from":"sc-intro","evidence":["sc-intro"],"entities":["draught"],"typed":{"subject":"draught","predicate":"at-location","object":{"kind":"value","value":"consulting-room"}}},
+  {"fact_id":"f-key","frame":"gt","claim":"Only the doctor holds the consulting-room key","canon_from":"sc-intro","evidence":["sc-intro"],"entities":["doctor","doctor-key"],"typed":{"subject":"doctor","predicate":"holds","object":{"kind":"entity","id":"doctor-key"}}},
+  {"fact_id":"f-murder","frame":"gt","claim":"Surel administers the poisoned draught","canon_from":"sc-murder","evidence":["sc-murder"],"entities":["surel","draught"],"typed":{"subject":"surel","predicate":"administers","object":{"kind":"entity","id":"draught"}}}
+ ]
+}

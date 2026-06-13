@@ -1,0 +1,10 @@
+{
+ "frames":[{"frame_id":"gt","description":"ground truth"}],
+ "branches":[], "entities":[], "predicates":[],
+ "facts":[
+  {"fact_id":"c-accident","frame":"gt","claim":"The carriage accident kills Edgar","canon_from":"s2-flashback","evidence":["s2-flashback"],"payoff_expectation":"expected"},
+  {"fact_id":"e-mourning","frame":"gt","claim":"The family mourns Edgar at the funeral","canon_from":"s1-funeral","evidence":["s1-funeral"],"pays_off":["c-accident"]},
+  {"fact_id":"c-gift","frame":"gt","claim":"Edgar leaves Helene a bequest","canon_from":"s3-gift","evidence":["s3-gift"],"payoff_expectation":"expected"},
+  {"fact_id":"e-gratitude","frame":"gt","claim":"Helene honors Edgar's memory","canon_from":"s4-reveal","evidence":["s4-reveal"],"pays_off":["c-gift"]}
+ ]
+}

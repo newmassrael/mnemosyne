@@ -1,0 +1,4 @@
+{"schema":"narrative-rules/v1","rules":[
+ {"id":"loc-excl","class":"exclusive","predicate":"at-location","per":"subject"},
+ {"id":"key-custody","class":"exclusive","predicate":"holds","per":"object"}
+]}

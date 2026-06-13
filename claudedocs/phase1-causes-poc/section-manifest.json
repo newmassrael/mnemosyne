@@ -1,0 +1,6 @@
+[
+ {"section_id":"s1-funeral","parent_doc":"caus","title":"The funeral (EFFECT, told first)","coverage_expectation":"informational"},
+ {"section_id":"s2-flashback","parent_doc":"caus","title":"Flashback: the accident (CAUSE, told later)","coverage_expectation":"informational"},
+ {"section_id":"s3-gift","parent_doc":"caus","title":"The bequest (cause)","coverage_expectation":"informational"},
+ {"section_id":"s4-reveal","parent_doc":"caus","title":"Helene honors him (effect)","coverage_expectation":"informational"}
+]
