@@ -376,6 +376,24 @@ pub struct NarrativeRule {
     pub spec: NarrativeRuleSpec,
 }
 
+impl NarrativeRule {
+    /// Every predicate id this rule references: the primary `predicate` (the
+    /// left operand for an interval rule) plus an interval rule's `right`
+    /// operand and predicate-bound (Round 489). The existence check (one site)
+    /// fail-louds on any that is not registered, so no ref escapes the typo
+    /// guard.
+    fn referenced_predicates(&self) -> Vec<&str> {
+        let mut refs = vec![self.predicate.as_str()];
+        if let NarrativeRuleSpec::Interval { right, bound, .. } = &self.spec {
+            refs.push(right.as_str());
+            if let IntervalBound::Predicate(p) = bound {
+                refs.push(p.as_str());
+            }
+        }
+        refs
+    }
+}
+
 /// The TWO rule classes (design sec 7.12 — probe-verified sufficient for
 /// the named trio: location exclusivity, conservation/custody, state
 /// machines).
@@ -396,6 +414,70 @@ pub enum NarrativeRuleSpec {
     /// deliberately sees ONLY chained pairs; unchained same-subject pairs
     /// surface as `unchained_state_pairs`, never gated.
     Transition { allowed: Vec<[String; 2]> },
+    /// Scalar/arithmetic relation over numeric typed legs (Round 489, design
+    /// sec 7.20 — depth-ladder rung 1). The rule's `predicate` is the LEFT
+    /// operand; `right` is the second operand; both are scalar predicates
+    /// resolved per (frame × world × subject) — so the relation is SAME-SUBJECT
+    /// (the measured pull: `codicil ratified-on-day − codicil signed-on-day ≥
+    /// codicil min-ratify-gap-days`). The constraint is
+    /// `value(left) − value(right)  op  bound`, a pure numeric comparison the
+    /// equality/exclusivity gates structurally cannot express. A non-numeric or
+    /// ambiguous operand is SURFACED (`interval_unverifiable`), never silently
+    /// passed (the R450/R468/R485 no-silent-skip). Cross-subject relations are
+    /// a wider shape, deferred (sec 7.20 honest boundary).
+    Interval {
+        right: String,
+        op: IntervalOp,
+        bound: IntervalBound,
+    },
+}
+
+/// The comparison operator of an [`NarrativeRuleSpec::Interval`] rule
+/// (Round 489): the closed set of scalar comparisons. `value(left) −
+/// value(right)  ⋈op⋈  bound`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntervalOp {
+    Ge,
+    Le,
+    Eq,
+    Gt,
+    Lt,
+}
+
+impl IntervalOp {
+    /// Apply the operator to a computed `diff = value(left) − value(right)`
+    /// and a `bound`. `true` = the constraint HOLDS (no violation).
+    fn holds(self, diff: f64, bound: f64) -> bool {
+        match self {
+            IntervalOp::Ge => diff >= bound,
+            IntervalOp::Le => diff <= bound,
+            IntervalOp::Eq => diff == bound,
+            IntervalOp::Gt => diff > bound,
+            IntervalOp::Lt => diff < bound,
+        }
+    }
+
+    /// The reporting symbol (findings carry it so a reader sees the relation).
+    fn symbol(self) -> &'static str {
+        match self {
+            IntervalOp::Ge => ">=",
+            IntervalOp::Le => "<=",
+            IntervalOp::Eq => "==",
+            IntervalOp::Gt => ">",
+            IntervalOp::Lt => "<",
+        }
+    }
+}
+
+/// The right-hand bound of an [`NarrativeRuleSpec::Interval`] rule (Round
+/// 489): a literal constant, or a third scalar predicate resolved on the
+/// SAME subject as the operands (the inherited rule fact, e.g.
+/// `min-ratify-gap-days`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum IntervalBound {
+    Const(f64),
+    Predicate(String),
 }
 
 /// Which typed leg an exclusive rule keys on.
@@ -475,6 +557,27 @@ struct NarrativeRuleWire {
     per: Option<ExclusiveKey>,
     #[serde(default)]
     allowed: Option<Vec<[String; 2]>>,
+    /// Interval legs (Round 489) — present only for `class: interval`; a
+    /// stray one on exclusive/transition rejects (the leg/class coherence
+    /// matrix, the R443 lesson).
+    #[serde(default)]
+    right: Option<String>,
+    #[serde(default)]
+    op: Option<IntervalOp>,
+    #[serde(default)]
+    bound: Option<IntervalBoundWire>,
+}
+
+/// Wire form of an interval bound — flat, `deny_unknown_fields`, exactly one
+/// of `predicate` / `const` set (checked in [`narrative_rule_from_wire`], the
+/// explicit-coherence idiom over serde `untagged`).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntervalBoundWire {
+    #[serde(default)]
+    predicate: Option<String>,
+    #[serde(default, rename = "const")]
+    constant: Option<f64>,
 }
 
 /// The class tag, split from its leg so leg/class coherence is checked
@@ -484,6 +587,7 @@ struct NarrativeRuleWire {
 enum RuleClass {
     Exclusive,
     Transition,
+    Interval,
 }
 
 /// Load a declared narrative-rules FILE, with the optional sha256 pin
@@ -557,6 +661,7 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
                      (that field belongs to a transition rule)"
                 ));
             }
+            forbid_interval_legs(&id, "exclusive", &w)?;
             let per = w.per.ok_or_else(|| {
                 format!("narrative-rules: exclusive rule `{id}` is missing its `per` leg")
             })?;
@@ -569,6 +674,7 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
                      (that leg belongs to an exclusive rule)"
                 ));
             }
+            forbid_interval_legs(&id, "transition", &w)?;
             let raw = w.allowed.ok_or_else(|| {
                 format!("narrative-rules: transition rule `{id}` is missing its `allowed` legs")
             })?;
@@ -586,12 +692,85 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
             }
             NarrativeRuleSpec::Transition { allowed }
         }
+        RuleClass::Interval => {
+            if w.per.is_some() {
+                return Err(format!(
+                    "narrative-rules: interval rule `{id}` carries a `per` field \
+                     (that leg belongs to an exclusive rule)"
+                ));
+            }
+            if w.allowed.is_some() {
+                return Err(format!(
+                    "narrative-rules: interval rule `{id}` carries an `allowed` leg \
+                     (that field belongs to a transition rule)"
+                ));
+            }
+            let right = w
+                .right
+                .ok_or_else(|| {
+                    format!("narrative-rules: interval rule `{id}` is missing its `right` operand")
+                })?
+                .trim()
+                .to_string();
+            if right.is_empty() {
+                return Err(format!(
+                    "narrative-rules: interval rule `{id}` has a blank `right` operand"
+                ));
+            }
+            let op = w.op.ok_or_else(|| {
+                format!("narrative-rules: interval rule `{id}` is missing its `op`")
+            })?;
+            let bound_wire = w.bound.ok_or_else(|| {
+                format!("narrative-rules: interval rule `{id}` is missing its `bound`")
+            })?;
+            let bound = interval_bound_from_wire(&id, bound_wire)?;
+            NarrativeRuleSpec::Interval { right, op, bound }
+        }
     };
     Ok(NarrativeRule {
         id,
         predicate,
         spec,
     })
+}
+
+/// Reject a stray interval leg on a non-interval rule (Round 489) — the
+/// leg/class coherence matrix extended to `right` / `op` / `bound`, symmetric
+/// to how `per` and `allowed` already reject on the wrong class (R443 lesson).
+fn forbid_interval_legs(id: &str, class: &str, w: &NarrativeRuleWire) -> Result<(), String> {
+    if w.right.is_some() || w.op.is_some() || w.bound.is_some() {
+        return Err(format!(
+            "narrative-rules: {class} rule `{id}` carries an interval leg \
+             (`right` / `op` / `bound` belong to an interval rule)"
+        ));
+    }
+    Ok(())
+}
+
+/// Resolve an interval bound wire to the internal [`IntervalBound`] (Round
+/// 489): exactly one of `predicate` / `const`, checked explicitly (the
+/// explicit-coherence idiom, not serde `untagged`).
+fn interval_bound_from_wire(id: &str, w: IntervalBoundWire) -> Result<IntervalBound, String> {
+    match (w.predicate, w.constant) {
+        (Some(_), Some(_)) => Err(format!(
+            "narrative-rules: interval rule `{id}` bound sets both `predicate` and \
+             `const` — exactly one"
+        )),
+        (None, None) => Err(format!(
+            "narrative-rules: interval rule `{id}` bound sets neither `predicate` nor \
+             `const` — exactly one"
+        )),
+        (Some(p), None) => {
+            let p = p.trim().to_string();
+            if p.is_empty() {
+                return Err(format!(
+                    "narrative-rules: interval rule `{id}` bound has a blank `predicate`"
+                ));
+            }
+            Ok(IntervalBound::Predicate(p))
+        }
+        (None, Some(c)) => Ok(IntervalBound::Const(c)),
+    }
 }
 
 /// One continuity violation.
@@ -698,6 +877,29 @@ pub enum ContinuityViolation {
         from: String,
         to: String,
     },
+    /// An interval rule violated (Round 489, design sec 7.20): for one subject
+    /// in one (frame × world), the numeric relation
+    /// `value(left) − value(right)  op  bound` is FALSE. `left` is the rule's
+    /// `predicate`; `at` is the left operand's canon coordinate (the point the
+    /// relation is evaluated). A pure arithmetic derivation — re-evaluated
+    /// fresh each scan, never pinned.
+    RuleIntervalViolation {
+        rule: String,
+        predicate: String,
+        right: String,
+        op: String,
+        frame: String,
+        branch: String,
+        subject: String,
+        left_fact: String,
+        right_fact: String,
+        /// Authored operand values (the scalar strings), kept faithful; the
+        /// numeric comparison happened in the evaluator.
+        left_value: String,
+        right_value: String,
+        bound: String,
+        at: String,
+    },
 }
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
@@ -731,6 +933,15 @@ pub struct ContinuityReport {
     /// raw branch equality would silently miss fork-inherited pairs),
     /// deduplicated across worlds.
     pub unchained_state_pairs: usize,
+    /// Interval-rule operand resolutions (Round 489) that could not be
+    /// evaluated: a rule applies to a subject (it has both operands) but an
+    /// operand value is non-numeric, or an operand / a predicate-bound
+    /// resolves to MORE than one distinct holding value at the evaluation
+    /// point (ambiguous). Surfaced as a count, NEVER gated — the data is
+    /// absent/unparseable, not contradictory (the R485 `unverifiable` class:
+    /// the author types it, then the gate decides). Deduplicated per
+    /// (rule, frame, world, subject).
+    pub interval_unverifiable: usize,
 }
 
 /// Fork lineage of one query world (Round 438): for each ancestor branch,
@@ -1074,6 +1285,169 @@ fn succession_ancestors<'a>(
 /// holds-semantics verbatim, never its own interval algebra (the R441 probe
 /// falsified a paper interval model — the half-open successor cut is
 /// load-bearing).
+/// Parse a scalar typed-leg value as a number (Round 489). Trimmed so a
+/// surrounding space is not mistaken for non-numeric; an unparseable value is
+/// `None` and surfaces as `interval_unverifiable`, never silently skipped.
+fn parse_scalar(value: &str) -> Option<f64> {
+    value.trim().parse::<f64>().ok()
+}
+
+/// The resolution of an interval operand for one (frame × world × subject) at
+/// the evaluation point (Round 489).
+enum Operand<'a> {
+    /// Exactly one distinct holding value (one or more facts agreeing on it):
+    /// the parsed number, the authored value string, and the fact id.
+    Value {
+        num: f64,
+        value: &'a str,
+        fact: &'a str,
+    },
+    /// No holding fact for this (subject, predicate) here — the rule does not
+    /// apply on this leg.
+    Absent,
+    /// A non-numeric value, or two or more DISTINCT holding values (ambiguous)
+    /// — surfaced, never silently passed.
+    Unverifiable,
+}
+
+/// Resolve `predicate` for `subject` in `frame`, among facts HOLDING at `at`
+/// in this world (Round 489). The single point-quantified read is
+/// [`WorldCtx::holds_at`] — the interval evaluator owns no time semantics of
+/// its own (the R441 reader-reuse rule).
+fn resolve_operand<'a>(
+    facts: &'a BTreeMap<String, NarrativeFact>,
+    ctx: &WorldCtx<'_>,
+    frame: &str,
+    subject: &str,
+    predicate: &str,
+    at: &str,
+) -> Operand<'a> {
+    let mut resolved: Option<(f64, &'a str, &'a str)> = None;
+    for (gid, g) in facts {
+        let Some(gt) = g.typed.as_ref() else { continue };
+        if g.frame != frame || gt.subject != subject || gt.predicate != predicate {
+            continue;
+        }
+        if !ctx.holds_at(gid, g, at) {
+            continue;
+        }
+        let raw = typed_object_key(&gt.object);
+        let Some(n) = parse_scalar(raw) else {
+            return Operand::Unverifiable; // non-numeric operand
+        };
+        match resolved {
+            None => resolved = Some((n, raw, gid.as_str())),
+            Some((existing, _, _)) if existing == n => {} // same value restated
+            Some(_) => return Operand::Unverifiable,      // distinct values: ambiguous
+        }
+    }
+    match resolved {
+        Some((num, value, fact)) => Operand::Value { num, value, fact },
+        None => Operand::Absent,
+    }
+}
+
+/// Evaluate one interval rule across all query worlds (Round 489, design sec
+/// 7.20 — depth-ladder rung 1). Returns its violations and the count of
+/// `(frame × world × subject)` resolutions that were unverifiable (an operand
+/// absent on the `right`/bound leg, non-numeric, or ambiguous). THE single
+/// interval evaluator: `scan_continuity` calls it now, and the
+/// `report-timeline-gaps` read surface (the follow-on build step) will call
+/// the same function so the gate and the report can never drift (the R305/R390
+/// single-reader discipline). Per (frame × world × subject), keyed on the LEFT
+/// operand's fact, evaluated at THAT fact's canon coordinate — so the earlier
+/// `right`/bound facts are read where the left event lands.
+#[allow(clippy::too_many_arguments)]
+fn scan_interval_rule(
+    rule_id: &str,
+    left_pred: &str,
+    right_pred: &str,
+    op: IntervalOp,
+    bound: &IntervalBound,
+    facts: &BTreeMap<String, NarrativeFact>,
+    worlds: &[&str],
+    lineages: &BTreeMap<String, Lineage>,
+    order: &CanonOrder,
+    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+) -> (Vec<ContinuityViolation>, usize) {
+    let mut violations = Vec::new();
+    // Deduplicated per (frame, world, subject): several left facts for one
+    // subject in one world should not multiply-count the same gap.
+    let mut unverifiable: BTreeSet<(String, String, String)> = BTreeSet::new();
+    for world in worlds {
+        let ctx = WorldCtx {
+            world,
+            lineage: &lineages[*world],
+            order,
+            successors,
+        };
+        for (lid, lf) in facts {
+            let Some(lt) = lf.typed.as_ref() else {
+                continue;
+            };
+            if lt.predicate != left_pred {
+                continue;
+            }
+            if !ctx.holds_at(lid, lf, &lf.canon_from) {
+                continue;
+            }
+            let subject = lt.subject.as_str();
+            let frame = lf.frame.as_str();
+            let at = lf.canon_from.as_str();
+            let mark_unverifiable = |set: &mut BTreeSet<(String, String, String)>| {
+                set.insert((
+                    frame.to_string(),
+                    ctx.world.to_string(),
+                    subject.to_string(),
+                ));
+            };
+            let left_raw = typed_object_key(&lt.object);
+            let Some(left_num) = parse_scalar(left_raw) else {
+                mark_unverifiable(&mut unverifiable);
+                continue;
+            };
+            let (right_num, right_value, right_fact) =
+                match resolve_operand(facts, &ctx, frame, subject, right_pred, at) {
+                    Operand::Value { num, value, fact } => (num, value, fact),
+                    Operand::Absent | Operand::Unverifiable => {
+                        mark_unverifiable(&mut unverifiable);
+                        continue;
+                    }
+                };
+            let (bound_num, bound_str) = match bound {
+                IntervalBound::Const(c) => (*c, c.to_string()),
+                IntervalBound::Predicate(bp) => {
+                    match resolve_operand(facts, &ctx, frame, subject, bp, at) {
+                        Operand::Value { num, value, .. } => (num, value.to_string()),
+                        Operand::Absent | Operand::Unverifiable => {
+                            mark_unverifiable(&mut unverifiable);
+                            continue;
+                        }
+                    }
+                }
+            };
+            if !op.holds(left_num - right_num, bound_num) {
+                violations.push(ContinuityViolation::RuleIntervalViolation {
+                    rule: rule_id.to_string(),
+                    predicate: left_pred.to_string(),
+                    right: right_pred.to_string(),
+                    op: op.symbol().to_string(),
+                    frame: frame.to_string(),
+                    branch: ctx.world.to_string(),
+                    subject: subject.to_string(),
+                    left_fact: lid.clone(),
+                    right_fact: right_fact.to_string(),
+                    left_value: left_raw.to_string(),
+                    right_value: right_value.to_string(),
+                    bound: bound_str,
+                    at: at.to_string(),
+                });
+            }
+        }
+    }
+    (violations, unverifiable.len())
+}
+
 pub fn scan_continuity(
     store: &AtomicStore,
     order: &CanonOrder,
@@ -1086,13 +1460,19 @@ pub fn scan_continuity(
     // loud instead of passing a trimmed check while the evaluation below
     // compares exact and silently matches nothing.
     for rule in rules {
-        if !store.predicates.contains_key(&rule.predicate) {
-            return Err(format!(
-                "narrative-rules: rule `{}` names predicate `{}`, which is not in the \
-                 predicate registry — a typo'd predicate would silently escape its rule \
-                 (the R436 lesson); register it (add_predicate) or fix the declaration",
-                rule.id, rule.predicate
-            ));
+        // Every predicate a rule references is a load-bearing ref — the left
+        // operand (`rule.predicate`) AND, for an interval rule, its `right`
+        // operand and predicate-bound (Round 489). Checked in ONE place so no
+        // ref escapes the typo guard.
+        for p in rule.referenced_predicates() {
+            if !store.predicates.contains_key(p) {
+                return Err(format!(
+                    "narrative-rules: rule `{}` names predicate `{p}`, which is not in the \
+                     predicate registry — a typo'd predicate would silently escape its rule \
+                     (the R436 lesson); register it (add_predicate) or fix the declaration",
+                    rule.id
+                ));
+            }
         }
     }
     let facts = &store.narrative_facts;
@@ -1439,6 +1819,22 @@ pub fn scan_continuity(
                     },
                 );
                 report.unchained_state_pairs += seen.len();
+            }
+            NarrativeRuleSpec::Interval { right, op, bound } => {
+                let (violations, unverifiable) = scan_interval_rule(
+                    &rule.id,
+                    &rule.predicate,
+                    right,
+                    *op,
+                    bound,
+                    facts,
+                    &worlds,
+                    &lineages,
+                    order,
+                    &successors,
+                );
+                report.violations.extend(violations);
+                report.interval_unverifiable += unverifiable;
             }
         }
     }
@@ -4930,5 +5326,301 @@ mod tests {
         assert_eq!(w1.undecidable, ["fk"]);
         assert!(w1.scenes.iter().all(|s| s.begins.is_empty()));
         assert!(w1.scenes.iter().all(|s| s.holding_count == 0));
+    }
+
+    // ====================================================================
+    // Round 489 — interval rule (depth-ladder rung 1, design sec 7.20).
+    // ====================================================================
+
+    /// A typed scalar fact on a named world-line.
+    fn scalar_branch(
+        id: &str,
+        branch: &str,
+        from: &str,
+        subject: &str,
+        predicate: &str,
+        value: &str,
+    ) -> FactImport {
+        FactImport {
+            branch: Some(branch.to_string()),
+            ..typed_fact(id, "gt", from, subject, predicate, at(value))
+        }
+    }
+
+    fn ratify_term() -> NarrativeRule {
+        NarrativeRule {
+            id: "ratify-term".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Predicate("min-ratify-gap-days".to_string()),
+            },
+        }
+    }
+
+    /// The St. Martin Codicil in miniature (the PoC pull, deterministic): the
+    /// SAME inherited rule (`min-ratify-gap-days = 42`) is clean in the lawful
+    /// world-line (84 − 42 = 42 ≥ 42) and a violation in the hasty one
+    /// (31 − 10 = 21 ≥ 42 is false). The fault is WORLD-SPECIFIC — a
+    /// cross-predicate magnitude relation no exclusivity gate can express.
+    #[test]
+    fn interval_gap_violation_is_world_specific() {
+        let store = store_with_forks(
+            vec![
+                // Inherited rule on the trunk (pre-fork ch-1).
+                typed_fact(
+                    "f-rule",
+                    "gt",
+                    "ch-1",
+                    "codicil",
+                    "min-ratify-gap-days",
+                    at("42"),
+                ),
+                scalar_branch(
+                    "f-sign-l",
+                    "lawful",
+                    "ch-3",
+                    "codicil",
+                    "signed-on-day",
+                    "42",
+                ),
+                scalar_branch(
+                    "f-rat-l",
+                    "lawful",
+                    "ch-4",
+                    "codicil",
+                    "ratified-on-day",
+                    "84",
+                ),
+                scalar_branch(
+                    "f-sign-h",
+                    "hasty",
+                    "ch-3",
+                    "codicil",
+                    "signed-on-day",
+                    "10",
+                ),
+                scalar_branch(
+                    "f-rat-h",
+                    "hasty",
+                    "ch-4",
+                    "codicil",
+                    "ratified-on-day",
+                    "31",
+                ),
+            ],
+            &[
+                ("lawful", MAIN_BRANCH, "ch-2"),
+                ("hasty", MAIN_BRANCH, "ch-2"),
+            ],
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order, &[ratify_term()]).unwrap();
+        let intervals: Vec<_> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::RuleIntervalViolation {
+                    branch, subject, ..
+                } => Some((branch.as_str(), subject.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            intervals,
+            vec![("hasty", "codicil")],
+            "exactly the hasty world-line violates, lawful is clean: {:?}",
+            report.violations
+        );
+        assert_eq!(report.interval_unverifiable, 0);
+    }
+
+    /// A `const` bound (no rule fact): `ratified − signed >= 6` fails on a
+    /// 5-day gap, holds on a 6-day one.
+    #[test]
+    fn interval_const_bound_gates_short_gap() {
+        let rule = NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let short = store_with(vec![
+            typed_fact("s", "gt", "ch-1", "codicil", "signed-on-day", at("10")),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", at("15")),
+        ]);
+        let report = scan_continuity(&short, &order, std::slice::from_ref(&rule)).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "5-day gap must violate >= 6: {:?}",
+            report.violations
+        );
+        let ok = store_with(vec![
+            typed_fact("s", "gt", "ch-1", "codicil", "signed-on-day", at("10")),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", at("16")),
+        ]);
+        let report = scan_continuity(&ok, &order, &[rule]).unwrap();
+        assert!(
+            report.violations.is_empty(),
+            "6-day gap is clean: {:?}",
+            report.violations
+        );
+    }
+
+    /// A non-numeric operand is SURFACED as `interval_unverifiable`, never a
+    /// gating violation (the R485 unverifiable class — the author types it,
+    /// then the gate decides).
+    #[test]
+    fn interval_non_numeric_operand_surfaces_not_gates() {
+        let rule = NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let store = store_with(vec![
+            typed_fact("s", "gt", "ch-1", "codicil", "signed-on-day", at("early")),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", at("20")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order, &[rule]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "an unparseable operand must not gate: {:?}",
+            report.violations
+        );
+        assert_eq!(report.interval_unverifiable, 1);
+    }
+
+    /// Every referenced predicate is a load-bearing ref: an interval rule whose
+    /// `right` operand is unregistered fails loud (the R436 typo guard, now
+    /// covering the interval legs).
+    #[test]
+    fn interval_unknown_right_predicate_rejects() {
+        let store = store_with(vec![typed_fact(
+            "r",
+            "gt",
+            "ch-1",
+            "codicil",
+            "ratified-on-day",
+            at("20"),
+        )]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = NarrativeRule {
+            id: "r".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(), // never registered (no fact uses it)
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let err = scan_continuity(&store, &order, &[rule]).unwrap_err();
+        assert!(
+            err.contains("predicate registry") && err.contains("signed-on-day"),
+            "{err}"
+        );
+    }
+
+    /// The loader: a valid interval rule parses; its legs and coherence are
+    /// checked (symmetric to the exclusive/transition matrix, R443).
+    #[test]
+    fn interval_loader_validates_shape_and_coherence() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        // Valid: predicate-bound.
+        let ok = write(
+            "ok.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"ratified-on-day",
+                "right":"signed-on-day","op":"ge","bound":{"predicate":"min-gap"}}]}"#,
+        );
+        let file = load_narrative_rules(&ok, None).unwrap();
+        assert!(matches!(
+            file.rules[0].spec,
+            NarrativeRuleSpec::Interval {
+                op: IntervalOp::Ge,
+                ..
+            }
+        ));
+        // Valid: const-bound.
+        let konst = write(
+            "const.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","right":"b",
+                "op":"lt","bound":{"const":6}}]}"#,
+        );
+        assert!(load_narrative_rules(&konst, None).is_ok());
+        // Missing the `right` operand.
+        let no_right = write(
+            "no-right.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","op":"ge",
+                "bound":{"const":6}}]}"#,
+        );
+        assert!(load_narrative_rules(&no_right, None)
+            .unwrap_err()
+            .contains("right"));
+        // Interval carrying a `per` leg (belongs to exclusive).
+        let stray_per = write(
+            "stray-per.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","right":"b",
+                "op":"ge","bound":{"const":6},"per":"subject"}]}"#,
+        );
+        let err = load_narrative_rules(&stray_per, None).unwrap_err();
+        assert!(err.contains("interval") && err.contains("per"), "{err}");
+        // Exclusive carrying an interval leg (symmetric coherence).
+        let stray_interval = write(
+            "stray-interval.json",
+            r#"{"rules":[{"id":"t","class":"exclusive","predicate":"a","per":"subject",
+                "right":"b"}]}"#,
+        );
+        let err = load_narrative_rules(&stray_interval, None).unwrap_err();
+        assert!(
+            err.contains("exclusive") && err.contains("interval"),
+            "{err}"
+        );
+        // Bound with BOTH predicate and const.
+        let both = write(
+            "both.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","right":"b",
+                "op":"ge","bound":{"predicate":"c","const":6}}]}"#,
+        );
+        assert!(load_narrative_rules(&both, None)
+            .unwrap_err()
+            .contains("exactly one"));
+        // Bound with NEITHER.
+        let neither = write(
+            "neither.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","right":"b",
+                "op":"ge","bound":{}}]}"#,
+        );
+        assert!(load_narrative_rules(&neither, None)
+            .unwrap_err()
+            .contains("exactly one"));
+        // An unknown op value is a parse error (the closed operator set).
+        let bad_op = write(
+            "bad-op.json",
+            r#"{"rules":[{"id":"t","class":"interval","predicate":"a","right":"b",
+                "op":"gte","bound":{"const":6}}]}"#,
+        );
+        assert!(load_narrative_rules(&bad_op, None)
+            .unwrap_err()
+            .contains("parse"));
     }
 }

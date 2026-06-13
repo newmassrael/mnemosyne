@@ -1906,8 +1906,11 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         );
         if report.rules > 0 {
             println!(
-                "  rules={} rule_unordered={} unchained_state_pairs={}",
-                report.rules, report.rule_unordered_pairs, report.unchained_state_pairs
+                "  rules={} rule_unordered={} unchained_state_pairs={} interval_unverifiable={}",
+                report.rules,
+                report.rule_unordered_pairs,
+                report.unchained_state_pairs,
+                report.interval_unverifiable
             );
         }
         println!("  violations: {}", report.violation_count);
