@@ -1,0 +1,118 @@
+{
+  "manifest": "factsfirst-craft-experiment/v1",
+  "designed": "2026-06-13 (R499 design round; sha256 pinned in the R499 ledger entry BEFORE any execution session). Successor to sec 7.18 (A/B, R469) and sec 7.19 (scale-floor, R473). Those two tested the FLOOR (deterministic defect counts) and REFUTED it twice; both ran the substrate arm PROSE-FIRST (store as working memory, prose written first). The open question they leave — stated verbatim by the facts-first PoC (claudedocs/phase1-factsfirst-poc/findings.md) and sec 7.21 — is the CEILING: does the facts-first workflow (author the gate-checked fact-base first, render prose as a per-frame PROJECTION of it) produce GOOD narrative, or wooden list-prose? The scale-floor result (plain swept preference 3-0 over the prose-first loop; store-consistency != causal coherence) is the live tension this arm probes with a genuinely different workflow: render-as-projection, which neither prior experiment used.",
+
+  "question": {
+    "primary": "Blind CRAFT preference: given identical premise / structure quota / budget / model tier, do fresh judges prefer the facts-first-rendered prose, the plain prose-first prose, or neither (near-tie)? This is the CEILING the prose-first loop LOST 3-0 at scale-floor; facts-first is a different workflow, so the result is not predetermined. NO directional pin (V9 / R464 — LLM-judged legs get a pinned PROCEDURE, never a pinned outcome).",
+    "pinned": "Projection fidelity (deterministic, the ONLY pinned outcome): the facts-first arm's prose, blind RE-EXTRACTED under the R469 recipe, shows ZERO gated-class defects (D1 gated rule-violations + D2 unchained_state_pairs + D4 fork-boundary faults = 0). A projection of a gate-checked base cannot contradict that base; a gated-class finding in the FF re-extraction is a RENDER-STEP LEAK and falsifies the sec 7.21 claim that facts-first dissolves the extraction gap END TO END (the scale-floor counter-evidence was that the prose-first loop leaked causal defects DESPITE the store — this pin tests whether render-as-projection actually fixes that drift).",
+    "secondary": "Untyped-residue comparison (the R476 commonsense/relevance ceiling): judge-cited continuity/causality errors matched by NO D-metric, counted per arm (FF vs plain). facts-first FORCES declaration of the load-bearing facts, so the recorded hypothesis is FEWER untyped holes in FF — but it is judge-derived, so it is RECORDED, never pinned. Economics: token cost per delivered scene of (fact-base authoring + render) vs prose-first — measured, open; also records whether the hand-render friction is large enough to PULL sec 7.21 build step 2 (the render-brief --frame filter), which this experiment is the first real authoring run to stress."
+  },
+
+  "design_lineage": "blind protocol = R453 trap-corpus pattern (sha256 pre-commit, design/execution session separation); grading interface = R466 report-playthrough-manuscript (per-world linear reading copies) assembled by the R480 experiment-harness (assemble / shuffle / verify-seal, fail-loud Rust); deterministic defect recipe = sec 7.18 (R469) extraction + D1-D4 + <=8-rule derivation, INHERITED VERBATIM; outcome-pinning discipline = R464 V9 (pin the deterministic half only); the question itself = the craft leg DEFERRED explicitly by the facts-first PoC (findings.md 'Prose CRAFT untested') and sec 7.21 Layer B ('its prose CRAFT is the deferred R469 blind-judge question').",
+
+  "premise": {
+    "title": "The Meridian Vane",
+    "text": "A remote hilltop observatory, the Vane Observatory, the winter of 1898 — snow-cut from the valley for the season, only its small resident staff left on the summit. At dawn the director, Dr. Aurel Crane, is found dead at the foot of the iron stair beneath the great refractor, the dome shutter frozen open to the freezing sky and the meridian clock stopped at 3:14. The observatory's patron sends Lewin Hale, a methodical insurance adjuster, up the last passable road to certify whether the Society's instrument policy pays for an accident — or for something else. But the night-log for the observation due that night is written in a hand that is not Crane's; the assistant astronomer, Junia Frost, swears she was at the spectroscope until dawn though the plate-camera holds no exposures; and the meridian clock, stopped at 3:14, had been wound only hours before it stopped. READER-KNOWN SECRETS (the story must SHOW these to the reader early while keeping them from Hale): (S1) the bursar, Onslow Pike, forged the patron's telegram that 'recalled' Crane to dismissal, to cover a fund he had quietly drained from the instrument account — Crane never knew he was to be dismissed, but Pike believed he did, and acted on that belief; (S2) Junia Frost was on the dome gallery that night, not at the spectroscope — she saw who climbed the iron stair, and she lies to shield them. Who climbed the stair, what the forged telegram set in motion, and what Hale certifies in the end are the author's to decide — differently per world-line if the forks demand it.",
+    "required_setups": [
+      "the night-log in the wrong hand (custody of the log is a trackable object state)",
+      "the plate-camera with no exposures (it contradicts Junia's spectroscope alibi)",
+      "the meridian clock stopped at 3:14, wound only hours before it stopped",
+      "the drained instrument account (the bursar's motive, a ledger discrepancy)",
+      "a spare dome key reported lost a month before, that turns up",
+      "Crane's unsent letter resigning his own post (he meant to leave on his own terms)"
+    ],
+    "required_structure": {
+      "scenes_total_min": 24,
+      "scene_prose_words": "150-400 per scene",
+      "fork_points": 2,
+      "fork_1": "around scene 8: Hale CONFRONTS Pike with the account discrepancy, or QUIETLY audits the ledgers and watches",
+      "fork_2": "around scene 16 on one declared limb: Junia REVEALS what she saw from the gallery, or BURNS the night-log to bury it",
+      "world_lines_min": 3,
+      "endings_min": 3,
+      "epistemic_frames_min": 2,
+      "frames_note": "ground truth vs at least one named character's belief (Hale's working theory is the natural second frame); the reader-known secrets S1/S2 must create at least one dramatic-irony window (reader knows, Hale does not). Pike acting on a FALSE belief (that Crane knew of his dismissal) is a second natural belief frame.",
+      "deliverable_format": "numbered scenes with stable ids (sc-01...), fork points marked 'CHOICE:' with labeled options and which scene each option continues to, endings marked; plain text/markdown"
+    },
+    "premise_design_note": "DELIBERATELY matched in STRUCTURE to the R469 'Saltglass' premise (a death at the foot of a tower instrument; a missing/forged log; an insider who lies to shield someone; an outside adjuster kept from two reader-known secrets; two forks of the same confront/quiet x reveal/destroy shape) so premise DIFFICULTY is held roughly constant across experiments and any craft difference is attributable to the WORKFLOW, not an easier or harder premise. The setting / cast / mechanism (an astronomy observatory, a meridian clock, a drained instrument account, a forged telegram) are freshly authored and original — plot facts are not copyrightable and no text is borrowed. Saltglass / Belvoir / Detroit / Dracula are EXCLUDED as premises to avoid familiarity contamination."
+  },
+
+  "arms": {
+    "shared_constraints": "same model tier, 3 authoring sessions each, fresh context per session, same scene budget per session (s1: scenes 1-8 incl the fork-1 declaration; s2: scenes 9-16 incl both fork-1 limbs and the fork-2 declaration; s3: scenes 17 to >=24, all remaining limbs and endings). Each session's full token usage is recorded. No internet. The author agents never see this manifest, the rubric, the predictions, or each other's output, and are never told a comparison is being run.",
+    "arm_plain": {
+      "label": "plain (prose-first control — identical to the R469 'plain' arm)",
+      "prompt": "You are writing a branching mystery novella. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. Write it across 3 sessions; in continuation sessions you receive the premise, this brief, and everything you have written so far. Keep the story consistent: character knowledge, object locations, who is alive, what has been revealed on each branch. Every required setup must pay off in every world-line where it appears (a payoff may differ per world-line). Deliver scenes in the required format."
+    },
+    "arm_factsfirst": {
+      "label": "factsfirst (treatment — author the gate-checked fact-base first, render prose as a per-frame projection; sec 7.21 Layer B by hand)",
+      "prompt": "You are writing a branching mystery novella using the Mnemosyne narrative substrate, working FACTS-FIRST. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. METHOD, in this order: (1) BEFORE writing any prose, author the fact-base. Register the epistemic frames (a ground-truth frame plus at least one named-character belief frame), the entities, and the predicates. Author the LOAD-BEARING TRUTH UP FRONT — what actually happened on the night of the death, who climbed the stair, the true custody of the forged telegram and the drained account — as facts in the ground-truth frame with canon coordinates (scene ids) and evidence; author the misdirection (what each character BELIEVES, e.g. Pike's false belief that Crane knew of his dismissal; the household/Hale theory) in the belief frame(s). Declare succession edges for every state change and belief revision, fork points with forks_from/forks_at, branches per world-line, and a narrative-rules file (exclusive/transition classes only) for the story's own state predicates. (2) GATE-CHECK and REPAIR before rendering: run validate-continuity, report-payoff-coverage, and report-irony-intervals; a same-frame contradiction is a real error to fix, a cross-frame divergence is intended irony (data), and report-irony-intervals shows you your mystery windows. Mark required setups payoff_expectation=expected and credit pays_off when a scene pays one off. (3) RENDER the prose scene by scene as a PROJECTION of the gate-checked base: for each scene choose the focal frame, STATE that frame's holding facts in prose, WITHHOLD facts that hold only in another frame (= mystery), and let the cross-frame divergence carry the dramatic irony. You may author and gate-check incrementally across the 3 sessions (truth up front, scene-facts as you reach them), gate-checking and repairing at every session end. In continuation sessions you receive the premise, this brief, your prose so far, and your store (use query / report-playthrough-manuscript / report-irony-intervals freely to re-read your own structure per world and per frame). Deliver the SAME scene format the brief requires — numbered scenes, CHOICE markers, endings.",
+      "render_note": "There is no built facts->prose renderer (sec 7.21 build step 2, render-brief, is YAGNI-deferred). The agent hand-renders by querying holds_at per (frame x world x scene). The run-log MUST record whether this hand-render friction was large enough to justify building render-brief — this experiment is the first real authoring run that could supply that pull."
+    },
+    "delivery_note": "the graded deliverable for BOTH arms is the prose scene network ALONE. The facts-first arm's fact-base is its TOOL (the projection source) and is NOT the graded artifact — the graded artifact is the blind RE-EXTRACTION of its prose (see grading.deterministic.why_reextract), symmetric with the plain arm by construction (the R469 fairness keystone)."
+  },
+
+  "grading": {
+    "shuffle": "before any grading session, the R480 experiment-harness 'shuffle' subcommand renames the two deliverables story-A / story-B via a /dev/urandom coin flip; it writes the mapping to label-map.txt and PRINTS the sha256 seal, which is recorded immediately in the run log; revealed only in the reveal round via 'verify-seal'.",
+    "deterministic": {
+      "why_reextract": "grading the facts-first arm's own store would let its referee grade its own match AND would leave the plain story ungraded; instead ONE blind extractor session re-extracts BOTH proses into fresh stores under the identical procedure — the graded artifact is the re-extraction, symmetric by construction.",
+      "extraction_procedure": "INHERITED VERBATIM from sec 7.18 (R469). Per story (A then B, same session or twin sessions, same prompts): (1) register frames per the story's evident knowledge structure (ground truth + named-character belief frames actually used); (2) entities/predicates via report-typing-candidates -> import-typing-proposals (R458/R459, dry-run review, declared vocabulary only); (3) facts via import-facts manifests built scene by scene from EXPLICIT story text only — no inference beyond the page (B-1; what the text states, scene id as canon coordinate, quote evidence); (4) edges via report-edge-candidates -> import-edge-proposals (R462/R463, two-sided claim-sha, fill-blanks only); (5) canon order declared from the story's OWN explicit scene graph (fork options' continuation pointers), interleaved composition at forks per the R445-F5 lesson; (6) branches with forks_from / forks_at = last shared scene (R445 convention).",
+      "rule_derivation": "INHERITED VERBATIM from R469: the extractor derives at most 8 rules per story, ratified classes only (exclusive/transition), by a fixed recipe applied identically to both arms — one alive-arc transition rule per character who dies on any limb; one exclusive-custody rule per unique physical object two parties hold (the night-log and the spare dome key at minimum); one location-exclusive rule per principal character if the text asserts simultaneous presence; nothing else.",
+      "defect_metrics": {
+        "D1": "gated rule violations (rule_transition_invalid + rule_exclusive_overlap), all worlds",
+        "D2": "unchained_state_pairs, all worlds",
+        "D3": "dangling among the 6 REQUIRED setups at story end, per world-line where the setup appears (other dangling = craft signal, recorded, NOT counted; D3 is NOT part of the pin — a payoff a projection failed to render is a craft gap, not a projection-fidelity violation)",
+        "D4": "fork-boundary faults: succession_cross_branch + SuccessionCycle findings",
+        "pinned_endpoint": "D1 + D2 + D4 summed for the FACTS-FIRST story (the projection-fidelity pin = 0); the plain story's D1+D2+D4 is recorded ALONGSIDE as the common-mode control for extractor variance (NOT pinned, NOT a floor comparison)",
+        "recorded_not_counted": "payoffs_to_unmarked, payoff_before_setup, cross_scope_pairs (data/craft surfaces, never defects), undecidable/unknown counts (B-1 honesty, reported alongside)"
+      },
+      "leak_vs_noise_audit": "if the FF re-extraction shows any gated-class finding, it is audited against the cited scene-id + quote evidence (recipe step 3): a finding traceable to a PROSE STATEMENT that contradicts what the FF base held = a render LEAK (falsifies PRED-1); a finding the extractor inferred beyond the page, or one ALSO present in the plain re-extraction = common-mode extractor noise (R464), reported but not charged against the projection-fidelity pin. The plain control re-extraction is what disambiguates the two.",
+      "economics": "from the facts-first agent's session logs: total tokens, the fact-authoring vs render split, and gate catches repaired before delivery (reported as economics rows, never mixed into any defect endpoint)."
+    },
+    "preference": {
+      "reading_copies": "per matched world-line, a linear reading copy assembled by the R480 experiment-harness 'assemble' subcommand for BOTH stories under ONE procedure (the R470 symmetry rule): the world's scene sequence comes from report-playthrough-manuscript run on that story's blind RE-EXTRACTED store (never the facts-first agent's working store — the same referee that grades defects orders the reading; the R466 verb is the order/membership authority and its honesty surfaces — undeclared_adjacencies / unplaced / undecidable — are recorded into the run log for BOTH arms alike), and each scene's prose is injected by scene id from the original deliverable; formatting normalized (plain titled scenes, ids / tool artifacts / CHOICE markers stripped). Because extraction step 5 declares order from each story's own explicit scene graph, the manuscript walk is faithful to each author's declared structure. World-lines are matched across stories by fork-choice correspondence (confront/quiet x reveal/burn); the spine = confront+reveal path if structures diverge.",
+      "judges": "3 fresh LLM judge sessions, no experiment context, labels A / B only; optional owner read as judge 4 (recorded separately).",
+      "rubric_per_matched_pair": [
+        "continuity / causality errors you noticed (count them and cite scene ids) -- feeds the untyped-residue bridge",
+        "prose quality -- does it read as a TOLD STORY with a voice, or as assembled / list-like statements of fact? 1-5 (this axis is the keystone of THIS experiment: the wooden-list-prose worry made measurable)",
+        "stakes and tension 1-5",
+        "setup / payoff satisfaction 1-5",
+        "character-knowledge believability (does anyone act on what they cannot know) 1-5",
+        "overall forced choice: A or B, one paragraph why (the headline preference metric)"
+      ],
+      "judge_prompt": "You are judging two versions (A and B) of the same branching mystery, one world-line at a time. Read both linear versions of the matched world-line, then answer the rubric. Do not speculate about how either was produced.",
+      "outcome_pin": "NONE (V9 discipline). The procedure is pinned; any preference direction is an honest headline, not a passed/failed prediction."
+    },
+    "untyped_residue_bridge": "judge-cited continuity/causality errors NOT matched by any D-metric finding estimate the V7/V8 untyped-miss residue on real authored prose — the quantified LLM-discovery measure on this corpus, reported PER ARM so the FF-vs-plain residue comparison (the R476 ceiling, secondary question) is read directly off it."
+  },
+
+  "predictions_preregistered": {
+    "PRED-1_projection_fidelity": "the facts-first story's blind re-extraction shows D1 + D2 + D4 = 0 (a projection of a gate-checked base carries no gated-class defect). THIS IS THE ONLY PINNED OUTCOME. Falsified by any gated-class finding in the FF re-extraction that the leak-vs-noise audit attributes to a render LEAK (not common-mode extractor noise).",
+    "PRED-2_craft_preference": "NO pin (V9). Recorded lean = genuinely OPEN / near-tie, with two named hypotheses held in tension: (WOODEN-PROSE RISK) facts-first reads list-like and LOSES preference the way the prose-first loop lost 3-0 at scale-floor; (FREED-CRAFT HYPOTHESIS) facts-first, relieved of continuity bookkeeping, writes BETTER sentences and TIES or WINS. The more-feared mode is wooden prose; neither is pinned.",
+    "PRED-3_economics": "the facts-first arm costs > 1x the plain arm per delivered scene (it pays for a whole fact-base authoring phase before rendering). Record the actual ratio, the fact-authoring vs render split, and whether the hand-render friction pulls render-brief (sec 7.21 step 2).",
+    "PRED-4_residue": "judges cite >= 1 continuity/causality error not matched by any D-metric in EACH arm (the R476 commonsense ceiling stands even under facts-first). Recorded comparison FF vs plain residue count; hypothesis FF fewer (forced declaration), NOT pinned (judge-derived)."
+  },
+
+  "validity_conditions": {
+    "quota": "both deliverables meet scenes_total_min / fork_points / world_lines_min / endings_min / epistemic_frames_min and contain all 6 required setups; a quota failure is itself an economics finding — report it, run the deterministic leg on what exists, skip the preference leg if scales are incomparable.",
+    "extraction_parity": "identical prompts / verbs / recipe across A and B, labels blind, claim-sha pins intact, all-or-nothing imports only.",
+    "no_manifest_contact": "author / extractor / judge sessions never receive this manifest; their prompts are extracted from it verbatim by the orchestrator, and none of them is told a comparison or a hypothesis is in play."
+  },
+
+  "honesty_bounds_recorded": [
+    "n=1 premise, one model family — existence evidence, not a distribution (a larger or distributional craft test would reuse this protocol on the scale-floor corpus).",
+    "DESIGNER CONTAMINATION (sharper than R469): this lineage DESIGNED the facts-first render mechanism (sec 7.21) AND authored the facts-first PoC; it therefore may NOT author or blind-judge in this experiment. Execution + judging run in SEPARATE clean sessions; the sha256 pin + the blinding cover tampering and peeking, NOT design-stage selection bias.",
+    "extraction is LLM work; only the gates after it are deterministic — parity + claim-sha pins mitigate, variance does not vanish (R464). The plain control re-extraction is the common-mode reference for the FF fidelity pin.",
+    "the comparison measures the WORKFLOW (facts-first render-as-projection vs prose-first), at fixed premise / budget / tier — NOT raw model capability.",
+    "the wooden-list texture is BOTH the hypothesis being measured AND a style-fingerprint risk (a judge might guess the facts-first arm by a list-like texture); normalization (strip ids / tool artifacts / CHOICE markers, uniform scene titles) is the only mitigation that does not corrupt the artifact; recorded, not eliminable.",
+    "small scale (24 scenes): craft is a per-scene property, so a scale-light corpus is adequate for an existence claim about per-scene prose quality — it is NOT a scale claim; the scale-floor corpus is the larger-craft path if pulled.",
+    "even if PRED-1 holds, fact RELEVANCE / completeness (the R476 ceiling) is untouched — facts-first forces declaration of the facts the author thought of, it does not invent which facts matter; PRED-4 measures exactly this residue."
+  ],
+
+  "session_map_runbook": [
+    "S0 (this design round, R499): manifest authored, sha256 pinned in the ledger entry before any execution session exists",
+    "S1-S3: arm-plain authoring sessions 1-3",
+    "S4-S6: arm-factsfirst authoring sessions 1-3 (order vs S1-3 irrelevant; no shared context)",
+    "S7: shuffle labels (harness shuffle); blind re-extraction of story-A and story-B (R469 recipe verbatim); deterministic defect tables (D1/D2/D4 for the FF pin + the untyped-residue bridge inputs); economics",
+    "S8-S10: judge sessions 1-3 (parallel, independent; the craft rubric)",
+    "S11 (reveal round): verify-seal to unblind the label-map, grade PRED-1 (FF gated = 0, leak-vs-noise audit) against this manifest, report craft preference as an honest headline (no pin), record PRED-3 economics + PRED-4 residue, compile report (SSOT claudedocs/phase1-factsfirst-craft-experiment/craft-report.md), ledger entry restates the table (R452 self-containment)"
+  ]
+}
