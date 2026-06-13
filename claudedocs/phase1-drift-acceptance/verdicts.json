@@ -1,0 +1,236 @@
+{
+  "schema": "drift-verdicts/v1",
+  "verdicts": [
+    {
+      "fact": "f-confess-chart-explained",
+      "claim_sha256": "5b4e481c8387859891cfc2213e3bb23e2dd46ff1e5c98aa72bb92e829a49fae8",
+      "verdict": "confirm",
+      "rationale": "sc-59 ties the missing chart to the diary's roll of crossed names ('the old case Roeder had kept ticked alive on his slate years past its dying') and states the burning 'stayed outside her knowing' on the confess road — never traced to Brandt. sc-05 shows Brandt feeding that old-numbered folder to the stove the morning he was found. Both clauses of the claim are borne out.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-confess-ending",
+      "claim_sha256": "075471301afaf0d0778866caac27b5fb7a7dcf208f7b56d104bf1257c51d17ae",
+      "verdict": "confirm",
+      "rationale": "sc-60 (Ending B) certifies 'death by his own hand', proven 'from two sides, the dead man's book and the living woman's account', and keeps Helene's surrendered papers 'not as the proof of a crime but as the testimony of a survivor', carried down at the thaw. sc-42 shows Helene's own mouth giving the whole human truth and pushing the forged papers across. Claim fully supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-diary-confirms-method-confess",
+      "claim_sha256": "1dc6155b1679aecc31190c6bfce1767016959b45823b26ae14af4ca800da5626",
+      "verdict": "confirm",
+      "rationale": "sc-57 gives 'Helene's account from the other side, in Roeder's own even hand': morphia drawn off the ledger for the evening needle, the roll of favoured cases across the years, and 'there, crossed, was Surel, the brother, laid in the house's ground'. sc-10 supplies the ledger discrepancy and the register/burial Surel match; sc-42 is Helene's account the diary confirms. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-diary-names-subjects",
+      "claim_sha256": "0fe48e062ed3d1f6f441080d308a8c9e56fcdb60f1a4519b9abe6ce819faaccd",
+      "verdict": "confirm",
+      "rationale": "sc-52 (confront diary) names 'a roll of favoured cases', with Surel 'laid in the house's own consecrated corner six years back' and 'an old case he had kept ticked alive on his slate ... it was that chart ... that Brandt had fed to the stove'. sc-05 shows the burning; sc-10 the register/burial match. Every named element of the claim is present in the cited prose.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-diary-opened-confess",
+      "claim_sha256": "f2875c68e01ba56fd6a889b94d9fead9a1724b20ebd91aed0fbc9ef008f415f1",
+      "verdict": "confirm",
+      "rationale": "sc-56 (confess road) has Cendre find the brass key 'on no ring and in no drawer in the house', set a thin blade to the lock so 'the little mechanism gave with a dry click, and the covers sprang' — the diary forced and opened. sc-37 establishes the key was never found on any ring. Claim borne out.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-diary-opened-confront",
+      "claim_sha256": "15697a78815b8221ad2dd86bdb053f6e0d10519bab76cc9c3331e4e6e8f71406",
+      "verdict": "confirm",
+      "rationale": "sc-51 (confront road) has Cendre set 'a thin blade to the little lock, and broke it', then open and read forward to the autumn weeks before the storm — Roeder's record of his last days open to the inquiry. sc-02 establishes the brass-locked diary as Roeder's own. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-diary-records-method",
+      "claim_sha256": "9667c52966150a23a612130283b795c294e5ace567bc8aa6084426e4cf099a94",
+      "verdict": "confirm",
+      "rationale": "sc-52 records the method in Roeder's own hand: 'evening injections — morphia, drawn in quantity from the house store and signed out under his own name', and 'The borrowed hour, he named the warmth it gave them, the false strength ... before the long sinking'. sc-10 anchors the ledger discrepancy paid off. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-diary-sealed-final",
+      "claim_sha256": "bb4af3d2f5f6b84a2b8da04e6de5f63f1abb7383b5d02b67357cd8a623465b80",
+      "verdict": "confirm",
+      "rationale": "sc-64 (escalate) keeps the diary sealed: 'she never opened it', key 'gone from every ring and pocket, hunted and not found', unwilling 'to break a dead man's last book by force, to prove a murder she could not pin to any living hand', and forcing it 'would give her his conscience and not his killer ... a man who believed he was choosing his own end'. sc-37 and sc-02 set up the locked witness. All clauses supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-forged-unproven",
+      "claim_sha256": "879a1a09578a9cd7254bbbf2274df3855a8f9478bfcd38a00178f3563b59038b",
+      "verdict": "confirm",
+      "rationale": "sc-65 (Ending C) keeps 'the forged papers still folded in her writing-case, unsurrendered and unguessed; the true name she never spoke', 'the disguise holds whole', and the calm 'built exactly to outlast a snowbound inquiry and walk down the mountain when the snow let it'. sc-06 establishes those forged papers in the writing-case. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-lindqvist-payoff",
+      "claim_sha256": "a2139964762dfd75e012cb885bcf273ba6957411ec0b7969554f2452ef8ec1c8",
+      "verdict": "confirm",
+      "rationale": "sc-63 (escalate) reads Lindqvist's recovery as 'that fiction, withdrawn at Roeder's death, had bared a wasting engineer whom a hand had then hurried out of the world', 'the plainest thing the house held that its deaths were not all nature's'. sc-10 is the abrupt charted recovery; sc-48 the too-sudden death ('a breath ... pinched out'). Claim borne out.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-method-toll",
+      "claim_sha256": "41d30d90cb5b5f4defe78f386af8ca7548b5a9dca0761a3f895d4dc2e1f199b4",
+      "verdict": "confirm",
+      "rationale": "sc-63 places Roeder's method behind both deaths: 'ledger's missing grains, signed out in the dead man's hand', 'The Surel laid six years in the house's ground', the buff folder 'gone to the stove to keep an old number from being asked after', and 'The method had supplied a murderer both the means and the cover'. sc-05 (Brandt burns the folder) and sc-10 (ledger + burial match) anchor the three setups. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-resignation-payoff",
+      "claim_sha256": "badd5375b637cd4db4a0f0430f6cfeed52b154f636ce8e6ed4e872c0a6f9c266",
+      "verdict": "confirm",
+      "rationale": "sc-64 re-reads the halted resignation 'breaking off forever on the word conscience' as 'a motive handed to another': 'A physician about to confess the method was a physician someone in the house had every reason to silence before the thaw could carry the confession down the mountain.' sc-08 and sc-35 set up the unfinished conscience-letter. Claim supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-escalate-trail-is-killers",
+      "claim_sha256": "adabd9bb6b25e1ff7f16c145e4cd7dffe12340e7415f2d5d7dc6add25d6aa61e",
+      "verdict": "confirm",
+      "rationale": "sc-62 (escalate) reads the boots, blank funicular log, and unanswered telegram as 'the movements of a single careful person ... emptying the cable-house, watching the line die, walking the snow in another's boots', with the reader knowing 'whose small foot wore the boots' while Cendre stops 'one step short of the name'. sc-09 (boots/log), sc-16 (note drew the steward), sc-32 (telegram) anchor the three setups. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-helene-confesses-preparations-confess",
+      "claim_sha256": "02616c558cd501f1ad8391f012edf0a5f6afd274fccf237e350d4e1ac769af2e",
+      "verdict": "confirm",
+      "rationale": "sc-58 (confess) is Helene's own account: she took the engineer's boots and 'gone out in them ... learning the ground', forged 'the note that drew Gaspard to the cable-house', and 'watched the last telegram come up and lie unanswered ... the line go dead' — readying a reckoning 'his own door stopped'. sc-09, sc-16, sc-32 anchor boots, note, and telegram. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-helene-identified-confront",
+      "claim_sha256": "e0e67d06a728c522e9cdfe3e0ed1eebc1cfbc893de86e8fbb320e2f11f3f0465",
+      "verdict": "refute",
+      "rationale": "The claim asserts Helene was 'admitted on forged papers under her own true family name', but cited sc-06 states the opposite: 'a name that was not her name ... Surel was a borrowed coat'. sc-53 establishes she is 'kin to the crossed name' with forged papers and sc-15 the name match, but neither establishes Surel as her true name, and sc-06 directly contradicts that clause. The cited evidence supports the kinship/forgery/reckoning but not 'her own true family name'.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-helene-trail-confront",
+      "claim_sha256": "7d2d4390554d54ffb15f7f6bd2eaf099728ad4ba3d67f5a114c60fb5fed5c784",
+      "verdict": "confirm",
+      "rationale": "sc-53 (confront) reads 'the snow-wet boots too small for the bed-bound engineer, the steward drawn from his post by a note in a hand like Roeder's' as 'A woman moving about the outside of a house she meant to enter, making her road to a man she meant to make answer' — in the days before the storm. sc-09 (boots) and sc-16 (note emptying the cable-house) anchor the two setups. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-lindqvist-fiction-confess",
+      "claim_sha256": "d310e83eaba2f590cf5c0be9285a0276dd265a32e75f3d216c02c458eb5b3d06",
+      "verdict": "confirm",
+      "rationale": "sc-59 (confess): 'Lindqvist's improving chart had been the method's last fiction; with the needle stopped he was failing, truly now ... But he was alive', and 'Cendre resolved to keep him honestly — to chart what was true of him'. sc-36 shows the borrowed strength draining once the needle stopped; sc-10 the morphia-fiction recovery. Claim supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-lindqvist-fiction-confront",
+      "claim_sha256": "4221b71c6b2ed5374f2f3742fee835e25dee401629b536b1fea600591fd554d2",
+      "verdict": "confirm",
+      "rationale": "sc-54 (confront/Ending A): 'the improving chart over his bed the last of Roeder's false vigours, the engineer left living on a fiction ... the method's one surviving subject'. sc-10 supplies the abrupt morphia-fiction recovery on the chart. The claim's reading of the chart and Lindqvist as last surviving subject is borne out.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-roeder-murder-escalate",
+      "claim_sha256": "fe3f95c604217b3ed69661f0bbecc628f589b02d844de2911631367a96f3d4f8",
+      "verdict": "confirm",
+      "rationale": "sc-61 (escalate) fixes murder: 'the dose that stopped the doctor had only to be set ready, hours before, in the brown bottle he would lift to his own mouth alone', so 'no one had to enter' — 'The murder had been laid, not committed'. sc-03 (master key cold and untouched) and sc-12 (sealed sash/sill/key) supply the untouched-key setup; sc-04 the brown vial at his open hand. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-roeder-suicide-confess",
+      "claim_sha256": "8079d623929f6a96abcf8e9b5430b61eefbd6409668ef639b28cf7b7da09f2d0",
+      "verdict": "confirm",
+      "rationale": "sc-57 (confess): the diary's last pages give the death — the resignation 'never finished, always failing on the same word', and 'He had measured the strong draught into the brown bottle. He meant to drink it and bolt his door' — 'no one had killed Augustin Roeder but Augustin Roeder'. sc-08 (resignation), sc-04 (brown bottle), sc-03 (master key untouched, room sealed from within) anchor the three setups. Supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    },
+    {
+      "fact": "f-roeder-suicide-confront",
+      "claim_sha256": "41db3dfaffe66fa8f1b8068f707b578d85b8cf840875774052c76d288ad5ff10",
+      "verdict": "confirm",
+      "rationale": "sc-54 (confront): 'the house morphia was nearly gone ... the last telegram up from Aigle had promised the resupply only on the first clear funicular, and then the line had died', and 'He had measured himself a strong draught into the unlabelled brown bottle ... draw his bolt ... The master key never left its board because he never meant it to.' sc-08, sc-04, sc-03, and sc-01 (the supply telegram and cut line) anchor resignation, vial, untouched key, and the last telegram. All four setups supported.",
+      "authoring_run": "belvoir-loop-authoring",
+      "confirming_run": "drift-review",
+      "confirmer_id": "claude-opus-4-8[1m]",
+      "confirmer_version": "claude-opus-4-8",
+      "timestamp": "2026-06-13T00:00:00Z"
+    }
+  ]
+}
