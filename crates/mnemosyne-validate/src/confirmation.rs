@@ -19,8 +19,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use mnemosyne_atomic::{
-    confirmation_report_with, AtomicStore, ClaimTarget, ConfirmationClaim, ConfirmationEvent,
-    ConfirmationStatus,
+    confirmation_report_with, AtomicStore, ConfirmationClaim, ConfirmationEvent, ConfirmationStatus,
 };
 use mnemosyne_core::{
     AtomicSnapshot, BindingKind, CoverageExpectation, DecisionStatus, VerificationExpectation,
@@ -50,12 +49,7 @@ fn hash_file(path: &Path) -> Option<String> {
 /// `normative_excerpt`; `test` = the verifies binding's own file; `code` = the
 /// section's `implements` binding files.
 fn artifact_drifted(event: &ConfirmationEvent, store: &AtomicStore, workspace_root: &Path) -> bool {
-    let section_id = match event.claim.target() {
-        ClaimTarget::Section(id) => id,
-        // A narrative-fact (FactEvidence) claim drifts on its claim text — a
-        // store-only check, no files (R481). One drift predicate, two targets.
-        ClaimTarget::Fact(_) => return crate::drift::fact_claim_drifted(event, store),
-    };
+    let section_id = event.claim.section_id();
     let section = store.sections.get(section_id);
 
     // spec — store-only (R404 text_sha256 reuse).

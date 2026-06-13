@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-drift-candidates|import-drift-verdicts|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -306,8 +306,7 @@ fn run(args: &[String]) -> Result<()> {
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
         "import-edge-proposals" => cmd_import_edge_proposals(&args[2..]),
-        "report-drift-candidates" => cmd_report_drift_candidates(&args[2..]),
-        "import-drift-verdicts" => cmd_import_drift_verdicts(&args[2..]),
+        "report-payoff-substantiation" => cmd_report_payoff_substantiation(&args[2..]),
         "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
         "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
         "report-spec-map" => cmd_report_spec_map(&args[2..]),
@@ -469,18 +468,11 @@ fn print_help(prog: &str) {
         "   Round 463 — all-or-nothing reviewed import of proposed succession/conflict edges (two-sided claim-sha staleness, fill-blanks, cycle-guarded)"
     );
     println!(
-        " {} report-drift-candidates [--sidecar <path>] [--json]",
+        " {} report-payoff-substantiation [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
-        "   Round 481 — claim-vs-evidence drift: payoff facts (claim + quote + sha256) with review status; drifting = not yet independently confirmed"
-    );
-    println!(
-        " {} import-drift-verdicts --verdicts <drift-verdicts.json> [--dry-run] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 481 — all-or-nothing reviewed import of claim-vs-evidence verdicts as FactEvidence confirmation events (self-confirm reject, claim-sha staleness)"
+        "   Round 485 — deterministic payoff substantiation: each credited setup is substantiated (a typed state-change discharges it) / unsubstantiated (typed setup, hollow payoff) / unverifiable (untyped — type it); no LLM"
     );
     println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
     println!(
@@ -1686,9 +1678,6 @@ fn cmd_report_confirmation(args: &[String]) -> Result<()> {
             ConfirmationClaim::SectionCompleteness { section_id } => {
                 format!("§{} (all-I/O completeness)", section_id)
             }
-            ConfirmationClaim::FactEvidence { fact_id } => {
-                format!("fact:{fact_id} (claim-vs-evidence, R481)")
-            }
         }
     };
     if json {
@@ -2541,130 +2530,53 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Round 481 — claim-vs-evidence drift candidates (`report-drift-candidates`):
-/// every payoff fact (a fact with a non-empty `pays_off`) with its claim text +
-/// sha256 pin + evidence quote AND its current review status. Both the LLM
-/// input contract for `drift-verdicts/v1` authoring and the drift surface (the
-/// rows whose status is not `reviewed`). Order-independent.
-fn cmd_report_drift_candidates(args: &[String]) -> Result<()> {
-    let mut json = false;
-    let mut sidecar_override: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(a) = iter.next() {
-        match a.as_str() {
-            "--json" => json = true,
-            "--sidecar" => {
-                sidecar_override = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let loaded = workspace_config()?;
-    let anchor = loaded
-        .config_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| loaded.workspace_root.clone());
-    let report = mnemosyne_ops::drift_candidates_report(
-        &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+/// Round 485 — deterministic payoff substantiation
+/// (`report-payoff-substantiation`): each credited setup is classified
+/// substantiated (a payoff carries a typed state-change discharging the setup's
+/// typed state) / unsubstantiated (typed setup, no discharging payoff — a hollow
+/// payoff) / unverifiable (the setup is untyped, so no discharge is definable —
+/// type it). No LLM; pure deterministic comparison of declared typed legs (the
+/// R484 redesign that replaced the R481 drift-verdict surface).
+fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(args, false)?;
+    let report = mnemosyne_ops::payoff_substantiation_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.order_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
-    if json {
+    if a.json {
         println!("{}", serde_json::to_string(&report)?);
     } else {
         println!(
-            "=== drift candidates — {} payoff fact(s): {} reviewed / {} drifting ===",
-            report.payoff_facts, report.reviewed, report.drifting
+            "=== payoff substantiation — {} setup(s) ===",
+            report.setups_total
         );
-        for c in &report.candidates {
+        for (world, w) in &report.worlds {
             println!(
-                "  [{:?}] {} (frame {} / branch {} @ {}) pays_off {:?}",
-                c.status, c.fact_id, c.frame, c.branch, c.canon_from, c.pays_off
+                "world `{world}`: substantiated={} unsubstantiated={} unverifiable={}",
+                w.substantiated.len(),
+                w.unsubstantiated.len(),
+                w.unverifiable.len()
             );
-            println!("      claim: {}", c.claim);
-            match &c.quote {
-                Some(q) => println!("      quote: {q}"),
-                None => println!("      quote: (none — evidence sections {:?})", c.evidence),
+            for p in &w.substantiated {
+                println!("  [substantiated] {} <- {}", p.setup, p.payoffs.join(", "));
+            }
+            for p in &w.unsubstantiated {
+                println!(
+                    "  [UNSUBSTANTIATED] {} <- {} (typed setup, no typed state-change discharges it)",
+                    p.setup,
+                    p.payoffs.join(", ")
+                );
+            }
+            for p in &w.unverifiable {
+                println!(
+                    "  [unverifiable] {} <- {} (setup untyped — type it to verify)",
+                    p.setup,
+                    p.payoffs.join(", ")
+                );
             }
         }
-    }
-    Ok(())
-}
-
-/// Round 481 — reviewed import of claim-vs-evidence verdicts
-/// (`import-drift-verdicts`): all-or-nothing with full per-verdict outcomes,
-/// `--dry-run` for the review loop. Each verdict is recorded as a `FactEvidence`
-/// confirmation event through the shared validator (self-confirm reject,
-/// claim-sha staleness). Exit 1 whenever any verdict rejects (both modes), exit
-/// 0 only on a fully-recordable file.
-fn cmd_import_drift_verdicts(args: &[String]) -> Result<()> {
-    let mut json = false;
-    let mut dry_run = false;
-    let mut verdicts: Option<String> = None;
-    let mut sidecar_override: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(a) = iter.next() {
-        match a.as_str() {
-            "--json" => json = true,
-            "--dry-run" => dry_run = true,
-            "--verdicts" => {
-                verdicts = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--verdicts missing"))?
-                        .clone(),
-                )
-            }
-            "--sidecar" => {
-                sidecar_override = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--sidecar missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let verdicts = verdicts.ok_or_else(|| anyhow!("--verdicts <path> arg required"))?;
-    let loaded = workspace_config()?;
-    let anchor = loaded
-        .config_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| loaded.workspace_root.clone());
-    let report = mnemosyne_ops::import_drift_verdicts_report(
-        &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        std::path::Path::new(&verdicts),
-        dry_run,
-    )
-    .map_err(|e| anyhow!("{e}"))?;
-    if json {
-        println!("{}", serde_json::to_string(&report)?);
-    } else {
-        println!(
-            "=== drift verdicts {} — file sha256 {} ===",
-            if report.dry_run {
-                "(dry run)"
-            } else {
-                "import"
-            },
-            report.file_sha256.get(..16).unwrap_or(&report.file_sha256)
-        );
-        for v in &report.results {
-            println!("  [{}] {}", v.fact, v.verdict);
-        }
-        println!(
-            "accepted={} rejected={} applied={}",
-            report.accepted, report.rejected, report.applied
-        );
-    }
-    if report.rejected > 0 {
-        std::process::exit(1);
     }
     Ok(())
 }

@@ -504,17 +504,6 @@ pub struct ImportTypingProposalsArgs {
     pub dry_run: bool,
 }
 
-/// Args for `import_drift_verdicts` (Round 481).
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ImportDriftVerdictsArgs {
-    /// Path to a `drift-verdicts/v1` JSON artifact (workspace-relative or
-    /// absolute).
-    pub verdicts_path: String,
-    /// Validate only — full per-verdict outcomes, nothing written.
-    #[serde(default)]
-    pub dry_run: bool,
-}
-
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEdgeCandidatesArgs {
     /// Canon-order declaration path override (bypasses the pin).
@@ -1533,40 +1522,15 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Claim-vs-evidence drift candidates (R481, read-only): every payoff narrative fact (a fact with a non-empty pays_off) with its claim text + claim_sha256 pin + evidence quote AND its current review status (reviewed / refuted / unreviewed / stale). Both the contract for drift-verdicts/v1 authoring (review the drifting rows, stamp each candidate's claim_sha256) and the drift surface (rows whose status is not reviewed). Order-independent. The depth-ladder rung scale-floor R475 exposed: a store can claim a payoff the prose never delivers."
+        description = "Deterministic payoff substantiation (R485, read-only): per query world, each credited setup is classified substantiated (a payoff carries a typed state-change on the setup's same subject+predicate, discharging it) / unsubstantiated (typed setup, no discharging payoff — a hollow payoff, the deterministic analogue of drift) / unverifiable (the setup is untyped, so no discharge is definable — type it via typing-discovery). No LLM: a pure comparison of declared typed legs. Replaces the retired R481 LLM-verdict drift surface (R484 redesign)."
     )]
-    async fn report_drift_candidates(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        match ops::drift_candidates_report(&self.workspace, None) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
-        }
-    }
-
-    #[tool(
-        description = "Import reviewed claim-vs-evidence verdicts from a drift-verdicts/v1 artifact (R481, mutate): ALL-OR-NOTHING with full per-verdict outcomes. Each verdict is recorded as a FactEvidence confirmation event through the shared validator — self-confirm reject enforced (a fact's own authoring_run may not confirm it), claim_sha256 staleness re-checked, idempotent. confirmer is always a model / semantic_review. dry_run=true validates without writing. applied=true only when every verdict recorded on a real run."
-    )]
-    async fn import_drift_verdicts(
+    async fn report_payoff_substantiation(
         &self,
-        args: Parameters<ImportDriftVerdictsArgs>,
+        args: Parameters<ReportPayoffCoverageArgs>,
     ) -> CallToolResult {
-        // Verdict-report mutate: same single lock site as every other mutate
-        // (Round 460 — with_mutate_lock), report-shaped return.
-        match self.with_mutate_lock(|| {
-            ops::import_drift_verdicts_report(
-                &self.workspace,
-                None,
-                std::path::Path::new(&args.0.verdicts_path),
-                args.0.dry_run,
-            )
-        }) {
-            Ok(report) => {
-                if report.applied {
-                    if let Err(e) = self.sync_read_models_after_mutate() {
-                        return self.op_error(e);
-                    }
-                }
-                self.tool_json(&report)
-            }
+        match ops::payoff_substantiation_report(&self.workspace, None, args.0.order_path.as_deref())
+        {
+            Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
     }

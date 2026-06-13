@@ -675,38 +675,16 @@ pub enum ConfirmationClaim {
     /// A section-level all-I/O completeness claim ("the verifies-set covers
     /// every normative I/O behavior of this section").
     SectionCompleteness { section_id: String },
-    /// A narrative-fact claim-vs-evidence claim (R481): "`fact.claim` is
-    /// supported by `fact.evidence`" — the drift-detection target. Unlike the
-    /// section variants there is no deterministic tool that can judge prose, so
-    /// a `FactEvidence` claim never reaches `Confirmed` via the verifies
-    /// required-evidence-set; the drift surface reads the semantic-review leg
-    /// (`independent_semantic` / refute) directly.
-    FactEvidence { fact_id: String },
-}
-
-/// What a confirmation claim is ABOUT — a structure section or a narrative
-/// fact. [`append_confirmation_event`] checks the matching store map exists
-/// (the R287 fail-loud rule, generalized section -> section|fact in R478/R481).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClaimTarget<'a> {
-    Section(&'a str),
-    Fact(&'a str),
 }
 
 impl ConfirmationClaim {
-    /// The store object this claim is about. Used by the shared
-    /// [`validate_confirmation_event`] to enforce target existence before a
-    /// claim about it is recorded — a section for the verifies/completeness
-    /// variants, a narrative fact for `FactEvidence`.
-    pub fn target(&self) -> ClaimTarget<'_> {
+    /// The section this claim is about — both variants carry one. Used by
+    /// [`append_confirmation_event`] to enforce the R287 fail-loud rule: the
+    /// section must already exist before a claim about it is recorded.
+    pub fn section_id(&self) -> &str {
         match self {
-            ConfirmationClaim::VerifiesBinding { section_id, .. } => {
-                ClaimTarget::Section(section_id)
-            }
-            ConfirmationClaim::SectionCompleteness { section_id } => {
-                ClaimTarget::Section(section_id)
-            }
-            ConfirmationClaim::FactEvidence { fact_id } => ClaimTarget::Fact(fact_id),
+            ConfirmationClaim::VerifiesBinding { section_id, .. } => section_id,
+            ConfirmationClaim::SectionCompleteness { section_id } => section_id,
         }
     }
 }
@@ -1124,15 +1102,16 @@ pub enum AtomicStoreError {
 // pre-v19 store loads unchanged and stays byte-stable. So there is
 // deliberately NO `schema_version < 19` arm in `load`, and no migration
 // report is needed.
-// v19→v20 adds the `ConfirmationClaim::FactEvidence { fact_id }` variant (the
-// drift-detection target, Round 481 — a narrative fact's claim-vs-evidence,
-// reviewed by the R428 confirmation machinery). Additive serde tag: a pre-v20
-// store carries no `fact_evidence` events and loads byte-stable, but a v20
-// store that does carry one must NOT silently load on a v19 binary (which has
-// no such variant) — hence the version bump. No field migration; the variant
-// is forward-additive. So there is deliberately NO `schema_version < 20` arm in
-// `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 20;
+// v19→v20 added the `ConfirmationClaim::FactEvidence { fact_id }` variant (the
+// R481 LLM-verdict drift target). v20→v21 REMOVES it (Round 485 — the
+// all-deterministic redesign R484: R483's blind acceptance falsified the
+// LLM-verdict approach, drift moved to the deterministic typed-substantiation
+// scan, and no-legacy-carry retires the dead variant in the same change). No
+// canonical store ever carried a `fact_evidence` event (the dogfood store's
+// only such events lived in a throwaway grading copy), so the removal loses no
+// data; a v21 store has no `fact_evidence` events and the monotonic bump
+// records the variant's retirement. No migration arm needed.
+const CURRENT_SCHEMA_VERSION: u32 = 21;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -2901,31 +2880,6 @@ pub fn append_confirmation_event(
     sidecar_path: &Path,
     event: ConfirmationEvent,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let event_id = validate_confirmation_event(store, &event)?;
-    store.confirmation_events.insert(event_id.clone(), event);
-    save_with_receipt(
-        store,
-        sidecar_path,
-        "append_confirmation_event",
-        "confirmation_event",
-        &event_id,
-    )
-}
-
-/// The SINGLE invariant set for a confirmation event, shared by both write
-/// paths — the hand-authored [`append_confirmation_event`] and the batch
-/// [`import_drift_verdicts`]. Factored out per the half-enforced-invariant rule
-/// (R305): two write paths into `confirmation_events` MUST enforce identical
-/// rules, so they both call this. Returns the derived `event_id` (also the
-/// idempotency key). Does not mutate the store.
-///
-/// Checks (design sec 4.1/4.7 + R287, generalized to section|fact in R481):
-/// non-blank runs, self-confirm reject, non-blank rationale, target existence
-/// (section OR narrative fact), and idempotency.
-pub fn validate_confirmation_event(
-    store: &AtomicStore,
-    event: &ConfirmationEvent,
-) -> Result<String, AtomicMutateError> {
     if event.authoring_run.trim().is_empty() || event.confirming_run.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
             "authoring_run / confirming_run must be non-blank (provenance, sec 4.1)".to_string(),
@@ -2933,8 +2887,7 @@ pub fn validate_confirmation_event(
     }
     // Self-confirm reject — the cheapest, machine-checkable slice of independence
     // (design sec 4.7). The store cannot prove fresh-ness, but it CAN reject a run
-    // confirming its own claim. This is the load-bearing rule for drift detection:
-    // an authoring run cannot rubber-stamp its own narrative-fact claim.
+    // confirming its own claim.
     if event.authoring_run == event.confirming_run {
         return Err(AtomicMutateError::Validation(format!(
             "self-confirm rejected: confirming_run `{}` must differ from authoring_run \
@@ -2947,35 +2900,33 @@ pub fn validate_confirmation_event(
             "rationale must be non-blank (esp. for Refute, sec 4.1)".to_string(),
         ));
     }
-    // R287 fail-loud: a claim about a non-existent target is a silent footgun.
-    // Generalized section -> section|fact (R481): a section claim needs the
-    // section, a FactEvidence claim needs the narrative fact. Binding existence
-    // and the `Verifies` kind stay deferred to the `confirmed?` predicate (R418).
-    match event.claim.target() {
-        ClaimTarget::Section(section_id) => {
-            if !store.sections.contains_key(section_id) {
-                return Err(AtomicMutateError::NotFound(format!(
-                    "claim section_id `{section_id}` not present in atomic store \
-                     (use add_section first; R287 fail-loud)"
-                )));
-            }
-        }
-        ClaimTarget::Fact(fact_id) => {
-            if !store.narrative_facts.contains_key(fact_id) {
-                return Err(AtomicMutateError::NotFound(format!(
-                    "claim fact_id `{fact_id}` not present in atomic store \
-                     (use add_fact first; R287 fail-loud)"
-                )));
-            }
-        }
-    }
-    let event_id = derive_confirmation_event_id(event);
-    if store.confirmation_events.contains_key(&event_id) {
-        return Err(AtomicMutateError::FrozenLedger(format!(
-            "confirmation already recorded (identical act, idempotent): `{event_id}`"
+    // R287 fail-loud: a claim about a non-existent section is a silent footgun.
+    // Only section existence is checked here; binding existence + the
+    // `Verifies` kind are evaluated by the `confirmed?` predicate (R418), which
+    // reads the live binding graph at query time rather than freezing it here.
+    let claim_section = event.claim.section_id();
+    if !store.sections.contains_key(claim_section) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "claim section_id `{}` not present in atomic store (use add_section first; \
+             R287 fail-loud)",
+            claim_section
         )));
     }
-    Ok(event_id)
+    let event_id = derive_confirmation_event_id(&event);
+    if store.confirmation_events.contains_key(&event_id) {
+        return Err(AtomicMutateError::FrozenLedger(format!(
+            "confirmation already recorded (identical act, idempotent): `{}`",
+            event_id
+        )));
+    }
+    store.confirmation_events.insert(event_id.clone(), event);
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "append_confirmation_event",
+        "confirmation_event",
+        &event_id,
+    )
 }
 
 /// Deterministic `event_id` for a confirmation event (R417) — the SINGLE source
@@ -3000,7 +2951,6 @@ fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
         ConfirmationClaim::SectionCompleteness { section_id } => {
             ("section_completeness", section_id.as_str(), "", "")
         }
-        ConfirmationClaim::FactEvidence { fact_id } => ("fact_evidence", fact_id.as_str(), "", ""),
     };
     // Unit-separator join so distinct field tuples can never alias.
     let canonical = [
@@ -3018,215 +2968,6 @@ fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
     ]
     .join("\u{1f}");
     format!("evt-{}", &sha256_hex(canonical.as_bytes())[..16])
-}
-
-// ============================================================================
-// Drift-verdicts import (Round 481, drift detection).
-//
-// The WRITE half of claim-vs-evidence drift detection: import LLM verdicts on
-// whether a narrative fact's claim is supported by its evidence, recorded as
-// `FactEvidence` confirmation events. Mirrors `import_typing_proposals` (R459):
-// a reviewed `drift-verdicts/v1` artifact, ALL-OR-NOTHING, a `dry_run` twin,
-// claim-sha staleness re-check (R439 pin), and — the load-bearing rule — the
-// self-confirm reject in the shared `validate_confirmation_event` (no fact's own
-// authoring run may confirm it; this is exactly the false-assurance the loop arm
-// fell into in scale-floor R475). The confirmer is always a Model /
-// semantic_review (no deterministic tool can judge prose). The reviewed claim
-// sha is stamped into `spec_sha256`, so a later amend drifts the verdict out of
-// validity (R420). Both Confirm and Refute are ACCEPTED into the log — a refute
-// is a valid record of drift; the report reads it as the drift surface.
-// ============================================================================
-
-/// One reviewed drift verdict on a narrative fact's claim-vs-evidence.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DriftVerdict {
-    /// Target fact id (must exist).
-    pub fact: String,
-    /// sha256 of the claim text the reviewer judged — re-checked at import so a
-    /// fact amended after review fails loud as stale (the R439 pin reused).
-    pub claim_sha256: String,
-    /// `confirm` (claim supported by its evidence) or `refute` (drift — the
-    /// claim is not borne out by the evidence).
-    pub verdict: String,
-    /// Prose justification (mandatory — the reviewable substance, no confidence
-    /// score, the Goodhart guard).
-    pub rationale: String,
-    /// The run that AUTHORED the fact (provenance; the self-confirm reject needs
-    /// it — the orchestrator sets it to the real authoring session).
-    pub authoring_run: String,
-    /// The reviewing run — must differ from `authoring_run` (independence).
-    pub confirming_run: String,
-    /// The model confirmer's id and version (provenance).
-    pub confirmer_id: String,
-    pub confirmer_version: String,
-    /// Caller-supplied timestamp (determinism — never generated in-core).
-    pub timestamp: String,
-}
-
-/// The `drift-verdicts/v1` artifact (Round 481).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DriftVerdictsFile {
-    /// Must be exactly `drift-verdicts/v1`.
-    pub schema: String,
-    /// Optional free-form note from the reviewer.
-    #[serde(default)]
-    pub comment: String,
-    pub verdicts: Vec<DriftVerdict>,
-}
-
-/// Load + shape-check a `drift-verdicts/v1` file; returns the parsed artifact
-/// with the file content's sha256 (the audit anchor the import receipt carries).
-pub fn load_drift_verdicts(path: &Path) -> Result<(DriftVerdictsFile, String), String> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| format!("drift-verdicts: cannot read `{}`: {e}", path.display()))?;
-    let file: DriftVerdictsFile = serde_json::from_str(&raw)
-        .map_err(|e| format!("drift-verdicts: `{}` does not parse: {e}", path.display()))?;
-    if file.schema != "drift-verdicts/v1" {
-        return Err(format!(
-            "drift-verdicts: schema `{}` is not `drift-verdicts/v1` (fail-loud — an \
-             unknown schema must not half-apply)",
-            file.schema
-        ));
-    }
-    if file.verdicts.is_empty() {
-        return Err("drift-verdicts: empty verdicts list (nothing to import)".to_string());
-    }
-    Ok((file, sha256_hex(raw.as_bytes())))
-}
-
-/// One per-verdict outcome (full list always surfaced — no silent caps).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct DriftVerdictResult {
-    pub fact: String,
-    /// `recorded:confirm` / `recorded:refute`, or the reject reason verbatim.
-    pub verdict: String,
-}
-
-/// The import outcome both wires emit. `applied` is true only when this was a
-/// real run AND every verdict was recordable (all-or-nothing: the file is the
-/// reviewed artifact — record it fully or not at all).
-#[derive(Debug, Clone, Serialize)]
-pub struct DriftImportReport {
-    pub file_sha256: String,
-    pub results: Vec<DriftVerdictResult>,
-    pub accepted: usize,
-    pub rejected: usize,
-    pub dry_run: bool,
-    pub applied: bool,
-    pub written_bytes: usize,
-}
-
-/// Import reviewed drift verdicts from a `drift-verdicts/v1` artifact (Round
-/// 481). ALL-OR-NOTHING with full per-verdict outcomes; `dry_run` runs the
-/// identical validation and writes nothing. Every event rides the shared
-/// [`validate_confirmation_event`] — the ONE invariant site both confirmation
-/// write paths share (the half-enforced-invariant rule) — so the self-confirm
-/// reject, target existence, and idempotency are identical to the hand-authored
-/// path. The R439 claim pin re-checks per verdict: a fact amended after review
-/// rejects loud instead of silently confirming revised prose.
-pub fn import_drift_verdicts(
-    store: &mut AtomicStore,
-    sidecar_path: &Path,
-    file: &DriftVerdictsFile,
-    file_sha256: &str,
-    dry_run: bool,
-) -> Result<DriftImportReport, AtomicMutateError> {
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut results: Vec<DriftVerdictResult> = Vec::new();
-    let mut built: Vec<(String, ConfirmationEvent)> = Vec::new();
-    for v in &file.verdicts {
-        let fact_id = v.fact.trim();
-        let outcome = (|| -> Result<(String, ConfirmationEvent, Verdict), String> {
-            if fact_id.is_empty() {
-                return Err("fact id mandatory (non-empty)".to_string());
-            }
-            if !seen.insert(fact_id.to_string()) {
-                return Err(format!(
-                    "duplicate verdict for fact `{fact_id}` in one file — ambiguous; one \
-                     independent review per import (a second reviewer imports separately)"
-                ));
-            }
-            if !store.narrative_facts.contains_key(fact_id) {
-                return Err(format!(
-                    "fact `{fact_id}` not present in atomic store (verdicts target existing \
-                     facts; add_fact creates)"
-                ));
-            }
-            check_claim_pin(&store.narrative_facts, fact_id, &v.claim_sha256, "fact")?;
-            let verdict = Verdict::from_tag(v.verdict.trim())
-                .ok_or_else(|| format!("verdict `{}` must be `confirm` or `refute`", v.verdict))?;
-            let event = ConfirmationEvent {
-                claim: ConfirmationClaim::FactEvidence {
-                    fact_id: fact_id.to_string(),
-                },
-                confirmer: Confirmer {
-                    kind: ConfirmerKind::Model,
-                    id: v.confirmer_id.clone(),
-                    version: v.confirmer_version.clone(),
-                },
-                method: ConfirmMethod::SemanticReview,
-                artifact_hashes: ArtifactHashes {
-                    spec_sha256: Some(v.claim_sha256.clone()),
-                    code_sha256: Vec::new(),
-                    test_sha256: Vec::new(),
-                },
-                authoring_run: v.authoring_run.clone(),
-                confirming_run: v.confirming_run.clone(),
-                verdict,
-                rationale: v.rationale.clone(),
-                timestamp: v.timestamp.clone(),
-            };
-            // The shared invariant site: non-blank runs, self-confirm reject,
-            // non-blank rationale, target (fact) existence, idempotency.
-            let event_id = validate_confirmation_event(store, &event).map_err(|e| e.to_string())?;
-            Ok((event_id, event, verdict))
-        })();
-        match outcome {
-            Ok((event_id, event, verdict)) => {
-                results.push(DriftVerdictResult {
-                    fact: fact_id.to_string(),
-                    verdict: format!("recorded:{}", verdict.as_str()),
-                });
-                built.push((event_id, event));
-            }
-            Err(reason) => results.push(DriftVerdictResult {
-                fact: fact_id.to_string(),
-                verdict: reason,
-            }),
-        }
-    }
-    let accepted = built.len();
-    let rejected = results.len() - accepted;
-    let apply = !dry_run && rejected == 0;
-    let mut written = 0;
-    if apply {
-        for (event_id, event) in built {
-            store.confirmation_events.insert(event_id, event);
-        }
-        let receipt = save_with_receipt(
-            store,
-            sidecar_path,
-            "import_drift_verdicts",
-            "confirmation_event",
-            &format!(
-                "drift-verdicts {} ({} verdict(s))",
-                file_sha256.get(..16).unwrap_or(file_sha256),
-                accepted
-            ),
-        )?;
-        written = receipt.written_bytes;
-    }
-    Ok(DriftImportReport {
-        file_sha256: file_sha256.to_string(),
-        results,
-        accepted,
-        rejected,
-        dry_run,
-        applied: apply,
-        written_bytes: written,
-    })
 }
 
 // ============================================================================
@@ -8937,218 +8678,6 @@ mod tests {
         )
         .unwrap();
         store
-    }
-
-    // R481 — a store with a setup fact `f-setup` and a payoff fact `f-pay`
-    // (pays_off = [f-setup]) carrying a quote: the v1 drift candidate.
-    fn drift_substrate(path: &Path) -> AtomicStore {
-        let mut store = AtomicStore::new();
-        seed_chapters(&mut store);
-        import_facts(
-            &mut store,
-            path,
-            &FactsManifest {
-                frames: vec![FrameImport {
-                    frame_id: "gt".to_string(),
-                    description: String::new(),
-                }],
-                branches: vec![],
-                entities: vec![],
-                predicates: vec![],
-                facts: vec![
-                    FactImport {
-                        claim: "a brass-locked diary holds the secret".to_string(),
-                        ..sample_fact("f-setup", "gt")
-                    },
-                    FactImport {
-                        claim: "the diary is forced open and names the killer".to_string(),
-                        pays_off: vec!["f-setup".to_string()],
-                        quote: Some(
-                            "She forced the brass lock; the page named Brandt.".to_string(),
-                        ),
-                        ..sample_fact("f-pay", "gt")
-                    },
-                ],
-            },
-        )
-        .unwrap();
-        store
-    }
-
-    fn drift_verdict(
-        fact: &str,
-        claim: &str,
-        verdict: &str,
-        authoring: &str,
-        confirming: &str,
-    ) -> DriftVerdict {
-        DriftVerdict {
-            fact: fact.to_string(),
-            claim_sha256: sha256_hex(claim.as_bytes()),
-            verdict: verdict.to_string(),
-            rationale: "the quoted prose does (not) bear out the payoff claim".to_string(),
-            authoring_run: authoring.to_string(),
-            confirming_run: confirming.to_string(),
-            confirmer_id: "claude-opus-4-8".to_string(),
-            confirmer_version: "2026-06".to_string(),
-            timestamp: "2026-06-12T00:00:00Z".to_string(),
-        }
-    }
-
-    fn drift_file(verdicts: Vec<DriftVerdict>) -> DriftVerdictsFile {
-        DriftVerdictsFile {
-            schema: "drift-verdicts/v1".to_string(),
-            comment: String::new(),
-            verdicts,
-        }
-    }
-
-    const PAY_CLAIM: &str = "the diary is forced open and names the killer";
-
-    #[test]
-    fn drift_verdict_confirm_recorded_then_idempotent() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-        let mut store = drift_substrate(&path);
-        let file = drift_file(vec![drift_verdict(
-            "f-pay", PAY_CLAIM, "confirm", "author", "reviewer",
-        )]);
-        let report = import_drift_verdicts(&mut store, &path, &file, "sha", false).unwrap();
-        assert!(report.applied && report.accepted == 1 && report.rejected == 0);
-        assert_eq!(store.confirmation_events.len(), 1);
-        // Re-import the identical act → idempotent reject (all-or-nothing blocks).
-        let again = import_drift_verdicts(&mut store, &path, &file, "sha", false).unwrap();
-        assert!(!again.applied && again.rejected == 1);
-        assert!(again.results[0].verdict.contains("already recorded"));
-    }
-
-    #[test]
-    fn drift_verdict_self_confirm_rejected() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-        let mut store = drift_substrate(&path);
-        let file = drift_file(vec![drift_verdict(
-            "f-pay", PAY_CLAIM, "confirm", "same", "same",
-        )]);
-        let report = import_drift_verdicts(&mut store, &path, &file, "sha", false).unwrap();
-        assert!(!report.applied && report.rejected == 1);
-        assert!(report.results[0].verdict.contains("self-confirm"));
-        assert!(store.confirmation_events.is_empty());
-    }
-
-    #[test]
-    fn drift_verdict_stale_claim_rejected() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-        let mut store = drift_substrate(&path);
-        // A sha for prose the fact never carried → stale (amended after review).
-        let file = drift_file(vec![drift_verdict(
-            "f-pay",
-            "an outdated reading",
-            "refute",
-            "author",
-            "reviewer",
-        )]);
-        let report = import_drift_verdicts(&mut store, &path, &file, "sha", false).unwrap();
-        assert!(!report.applied && report.rejected == 1);
-        assert!(report.results[0].verdict.contains("stale"));
-    }
-
-    #[test]
-    fn drift_verdict_unknown_fact_and_bad_verdict_reject() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-        let mut store = drift_substrate(&path);
-        let ghost = drift_file(vec![drift_verdict(
-            "f-ghost", "x", "confirm", "author", "reviewer",
-        )]);
-        assert!(
-            import_drift_verdicts(&mut store, &path, &ghost, "sha", false)
-                .unwrap()
-                .results[0]
-                .verdict
-                .contains("not present")
-        );
-        let bad = drift_file(vec![DriftVerdict {
-            verdict: "maybe".to_string(),
-            ..drift_verdict("f-pay", PAY_CLAIM, "confirm", "author", "reviewer")
-        }]);
-        assert!(import_drift_verdicts(&mut store, &path, &bad, "sha", false)
-            .unwrap()
-            .results[0]
-            .verdict
-            .contains("confirm` or `refute"));
-    }
-
-    #[test]
-    fn drift_verdict_dry_run_writes_nothing() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-        let mut store = drift_substrate(&path);
-        let file = drift_file(vec![drift_verdict(
-            "f-pay", PAY_CLAIM, "confirm", "author", "reviewer",
-        )]);
-        let report = import_drift_verdicts(&mut store, &path, &file, "sha", true).unwrap();
-        assert!(
-            report.dry_run && !report.applied && report.rejected == 0 && report.written_bytes == 0
-        );
-        assert!(
-            store.confirmation_events.is_empty(),
-            "dry run must not write"
-        );
-    }
-
-    /// Field-invariant parity (the R305 rule applied to confirmation events):
-    /// the hand-authored `append_confirmation_event` and the batch
-    /// `import_drift_verdicts` enforce the SAME self-confirm reject for a
-    /// `FactEvidence` claim — both reject identical runs, both accept distinct
-    /// ones. Guards against a paste-drift between the two write paths.
-    #[test]
-    fn confirmation_self_confirm_parity_append_vs_drift_import() {
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("d.json");
-
-        // append path, self-confirm on a FactEvidence claim → reject.
-        let mut store = drift_substrate(&path);
-        let mut ev = sample_event("same", "same");
-        ev.claim = ConfirmationClaim::FactEvidence {
-            fact_id: "f-pay".to_string(),
-        };
-        let append_self = append_confirmation_event(&mut store, &path, ev).unwrap_err();
-        assert!(matches!(append_self, AtomicMutateError::Validation(_)));
-
-        // import path, self-confirm → reject (same invariant, batch path).
-        let import_self = import_drift_verdicts(
-            &mut store,
-            &path,
-            &drift_file(vec![drift_verdict("f-pay", PAY_CLAIM, "confirm", "x", "x")]),
-            "sha",
-            false,
-        )
-        .unwrap();
-        assert!(!import_self.applied && import_self.results[0].verdict.contains("self-confirm"));
-
-        // Both accept a DISTINCT-run confirmation.
-        let mut ev_ok = sample_event("authorA", "reviewerB");
-        ev_ok.claim = ConfirmationClaim::FactEvidence {
-            fact_id: "f-pay".to_string(),
-        };
-        assert!(append_confirmation_event(&mut store, &path, ev_ok).is_ok());
-        let import_ok = import_drift_verdicts(
-            &mut store,
-            &path,
-            &drift_file(vec![drift_verdict(
-                "f-pay",
-                PAY_CLAIM,
-                "refute",
-                "authorC",
-                "reviewerD",
-            )]),
-            "sha",
-            false,
-        )
-        .unwrap();
-        assert!(import_ok.applied && import_ok.accepted == 1);
     }
 
     fn succession_proposal(

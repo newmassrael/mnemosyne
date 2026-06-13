@@ -1759,6 +1759,119 @@ pub fn payoff_coverage(
     Ok(report)
 }
 
+/// Per-world deterministic payoff SUBSTANTIATION (Round 485). Refines
+/// [`payoff_coverage`]'s `paid` set — a credited setup is `substantiated` only
+/// when a typed state-change actually discharges it, never on the bare
+/// existence of a `pays_off` edge. NO model judgment: the verdict is a
+/// deterministic comparison of declared typed legs (R484 — the all-deterministic
+/// redesign that replaced the R481 LLM-verdict drift surface). Three outcomes
+/// for each credited setup:
+/// - `substantiated`: the setup carries a typed state `(subject, predicate,
+///   V0)` AND ≥ 1 of its visible payoff facts carries a typed leg on the SAME
+///   `(subject, predicate)` with a different value (a state change discharging
+///   the setup). `payoffs` lists only the discharging facts.
+/// - `unsubstantiated`: the setup is typed but NO crediting payoff carries that
+///   discharging state-change — a hollow payoff (the edge exists, the typed
+///   backing does not). This is the deterministic analogue of the drift R481
+///   chased with an LLM.
+/// - `unverifiable`: the typed data needed to check a discharge is absent —
+///   the setup has no typed state, OR every crediting payoff is prose-only.
+///   Surfaced, never silently passed. The honest boundary: an untyped payoff
+///   chain cannot be machine-verified; the author types it (the
+///   typing-discovery pull) and the gate then decides. This is the dominant
+///   class on a prose-first store and is the correct deterministic statement,
+///   not a failure.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorldPayoffSubstantiation {
+    pub substantiated: Vec<PaidSetup>,
+    pub unsubstantiated: Vec<PaidSetup>,
+    pub unverifiable: Vec<PaidSetup>,
+}
+
+/// Whole-store payoff substantiation (Round 485). Pure read projection over the
+/// declared typed structure — no LLM, re-runnable, deterministic.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PayoffSubstantiationReport {
+    pub worlds: BTreeMap<String, WorldPayoffSubstantiation>,
+    /// Distinct facts marked `expected`, store-wide (pass-through from coverage).
+    pub setups_total: usize,
+}
+
+/// Does any crediting payoff fact carry a typed leg that discharges the setup's
+/// typed state — same subject and predicate, different value? Deterministic.
+fn discharging_payoffs(
+    facts: &BTreeMap<String, NarrativeFact>,
+    setup_typed: &mnemosyne_core::TypedClaim,
+    payoffs: &[String],
+) -> Vec<String> {
+    let v0 = typed_object_key(&setup_typed.object);
+    payoffs
+        .iter()
+        .filter(|pid| {
+            facts
+                .get(*pid)
+                .and_then(|f| f.typed.as_ref())
+                .is_some_and(|t| {
+                    t.subject == setup_typed.subject
+                        && t.predicate == setup_typed.predicate
+                        && typed_object_key(&t.object) != v0
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+/// Classify every credited setup as substantiated / unsubstantiated /
+/// unverifiable, per world (Round 485). Reuses [`payoff_coverage`] for the
+/// world-scoped paid set, then applies the deterministic typed-discharge rule.
+pub fn payoff_substantiation(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<PayoffSubstantiationReport, String> {
+    let coverage = payoff_coverage(store, order)?;
+    let facts = &store.narrative_facts;
+    let mut report = PayoffSubstantiationReport {
+        setups_total: coverage.setups_total,
+        ..Default::default()
+    };
+    for (world, cov) in &coverage.worlds {
+        let mut w = WorldPayoffSubstantiation::default();
+        for paid in &cov.paid {
+            // The setup is present (it was just credited by payoff_coverage).
+            let setup_typed = facts.get(&paid.setup).and_then(|f| f.typed.as_ref());
+            match setup_typed {
+                // Setup carries no typed state -> a discharge is undefinable.
+                None => w.unverifiable.push(paid.clone()),
+                Some(ts) => {
+                    let any_typed_payoff = paid
+                        .payoffs
+                        .iter()
+                        .any(|pid| facts.get(pid).is_some_and(|f| f.typed.is_some()));
+                    if !any_typed_payoff {
+                        // Setup typed, but every crediting payoff is prose-only:
+                        // the discharge cannot be checked deterministically.
+                        w.unverifiable.push(paid.clone());
+                    } else {
+                        let discharging = discharging_payoffs(facts, ts, &paid.payoffs);
+                        if discharging.is_empty() {
+                            // Typed payoff(s) exist but none changes the setup's
+                            // typed state — a hollow payoff.
+                            w.unsubstantiated.push(paid.clone());
+                        } else {
+                            w.substantiated.push(PaidSetup {
+                                setup: paid.setup.clone(),
+                                payoffs: discharging,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        report.worlds.insert(world.clone(), w);
+    }
+    Ok(report)
+}
+
 /// One recorded cross-frame conflict edge (read symmetrically; endpoints
 /// id-ordered like the gate's pair key).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -3341,6 +3454,71 @@ mod tests {
         );
     }
 
+    /// Round 485 — deterministic payoff substantiation. Set a typed leg on a
+    /// FactImport (registers the entity + predicate via `derived_registries`).
+    fn typed_value(mut f: FactImport, subject: &str, predicate: &str, value: &str) -> FactImport {
+        f.entities = vec![subject.to_string()];
+        f.typed = Some(mnemosyne_core::TypedClaim {
+            subject: subject.to_string(),
+            predicate: predicate.to_string(),
+            object: mnemosyne_core::TypedObject::Value {
+                value: value.to_string(),
+            },
+        });
+        f
+    }
+
+    #[test]
+    fn payoff_substantiation_classifies_substantiated_unsubstantiated_unverifiable() {
+        let store = store_with(vec![
+            // typed setup + a typed state-change on the same subject+predicate.
+            typed_value(
+                setup_fact("su-diary", "gt", "ch-1"),
+                "diary",
+                "state",
+                "sealed",
+            ),
+            typed_value(
+                payoff_fact("p-diary", "gt", "ch-2", &["su-diary"]),
+                "diary",
+                "state",
+                "opened",
+            ),
+            // typed setup + a TYPED payoff that re-asserts the same value (no
+            // change) -> hollow, unsubstantiated.
+            typed_value(setup_fact("su-gun", "gt", "ch-1"), "gun", "state", "loaded"),
+            typed_value(
+                payoff_fact("p-gun", "gt", "ch-2", &["su-gun"]),
+                "gun",
+                "state",
+                "loaded",
+            ),
+            // typed setup + an UNTYPED (prose-only) payoff -> can't check ->
+            // unverifiable.
+            typed_value(
+                setup_fact("su-safe", "gt", "ch-1"),
+                "safe",
+                "state",
+                "locked",
+            ),
+            payoff_fact("p-safe", "gt", "ch-2", &["su-safe"]),
+            // untyped setup -> unverifiable.
+            setup_fact("su-letter", "gt", "ch-1"),
+            payoff_fact("p-letter", "gt", "ch-2", &["su-letter"]),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = payoff_substantiation(&store, &order).unwrap();
+        let w = &report.worlds[MAIN_BRANCH];
+        let names =
+            |v: &[PaidSetup]| -> Vec<String> { v.iter().map(|p| p.setup.clone()).collect() };
+        assert_eq!(names(&w.substantiated), vec!["su-diary"]);
+        assert_eq!(w.substantiated[0].payoffs, vec!["p-diary".to_string()]);
+        assert_eq!(names(&w.unsubstantiated), vec!["su-gun"]);
+        let mut unver = names(&w.unverifiable);
+        unver.sort();
+        assert_eq!(unver, vec!["su-letter".to_string(), "su-safe".to_string()]);
+    }
+
     /// Round 443 session review: a payoff edge between SIBLING branches
     /// credits in no world — both endpoints exist, no world sees them
     /// together. The dead edge itself surfaces as `uncredited_edges`
@@ -3609,6 +3787,44 @@ mod tests {
                         && branch == MAIN_BRANCH
             )),
             "{:?}",
+            report.violations
+        );
+    }
+
+    /// Round 485 — Class B: the f-helene "claim contradicts its own cited
+    /// evidence" drift (R483) is caught DETERMINISTICALLY by the existing
+    /// exclusivity gate once both load-bearing legs are typed. No new mechanism
+    /// — the R484 all-deterministic redesign relies on exactly this. Helene's
+    /// `name` cannot be both `true-family` and `borrowed` at one canon point.
+    #[test]
+    fn class_b_contradiction_caught_by_exclusivity_once_typed() {
+        let store = store_with(vec![
+            typed_fact(
+                "helene-claim",
+                "gt",
+                "ch-2",
+                "helene",
+                "name",
+                at("true-family"),
+            ),
+            typed_fact(
+                "sc06-evidence",
+                "gt",
+                "ch-1",
+                "helene",
+                "name",
+                at("borrowed"),
+            ),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("name", "name", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "name"
+            )),
+            "the typed name contradiction must surface deterministically: {:?}",
             report.violations
         );
     }

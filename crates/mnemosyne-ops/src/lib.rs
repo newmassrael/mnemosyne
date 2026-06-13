@@ -382,45 +382,20 @@ pub fn import_typing_proposals_report(
     )?)
 }
 
-/// The drift-detection candidate package (Round 481): every payoff fact (a
-/// fact with a non-empty `pays_off`) with its claim text + sha256 pin + the
-/// evidence quote AND its current review status. Pure read projection;
-/// order-independent (claim-vs-evidence is a property of the fact). It is both
-/// the LLM input contract for `drift-verdicts/v1` authoring and the drift
-/// surface (the rows whose status is not `reviewed`).
-pub fn drift_candidates_report(
+/// Deterministic payoff substantiation (Round 485) — classify every credited
+/// setup as substantiated / unsubstantiated / unverifiable by the typed
+/// state-change rule, per world. Pure read projection, no LLM (the R484
+/// all-deterministic redesign that replaced the R481 drift-verdict surface).
+pub fn payoff_substantiation_report(
     workspace_root: &Path,
     sidecar: Option<&Path>,
-) -> Result<mnemosyne_validate::drift::DriftReport, OpError> {
+    order_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::PayoffSubstantiationReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
-    mnemosyne_validate::drift::drift_candidates(&store).map_err(OpError::Other)
-}
-
-/// Import reviewed claim-vs-evidence verdicts from a `drift-verdicts/v1`
-/// artifact (Round 481) — load + shape-check the file, then run the
-/// all-or-nothing import (or its dry-run twin). Returns the full verdict
-/// report; gating policy stays with the caller (the
-/// import_typing_proposals_report shape). Records each verdict as a
-/// `FactEvidence` confirmation event through the shared validator (self-confirm
-/// reject enforced).
-pub fn import_drift_verdicts_report(
-    workspace_root: &Path,
-    sidecar: Option<&Path>,
-    verdicts_path: &Path,
-    dry_run: bool,
-) -> Result<mnemosyne_atomic::DriftImportReport, OpError> {
-    let (file, file_sha256) =
-        mnemosyne_atomic::load_drift_verdicts(verdicts_path).map_err(OpError::Other)?;
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
-    let mut store =
-        AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
-    Ok(mnemosyne_atomic::import_drift_verdicts(
-        &mut store,
-        &sidecar_path,
-        &file,
-        &file_sha256,
-        dry_run,
-    )?)
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::payoff_substantiation(&store, &order).map_err(OpError::Other)
 }
 
 /// Import succession + conflict edges from a reviewed `edge-proposals/v1`
