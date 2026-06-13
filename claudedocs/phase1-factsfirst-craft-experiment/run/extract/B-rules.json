@@ -1,0 +1,10 @@
+{
+ "schema":"narrative-rules/v1",
+ "comment":"Story B — recipe rules: alive-arc transition (Crane dies on every limb); custody-exclusive per named object (night-log, spare key); location-exclusive per principal (text asserts simultaneous gallery/stair/upper-rail presence at 3:14).",
+ "rules":[
+  {"id":"alive-arc","class":"transition","predicate":"is_alive","allowed":[["alive","dead"]]},
+  {"id":"night-log-custody","class":"exclusive","predicate":"holds_log","per":"object"},
+  {"id":"spare-key-custody","class":"exclusive","predicate":"holds_key","per":"object"},
+  {"id":"location-excl","class":"exclusive","predicate":"at_location","per":"subject"}
+ ]
+}

@@ -1,0 +1,8 @@
+{
+  "rules": [
+    {"id": "r-location-exclusive", "class": "exclusive", "predicate": "location", "per": "subject"},
+    {"id": "r-key-custody-exclusive", "class": "exclusive", "predicate": "key-custody", "per": "object"},
+    {"id": "r-lifestate-transition", "class": "transition", "predicate": "lifestate", "allowed": [["alive","dead"]]},
+    {"id": "r-dismissal-transition", "class": "transition", "predicate": "knows-dismissal", "allowed": [["no","yes"]]}
+  ]
+}
