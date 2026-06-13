@@ -8,3 +8,4 @@ Cargo.lock.bak
 # Exception: experiment evidence is permanent audit record (not transient
 # scratch) — preserved as git SSOT so conclusions stay re-checkable.
 !/claudedocs/phase1-scale-floor-experiment/
+!/claudedocs/phase1-drift-acceptance/

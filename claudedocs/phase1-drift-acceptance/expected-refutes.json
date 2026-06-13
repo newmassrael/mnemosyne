@@ -1,0 +1,54 @@
+{
+  "refute": [
+    {
+      "fact_id": "f-confess-chart-explained",
+      "why": "Asserts f-chart-burned pays off on confess (diary's roll names the old case; the burned buff folder was that case's record), but the cited payoff scene sc-59 ('The Chart No One Names') leaves the burning 'outside her knowing ... the one secret ... never reaches'. The store marks it paid; its own cited evidence does not deliver the connection. Defect-tables: chart dangles on confess.",
+      "scene_cited": "sc-59"
+    },
+    {
+      "fact_id": "f-escalate-method-toll",
+      "why": "Asserts the burned record (f-chart-burned) and the buried-Surel kinship (f-register-burial-match) as established 'books of the dead', but the cited payoff scene sc-63 leaves the chart 'never guessed had gone to the stove' and the kinship 'stayed the reader's and not hers'. Cited evidence does not deliver those two payoffs (the bundled f-ledger-discrepancy does pay off). Defect-tables: chart + register-burial dangle on escalate.",
+      "scene_cited": "sc-63"
+    }
+  ],
+  "confirm": [
+    {
+      "fact_id": "f-diary-opened-confront",
+      "why": "Clean payoff: the sealed-diary setup (sc-02) is plainly discharged when cited sc-51 ('The Brass Lock Forced') forces and reads the diary on the confront line."
+    },
+    {
+      "fact_id": "f-diary-opened-confess",
+      "why": "Clean payoff: the missing-key/sealed-diary setup (sc-37) is discharged when cited sc-56 forces the brass lock and the diary is opened and read on confess."
+    },
+    {
+      "fact_id": "f-roeder-suicide-confront",
+      "why": "Clean payoff: cited sc-08/sc-04/sc-03/sc-01 deliver the unfinished resignation, the brown-bottle draught, the untouched master key, and the cut telegram line into a self-administered death; all four setups pay off on confront and the suicide reading carries no access fault."
+    },
+    {
+      "fact_id": "f-roeder-suicide-confess",
+      "why": "Clean payoff: cited sc-08/sc-04/sc-03 deliver the unfinished resignation, the dosed brown bottle, and the untouched master key as the suicide; resignation/vial/master-key all pay off on confess."
+    }
+  ],
+  "out_of_band": [
+    {
+      "fact_id": "f-escalate-diary-sealed-final",
+      "why": "Claim honestly narrates the diary STAYING sealed and matches cited sc-64/sc-37/sc-02; the break is global payoff-coverage (the locked-diary plant never discharges -- the one setup the defect-tables call un-delivered under both readings), invisible to a claim-vs-cited-evidence check."
+    },
+    {
+      "fact_id": "f-escalate-forged-unproven",
+      "why": "Claim honestly narrates the forged papers staying 'unsurrendered and unguessed' and matches cited sc-65/sc-06; the dangling is global coverage (the killer escapes so the plant never discharges), not a claim-vs-cited-evidence mismatch."
+    },
+    {
+      "fact_id": "f-roeder-murder-escalate",
+      "why": "Claim (fatal morphine pre-laid in the brown bottle Roeder drank himself before bolting) reads fine inside cited sc-61/sc-03/sc-04/sc-12; it breaks only globally as impossible physical access -- Helene the bed-patient has no established route to Roeder's private consulting-room draught (access fits nurse Brandt). Band 3."
+    },
+    {
+      "fact_id": "f-helene-identified-confront",
+      "why": "Claim is coherent inside cited sc-53, but 'admitted on forged papers under her own true family name' collides with the sc-06 setup 'admitted under a forged name' -- a cross-scene same-entity (Surel) contradiction (Band 2), not visible from claim-vs-cited-evidence alone."
+    },
+    {
+      "fact_id": "f-escalate-lindqvist-payoff",
+      "why": "The f-lindqvist-improving payoff (false vigour withdrawn -> collapse and death) IS delivered by cited sc-48/sc-10; the documented break is the murder's missing MOTIVE (the avenger kills a fellow victim), a global causal/commonsense gap outside any drift band."
+    }
+  ]
+}
