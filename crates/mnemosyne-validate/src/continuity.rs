@@ -2668,7 +2668,10 @@ pub fn irony_intervals(
 /// guidance for the LLM render step (Layer B), NEVER gated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FactDisclosure {
-    pub mode: String,
+    /// The effective disclosure mode — serializes as its snake_case tag
+    /// (`withhold`/`state`/`hint`/`imply`); a typed enum, not a stringly field
+    /// (Round 510).
+    pub mode: mnemosyne_core::DisclosureMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2958,27 +2961,21 @@ pub fn playthrough_manuscript(
     Ok(report)
 }
 
-/// Resolve one fact's effective disclosure decision under a telling, for a
-/// given world-line (Round 506, design sec 7.24 — the render-brief carrier).
-/// An override wins; otherwise the plan's default mode applies with no timing
-/// pin. `first_at` is the override's pin for THIS world (per-world-line, the
-/// R502-resolved under-spec) — `None` when defaulted or unpinned for the world.
+/// Map a fact's effective disclosure (the single resolver,
+/// [`mnemosyne_core::DisclosurePlan::effective`]) into the carrier's
+/// begins-event shape (Round 506; Round 510 routes through the shared resolver
+/// so the carrier and the coverage surface cannot drift on the
+/// override-vs-default rule).
 fn resolve_fact_disclosure(
     plan: &mnemosyne_core::DisclosurePlan,
     world: &str,
     fact_id: &str,
 ) -> FactDisclosure {
-    match plan.overrides.get(fact_id) {
-        Some(ov) => FactDisclosure {
-            mode: ov.mode.as_str().to_string(),
-            first_at: ov.first_at.get(world).cloned(),
-            surface: ov.surface.clone(),
-        },
-        None => FactDisclosure {
-            mode: plan.default_mode.as_str().to_string(),
-            first_at: None,
-            surface: None,
-        },
+    let effective = plan.effective(fact_id, world);
+    FactDisclosure {
+        mode: effective.mode,
+        first_at: effective.first_at,
+        surface: effective.surface,
     }
 }
 
@@ -5724,7 +5721,7 @@ mod tests {
             .find(|e| e.fact_id == "f-main")
             .unwrap();
         let d = ev.disclosure.as_ref().unwrap();
-        assert_eq!(d.mode, "state");
+        assert_eq!(d.mode, mnemosyne_core::DisclosureMode::State);
         assert_eq!(d.first_at, None, "no first_at pinned for the main world");
         let surface = d.surface.as_ref().unwrap();
         assert_eq!(surface.scene, "ch-2");
@@ -5744,7 +5741,10 @@ mod tests {
             Some("ch-3")
         );
         let f_rev = route_begins.iter().find(|e| e.fact_id == "f-rev").unwrap();
-        assert_eq!(f_rev.disclosure.as_ref().unwrap().mode, "withhold");
+        assert_eq!(
+            f_rev.disclosure.as_ref().unwrap().mode,
+            mnemosyne_core::DisclosureMode::Withhold
+        );
         assert_eq!(f_rev.disclosure.as_ref().unwrap().first_at, None);
 
         // A typo'd telling fails loud (the registry ethos).

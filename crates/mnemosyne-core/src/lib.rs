@@ -38,8 +38,8 @@ pub use fact::{
 mod narrative;
 pub use narrative::{
     fork_chain, Branch, BranchFork, ConflictAssertion, DisclosureMode, DisclosureOverride,
-    DisclosurePlan, DisclosureSurface, Entity, Frame, NarrativeFact, PayoffExpectation, Predicate,
-    PredicateObjectKind, TypedClaim, TypedObject, MAIN_BRANCH,
+    DisclosurePlan, DisclosureSurface, EffectiveDisclosure, Entity, Frame, NarrativeFact,
+    PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject, MAIN_BRANCH,
 };
 
 mod section_ref;

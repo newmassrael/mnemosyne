@@ -61,16 +61,16 @@ pub fn disclosure_coverage(
     let plan = store.disclosure_plans.get(telling).ok_or_else(|| {
         format!("telling `{telling}` not present in the disclosure_plans registry (fail-loud)")
     })?;
-    let default_withhold = plan.default_mode == DisclosureMode::Withhold;
     let mut disclosed = 0;
     let mut hidden_by_design = 0;
     let mut never_planned = Vec::new();
     for id in store.narrative_facts.keys() {
-        match plan.overrides.get(id) {
-            Some(ov) if ov.mode == DisclosureMode::Withhold => hidden_by_design += 1,
-            Some(_) => disclosed += 1,
-            None if default_withhold => never_planned.push(id.clone()),
-            None => disclosed += 1,
+        // The single resolver (Round 510) — coverage cannot drift from the
+        // carrier on the override-vs-default rule.
+        match plan.effective_mode(id) {
+            (DisclosureMode::Withhold, true) => hidden_by_design += 1,
+            (DisclosureMode::Withhold, false) => never_planned.push(id.clone()),
+            (_, _) => disclosed += 1,
         }
     }
     Ok(DisclosureCoverageReport {
@@ -86,14 +86,38 @@ pub fn disclosure_coverage(
 // Step 5 — premature-leak gate (R502), cross-store, typed-tuple matched.
 // ---------------------------------------------------------------------------
 
+/// The kind of premature-leak finding (Round 510 — a typed enum, not a
+/// stringly field, matching the codebase's serde-tagged-enum convention).
+/// `Withhold` = a `withhold`-mode fact re-extracted at all; `Early` = a
+/// `first_at`-pinned fact re-extractable strictly before its pin; `Unordered`
+/// = matched at a coord incomparable to the pin (an honesty surface, not a
+/// verdict — carried in the report's `unordered`, never `leaks`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeakKind {
+    Withhold,
+    Early,
+    Unordered,
+}
+
+impl LeakKind {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LeakKind::Withhold => "withhold",
+            LeakKind::Early => "early",
+            LeakKind::Unordered => "unordered",
+        }
+    }
+}
+
 /// One premature-leak finding (Round 507).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DisclosureLeak {
     /// The authored plan-targeted fact (withhold or first_at).
     pub fact_id: String,
-    /// `withhold` (a withheld fact is re-extractable) or `early`
-    /// (re-extractable strictly before its `first_at`).
-    pub kind: String,
+    /// What kind of leak (or honesty surface) this is.
+    pub kind: LeakKind,
     /// The matched re-extracted fact id (truth-frame, same typed tuple).
     pub reextracted_id: String,
     /// The matched fact's re-extracted discourse coordinate.
@@ -121,6 +145,16 @@ pub struct DisclosureLeakReport {
     /// first_at-pinned facts with NO truth-frame match (not disclosed in the
     /// prose at all — a coverage note, not a leak).
     pub unmatched: Vec<String>,
+    /// Re-extracted facts in `truth_frame` carrying a typed claim — the
+    /// universe this gate matches against (Round 510, the F5 vacuous-pass
+    /// guard).
+    pub truth_frame_typed_facts: usize,
+    /// Of those, how many use a subject AND predicate the AUTHORED store
+    /// registers — the shared-vocabulary count. `targeted > 0` with
+    /// `vocabulary_shared == 0` means the re-extraction used foreign ids (or
+    /// has no typed truth-frame facts), so a `leaks == 0` result is VACUOUS,
+    /// not a clean pass — the CLI gate fails loud on it (no silent pass).
+    pub vocabulary_shared: usize,
 }
 
 /// Run the premature-leak gate (Round 507, R502). For each plan-targeted fact
@@ -141,6 +175,28 @@ pub fn disclosure_leak(
     let plan = authored.disclosure_plans.get(telling).ok_or_else(|| {
         format!("telling `{telling}` not present in the disclosure_plans registry (fail-loud)")
     })?;
+    // F5 vacuous-pass guard (Round 510): measure the re-extraction's
+    // truth-frame typed universe and how much of it shares the authored
+    // vocabulary. A withheld-fact "no match" and a foreign-vocabulary "no
+    // match" are indistinguishable by leak count alone — this surfaces the
+    // difference so a blind gate (foreign ids ⇒ matches nothing ⇒ leaks=0)
+    // cannot read as a clean pass.
+    let mut truth_frame_typed_facts = 0usize;
+    let mut vocabulary_shared = 0usize;
+    for g in reextracted.narrative_facts.values() {
+        if g.frame != truth_frame {
+            continue;
+        }
+        let Some(t) = g.typed.as_ref() else {
+            continue;
+        };
+        truth_frame_typed_facts += 1;
+        if authored.entities.contains_key(&t.subject)
+            && authored.predicates.contains_key(&t.predicate)
+        {
+            vocabulary_shared += 1;
+        }
+    }
     let mut report = DisclosureLeakReport {
         telling: telling.to_string(),
         world: world.to_string(),
@@ -149,6 +205,8 @@ pub fn disclosure_leak(
         leaks: Vec::new(),
         unordered: Vec::new(),
         unmatched: Vec::new(),
+        truth_frame_typed_facts,
+        vocabulary_shared,
     };
     for (fact_id, ov) in &plan.overrides {
         let is_withhold = ov.mode == DisclosureMode::Withhold;
@@ -180,7 +238,7 @@ pub fn disclosure_leak(
             for (gid, coord) in matches {
                 report.leaks.push(DisclosureLeak {
                     fact_id: fact_id.clone(),
-                    kind: "withhold".to_string(),
+                    kind: LeakKind::Withhold,
                     reextracted_id: gid.clone(),
                     coord: coord.to_string(),
                     first_at: None,
@@ -200,7 +258,7 @@ pub fn disclosure_leak(
                 // coord <= pin and coord != pin => strictly before => leak.
                 report.leaks.push(DisclosureLeak {
                     fact_id: fact_id.clone(),
-                    kind: "early".to_string(),
+                    kind: LeakKind::Early,
                     reextracted_id: gid.clone(),
                     coord: coord.to_string(),
                     first_at: Some(pin.clone()),
@@ -209,7 +267,7 @@ pub fn disclosure_leak(
                 // neither direction => incomparable honesty surface (B-1).
                 report.unordered.push(DisclosureLeak {
                     fact_id: fact_id.clone(),
-                    kind: "unordered".to_string(),
+                    kind: LeakKind::Unordered,
                     reextracted_id: gid.clone(),
                     coord: coord.to_string(),
                     first_at: Some(pin.clone()),
@@ -294,10 +352,23 @@ mod tests {
     use super::*;
     use crate::continuity::CanonOrderFile;
     use mnemosyne_core::{
-        DisclosureOverride, DisclosurePlan, NarrativeFact, PayoffExpectation, TypedClaim,
-        TypedObject, MAIN_BRANCH,
+        DisclosureOverride, DisclosurePlan, Entity, NarrativeFact, PayoffExpectation, Predicate,
+        PredicateObjectKind, TypedClaim, TypedObject, MAIN_BRANCH,
     };
     use std::collections::BTreeMap;
+
+    /// Register the `pike`/`did` vocabulary the leak fixtures type against, so
+    /// the F5 vocabulary-overlap signal is meaningful (Round 510).
+    fn register_vocab(store: &mut AtomicStore) {
+        store.entities.insert("pike".to_string(), Entity::default());
+        store.predicates.insert(
+            "did".to_string(),
+            Predicate {
+                object_kind: PredicateObjectKind::Scalar,
+                description: String::new(),
+            },
+        );
+    }
 
     fn typed(subject: &str, value: &str) -> TypedClaim {
         TypedClaim {
@@ -381,6 +452,7 @@ mod tests {
     #[test]
     fn leak_gate_catches_withhold_and_early_passes_clean_and_belief() {
         let mut authored = AtomicStore::new();
+        register_vocab(&mut authored);
         authored
             .narrative_facts
             .insert("w".into(), nf("gt", "ch-1", Some(typed("pike", "climbed"))));
@@ -424,11 +496,11 @@ mod tests {
         assert!(r
             .leaks
             .iter()
-            .any(|l| l.kind == "withhold" && l.fact_id == "w"));
+            .any(|l| l.kind == LeakKind::Withhold && l.fact_id == "w"));
         assert!(r
             .leaks
             .iter()
-            .any(|l| l.kind == "early" && l.fact_id == "e"));
+            .any(|l| l.kind == LeakKind::Early && l.fact_id == "e"));
 
         // A belief-frame appearance is NOT a leak (truth_frame = gt only).
         let mut belief = AtomicStore::new();
@@ -441,6 +513,48 @@ mod tests {
             r.leaks.is_empty(),
             "belief-frame is not the reader's established truth"
         );
+    }
+
+    /// Round 510 (F5) — the vacuous-pass guard distinguishes a genuine clean
+    /// run from a foreign-vocabulary blind run: both show leaks==0, but the
+    /// blind run shares no vocabulary (vocabulary_shared==0) so the CLI gate can
+    /// fail it loud rather than read it as clean (no silent pass).
+    #[test]
+    fn leak_gate_surfaces_vacuous_pass_on_foreign_vocabulary() {
+        let mut authored = AtomicStore::new();
+        register_vocab(&mut authored);
+        authored
+            .narrative_facts
+            .insert("w".into(), nf("gt", "ch-1", Some(typed("pike", "climbed"))));
+        let mut overrides = BTreeMap::new();
+        overrides.insert("w".to_string(), ov(DisclosureMode::Withhold, &[]));
+        authored
+            .disclosure_plans
+            .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
+        let order = CanonOrder::from_edges(&[["ch-1".into(), "ch-2".into()]]).unwrap();
+
+        // FOREIGN vocabulary: the re-extraction typed an unregistered subject —
+        // 0 matches LOOKS clean, but vocabulary_shared==0 marks it vacuous.
+        let mut foreign = AtomicStore::new();
+        foreign.narrative_facts.insert(
+            "g".into(),
+            nf("gt", "ch-2", Some(typed("STRANGER", "climbed"))),
+        );
+        let r = disclosure_leak(&authored, &foreign, &order, "t", "main", "gt").unwrap();
+        assert_eq!(r.targeted, 1);
+        assert!(r.leaks.is_empty());
+        assert_eq!(r.truth_frame_typed_facts, 1);
+        assert_eq!(r.vocabulary_shared, 0, "foreign id ⇒ no shared vocabulary");
+
+        // SHARED vocabulary, genuinely clean: the withheld fact is absent, a
+        // different shared-vocab fact present ⇒ a real clean pass.
+        let mut shared = AtomicStore::new();
+        shared
+            .narrative_facts
+            .insert("g".into(), nf("gt", "ch-2", Some(typed("pike", "spoke"))));
+        let r = disclosure_leak(&authored, &shared, &order, "t", "main", "gt").unwrap();
+        assert!(r.leaks.is_empty());
+        assert_eq!(r.vocabulary_shared, 1, "shared vocab ⇒ a real clean pass");
     }
 
     #[test]

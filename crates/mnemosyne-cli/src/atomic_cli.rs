@@ -711,11 +711,13 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> 
         mnemosyne_atomic::set_disclosure(
             &mut store,
             &sidecar_path,
-            &telling_id,
-            &fact_id,
-            &mode,
-            &first_at,
-            surface,
+            mnemosyne_atomic::DisclosureDecision {
+                telling_id: &telling_id,
+                fact_id: &fact_id,
+                mode: &mode,
+                first_at: &first_at,
+                surface,
+            },
         ),
         json,
     )

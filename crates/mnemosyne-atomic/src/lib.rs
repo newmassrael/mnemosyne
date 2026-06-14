@@ -4240,6 +4240,22 @@ pub fn add_disclosure_plan(
     )
 }
 
+/// The authored inputs to [`set_disclosure`] (Round 510 — bundled so the
+/// primitive takes store + sidecar + one decision, not seven positional args;
+/// the [`ChangelogEntryDraft`] precedent: borrowed fields, the caller owns
+/// them).
+pub struct DisclosureDecision<'a> {
+    pub telling_id: &'a str,
+    pub fact_id: &'a str,
+    /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed
+    /// fail-loud.
+    pub mode: &'a str,
+    /// Per-world-line `first_at` pins as `(branch, coord)` pairs.
+    pub first_at: &'a [(String, String)],
+    /// Optional `(scene, object?)` diegetic surface.
+    pub surface: Option<(&'a str, Option<&'a str>)>,
+}
+
 /// Set one per-fact disclosure override within a telling (Round 506, design sec
 /// 7.24): how a fact reaches the reader, when (per world-line), and on what
 /// surface. A setter (last-write-wins on the override — authoring iteration,
@@ -4252,16 +4268,18 @@ pub fn add_disclosure_plan(
 /// re-extracted prose to the plan by typed (subject, predicate, object) tuple,
 /// so a disclosure decision on an untyped fact would be deterministically
 /// un-gateable (R506: the determinism keystone).
-#[allow(clippy::too_many_arguments)]
 pub fn set_disclosure(
     store: &mut AtomicStore,
     sidecar_path: &Path,
-    telling_id: &str,
-    fact_id: &str,
-    mode: &str,
-    first_at: &[(String, String)],
-    surface: Option<(&str, Option<&str>)>,
+    decision: DisclosureDecision<'_>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let DisclosureDecision {
+        telling_id,
+        fact_id,
+        mode,
+        first_at,
+        surface,
+    } = decision;
     let telling = telling_id.trim();
     let fact = fact_id.trim();
     if !store.disclosure_plans.contains_key(telling) {
@@ -8675,6 +8693,32 @@ mod tests {
         seed_section(store, "ch-3");
     }
 
+    /// Positional wrapper over [`set_disclosure`] for the test below (Round 510
+    /// — the primitive now takes a `DisclosureDecision`; this keeps the test
+    /// call sites terse).
+    #[allow(clippy::too_many_arguments)]
+    fn set_disc(
+        store: &mut AtomicStore,
+        path: &Path,
+        telling: &str,
+        fact: &str,
+        mode: &str,
+        first_at: &[(String, String)],
+        surface: Option<(&str, Option<&str>)>,
+    ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        set_disclosure(
+            store,
+            path,
+            DisclosureDecision {
+                telling_id: telling,
+                fact_id: fact,
+                mode,
+                first_at,
+                surface,
+            },
+        )
+    }
+
     /// Round 506 — disclosure plan registry + set_disclosure: the
     /// gate-enabling typed invariant (withhold/first_at need a typed fact),
     /// the fail-loud refs, per-world-line first_at, idempotent-policy re-add,
@@ -8722,7 +8766,7 @@ mod tests {
         assert!(err.to_string().contains("unknown default_mode"), "{err}");
 
         // Gate-enabling invariant: withhold / first_at on an UNTYPED fact rejects.
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8733,7 +8777,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("no typed claim"), "{err}");
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8745,7 +8789,7 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("no typed claim"), "{err}");
         // A plain state with no timing on an untyped fact is craft-only (un-gated) → ok.
-        set_disclosure(
+        set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8757,7 +8801,7 @@ mod tests {
         .unwrap();
 
         // Typed fact: withhold ok; per-world first_at + surface ok.
-        set_disclosure(
+        set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8767,7 +8811,7 @@ mod tests {
             None,
         )
         .unwrap();
-        set_disclosure(
+        set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8785,14 +8829,14 @@ mod tests {
         assert_eq!(surface.object.as_deref(), Some("pike"));
 
         // Fail-loud refs.
-        let err = set_disclosure(&mut store, &path, "missing", "f-typed", "state", &[], None)
-            .unwrap_err();
+        let err =
+            set_disc(&mut store, &path, "missing", "f-typed", "state", &[], None).unwrap_err();
         assert!(
             err.to_string()
                 .contains("not present in the disclosure_plans"),
             "{err}"
         );
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8806,7 +8850,7 @@ mod tests {
             err.to_string().contains("not present in narrative_facts"),
             "{err}"
         );
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8817,7 +8861,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("branch `nope`"), "{err}");
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",
@@ -8831,7 +8875,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("ch-404"), "{err}");
-        let err = set_disclosure(
+        let err = set_disc(
             &mut store,
             &path,
             "dark-souls",

@@ -515,9 +515,111 @@ pub struct DisclosurePlan {
     pub overrides: BTreeMap<String, DisclosureOverride>,
 }
 
+/// The effective disclosure of one fact under a telling, for one world-line
+/// (Round 510 — THE single resolver of the override-vs-default semantics).
+/// Every reader of a plan (the render-brief carrier, the coverage surface, any
+/// future consumer) derives its answer here so the override/default
+/// interpretation cannot drift across call sites (the CLAUDE.md
+/// half-enforced-invariant guard, read-side).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveDisclosure {
+    /// The override's mode, or the plan default when no override exists.
+    pub mode: DisclosureMode,
+    /// `true` iff an explicit per-fact override exists (vs the plan default) —
+    /// the coverage `never-planned` (defaulted) vs `disclosed`/`hidden` split.
+    pub is_override: bool,
+    /// The first-disclosure coordinate for the queried world (`None` when
+    /// defaulted, or the override pins no coordinate for this world). Distinct
+    /// from when the fact is TRUE in the fabula (`canon_from`).
+    pub first_at: Option<String>,
+    /// The diegetic surface the disclosure rides on (override-only; render
+    /// craft guidance, never gated).
+    pub surface: Option<DisclosureSurface>,
+}
+
+impl DisclosurePlan {
+    /// The effective mode of a fact under this telling (world-independent — a
+    /// mode is one decision per (fact x telling), not per world). Returns the
+    /// override's mode and `true`, else the plan default and `false`. The ONE
+    /// place the override-vs-default rule lives.
+    pub fn effective_mode(&self, fact_id: &str) -> (DisclosureMode, bool) {
+        match self.overrides.get(fact_id) {
+            Some(ov) => (ov.mode, true),
+            None => (self.default_mode, false),
+        }
+    }
+
+    /// The full effective disclosure of a fact for one world-line — the mode
+    /// ([`Self::effective_mode`]) plus the world's `first_at` pin and the
+    /// surface (both override-only). The single resolver the carrier consumes.
+    pub fn effective(&self, fact_id: &str, world: &str) -> EffectiveDisclosure {
+        let (mode, is_override) = self.effective_mode(fact_id);
+        let ov = self.overrides.get(fact_id);
+        EffectiveDisclosure {
+            mode,
+            is_override,
+            first_at: ov.and_then(|o| o.first_at.get(world).cloned()),
+            surface: ov.and_then(|o| o.surface.clone()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 510 — the single disclosure resolver: `effective` and
+    /// `effective_mode` agree, an override wins over the default, `first_at` is
+    /// per-world-line, and a defaulted fact carries no override data. Every
+    /// reader (carrier, coverage) routes here, so they cannot drift.
+    #[test]
+    fn disclosure_plan_effective_resolver() {
+        let mut overrides = BTreeMap::new();
+        let mut first_at = BTreeMap::new();
+        first_at.insert("w1".to_string(), "ch-3".to_string());
+        overrides.insert(
+            "shown".to_string(),
+            DisclosureOverride {
+                mode: DisclosureMode::State,
+                first_at,
+                surface: Some(DisclosureSurface {
+                    scene: "ch-2".to_string(),
+                    object: None,
+                }),
+            },
+        );
+        let plan = DisclosurePlan {
+            description: String::new(),
+            default_mode: DisclosureMode::Withhold,
+            overrides,
+        };
+
+        // Override wins; first_at is per world-line; is_override = true.
+        assert_eq!(plan.effective_mode("shown"), (DisclosureMode::State, true));
+        let e_w1 = plan.effective("shown", "w1");
+        assert_eq!(e_w1.mode, DisclosureMode::State);
+        assert!(e_w1.is_override);
+        assert_eq!(e_w1.first_at.as_deref(), Some("ch-3"));
+        assert!(e_w1.surface.is_some());
+        // No pin for another world-line.
+        assert_eq!(plan.effective("shown", "w2").first_at, None);
+
+        // Defaulted fact: the plan default, no override data.
+        assert_eq!(
+            plan.effective_mode("absent"),
+            (DisclosureMode::Withhold, false)
+        );
+        let e_def = plan.effective("absent", "w1");
+        assert_eq!(e_def.mode, DisclosureMode::Withhold);
+        assert!(!e_def.is_override);
+        assert_eq!(e_def.first_at, None);
+        assert!(e_def.surface.is_none());
+
+        // Parity: effective().mode is exactly effective_mode().0 (one source).
+        for fact in ["shown", "absent"] {
+            assert_eq!(plan.effective(fact, "w1").mode, plan.effective_mode(fact).0);
+        }
+    }
 
     /// Round 448 — the ONE shared resolution of the flattened typed-object
     /// arg pair (CLI flags / MCP args both route here).

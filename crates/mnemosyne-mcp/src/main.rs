@@ -1495,11 +1495,13 @@ impl MnemosyneServer {
             atomic::set_disclosure(
                 store,
                 path,
-                &a.telling_id,
-                &a.fact_id,
-                &a.mode,
-                &first_at,
-                surface,
+                atomic::DisclosureDecision {
+                    telling_id: &a.telling_id,
+                    fact_id: &a.fact_id,
+                    mode: &a.mode,
+                    first_at: &first_at,
+                    surface,
+                },
             )
         });
         self.finish_mutate(outcome)
