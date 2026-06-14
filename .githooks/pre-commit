@@ -32,6 +32,19 @@
 #      (`result_large_err` on tonic interceptors; `too_many_arguments` on
 #      the `scan_paths_no_resolvers` test helper).
 #
+#   5b. Separate-workspace gate (R517) — fmt + clippy on the in-repo
+#      crates that carry their OWN `[workspace]` (tools/experiment-harness,
+#      bench/, studio/), which Gates 4/5 above never reach (`--all` /
+#      `--workspace` only see root members). Structural, not hardcoded: for
+#      each staged `.rs`, walk up to its owning `[workspace]` root and gate
+#      any non-root one on its own `--manifest-path`, so a new `tools/<crate>`
+#      is covered automatically. Runs ONLY when such a file is staged (the
+#      root gate stays fast — the build-speed reason those crates are split
+#      out). pre-push stays root-only by design: it validates the publishable
+#      production workspace, while THIS gate keeps all committed Rust clean.
+#      Closes the silent-fail where harness code committed unformatted because
+#      no gate compiled it.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
@@ -95,6 +108,37 @@ fi
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --all-targets -- -D warnings" >&2
     cargo clippy --workspace --all-targets -- -D warnings
+fi
+
+# Gate 5b — separate in-repo workspaces (own `[workspace]`; Gates 4/5 above,
+# `--all`/`--workspace`, never reach them). Structural: for each staged `.rs`,
+# walk up to its owning `[workspace]` root and gate any non-root one on its own
+# manifest. Runs only when such a file is staged, so the root gate stays fast.
+sub_ws=""
+while IFS= read -r f; do
+    [[ "$f" == *.rs ]] || continue
+    d=$(dirname "$f")
+    while [[ "$d" != "." && "$d" != "/" ]]; do
+        if [[ -f "$d/Cargo.toml" ]] && grep -qE '^\[workspace\]' "$d/Cargo.toml"; then
+            sub_ws+="$d"$'\n'
+            break
+        fi
+        d=$(dirname "$d")
+    done
+done <<< "$staged"
+if [[ -n "${sub_ws//[$'\n']/}" ]]; then
+    while IFS= read -r ws; do
+        [[ -n "$ws" ]] || continue
+        echo "[mnemosyne pre-commit] .rs staged in separate workspace '$ws' — fmt --check + clippy -D warnings" >&2
+        if ! cargo fmt --manifest-path "$ws/Cargo.toml" --check; then
+            {
+                echo "[mnemosyne pre-commit] commit rejected — unformatted code in $ws"
+                echo "  fix: cargo fmt --manifest-path $ws/Cargo.toml && git add -u"
+            } >&2
+            exit 1
+        fi
+        cargo clippy --manifest-path "$ws/Cargo.toml" --all-targets -- -D warnings
+    done < <(printf '%s' "$sub_ws" | sort -u)
 fi
 
 # Gate 6 — vN version-postfix identifier ban (CLAUDE.md anti-pattern).
