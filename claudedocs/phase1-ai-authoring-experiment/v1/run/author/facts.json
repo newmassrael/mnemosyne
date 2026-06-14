@@ -1,0 +1,88 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"the ground truth — what is actually happening behind the early bell"},
+    {"frame_id":"aldous","description":"what Aldous believes (diverges from the truth)"},
+    {"frame_id":"maren","description":"what Maren believes about her cousin's death"}
+  ],
+
+  "branches": [
+    {"branch_id":"expose","description":"Aldous carries word to the mainland village","forks_from":"main","forks_at":"sc-05"},
+    {"branch_id":"confront","description":"Aldous confronts Father Crispin directly in the tower","forks_from":"main","forks_at":"sc-05"},
+    {"branch_id":"act_alone","description":"Aldous seizes the bell and rings on his own judgment","forks_from":"main","forks_at":"sc-05"}
+  ],
+
+  "entities": [
+    {"entity_id":"aldous","kind":"person","description":"the young bellwright, point-of-view"},
+    {"entity_id":"crispin","kind":"person","description":"Father Crispin, prior and bell-keeper of thirty years"},
+    {"entity_id":"maren","kind":"person","description":"a mainland fisherwoman, the community's link"},
+    {"entity_id":"edrick","kind":"person","description":"Maren's cousin, master of the Kittiwake, a smuggler"},
+    {"entity_id":"harbourmaster","kind":"person","description":"the mainland harbourmaster who keeps the landing ledger"},
+    {"entity_id":"the_bell","kind":"object","description":"the great bronze tower bell that guides the boats home"},
+    {"entity_id":"tide_stone","kind":"object","description":"the worn tide-stone Crispin reads the channel depth by"},
+    {"entity_id":"brass_glass","kind":"object","description":"Crispin's brass reading-glass, used to sight the far channel marks"},
+    {"entity_id":"tide_ledger","kind":"object","description":"Crispin's tide-ledger recording every dusk-ring"},
+    {"entity_id":"kittiwake","kind":"object","description":"Edrick's fishing boat, lost on an early-bell night"},
+    {"entity_id":"contraband","kind":"object","description":"smuggled cargo run by the Kittiwake"},
+    {"entity_id":"channel","kind":"place","description":"the shifting marsh channel that floods twice a day"}
+  ],
+
+  "predicates": [
+    {"predicate_id":"senses","object_kind":"scalar","description":"Crispin's ability to read the dusk channel by sight and sound"},
+    {"predicate_id":"early_bell_meaning","object_kind":"scalar","description":"what the early bell actually is"},
+    {"predicate_id":"kittiwake_cause","object_kind":"scalar","description":"the real cause of the Kittiwake's loss"},
+    {"predicate_id":"bell_custody","object_kind":"entity","description":"who holds the bell-rope on a given night"}
+  ],
+
+  "facts": [
+    {"fact_id":"gt-arrive","frame":"gt","claim":"Aldous arrives as Crispin's new apprentice bellwright; the dusk bell is rung to guide the fishing boats through the shifting channel before the light fails.","canon_from":"sc-01","evidence":["sc-01"],"entities":["aldous","crispin","the_bell"]},
+    {"fact_id":"gt-tools","frame":"gt","claim":"Crispin reads the dusk crossing by two tools: the worn tide-stone he feels for depth and the brass reading-glass he sights the far channel marks with.","canon_from":"sc-01","evidence":["sc-01"],"entities":["crispin","tide_stone","brass_glass"],"payoff_expectation":"expected","typed":{"subject":"crispin","predicate":"senses","object":{"kind":"value","value":"keen-by-tool"}}},
+    {"fact_id":"gt-senses-failing","frame":"gt","claim":"In truth Crispin's eyes and ears have been failing for two years; without the tide-stone and glass he can no longer be sure of the dusk channel.","canon_from":"sc-01","evidence":["sc-01"],"entities":["crispin","tide_stone","brass_glass"]},
+
+    {"fact_id":"gt-dusk-true","frame":"gt","claim":"At an ordinary dusk Aldous watches Crispin sight the marks with the brass glass and ring the bell on time; every boat comes home safe.","canon_from":"sc-02","evidence":["sc-02"],"entities":["crispin","the_bell","brass_glass"]},
+    {"fact_id":"gt-maren-edrick","frame":"gt","claim":"Maren brings fish to the island and speaks of her cousin Edrick, master of the Kittiwake, a boat that 'fishes where she shouldn't' and stays out past the light.","canon_from":"sc-02","evidence":["sc-02"],"entities":["maren","edrick","kittiwake"],"typed":{"subject":"kittiwake","predicate":"kittiwake_cause","object":{"kind":"value","value":"unknown-introduced"}}},
+
+    {"fact_id":"gt-early-ring","frame":"gt","claim":"On a fog-thick night Crispin rings the bell a full hour early, while the channel is still certainly passable, and will not say why.","canon_from":"sc-03","evidence":["sc-03"],"entities":["crispin","the_bell"]},
+    {"fact_id":"gt-early-is-mercy","frame":"gt","claim":"The early bell is an act of caution and penance: on nights his failing senses cannot trust the true dusk, Crispin rings early to bring every boat in while the channel is sure, accepting a short fishing day over a fatal misread.","canon_from":"sc-03","evidence":["sc-03"],"entities":["crispin","the_bell","channel"],"payoff_expectation":"expected","typed":{"subject":"the_bell","predicate":"early_bell_meaning","object":{"kind":"value","value":"mercy-caution"}}},
+
+    {"fact_id":"gt-ledger-page","frame":"gt","claim":"Aldous opens the tide-ledger and finds the early-bell nights marked, and beside one of them the line 'Kittiwake — did not come.'","canon_from":"sc-04","evidence":["sc-04"],"entities":["aldous","tide_ledger","kittiwake"]},
+    {"fact_id":"gt-kittiwake-greed","frame":"gt","claim":"In truth the Kittiwake was lost not to the bell but to Edrick's own greed: he stayed out past the early bell to run contraband and misjudged the channel in the dark.","canon_from":"sc-04","evidence":["sc-04"],"entities":["edrick","kittiwake","contraband","channel"]},
+    {"fact_id":"gt-crispin-silent-shame","frame":"gt","claim":"Crispin knows the Kittiwake died smuggling and has kept silent to spare Edrick's family the shame.","canon_from":"sc-04","evidence":["sc-04"],"entities":["crispin","edrick","maren"]},
+
+    {"fact_id":"al-suspicion","frame":"aldous","claim":"Aldous comes to believe the early bell is no mercy but a snare — that Crispin rings early to wreck boats on the marsh for their salvage.","canon_from":"sc-04","evidence":["sc-04"],"entities":["aldous","crispin","the_bell"],"conflicts_with":["gt-early-is-mercy"]},
+    {"fact_id":"mar-blames-bell","frame":"maren","claim":"Maren believes the early bell is what killed her cousin Edrick, calling him in wrong and drowning the Kittiwake in the dark.","canon_from":"sc-04","evidence":["sc-04"],"entities":["maren","edrick","kittiwake","the_bell"],"conflicts_with":["gt-kittiwake-greed"]},
+
+    {"fact_id":"gt-strain-surfaces","frame":"gt","claim":"At the marks Aldous sees Crispin squint, lean to hear the bar-surf, and grip the brass glass with a shaking hand — the true sign that the old keeper's senses have failed.","canon_from":"sc-05","evidence":["sc-05"],"entities":["crispin","brass_glass","tide_stone"],"pays_off":["gt-tools"],"typed":{"subject":"crispin","predicate":"senses","object":{"kind":"value","value":"failed"}}},
+    {"fact_id":"al-misreads-strain","frame":"aldous","claim":"Aldous reads Crispin's straining at the marks not as failing senses but as a guilty man pretending, hiding what he does with the early bell.","canon_from":"sc-05","evidence":["sc-05"],"entities":["aldous","crispin"],"conflicts_with":["gt-strain-surfaces"]},
+    {"fact_id":"gt-storm-coming","frame":"gt","claim":"A storm-fog is rising; tomorrow's dusk crossing will be the most dangerous of the season, and Aldous must choose his road — expose Crispin, confront him, or take the bell himself.","canon_from":"sc-05","evidence":["sc-05"],"entities":["aldous","crispin","channel"]},
+
+    {"fact_id":"ex-charge","frame":"aldous","branch":"expose","claim":"Aldous rows to the mainland and tells Maren and the village elders that the early bell is murder and Crispin a wrecker.","canon_from":"sc-06e","evidence":["sc-06e"],"entities":["aldous","crispin","maren"]},
+    {"fact_id":"ex-village-stirred","frame":"maren","branch":"expose","claim":"The village, already grieving the Kittiwake, is roused against Crispin and means to bring him to account.","canon_from":"sc-06e","evidence":["sc-06e"],"entities":["maren","crispin"]},
+
+    {"fact_id":"ex-ledger-proof","frame":"gt","branch":"expose","claim":"The harbourmaster lays out his landing ledger: on every early-bell night every boat but one came home, and the early ring matched a night the dusk channel had already shut.","canon_from":"sc-07e","evidence":["sc-07e"],"entities":["harbourmaster","the_bell","channel"],"pays_off":["gt-early-is-mercy"],"typed":{"subject":"the_bell","predicate":"early_bell_meaning","object":{"kind":"value","value":"proven-mercy"}}},
+    {"fact_id":"ex-contraband-found","frame":"gt","branch":"expose","claim":"The harbourmaster reveals the contraband recovered from the wreck: the Kittiwake was lost smuggling past the bell, by Edrick's own choice.","canon_from":"sc-07e","evidence":["sc-07e"],"entities":["harbourmaster","kittiwake","contraband","edrick"],"typed":{"subject":"kittiwake","predicate":"kittiwake_cause","object":{"kind":"value","value":"smuggling-greed"}}},
+    {"fact_id":"ex-belief-collapses","frame":"aldous","branch":"expose","claim":"Faced with the ledger and the contraband, Aldous's belief that the bell was a snare collapses, and he sees the early ring for the mercy it was.","canon_from":"sc-07e","evidence":["sc-07e"],"entities":["aldous","the_bell"],"supersedes_in_frame":"al-suspicion"},
+    {"fact_id":"mar-learns-truth","frame":"maren","branch":"expose","claim":"Maren learns her cousin died by his own greed, not by the bell, and grieves the harder for it.","canon_from":"sc-07e","evidence":["sc-07e"],"entities":["maren","edrick"],"supersedes_in_frame":"mar-blames-bell"},
+
+    {"fact_id":"ex-crispin-vindicated","frame":"gt","branch":"expose","claim":"Crispin is exposed and vindicated at once: cleared of the charge, but too shamed by his failed senses to keep the bell.","canon_from":"sc-08e","evidence":["sc-08e"],"entities":["crispin"]},
+    {"fact_id":"ex-steps-down","frame":"gt","branch":"expose","claim":"Crispin steps down and names Aldous bellwright in his place; the truth of the early bell is now the village's own, and the marsh keeps its dead.","canon_from":"sc-08e","evidence":["sc-08e"],"entities":["crispin","aldous","the_bell"],"typed":{"subject":"the_bell","predicate":"bell_custody","object":{"kind":"entity","id":"aldous"}}},
+
+    {"fact_id":"co-confront","frame":"aldous","branch":"confront","claim":"That night Aldous climbs the tower and accuses Crispin to his face of ringing the bell to wreck boats.","canon_from":"sc-06c","evidence":["sc-06c"],"entities":["aldous","crispin","the_bell"]},
+    {"fact_id":"co-crispin-stiffens","frame":"gt","branch":"confront","claim":"Crispin does not deny the early bell, only the reason, and the old keeper's silence finally breaks.","canon_from":"sc-06c","evidence":["sc-06c"],"entities":["crispin"]},
+
+    {"fact_id":"co-confession","frame":"gt","branch":"confront","claim":"Crispin confesses the failing of his eyes and ears, and the old guilt behind it: years ago he rang late, misread a true dusk, and lost a boat — the early bell is his penance and his caution ever since.","canon_from":"sc-07c","evidence":["sc-07c"],"entities":["crispin","the_bell"],"pays_off":["gt-early-is-mercy"],"typed":{"subject":"the_bell","predicate":"early_bell_meaning","object":{"kind":"value","value":"confessed-mercy"}}},
+    {"fact_id":"co-shows-stone","frame":"gt","branch":"confront","claim":"Crispin sets the worn tide-stone and the brass glass in Aldous's hands and shows that he can no longer feel the depth nor sight the marks.","canon_from":"sc-07c","evidence":["sc-07c"],"entities":["crispin","tide_stone","brass_glass","aldous"],"pays_off":["gt-tools"],"typed":{"subject":"crispin","predicate":"senses","object":{"kind":"value","value":"failed"}}},
+    {"fact_id":"co-aldous-understands","frame":"aldous","branch":"confront","claim":"Hearing the confession and holding the stone, Aldous understands the early bell was mercy, not murder, and lays his suspicion down.","canon_from":"sc-07c","evidence":["sc-07c"],"entities":["aldous","crispin","the_bell"],"supersedes_in_frame":"al-suspicion"},
+
+    {"fact_id":"co-storm-night","frame":"gt","branch":"confront","claim":"The storm-fog night comes; Crispin, unable to read the worst dusk of the season, hands the bell-rope to Aldous.","canon_from":"sc-08c","evidence":["sc-08c"],"entities":["crispin","aldous","the_bell"]},
+    {"fact_id":"co-aldous-rings-true","frame":"gt","branch":"confront","claim":"Using the tide-stone and glass Crispin gave him, Aldous reads the channel and rings true and on time; every boat comes home, and the secret of Edrick's smuggling is kept between them for Maren's sake.","canon_from":"sc-08c","evidence":["sc-08c"],"entities":["aldous","crispin","tide_stone","brass_glass","the_bell"],"pays_off":["gt-tools"],"typed":{"subject":"the_bell","predicate":"bell_custody","object":{"kind":"entity","id":"aldous"}}},
+
+    {"fact_id":"ac-seize","frame":"aldous","branch":"act_alone","claim":"Certain the early bell is a killer, on the storm-fog night Aldous locks Crispin from the tower and takes the bell to ring it 'rightly' — at the true dusk, never early.","canon_from":"sc-06a","evidence":["sc-06a"],"entities":["aldous","crispin","the_bell"]},
+    {"fact_id":"ac-crispin-warns","frame":"gt","branch":"act_alone","claim":"From the locked stair Crispin calls that the boy cannot read the dusk without the stone and the glass, but Aldous will not listen.","canon_from":"sc-06a","evidence":["sc-06a"],"entities":["crispin","aldous","tide_stone","brass_glass"]},
+
+    {"fact_id":"ac-waits","frame":"aldous","branch":"act_alone","claim":"Aldous waits at the marks for what he takes to be the true dusk, sure he is doing what Crispin would not.","canon_from":"sc-07a","evidence":["sc-07a"],"entities":["aldous","channel"]},
+    {"fact_id":"ac-misreads","frame":"gt","branch":"act_alone","claim":"Without the tide-stone to feel the depth or the glass to sight the marks, Aldous misreads the storm-fog exactly as Crispin once did: the channel has already shut, and the dusk he waits for is the wrong one.","canon_from":"sc-07a","evidence":["sc-07a"],"entities":["aldous","tide_stone","brass_glass","channel"],"pays_off":["gt-tools"],"typed":{"subject":"aldous","predicate":"senses","object":{"kind":"value","value":"untooled-blind"}}},
+
+    {"fact_id":"ac-boat-lost","frame":"gt","branch":"act_alone","claim":"Aldous rings at the late dusk he chose; a boat reads the wrong bell and is lost in the shifting marsh, the very death the early bell had always prevented.","canon_from":"sc-08a","evidence":["sc-08a"],"entities":["aldous","the_bell","channel"],"pays_off":["gt-early-is-mercy"],"typed":{"subject":"the_bell","predicate":"early_bell_meaning","object":{"kind":"value","value":"proven-mercy-too-late"}}},
+    {"fact_id":"ac-too-late","frame":"aldous","branch":"act_alone","claim":"Aldous understands too late that the early bell was mercy, not murder, and that the killer he hunted was his own certainty; Crispin, broken, takes the rope back and rings on.","canon_from":"sc-08a","evidence":["sc-08a"],"entities":["aldous","crispin","the_bell"],"supersedes_in_frame":"al-suspicion"}
+  ]
+}

@@ -1,0 +1,19 @@
+[
+  {"section_id":"sc-01","parent_doc":"saltmarsh","title":"The bellwright arrives","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"saltmarsh","title":"A dusk read true","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"saltmarsh","title":"The bell an hour early","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"saltmarsh","title":"The tide-ledger","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"saltmarsh","title":"What three roads a man may take","coverage_expectation":"informational"},
+
+  {"section_id":"sc-06e","parent_doc":"saltmarsh","title":"The village hears the charge","coverage_expectation":"informational"},
+  {"section_id":"sc-07e","parent_doc":"saltmarsh","title":"The harbourmaster's ledger","coverage_expectation":"informational"},
+  {"section_id":"sc-08e","parent_doc":"saltmarsh","title":"The keeper steps down","coverage_expectation":"informational"},
+
+  {"section_id":"sc-06c","parent_doc":"saltmarsh","title":"Up the tower stair","coverage_expectation":"informational"},
+  {"section_id":"sc-07c","parent_doc":"saltmarsh","title":"The keeper breaks his silence","coverage_expectation":"informational"},
+  {"section_id":"sc-08c","parent_doc":"saltmarsh","title":"The rope changes hands","coverage_expectation":"informational"},
+
+  {"section_id":"sc-06a","parent_doc":"saltmarsh","title":"The tower taken","coverage_expectation":"informational"},
+  {"section_id":"sc-07a","parent_doc":"saltmarsh","title":"Waiting for a true dusk","coverage_expectation":"informational"},
+  {"section_id":"sc-08a","parent_doc":"saltmarsh","title":"The boat that did not come","coverage_expectation":"informational"}
+]
