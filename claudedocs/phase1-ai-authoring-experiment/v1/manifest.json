@@ -1,0 +1,76 @@
+{
+  "manifest": "ai-authoring-experiment/v1",
+  "designed": "2026-06-15 (R519 manifest round; sha256 of this manifest pinned in the R519 ledger entry BEFORE any author/judge subagent runs — the R453/R499/R503/R514 pre-commit pattern). The protocol it executes was DESIGNED at R518 (design-doc sec 7.26 + the R518 ledger entry); per the R503 precedent the design and the pinned manifest are separable rounds and the pin sits adjacent to execution.",
+
+  "lineage_note": "DESIGNED by the lineage that scoped the AI-self-authoring axis at the R518 scope-fork. Per the R469/R500 contamination bound this lineage may NOT author the fact base or blind-judge it; it writes this manifest + the PREMISE (the human's premise/high-level-direction role per the AI-first doctrine) + the author/judge briefs, and orchestrates the deterministic gates + manuscript assembly only.",
+
+  "question": {
+    "primary": "Can an AI AUTHOR a gate-clean, causally coherent, complete-enough branching story as a fact base FROM A PREMISE — running its own write-gate-read-repair loop — with no human supplying any fact? Every prior experiment (R500/R504/R512/R514) tested RENDER (facts to prose) over a HAND-authored fact base. This is the first test of the UPSTREAM step (premise to facts), which is the known binding constraint (the scale-floor loop lost at 60 scenes on coverage; the standing conclusion: gates sufficient, self-authoring-completeness-bound).",
+    "isolation": "AUTHORING is isolated from RENDER. The deliverable is the FACT BASE (+ its per-world manuscripts), NOT prose. No prose is rendered or judged. This is deliberate: it measures whether the AI can get the STORY STRUCTURE right, separate from prose craft (which R514 already answered).",
+    "the_scale_floor_check": "The decisive sub-question is the scale-floor counter-evidence at the authoring end: a store can be CONSISTENT (gates pass) yet INCOHERENT (does not add up to a story). PIN-A1/A2 measure store-consistency deterministically; the blind judges measure causal coherence. A divergence (pins hold but judges find incoherence) reproduces 'store-consistency != causal coherence' at authoring = the R476 ceiling surfacing in self-authoring."
+  },
+
+  "premise": {
+    "title": "The Saltmarsh Bell (FRESH, original — NOT reused)",
+    "file": "premise.md",
+    "fresh_rationale": "Unlike the disclosure experiments (which reused Meridian Vane to isolate the render variable), this experiment REQUIRES a fresh premise with NO pre-existing fact base — the whole point is that the AI invents the facts. The premise gives setting + 3 named characters + the inciting mystery + the central dramatic question + structural constraints (8-14 scenes, one primary fork into 2-3 terminal world-lines, >=1 setup->payoff, >=1 character belief diverging from ground truth). Everything else is the author's to invent.",
+    "human_role_note": "Authoring the premise is the human's role (premise / high-level direction / final review), NOT a contamination of the AI-authoring claim (the ai-first-end-to-end doctrine: the AI is the author of the FACTS; the human supplies the premise)."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage: writes manifest + premise + briefs; runs the deterministic gates; assembles per-world manuscripts; cross-references the control. NEVER authors a fact or judges.",
+    "blind_author": "ONE fresh-context subagent. Receives ONLY premise.md + author-brief.md. Authors the fact base (sections + facts + order) into a scratch store via mnemosyne-cli, using the gates as its self-consistency feedback. BLIND to: the hypothesis, the pins, the judge rubric, the decision rule, the control. It is told the gates exist and to self-check with them (that IS the AI-first authoring loop under test) but NOT the pin thresholds (no teaching-to-test).",
+    "blind_judges": "3 fresh-context subagents. Receive ONLY judge-brief.md + the per-world manuscripts (story logic outline). BLIND to: the experiment, the hypothesis, that the outline is AI-authored, and each other.",
+    "contamination_bound": "the R469 discipline (the 6th use of the sec 7.18/7.19/7.22/7.23/7.25 blind-experiment family). The lineage that designed the axis may not author or judge its instance."
+  },
+
+  "deterministic_pins": {
+    "PIN_A1_convergence": {
+      "claim": "PIN. The author CONVERGES to a gate-clean (store-consistent) fact base within a bounded loop budget.",
+      "criteria_all_required": [
+        "import of the final sections.json + facts.json into a fresh empty seed store = 0 errors (loads clean).",
+        "validate-continuity --order: structural violations = 0 AND interval violations = 0.",
+        "report-playthrough-manuscript --world W --order, for EVERY registered branch W: unplaced = 0, outside-order = 0, undecidable = 0 (every fact placed in a real world-line position)."
+      ],
+      "budget": "bounded authoring loop; if the author cannot reach this, PIN-A1 FAILS = the tooling-friction branch of the decision rule (recorded with the author-log iteration count)."
+    },
+    "PIN_A2_structural_floor": {
+      "claim": "PIN. The converged base meets the STRUCTURAL completeness floor (the catalog of structural smells = 0).",
+      "criteria_all_required": [
+        "report-payoff-coverage --order: 0 dangling setups (every payoff_expectation=expected has >=1 paying fact).",
+        "report-fork-tree --order: >=1 fork; 0 unplaced fork points; each fork has >=2 child world-lines; every world-line reaches a terminal.",
+        "report-timeline-gaps --world W --order, every W: 0 gap / 0 unreached scene.",
+        "validate-continuity: succession_cross_branch = 0 (no fact references a coordinate off its own world-line = the R488 off-branch analog)."
+      ]
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, judge-brief.md rubric, over the orchestrator-assembled per-world manuscripts (report-playthrough-manuscript --world W --order, one per world-line). Single arm (a capability test, no A/B).",
+    "axes": "causal coherence / completeness / relevance-salience / branch integrity / overall (1-5 each, scene-id-cited).",
+    "control_crossref": "FREE isolation signal (orchestrator computes, judges blind): the hand-authored Meridian Vane base (R504/R514) passed its gates AND its world-lines were judged coherent — the small-scale coherence bar. Does the AI-self-authored base reach comparable judged coherence?",
+    "outcome_pin": "NONE. The procedure is pinned; the coherence verdict is the open question."
+  },
+
+  "decision_rule_pre_committed": {
+    "both_pins_hold_and_coherent": "BOTH pins hold AND judges find it coherent (majority overall coherence >= 4/5, no major unresolved holes) => AI-self-authoring is REACHABLE at small scale => the next axis is SCALE (the scale-floor rematch at 60+ scenes). This is the expected outcome; its value is establishing the small-scale baseline before the scale test.",
+    "both_pins_hold_but_incoherent": "BOTH pins hold but judges find it INCOHERENT (low coherence/completeness despite clean gates) => 'store-consistency != causal coherence' reproduced at AUTHORING => the deepest R476 ceiling surfaces in self-authoring => the lever question becomes the completeness-aggregation surface, now with a measured pull (a surprising, high-value finding even at small scale).",
+    "pin_a1_fails": "the author cannot converge to gate-clean within the bounded budget => authoring-loop TOOLING friction is the binding lever => build the aggregation read-surface (sec 7.26), then re-run."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R519 ledger, committed pre-execution.",
+    "step_1_author": "spawn the blind author (premise.md + author-brief.md). It returns the gate-clean store + sections.json/facts.json/order.json + author-log.md.",
+    "step_2_pins": "orchestrator runs PIN-A1 + PIN-A2 gate criteria over the author's final store, records every verdict verbatim in report.md.",
+    "step_3_manuscripts": "orchestrator assembles one reading manuscript per world-line (report-playthrough-manuscript --world W --order), neutral (no pin/judge context).",
+    "step_4_judges": "spawn 3 blind judges (judge-brief.md + the manuscripts), record verdicts verbatim.",
+    "step_5_decide": "orchestrator applies the pre-committed decision rule, writes report.md, commits (R520).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim; no tools/ change. Scratch *.atomic.json stay gitignored; tracked evidence = manifest, premise, briefs, the authored sections/facts/order JSON, the per-world manuscripts, author-log.md, report.md."
+  },
+
+  "predictions_preregistered": {
+    "PRED_A1": "PIN. Likely HOLDS at this small scale (8-14 scenes is well below the 60-scene scale-floor; convergence to gate-clean is tractable).",
+    "PRED_A2": "PIN. Likely HOLDS (structural floor is what the gates already enforce; the author self-checks against them).",
+    "PRED_coherence": "NO pin (the OPEN question). Honest expectation: plausibly coherent at small scale (the scale-floor failure was at 60 scenes, not 14), so the expected path is pins-hold-and-coherent => SCALE. An INCOHERENT result even at small scale would be the surprising, higher-value finding (ceiling at authoring)."
+  }
+}
