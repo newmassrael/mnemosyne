@@ -1,0 +1,7 @@
+# Scratch stores + the blind-input prose copy stay out (the experiment
+# convention, R404 seeded-fixture rule). Tracked evidence = the protocol
+# declaration (meridian-order.json), the blind brief (extractor-brief.md), and
+# the report (report.md) with the deterministic gate verdicts inlined.
+*.atomic.json
+*.playthrough.json
+extract/story-X.md

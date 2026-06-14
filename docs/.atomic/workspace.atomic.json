@@ -10855,6 +10855,42 @@
         "RULEBOOK.md is the process SSOT; keep it reference-only. If the autonomous run discipline changes, edit the autonomous-rounds memory (the SSOT for it); if the round cadence or consent gates change, edit RULEBOOK; if the loop framing changes, also update the CLAUDE.md pointer. A rulebook line that restates another source is a defect to replace with a reference.",
         "THIS entry (R511) is the committed SSOT; RULEBOOK.md is the artifact; CLAUDE.md carries the discovery pointer. The RESUME contract (end every session with one unambiguous NEXT) is the load-bearing habit that keeps the prompt budget at one bootstrap prompt."
       ]
+    },
+    "Round 512 — disclosure-craft-experiment/v2: the R507/R508 render-acceptance gates reproduce R504's manual PIN verdicts on a fresh blind re-extraction of the real disclosure prose (tool-run, deterministic, the R505 manual id-mapping removed); premature-leak holds non-vacuously (F5 vocabulary_shared > 0) in all three worlds and the fidelity gate rejects the audit-as-burn footgun on real blind coordinates": {
+      "decision_summary": "The disclosure render-acceptance gates built in R507/R508 reproduce R504's manual PIN-1/PIN-2 verdicts on a fresh blind re-extraction of the real Meridian Vane disclosure prose, deterministically and with the R505 manual id-mapping step removed via the shared-vocabulary typed-tuple match. PIN-2 holds in all three world-lines with vocabulary_shared > 0 (the R510 F5 guard rules out a vacuous foreign-id pass); the fidelity gate accepts a coherent single-world render and rejects the R504 audit-as-burn footgun on real blind coordinates. The rung-2 substrate is validated end to end on real prose; the craft re-judge is deferred as separable robustness.",
+      "changes_bullets": [
+        "Authored a v2 disclosure plan over R504's reused Meridian Vane fact base: faithfully typed the two load-bearing solution conclusions (climber-identity = Pike; Crane-knows-dismissal = no) and set telling dc-v2 with per-world reveal pins; only 5 of the v1 facts were typed, which is exactly why R504 needed manual id-mapping.",
+        "Ran the R507 and R508 tool gates over a fresh blind re-extraction produced by a separate firewalled subagent sharing the authored vocabulary but not its facts or plan; the premature-leak gate returns zero leaks in all three world-lines with vocabulary_shared = 7, so the R510 F5 guard confirms a genuine non-vacuous pass.",
+        "The render-to-world-line fidelity gate proves both branches on real blind coordinates: a coherent single-world projection accepts with zero off-path, and the audit-content-checked-as-burn run rejects with a loud non-zero exit, reproducing the R504 footgun.",
+        "Scoped this round to the deterministic gate-validation core; the craft re-judge over harness-produced reading copies is deferred as separable robustness, since the R504 craft verdict already stands."
+      ],
+      "verification_bullets": [
+        "validate-workspace clean: T1 orphan = 0, T3 reject = 0, commit-to-ledger drift = 0.",
+        "Leak gate exit 0 with zero leaks for worlds reveal, burn, and audit; fidelity accept exit 0 with zero off-path, fidelity reject exit 1 with off-path present.",
+        "Gate wiring was smoke-proven against the authored store first (early-leak detection at the fabula coordinate plus sixteen real off-path facts) before the blind run.",
+        "cargo build release green; the v2 scratch stores are gitignored, the canon-order declaration, the blind extractor brief, and the report are tracked evidence."
+      ],
+      "carry_forward_bullets": [
+        "The craft re-judge over harness-produced reading copies remains the next experiment-gated pull; this round proves the engineering claim and the R504 craft verdict stands unchanged.",
+        "A symmetric fidelity run on the plain arm is a secondary deferred check, since the leak gate applies only to a disclosure telling."
+      ],
+      "publishable_decision_summary": "The disclosure render-acceptance gates built in R507/R508 reproduce R504's manual PIN-1/PIN-2 verdicts on a fresh blind re-extraction of the real Meridian Vane disclosure prose, deterministically and with the R505 manual id-mapping step removed via the shared-vocabulary typed-tuple match. PIN-2 holds in all three world-lines with vocabulary_shared > 0 (the R510 F5 guard rules out a vacuous foreign-id pass); the fidelity gate accepts a coherent single-world render and rejects the R504 audit-as-burn footgun on real blind coordinates. The rung-2 substrate is validated end to end on real prose; the craft re-judge is deferred as separable robustness.",
+      "publishable_changes_bullets": [
+        "Authored a v2 disclosure plan over R504's reused Meridian Vane fact base: faithfully typed the two load-bearing solution conclusions (climber-identity = Pike; Crane-knows-dismissal = no) and set telling dc-v2 with per-world reveal pins; only 5 of the v1 facts were typed, which is exactly why R504 needed manual id-mapping.",
+        "Ran the R507 and R508 tool gates over a fresh blind re-extraction produced by a separate firewalled subagent sharing the authored vocabulary but not its facts or plan; the premature-leak gate returns zero leaks in all three world-lines with vocabulary_shared = 7, so the R510 F5 guard confirms a genuine non-vacuous pass.",
+        "The render-to-world-line fidelity gate proves both branches on real blind coordinates: a coherent single-world projection accepts with zero off-path, and the audit-content-checked-as-burn run rejects with a loud non-zero exit, reproducing the R504 footgun.",
+        "Scoped this round to the deterministic gate-validation core; the craft re-judge over harness-produced reading copies is deferred as separable robustness, since the R504 craft verdict already stands."
+      ],
+      "publishable_verification_bullets": [
+        "validate-workspace clean: T1 orphan = 0, T3 reject = 0, commit-to-ledger drift = 0.",
+        "Leak gate exit 0 with zero leaks for worlds reveal, burn, and audit; fidelity accept exit 0 with zero off-path, fidelity reject exit 1 with off-path present.",
+        "Gate wiring was smoke-proven against the authored store first (early-leak detection at the fabula coordinate plus sixteen real off-path facts) before the blind run.",
+        "cargo build release green; the v2 scratch stores are gitignored, the canon-order declaration, the blind extractor brief, and the report are tracked evidence."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The craft re-judge over harness-produced reading copies remains the next experiment-gated pull; this round proves the engineering claim and the R504 craft verdict stands unchanged.",
+        "A symmetric fidelity run on the plain arm is a secondary deferred check, since the leak gate applies only to a disclosure telling."
+      ]
     }
   },
   "inventory_entries": {},
