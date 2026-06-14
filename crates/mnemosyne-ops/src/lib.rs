@@ -517,13 +517,28 @@ pub fn playthrough_manuscript_report(
     world: Option<&str>,
     order_override: Option<&str>,
     telling: Option<&str>,
+    reading_walk: bool,
 ) -> Result<mnemosyne_validate::continuity::PlaythroughManuscriptReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world, telling)
-        .map_err(OpError::Other)
+    let mut report =
+        mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world, telling)
+            .map_err(OpError::Other)?;
+    // Round 509 — the reading-walk projection: prune each world to its
+    // content scenes (those where a world-visible fact begins). The structural
+    // manuscript (the verb default) keeps every order node; a READING copy
+    // wants only the scenes that introduce content (the R500 begins>0
+    // convention). A deterministic, in-code prune replaces the orchestrator's
+    // hand-made `.filtered` files (the harness debt R505 flagged), so the next
+    // blind run produces per-world reading copies without manual surgery.
+    if reading_walk {
+        for world in report.worlds.values_mut() {
+            world.scenes.retain(|scene| !scene.begins.is_empty());
+        }
+    }
+    Ok(report)
 }
 
 /// Project the fork tree (Round 497, design sec 7.21) over the workspace

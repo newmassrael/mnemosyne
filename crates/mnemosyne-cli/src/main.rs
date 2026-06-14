@@ -453,11 +453,14 @@ fn print_help(prog: &str) {
         "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
     );
     println!(
-        " {} report-playthrough-manuscript [--world <branch>] [--telling <id>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        " {} report-playthrough-manuscript [--world <branch>] [--telling <id>] [--reading-walk] [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
     );
     println!(
         "   --telling (Round 506): annotate each begins-event with its disclosure decision (mode/first_at/surface) = the render-brief carrier"
+    );
+    println!(
+        "   --reading-walk (Round 509): prune each world to its content scenes (begins>0) = the deterministic reading-copy walk (no hand prune)"
     );
     println!(
         " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
@@ -2195,26 +2198,31 @@ struct NarrativeReportArgs {
     world: Option<String>,
     /// Disclosure telling id (Round 506) — only the manuscript carrier opts in.
     telling: Option<String>,
+    /// Reading-walk prune (Round 509) — only the manuscript verb opts in.
+    reading_walk: bool,
     anchor: std::path::PathBuf,
 }
 
-/// Shared `--json` / `--order` / `--sidecar` (+ opt-in `--world` / `--telling`)
-/// parse + workspace-anchor resolution for the per-world narrative report verbs
-/// (Round 456 — the second identical copy triggered the extraction;
-/// `validate-continuity` keeps its richer parser). A verb that does not
-/// take a world filter passes `allow_world = false` and the flag rejects
+/// Shared `--json` / `--order` / `--sidecar` (+ opt-in `--world` / `--telling` /
+/// `--reading-walk`) parse + workspace-anchor resolution for the per-world
+/// narrative report verbs (Round 456 — the second identical copy triggered the
+/// extraction; `validate-continuity` keeps its richer parser). A verb that does
+/// not take a world filter passes `allow_world = false` and the flag rejects
 /// loudly instead of parsing-then-ignoring; `--telling` (the R506 render-brief
-/// carrier) is opt-in the same way.
+/// carrier) and `--reading-walk` (the R509 begins>0 prune) are opt-in the same
+/// way.
 fn parse_narrative_report_args(
     args: &[String],
     allow_world: bool,
     allow_telling: bool,
+    allow_reading_walk: bool,
 ) -> Result<NarrativeReportArgs> {
     let mut json = false;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
     let mut world: Option<String> = None;
     let mut telling: Option<String> = None;
+    let mut reading_walk = false;
     let mut iter = args.iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -2247,6 +2255,7 @@ fn parse_narrative_report_args(
                         .clone(),
                 )
             }
+            "--reading-walk" if allow_reading_walk => reading_walk = true,
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2262,6 +2271,7 @@ fn parse_narrative_report_args(
         sidecar_override,
         world,
         telling,
+        reading_walk,
         anchor,
     })
 }
@@ -2273,7 +2283,7 @@ fn parse_narrative_report_args(
 /// deliberately never gated (a WIP story has dangling setups by
 /// definition). Order and store resolve through the shared ops path.
 fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, false)?;
+    let a = parse_narrative_report_args(args, false, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::payoff_coverage_report(
         &a.anchor,
@@ -2342,7 +2352,7 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
 /// signal, deliberately never gated. Order and store resolve through the
 /// shared ops path.
 fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, false)?;
+    let a = parse_narrative_report_args(args, false, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::irony_intervals_report(
         &a.anchor,
@@ -2420,13 +2430,14 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
 /// reading surface, deliberately never gated. Order and store resolve
 /// through the shared ops path.
 fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, true, true)?;
+    let a = parse_narrative_report_args(args, true, true, true)?;
     let report = mnemosyne_ops::playthrough_manuscript_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
         a.world.as_deref(),
         a.order_override.as_deref(),
         a.telling.as_deref(),
+        a.reading_walk,
     )
     .map_err(|e| anyhow!("{e}"))?;
     if a.json {
@@ -2528,7 +2539,7 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
 /// Pure read projection — a reading surface, deliberately never gated. Order
 /// and store resolve through the shared ops path.
 fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, false)?;
+    let a = parse_narrative_report_args(args, false, false, false)?;
     let report = mnemosyne_ops::fork_tree_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
@@ -2571,7 +2582,7 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
 /// hidden-by-design / never-planned. A SURFACE (the R442 dangling-is-a-todo
 /// discipline) — `never-planned` is the author's todo list, never gated.
 fn cmd_report_disclosure_coverage(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, true)?;
+    let a = parse_narrative_report_args(args, false, true, false)?;
     let telling = a
         .telling
         .as_deref()
@@ -2965,7 +2976,7 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
 /// type it). No LLM; pure deterministic comparison of declared typed legs (the
 /// R484 redesign that replaced the R481 drift-verdict surface).
 fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, false)?;
+    let a = parse_narrative_report_args(args, false, false, false)?;
     let report = mnemosyne_ops::payoff_substantiation_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
@@ -3212,7 +3223,7 @@ fn cmd_import_edge_proposals(args: &[String]) -> Result<()> {
 /// narrative reads — the hints need world visibility; the facts table
 /// never degrades.
 fn cmd_report_edge_candidates(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false, false)?;
+    let a = parse_narrative_report_args(args, false, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::edge_candidates_report(
         &a.anchor,

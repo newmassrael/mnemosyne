@@ -537,6 +537,10 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// the named telling. Fail-loud on a typo'd id.
     #[serde(default)]
     pub telling: Option<String>,
+    /// Reading-walk prune (R509): keep only each world's content scenes
+    /// (begins>0) = the deterministic reading-copy walk.
+    #[serde(default)]
+    pub reading_walk: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1744,6 +1748,7 @@ impl MnemosyneServer {
             args.0.world.as_deref(),
             args.0.order_path.as_deref(),
             args.0.telling.as_deref(),
+            args.0.reading_walk,
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),

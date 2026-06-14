@@ -5,14 +5,23 @@
 //! and a world name. Output = the world's scenes, in playthrough order, each
 //! rendered as `## Title` + stripped body, joined by `---` rules.
 //!
-//! The blind reading-copy transform (v1) applied to every scene body drops
+//! The blind reading-copy transform applied to every scene body drops
 //! `<!-- ... -->` scaffolding comments (an unterminated `<!--` is an error) and
-//! `CHOICE:` fork-directive lines, then collapses blank-line runs and trims the
-//! ends. The scene heading is normalized `## sc-NN \u{2014} Title` to
-//! `## Title` (the scene id is a structural handle, not prose). Option text and
-//! `ENDING` headers are left verbatim — that matches the transform the
-//! scale-floor experiment actually used; tightening either is an explicit
-//! future flag, not a silent default.
+//! the recognized scaffolding-marker vocabulary (Round 509, broadened from the
+//! narrow R500 `CHOICE:`-only rule to the forms the blind free-form authors
+//! used: a `CHOICE:` directive, a markdown heading/bullet carrying the
+//! structural `CHOICE` token, and whole-line `[ ... ]` bracket annotations incl.
+//! `*[ ... ]*` answer keys), then collapses blank-line runs and trims the ends.
+//! The scene heading is normalized `## sc-NN \u{2014} Title` to `## Title` (the
+//! scene id is a structural handle, not prose). Option text and `ENDING`
+//! headers are left verbatim.
+//!
+//! NO-SILENT-FAIL (Round 509): a line that survives the recognized strip but
+//! still reads as an editorial marker (an unrecognized `CHOICE` form, an
+//! unterminated `[` annotation) is a LOUD reject, never silently kept as prose.
+//! The narrow v1 vocabulary silently passed the experiment's `[...]` /
+//! `### CHOICE` / `*[answer key]*` through, contaminating a judging round and
+//! forcing a manual `.clean` patch — exactly the silent-fail this project bans.
 //!
 //! Every join is checked: a world-order scene with no prose, or a body that
 //! strips to nothing, is a hard error. That is the silent-fail the deleted
@@ -23,7 +32,13 @@ use crate::story::{self, Story};
 use crate::util::{read_file, HResult};
 
 /// Strip a raw scene body to its blind-reading form. Errors if the body is
-/// empty once scaffolding is removed (a real scene cannot be blank).
+/// empty once scaffolding is removed (a real scene cannot be blank), OR if a
+/// line survives the strip that still looks like an editorial marker the
+/// vocabulary does not recognize — the no-silent-fail guard (Round 509: the
+/// narrow R500 `<!--`/`CHOICE:` vocabulary silently passed the blind
+/// experiment's `[...]` / `### CHOICE` / `*[answer key]*` forms through as
+/// prose, contaminating the judges; an unrecognized marker now fails loud,
+/// never leaks).
 pub fn reading_body(scene_id: &str, raw: &str) -> HResult<String> {
     let decommented = strip_html_comments(scene_id, raw)?;
 
@@ -31,7 +46,7 @@ pub fn reading_body(scene_id: &str, raw: &str) -> HResult<String> {
     let mut blank_run = 0usize;
     for line in decommented.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("CHOICE:") {
+        if is_scaffolding_line(trimmed) {
             continue;
         }
         if trimmed.is_empty() {
@@ -42,6 +57,15 @@ pub fn reading_body(scene_id: &str, raw: &str) -> HResult<String> {
             }
         } else {
             blank_run = 0;
+            // No-silent-fail: a non-blank line that survived the recognized
+            // strip but still reads as an editorial marker is a loud reject,
+            // never silently kept as prose.
+            if let Some(why) = suspected_scaffolding(trimmed) {
+                return Err(format!(
+                    "scene `{scene_id}`: line {trimmed:?} {why} — reject loud (no silent \
+                     pass; extend the strip vocabulary in assemble.rs or reword the source)"
+                ));
+            }
         }
         kept.push(line);
     }
@@ -54,6 +78,64 @@ pub fn reading_body(scene_id: &str, raw: &str) -> HResult<String> {
         ));
     }
     Ok(body)
+}
+
+/// A recognized scaffolding marker line (Round 509 — broadened from the narrow
+/// R500 `<!--`/`CHOICE:` vocabulary to the forms the blind free-form authors
+/// actually used): a `CHOICE:` directive line, a markdown heading or bullet
+/// whose text carries the structural uppercase `CHOICE` token, or a whole-line
+/// bracket annotation (`[ ... ]`, optionally `*`/`_` emphasis-wrapped — the
+/// `[Dramatic irony …]` editorial notes and the `*[All six setups paid …]*`
+/// answer key). Recognized scaffolding is dropped silently; unrecognized
+/// suspects fail loud via [`suspected_scaffolding`].
+fn is_scaffolding_line(trimmed: &str) -> bool {
+    if trimmed.starts_with("CHOICE:") {
+        return true;
+    }
+    if let Some(after_hash) = trimmed.strip_prefix('#') {
+        let heading = after_hash.trim_start_matches('#').trim();
+        if has_choice_token(heading) {
+            return true;
+        }
+    }
+    for marker in ["- ", "* ", "+ "] {
+        if let Some(bullet) = trimmed.strip_prefix(marker) {
+            if has_choice_token(bullet) {
+                return true;
+            }
+        }
+    }
+    is_bracket_annotation(trimmed)
+}
+
+/// A non-blank line that survived [`is_scaffolding_line`] but still reads as an
+/// editorial marker the vocabulary does not cover (Round 509, no-silent-fail):
+/// an unrecognized structural `CHOICE` marker form, or an unterminated `[`
+/// annotation (e.g. a multi-line bracket the whole-line rule cannot match).
+/// Returns the reason so the caller fails loud.
+fn suspected_scaffolding(trimmed: &str) -> Option<&'static str> {
+    if has_choice_token(trimmed) {
+        return Some("carries an unrecognized CHOICE scaffolding marker");
+    }
+    if trimmed.starts_with('[') && !trimmed.contains(']') {
+        return Some("opens an unterminated `[` editorial annotation");
+    }
+    None
+}
+
+/// True iff some whitespace token, stripped of non-alphabetic edges, is the
+/// uppercase structural marker `CHOICE` — so prose `choice` / `choices` is
+/// never a marker, only the experiment's uppercase directive token.
+fn has_choice_token(s: &str) -> bool {
+    s.split_whitespace()
+        .any(|w| w.trim_matches(|c: char| !c.is_ascii_alphabetic()) == "CHOICE")
+}
+
+/// A whole-line bracket annotation: the trimmed line, after dropping any
+/// `*`/`_` emphasis wrap, is `[ … ]`.
+fn is_bracket_annotation(trimmed: &str) -> bool {
+    let inner = trimmed.trim_matches(|c| c == '*' || c == '_').trim();
+    inner.len() >= 2 && inner.starts_with('[') && inner.ends_with(']')
 }
 
 /// Remove `<!-- ... -->` spans. An opening `<!--` with no closing `-->` is a
@@ -181,5 +263,51 @@ She laid the ledger on the table.
     fn scaffolding_only_scene_is_loud() {
         let err = reading_body("sc-x", "<!-- note -->\nCHOICE: pick\n").unwrap_err();
         assert!(err.contains("empty body"));
+    }
+
+    // Round 509 — the broadened scaffolding vocabulary + no-silent-fail guard.
+
+    #[test]
+    fn broadened_scaffolding_forms_are_stripped() {
+        let raw = "\
+[Dramatic irony \u{2014} the reader knows the truth.]
+### CHOICE \u{2014} fork-1
+- **CHOICE A \u{2014} CONFRONT.**
+*[All six setups paid: clock, plate, key.]*
+[CONFRONT limb. resolves at sc-19.]
+The real prose survives here.";
+        let body = reading_body("sc-x", raw).unwrap();
+        assert_eq!(body, "The real prose survives here.");
+    }
+
+    #[test]
+    fn unrecognized_choice_marker_is_loud() {
+        // A blockquote CHOICE form the strip vocabulary does not cover: it must
+        // fail loud, not pass through as prose (no-silent-fail).
+        let err = reading_body("sc-x", "Prose line.\n> CHOICE A please").unwrap_err();
+        assert!(err.contains("CHOICE"), "{err}");
+    }
+
+    #[test]
+    fn unterminated_bracket_annotation_is_loud() {
+        let err = reading_body("sc-x", "Prose.\n[Dramatic irony spanning\nmultiple lines]")
+            .unwrap_err();
+        assert!(err.contains("unterminated") || err.contains("annotation"), "{err}");
+    }
+
+    #[test]
+    fn lowercase_choice_in_prose_is_kept() {
+        let body = reading_body("sc-x", "She had no choice but to run.").unwrap();
+        assert!(body.contains("no choice"));
+    }
+
+    #[test]
+    fn choice_option_text_is_kept_verbatim() {
+        // The existing R500 convention: the CHOICE: directive line goes, the
+        // A)/B) option text stays (no uppercase CHOICE token in it).
+        let raw = "CHOICE: act now\nA) She confronts the matron.\nB) She stays quiet.";
+        let body = reading_body("sc-x", raw).unwrap();
+        assert!(body.contains("She confronts the matron"));
+        assert!(!body.contains("CHOICE:"));
     }
 }
