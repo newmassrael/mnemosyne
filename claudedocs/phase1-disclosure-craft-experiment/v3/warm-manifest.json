@@ -1,0 +1,90 @@
+{
+  "manifest": "disclosure-craft-experiment/v3",
+  "designed": "2026-06-14 (R514 manifest round; sha256 of this manifest pinned in the R514 ledger entry BEFORE any warm-render/extract/judge subagent runs — the R453/R499/R503 pre-commit pattern). The protocol it executes was DESIGNED at R513 (design-doc sec 7.25 + the R513 ledger entry); per the R503 precedent the design and the pinned manifest are separable rounds and the pin sits adjacent to execution.",
+  "lineage_note": "DESIGNED by the lineage that designed the disclosure layer (R501), sharpened its gate (R502), built it (R506-R510), validated it on real blind prose (R504/R512), and diagnosed the warm-render posture frontier (R513). Per the R469/R500/R502 contamination bound this lineage may NOT author the warm render, re-extract, or blind-judge; it writes this manifest + the per-world WARM BRIEF (the treatment, exactly as the R504 orchestrator wrote the disclosure brief) and orchestrates the deterministic harness + gates only.",
+
+  "question": {
+    "primary": "Is the R504 craft loss POSTURE (the JOB the render prompt assigns) rather than missing data or the R476 model-craft ceiling? R504 diagnosis (R513): the SAME model wrote WARMER plain prose from the SAME plot facts; the disclosure (compliance) render WON the prose-quality keystone 5.00 vs plain 4.22 and tied-or-beat all four measured axes yet LOST the holistic forced choice 2-1 on novelistic warmth — 'A reads like the finest outline executed as prose; B reads like a story someone is telling you.' v3 holds the fact base + disclosure plan + the 3 world-lines + structure + ~9.4k word budget CONSTANT and varies ONLY the render POSTURE (a storytelling-job warm brief vs the compliance render), so the result is attributable: a forced-choice flip W>C proves posture was the cause; W~=C proves the ceiling on a clean controlled comparison.",
+    "lever": "Relocate fidelity OUT of the author's prompt INTO the gate (R513). R507/R508 built deterministic render-acceptance gates and R512 proved they reproduce R504's manual PIN verdicts on real blind prose, so fidelity need not be baked into the author's job. Render = GENERATE-FREELY (warm storytelling posture, plain-style) THEN GATE-AND-REPAIR (the R508 leak + fidelity gates over a blind re-extraction; repair ONLY violations, scene-scoped, STILL in storytelling register). The author's job becomes plain's job ('tell a good story'); verification becomes the machine's job.",
+    "pinned_fidelity": "DETERMINISTIC PIN-W1: arm W's FINAL (post-repair) prose, blind re-extracted, shows D1+D2+D4 = 0 AND validate-render-fidelity off_path = 0 per assigned world (reveal/burn/audit). A warm render is still a projection of the gate-checked base; a residual gated finding = a render leak (fidelity broken). If W cannot be repaired to fidelity-clean without going cool, THAT is the finding (recorded via the posture-tax metric).",
+    "pinned_premature_leak": "DETERMINISTIC PIN-W2: arm W's FINAL, blind re-extracted, run through validate-disclosure-leak (telling dc-v2) per world shows 0 leaks for every pre-pinned withheld solution conclusion (the R504 withhold list: who climbed = Pike; cause = accidental fall / clock = jolt not set; telegram undelivered + theft proven), with vocab_shared > 0 (the R510 F5 non-vacuous guard). This is the R502 gate exactly: exposed/withheld binary + first_at timing, mode-independent, AI out of the gate.",
+    "open_craft": "CRAFT preference (NO pin, V9). PRIMARY: 3 fresh blind judges, R500 5-axis rubric, forced choice W vs C per matched world-line + 5-axis means. Hypothesis = W beats C (posture-flip warms the SAME facts + plan). SECONDARY (the warmth bar): free cross-reference to R504's RECORDED plain (keystone 4.22; plain won R504's overall forced choice 2-1) — does W reach plain's warmth? Re-cool sub-question: judges flag any passage reading cooler / like a correction than its surroundings (cross-referenced to the recorded repair localization).",
+    "recorded_posture_tax": "NOT pinned, RECORDED: repair count + repair localization (fraction of the 29 scenes touched by any repair pass) + render-token cost. High localization or judge-flagged re-cooling = the warmth was bought back by the gate tax (a measured partial, not a clean win)."
+  },
+
+  "design_lineage": "blind protocol = the R453 trap-corpus / R469 A-B / R499 facts-first-craft / R503 disclosure-craft pattern: sha256 pinned pre-execution, design and execution sessions separated, warm author(s) + extractor + judges blind. This is the FIFTH use of the sec 7.18/7.19/7.22/7.23 experiment family and the 3rd disclosure-craft iteration (v1=R504 manual pins; v2=R512 tool-gate validation; v3=R514 warm-render posture). LOW-TOUCH by REUSE (the R503 discipline): only arm W is newly rendered; arm C, the fact base, the disclosure plan, the canon order, and the extractor vocabulary are all REUSED verbatim.",
+
+  "premise": {
+    "title": "The Meridian Vane (REUSED from R499/R500/R504)",
+    "reuse_rationale": "Holding the premise, fact base, disclosure plan, world-lines, structure, and word budget constant isolates the one variable under test: the render POSTURE. Arm C is R504's disclosure render verbatim; arm W renders the SAME beats + SAME withholds from a warm storytelling brief. Judges are FRESH, so premise reuse is judge-clean.",
+    "scaffold": "29 scenes, ids sc-01..sc-08 (shared spine) + sc-09a..sc-16 (confront limb) + sc-17r..sc-19r (reveal ending) + sc-17w..sc-18w (burn ending) + sc-09b..sc-12b + sc-17b..sc-20b (quiet-audit limb); fork-1 @ sc-08 (confront/audit), fork-2 @ sc-16 (reveal/burn); 3 world-lines, 3 endings; ~9,400 words. The warm brief enforces these ids + forks so the harness + gates + matched reading copies operate on identical scaffolds across W and C."
+  },
+
+  "arms": {
+    "shared_constraints": "same model tier; the graded deliverable for BOTH arms is the PROSE scene network ALONE. Held constant: premise, fact base (run/disclosure/ff.atomic.json from R504 = authored.atomic.json typed copy), disclosure plan dc-v2 (withhold default, the two load-bearing conclusions stated at their per-world reveal pins), the 3 world-lines, scaffold, ~9.4k word budget, tier, the R500 5-axis rubric. Varied: render-brief POSTURE + the gate-repair loop (arm W only).",
+    "arm_W_warm": {
+      "label": "warm (treatment, NEW) = render the 3 world-lines from the per-world WARM BRIEF (storytelling posture, plain-style), then gate-and-repair to clean.",
+      "brief": "v3/warm-brief.md (orchestrator-authored; the SAME beats + SAME withholds as the R504 compliance brief, re-registered in narrative register as a storytelling job — withholds encoded as story questions, not fact-id/mode/coord pins; NO new story information). The warm author is blind (firewall §0): never sees the manifest, the comparison, the gates, the other arm, or any C prose.",
+      "render_then_gate_repair": "1) warm author(s) render the full 29-scene branching manuscript to run/warm/story.md (storytelling posture). 2) blind re-extraction (shared vocabulary, not facts/plan) + the R508 gates (leak + fidelity) + D1/D2/D4. 3) for each violation a scene-scoped story-framed repair (a blind author rewrites that scene, staying warm); re-run gates until PIN-W1 + PIN-W2 clean. Record repair count + localization + tokens = the posture tax."
+    },
+    "arm_C_compliance": {
+      "label": "compliance (control, REUSED) = R504's disclosure render verbatim.",
+      "source": "run/disclosure/story.md (R504) copied to v3/run/compliance/story.md (sha256 a2549badbd255b9ef1507738acfcbe22851ae31a012a3086854e7ff46ab9d7b9). NOT re-rendered. Already produced + already judged (R504 keystone 5.00, overall forced-choice 2-1 loss to plain). Honesty bound: arm C is a CROSS-RUN reuse, not a same-session twin (the R503/R504 plain-reuse precedent; judge-clean because v3 judges are fresh)."
+    },
+    "delivery_note": "graded deliverable = prose ALONE for both arms. The plan store + canon order + extractor vocabulary are the gate's source only (arm W gates), never shown to judges."
+  },
+
+  "grading": {
+    "harness": "REUSE tools/experiment-harness verbatim (the R480 harness, R509 deterministic strip+prune): shuffle relabels warm/compliance -> A/B and seals the map (sha256); report-playthrough-manuscript --world W --reading-walk (R509 begins>0 prune) over each arm's blind re-extraction + assemble (R509 broadened strip + loud-reject residual) builds the matched per-world reading copies; verify-seal at reveal. No new harness code.",
+    "shuffle": "before any judging, shuffle warm + compliance -> A/B, record the sha256 SEAL in v3/report.md PRE-REVEAL. Downstream judging uses story-A / story-B only.",
+    "deterministic_pins": {
+      "pin_targets_prepinned": "the withheld solution conclusions + their per-world reveal scenes are pre-pinned in v3/report.md PRE-EXTRACTION from the SOURCE plan dc-v2 + the R504 withhold list (W1 climber=Pike: reveal sc-17r / audit reasoned-never-named / burn never; W2 accidental-fall + clock-jolt: reveal sc-15/sc-17r, audit sc-18b, burn sc-18w; W3 telegram-undelivered+theft-proven: reveal sc-11a, audit sc-09b..sc-12b/sc-19b). Shared-spine invariant: sc-01..sc-08 are strictly pre-reveal for all three worlds.",
+      "blind_reextraction": "ONE blind extractor subagent re-extracts BOTH stories (story-A, story-B) into fresh stores by the v2 extractor-brief.md recipe VERBATIM (the R469 recipe: gt-frame EXPLICIT facts only, scene id = canon coordinate from the prose's own `## sc-XX` markers, quote = evidence, the FIXED v2 vocabulary = entity+predicate registries, no facts/plan). Blind to which story is which and to the hypothesis. The shared vocabulary makes the leak gate's typed-tuple match + truth-frame scoping id-comparable (the R512 contract).",
+      "PIN_W1_fidelity": "arm W FINAL: D1 (rule_transition_invalid + rule_exclusive_overlap) + D2 (unchained_state_pairs) + D4 (succession_cross_branch + SuccessionCycle) = 0 from validate-continuity on the W re-extraction; AND validate-render-fidelity --against <W reextraction projected to world W> --world W --order meridian-order.json off_path = 0 for each of reveal/burn/audit (single-world projection = the v2 accept-branch shape). Arm C's recorded R504/R512 fidelity beside it as the control.",
+      "PIN_W2_leak": "arm W FINAL: validate-disclosure-leak --telling dc-v2 --against <W reextraction> --world {reveal|burn|audit} --truth-frame gt --order meridian-order.json reports leaks = 0 in every world with vocab_shared > 0. Any leak (a withheld conclusion re-extractable before its first_at) -> leak-vs-noise audit (cited scene-id + quote: a leak is the solution STATED in pre-reveal prose; an over-read hint or extractor over-inference is noise)."
+    },
+    "preference": {
+      "reading_copies": "per matched world-line (W1 confront+reveal, W2 confront+burn, W3 quiet-audit), assemble a deterministic linear reading copy with the R509 harness from each arm's re-extracted per-world playthrough (--reading-walk begins>0 prune + assemble). W and C share the scaffold, so the three worlds align 1:1.",
+      "judges": "3 fresh blind LLM judge sessions, no experiment context, labels A / B only.",
+      "judge_prompt": "You are judging two versions (A and B) of the same branching mystery, one world-line at a time. For each matched world-line read both, then answer: (1) continuity/causality errors you noticed (count + cite scene ids); (2) prose quality - does it read as a TOLD STORY with a voice, or as assembled / list-like statements of fact? 1-5; (3) stakes and tension 1-5; (4) setup/payoff satisfaction 1-5; (5) character-knowledge believability (does anyone act on what they cannot know) 1-5; (6) overall forced choice A or B, one paragraph why. ALSO: flag any specific passage that reads COOLER, flatter, or more like a correction than the prose around it (cite scene id), or write 'none'. Do not speculate about how either version was produced.",
+      "baseline_crossref": "FREE isolation signal: compare W and C judge scores against R504's RECORDED scores (compliance keystone 5.00 / stakes 4.22 / payoff 4.56 / knowledge 4.67; plain keystone 4.22, plain won the overall forced choice 2-1). Did warm posture lift the overall forced choice above the compliance render toward plain's warmth?",
+      "outcome_pin": "NONE (V9). The procedure is pinned; any preference direction is an honest headline."
+    },
+    "untyped_residue_bridge": "judge-cited continuity/causality errors not matched by any D-metric estimate the R476 ceiling per arm."
+  },
+
+  "predictions_preregistered": {
+    "PRED_W1_fidelity": "PIN. arm W FINAL re-extraction: D1+D2+D4 = 0 AND render-fidelity off_path = 0 per world.",
+    "PRED_W2_leak": "PIN. arm W FINAL: 0 premature leaks, vocab_shared > 0, all three worlds.",
+    "PRED_craft": "NO pin (V9, the OPEN question). Two hypotheses in tension: POSTURE-IS-CAUSE (W beats C on the forced choice; warm posture warms the SAME facts+plan toward plain's level) vs CEILING (W ~= C; rendering to a verifiable fact base cools the prose regardless of job-framing).",
+    "PRED_posture_tax": "NO pin, RECORDED. repair count + localization + render tokens; high localization or judge-flagged re-cooling = the warmth was bought back by the gate-repair tax (a measured partial)."
+  },
+
+  "decision_rule": "PRE-COMMITTED, honest symmetric fork (R513). (1) W beats C on the forced choice AND PIN-W1 + PIN-W2 hold AND localization bounded (repairs don't dominate, no judge-flagged re-cooling) -> POSTURE was the cause -> warm-render-then-gate-repair becomes the standard render discipline; warm+verified reached. Build implication recorded but YAGNI (a --warm-brief projection / repair-loop helper builds ONLY if a real authoring run pulls it). (2) W ~= C (no forced-choice lift) AND pins hold -> the R476 model-craft ceiling is the real constraint, PROVEN on a clean controlled comparison -> pivot to a different North-Star axis (scale / pinion-projection / salience). (3) W warms but pins FAIL without heavy repair, OR repair re-cools (high localization + judge-flagged) -> posture helps but the gate-repair tax re-cools -> measured partial; record the threshold. Either of (1)/(2) is a real conclusion worth more than another design-only note. No build is authorized by this manifest.",
+
+  "validity_conditions": {
+    "quota": "arm W meets the 29-scene / 2-fork / 3-world / 3-ending scaffold + ~9.4k words (C parity). A miss is itself a finding (run the deterministic legs on what exists; skip preference if scales are incomparable).",
+    "extraction_parity": "identical extraction brief / verbs / recipe across A and B (the v2 extractor-brief.md verbatim); labels blind.",
+    "no_manifest_contact": "warm author / extractor / judge sessions never receive this manifest, the runbook, the hypothesis, the gates, or the other arm; their prompts are the warm brief (author) / the v2 extractor-brief (extractor) / the judge_prompt + reading copies (judge), each wrapped with the firewall only.",
+    "repair_register": "every repair instruction is story-framed (a scene-local rewrite for storytelling reasons), NEVER compliance-framed (no fact-id/mode/coord); a compliance-register repair would re-cool by construction. The repair author is blind (a fresh subagent given the scene + a story reason)."
+  },
+
+  "honesty_bounds_recorded": [
+    "arm C is the R504 disclosure render REUSED verbatim - a cross-run control, not a same-session twin (the R503/R504 reuse precedent; judge-clean because v3 judges are fresh).",
+    "arm W reuses R504's fact base + disclosure plan dc-v2 UNCHANGED (deliberate isolation of POSTURE; R505's emotion-anchor belief-frame facts are held OUT as a SECONDARY lever, not added here - conflating them would make the result unattributable).",
+    "the orchestrator (this lineage) wrote the per-world WARM BRIEF (the treatment) - the design-stage selection bias the sha-pin does NOT cover (R469/R499/R503 carry). The warm author is blind, which covers tampering/peeking, not brief selection.",
+    "the gate-repair loop is a NEW render step with its own re-cooling risk; the repair-localization metric is the guard, but it is a metric, not a gate.",
+    "plain's warmth is the BAR but plain is UNVERIFIED (prose-first, no store, never gate-checked); v3's contribution is the REACHABILITY of warm+verified, not plain's quality.",
+    "the PIN-W2 typed-tuple gate covers the two load-bearing conclusions typed in dc-v2 (climber/identity/pike; crane/knows-dismissal/no); the broader W1/W2/W3 withhold list is pre-pinned and audited on the re-extraction coordinates (the v1 leak-vs-noise method) - soundness exact, completeness rests on extractor recall (the unchanged R500/R504/R512 boundary).",
+    "in the QUIET-AUDIT world the climber is never NAMED (only reasoned from the kept key); the warm brief preserves that restraint, so W1's audit pin is a never-stated (safe-side) withhold, matching R512."
+  ],
+
+  "session_map_runbook": [
+    "S0 = the R513 design round (sec 7.25) + this R514 manifest round (sha pinned in the R514 ledger entry before execution).",
+    "S1 = warm render (1-3 blind subagents over the warm brief) -> run/warm/story.md.",
+    "S2 = blind re-extraction of arm W + the R508 gates (leak + fidelity) + D1/D2/D4; gate-and-repair (scene-scoped story-framed blind rewrites) until PIN-W1 + PIN-W2 clean; record the posture tax.",
+    "S3 = shuffle warm + compliance -> A/B, seal (record PRE-REVEAL); blind re-extraction of BOTH (for reading copies); assemble matched per-world reading copies (R509 harness).",
+    "S4-S6 = 3 blind judges over the matched reading copies (judge_prompt + firewall).",
+    "S7 = reveal (verify-seal), grade PIN-W1 + PIN-W2, tally the craft forced choice + 5-axis + the R504 plain cross-ref + the re-cool sub-question, apply the decision_rule fork, write v3/report.md, append the execution ledger entry (R452 self-containment). Commit; push on owner consent."
+  ]
+}

@@ -1,0 +1,11 @@
+# Scratch stores + neutral/blind prose copies stay out (the experiment
+# convention, R404 seeded-fixture rule). Tracked evidence = the manifest,
+# the warm briefs, meridian-order.json, extractor-brief.md, the runbook,
+# and report.md with the deterministic gate verdicts inlined. The warm prose
+# (run/warm/story.md) and the reused compliance prose (run/compliance/story.md)
+# ARE tracked as the graded deliverables (the R504 disclosure-report precedent:
+# prose is tracked evidence, *.atomic.json scratch is not).
+*.atomic.json
+*.playthrough.json
+run/labels/story-*.md
+run/extract/story-*.md
