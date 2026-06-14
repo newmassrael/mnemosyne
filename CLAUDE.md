@@ -258,3 +258,18 @@ flow was retired in R306+ (no more sync step; `.githooks/` is the
 direct hook directory). Any local `.git/hooks/pre-commit` /
 `commit-msg` left over from the copy era is automatically ignored
 once `core.hooksPath` is set, and can be deleted.
+
+## Round cadence / minimal-prompt operation (R511 — `RULEBOOK.md`)
+
+The operating procedure for running rounds with minimal owner prompting
+lives in `RULEBOOK.md` (tracked, repo root). It owns ONLY the process —
+round types + per-round checklist, the consent gates (push / experiment /
+irreversible / foundation-deletion / scope-fork), and the autonomy
+contract. It does *not* restate the invariants here, the preferences in
+memory, the live `NEXT` in the RESUME memory, or the decisions in the
+changelog (SSOT, four non-overlapping sources). Pattern (the experiment-
+runbook precedent generalised): each session begins by pasting the ONE
+bootstrap prompt from `RULEBOOK.md` ("THE ONE PROMPT") into a fresh
+session; that session then runs autonomous commit-sized rounds per the
+autonomous-rounds doctrine in memory until a consent gate, pushing only on
+an explicit push word. The RESUME memory's `NEXT` is the steering wheel.
