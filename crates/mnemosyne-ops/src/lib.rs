@@ -544,6 +544,85 @@ pub fn fork_tree_report(
     mnemosyne_validate::continuity::fork_tree(&store, &order).map_err(OpError::Other)
 }
 
+/// Disclosure coverage (Round 507, design sec 7.24 step 4) — the per-telling
+/// classification surface (disclosed / hidden-by-design / never-planned). Pure
+/// read projection, order-independent, never gated.
+pub fn disclosure_coverage_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    telling: &str,
+) -> Result<mnemosyne_validate::disclosure::DisclosureCoverageReport, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    mnemosyne_validate::disclosure::disclosure_coverage(&store, telling).map_err(OpError::Other)
+}
+
+/// Premature-leak gate (Round 507, design sec 7.24 step 5, R502) — the authored
+/// plan vs a BLIND RE-EXTRACTED prose store (`against`), matched by typed tuple
+/// in `truth_frame` for `world`. Guards `world` against the branch registry and
+/// `truth_frame` against the frame registry before running.
+pub fn disclosure_leak_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    against: &Path,
+    order_override: Option<&str>,
+    telling: &str,
+    world: &str,
+    truth_frame: &str,
+) -> Result<mnemosyne_validate::disclosure::DisclosureLeakReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let authored = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &authored)?;
+    if world != mnemosyne_core::MAIN_BRANCH && !authored.branches.contains_key(world) {
+        return Err(OpError::Other(format!(
+            "world `{world}` not present in the branch registry (fail-loud)"
+        )));
+    }
+    if !authored.frames.contains_key(truth_frame) {
+        return Err(OpError::Other(format!(
+            "truth_frame `{truth_frame}` not present in the frame registry (fail-loud)"
+        )));
+    }
+    let reextracted = AtomicStore::load(against).map_err(|e| OpError::Other(format!("{}", e)))?;
+    mnemosyne_validate::disclosure::disclosure_leak(
+        &authored,
+        &reextracted,
+        &order,
+        telling,
+        world,
+        truth_frame,
+    )
+    .map_err(OpError::Other)
+}
+
+/// Render↔world-line fidelity gate (Round 507, design sec 7.24 step 6, R505) —
+/// the BLIND RE-EXTRACTED prose store (`against`) checked against `world`'s
+/// composed order (the prose analog of R488). Guards `world` against the branch
+/// registry before running.
+pub fn render_fidelity_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    against: &Path,
+    order_override: Option<&str>,
+    world: &str,
+) -> Result<mnemosyne_validate::disclosure::RenderFidelityReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let authored = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &authored)?;
+    if world != mnemosyne_core::MAIN_BRANCH && !authored.branches.contains_key(world) {
+        return Err(OpError::Other(format!(
+            "world `{world}` not present in the branch registry (fail-loud)"
+        )));
+    }
+    let reextracted = AtomicStore::load(against).map_err(|e| OpError::Other(format!("{}", e)))?;
+    Ok(mnemosyne_validate::disclosure::render_fidelity(
+        &reextracted,
+        &order,
+        world,
+    ))
+}
+
 /// One fact row in an entity dossier (Round 437) — raw authoring-time view
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).

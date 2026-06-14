@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-disclosure-plan|set-disclosure|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-disclosure-plan|set-disclosure|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|report-disclosure-coverage|validate-disclosure-leak|validate-render-fidelity|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -307,6 +307,9 @@ fn run(args: &[String]) -> Result<()> {
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
         "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
         "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
+        "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
+        "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
+        "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
         "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
         "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
         "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
@@ -459,6 +462,21 @@ fn print_help(prog: &str) {
     println!(
         " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
+    );
+    println!(
+        " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} validate-disclosure-leak --telling <id> --against <reextracted.json> --world <branch> --truth-frame <frame> [--order <path>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} validate-render-fidelity --against <reextracted.json> --world <branch> [--order <path>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 507 — disclosure render-acceptance gates over a blind re-extracted prose store; leak/fidelity exit non-zero on violation"
     );
     println!(
         "   Round 466 — per-world linear scene walk with declared fact events (reading surface, never gated)"
@@ -2544,6 +2562,266 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
         if !b.description.is_empty() {
             println!("      choice: {}", b.description);
         }
+    }
+    Ok(())
+}
+
+/// Round 507 — disclosure coverage (`report-disclosure-coverage`, design sec
+/// 7.24 step 4): per telling, every fact classified disclosed /
+/// hidden-by-design / never-planned. A SURFACE (the R442 dangling-is-a-todo
+/// discipline) — `never-planned` is the author's todo list, never gated.
+fn cmd_report_disclosure_coverage(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(args, false, true)?;
+    let telling = a
+        .telling
+        .as_deref()
+        .ok_or_else(|| anyhow!("--telling arg required"))?;
+    let report = mnemosyne_ops::disclosure_coverage_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        telling,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if a.json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== disclosure coverage — telling `{}` — {} fact(s) ===",
+        report.telling, report.facts
+    );
+    println!(
+        "disclosed={} hidden_by_design={} never_planned={}",
+        report.disclosed,
+        report.hidden_by_design,
+        report.never_planned.len()
+    );
+    for id in &report.never_planned {
+        println!("  never-planned: {id}");
+    }
+    Ok(())
+}
+
+/// Resolve the workspace anchor (the config dir) the report verbs hang off —
+/// the inline shape `parse_narrative_report_args` uses, extracted for the two
+/// render-acceptance gate verbs that carry their own `--against` parser.
+fn report_anchor() -> Result<std::path::PathBuf> {
+    let loaded = workspace_config()?;
+    Ok(loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone()))
+}
+
+/// Round 507 — premature-leak gate (`validate-disclosure-leak`, design sec 7.24
+/// step 5, R502): the authored plan vs a BLIND RE-EXTRACTED prose store
+/// (`--against`), matched by typed tuple in `--truth-frame` for `--world`. A
+/// withheld fact that appears, or a fact re-extractable before its first_at, is
+/// a leak; the verb exits non-zero on any leak (a gate), the JSON/human report
+/// printed first.
+fn cmd_validate_disclosure_leak(args: &[String]) -> Result<()> {
+    let mut telling: Option<String> = None;
+    let mut against: Option<String> = None;
+    let mut world: Option<String> = None;
+    let mut truth_frame: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--against" => {
+                against = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--against missing"))?
+                        .clone(),
+                )
+            }
+            "--world" => {
+                world = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--world missing"))?
+                        .clone(),
+                )
+            }
+            "--truth-frame" => {
+                truth_frame = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--truth-frame missing"))?
+                        .clone(),
+                )
+            }
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let telling = telling.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let against = against.ok_or_else(|| anyhow!("--against arg required"))?;
+    let world = world.ok_or_else(|| anyhow!("--world arg required"))?;
+    let truth_frame = truth_frame.ok_or_else(|| anyhow!("--truth-frame arg required"))?;
+    let anchor = report_anchor()?;
+    let report = mnemosyne_ops::disclosure_leak_report(
+        &anchor,
+        sidecar.as_deref().map(std::path::Path::new),
+        std::path::Path::new(&against),
+        order_override.as_deref(),
+        &telling,
+        &world,
+        &truth_frame,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== disclosure leak — telling `{}` world `{}` truth-frame `{}` — {} targeted ===",
+            report.telling, report.world, report.truth_frame, report.targeted
+        );
+        println!(
+            "leaks={} unordered={} unmatched={}",
+            report.leaks.len(),
+            report.unordered.len(),
+            report.unmatched.len()
+        );
+        for l in &report.leaks {
+            match &l.first_at {
+                Some(fa) => println!(
+                    "  LEAK [{}] {} -> {} @{} (first_at {})",
+                    l.kind, l.fact_id, l.reextracted_id, l.coord, fa
+                ),
+                None => println!(
+                    "  LEAK [{}] {} -> {} @{}",
+                    l.kind, l.fact_id, l.reextracted_id, l.coord
+                ),
+            }
+        }
+        for u in &report.unordered {
+            println!(
+                "  [unordered] {} -> {} @{}",
+                u.fact_id, u.reextracted_id, u.coord
+            );
+        }
+        for u in &report.unmatched {
+            println!("  [unmatched] {u}");
+        }
+    }
+    if !report.leaks.is_empty() {
+        bail!(
+            "disclosure leak gate FAILED: {} leak(s)",
+            report.leaks.len()
+        );
+    }
+    Ok(())
+}
+
+/// Round 507 — render↔world-line fidelity gate (`validate-render-fidelity`,
+/// design sec 7.24 step 6, R505): a BLIND RE-EXTRACTED prose store
+/// (`--against`) checked against `--world`'s composed order — a re-extracted
+/// coord that is a declaration node of ANOTHER world is off-path (the prose
+/// drifted onto the wrong world-line, the R488 prose analog). Exits non-zero on
+/// any off-path fact.
+fn cmd_validate_render_fidelity(args: &[String]) -> Result<()> {
+    let mut against: Option<String> = None;
+    let mut world: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--against" => {
+                against = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--against missing"))?
+                        .clone(),
+                )
+            }
+            "--world" => {
+                world = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--world missing"))?
+                        .clone(),
+                )
+            }
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let against = against.ok_or_else(|| anyhow!("--against arg required"))?;
+    let world = world.ok_or_else(|| anyhow!("--world arg required"))?;
+    let anchor = report_anchor()?;
+    let report = mnemosyne_ops::render_fidelity_report(
+        &anchor,
+        sidecar.as_deref().map(std::path::Path::new),
+        std::path::Path::new(&against),
+        order_override.as_deref(),
+        &world,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== render fidelity — world `{}` — {} re-extracted fact(s), reached_terminal={} ===",
+            report.world, report.reextracted_facts, report.reached_terminal
+        );
+        println!(
+            "off_path={} unplaced={}",
+            report.off_path.len(),
+            report.unplaced.len()
+        );
+        for f in &report.off_path {
+            println!(
+                "  OFF-PATH {} @{} (not in world `{}`)",
+                f.fact_id, f.coord, report.world
+            );
+        }
+        for f in &report.unplaced {
+            println!("  [unplaced] {} @{}", f.fact_id, f.coord);
+        }
+    }
+    if !report.off_path.is_empty() {
+        bail!(
+            "render fidelity gate FAILED: {} off-path fact(s) — the prose drifted off world `{}`",
+            report.off_path.len(),
+            report.world
+        );
     }
     Ok(())
 }

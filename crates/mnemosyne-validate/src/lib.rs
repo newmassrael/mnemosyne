@@ -18,6 +18,7 @@ pub mod commit_ledger;
 pub mod confirmation;
 pub mod content_drift;
 pub mod continuity;
+pub mod disclosure;
 pub mod spec_drift;
 pub mod t2;
 pub mod validator;

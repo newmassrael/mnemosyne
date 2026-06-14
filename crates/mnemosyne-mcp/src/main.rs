@@ -547,6 +547,38 @@ pub struct ReportForkTreeArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportDisclosureCoverageArgs {
+    /// Telling id to classify (disclosed / hidden-by-design / never-planned).
+    pub telling: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DisclosureLeakArgs {
+    /// Telling id whose plan is the gate's authored side.
+    pub telling: String,
+    /// Path to the BLIND RE-EXTRACTED prose store to check.
+    pub against: String,
+    /// The world-line the re-extracted prose represents.
+    pub world: String,
+    /// The frame whose re-extracted facts count as reader-established truth.
+    pub truth_frame: String,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RenderFidelityArgs {
+    /// Path to the BLIND RE-EXTRACTED prose store to check.
+    pub against: String,
+    /// The assigned world-line the prose was rendered for.
+    pub world: String,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -1723,6 +1755,61 @@ impl MnemosyneServer {
     )]
     async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
         match ops::fork_tree_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Disclosure coverage (R507, read-only): per telling, every fact classified disclosed / hidden-by-design (an explicit withhold override) / never-planned (no override under a withhold-default telling = the author's todo list). A SURFACE (the R442 dangling-is-a-todo discipline), never gated. Fail-loud on a typo'd telling."
+    )]
+    async fn report_disclosure_coverage(
+        &self,
+        args: Parameters<ReportDisclosureCoverageArgs>,
+    ) -> CallToolResult {
+        match ops::disclosure_coverage_report(&self.workspace, None, &args.0.telling) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Premature-leak gate (R507/R502): the authored disclosure plan vs a BLIND RE-EXTRACTED prose store (against), matched by typed (subject,predicate,object) tuple in truth_frame for world. A withheld fact that re-extracts, or a first_at-pinned fact re-extractable before its pin in the world's order, is a leak (leaks[] non-empty = FAIL). Deterministic — AI out of the gate. Returns the report; gating policy is the caller's. Fail-loud on typo'd telling / world / truth_frame."
+    )]
+    async fn validate_disclosure_leak(
+        &self,
+        args: Parameters<DisclosureLeakArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        match ops::disclosure_leak_report(
+            &self.workspace,
+            None,
+            std::path::Path::new(&a.against),
+            a.order_path.as_deref(),
+            &a.telling,
+            &a.world,
+            &a.truth_frame,
+        ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Render<->world-line fidelity gate (R507/R505): a BLIND RE-EXTRACTED prose store (against) checked against world's composed order — a re-extracted canon_from that is a declaration node of ANOTHER world is off-path (the prose drifted onto the wrong world-line; off_path[] non-empty = FAIL). The prose analog of R488 FactCanonOffBranch. Returns the report; gating policy is the caller's. Fail-loud on a typo'd world."
+    )]
+    async fn validate_render_fidelity(
+        &self,
+        args: Parameters<RenderFidelityArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        match ops::render_fidelity_report(
+            &self.workspace,
+            None,
+            std::path::Path::new(&a.against),
+            a.order_path.as_deref(),
+            &a.world,
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
