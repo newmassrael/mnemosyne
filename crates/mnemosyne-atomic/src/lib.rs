@@ -37,8 +37,9 @@ pub use redact::*;
 
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
-    Entity, Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate,
-    PredicateObjectKind, TypedClaim, TypedObject,
+    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, Entity, Frame,
+    InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
+    TypedObject,
 };
 use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
@@ -640,6 +641,15 @@ pub struct AtomicStore {
     /// contact. Empty on pre-v12 stores via `#[serde(default)]`.
     #[serde(default)]
     pub narrative_facts: BTreeMap<String, NarrativeFact>,
+    /// Disclosure (discourse) plans (Round 506, design sec 7.24) — keyed by
+    /// telling id. Each plan is a named telling over the fact base: a default
+    /// disclosure mode + sparse per-fact overrides selecting which facts the
+    /// reader is told, when, in what mode. Top-level (the registry placement
+    /// pattern): one fact base, many tellings. NOT a store-integrity invariant
+    /// (disclosure timing is a render property gated over re-extracted prose).
+    /// Empty on pre-v22 stores via `#[serde(default)]`.
+    #[serde(default)]
+    pub disclosure_plans: BTreeMap<String, DisclosurePlan>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1111,7 +1121,16 @@ pub enum AtomicStoreError {
 // only such events lived in a throwaway grading copy), so the removal loses no
 // data; a v21 store has no `fact_evidence` events and the monotonic bump
 // records the variant's retirement. No migration arm needed.
-const CURRENT_SCHEMA_VERSION: u32 = 21;
+// v21→v22 adds `AtomicStore.disclosure_plans` (the disclosure/discourse layer,
+// Round 506 — design sec 7.24): a top-level registry of named tellings over the
+// fact base, mirroring the v9→v10 confirmation_events / v11→v12 narrative_facts
+// placement. Same declarative new-field-default pattern: a pre-v22 store has no
+// `disclosure_plans` key, serde `#[serde(default)]` fills an empty map — no
+// behavior change (nothing reads the plans until the `--telling` carrier + the
+// render-acceptance gates run, and those are out-of-band render-loop tools, not
+// validate-workspace). So there is deliberately NO `schema_version < 22` arm in
+// `load`, and no migration report is needed.
+const CURRENT_SCHEMA_VERSION: u32 = 22;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -4155,6 +4174,203 @@ pub fn add_predicate(
         "predicate",
         &id,
         created,
+    )
+}
+
+/// Register one disclosure (discourse) plan — a named telling over the fact
+/// base (Round 506, design sec 7.24): a default mode (policy) the per-fact
+/// overrides ([`set_disclosure`]) sit on top of. The registry symmetry
+/// (frames/branches/entities/predicates), but with one difference: the plan is
+/// MUTATED after registration (overrides are added), so the idempotency check
+/// compares ONLY the policy `(description, default_mode)` — a re-add after
+/// `set_disclosure` populated overrides is still a clean no-op, while a changed
+/// policy fails loud. `default_mode` parses through the fail-loud tag (no silent
+/// default for a load-bearing policy).
+pub fn add_disclosure_plan(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    telling_id: &str,
+    default_mode: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = telling_id.trim().to_string();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_disclosure_plan: telling_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    let mode = DisclosureMode::from_tag(default_mode.trim()).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "add_disclosure_plan: unknown default_mode `{}` (expected one of: \
+             withhold, state, hint, imply)",
+            default_mode.trim()
+        ))
+    })?;
+    let description = description.trim().to_string();
+    let created = match store.disclosure_plans.get(&id) {
+        None => {
+            store.disclosure_plans.insert(
+                id.clone(),
+                DisclosurePlan {
+                    description,
+                    default_mode: mode,
+                    overrides: BTreeMap::new(),
+                },
+            );
+            true
+        }
+        Some(existing) if existing.description == description && existing.default_mode == mode => {
+            false
+        }
+        Some(_) => {
+            return Err(AtomicMutateError::Validation(format!(
+                "add_disclosure_plan: telling `{id}` already exists with DIVERGENT policy \
+                 (description/default_mode) — refusing silent overwrite (set-disclosure \
+                 edits the per-fact overrides; re-adding may not change the policy)"
+            )));
+        }
+    };
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_disclosure_plan",
+        "disclosure_plan",
+        &id,
+        created,
+    )
+}
+
+/// Set one per-fact disclosure override within a telling (Round 506, design sec
+/// 7.24): how a fact reaches the reader, when (per world-line), and on what
+/// surface. A setter (last-write-wins on the override — authoring iteration,
+/// not the append-only audit genre). Fail-loud refs: the telling and the fact
+/// must exist, each `first_at` branch must be registered (or `MAIN_BRANCH`),
+/// each `first_at` coord + the surface scene must be a section, the surface
+/// object must be a registered entity. THE gate-enabling invariant: a
+/// `withhold` mode OR any `first_at` timing pin requires the targeted fact to
+/// carry a typed claim — the premature-leak render-acceptance gate matches the
+/// re-extracted prose to the plan by typed (subject, predicate, object) tuple,
+/// so a disclosure decision on an untyped fact would be deterministically
+/// un-gateable (R506: the determinism keystone).
+#[allow(clippy::too_many_arguments)]
+pub fn set_disclosure(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    telling_id: &str,
+    fact_id: &str,
+    mode: &str,
+    first_at: &[(String, String)],
+    surface: Option<(&str, Option<&str>)>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let telling = telling_id.trim();
+    let fact = fact_id.trim();
+    if !store.disclosure_plans.contains_key(telling) {
+        return Err(AtomicMutateError::Validation(format!(
+            "set_disclosure: telling `{telling}` not present in the disclosure_plans \
+             registry (add-disclosure-plan first)"
+        )));
+    }
+    let fact_is_typed = match store.narrative_facts.get(fact) {
+        Some(f) => f.typed.is_some(),
+        None => {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_disclosure: fact `{fact}` not present in narrative_facts"
+            )));
+        }
+    };
+    let mode = DisclosureMode::from_tag(mode.trim()).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "set_disclosure: unknown mode `{}` (expected one of: withhold, state, hint, imply)",
+            mode.trim()
+        ))
+    })?;
+    let has_first_at = !first_at.is_empty();
+    if (mode == DisclosureMode::Withhold || has_first_at) && !fact_is_typed {
+        return Err(AtomicMutateError::Validation(format!(
+            "set_disclosure: fact `{fact}` has no typed claim, but a withhold/first_at \
+             disclosure decision is deterministically un-gateable without one (the \
+             premature-leak gate matches by typed tuple — author a typed leg first)"
+        )));
+    }
+    let mut first_at_map: BTreeMap<String, String> = BTreeMap::new();
+    for (branch, coord) in first_at {
+        let branch = branch.trim();
+        let coord = coord.trim();
+        if branch.is_empty() || coord.is_empty() {
+            return Err(AtomicMutateError::Validation(
+                "set_disclosure: each first_at needs branch=coord (both non-empty)".to_string(),
+            ));
+        }
+        if branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(branch) {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_disclosure: first_at branch `{branch}` not present in the branch registry"
+            )));
+        }
+        if !store.sections.contains_key(coord) {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_disclosure: first_at coord `{coord}` not present as a section \
+                 (canon coordinates are structure refs)"
+            )));
+        }
+        if first_at_map
+            .insert(branch.to_string(), coord.to_string())
+            .is_some()
+        {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_disclosure: duplicate first_at branch `{branch}`"
+            )));
+        }
+    }
+    let surface = match surface {
+        None => None,
+        Some((scene, object)) => {
+            let scene = scene.trim();
+            if scene.is_empty() {
+                return Err(AtomicMutateError::Validation(
+                    "set_disclosure: surface needs a scene ref".to_string(),
+                ));
+            }
+            if !store.sections.contains_key(scene) {
+                return Err(AtomicMutateError::Validation(format!(
+                    "set_disclosure: surface scene `{scene}` not present as a section"
+                )));
+            }
+            let object = match object {
+                Some(o) if !o.trim().is_empty() => {
+                    let o = o.trim();
+                    if !store.entities.contains_key(o) {
+                        return Err(AtomicMutateError::Validation(format!(
+                            "set_disclosure: surface object `{o}` not present in the entity registry"
+                        )));
+                    }
+                    Some(o.to_string())
+                }
+                _ => None,
+            };
+            Some(DisclosureSurface {
+                scene: scene.to_string(),
+                object,
+            })
+        }
+    };
+    let plan = store
+        .disclosure_plans
+        .get_mut(telling)
+        .expect("telling presence checked above");
+    plan.overrides.insert(
+        fact.to_string(),
+        DisclosureOverride {
+            mode,
+            first_at: first_at_map,
+            surface,
+        },
+    );
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_disclosure",
+        "disclosure_plan",
+        &format!("{telling}/{fact}"),
     )
 }
 
@@ -8457,6 +8673,195 @@ mod tests {
         seed_section(store, "ch-1");
         seed_section(store, "ch-2");
         seed_section(store, "ch-3");
+    }
+
+    /// Round 506 — disclosure plan registry + set_disclosure: the
+    /// gate-enabling typed invariant (withhold/first_at need a typed fact),
+    /// the fail-loud refs, per-world-line first_at, idempotent-policy re-add,
+    /// divergent-policy reject, and a v22 round-trip.
+    #[test]
+    fn disclosure_plan_and_set_disclosure_invariants() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("pike".to_string(), Entity::default());
+        add_branch(
+            &mut store,
+            &path,
+            "route",
+            "",
+            Some((mnemosyne_core::MAIN_BRANCH, "ch-2")),
+        )
+        .unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-untyped", "gt")).unwrap();
+        let typed_fact = FactImport {
+            entities: vec!["pike".to_string()],
+            typed: Some(TypedClaim {
+                subject: "pike".to_string(),
+                predicate: "did".to_string(),
+                object: TypedObject::Value {
+                    value: "climbed".to_string(),
+                },
+            }),
+            ..sample_fact("f-typed", "gt")
+        };
+        add_fact(&mut store, &path, &typed_fact).unwrap();
+
+        add_disclosure_plan(
+            &mut store,
+            &path,
+            "dark-souls",
+            "withhold",
+            "fragment telling",
+        )
+        .unwrap();
+        let err = add_disclosure_plan(&mut store, &path, "bad", "loud", "").unwrap_err();
+        assert!(err.to_string().contains("unknown default_mode"), "{err}");
+
+        // Gate-enabling invariant: withhold / first_at on an UNTYPED fact rejects.
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-untyped",
+            "withhold",
+            &[],
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no typed claim"), "{err}");
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-untyped",
+            "state",
+            &[(mnemosyne_core::MAIN_BRANCH.to_string(), "ch-2".to_string())],
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no typed claim"), "{err}");
+        // A plain state with no timing on an untyped fact is craft-only (un-gated) → ok.
+        set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-untyped",
+            "state",
+            &[],
+            None,
+        )
+        .unwrap();
+
+        // Typed fact: withhold ok; per-world first_at + surface ok.
+        set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-typed",
+            "withhold",
+            &[],
+            None,
+        )
+        .unwrap();
+        set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-typed",
+            "state",
+            &[("route".to_string(), "ch-3".to_string())],
+            Some(("ch-2", Some("pike"))),
+        )
+        .unwrap();
+        let ov = &store.disclosure_plans["dark-souls"].overrides["f-typed"];
+        assert_eq!(ov.mode, DisclosureMode::State);
+        assert_eq!(ov.first_at.get("route").map(String::as_str), Some("ch-3"));
+        let surface = ov.surface.as_ref().unwrap();
+        assert_eq!(surface.scene, "ch-2");
+        assert_eq!(surface.object.as_deref(), Some("pike"));
+
+        // Fail-loud refs.
+        let err = set_disclosure(&mut store, &path, "missing", "f-typed", "state", &[], None)
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("not present in the disclosure_plans"),
+            "{err}"
+        );
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-absent",
+            "state",
+            &[],
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("not present in narrative_facts"),
+            "{err}"
+        );
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-typed",
+            "state",
+            &[("nope".to_string(), "ch-2".to_string())],
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("branch `nope`"), "{err}");
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-typed",
+            "state",
+            &[(
+                mnemosyne_core::MAIN_BRANCH.to_string(),
+                "ch-404".to_string(),
+            )],
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("ch-404"), "{err}");
+        let err = set_disclosure(
+            &mut store,
+            &path,
+            "dark-souls",
+            "f-typed",
+            "state",
+            &[],
+            Some(("ch-2", Some("ghost"))),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("surface object `ghost`"), "{err}");
+
+        // Idempotent re-add (policy unchanged, overrides untouched) = no-op.
+        let again = add_disclosure_plan(
+            &mut store,
+            &path,
+            "dark-souls",
+            "withhold",
+            "fragment telling",
+        )
+        .unwrap();
+        assert_eq!(again.written_bytes, 0);
+        // Divergent policy rejects.
+        let err = add_disclosure_plan(&mut store, &path, "dark-souls", "state", "fragment telling")
+            .unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT policy"), "{err}");
+
+        // v22 round-trip.
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(reloaded.disclosure_plans["dark-souls"].overrides.len(), 2);
     }
 
     // ---- typing-proposals import (Round 459, design sec 7.15 Round B) ----

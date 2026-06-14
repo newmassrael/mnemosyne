@@ -516,12 +516,13 @@ pub fn playthrough_manuscript_report(
     sidecar: Option<&Path>,
     world: Option<&str>,
     order_override: Option<&str>,
+    telling: Option<&str>,
 ) -> Result<mnemosyne_validate::continuity::PlaythroughManuscriptReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world)
+    mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world, telling)
         .map_err(OpError::Other)
 }
 

@@ -404,6 +404,117 @@ pub struct NarrativeFact {
     pub quote_sha256: Option<String>,
 }
 
+/// How a fact reaches the READER under a given telling (Round 506, design sec
+/// 7.24 — the disclosure/discourse axis). `Withhold` (the default = the
+/// sparse-frame ethos applied to disclosure) means never told: the reader
+/// reconstructs it (the Dark-Souls hidden-lore extreme). `State` = told
+/// outright; `Hint` = partially signalled; `Imply` = realised via an
+/// object/environment (the Dark-Souls item-text). The render-acceptance gate
+/// enforces ONLY the exposed/withheld binary + `first_at` timing (R502); the
+/// `state`/`hint`/`imply` gradation at-or-after `first_at` is CRAFT
+/// (blind-judged), never gated — the four modes are an authoring vocabulary,
+/// the gate's half-enforced-invariant guard (CLAUDE.md).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisclosureMode {
+    #[default]
+    Withhold,
+    State,
+    Hint,
+    Imply,
+}
+
+impl DisclosureMode {
+    /// Canonical lowercase label (matches the serde representation).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DisclosureMode::Withhold => "withhold",
+            DisclosureMode::State => "state",
+            DisclosureMode::Hint => "hint",
+            DisclosureMode::Imply => "imply",
+        }
+    }
+
+    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
+    /// `None` for any other string (fail-loud at the caller; no silent
+    /// default — the [`PayoffExpectation::from_tag`] pattern).
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "withhold" => Some(DisclosureMode::Withhold),
+            "state" => Some(DisclosureMode::State),
+            "hint" => Some(DisclosureMode::Hint),
+            "imply" => Some(DisclosureMode::Imply),
+            _ => None,
+        }
+    }
+}
+
+fn disclosure_mode_is_withhold(m: &DisclosureMode) -> bool {
+    *m == DisclosureMode::Withhold
+}
+
+/// The scene/object a disclosure rides on (Round 506, design sec 7.24 —
+/// resolves the R502 `surface` under-spec, reusing existing ref kinds: no new
+/// ref space). `scene` = a structure-section ref (canon space, like
+/// [`NarrativeFact::canon_from`]); `object` = an optional registered entity id
+/// (the diegetic carrier — the Dark-Souls item that realises an `imply`).
+/// STORED for the render-brief carrier but NOT gated (the gate uses `mode` +
+/// `first_at` only; `surface` is craft guidance).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisclosureSurface {
+    /// Structure-section ref the disclosure surfaces in.
+    pub scene: String,
+    /// Optional registered entity id the disclosure rides on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object: Option<String>,
+}
+
+/// One per-fact disclosure decision within a telling (Round 506, design sec
+/// 7.24): a sparse override over the plan's `default_mode`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisclosureOverride {
+    /// How this fact reaches the reader under this telling.
+    pub mode: DisclosureMode,
+    /// The discourse coordinate where the reader first LEARNS this fact, per
+    /// WORLD-LINE (resolves the R502 under-spec: reading order differs per
+    /// branch — the per-world contract). Keyed by branch id; the value is a
+    /// structure-section ref in canon space (the same space as `canon_from`),
+    /// distinct from when the fact is TRUE in the fabula. Empty = no timing
+    /// pin (a pure `withhold`, or timing left to the fact's own coordinate).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub first_at: BTreeMap<String, String>,
+    /// Optional scene/object the disclosure rides on (render-brief craft hint;
+    /// NOT gated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<DisclosureSurface>,
+}
+
+/// A named TELLING over the fact base (Round 506, design sec 7.24 — the
+/// disclosure/discourse layer). Keyed by telling id in
+/// `AtomicStore.disclosure_plans`. Multiple plans over ONE fact base = many
+/// tellings (Dark-Souls-fragment / classic-mystery / expository-thriller) —
+/// the North Star "one substrate → many tellings" made concrete. The plan is
+/// authored like any data and is NOT a store-integrity invariant (disclosure
+/// timing is a RENDER property, checked by the render-acceptance gates over
+/// re-extracted prose, not by `validate-workspace`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisclosurePlan {
+    /// Free-form description of this telling. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// The default mode for any fact WITHOUT an override (default = `Withhold`,
+    /// the sparse-frame ethos — only load-bearing facts get an explicit
+    /// decision, a de-facto salience filter, R505). Serializes to nothing when
+    /// `Withhold` so a dark-souls plan's bytes stay minimal (the
+    /// `PayoffExpectation::Unmarked` skip-default precedent).
+    #[serde(default, skip_serializing_if = "disclosure_mode_is_withhold")]
+    pub default_mode: DisclosureMode,
+    /// Sparse per-fact overrides, keyed by fact id (an `AtomicStore.
+    /// narrative_facts` key).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, DisclosureOverride>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

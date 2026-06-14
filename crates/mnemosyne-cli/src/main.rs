@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     let cmd = args.get(1).ok_or_else(|| {
  anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
+ "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-disclosure-plan|set-disclosure|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
  prog
  )
  })?;
@@ -165,6 +165,10 @@ fn run(args: &[String]) -> Result<()> {
         "add-branch" => atomic_cli::cmd_add_branch(&workspace_anchor()?, &args[2..]),
         "add-entity" => atomic_cli::cmd_add_entity(&workspace_anchor()?, &args[2..]),
         "add-predicate" => atomic_cli::cmd_add_predicate(&workspace_anchor()?, &args[2..]),
+        "add-disclosure-plan" => {
+            atomic_cli::cmd_add_disclosure_plan(&workspace_anchor()?, &args[2..])
+        }
+        "set-disclosure" => atomic_cli::cmd_set_disclosure(&workspace_anchor()?, &args[2..]),
         "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
         "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
         "amend-fact" => atomic_cli::cmd_amend_fact(&workspace_anchor()?, &args[2..]),
@@ -420,6 +424,17 @@ fn print_help(prog: &str) {
         "   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud"
     );
     println!(
+        " {} add-disclosure-plan --telling <id> --default-mode withhold|state|hint|imply [--description <text>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        " {} set-disclosure --telling <id> --fact <id> --mode withhold|state|hint|imply [--first-at <branch>=<section> ...] [--surface <section>[,<entity>]] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 506 — disclosure (discourse) layer: a named telling over the fact base; withhold/first_at need a typed fact (gate-matchable)"
+    );
+    println!(
         " {} report-entity --entity <id> [--sidecar <path>] [--json]",
         prog
     );
@@ -435,8 +450,11 @@ fn print_help(prog: &str) {
         "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
     );
     println!(
-        " {} report-playthrough-manuscript [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        " {} report-playthrough-manuscript [--world <branch>] [--telling <id>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
+    );
+    println!(
+        "   --telling (Round 506): annotate each begins-event with its disclosure decision (mode/first_at/surface) = the render-brief carrier"
     );
     println!(
         " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
@@ -2157,20 +2175,28 @@ struct NarrativeReportArgs {
     sidecar_override: Option<String>,
     /// Single-world filter (Round 466) — only verbs that opt in accept it.
     world: Option<String>,
+    /// Disclosure telling id (Round 506) — only the manuscript carrier opts in.
+    telling: Option<String>,
     anchor: std::path::PathBuf,
 }
 
-/// Shared `--json` / `--order` / `--sidecar` (+ opt-in `--world`) parse +
-/// workspace-anchor resolution for the per-world narrative report verbs
+/// Shared `--json` / `--order` / `--sidecar` (+ opt-in `--world` / `--telling`)
+/// parse + workspace-anchor resolution for the per-world narrative report verbs
 /// (Round 456 — the second identical copy triggered the extraction;
 /// `validate-continuity` keeps its richer parser). A verb that does not
 /// take a world filter passes `allow_world = false` and the flag rejects
-/// loudly instead of parsing-then-ignoring.
-fn parse_narrative_report_args(args: &[String], allow_world: bool) -> Result<NarrativeReportArgs> {
+/// loudly instead of parsing-then-ignoring; `--telling` (the R506 render-brief
+/// carrier) is opt-in the same way.
+fn parse_narrative_report_args(
+    args: &[String],
+    allow_world: bool,
+    allow_telling: bool,
+) -> Result<NarrativeReportArgs> {
     let mut json = false;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
     let mut world: Option<String> = None;
+    let mut telling: Option<String> = None;
     let mut iter = args.iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -2196,6 +2222,13 @@ fn parse_narrative_report_args(args: &[String], allow_world: bool) -> Result<Nar
                         .clone(),
                 )
             }
+            "--telling" if allow_telling => {
+                telling = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
             other => bail!("unknown flag `{}`", other),
         }
     }
@@ -2210,6 +2243,7 @@ fn parse_narrative_report_args(args: &[String], allow_world: bool) -> Result<Nar
         order_override,
         sidecar_override,
         world,
+        telling,
         anchor,
     })
 }
@@ -2221,7 +2255,7 @@ fn parse_narrative_report_args(args: &[String], allow_world: bool) -> Result<Nar
 /// deliberately never gated (a WIP story has dangling setups by
 /// definition). Order and store resolve through the shared ops path.
 fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false)?;
+    let a = parse_narrative_report_args(args, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::payoff_coverage_report(
         &a.anchor,
@@ -2290,7 +2324,7 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
 /// signal, deliberately never gated. Order and store resolve through the
 /// shared ops path.
 fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false)?;
+    let a = parse_narrative_report_args(args, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::irony_intervals_report(
         &a.anchor,
@@ -2368,12 +2402,13 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
 /// reading surface, deliberately never gated. Order and store resolve
 /// through the shared ops path.
 fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, true)?;
+    let a = parse_narrative_report_args(args, true, true)?;
     let report = mnemosyne_ops::playthrough_manuscript_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
         a.world.as_deref(),
         a.order_override.as_deref(),
+        a.telling.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if a.json {
@@ -2410,7 +2445,28 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
                 s.holding_count
             );
             for e in &s.begins {
-                println!("    + {} ({}): {}", e.fact_id, e.frame, e.claim);
+                match &e.disclosure {
+                    Some(d) => {
+                        let at = d
+                            .first_at
+                            .as_deref()
+                            .map(|c| format!(" first_at={c}"))
+                            .unwrap_or_default();
+                        let surf = d
+                            .surface
+                            .as_ref()
+                            .map(|s| match &s.object {
+                                Some(o) => format!(" via {}/{}", s.scene, o),
+                                None => format!(" via {}", s.scene),
+                            })
+                            .unwrap_or_default();
+                        println!(
+                            "    + {} ({}) [{}{}{}]: {}",
+                            e.fact_id, e.frame, d.mode, at, surf, e.claim
+                        );
+                    }
+                    None => println!("    + {} ({}): {}", e.fact_id, e.frame, e.claim),
+                }
             }
             for e in &s.ends {
                 match &e.by {
@@ -2454,7 +2510,7 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
 /// Pure read projection — a reading surface, deliberately never gated. Order
 /// and store resolve through the shared ops path.
 fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false)?;
+    let a = parse_narrative_report_args(args, false, false)?;
     let report = mnemosyne_ops::fork_tree_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
@@ -2631,7 +2687,7 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
 /// type it). No LLM; pure deterministic comparison of declared typed legs (the
 /// R484 redesign that replaced the R481 drift-verdict surface).
 fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false)?;
+    let a = parse_narrative_report_args(args, false, false)?;
     let report = mnemosyne_ops::payoff_substantiation_report(
         &a.anchor,
         a.sidecar_override.as_deref().map(std::path::Path::new),
@@ -2878,7 +2934,7 @@ fn cmd_import_edge_proposals(args: &[String]) -> Result<()> {
 /// narrative reads — the hints need world visibility; the facts table
 /// never degrades.
 fn cmd_report_edge_candidates(args: &[String]) -> Result<()> {
-    let a = parse_narrative_report_args(args, false)?;
+    let a = parse_narrative_report_args(args, false, false)?;
     let json = a.json;
     let report = mnemosyne_ops::edge_candidates_report(
         &a.anchor,

@@ -353,6 +353,35 @@ pub struct AddPredicateArgs {
     pub description: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddDisclosurePlanArgs {
+    /// Telling id — the registry key for this named telling over the fact base.
+    pub telling_id: String,
+    /// Default disclosure mode: withhold | state | hint | imply. Unknown rejects.
+    pub default_mode: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetDisclosureArgs {
+    /// Telling id (add_disclosure_plan first).
+    pub telling_id: String,
+    /// Fact id the override targets (must exist; withhold/first_at need it typed).
+    pub fact_id: String,
+    /// Disclosure mode: withhold | state | hint | imply.
+    pub mode: String,
+    /// Per-world-line first-disclosure coordinate: branch id -> section ref.
+    #[serde(default)]
+    pub first_at: std::collections::BTreeMap<String, String>,
+    /// Optional diegetic surface scene (section ref the disclosure rides on).
+    #[serde(default)]
+    pub surface_scene: Option<String>,
+    /// Optional diegetic surface object (registered entity id).
+    #[serde(default)]
+    pub surface_object: Option<String>,
+}
+
 /// The optional typed leg of a fact (R446): the machine-readable
 /// subject–predicate–object reading of the prose claim, authored in the
 /// same act (never NLP-derived). Give exactly ONE of `object_entity` /
@@ -503,6 +532,11 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
+    /// Disclosure telling id (R506 render-brief carrier): annotate each
+    /// begins-event with its disclosure decision (mode/first_at/surface) under
+    /// the named telling. Fail-loud on a typo'd id.
+    #[serde(default)]
+    pub telling: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1397,6 +1431,45 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Register one disclosure (discourse) plan (R506) — a named telling over the fact base: a default_mode (withhold | state | hint | imply, default withhold = the sparse-frame ethos) the per-fact overrides sit on. Many plans over one base = many tellings (Dark-Souls-fragment / classic-mystery / expository-thriller). Idempotent on identical policy; a changed description/default_mode rejects (set_disclosure edits the overrides)."
+    )]
+    async fn add_disclosure_plan(&self, args: Parameters<AddDisclosurePlanArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_disclosure_plan(store, path, &a.telling_id, &a.default_mode, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Set one per-fact disclosure override within a telling (R506): mode (withhold | state | hint | imply), per-world-line first_at timing (branch -> section), and an optional diegetic surface (scene + entity). A setter (last-write-wins). Fail-loud refs: telling + fact must exist, first_at branches/coords + surface scene must resolve, surface object must be a registered entity. THE gate-enabling invariant: a withhold mode OR any first_at pin requires the fact to carry a typed claim — the premature-leak render-acceptance gate matches re-extracted prose to the plan by typed tuple, so an untyped target is un-gateable."
+    )]
+    async fn set_disclosure(&self, args: Parameters<SetDisclosureArgs>) -> CallToolResult {
+        let a = args.0;
+        let first_at: Vec<(String, String)> = a
+            .first_at
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let surface = a
+            .surface_scene
+            .as_deref()
+            .map(|scene| (scene, a.surface_object.as_deref()));
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_disclosure(
+                store,
+                path,
+                &a.telling_id,
+                &a.fact_id,
+                &a.mode,
+                &first_at,
+                surface,
+            )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
         description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter."
     )]
     async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
@@ -1638,6 +1711,7 @@ impl MnemosyneServer {
             None,
             args.0.world.as_deref(),
             args.0.order_path.as_deref(),
+            args.0.telling.as_deref(),
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),

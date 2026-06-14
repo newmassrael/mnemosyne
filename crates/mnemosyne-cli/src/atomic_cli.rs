@@ -576,6 +576,151 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Round 506 — register one disclosure (discourse) plan: a named telling over
+/// the fact base. `--default-mode withhold|state|hint|imply` mandatory (no
+/// silent default for a load-bearing policy).
+pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut telling_id: Option<String> = None;
+    let mut default_mode: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--default-mode" => {
+                default_mode = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--default-mode missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let default_mode = default_mode.ok_or_else(|| anyhow!("--default-mode arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_disclosure_plan(
+            &mut store,
+            &sidecar_path,
+            &telling_id,
+            &default_mode,
+            &description,
+        ),
+        json,
+    )
+}
+
+/// Round 506 — set one per-fact disclosure override within a telling.
+/// `--first-at <branch>=<coord>` is repeatable (per world-line timing);
+/// `--surface <scene>[,<object>]` is optional (the diegetic carrier).
+pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut telling_id: Option<String> = None;
+    let mut fact_id: Option<String> = None;
+    let mut mode: Option<String> = None;
+    let mut first_at: Vec<(String, String)> = Vec::new();
+    let mut surface_scene: Option<String> = None;
+    let mut surface_object: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--mode" => {
+                mode = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--mode missing"))?
+                        .clone(),
+                )
+            }
+            "--first-at" => {
+                let raw = iter.next().ok_or_else(|| anyhow!("--first-at missing"))?;
+                let (branch, coord) = raw
+                    .split_once('=')
+                    .ok_or_else(|| anyhow!("--first-at format: <branch>=<coord>"))?;
+                first_at.push((branch.to_string(), coord.to_string()));
+            }
+            "--surface" => {
+                let raw = iter.next().ok_or_else(|| anyhow!("--surface missing"))?;
+                match raw.split_once(',') {
+                    Some((scene, object)) => {
+                        surface_scene = Some(scene.to_string());
+                        surface_object = Some(object.to_string());
+                    }
+                    None => surface_scene = Some(raw.clone()),
+                }
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let mode = mode.ok_or_else(|| anyhow!("--mode arg required"))?;
+    let surface = surface_scene
+        .as_deref()
+        .map(|scene| (scene, surface_object.as_deref()));
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_disclosure(
+            &mut store,
+            &sidecar_path,
+            &telling_id,
+            &fact_id,
+            &mode,
+            &first_at,
+            surface,
+        ),
+        json,
+    )
+}
+
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
 /// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two

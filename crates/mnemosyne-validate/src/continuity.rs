@@ -2658,6 +2658,23 @@ pub fn irony_intervals(
     Ok(report)
 }
 
+/// The render-brief disclosure decision for a fact under a telling (Round
+/// 506, design sec 7.24) — attached to a begins-event only when the
+/// `--telling` carrier is given. `mode` = the effective disclosure mode (the
+/// per-fact override, or the plan's default); `first_at` = the reader's
+/// first-learn coordinate for THIS world (the override's per-world-line pin,
+/// `None` when defaulted or unpinned for this world — distinct from the fact's
+/// `canon_from` = when it is TRUE); `surface` = the diegetic carrier. Craft
+/// guidance for the LLM render step (Layer B), NEVER gated.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FactDisclosure {
+    pub mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface: Option<mnemosyne_core::DisclosureSurface>,
+}
+
 /// One fact event in a playthrough scene (Round 466, design sec 7.17) —
 /// the [`FrameViewEntry`] mirror + the frame label: the manuscript is
 /// world-scoped, so frame is data on the event (a renderer splits
@@ -2675,6 +2692,11 @@ pub struct ManuscriptFactEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub typed: Option<mnemosyne_core::TypedClaim>,
     pub quote: Option<String>,
+    /// Render-brief disclosure decision under the `--telling` carrier (Round
+    /// 506) — `None` unless a telling is given; the craft-bearing input the
+    /// bare fact list lacked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disclosure: Option<FactDisclosure>,
 }
 
 /// Why a fact's effect ends at a scene (Round 466) — two DECLARED kinds
@@ -2773,6 +2795,7 @@ pub fn playthrough_manuscript(
     store: &AtomicStore,
     order: &CanonOrder,
     world: Option<&str>,
+    telling: Option<&str>,
 ) -> Result<PlaythroughManuscriptReport, String> {
     check_store_boundary(store, order)?;
     if let Some(w) = world {
@@ -2783,6 +2806,19 @@ pub fn playthrough_manuscript(
             ));
         }
     }
+    // Round 506 — the render-brief disclosure carrier: resolve the named
+    // telling ONCE (fail-loud on a typo, the registry ethos — a missing telling
+    // must not silently render with no disclosure plan). `None` = no carrier,
+    // every begins-event's `disclosure` stays `None` (byte-stable output).
+    let plan = match telling {
+        Some(t) => Some(store.disclosure_plans.get(t).ok_or_else(|| {
+            format!(
+                "telling `{t}` not present in the disclosure_plans registry (fail-loud — \
+                 a typo'd telling must not silently render with no disclosure plan)"
+            )
+        })?),
+        None => None,
+    };
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
     let mut report = PlaythroughManuscriptReport {
@@ -2890,6 +2926,7 @@ pub fn playthrough_manuscript(
                         evidence: fact.evidence.clone(),
                         typed: fact.typed.clone(),
                         quote: fact.quote.clone(),
+                        disclosure: plan.map(|p| resolve_fact_disclosure(p, &world, id)),
                     });
                 }
                 if fact.canon_to.as_deref() == Some(node.as_str()) {
@@ -2919,6 +2956,30 @@ pub fn playthrough_manuscript(
         report.worlds.insert(world, out);
     }
     Ok(report)
+}
+
+/// Resolve one fact's effective disclosure decision under a telling, for a
+/// given world-line (Round 506, design sec 7.24 — the render-brief carrier).
+/// An override wins; otherwise the plan's default mode applies with no timing
+/// pin. `first_at` is the override's pin for THIS world (per-world-line, the
+/// R502-resolved under-spec) — `None` when defaulted or unpinned for the world.
+fn resolve_fact_disclosure(
+    plan: &mnemosyne_core::DisclosurePlan,
+    world: &str,
+    fact_id: &str,
+) -> FactDisclosure {
+    match plan.overrides.get(fact_id) {
+        Some(ov) => FactDisclosure {
+            mode: ov.mode.as_str().to_string(),
+            first_at: ov.first_at.get(world).cloned(),
+            surface: ov.surface.clone(),
+        },
+        None => FactDisclosure {
+            mode: plan.default_mode.as_str().to_string(),
+            first_at: None,
+            surface: None,
+        },
+    }
 }
 
 /// A fork's divergence coordinate, resolved against the parent world's
@@ -5480,7 +5541,7 @@ mod tests {
             ["ch-1", "ch-2", "ch-3", "ch-4"]
         );
         let store = store_with(vec![fact("fa", "gt", "ch-1", None)]);
-        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let main = &report.worlds[MAIN_BRANCH];
         assert_eq!(
             main.undeclared_adjacencies,
@@ -5502,7 +5563,7 @@ mod tests {
         f3.supersedes_in_frame = Some("f1".to_string());
         let store = store_with(vec![f1, f2, f3]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let main = &report.worlds[MAIN_BRANCH];
         assert!(main.unplaced_facts.is_empty() && main.undecidable.is_empty());
         let s = &main.scenes;
@@ -5530,7 +5591,7 @@ mod tests {
     fn manuscript_surfaces_unplaced_facts_and_outside_order_sections() {
         let store = store_with(vec![fact("f-out", "gt", "ch-3", None)]);
         let order = chain(&["ch-1", "ch-2"]);
-        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let main = &report.worlds[MAIN_BRANCH];
         assert_eq!(main.scenes.len(), 2);
         assert_eq!(main.unplaced_facts.len(), 1);
@@ -5554,7 +5615,7 @@ mod tests {
         f_rev.supersedes_in_frame = Some("f-main".to_string());
         let store = store_with_forks(vec![f_main, f_rev], &[("route", MAIN_BRANCH, "ch-2")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let main = &report.worlds[MAIN_BRANCH];
         assert!(
             main.scenes.iter().all(|s| s.ends.is_empty()),
@@ -5578,12 +5639,12 @@ mod tests {
             &[("route", MAIN_BRANCH, "ch-2")],
         );
         let order = chain(&["ch-1", "ch-2"]);
-        let all = playthrough_manuscript(&store, &order, None).unwrap();
+        let all = playthrough_manuscript(&store, &order, None, None).unwrap();
         assert_eq!(all.worlds.len(), 2);
-        let one = playthrough_manuscript(&store, &order, Some("route")).unwrap();
+        let one = playthrough_manuscript(&store, &order, Some("route"), None).unwrap();
         assert_eq!(one.worlds.len(), 1);
         assert!(one.worlds.contains_key("route"));
-        let err = playthrough_manuscript(&store, &order, Some("nope")).unwrap_err();
+        let err = playthrough_manuscript(&store, &order, Some("nope"), None).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
     }
 
@@ -5599,11 +5660,96 @@ mod tests {
         .unwrap();
         let parallel = fact("fk", "gt", "k-1", None);
         let store = store_with_forks(vec![parallel], &[("w1", MAIN_BRANCH, "ch-2")]);
-        let report = playthrough_manuscript(&store, &order, None).unwrap();
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let w1 = &report.worlds["w1"];
         assert_eq!(w1.undecidable, ["fk"]);
         assert!(w1.scenes.iter().all(|s| s.begins.is_empty()));
         assert!(w1.scenes.iter().all(|s| s.holding_count == 0));
+    }
+
+    /// Round 506 — the --telling render-brief carrier: begins-events carry the
+    /// per-fact disclosure decision under the named telling (an override wins,
+    /// else the plan default); first_at is per-world-line; a missing telling
+    /// fails loud; without a telling the field stays None (byte-stable).
+    #[test]
+    fn manuscript_telling_carrier_annotates_begins() {
+        let mut store = store_with_forks(
+            vec![
+                fact("f-main", "gt", "ch-1", None),
+                branch_fact("f-rev", "gt", "route", "ch-3"),
+            ],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let mut first_at = BTreeMap::new();
+        first_at.insert("route".to_string(), "ch-3".to_string());
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "f-main".to_string(),
+            mnemosyne_core::DisclosureOverride {
+                mode: mnemosyne_core::DisclosureMode::State,
+                first_at,
+                surface: Some(mnemosyne_core::DisclosureSurface {
+                    scene: "ch-2".to_string(),
+                    object: Some("clock".to_string()),
+                }),
+            },
+        );
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides,
+            },
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+
+        // No telling → no disclosure annotation.
+        let plain = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), None).unwrap();
+        let plain_ev = plain.worlds[MAIN_BRANCH]
+            .scenes
+            .iter()
+            .flat_map(|s| &s.begins)
+            .find(|e| e.fact_id == "f-main")
+            .unwrap();
+        assert!(plain_ev.disclosure.is_none());
+
+        // With the telling: f-main overridden (state); no first_at for main;
+        // the surface rides through verbatim.
+        let main = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), Some("t1")).unwrap();
+        let ev = main.worlds[MAIN_BRANCH]
+            .scenes
+            .iter()
+            .flat_map(|s| &s.begins)
+            .find(|e| e.fact_id == "f-main")
+            .unwrap();
+        let d = ev.disclosure.as_ref().unwrap();
+        assert_eq!(d.mode, "state");
+        assert_eq!(d.first_at, None, "no first_at pinned for the main world");
+        let surface = d.surface.as_ref().unwrap();
+        assert_eq!(surface.scene, "ch-2");
+        assert_eq!(surface.object.as_deref(), Some("clock"));
+
+        // The route world resolves f-main's per-world-line first_at, and
+        // f-rev (no override) falls to the plan default (withhold).
+        let route = playthrough_manuscript(&store, &order, Some("route"), Some("t1")).unwrap();
+        let route_begins: Vec<&ManuscriptFactEvent> = route.worlds["route"]
+            .scenes
+            .iter()
+            .flat_map(|s| &s.begins)
+            .collect();
+        let f_main = route_begins.iter().find(|e| e.fact_id == "f-main").unwrap();
+        assert_eq!(
+            f_main.disclosure.as_ref().unwrap().first_at.as_deref(),
+            Some("ch-3")
+        );
+        let f_rev = route_begins.iter().find(|e| e.fact_id == "f-rev").unwrap();
+        assert_eq!(f_rev.disclosure.as_ref().unwrap().mode, "withhold");
+        assert_eq!(f_rev.disclosure.as_ref().unwrap().first_at, None);
+
+        // A typo'd telling fails loud (the registry ethos).
+        let err = playthrough_manuscript(&store, &order, None, Some("nope")).unwrap_err();
+        assert!(err.contains("disclosure_plans registry"), "{err}");
     }
 
     // ====================================================================
