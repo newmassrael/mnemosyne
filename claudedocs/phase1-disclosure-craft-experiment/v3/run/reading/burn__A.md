@@ -269,5 +269,3 @@ And the death itself — there he came to the edge of what a man may honestly se
 *Death by fall; cause undetermined; no unlawful act against the deceased established.*
 
 Accidental, unproven otherwise. So the policy would pay — pay out clean and full on a death that Hale alone, of all the living, was sure had not been clean. He signed it. The proof was ash in a stove, and the ash was already cold.
-
----

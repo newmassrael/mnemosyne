@@ -1,0 +1,1112 @@
+{
+  "sections": {
+    "sc-01": {
+      "title": "The Foot of the Iron Stair",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-02": {
+      "title": "The Last Passable Road",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-03": {
+      "title": "The Night-Log in the Wrong Hand",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-04": {
+      "title": "The Spectroscope and the Empty Plate",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-05": {
+      "title": "The Meridian Clock at 3:14",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-06": {
+      "title": "The Bursar's Ledgers",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-07": {
+      "title": "A Key Reported Lost",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-08": {
+      "title": "The Account Discrepancy",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-09a": {
+      "title": "Confront: The Floor Goes Out",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-09b": {
+      "title": "Audit: The Quiet Reconstruction",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-10a": {
+      "title": "Confront: The Telegram He Believes In",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-10b": {
+      "title": "Audit: The Watched Man",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-11a": {
+      "title": "Confront: The Letter That Will Not Agree",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-11b": {
+      "title": "Audit: The Key in the Lining",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-12a": {
+      "title": "Confront: What Pike Confesses and What He Cannot",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-12b": {
+      "title": "Audit: The Shape of the Theft",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-13": {
+      "title": "The Spectroscope Pressed",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-14": {
+      "title": "The Empty Plate Speaks",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-15": {
+      "title": "The Climber on the Stair",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-16": {
+      "title": "What Junia Holds",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-17b": {
+      "title": "Audit: The Plate Developed Alone",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-17r": {
+      "title": "Reveal: The Shape Against the Shutter",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-17w": {
+      "title": "Burn: The Log Goes Into the Stove",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-18b": {
+      "title": "Audit: The Pier and the Hour",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-18r": {
+      "title": "Reveal: The Key That Was Never Lost",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-18w": {
+      "title": "Burn: What Hale Cannot Certify",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-19b": {
+      "title": "Audit: The Climber Reasoned, Not Seen",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-19r": {
+      "title": "Reveal: What Hale Certifies",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    },
+    "sc-20b": {
+      "title": "Audit: The Cold Certificate",
+      "parent_doc": "meridian-vane",
+      "decision_status": "active"
+    }
+  },
+  "changelog_entries": {},
+  "inventory_entries": {},
+  "confirmation_events": {},
+  "frames": {
+    "gt": {
+      "description": "Ground truth — what actually happened"
+    },
+    "hale": {
+      "description": "Lewin Hale's working theory as the adjuster reasons it out"
+    },
+    "pike": {
+      "description": "Onslow Pike's false belief — that Crane knew of his dismissal"
+    }
+  },
+  "branches": {
+    "audit": {
+      "description": "Fork-1 limb: Hale quietly audits the ledgers and watches",
+      "forks_from": {
+        "branch": "main",
+        "at": "sc-08"
+      }
+    },
+    "burn": {
+      "description": "Fork-2 limb: Junia burns the night-log to bury the truth (continues confront limb)",
+      "forks_from": {
+        "branch": "confront",
+        "at": "sc-16"
+      }
+    },
+    "confront": {
+      "description": "Fork-1 limb: Hale confronts Pike at sc-08",
+      "forks_from": {
+        "branch": "main",
+        "at": "sc-08"
+      }
+    },
+    "reveal": {
+      "description": "Fork-2 limb: Junia reveals what she saw on the gallery (continues confront limb)",
+      "forks_from": {
+        "branch": "confront",
+        "at": "sc-16"
+      }
+    }
+  },
+  "entities": {
+    "account": {
+      "kind": "object",
+      "description": "the instrument account"
+    },
+    "climber": {
+      "kind": "person",
+      "description": "the unknown figure Junia saw climb the iron stair at 3:14 (identity is the central mystery)"
+    },
+    "clock": {
+      "kind": "object",
+      "description": "the meridian clock stopped at 3:14"
+    },
+    "crane": {
+      "kind": "person",
+      "description": "Dr. Aurel Crane, the director"
+    },
+    "dome-key": {
+      "kind": "object",
+      "description": "the spare dome key reported lost"
+    },
+    "hale": {
+      "kind": "person",
+      "description": "Lewin Hale, insurance adjuster"
+    },
+    "junia": {
+      "kind": "person",
+      "description": "Junia Frost, assistant astronomer"
+    },
+    "letter": {
+      "kind": "object",
+      "description": "Crane's unsent resignation letter"
+    },
+    "night-log": {
+      "kind": "object",
+      "description": "the night-log for the observation"
+    },
+    "pike": {
+      "kind": "person",
+      "description": "Onslow Pike, the bursar"
+    },
+    "plate-camera": {
+      "kind": "object",
+      "description": "the plate-camera and its blank plate"
+    },
+    "telegram": {
+      "kind": "object",
+      "description": "the forged patron's telegram of recall"
+    }
+  },
+  "predicates": {
+    "identity": {
+      "object_kind": "entity",
+      "description": "the real identity of an otherwise-unnamed figure"
+    },
+    "key-custody": {
+      "object_kind": "entity",
+      "description": "who holds the spare dome key"
+    },
+    "knows-dismissal": {
+      "object_kind": "scalar",
+      "description": "whether Crane knows he was recalled to dismissal"
+    },
+    "lifestate": {
+      "object_kind": "scalar",
+      "description": "alive/dead state of a character"
+    },
+    "location": {
+      "object_kind": "scalar",
+      "description": "where a character physically is during the death-night"
+    }
+  },
+  "narrative_facts": {
+    "gt-account-discrepancy-surfaced": {
+      "frame": "gt",
+      "entities": [
+        "account",
+        "hale"
+      ],
+      "claim": "At sc-08 the instrument account's missing sum becomes a hard discrepancy on the page that Hale cannot un-see: the motive is now on the table.",
+      "canon_from": "sc-08",
+      "evidence": [
+        "sc-08"
+      ],
+      "pays_off": [
+        "gt-account-drained"
+      ]
+    },
+    "gt-account-drained": {
+      "frame": "gt",
+      "entities": [
+        "pike",
+        "account"
+      ],
+      "claim": "Pike has quietly drained money from the instrument account; the forged recall was meant to remove Crane before the loss was found.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-audit-certifies": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "hale",
+        "crane",
+        "pike"
+      ],
+      "claim": "Building the whole case from objects and never a confession, Hale certifies the fraud against Pike and rules the death an intrusion-driven fall — Pike entered unseen with the kept key, the frail director was startled and fell — and the policy does not pay a clean accident.",
+      "canon_from": "sc-20b",
+      "evidence": [
+        "sc-20b"
+      ]
+    },
+    "gt-audit-clock-pier": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "clock",
+        "crane"
+      ],
+      "claim": "Tracing the bolts to the shared north pier, Hale reads the stopped clock at last: nothing told it to stop — the fall rang the pier and stilled the brittle pendulum, fixing 3:14 as the recorded instant Crane went down.",
+      "canon_from": "sc-18b",
+      "evidence": [
+        "sc-18b"
+      ],
+      "pays_off": [
+        "gt-clock-jolt"
+      ]
+    },
+    "gt-audit-letter-read": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "letter",
+        "crane"
+      ],
+      "claim": "Hale sets the unsent resignation beside the undelivered wire and sees Crane meant to lay down his post of his own grief over his failing eyes — no one pushed him; the old astronomer was already walking toward a door he intended to open himself.",
+      "canon_from": "sc-19b",
+      "evidence": [
+        "sc-19b"
+      ],
+      "pays_off": [
+        "gt-letter-private"
+      ]
+    },
+    "gt-audit-log-reasoned": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "night-log",
+        "junia",
+        "crane"
+      ],
+      "claim": "Hale reasons the strange hand without forcing it from Junia: the log is her writing because Crane's cold-stiffened fingers could no longer form fine letters and she took down his observations at his elbow — the second hand was a kindness, not a forger's mark.",
+      "canon_from": "sc-18b",
+      "evidence": [
+        "sc-18b"
+      ],
+      "pays_off": [
+        "gt-log-junia-hand"
+      ]
+    },
+    "gt-audit-plate-blank": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "plate-camera",
+        "junia"
+      ],
+      "claim": "On the audit limb Hale develops the racked plate himself, alone, and finds it blank — no exposure made — the silent physical proof that Junia was never at the spectroscope, exposing her alibi-lie without a single confession.",
+      "canon_from": "sc-17b",
+      "evidence": [
+        "sc-17b"
+      ],
+      "pays_off": [
+        "gt-plate-empty",
+        "gt-junia-lies"
+      ]
+    },
+    "gt-audit-reconstructs": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "account",
+        "hale"
+      ],
+      "claim": "Saying nothing, Hale reconstructs the whole theft from the books alone — every spooned guinea, every phantom freight — and lets Pike believe himself unsuspected.",
+      "canon_from": "sc-09b",
+      "evidence": [
+        "sc-09b",
+        "sc-12b"
+      ],
+      "pays_off": [
+        "gt-account-drained"
+      ]
+    },
+    "gt-audit-telegram-found": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "telegram",
+        "crane",
+        "pike"
+      ],
+      "claim": "In the loose papers Pike handed over, Hale finds the copy-book draft of the recall and traces the wire to the undelivered box at the foot of the road — the forged telegram in Pike's hand that never reached Crane, proving the dismissal the bursar built his guilt upon was never read.",
+      "canon_from": "sc-19b",
+      "evidence": [
+        "sc-19b"
+      ],
+      "pays_off": [
+        "gt-pike-forged",
+        "gt-telegram-undelivered"
+      ]
+    },
+    "gt-burn-certifies": {
+      "frame": "gt",
+      "branch": "burn",
+      "entities": [
+        "hale",
+        "crane"
+      ],
+      "claim": "With the log burned and Junia silent, Hale cannot prove the second hand was innocent or name who climbed; he certifies the fraud against Pike but must rule the death itself accidental and unproven — the policy pays, ironically, because Junia destroyed the proof.",
+      "canon_from": "sc-18w",
+      "evidence": [
+        "sc-18w"
+      ]
+    },
+    "gt-burn-key-inferred": {
+      "frame": "gt",
+      "branch": "burn",
+      "entities": [
+        "dome-key",
+        "pike",
+        "hale"
+      ],
+      "claim": "Without the log Hale cannot name the climber, but he can still read the key: the spare reported lost a month before, in the proven thief's hand, was the means by which someone entered the dome unseen — the one piece of the night he can certify even with the page burned.",
+      "canon_from": "sc-18w",
+      "evidence": [
+        "sc-18w"
+      ],
+      "pays_off": [
+        "gt-key-found"
+      ]
+    },
+    "gt-burn-log-destroyed": {
+      "frame": "gt",
+      "branch": "burn",
+      "entities": [
+        "junia",
+        "night-log"
+      ],
+      "claim": "Junia feeds the night-log to the workroom stove, destroying the one hard record of the hour and the hand, and keeps the climber's name beyond Hale's reach for good.",
+      "canon_from": "sc-17w",
+      "evidence": [
+        "sc-17w"
+      ],
+      "pays_off": [
+        "gt-junia-lies"
+      ]
+    },
+    "gt-climber-pike": {
+      "frame": "gt",
+      "entities": [
+        "climber",
+        "pike",
+        "crane",
+        "dome-key"
+      ],
+      "claim": "The man Junia saw climb the iron stair at 3:14 was Onslow Pike; he let himself in by the lower dome door with the spare key to take the duplicate ledgers from Crane's safe, not to kill — but the blind director, already on the dark stair over his own grief, was startled and fell.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "typed": {
+        "subject": "climber",
+        "predicate": "identity",
+        "object": {
+          "kind": "entity",
+          "id": "pike"
+        }
+      }
+    },
+    "gt-clock-jolt": {
+      "frame": "gt",
+      "entities": [
+        "clock"
+      ],
+      "claim": "The meridian clock, wound only hours before, stopped at 3:14 when the fall jolted the iron stair whose frame shares the clock's pendulum case.",
+      "canon_from": "sc-05",
+      "evidence": [
+        "sc-05"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-clock-read-true": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "clock"
+      ],
+      "claim": "Tracing the bolts, Hale sees the clock and the iron stair share one north pier; a heavy fall would ring the pier and still the brittle pendulum — the clock was jolted, not set.",
+      "canon_from": "sc-15",
+      "evidence": [
+        "sc-15"
+      ],
+      "pays_off": [
+        "gt-clock-jolt"
+      ]
+    },
+    "gt-crane-dead": {
+      "frame": "gt",
+      "entities": [
+        "crane"
+      ],
+      "claim": "Dr. Aurel Crane is dead at the foot of the iron stair, having fallen from the top in the dark.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "typed": {
+        "subject": "crane",
+        "predicate": "lifestate",
+        "object": {
+          "kind": "value",
+          "value": "dead"
+        }
+      },
+      "quote": "found dead at the foot of the iron stair beneath the great refractor",
+      "quote_sha256": "5eb4c43e6ea580d437d4c515cdab9c26458096aceaa0a36bcb6cfe016d53c2a1"
+    },
+    "gt-hale-sees-key": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "dome-key",
+        "pike",
+        "hale"
+      ],
+      "claim": "From the dark of the stair-head Hale watches Pike draw the lost spare key from his coat and let himself into the lower dome door — the key that was reported lost a month before.",
+      "canon_from": "sc-11b",
+      "evidence": [
+        "sc-11b"
+      ],
+      "typed": {
+        "subject": "dome-key",
+        "predicate": "key-custody",
+        "object": {
+          "kind": "entity",
+          "id": "pike"
+        }
+      },
+      "pays_off": [
+        "gt-key-found"
+      ]
+    },
+    "gt-junia-cornered": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "junia"
+      ],
+      "claim": "Cornered by the blank plate, Junia must choose: tell Hale what she saw on the gallery, or destroy the night-log and let the summit keep its dead man's secret.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ]
+    },
+    "gt-junia-gallery": {
+      "frame": "gt",
+      "entities": [
+        "junia"
+      ],
+      "claim": "Junia Frost was on the dome gallery that night, not at the spectroscope, and she saw who climbed the iron stair.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ],
+      "typed": {
+        "subject": "junia",
+        "predicate": "location",
+        "object": {
+          "kind": "value",
+          "value": "gallery"
+        }
+      }
+    },
+    "gt-junia-lies": {
+      "frame": "gt",
+      "entities": [
+        "junia"
+      ],
+      "claim": "Junia lies that she was at the spectroscope until dawn, to shield the man she saw climb the stair.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-key-found": {
+      "frame": "gt",
+      "entities": [
+        "dome-key",
+        "pike"
+      ],
+      "claim": "The spare dome key, reported lost a month before, was taken and hidden by Pike; it lets him into the dome unseen.",
+      "canon_from": "sc-07",
+      "evidence": [
+        "sc-07"
+      ],
+      "payoff_expectation": "expected",
+      "typed": {
+        "subject": "dome-key",
+        "predicate": "key-custody",
+        "object": {
+          "kind": "entity",
+          "id": "pike"
+        }
+      }
+    },
+    "gt-letter-private": {
+      "frame": "gt",
+      "entities": [
+        "letter",
+        "crane"
+      ],
+      "claim": "Crane had written an unsent letter resigning his own post, a private despair over his failing eyesight, unconnected to Pike's plot.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-letter-resolves": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "letter",
+        "crane"
+      ],
+      "claim": "The unsent resignation, read against the undelivered telegram, shows Crane meant to leave quietly of his own grief — no one drove him to the stair.",
+      "canon_from": "sc-11a",
+      "evidence": [
+        "sc-11a"
+      ],
+      "pays_off": [
+        "gt-letter-private"
+      ]
+    },
+    "gt-log-junia-hand": {
+      "frame": "gt",
+      "entities": [
+        "night-log",
+        "junia",
+        "crane"
+      ],
+      "claim": "The night-log is in Junia's hand because Crane's cold-stiffened hands could not write; she recorded the observation for him, so the strange hand is innocent.",
+      "canon_from": "sc-03",
+      "evidence": [
+        "sc-03"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-log-truth-surfaces": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "night-log",
+        "junia",
+        "crane"
+      ],
+      "claim": "Pressed, Junia admits the night-log is her hand because she wrote at Crane's dictation, his fingers being too stiffened to write — the strange hand was innocent all along.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ],
+      "pays_off": [
+        "gt-log-junia-hand"
+      ]
+    },
+    "gt-pike-buries": {
+      "frame": "gt",
+      "branch": "audit",
+      "entities": [
+        "pike",
+        "dome-key"
+      ],
+      "claim": "Believing himself a near-murderer who must hide every thread, Pike moves at night to bury the duplicate ledgers and the spare dome key still warm in his coat-lining.",
+      "canon_from": "sc-10b",
+      "evidence": [
+        "sc-10b"
+      ]
+    },
+    "gt-pike-confesses": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "pike",
+        "account",
+        "telegram"
+      ],
+      "claim": "Confronted with the open ledger at sc-09a, Pike breaks and confesses the drained account and the forged telegram, believing he is confessing to a death he caused.",
+      "canon_from": "sc-09a",
+      "evidence": [
+        "sc-09a",
+        "sc-12a"
+      ],
+      "pays_off": [
+        "gt-account-drained",
+        "gt-pike-forged"
+      ]
+    },
+    "gt-pike-forged": {
+      "frame": "gt",
+      "entities": [
+        "pike",
+        "telegram"
+      ],
+      "claim": "Onslow Pike forged the patron's telegram recalling Crane to dismissal, to cover the fund he drained from the instrument account.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-plate-empty": {
+      "frame": "gt",
+      "entities": [
+        "plate-camera",
+        "junia"
+      ],
+      "claim": "The plate-camera holds no exposures because Junia never stood at the spectroscope that night; the blank plate is the physical contradiction of her alibi.",
+      "canon_from": "sc-04",
+      "evidence": [
+        "sc-04"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "gt-plate-pressed": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "plate-camera",
+        "junia"
+      ],
+      "claim": "Hale at last develops the racked plate himself and finds it blank — no star drawn, no exposure made — the physical proof that Junia was not at the spectroscope that night.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ],
+      "pays_off": [
+        "gt-plate-empty"
+      ]
+    },
+    "gt-reveal-certifies": {
+      "frame": "gt",
+      "branch": "reveal",
+      "entities": [
+        "hale",
+        "crane",
+        "pike"
+      ],
+      "claim": "Hale certifies the death not the murder Pike confessed to but a fall caused by Pike's unlawful intrusion upon a frail man — the policy does not pay a clean accident; the fraud and forgery stand exposed, and Pike answers for the theft, not the killing he believes he did.",
+      "canon_from": "sc-19r",
+      "evidence": [
+        "sc-19r"
+      ]
+    },
+    "gt-reveal-key-explained": {
+      "frame": "gt",
+      "branch": "reveal",
+      "entities": [
+        "dome-key",
+        "pike"
+      ],
+      "claim": "With Pike named, the lost spare key finds its place: it was never lost but kept in Pike's coat, the hinge that let him into the dome unseen the night Crane fell — the means the whole intrusion swung upon.",
+      "canon_from": "sc-18r",
+      "evidence": [
+        "sc-18r"
+      ],
+      "pays_off": [
+        "gt-key-found"
+      ]
+    },
+    "gt-reveal-names-pike": {
+      "frame": "gt",
+      "branch": "reveal",
+      "entities": [
+        "junia",
+        "pike",
+        "crane"
+      ],
+      "claim": "Junia names the shape on the stair at last: Onslow Pike, climbing in the dark with the spare key; she has shielded him a fortnight because she knew the fall was no murder and would not see a thief hanged for a death he did not mean.",
+      "canon_from": "sc-17r",
+      "evidence": [
+        "sc-17r"
+      ],
+      "pays_off": [
+        "gt-junia-lies"
+      ]
+    },
+    "gt-telegram-found-undelivered": {
+      "frame": "gt",
+      "branch": "confront",
+      "entities": [
+        "telegram",
+        "crane"
+      ],
+      "claim": "Hale traces the recall wire to the post-box at the foot of the road and finds it undelivered, proving Crane never read it and never knew of any dismissal.",
+      "canon_from": "sc-11a",
+      "evidence": [
+        "sc-11a"
+      ],
+      "pays_off": [
+        "gt-telegram-undelivered"
+      ]
+    },
+    "gt-telegram-undelivered": {
+      "frame": "gt",
+      "entities": [
+        "telegram",
+        "crane"
+      ],
+      "claim": "The forged telegram never reached Crane; it lay undelivered in the post-box at the foot of the hill, so Crane never knew he was to be dismissed.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "payoff_expectation": "expected",
+      "typed": {
+        "subject": "crane",
+        "predicate": "knows-dismissal",
+        "object": {
+          "kind": "value",
+          "value": "no"
+        }
+      }
+    },
+    "hale-accident": {
+      "frame": "hale",
+      "entities": [
+        "crane"
+      ],
+      "claim": "Hale's working theory: Crane rose alone in the night, slipped on the frozen stair, and fell — an ordinary accident the policy would pay.",
+      "canon_from": "sc-02",
+      "canon_to": "sc-08",
+      "evidence": [
+        "sc-02"
+      ],
+      "conflicts_with": [
+        {
+          "target": "gt-junia-lies",
+          "target_claim_sha256": "d6698202449c5866757b936045caf7adfbb09e8c8fde1771fda70b47a0d31f35"
+        }
+      ]
+    },
+    "hale-audit-plate-suspect": {
+      "frame": "hale",
+      "branch": "audit",
+      "entities": [
+        "junia",
+        "plate-camera"
+      ],
+      "claim": "The blank plate turns Junia from witness to liar in Hale's book: she was somewhere else in the dome that night, and her steady alibi becomes the lie he failed to hear.",
+      "canon_from": "sc-17b",
+      "evidence": [
+        "sc-17b"
+      ],
+      "supersedes_in_frame": "hale-junia-credible"
+    },
+    "hale-audit-reasons-truth": {
+      "frame": "hale",
+      "branch": "audit",
+      "entities": [
+        "pike",
+        "crane",
+        "clock"
+      ],
+      "claim": "Hale assembles the truth without a single confession: the clock records the instant of the fall, the key proves Pike's unseen entry, the wire proves Crane never knew — a death by intrusion and frailty, not the murder a confession would have named.",
+      "canon_from": "sc-19b",
+      "evidence": [
+        "sc-19b"
+      ]
+    },
+    "hale-burn-thwarted": {
+      "frame": "hale",
+      "branch": "burn",
+      "entities": [
+        "night-log",
+        "junia",
+        "crane"
+      ],
+      "claim": "Hale watches the log burn and knows the case has closed against him: he holds the fraud whole but the death has slipped past proof, and the climber's name is gone to ash.",
+      "canon_from": "sc-17w",
+      "evidence": [
+        "sc-17w"
+      ]
+    },
+    "hale-clock-jolt-grasped": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "clock",
+        "crane"
+      ],
+      "claim": "Hale abandons the told-clock theory: 3:14 is not a planted alibi but the recorded instant of the fall itself, fixing when Crane went down the stair.",
+      "canon_from": "sc-15",
+      "evidence": [
+        "sc-15"
+      ]
+    },
+    "hale-doubt-confront": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "telegram",
+        "crane"
+      ],
+      "claim": "Holding the undelivered telegram and the private letter, Hale doubts his own killer-theory: if Crane never knew, the confrontation Pike confesses to never reached him, and the fall is unexplained again.",
+      "canon_from": "sc-11a",
+      "evidence": [
+        "sc-11a"
+      ],
+      "supersedes_in_frame": "hale-pike-killer"
+    },
+    "hale-junia-credible": {
+      "frame": "hale",
+      "entities": [
+        "junia"
+      ],
+      "claim": "Hale takes Junia at her word that she worked at the spectroscope until dawn, and treats her as a witness rather than a suspect.",
+      "canon_from": "sc-04",
+      "canon_to": "sc-08",
+      "evidence": [
+        "sc-04"
+      ],
+      "conflicts_with": [
+        {
+          "target": "gt-junia-gallery",
+          "target_claim_sha256": "6e678d471b70f7224ac5fb03efd8f4e6404aa6839d3610890ef1ec95e79d6ce4"
+        }
+      ]
+    },
+    "hale-junia-suspect": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "junia",
+        "plate-camera"
+      ],
+      "claim": "The blank plate destroys Junia's alibi for Hale: she was somewhere else in the dome that night, and her steady account becomes the lie he failed to hear.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ],
+      "supersedes_in_frame": "hale-junia-credible"
+    },
+    "hale-knows-junia-lied": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "junia"
+      ],
+      "claim": "Hale now knows Junia lied about the spectroscope, knows she was elsewhere in the dome, and faces her at sc-16 certain she saw what he cannot: who climbed the stair.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ]
+    },
+    "hale-log-innocent": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "night-log",
+        "junia"
+      ],
+      "claim": "Hale accepts the night-log was no forger's mark but a scribe's kindness, and drops the second-person-in-the-dome reading the strange hand had carried.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ],
+      "supersedes_in_frame": "hale-log-suspect"
+    },
+    "hale-log-suspect": {
+      "frame": "hale",
+      "entities": [
+        "night-log"
+      ],
+      "claim": "Hale reads the night-log's strange hand as a sign of a second person in the dome — possibly a forger, possibly the killer.",
+      "canon_from": "sc-03",
+      "canon_to": "sc-08",
+      "evidence": [
+        "sc-03"
+      ],
+      "conflicts_with": [
+        {
+          "target": "gt-log-junia-hand",
+          "target_claim_sha256": "b4003d1db87881b830cf4b890214c82c5d48bb028c22d26ac0652c286f2f05c7"
+        }
+      ]
+    },
+    "hale-pike-intruder": {
+      "frame": "hale",
+      "branch": "audit",
+      "entities": [
+        "pike",
+        "dome-key",
+        "crane"
+      ],
+      "claim": "Watching Pike use the hidden key, Hale's theory firms into intrusion: the bursar entered the dome unseen the night of the death, and the accident was no accident.",
+      "canon_from": "sc-11b",
+      "canon_to": "sc-12b",
+      "evidence": [
+        "sc-11b"
+      ],
+      "supersedes_in_frame": "hale-accident"
+    },
+    "hale-pike-killer": {
+      "frame": "hale",
+      "branch": "confront",
+      "entities": [
+        "pike",
+        "crane"
+      ],
+      "claim": "After the confession, Hale's theory hardens: the bursar drove the director to the stair and is morally, perhaps criminally, the cause of his death.",
+      "canon_from": "sc-09a",
+      "canon_to": "sc-10a",
+      "evidence": [
+        "sc-09a"
+      ],
+      "supersedes_in_frame": "hale-accident"
+    },
+    "hale-reveal-truth": {
+      "frame": "hale",
+      "branch": "reveal",
+      "entities": [
+        "pike",
+        "crane",
+        "junia"
+      ],
+      "claim": "Hale's theory completes: Junia's witness, the empty plate, the jolted clock, the hidden key and the undelivered wire assemble into one true account — Pike intruded, Crane fell, no one planned a death.",
+      "canon_from": "sc-18r",
+      "evidence": [
+        "sc-18r"
+      ]
+    },
+    "pike-confession-belief": {
+      "frame": "pike",
+      "branch": "confront",
+      "entities": [
+        "pike",
+        "crane"
+      ],
+      "claim": "Pike confesses not to theft alone but to a killing he is sure of: he believes his forged recall reached Crane and put the ruined man at the rail in the dark.",
+      "canon_from": "sc-12a",
+      "evidence": [
+        "sc-12a"
+      ],
+      "conflicts_with": [
+        {
+          "target": "gt-telegram-undelivered",
+          "target_claim_sha256": "6f81eabdb8ee5fd8d9e5da828456dcb96a455ccc7b2f2b34f58ffb5b3e53600a"
+        }
+      ]
+    },
+    "pike-crane-knew": {
+      "frame": "pike",
+      "entities": [
+        "crane"
+      ],
+      "claim": "Pike believes Crane received the recall and knew he was to be dismissed in disgrace — and that this is why Crane was on the stair at three in the morning.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "conflicts_with": [
+        {
+          "target": "gt-telegram-undelivered",
+          "target_claim_sha256": "6f81eabdb8ee5fd8d9e5da828456dcb96a455ccc7b2f2b34f58ffb5b3e53600a"
+        }
+      ]
+    },
+    "pike-guilt": {
+      "frame": "pike",
+      "entities": [
+        "pike",
+        "crane"
+      ],
+      "claim": "Pike believes the confrontation he forced caused Crane's fall, and carries himself as a near-murderer who must bury the ledgers and the key.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ]
+    }
+  },
+  "disclosure_plans": {
+    "dc-v2": {
+      "description": "v2 gate-validation telling: default withhold; the two load-bearing solution conclusions revealed at their per-world reveal scenes",
+      "overrides": {
+        "gt-climber-pike": {
+          "mode": "state",
+          "first_at": {
+            "audit": "sc-19b",
+            "reveal": "sc-17r"
+          }
+        },
+        "gt-telegram-undelivered": {
+          "mode": "state",
+          "first_at": {
+            "audit": "sc-19b",
+            "burn": "sc-11a",
+            "reveal": "sc-11a"
+          }
+        }
+      }
+    }
+  },
+  "schema_version": 22
+}

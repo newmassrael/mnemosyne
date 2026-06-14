@@ -259,3 +259,37 @@ substrate one.
 | craft forced choice | warm **9/9** world-lines, **3/3** overall (R504: plain beat compliance 2-1) |
 | prose keystone (within-run, same panel) | warm **5.00** vs compliance 4.11 |
 | **DECISION** | **FORK (1): POSTURE WAS THE CAUSE** — warm-render-then-gate validated; build YAGNI-deferred |
+
+## R525 — reading copies made deterministically regenerable (the A-2/A-3 debt closed)
+
+The R515 reading copies relied on TWO manual pre-`assemble` normalizations done
+inline (the recorded SSOT-duplication debt): a heading-title `.norm` step and a
+scaffolding `.clean` step. R516 already folded the scaffolding strip into the
+harness; R525 folds the heading norm in too, via a new `assemble --titles-from
+<store>` flag that sources each scene heading from the fact base's section titles
+(neutral, arm-independent), plus a parser generalization so an arm whose source
+carries the BARE `## sc-NN` form (the reused compliance render) assembles without a
+pre-norm. The six reading copies are now produced by ONE deterministic command per
+(arm × world) over tracked inputs:
+
+```
+mnemosyne-cli report-playthrough-manuscript --world <W> --order meridian-order.json \
+  --sidecar authored.atomic.json --json > <W>.playthrough.json        # full walk = 19/18/16
+cargo run --manifest-path tools/experiment-harness/Cargo.toml -- assemble \
+  --story run/warm/story.md|run/compliance/story.md \
+  --playthrough <W>.playthrough.json --world <W> \
+  --titles-from authored.atomic.json --out run/reading/<W>__<A|B>.md   # A=warm, B=compliance
+```
+
+`authored.atomic.json` (the typed fact base + `dc-v2` plan) is now tracked (a
+`.gitignore` exception — it is a source, not a derivable store), so all six copies
+regenerate **byte-identically from tracked inputs alone** (verified: 0 differing
+lines, all six). No inline normalization remains; the `.norm`/`.clean`
+intermediates are gone.
+
+**Effect on the judged copies (honest):** the regenerated `reveal__A` and `burn__A`
+each dropped 4 immaterial trailing `---` rules the old manual `.clean` left in (the
+exact "modulo 4 immaterial `---`" R516 recorded); the other four copies were already
+byte-identical. The prose the judges read is unchanged, so the **3-0 warm verdict
+stands**. R525 is a reproducibility/SSOT cleanup, not a re-judge — the A-1/A-4
+blind-fidelity + 3-blind re-judge remain separately EXPERIMENT-gated.

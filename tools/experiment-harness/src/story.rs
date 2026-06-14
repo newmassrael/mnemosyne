@@ -57,17 +57,25 @@ impl Story {
     }
 }
 
-/// Parse a heading line `## sc-NN \u{2014} Title` into `(id, title)`. Returns
-/// `None` for any line that is not a scene heading (preamble prose, body text,
-/// `---` rules).
+/// Parse a heading line into `(id, title)`. Two accepted forms:
+/// `## sc-NN \u{2014} Title` (the corpus format) and the BARE `## sc-NN`
+/// (Round 525 — an arm whose source carries no heading title, e.g. a reused
+/// render with `## sc-NN` only; its title is then supplied by `--titles-from`
+/// the fact base). Returns `None` for any line that is not a scene heading
+/// (preamble prose, body text, `---` rules, a non-`sc-` `##` section heading).
 fn parse_heading(line: &str) -> Option<(String, String)> {
     let rest = line.strip_prefix("## ")?;
-    let (id, title) = rest.split_once(HEADING_SEP)?;
-    let id = id.trim();
-    if !id.starts_with("sc-") {
+    let (id, title) = match rest.split_once(HEADING_SEP) {
+        Some((id, title)) => (id.trim(), title.trim().to_string()),
+        // Bare `## sc-NN`: the whole remainder is the id, title empty. Require a
+        // single whitespace-free `sc-` token so a non-scene `## Heading Words`
+        // is not mis-parsed (the `sc-` guard below + this keep it tight).
+        None => (rest.trim(), String::new()),
+    };
+    if !id.starts_with("sc-") || id.contains(char::is_whitespace) {
         return None;
     }
-    Some((id.to_string(), title.trim().to_string()))
+    Some((id.to_string(), title))
 }
 
 /// Parse a whole story document. Everything before the first scene heading is
@@ -195,5 +203,19 @@ CHOICE: Cendre acts on the morphine ledger.
     fn empty_story_rejects() {
         let err = parse("# Title\n\njust prose, no scenes\n").unwrap_err();
         assert!(err.contains("no `## sc-"));
+    }
+
+    #[test]
+    fn bare_scene_heading_parses_with_empty_title() {
+        // Round 525: an arm whose source carries only `## sc-NN` (a reused
+        // render with no heading title) parses; the title comes later from
+        // `--titles-from`. A non-`sc-` `##` heading is still ignored.
+        let src = "## sc-01\n\nBody one.\n\n---\n\n## World-line and ending map\n\n## sc-02\n\nBody two.\n";
+        let story = parse(src).expect("bare headings parse");
+        assert_eq!(story.len(), 2);
+        assert_eq!(story.scene("sc-01").unwrap().title, "");
+        assert!(story.scene("sc-01").unwrap().raw_body.contains("Body one."));
+        // `## World-line and ending map` is not a scene heading.
+        assert!(story.scene("World-line").is_err());
     }
 }

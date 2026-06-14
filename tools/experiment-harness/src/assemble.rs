@@ -32,9 +32,42 @@
 //! strips to nothing, is a hard error. That is the silent-fail the deleted
 //! Python committed when `dict.get(id, "")` emitted an empty scene unnoticed.
 
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
+
 use crate::playthrough::Playthrough;
 use crate::story::{self, Story};
 use crate::util::{read_file, HResult};
+
+/// Just enough of an atomic store to read each section's canonical title
+/// (Round 525). `--titles-from` sources headings from the FACT BASE so a blind
+/// reading copy carries neutral, arm-independent titles — the heading-norm
+/// step the orchestrator used to do inline (an SSOT duplication) now done
+/// deterministically from the one source of truth.
+#[derive(Deserialize)]
+struct StoreTitles {
+    #[serde(default)]
+    sections: BTreeMap<String, SectionTitle>,
+}
+
+#[derive(Deserialize)]
+struct SectionTitle {
+    #[serde(default)]
+    title: String,
+}
+
+/// Load the `section_id -> title` map from an atomic-store JSON. Fails loud on
+/// unparseable input rather than silently yielding an empty map.
+pub fn load_titles(store_path: &str) -> HResult<BTreeMap<String, String>> {
+    let store: StoreTitles = serde_json::from_str(&read_file(store_path)?)
+        .map_err(|e| format!("cannot parse `--titles-from` store JSON ({store_path}): {e}"))?;
+    Ok(store
+        .sections
+        .into_iter()
+        .map(|(id, s)| (id, s.title))
+        .collect())
+}
 
 /// Strip a raw scene body to its blind-reading form. Errors if the body is
 /// empty once scaffolding is removed (a real scene cannot be blank), OR if a
@@ -196,8 +229,17 @@ fn strip_html_comments(scene_id: &str, raw: &str) -> HResult<String> {
     Ok(out)
 }
 
-/// Assemble the reading copy for one world from already-parsed inputs.
-pub fn assemble(story: &Story, playthrough: &Playthrough, world: &str) -> HResult<String> {
+/// Assemble the reading copy for one world from already-parsed inputs. When
+/// `titles` is `Some`, each scene's heading is the canonical fact-base title
+/// for its id (Round 525 — neutral, arm-independent headings sourced from the
+/// store; a scene id absent from the map is a loud error). When `None`, the
+/// scene's own parsed heading title is used (the corpus path).
+pub fn assemble(
+    story: &Story,
+    playthrough: &Playthrough,
+    world: &str,
+    titles: Option<&BTreeMap<String, String>>,
+) -> HResult<String> {
     if story.is_empty() {
         return Err("story has no scenes".to_string());
     }
@@ -209,18 +251,31 @@ pub fn assemble(story: &Story, playthrough: &Playthrough, world: &str) -> HResul
     let mut blocks: Vec<String> = Vec::with_capacity(order.len());
     for id in &order {
         let scene = story.scene(id)?;
+        let title = match titles {
+            Some(map) => map.get(id).ok_or_else(|| {
+                format!("`--titles-from` store has no section `{id}` (named in the world walk)")
+            })?,
+            None => &scene.title,
+        };
         let body = reading_body(&scene.id, &scene.raw_body)?;
-        blocks.push(format!("## {}\n\n{}", scene.title, body));
+        blocks.push(format!("## {title}\n\n{body}"));
     }
     // Trailing newline so the file ends cleanly.
     Ok(format!("{}\n", blocks.join("\n\n---\n\n")))
 }
 
 /// CLI entry: read the files, assemble, and return the manuscript text.
-pub fn run(story_path: &str, playthrough_path: &str, world: &str) -> HResult<String> {
+/// `titles_path` (optional) sources headings from a fact-base store JSON.
+pub fn run(
+    story_path: &str,
+    playthrough_path: &str,
+    world: &str,
+    titles_path: Option<&str>,
+) -> HResult<String> {
     let story = story::parse(&read_file(story_path)?)?;
     let playthrough = Playthrough::parse(&read_file(playthrough_path)?)?;
-    assemble(&story, &playthrough, world)
+    let titles = titles_path.map(load_titles).transpose()?;
+    assemble(&story, &playthrough, world, titles.as_ref())
 }
 
 #[cfg(test)]
@@ -259,7 +314,7 @@ She laid the ledger on the table.
     fn assembles_world_in_order_stripping_scaffolding() {
         let story = story::parse(STORY).unwrap();
         let pt = Playthrough::parse(PLAYTHROUGH).unwrap();
-        let out = assemble(&story, &pt, "confront").unwrap();
+        let out = assemble(&story, &pt, "confront", None).unwrap();
 
         // Headings normalized: title only, no scene id.
         assert!(out.contains("## The Line Goes Down"));
@@ -283,9 +338,34 @@ She laid the ledger on the table.
             r#"{ "worlds": { "confront": { "scenes": [{"section":"sc-99"}] } } }"#,
         )
         .unwrap();
-        let err = assemble(&story, &pt, "confront").unwrap_err();
+        let err = assemble(&story, &pt, "confront", None).unwrap_err();
         assert!(err.contains("sc-99"));
         assert!(err.contains("absent"));
+    }
+
+    #[test]
+    fn titles_from_overrides_headings_and_titles_bare_source() {
+        // Round 525: a bare `## sc-NN` source (no heading titles) assembles when
+        // `--titles-from` supplies canonical titles; for a source that DOES carry
+        // titles, the fact-base titles override them (neutral, arm-independent).
+        let bare = "## sc-01\n\nFirst body.\n\n---\n\n## sc-02\n\nSecond body.\n";
+        let story = story::parse(bare).unwrap();
+        let pt = Playthrough::parse(
+            r#"{ "worlds": { "w": { "scenes": [{"section":"sc-01"},{"section":"sc-02"}] } } }"#,
+        )
+        .unwrap();
+        let titles = BTreeMap::from([
+            ("sc-01".to_string(), "Canonical One".to_string()),
+            ("sc-02".to_string(), "Canonical Two".to_string()),
+        ]);
+        let out = assemble(&story, &pt, "w", Some(&titles)).unwrap();
+        assert!(out.contains("## Canonical One"));
+        assert!(out.contains("## Canonical Two"));
+        assert!(out.contains("First body."));
+        // A scene id missing from the titles map is a loud error.
+        let short = BTreeMap::from([("sc-01".to_string(), "Only One".to_string())]);
+        let err = assemble(&story, &pt, "w", Some(&short)).unwrap_err();
+        assert!(err.contains("sc-02"));
     }
 
     #[test]

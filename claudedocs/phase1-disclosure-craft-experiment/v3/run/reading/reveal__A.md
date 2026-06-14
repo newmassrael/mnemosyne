@@ -283,5 +283,3 @@ He wrote it so:
 *A fall, occasioned by unlawful intrusion; not accidental within the meaning of the policy; no malice toward the person of the deceased established.*
 
 The policy would not pay. Pike would answer for theft, and forgery, and breaking-in — for everything he had truly done, and not for the rope he was sure he deserved. Hale capped his pen and looked out at the white valley, and let the old man, at last, lie quiet under a true word.
-
----

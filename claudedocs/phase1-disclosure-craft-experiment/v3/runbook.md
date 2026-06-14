@@ -125,6 +125,32 @@ worlds align 1:1.)
 
 ---
 
+## 5b. R525 — canonical reading-copy regeneration (SUPERSEDES S5's manual normalization)
+
+The two manual pre-`assemble` normalizations S5 described (heading `.norm` +
+scaffolding `.clean`, done inline = the SSOT-dup debt) are RETIRED. R516 folded the
+scaffolding strip into the harness; R525 added `assemble --titles-from <store>`
+(canonical headings from the fact base) + a bare-`## sc-NN` parser path. The six
+reading copies are now one deterministic command each over tracked inputs (the
+full-walk playthrough = 19/18/16 scenes; `authored.atomic.json` is tracked):
+
+```
+for W in reveal burn audit; do
+  mnemosyne-cli report-playthrough-manuscript --world $W --order v3/meridian-order.json \
+    --sidecar v3/authored.atomic.json --json > /tmp/$W.playthrough.json
+  # A = run/warm/story.md, B = run/compliance/story.md (per label-map.json)
+  for S_src in "A:run/warm" "B:run/compliance"; do
+    S=${S_src%%:*}; D=${S_src##*:}
+    cargo run --manifest-path tools/experiment-harness/Cargo.toml -- assemble \
+      --story v3/$D/story.md --playthrough /tmp/$W.playthrough.json --world $W \
+      --titles-from v3/authored.atomic.json --out v3/run/reading/${W}__$S.md
+  done
+done
+```
+
+This regenerates the six copies byte-identically from tracked inputs. No inline
+Python, no `.norm`/`.clean` files.
+
 ## 6. S4-S6 — 3 blind judges
 
 Each judge `{DIR}` = `run/judges/`, gets the three matched reading-copy pairs and

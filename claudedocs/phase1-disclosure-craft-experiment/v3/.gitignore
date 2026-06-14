@@ -9,3 +9,10 @@
 *.playthrough.json
 run/labels/story-*.md
 run/extract/story-*.md
+# R525 exception: the typed fact base + dc-v2 plan IS a source (no tracked
+# sections.json/facts.json reproduces it — it was reused from disclosure v2),
+# and the deterministic reading-copy regeneration (report-playthrough-manuscript
+# + `assemble --titles-from`) reads it for the per-world walk + canonical
+# headings. Tracking it makes the six run/reading copies reproducible from
+# tracked inputs alone (the track-the-source side of the R404 rule).
+!authored.atomic.json

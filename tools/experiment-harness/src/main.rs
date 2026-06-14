@@ -25,7 +25,7 @@ const USAGE: &str = "\
 experiment-harness — blind A/B experiment mechanics (fail-loud, reproducible)
 
 USAGE:
-  experiment-harness assemble --story <md> --playthrough <json> --world <name> [--out <md>]
+  experiment-harness assemble --story <md> --playthrough <json> --world <name> [--titles-from <store.json>] [--out <md>]
   experiment-harness shuffle --experiment <name> [--note <text>] --out <json> <arm> <arm> [arm...]
   experiment-harness verify-seal --map <json> --sha256 <hex>
 
@@ -34,7 +34,10 @@ assemble
   Scene bodies are stripped of <!-- --> comments and CHOICE: directives;
   `## sc-NN \u{2014} Title` headings become `## Title`. A world-order scene with no
   prose, a duplicate scene id, or an empty body is a hard error.
-  Without --out the manuscript is written to stdout.
+  --titles-from <store.json> sources each scene heading from the fact base's
+  section titles (neutral, arm-independent headings; also titles a source whose
+  headings are the bare `## sc-NN` form). Without --out the manuscript is written
+  to stdout.
 
 shuffle
   Assign blind labels A, B, ... to the named arms via a /dev/urandom shuffle,
@@ -78,10 +81,11 @@ fn cmd_assemble(args: &[String]) -> HResult<ExitCode> {
     let story = p.require("--story")?;
     let playthrough = p.require("--playthrough")?;
     let world = p.require("--world")?;
+    let titles_from = p.optional("--titles-from")?;
     let out = p.optional("--out")?;
     p.finish()?;
 
-    let manuscript = assemble::run(&story, &playthrough, &world)?;
+    let manuscript = assemble::run(&story, &playthrough, &world, titles_from.as_deref())?;
     match out {
         Some(path) => {
             write_file(&path, &manuscript)?;
