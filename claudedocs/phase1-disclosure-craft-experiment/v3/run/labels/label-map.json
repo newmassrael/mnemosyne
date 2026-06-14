@@ -1,0 +1,8 @@
+{
+  "experiment": "disclosure-craft-v3",
+  "note": "warm vs compliance; reveal at S7",
+  "assignment": {
+    "A": "warm",
+    "B": "compliance"
+  }
+}
