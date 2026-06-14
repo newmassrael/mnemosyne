@@ -25,3 +25,5 @@ Cargo.lock.bak
 /claudedocs/phase1-disclosure-craft-experiment/*.atomic.json
 !/claudedocs/phase1-ai-authoring-experiment/
 /claudedocs/phase1-ai-authoring-experiment/*.atomic.json
+!/claudedocs/phase1-convergence-probe/
+/claudedocs/phase1-convergence-probe/**/*.atomic.json
