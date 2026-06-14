@@ -11259,6 +11259,44 @@
         "The evidence-reachability gate extension is fully specified + code-grounded (extend the R488 le() check from canon_from to evidence) but NOT built now — it is the one buildable lever from R518's decision rule, gated behind the scale experiment's need.",
         "PUSH gate: R521 unpushed (origin/main @ c1b5f2c from the last push); the v3 교과서화 debt (A-2/A-3 buildable, A-1/A-4 gated) remains lower-priority open."
       ]
+    },
+    "Round 522 — evidence-reachability gate (R521 Piece B built): extend the R488 off-branch reachability from canon_from to evidence — a new EvidenceUnreachable continuity violation flags any evidence backreference not reachable at-or-before the fact in its own world-line via the same le(branch,a,b), catching R520's case-2 cross-branch allusion deterministically; structural (rides severity, reject by default), no new verb (validate-continuity surfaces it), the R520 v1 base stays clean, a sibling-branch evidence test proves it fires; built now WITH the scale experiment per R521's YAGNI gating": {
+      "decision_summary": "R521 designed Piece B (the evidence-reachability gate extension) and YAGNI-deferred the build to the scale experiment's need; the SCALE experiment is now in flight, so the gate builds here. It is the minimal, principle-proven lever R521 specified: the R488 cross-branch reachability that FactCanonOffBranch already decides for canon_from, extended to evidence via the SAME le(branch,a,b). A claim's structural backreference (an evidence citation to an establishing scene) must be reachable AND prior in the fact's own world-line; a citation to a scene that lives only on a sibling branch — R520's case-2 defect (sc-07a) — fails, as does a forward reference. Deterministic, AI-out-of-gate, same KIND as FactCanonOffBranch (not new in kind). The CONTRACT half (no free-prose allusion; allude only via evidence) is the R523 author-brief's job; this round builds the gate that makes the contract enforceable.",
+      "changes_bullets": [
+        "New `ContinuityViolation::EvidenceUnreachable { fact, branch, evidence, canon_from }` in mnemosyne-validate::continuity — the R488 off-branch reachability principle, applied to `canon_from` by `FactCanonOffBranch`, now extended to `evidence`.",
+        "scan_continuity: after the FactCanonOffBranch loop, each fact whose `canon_from` is positioned has every positioned `evidence` coordinate checked with the SAME `le(branch, e, canon_from)` — a backreference must be reachable AND prior in the fact's own world-line. Sibling-branch evidence (no path in this branch) and a forward reference (in-branch but after the fact) both fail; spine/prior/self evidence passes.",
+        "Orderless tolerance mirrors FactCanonOffBranch: an unpositioned `canon_from` skips the fact whole; an unpositioned `evidence` coordinate is not flagged (the forward-declared mode).",
+        "Structural by construction — only `RuleIntervalViolation` is counted interval, so EvidenceUnreachable rides `severity` (reject by default) and counts as structural. No new CLI verb: `validate-continuity` already serializes every `ContinuityViolation`.",
+        "This is R521 Piece B's one buildable lever, built now WITH the scale experiment per R521's YAGNI gating (the contract is in force the moment the scale author-brief requires structural backrefs)."
+      ],
+      "verification_bullets": [
+        "`cargo test --workspace` green (98 `test result: ok`, 0 failed); new acceptance test `evidence_off_branch_caught_spine_evidence_clean` proves a sibling-branch `evidence` citation is caught and spine evidence is clean.",
+        "`cargo clippy --workspace --all-targets -- -D warnings` clean.",
+        "CLI reinstalled (`cargo install --path crates/mnemosyne-cli --force`); `validate-workspace` clean (T1 orphan=0, T3 reject=0, drift=0) — the dogfood store carries no narrative facts so the gate is inert there.",
+        "Real-base no-false-positive: the R520 v1 authored base reconstructed from its tracked sections/facts/order JSON → `validate-continuity` reports `violations: 0` with the new gate live (its sc-07a cross-branch allusion was free PROSE, not an evidence edge, so it correctly does not fire — the case-2 fix is the CONTRACT half landing in R523's author-brief, this gate catches it once backrefs are structural)."
+      ],
+      "carry_forward_bullets": [
+        "The CONTRACT half of Piece B (structural backreference discipline: allude via an `evidence` citation, never free prose) lands in the R523 scale author-brief; this gate then catches any sibling-branch backref deterministically.",
+        "The SCALE experiment (R523 manifest + R524 execution) exercises this gate live over a 60+ scene self-authored base under the top-down contract."
+      ],
+      "publishable_decision_summary": "R521 designed Piece B (the evidence-reachability gate extension) and YAGNI-deferred the build to the scale experiment's need; the SCALE experiment is now in flight, so the gate builds here. It is the minimal, principle-proven lever R521 specified: the R488 cross-branch reachability that FactCanonOffBranch already decides for canon_from, extended to evidence via the SAME le(branch,a,b). A claim's structural backreference (an evidence citation to an establishing scene) must be reachable AND prior in the fact's own world-line; a citation to a scene that lives only on a sibling branch — R520's case-2 defect (sc-07a) — fails, as does a forward reference. Deterministic, AI-out-of-gate, same KIND as FactCanonOffBranch (not new in kind). The CONTRACT half (no free-prose allusion; allude only via evidence) is the R523 author-brief's job; this round builds the gate that makes the contract enforceable.",
+      "publishable_changes_bullets": [
+        "New `ContinuityViolation::EvidenceUnreachable { fact, branch, evidence, canon_from }` in mnemosyne-validate::continuity — the R488 off-branch reachability principle, applied to `canon_from` by `FactCanonOffBranch`, now extended to `evidence`.",
+        "scan_continuity: after the FactCanonOffBranch loop, each fact whose `canon_from` is positioned has every positioned `evidence` coordinate checked with the SAME `le(branch, e, canon_from)` — a backreference must be reachable AND prior in the fact's own world-line. Sibling-branch evidence (no path in this branch) and a forward reference (in-branch but after the fact) both fail; spine/prior/self evidence passes.",
+        "Orderless tolerance mirrors FactCanonOffBranch: an unpositioned `canon_from` skips the fact whole; an unpositioned `evidence` coordinate is not flagged (the forward-declared mode).",
+        "Structural by construction — only `RuleIntervalViolation` is counted interval, so EvidenceUnreachable rides `severity` (reject by default) and counts as structural. No new CLI verb: `validate-continuity` already serializes every `ContinuityViolation`.",
+        "This is R521 Piece B's one buildable lever, built now WITH the scale experiment per R521's YAGNI gating (the contract is in force the moment the scale author-brief requires structural backrefs)."
+      ],
+      "publishable_verification_bullets": [
+        "`cargo test --workspace` green (98 `test result: ok`, 0 failed); new acceptance test `evidence_off_branch_caught_spine_evidence_clean` proves a sibling-branch `evidence` citation is caught and spine evidence is clean.",
+        "`cargo clippy --workspace --all-targets -- -D warnings` clean.",
+        "CLI reinstalled (`cargo install --path crates/mnemosyne-cli --force`); `validate-workspace` clean (T1 orphan=0, T3 reject=0, drift=0) — the dogfood store carries no narrative facts so the gate is inert there.",
+        "Real-base no-false-positive: the R520 v1 authored base reconstructed from its tracked sections/facts/order JSON → `validate-continuity` reports `violations: 0` with the new gate live (its sc-07a cross-branch allusion was free PROSE, not an evidence edge, so it correctly does not fire — the case-2 fix is the CONTRACT half landing in R523's author-brief, this gate catches it once backrefs are structural)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The CONTRACT half of Piece B (structural backreference discipline: allude via an `evidence` citation, never free prose) lands in the R523 scale author-brief; this gate then catches any sibling-branch backref deterministically.",
+        "The SCALE experiment (R523 manifest + R524 execution) exercises this gate live over a 60+ scene self-authored base under the top-down contract."
+      ]
     }
   },
   "inventory_entries": {},

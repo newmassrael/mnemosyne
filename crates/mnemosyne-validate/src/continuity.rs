@@ -799,6 +799,25 @@ pub enum ContinuityViolation {
         branch: String,
         coord: String,
     },
+    /// A fact cites EVIDENCE not reachable at-or-before its own canon
+    /// coordinate in its world-line (Round 522, design sec 7.27 Piece B). The
+    /// R488 off-branch reachability principle — applied to `canon_from` by
+    /// `FactCanonOffBranch` — extended to `evidence` via the SAME
+    /// `le(branch, a, b)`. A structural backreference (`evidence`) is an
+    /// allusion to an establishing scene; it must be reachable AND prior in
+    /// the fact's own branch. Sibling-world-line evidence (no path in this
+    /// branch) and a forward reference (in-branch but after the fact) both
+    /// fail; spine/prior evidence (reachable in every descendant) passes. As
+    /// with `FactCanonOffBranch`, only positioned coordinates are checked —
+    /// the orderless/forward-declared mode is tolerated (a fact whose
+    /// `canon_from` is unpositioned, or an `evidence` coordinate named by no
+    /// branch's order, is not flagged).
+    EvidenceUnreachable {
+        fact: String,
+        branch: String,
+        evidence: String,
+        canon_from: String,
+    },
     /// A stored `canon_to` lets the predecessor outlive its successor's
     /// start — the stored end contradicts the derived one (design sec 7.3).
     SuccessionContradiction {
@@ -1646,6 +1665,33 @@ pub fn scan_continuity(
                         fact: id.clone(),
                         branch: fact.branch.clone(),
                         coord: coord.clone(),
+                    });
+            }
+        }
+    }
+    // Evidence reachability (Round 522, design sec 7.27 Piece B): a
+    // backreference cited in `evidence` must be reachable AT-OR-BEFORE the
+    // fact's own coordinate in its world-line — the R488 off-branch principle
+    // (canon_from) extended to evidence via the SAME `le`. Sibling-branch
+    // evidence (no path in this branch) and a forward reference (in-branch but
+    // after the fact) both fail; spine/prior evidence passes. Only positioned
+    // coordinates are checked: an unpositioned `canon_from` is the
+    // orderless/forward-declared mode (tolerated whole, matching
+    // FactCanonOffBranch), and an unpositioned evidence coordinate is the same
+    // orderless tolerance per reference.
+    for (id, fact) in facts {
+        if !positioned.contains(fact.canon_from.as_str()) {
+            continue;
+        }
+        for e in &fact.evidence {
+            if positioned.contains(e.as_str()) && !order.le(&fact.branch, e, &fact.canon_from) {
+                report
+                    .violations
+                    .push(ContinuityViolation::EvidenceUnreachable {
+                        fact: id.clone(),
+                        branch: fact.branch.clone(),
+                        evidence: e.clone(),
+                        canon_from: fact.canon_from.clone(),
                     });
             }
         }
@@ -4346,6 +4392,77 @@ mod tests {
                 .iter()
                 .any(|v| matches!(v, ContinuityViolation::FactCanonOffBranch { .. })),
             "on-branch coordinate must be clean: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 522 (design sec 7.27 Piece B) — a STRUCTURAL backreference (an
+    /// `evidence` citation) to a sibling world-line's scene is the case-2
+    /// defect R520 surfaced: it is the R488 off-branch reachability, now
+    /// applied to evidence. Spine/prior evidence (reachable before the fact in
+    /// its own branch) is clean; sibling-branch evidence fails.
+    #[test]
+    fn evidence_off_branch_caught_spine_evidence_clean() {
+        // fork at ch-2: `left` = ch-2->ch-3, `right` = ch-2->ch-4.
+        let order = CanonOrder::from_declaration(
+            &CanonOrderFile {
+                edges: vec![["ch-1".to_string(), "ch-2".to_string()]],
+                branches: BTreeMap::from([
+                    (
+                        "left".to_string(),
+                        vec![["ch-2".to_string(), "ch-3".to_string()]],
+                    ),
+                    (
+                        "right".to_string(),
+                        vec![["ch-2".to_string(), "ch-4".to_string()]],
+                    ),
+                ]),
+            },
+            &BTreeMap::from([("left".to_string(), vec![]), ("right".to_string(), vec![])]),
+        )
+        .unwrap();
+        // A fact on `left` whose evidence cites ch-4 — a scene only on the
+        // sibling `right` world-line — is an off-branch backreference.
+        let off = store_with(vec![
+            FactImport {
+                branch: Some("left".to_string()),
+                evidence: vec!["ch-4".to_string()],
+                ..fact("f-cross", "gt", "ch-3", None)
+            },
+            FactImport {
+                branch: Some("right".to_string()),
+                ..fact("f-r", "gt", "ch-4", None)
+            },
+        ]);
+        let report = scan_continuity(&off, &order, &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::EvidenceUnreachable { fact, branch, evidence, .. }
+                    if fact == "f-cross" && branch == "left" && evidence == "ch-4"
+            )),
+            "sibling-branch evidence must be caught: {:?}",
+            report.violations
+        );
+        // Spine evidence (ch-1, reachable before ch-3 on `left`) is clean.
+        let on = store_with(vec![
+            FactImport {
+                branch: Some("left".to_string()),
+                evidence: vec!["ch-1".to_string()],
+                ..fact("f-ok", "gt", "ch-3", None)
+            },
+            FactImport {
+                branch: Some("right".to_string()),
+                ..fact("f-r", "gt", "ch-4", None)
+            },
+        ]);
+        let report = scan_continuity(&on, &order, &[]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::EvidenceUnreachable { .. })),
+            "spine evidence must be clean: {:?}",
             report.violations
         );
     }
