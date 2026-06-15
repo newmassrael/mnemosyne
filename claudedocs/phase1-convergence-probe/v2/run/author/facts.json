@@ -1,0 +1,68 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"the ground truth — what actually happened in the night"},
+    {"frame_id":"town-belief","description":"what the town of Harlow Mill holds to be true"}
+  ],
+
+  "branches": [
+    {"branch_id":"sluice","description":"Sela opens the sluice; the pond bleeds, the dam holds, the lower row drowns","forks_from":"main","forks_at":"sc-07"},
+    {"branch_id":"ride","description":"Sela holds the sluice and rides to wake the lower row; the dam overtops, the mill is wrecked","forks_from":"main","forks_at":"sc-07"},
+    {"branch_id":"dawn","description":"the shared dawn both paths reach: the mill-yard reckoning and the river's edge","converges_from":[{"branch":"sluice","at":"sc-11a"},{"branch":"ride","at":"sc-11b"}]}
+  ],
+
+  "entities": [
+    {"entity_id":"sela","kind":"person","description":"Sela Harrow, the gatekeeper's daughter, keeper in fact since her father's stroke"},
+    {"entity_id":"garrick","kind":"person","description":"Garrick Vane, the mill's owner, whose dawn word is the town's verdict"},
+    {"entity_id":"father","kind":"person","description":"the old keeper, voiceless in a back room since his stroke"},
+    {"entity_id":"lower-row","kind":"place","description":"the poorest cottages, downstream of the sluice, that flood first"},
+    {"entity_id":"relief-gate","kind":"object","description":"the upstream relief gate, the safe way to bleed the pond"},
+    {"entity_id":"sluice","kind":"object","description":"the mill's flood-sluice, which only the keeper may open"},
+    {"entity_id":"dam","kind":"object","description":"the old dam upstream, cresting in the once-a-generation storm"},
+    {"entity_id":"mill","kind":"object","description":"Harlow Mill, the town's failing living"}
+  ],
+
+  "predicates": [
+    {"predicate_id":"gate-state","object_kind":"scalar","description":"the standing of the relief gate's truth (wedged / wedged-on-purpose / surfaced)"},
+    {"predicate_id":"keeper-of","object_kind":"entity","description":"who the keeper's authority over the sluice is held to belong to"},
+    {"predicate_id":"verdict","object_kind":"scalar","description":"Sela's standing before the town: accused or keeper"},
+    {"predicate_id":"sluice-state","object_kind":"scalar","description":"the physical state of the mill's sluice in the night (shut / open)"},
+    {"predicate_id":"fate","object_kind":"scalar","description":"the fate the night dealt (asleep / drowned / woken / wrecked)"}
+  ],
+
+  "facts": [
+    {"fact_id":"f-000","frame":"gt","claim":"the once-a-generation storm crests the old dam upstream and the mill's swelling pond rises toward the lip in the dark","canon_from":"sc-01","evidence":["sc-01"],"entities":["dam","mill"]},
+    {"fact_id":"f-001","frame":"gt","claim":"Sela finds the upstream relief gate wedged shut, so the pond cannot drain the safe way","canon_from":"sc-03","evidence":["sc-03"],"entities":["sela","relief-gate"],"payoff_expectation":"expected","typed":{"subject":"relief-gate","predicate":"gate-state","object":{"kind":"value","value":"wedged"}}},
+    {"fact_id":"f-002","frame":"gt","claim":"the relief gate was wedged earlier in the season, on purpose, to keep the pond high for the mill's failing wheel, and was never freed","canon_from":"sc-04","evidence":["sc-04","sc-03"],"entities":["relief-gate","mill"],"payoff_expectation":"expected","typed":{"subject":"relief-gate","predicate":"gate-state","object":{"kind":"value","value":"wedged-on-purpose"}}},
+
+    {"fact_id":"f-010","frame":"gt","claim":"Sela has been the keeper in fact since her father's stroke; by law and the owner's word, only the keeper may open the sluice","canon_from":"sc-02","evidence":["sc-02"],"entities":["sela","father","sluice"],"typed":{"subject":"sela","predicate":"keeper-of","object":{"kind":"entity","id":"sluice"}}},
+    {"fact_id":"f-011","frame":"town-belief","claim":"the town still calls Sela's father the keeper and Sela a girl playing at his work, with no authority to open the sluice","canon_from":"sc-02","evidence":["sc-02"],"entities":["sela","father","sluice"],"typed":{"subject":"father","predicate":"keeper-of","object":{"kind":"entity","id":"sluice"}}},
+    {"fact_id":"f-012","frame":"town-belief","claim":"at the sluice a millhand who holds the father still keeper tries to stop Sela's hand, calling for the old keeper to be fetched","canon_from":"sc-06","evidence":["sc-06","sc-02"],"entities":["sela","father","sluice"]},
+
+    {"fact_id":"f-020","frame":"gt","claim":"with the relief gate wedged, the dam will overtop within the hour unless the mill's own sluice is opened","canon_from":"sc-05","evidence":["sc-05","sc-03"],"entities":["dam","sluice"]},
+    {"fact_id":"f-021","frame":"gt","claim":"Sela reaches the sluice with the crest minutes away; the lower row sleeps in the dark downstream","canon_from":"sc-06","evidence":["sc-06"],"entities":["sela","sluice","lower-row"],"payoff_expectation":"expected","typed":{"subject":"lower-row","predicate":"fate","object":{"kind":"value","value":"asleep"}}},
+    {"fact_id":"f-022","frame":"gt","claim":"the town has not yet judged Sela; the night's act will be put to Garrick at dawn, and she stands accused until he speaks","canon_from":"sc-06","evidence":["sc-06"],"entities":["sela","garrick"],"payoff_expectation":"expected","typed":{"subject":"sela","predicate":"verdict","object":{"kind":"value","value":"accused"}}},
+
+    {"fact_id":"f-030","frame":"gt","claim":"at the sluice Sela faces one exclusive choice she cannot unmake: open the sluice, or hold it and ride to wake the lower row","canon_from":"sc-07","evidence":["sc-07","sc-06"],"entities":["sela","sluice","lower-row"]},
+
+    {"fact_id":"f-100","frame":"gt","branch":"sluice","claim":"Sela throws the sluice open; she is the hand that opens the water onto the poorest","canon_from":"sc-08a","evidence":["sc-08a","sc-07"],"entities":["sela","sluice"],"typed":{"subject":"sluice","predicate":"sluice-state","object":{"kind":"value","value":"open"}}},
+    {"fact_id":"f-103","frame":"gt","branch":"sluice","claim":"the pond bleeds and the dam holds, but the lower row floods first in the dark and lives are lost there","canon_from":"sc-09a","evidence":["sc-09a","sc-08a","sc-06"],"entities":["dam","lower-row"],"payoff_expectation":"expected","pays_off":["f-021"],"typed":{"subject":"lower-row","predicate":"fate","object":{"kind":"value","value":"drowned"}}},
+    {"fact_id":"f-105","frame":"gt","branch":"sluice","claim":"the dam holds and the mill is spared; survivors climb from the lower-row rooftops as the pond falls back behind the open sluice","canon_from":"sc-10a","evidence":["sc-10a","sc-08a"],"entities":["dam","mill","lower-row"]},
+    {"fact_id":"f-106","frame":"gt","branch":"sluice","claim":"at first grey the lower-row dead are counted and the town's mood turns hard, blaming the hand that opened the water rather than the wedged gate it could not yet see","canon_from":"sc-11a","evidence":["sc-11a","sc-09a"],"entities":["sela","lower-row"]},
+
+    {"fact_id":"f-200","frame":"gt","branch":"ride","claim":"Sela holds the sluice shut and rides into the dark to wake the lower row herself","canon_from":"sc-08b","evidence":["sc-08b","sc-07"],"entities":["sela","sluice","lower-row"],"typed":{"subject":"sluice","predicate":"sluice-state","object":{"kind":"value","value":"shut"}}},
+    {"fact_id":"f-202","frame":"gt","branch":"ride","claim":"warned in the dark, the lower row flees its cottages onto the high ground above the valley","canon_from":"sc-09b","evidence":["sc-09b","sc-08b","sc-06"],"entities":["lower-row"],"payoff_expectation":"expected","pays_off":["f-021"],"typed":{"subject":"lower-row","predicate":"fate","object":{"kind":"value","value":"woken"}}},
+    {"fact_id":"f-203","frame":"gt","branch":"ride","claim":"no one is deliberately drowned, but the dam overtops, the valley takes the flood unshaped, and the mill itself is wrecked","canon_from":"sc-10b","evidence":["sc-10b","sc-08b"],"entities":["dam","mill","lower-row"],"payoff_expectation":"expected","typed":{"subject":"mill","predicate":"fate","object":{"kind":"value","value":"wrecked"}}},
+
+    {"fact_id":"f-206","frame":"gt","branch":"ride","claim":"at first grey no body is pulled from the lower row, but the mill stands broken and the town's living with it; the mood is grief, not blame","canon_from":"sc-11b","evidence":["sc-11b","sc-10b","sc-09b"],"entities":["mill","lower-row"]},
+
+    {"fact_id":"f-110","frame":"gt","branch":"sluice","claim":"at the reckoning the lower-row dead are named aloud and mourned, and Sela stands as the hand that opened the water onto them","canon_from":"sc-rk","evidence":["sc-rk","sc-09a"],"entities":["sela","lower-row"],"pays_off":["f-103"],"typed":{"subject":"lower-row","predicate":"fate","object":{"kind":"value","value":"mourned"}}},
+    {"fact_id":"f-210","frame":"gt","branch":"ride","claim":"at the reckoning the wrecked mill stands witness, and Sela is the keeper who spent the town's living to drown no one","canon_from":"sc-rk","evidence":["sc-rk","sc-10b"],"entities":["sela","mill"],"pays_off":["f-203"],"typed":{"subject":"mill","predicate":"fate","object":{"kind":"value","value":"witnessed"}}},
+    {"fact_id":"f-211","frame":"gt","branch":"ride","claim":"at the reckoning the saved lower row stands whole in the yard, the cost of the wrecked mill paid so that none of them drowned","canon_from":"sc-rk","evidence":["sc-rk","sc-09b"],"entities":["sela","lower-row"],"pays_off":["f-202"],"typed":{"subject":"lower-row","predicate":"fate","object":{"kind":"value","value":"saved"}}},
+
+    {"fact_id":"f-300","frame":"gt","branch":"dawn","claim":"at first light the town gathers in the mill yard and Garrick must say aloud whether Sela acted as keeper or as criminal","canon_from":"sc-rk","evidence":["sc-rk"],"entities":["sela","garrick"]},
+    {"fact_id":"f-301","frame":"gt","branch":"dawn","claim":"the wedged-gate truth surfaces at the reckoning: the danger was made by whoever wedged the relief gate, not by Sela alone, and this turns Garrick's verdict","canon_from":"sc-rk","evidence":["sc-rk","sc-03","sc-04"],"entities":["sela","garrick","relief-gate"],"pays_off":["f-001","f-002"],"typed":{"subject":"relief-gate","predicate":"gate-state","object":{"kind":"value","value":"surfaced"}}},
+    {"fact_id":"f-302","frame":"gt","branch":"dawn","claim":"Garrick names Sela's act a keeper's duty, not a crime; his word is the town's verdict","canon_from":"sc-rk","evidence":["sc-rk","sc-02","sc-06"],"entities":["garrick","sela"],"pays_off":["f-022"],"typed":{"subject":"sela","predicate":"verdict","object":{"kind":"value","value":"keeper"}}},
+    {"fact_id":"f-303","frame":"town-belief","branch":"dawn","claim":"the town's belief that Sela was only a girl playing at her father's work breaks when Garrick names her keeper before them all","canon_from":"sc-rk","evidence":["sc-rk","sc-02"],"entities":["sela","father","sluice"],"typed":{"subject":"sela","predicate":"keeper-of","object":{"kind":"entity","id":"sluice"}}},
+    {"fact_id":"f-310","frame":"gt","branch":"dawn","claim":"after the verdict Sela walks alone to the river's edge in the grey light and looks at the water that did what it did","canon_from":"sc-rv","evidence":["sc-rv"],"entities":["sela"]}
+  ]
+}

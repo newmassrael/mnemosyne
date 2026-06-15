@@ -1,0 +1,137 @@
+===== validate-continuity =====
+continuity gate: disabled ([continuity] table absent)
+  facts=26 order_nodes=17 conflict_pairs=0 cross_scope(data)=0 unordered=0
+  violations: 0 (structural=0 interval=0)
+
+===== report-fork-tree =====
+=== fork tree — 3 registered world-line(s), 0 unplaced fork point(s) ===
+  `dawn` converges from `sluice` at sc-11a
+  `dawn` converges from `ride` at sc-11b
+      choice: the shared dawn both paths reach: the mill-yard reckoning and the river's edge
+  `ride` forks from `main` at sc-07
+      choice: Sela holds the sluice and rides to wake the lower row; the dam overtops, the mill is wrecked
+  `sluice` forks from `main` at sc-07
+      choice: Sela opens the sluice; the pond bleeds, the dam holds, the lower row drowns
+
+===== report-payoff-coverage =====
+=== payoff coverage — 26 fact(s), 7 setup(s) ===
+world `main`: paid=0 dangling=4 exempt=6 unknown=0
+  [DANGLING] f-001
+  [DANGLING] f-002
+  [DANGLING] f-021
+  [DANGLING] f-022
+world `ride`: paid=6 dangling=0 exempt=15 unknown=0
+  [paid] f-001 <- f-301
+  [paid] f-002 <- f-301
+  [paid] f-021 <- f-202
+  [paid] f-022 <- f-302
+  [paid] f-202 <- f-211
+  [paid] f-203 <- f-210
+world `sluice`: paid=5 dangling=0 exempt=15 unknown=0
+  [paid] f-001 <- f-301
+  [paid] f-002 <- f-301
+  [paid] f-021 <- f-103
+  [paid] f-022 <- f-302
+  [paid] f-103 <- f-110
+
+===== report-payoff-substantiation =====
+=== payoff substantiation — 7 setup(s) ===
+world `main`: substantiated=0 unsubstantiated=0 unverifiable=0
+world `ride`: substantiated=6 unsubstantiated=0 unverifiable=0
+  [substantiated] f-001 <- f-301
+  [substantiated] f-002 <- f-301
+  [substantiated] f-021 <- f-202
+  [substantiated] f-022 <- f-302
+  [substantiated] f-202 <- f-211
+  [substantiated] f-203 <- f-210
+world `sluice`: substantiated=5 unsubstantiated=0 unverifiable=0
+  [substantiated] f-001 <- f-301
+  [substantiated] f-002 <- f-301
+  [substantiated] f-021 <- f-103
+  [substantiated] f-022 <- f-302
+  [substantiated] f-103 <- f-110
+
+===== report-timeline-gaps (per world) =====
+-- world sluice --
+=== timeline gaps — 0 interval rule(s) ===
+world `sluice`: violated=0 unverifiable=0 satisfied=0
+-- world ride --
+=== timeline gaps — 0 interval rule(s) ===
+world `ride`: violated=0 unverifiable=0 satisfied=0
+-- world dawn --
+=== timeline gaps — 0 interval rule(s) ===
+
+===== report-playthrough-manuscript --world sluice =====
+=== playthrough manuscript — 26 fact(s), 1 world(s) ===
+world `sluice`: 13 scene(s), undeclared adjacencies=0, unplaced=0, undecidable=0, outside order=4
+  sc-01 — The rising pond [begins=1 ends=0 holding=1]
+    + f-000 (gt): the once-a-generation storm crests the old dam upstream and the mill's swelling pond rises toward the lip in the dark
+  sc-02 — The voiceless keeper [begins=2 ends=0 holding=3]
+    + f-010 (gt): Sela has been the keeper in fact since her father's stroke; by law and the owner's word, only the keeper may open the sluice
+    + f-011 (town-belief): the town still calls Sela's father the keeper and Sela a girl playing at his work, with no authority to open the sluice
+  sc-03 — The jammed relief gate [begins=1 ends=0 holding=4]
+    + f-001 (gt): Sela finds the upstream relief gate wedged shut, so the pond cannot drain the safe way
+  sc-04 — Who wedged it [begins=1 ends=0 holding=5]
+    + f-002 (gt): the relief gate was wedged earlier in the season, on purpose, to keep the pond high for the mill's failing wheel, and was never freed
+  sc-05 — The dam will overtop [begins=1 ends=0 holding=6]
+    + f-020 (gt): with the relief gate wedged, the dam will overtop within the hour unless the mill's own sluice is opened
+  sc-06 — Sela reaches the sluice [begins=3 ends=0 holding=9]
+    + f-012 (town-belief): at the sluice a millhand who holds the father still keeper tries to stop Sela's hand, calling for the old keeper to be fetched
+    + f-021 (gt): Sela reaches the sluice with the crest minutes away; the lower row sleeps in the dark downstream
+    + f-022 (gt): the town has not yet judged Sela; the night's act will be put to Garrick at dawn, and she stands accused until he speaks
+  sc-07 — The choice at the sluice [begins=1 ends=0 holding=10]
+    + f-030 (gt): at the sluice Sela faces one exclusive choice she cannot unmake: open the sluice, or hold it and ride to wake the lower row
+  sc-08a — She throws the sluice open [begins=1 ends=0 holding=11]
+    + f-100 (gt): Sela throws the sluice open; she is the hand that opens the water onto the poorest
+  sc-09a — The water takes the lower row [begins=1 ends=0 holding=12]
+    + f-103 (gt): the pond bleeds and the dam holds, but the lower row floods first in the dark and lives are lost there
+  sc-10a — The dam holds, the mill stands [begins=1 ends=0 holding=13]
+    + f-105 (gt): the dam holds and the mill is spared; survivors climb from the lower-row rooftops as the pond falls back behind the open sluice
+  sc-11a — The drowned counted at first grey [begins=1 ends=0 holding=14]
+    + f-106 (gt): at first grey the lower-row dead are counted and the town's mood turns hard, blaming the hand that opened the water rather than the wedged gate it could not yet see
+  sc-rk — The mill-yard reckoning [begins=5 ends=0 holding=19]
+    + f-110 (gt): at the reckoning the lower-row dead are named aloud and mourned, and Sela stands as the hand that opened the water onto them
+    + f-300 (gt): at first light the town gathers in the mill yard and Garrick must say aloud whether Sela acted as keeper or as criminal
+    + f-301 (gt): the wedged-gate truth surfaces at the reckoning: the danger was made by whoever wedged the relief gate, not by Sela alone, and this turns Garrick's verdict
+    + f-302 (gt): Garrick names Sela's act a keeper's duty, not a crime; his word is the town's verdict
+    + f-303 (town-belief): the town's belief that Sela was only a girl playing at her father's work breaks when Garrick names her keeper before them all
+  sc-rv — The river's edge [begins=1 ends=0 holding=20]
+    + f-310 (gt): after the verdict Sela walks alone to the river's edge in the grey light and looks at the water that did what it did
+
+===== report-playthrough-manuscript --world ride =====
+=== playthrough manuscript — 26 fact(s), 1 world(s) ===
+world `ride`: 13 scene(s), undeclared adjacencies=0, unplaced=0, undecidable=0, outside order=4
+  sc-01 — The rising pond [begins=1 ends=0 holding=1]
+    + f-000 (gt): the once-a-generation storm crests the old dam upstream and the mill's swelling pond rises toward the lip in the dark
+  sc-02 — The voiceless keeper [begins=2 ends=0 holding=3]
+    + f-010 (gt): Sela has been the keeper in fact since her father's stroke; by law and the owner's word, only the keeper may open the sluice
+    + f-011 (town-belief): the town still calls Sela's father the keeper and Sela a girl playing at his work, with no authority to open the sluice
+  sc-03 — The jammed relief gate [begins=1 ends=0 holding=4]
+    + f-001 (gt): Sela finds the upstream relief gate wedged shut, so the pond cannot drain the safe way
+  sc-04 — Who wedged it [begins=1 ends=0 holding=5]
+    + f-002 (gt): the relief gate was wedged earlier in the season, on purpose, to keep the pond high for the mill's failing wheel, and was never freed
+  sc-05 — The dam will overtop [begins=1 ends=0 holding=6]
+    + f-020 (gt): with the relief gate wedged, the dam will overtop within the hour unless the mill's own sluice is opened
+  sc-06 — Sela reaches the sluice [begins=3 ends=0 holding=9]
+    + f-012 (town-belief): at the sluice a millhand who holds the father still keeper tries to stop Sela's hand, calling for the old keeper to be fetched
+    + f-021 (gt): Sela reaches the sluice with the crest minutes away; the lower row sleeps in the dark downstream
+    + f-022 (gt): the town has not yet judged Sela; the night's act will be put to Garrick at dawn, and she stands accused until he speaks
+  sc-07 — The choice at the sluice [begins=1 ends=0 holding=10]
+    + f-030 (gt): at the sluice Sela faces one exclusive choice she cannot unmake: open the sluice, or hold it and ride to wake the lower row
+  sc-08b — She holds the sluice and rides [begins=1 ends=0 holding=11]
+    + f-200 (gt): Sela holds the sluice shut and rides into the dark to wake the lower row herself
+  sc-09b — Waking the lower row [begins=1 ends=0 holding=12]
+    + f-202 (gt): warned in the dark, the lower row flees its cottages onto the high ground above the valley
+  sc-10b — The dam overtops, the mill is wrecked [begins=1 ends=0 holding=13]
+    + f-203 (gt): no one is deliberately drowned, but the dam overtops, the valley takes the flood unshaped, and the mill itself is wrecked
+  sc-11b — No one drowned, nothing left [begins=1 ends=0 holding=14]
+    + f-206 (gt): at first grey no body is pulled from the lower row, but the mill stands broken and the town's living with it; the mood is grief, not blame
+  sc-rk — The mill-yard reckoning [begins=6 ends=0 holding=20]
+    + f-210 (gt): at the reckoning the wrecked mill stands witness, and Sela is the keeper who spent the town's living to drown no one
+    + f-211 (gt): at the reckoning the saved lower row stands whole in the yard, the cost of the wrecked mill paid so that none of them drowned
+    + f-300 (gt): at first light the town gathers in the mill yard and Garrick must say aloud whether Sela acted as keeper or as criminal
+    + f-301 (gt): the wedged-gate truth surfaces at the reckoning: the danger was made by whoever wedged the relief gate, not by Sela alone, and this turns Garrick's verdict
+    + f-302 (gt): Garrick names Sela's act a keeper's duty, not a crime; his word is the town's verdict
+    + f-303 (town-belief): the town's belief that Sela was only a girl playing at her father's work breaks when Garrick names her keeper before them all
+  sc-rv — The river's edge [begins=1 ends=0 holding=21]
+    + f-310 (gt): after the verdict Sela walks alone to the river's edge in the grey light and looks at the water that did what it did

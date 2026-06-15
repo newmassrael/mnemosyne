@@ -1,0 +1,22 @@
+[
+  {"section_id":"sc-01","parent_doc":"harlow","title":"The rising pond","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"harlow","title":"The voiceless keeper","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"harlow","title":"The jammed relief gate","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"harlow","title":"Who wedged it","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"harlow","title":"The dam will overtop","coverage_expectation":"informational"},
+  {"section_id":"sc-06","parent_doc":"harlow","title":"Sela reaches the sluice","coverage_expectation":"informational"},
+  {"section_id":"sc-07","parent_doc":"harlow","title":"The choice at the sluice","coverage_expectation":"informational"},
+
+  {"section_id":"sc-08a","parent_doc":"harlow","title":"She throws the sluice open","coverage_expectation":"informational"},
+  {"section_id":"sc-09a","parent_doc":"harlow","title":"The water takes the lower row","coverage_expectation":"informational"},
+  {"section_id":"sc-10a","parent_doc":"harlow","title":"The dam holds, the mill stands","coverage_expectation":"informational"},
+  {"section_id":"sc-11a","parent_doc":"harlow","title":"The drowned counted at first grey","coverage_expectation":"informational"},
+
+  {"section_id":"sc-08b","parent_doc":"harlow","title":"She holds the sluice and rides","coverage_expectation":"informational"},
+  {"section_id":"sc-09b","parent_doc":"harlow","title":"Waking the lower row","coverage_expectation":"informational"},
+  {"section_id":"sc-10b","parent_doc":"harlow","title":"The dam overtops, the mill is wrecked","coverage_expectation":"informational"},
+  {"section_id":"sc-11b","parent_doc":"harlow","title":"No one drowned, nothing left","coverage_expectation":"informational"},
+
+  {"section_id":"sc-rk","parent_doc":"harlow","title":"The mill-yard reckoning","coverage_expectation":"informational"},
+  {"section_id":"sc-rv","parent_doc":"harlow","title":"The river's edge","coverage_expectation":"informational"}
+]
