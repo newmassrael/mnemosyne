@@ -36,3 +36,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-concurrency-probe/
 /claudedocs/phase1-concurrency-probe/**/*.atomic.json
 /claudedocs/phase1-concurrency-probe/**/*.playthrough.json
+!/claudedocs/phase1-npc-dialogue-experiment/
+/claudedocs/phase1-npc-dialogue-experiment/**/*.atomic.json
+/claudedocs/phase1-npc-dialogue-experiment/**/*.playthrough.json

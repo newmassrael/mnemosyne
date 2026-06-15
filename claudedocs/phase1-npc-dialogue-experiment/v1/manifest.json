@@ -1,0 +1,107 @@
+{
+  "manifest": "npc-dialogue-experiment/v1",
+  "designed": "2026-06-15 (R550 manifest round; sha256 of this manifest pinned in the R550 ledger entry BEFORE any author/render/extract/judge subagent runs — the R453/R499/R503/R514/R519/R530/R536/R540/R548 pre-commit pattern). Combines the two owner-chosen R550 candidates into ONE acceptance experiment: candidate (1) NPC DIALOGUE RENDER (R529 #9, the first warm render over a broad+deep base, on the R514/R515 warm-render-then-gate discipline) and candidate (2) CAST SUSTAINMENT (the R545 blemish: a broad cast that THINS in deep branch tails).",
+
+  "lineage_note": "DESIGNED by the lineage that scoped these candidates (R546-R549 + the R550 load). Per the R469/R500 contamination bound this lineage may NOT author the fact base, render prose, re-extract, or judge; it writes this manifest + the PREMISE (the human's premise/high-level-direction role per the AI-first doctrine) + the four briefs + the runbook, and orchestrates the deterministic gates + the structural-outline assembly only.",
+
+  "question": {
+    "primary": "Can an AI SELF-AUTHOR a gate-clean broad+deep fact base whose CAST STAYS PEOPLED into the deep branch tails (the R545 blemish fixed), and then RENDER from it warm NPC DIALOGUE — each person in a distinct, consistent voice, speaking only what their own frame could know — that stays gate-clean (no premature leak, no off-branch / cross-world knowledge)? R515 proved warm render beats compliance render for NARRATION; R541 proved a broad individuated cast at moderate length AS AN OUTLINE; R545 proved depth x breadth combined but found the cast thinned in deep tails. This is the first WARM DIALOGUE render over a SUSTAINED broad+deep cast — the two open craft questions at once.",
+    "sub_question_1_render": "candidate (1): does warm-render-then-gate (R515) extend from narration to DIALOGUE at breadth — distinct, consistent voices (judged), people speaking only their own knowledge (judged + fidelity-gated), no premature leak (leak-gated)?",
+    "sub_question_2_sustainment": "candidate (2): with the R545 cast-sustainment clause in the brief, does the self-authored base keep the cast STRUCTURALLY ACTIVE into each road's deep tail (PIN-2, deterministic) AND does the rendered aftermath FEEL peopled to the reader (judged)?",
+    "isolation": "the two sub-questions are kept SEPARABLE despite the combined experiment (the R518 lesson — prior experiments conflated authoring and render): sustainment is an AUTHORING property measured on author-A's base (PIN-1 + PIN-2 + judged sustainment-feel); dialogue render is a RENDER property measured on author-B's prose (PIN-3 + judged voice/naturalness). Two separate blind subagents (author then render) so the authoring variable and the render variable do not contaminate each other; the combination is in the report's decision, not in one subagent doing both."
+  },
+
+  "premise": {
+    "title": "Wreckfall at Cawdy Holm (FRESH, original — NOT reused)",
+    "file": "premise.md",
+    "fresh_rationale": "A fresh premise with no pre-existing fact base — the AI invents the facts. Chosen to DEMAND both axes at once: a shut-in tidal-island community plus wreck castaways (broad cast, dialogue-native — a houseful of people who must give accounts), a wreck-night mystery known in fragments (individuated knowledge), a fork at ~40-50% (REPORT / SHELTER / CONFRONT) leaving each road a real AFTERMATH (deep tails to sustain), and an explicit requirement that the Holm stay peopled to the last scene of every road (the sustainment axis). Dialogue-native by construction: a community working out what happened is told through people talking. NO convergence required (forest; the convergence-JOIN axis is R527/R537, separate).",
+    "human_role_note": "Authoring the premise is the human's role (premise / high-level direction / final review), NOT a contamination of the AI-authoring claim (the ai-first-end-to-end doctrine: the AI authors the FACTS and the PROSE; the human supplies the premise)."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R550): writes manifest + premise + briefs + runbook; rebuilds the store fresh from author-A's JSON; runs the deterministic gates + the PIN-2 deep-tail scan; assembles the structural outlines; writes the extractor vocabulary (ids only); runs the PIN-3 render-acceptance gates over the blind re-extraction; cross-references the controls. NEVER authors a fact, renders a scene, re-extracts, or judges.",
+    "blind_author_A": "ONE fresh-context subagent (authoring). Input = premise.md + author-brief.md ONLY. Authors the fact base + disclosure plan via mnemosyne-cli, using the gates as self-consistency feedback. BLIND to the hypothesis, the pins (incl. that cast-sustainment is a measured pin), the rubric, the decision rule, the render/judge stages.",
+    "blind_author_B": "ONE fresh-context subagent (render). Input = render-brief.md + the three structural outlines ONLY. Renders warm NPC-dialogue prose per road. BLIND to the pins, the rubric, the hypothesis, the original facts.json/plan, and that voice/sustainment are the tested variables (no teaching-to-test — the brief asks for good storytelling in the warm posture, not for the gate criteria).",
+    "blind_extractor": "ONE fresh-context subagent. Input = extractor-brief.md + the rendered manuscripts + vocab.md (entity/predicate/frame IDS + forks_at ONLY — no claims/facts/plan). Re-extracts facts from the PROSE, canon_from = the prose's own ## sc-NN markers, EXPLICIT only. BLIND to the original facts and the disclosure plan (so the leak/fidelity typed-tuple match is a genuine blind comparison, the R512 method).",
+    "blind_judges": "3 fresh-context subagents. Input = judge-brief.md + the rendered manuscripts ONLY (prose, no frame labels, no plan). BLIND to the experiment, the hypothesis, that the prose is AI-authored, the pins, and each other.",
+    "contamination_bound": "the R469 discipline (the 11th use of the blind-experiment family). The lineage that designed the axis may not author, render, re-extract, or judge its instance."
+  },
+
+  "deterministic_pins": {
+    "PIN_1_authoring_clean": {
+      "claim": "PIN. Author-A CONVERGES to a gate-clean (store-consistent) broad+deep fact base within a bounded loop budget.",
+      "criteria_all_required": [
+        "import of the final sections.json + facts.json into a fresh empty schema-23 seed = 0 errors (loads clean).",
+        "validate-continuity --order --rules: structural violations = 0 AND interval violations = 0 (includes R522 evidence-reachability, R488 off-branch, and the R449 exclusive-possession rule from narrative-rules.json).",
+        "report-fork-tree --order: the single primary fork PLACED; 0 unplaced fork points; the fork has 3 child world-lines; every world-line reaches a terminal.",
+        "report-playthrough-manuscript --world W --order, EVERY W: unplaced = 0, undecidable = 0.",
+        "report-timeline-gaps --world W --order, every W: 0 gap / 0 unreached scene.",
+        "report-payoff-coverage --order: 0 dangling setups in any terminal world."
+      ],
+      "budget": "bounded authoring loop; if author-A cannot reach this, PIN-1 FAILS = the tooling-friction branch (record the iteration count + the stuck gate)."
+    },
+    "PIN_2_cast_sustainment": {
+      "claim": "PIN (NEW METRIC — operationalizes the R545 blemish as a falsifiable structural floor). The converged base keeps the cast STRUCTURALLY ACTIVE into each road's deep tail, not thinned to principals.",
+      "definition": "For each world-line W: deep-tail(W) = the scenes strictly AFTER W's fork point along W's order chain (the post-fork aftermath of that road). active-frames(W) = the distinct person-frames (frame != gt) that hold >= 1 narrative_fact whose canon_from is a scene in deep-tail(W). principals = the top-3 person-frames by TOTAL fact count across the whole base.",
+      "criteria_all_required": [
+        ">= 10 distinct person-frames (!= gt) registered and each holding >= 1 fact anywhere (the R541 breadth floor, re-asserted).",
+        "for EACH world-line W: |active-frames(W)| >= 6 (the deep tail of every road keeps at least six people present and knowing).",
+        "for EACH world-line W: at least 4 of active-frames(W) are NON-PRINCIPAL (the tail is not just the 2-3 principals plus the ground truth)."
+      ],
+      "honest_limit": "PIN-2 is a NECESSARY-NOT-SUFFICIENT structural floor: a frame holding one perfunctory tail fact counts as active here but may still read as a vanished bystander. The FELT sustainment (a tail that reads peopled) is the JUDGED axis (cast-sustainment, below). PIN-2 catches the gross thinning R545 showed; the judges catch hollow presence. Stated per feedback_dont_downplay_experiment_flaws.",
+      "budget_note": "PIN-2 is computed by the orchestrator as a JSON scan of author-A's facts.json x order.json (frame x canon_from-in-deep-tail) — author-A is BLIND to the thresholds (the brief asks, in storytelling register, to keep the Holm peopled to the last scene; it does not state the 6/4 floor)."
+    },
+    "PIN_3_render_acceptance": {
+      "claim": "PIN. The warm NPC-dialogue render is gate-clean over a BLIND re-extraction (the R514/R515 warm-render-then-gate discipline, applied to dialogue).",
+      "criteria_all_required": [
+        "leak (R502 gate): validate-disclosure-leak --telling holm --against <reextracted> --world W --truth-frame gt, EVERY W = 0 premature leaks of a withheld solution fact before its first_at on that road, AND vocab_shared > 0 (the R510 F5 non-vacuous guard), exit 0.",
+        "fidelity (R505/R508 gate, the R488 prose analog): validate-render-fidelity over the re-extraction vs order.json, EVERY W = off_path = 0 (no re-extracted fact sits off its assigned world-line — incl. no NPC dialogue asserting cross-world knowledge), unplaced = 0, reached_terminal = true."
+      ],
+      "repair_protocol": "if a gate flags, that is the render-then-gate-REPAIR signal (R515): record the violation, the scene-scoped repair, and the repair COUNT as the R515 posture tax. Repairs stay in the warm storytelling register (a compliance-register repair re-cools). Do NOT silently fix; the count is reported.",
+      "knowledge_realism_note": "the omniscience-through-dialogue check (an NPC SPEAKING what only another could know) is partly caught by fidelity off_path (cross-world assertions) but its in-frame form (a person on the right road asserting a same-road fact they had no scene-path to learn) is NOT gate-enforceable (R539 acquisition gate stays YAGNI) — that is the JUDGED knowledge-realism axis, the R541 boundary."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, judge-brief.md rubric, over the RENDERED prose manuscripts (run/render/world-*.md, one per road, no frame labels, no plan). Single arm (a capability test, no A/B — warm-vs-compliance was settled at R515).",
+    "axes": "voice distinctness / voice consistency / dialogue naturalness (candidate 1 craft) / cast sustainment-feel (candidate 2 craft) / knowledge realism (per-person acquisition coherence, the R541 boundary) / branch integrity / overall (1-5 each, scene-id-cited) + a per-road and overall forced choice (living story vs arranged information, the R504/R515 holistic signal).",
+    "control_crossref": "FREE signals (orchestrator computes, judges blind): R515 (warm narration beat compliance 3-0, keystone 5.00 vs 4.11); R541 (broad cast 5/5 cast-distinctness as an outline); R545 (cast thinned in deep tails). The question is whether warm render holds for DIALOGUE at breadth and whether the sustainment clause keeps the tail peopled.",
+    "outcome_pin": "NONE. The procedure is pinned; the voice / naturalness / sustainment-feel / knowledge verdicts are the open question."
+  },
+
+  "decision_rule_pre_committed": {
+    "all_pins_hold_and_judged_good": "ALL three pins hold AND judges find (majority >= 4): voice-distinctness AND dialogue-naturalness AND cast-sustainment-feel AND knowledge-realism, with no major knowledge breaks => NPC DIALOGUE RENDER over a SUSTAINED broad+deep cast REACHES => candidate (1) and candidate (2) both resolved positive; warm-render-then-gate extends to dialogue and the R545 blemish is brief-fixable => the remaining frontier is the live/runtime layer (pinion, R549's named layer-split) or further scale, not a Mnemosyne build. The on-axis expected outcome; its value is the first warm dialogue over breadth+depth.",
+    "pin2_fails": "author-A converges (PIN-1) but cannot meet the sustainment floor (PIN-2: a tail drops below 6 active frames, or below 4 non-principal) => the R545 cast-thinning is AUTHORING-bound even with the explicit clause => a CONFIRMED structural blemish, not brief-fixable => diagnose what bounded it; consider (do not speculatively build) whether a sustainment read-surface would help; record as a measured pull.",
+    "pin2_holds_judged_sustainment_low": "PIN-2 holds but judged cast-sustainment-feel < 4 majority => the cast is structurally PRESENT but reads PERFUNCTORY in the tails (the PIN-2 necessary-not-sufficient gap realized) => felt sustainment is a craft ceiling (R476), not a structural one; the brief's storytelling clause did not buy felt presence; a high-value honest finding.",
+    "pin3_fails": "the warm dialogue render leaks (PIN-3 leak) or drifts off-branch / asserts cross-world knowledge (PIN-3 fidelity) => the warm posture at dialogue+breadth needs a repair pass the narration render (R515, zero repairs) did not => record the repair count as the posture tax; dialogue is a costlier render than narration. If repairs cannot clear it, the discipline does not extend cleanly to dialogue.",
+    "judged_voice_or_naturalness_low": "all pins hold but judged voice-distinctness or dialogue-naturalness < 4 majority => warm render hits a CRAFT ceiling at dialogue+breadth (R476) that it did not hit for narration (R515 3-0) => dialogue voicing across a broad cast is the harder render; the ceiling is model craft, blind-judged, not a substrate gap (no build)."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R550 ledger, committed pre-execution (R550 = the manifest round).",
+    "step_1_author": "spawn blind author-A (premise.md + author-brief.md) -> run/author/ (sections/facts/order/narrative-rules JSON + disclosure plan + gate-clean store + author-log.md).",
+    "step_2_pins12": "orchestrator rebuilds the store FRESH from author-A's JSON, runs PIN-1 gate criteria + the PIN-2 deep-tail scan, records every verdict verbatim in report.md; dumps per-frame report-frame-view to run/frame-views/.",
+    "step_3_outlines": "orchestrator assembles one structural outline per world-line (report-playthrough-manuscript --world W --telling holm --order) to run/manuscripts/ (frame-labelled, disclosure-annotated; the render's bible).",
+    "step_4_render": "spawn blind author-B (render-brief.md + the outlines) -> run/render/world-*.md + render-log.md.",
+    "step_5_extract": "orchestrator writes run/extract/vocab.md (ids + forks_at only); spawn the blind extractor (extractor-brief.md + the rendered manuscripts + vocab.md) -> run/extract/reextracted.atomic.json + sections/facts JSON + extract-log.md.",
+    "step_6_pin3": "orchestrator runs PIN-3 leak + fidelity over the re-extraction, records verbatim (incl. any repair count).",
+    "step_7_judges": "spawn 3 blind judges (judge-brief.md + the rendered manuscripts) -> run/judges/judge-{1,2,3}.md.",
+    "step_8_decide": "orchestrator applies the pre-committed decision rule, writes report.md, commits (R551).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim; PIN-2 is a JSON scan recorded in report.md; no tools/ change. Scratch *.atomic.json / *.playthrough.json stay gitignored; tracked evidence per runbook.md."
+  },
+
+  "predictions_preregistered": {
+    "PRED_1_authoring": "PIN-1 likely HOLDS at this moderate scale (~30-34 scenes; convergence is tractable, R524/R541/R545 precedent).",
+    "PRED_2_sustainment": "PIN-2 (structural) is the GENUINE open authoring question — R545 showed the cast thins in deep tails WITHOUT an explicit pin; with the clause now in the brief AND a pinned floor, whether author-A holds >= 6 active / >= 4 non-principal in every tail is exactly what is being tested. Honest expectation: plausible but NOT assured (the R545 evidence is that sustainment is harder than establishment).",
+    "PRED_3_render": "PIN-3 likely HOLDS (R515 warm narration was gate-clean zero-repairs; fidelity off_path is the main risk if dialogue drifts cross-world). Some repair count > 0 is plausible for dialogue (more chances to leak knowledge through a mouth than through narration).",
+    "PRED_voice": "NO pin (the candidate-1 open question). Honest expectation: voice-distinctness across a 10+ cast is the hard craft axis; R515 proved warmth for one narrating voice, NOT a chorus of distinct ones. A broad cast may collapse toward a few strong voices + a flatter remainder (the dialogue analog of the R545 cast-thinning).",
+    "PRED_sustainment_feel": "NO pin (the candidate-2 open question). Even if PIN-2 holds structurally, the tails may read perfunctory (the necessary-not-sufficient gap). This is the most likely place the experiment finds a real limit."
+  },
+
+  "honest_caveats": [
+    "n=1 premise / 1 author-A / 1 author-B / 1 extractor / 3 judges — one instance, not a distribution (the standing single-instance caveat of this experiment family).",
+    "COMBINING two candidates in one experiment reintroduces the R518 authoring-vs-render conflation risk; mitigated by two separate blind subagents and separable pins (PIN-1/PIN-2 authoring vs PIN-3 render), but the SAME premise carries both, so a weak premise could depress both axes at once. Recorded, not downplayed.",
+    "PIN-2 is a new structural metric with a necessary-not-sufficient limit (above); its thresholds (>= 6 active / >= 4 non-principal per tail) are a defensible floor, not a derived constant — they are pinned pre-execution so they cannot be retrofitted to the result, but a different reasonable floor could flip a marginal verdict. The judged sustainment-feel is the backstop.",
+    "knowledge-realism in dialogue is only PARTLY gate-enforceable (cross-world via fidelity; in-frame acquisition is the R539 YAGNI boundary, judged) — a confidently-stated in-frame omniscience leak could pass PIN-3 and rest on the judges, exactly the store-consistency != causal-coherence residue (feedback_dont_downplay_experiment_flaws)."
+  ]
+}
