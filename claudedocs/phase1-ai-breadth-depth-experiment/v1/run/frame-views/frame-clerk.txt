@@ -1,0 +1,6 @@
+=== frame `clerk` branch `law` entity `clerk` at `sc-51` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-23] f-clerk-reads-false: the clerk reads the falsified weights aloud and confirms the book was tampered with
+  [sc-51] f-clerk-seals-both: the clerk seals the true book and the falsified page together as evidence
+  [sc-13] f-clerk-suspects-collier: the clerk at first suspects the collier over-drew charcoal and stores against the book
+  [sc-13] f-clerk-weights-wrong: the clerk knows the ore weights in the book do not add up to the stores that should be in the cellar

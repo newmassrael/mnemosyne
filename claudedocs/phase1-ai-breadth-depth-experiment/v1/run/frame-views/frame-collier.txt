@@ -1,0 +1,5 @@
+=== frame `collier` branch `ration` entity `collier` at `sc-80` ===
+  holding=3 not_holding=0 unknown=0
+  [sc-14] f-collier-counts: the collier knows the charcoal sheds hold less than the book says they should
+  [sc-80] f-collier-keeps-stores: the collier is given the keeping of the stores and the village's trust
+  [sc-14] f-collier-village-authority: the collier knows the village looks to him, not the company, for who really runs Grayloam

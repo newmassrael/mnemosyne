@@ -1,0 +1,4 @@
+=== frame `carter` branch `main` entity `carter` at `sc-02` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-02] f-carter-knows-letter: the carter knows the sealed letter bore the company's audit seal but never saw its contents
+  [sc-02] f-carter-up: the carter brought the factor and a sealed company letter up the pass on the last day before it closed

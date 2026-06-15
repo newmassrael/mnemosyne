@@ -1,0 +1,17 @@
+=== frame `coll` branch `ration` entity `coll` at `sc-95` ===
+  holding=15 not_holding=0 unknown=0
+  [sc-81] f-accounts-sealed: Coll leaves the sealed accounts unopened in the chest through the winter
+  [sc-19] f-coll-cellar-short: Coll knows that when the cellar was opened the salt meat and meal were short of the charter count
+  [sc-20] f-coll-fork1: Coll faces the choice: open the dead master's accounts and ration by the ledger, or ration by need as the collier demands
+  [sc-08] f-coll-found-dead: Coll knows Maddox was found dead at his desk the morning after the first deep snow
+  [sc-09] f-coll-handed-charter: Coll knows he was handed the charter and the only cellar key and an authority no one quite agreed to
+  [sc-94] f-coll-hands-chest: Coll hands down the sealed chest and his own plain word of how the master died
+  [sc-12] f-coll-letter-partial: Coll knows the factor has a sealed company letter but has only been shown the part claiming the charter
+  [sc-08] f-coll-no-cause: Coll knows there was no plain wound or sign on the body and no one will yet say how the master died
+  [sc-03] f-coll-pass-shut: Coll knows the pass is shut and no help can come until the thaw
+  [sc-90] f-coll-pieces-no-ledger: Coll pieces the death together without the ledger: a dying man's own act after the audit
+  [sc-87] f-coll-questions-factor: Coll questions the factor about the night of the audit on the child's word
+  [sc-79] f-coll-refuses-ledger: Coll refuses to open the dead master's accounts and rations the settlement by need
+  [sc-92] f-coll-thaw-sealed: the thaw comes with the accounts still sealed and unread by anyone at Grayloam
+  [sc-95] f-end-ration: ENDING: the books are opened in the lowlands, not at Grayloam; the company finds the master's fraud for itself
+  [sc-83] f-ration-carries: rationing by need carries the village past the worst of the cold

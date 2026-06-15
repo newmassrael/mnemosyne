@@ -1,0 +1,6 @@
+=== frame `prospector` branch `village` entity `prospector` at `sc-73` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-17] f-prospector-assay: the prospector asks after the old assay records, looking for ore the company never declared
+  [sc-73] f-prospector-carries-word: the prospector offers to carry the village's word down the pass at the thaw
+  [sc-17] f-prospector-knows-factor: the prospector knows the factor of old from the lowlands as a man who audits failing posts and closes them
+  [sc-29] f-prospector-names-factor: the prospector tells Coll he knows the factor as a closer of failing posts

@@ -1,0 +1,5 @@
+=== frame `soldier` branch `village` entity `soldier` at `sc-72` ===
+  holding=3 not_holding=0 unknown=0
+  [sc-72] f-soldier-confronts: the soldier confronts the factor with what he saw: the factor left the house the night of the death
+  [sc-16] f-soldier-saw-factor: the soldier saw the factor leave the master's house late on the night of the first snow
+  [sc-16] f-soldier-watches: the soldier keeps to the smithy, says little, and watches who comes and goes from the master's house

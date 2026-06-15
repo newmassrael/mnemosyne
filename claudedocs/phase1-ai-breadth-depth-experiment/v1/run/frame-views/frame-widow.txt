@@ -1,0 +1,6 @@
+=== frame `widow` branch `ration` entity `widow` at `sc-91` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-07] f-widow-believes-overwork: the widow believes the worry of the company's audit and his weak heart killed him, not any hand
+  [sc-91] f-widow-confirms-ration: the widow confirms to Coll that the master took his own medicine at the desk that night
+  [sc-07] f-widow-knows-debts: the widow knows the house often went without while the master spoke of company debts
+  [sc-07] f-widow-saw-medicine: the widow saw Maddox take what she thought was his medicine at the ledger desk and say nothing of it

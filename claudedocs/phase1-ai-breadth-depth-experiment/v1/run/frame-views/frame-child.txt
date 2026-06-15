@@ -1,0 +1,5 @@
+=== frame `child` branch `ration` entity `child` at `sc-86` ===
+  holding=3 not_holding=0 unknown=0
+  [sc-86] f-child-again: the child says again she saw the tall visitor leave the master's house that night
+  [sc-18] f-child-believes-killer: the child believes the tall visitor must have done the master harm
+  [sc-18] f-child-visitor: the child says she saw a tall man leave the master's house in the snow the night he died

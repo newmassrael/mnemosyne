@@ -1,0 +1,7 @@
+=== frame `herbwife` branch `ration` entity `herbwife` at `sc-89` ===
+  holding=5 not_holding=0 unknown=0
+  [sc-06] f-herbwife-called: the herbwife was called to the master's house that night and treated him for his heart
+  [sc-06] f-herbwife-illness: the herbwife alone knows Maddox was dying of a wasting heart-illness
+  [sc-89] f-herbwife-tells-coll-ration: the herbwife tells Coll of the heart-tincture and the master's hidden illness
+  [sc-06] f-herbwife-tincture-out: the herbwife knows her heart-tincture is lethal in a large dose and that her flask was near-empty after that night
+  [sc-85] f-servant-recovers: the bonded servant recovers under the herbwife's care with stores freely given

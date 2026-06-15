@@ -1,0 +1,8 @@
+=== frame `factor` branch `ration` entity `factor` at `sc-93` ===
+  holding=6 not_holding=0 unknown=0
+  [sc-88] f-factor-admits: the factor admits he confronted the master over the books that night and left him alive
+  [sc-04] f-factor-audit-purpose: the factor knows he was sent up expressly to audit the ironmaster's accounts for the company
+  [sc-05] f-factor-confront: the factor knows he confronted Maddox over the books the night of the first snow and left him alive and angry
+  [sc-12] f-factor-letter-shown: the factor knows the sealed letter orders the charter and accounts to pass cleanly to the company on the master's death
+  [sc-82] f-factor-protests-defied: the factor protests that the charter and the company's order are being defied
+  [sc-93] f-riders-demand: the company riders demand the unopened accounts and the charter at the pass

@@ -1,0 +1,4 @@
+=== frame `keeper` branch `ration` entity `keeper` at `sc-84` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-84] f-furnace-falters-warm: the furnace falters as warned but the hearths are kept warm by shared charcoal
+  [sc-15] f-keeper-furnace: the furnace-keeper knows the bloom is going cold and the furnace cannot be carried through a hard winter

@@ -1,0 +1,18 @@
+# Judge 2 — verdict (verbatim)
+
+World-line ration: coherence 5/5, completeness 4/5, knowledge 5/5, cast 4/5, branch 5/5
+  - completeness: the collier-framing (f-gt-alter, the altered page naming the collier as debtor) is never surfaced to anyone in this road because the accounts stay sealed (sc-81, sc-92); the on-page collier (sc-14) never learns he was framed. (minor)
+  - cast: the carter (sc-02), cook, smith, clerk (sc-13), prospectors (sc-17), soldier (sc-16) drop out after the shared opening and do not return in the tail (sc-79–95), which leans on coll/factor/herbwife/widow/child/keeper/collier.
+World-line village: coherence 5/5, completeness 5/5, knowledge 5/5, cast 5/5, branch 5/5
+  - none
+World-line law: coherence 5/5, completeness 4/5, knowledge 5/5, cast 4/5, branch 5/5
+  - completeness: the prospector's assay thread (sc-17, sc-29 — undeclared ore the company never declared) is raised but never paid off in this road; it dangles past the ending (sc-56).
+  - cast: carter (sc-02), cook (sc-31), smith (sc-32), keeper (sc-15/33), prospector (sc-17/29), soldier (sc-16) recede after the shared/midwinter scenes; the law tail (sc-49–56) runs on coll/factor/clerk/collier with the rest as scenery.
+World-line settle: coherence 5/5, completeness 4/5, knowledge 5/5, cast 4/5, branch 5/5
+  - completeness: same dangling prospector assay thread (sc-17, sc-29) never returns; ends (sc-64) without resolving the undeclared-ore question.
+  - cast: same thinning as law — the settle tail (sc-57–64) is carried by coll/chaplain/collier/widow/factor; soldier, prospector, cook, smith, keeper, carter, child go quiet.
+OVERALL: coherence 5/5, completeness 4/5, knowledge 5/5, cast 4/5, branch-integrity 5/5, overall 5/5
+Biggest strength: The knowledge architecture is exact across a large cast and a long arc — the ground truth (Maddox, dying, dosed himself and forged the page to frame the collier) is held by no one whole, and each mind holds only what its own road earned (herbwife the illness, widow the medicine she misread, soldier the man leaving in the snow, child the "tall visitor," factor his confrontation), so the same death reads as accident, self-murder, or murder depending on who is looking — and the branches genuinely diverge into four distinct, motivated endings that each follow from the specific forks taken.
+Biggest weakness: The crowd is established broad in the shared opening but thins to a handful of principals in every branch tail, and a real setup — the prospectors hunting the undeclared ore / old assay records (sc-17, sc-29) — is planted as a live thread and never paid off in law or settle, leaving a hole a reader notices.
+Knowledge breaks (scene-id : who knows/ignores what, and why it's wrong): none — no person holds a fact from a world-line they are not on, none knows an event only others witnessed, and no one present is blind to what they plainly saw.
+One paragraph: This is a coherent authored story with a living cast and four real roads, not a pile of consistent facts. One sealed event at the center — a guilty, dying man's self-administered death dressed up to frame an innocent — is refracted through a dozen partial viewpoints whose knowledge is rationed exactly to what each could witness or be told, and the three forks (sc-20, sc-35, sc-48) carve genuinely distinct endings that stay diverged rather than collapsing back together. The single real weakness is breadth-sustainment: the opening crowds the stage with carter, cook, smith, clerk, prospectors, soldier, child, chaplain, but most recede to scenery in the branch tails, and the prospectors' undeclared-ore thread (sc-17/sc-29) is set up and then abandoned in the law and settle roads.

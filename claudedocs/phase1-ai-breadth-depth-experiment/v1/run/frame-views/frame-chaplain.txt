@@ -1,0 +1,5 @@
+=== frame `chaplain` branch `settle` entity `chaplain` at `sc-59` ===
+  holding=3 not_holding=0 unknown=0
+  [sc-11] f-chaplain-confession: the chaplain knows the master came to confession the week before and spoke of a wrong he meant to undo before he died
+  [sc-59] f-chaplain-confirms: the chaplain confirms the master confessed a wrong he meant to undo, lending Coll's account weight
+  [sc-11] f-chaplain-words: the chaplain knows he buried the master with the words and that no one spoke of murder at the laying
