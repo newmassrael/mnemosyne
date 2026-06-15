@@ -307,6 +307,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
         "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
         "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
+        "report-playable-world" => cmd_report_playable_world(&args[2..]),
         "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
         "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
         "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
@@ -465,6 +466,13 @@ fn print_help(prog: &str) {
     println!(
         " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
         prog
+    );
+    println!(
+        " {} report-playable-world --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 556/557 — the map_locator seam: fork topology + per-world scene walk + per-scene disclosure pointers a pinion runtime consumes"
     );
     println!(
         " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
@@ -2610,6 +2618,79 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
         }
         if !b.description.is_empty() {
             println!("      choice: {}", b.description);
+        }
+    }
+    Ok(())
+}
+
+/// Round 556/557 — playable world (`report-playable-world`, design sec 7.37):
+/// the `map_locator` seam a pinion narrative runtime consumes — per telling,
+/// the cross-world fork topology (R497) + each world-line's scene walk (R466) +
+/// the per-scene disclosure MapLocators (the R510 resolver). `--telling` is
+/// required (a playable world IS a telling); `--world` optionally narrows the
+/// per-world map (the fork tree stays full). Pure read projection, never gated.
+/// Order and store resolve through the shared ops path.
+fn cmd_report_playable_world(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(
+        args,
+        NarrativeFlags {
+            world: true,
+            telling: true,
+            ..Default::default()
+        },
+    )?;
+    let telling = a
+        .telling
+        .as_deref()
+        .ok_or_else(|| anyhow!("--telling arg required"))?;
+    let report = mnemosyne_ops::playable_world_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.world.as_deref(),
+        a.order_override.as_deref(),
+        telling,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if a.json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== playable world — telling `{}` — {} world(s), {} registered branch(es) ===",
+        report.telling,
+        report.worlds.len(),
+        report.fork_tree.branch_count
+    );
+    for (world, w) in &report.worlds {
+        println!(
+            "world `{world}`: {} scene(s), {} locator(s)",
+            w.scene_walk.len(),
+            w.locators.len()
+        );
+        for loc in &w.locators {
+            let ord = loc
+                .scene_ordinal
+                .map(|o| o.to_string())
+                .unwrap_or_else(|| "unplaced".to_string());
+            let obj = loc
+                .object
+                .as_deref()
+                .map(|o| format!("/{o}"))
+                .unwrap_or_default();
+            let at = loc
+                .first_at
+                .as_deref()
+                .map(|c| format!(" first_at={c}"))
+                .unwrap_or_default();
+            println!(
+                "  [{}] {} @ {}{} (#{}){}",
+                loc.mode.as_str(),
+                loc.fact_id,
+                loc.scene,
+                obj,
+                ord,
+                at
+            );
         }
     }
     Ok(())

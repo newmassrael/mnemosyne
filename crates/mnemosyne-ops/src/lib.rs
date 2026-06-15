@@ -569,6 +569,28 @@ pub fn fork_tree_report(
     mnemosyne_validate::continuity::fork_tree(&store, &order).map_err(OpError::Other)
 }
 
+/// Project the playable world (Round 556/557, design sec 7.37) over the
+/// workspace store with the shared order resolution — the `map_locator` seam a
+/// pinion narrative runtime consumes: per telling, the cross-world fork
+/// topology + each world-line's scene walk + the per-scene disclosure
+/// [`mnemosyne_validate::continuity::MapLocator`]s. A pure JOIN over the
+/// existing manuscript (R466) and fork-tree (R497) projections; pure read,
+/// never gated. `world` filters the per-world map (the fork tree stays full).
+pub fn playable_world_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    world: Option<&str>,
+    order_override: Option<&str>,
+    telling: &str,
+) -> Result<mnemosyne_validate::continuity::PlayableWorldReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::playable_world(&store, &order, world, telling)
+        .map_err(OpError::Other)
+}
+
 /// Disclosure coverage (Round 507, design sec 7.24 step 4) — the per-telling
 /// classification surface (disclosed / hidden-by-design / never-planned). Pure
 /// read projection, order-independent, never gated.

@@ -3333,6 +3333,143 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
     Ok(report)
 }
 
+/// One disclosure surface resolved to a stable world POINTER (Round 556/557,
+/// design sec 7.37) — the `map_locator` seam a pinion narrative runtime
+/// consumes. The authored [`mnemosyne_core::DisclosureSurface`] (`scene` +
+/// optional `object`) RESOLVED against a world-line's manuscript walk:
+/// `scene_ordinal` = the index of `scene` in this world's scene sequence (the
+/// stable position pointer; `None` when the surface scene is not a node of this
+/// world's walk — surfaced, never dropped, the R466 unplaced idiom). Carries NO
+/// baked geometry: pinion dereferences scene -> place, object -> prop, ordinal
+/// -> traversal order, mode -> how-surfaced. A PROJECTION, not stored state —
+/// every field derives from the manuscript begins-event + the disclosure
+/// resolver (R510), so a locator cannot drift from the coverage surface or the
+/// `--telling` carrier (one resolver, no second semantics).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MapLocator {
+    /// The world-line this pointer belongs to (`MAIN_BRANCH` or a branch id).
+    pub world_line: String,
+    /// The disclosed fact the locator carries (a `narrative_facts` key) — what
+    /// pinion dereferences for content.
+    pub fact_id: String,
+    /// The scene the disclosure surfaces in (the authored `surface.scene`, a
+    /// canon structure-section ref).
+    pub scene: String,
+    /// Index of `scene` in this world's manuscript walk (`scene_walk`); `None`
+    /// when the surface scene is not a node of this world's walk (surfaced, not
+    /// silently dropped — the R466 idiom).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene_ordinal: Option<usize>,
+    /// The diegetic carrier object the disclosure rides on (the authored
+    /// `surface.object`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object: Option<String>,
+    /// The effective disclosure mode under the telling (state/hint/imply/
+    /// withhold) — pinion honors it when surfacing.
+    pub mode: mnemosyne_core::DisclosureMode,
+    /// The reader's first-learn coordinate for THIS world (the disclosure
+    /// `first_at`; `None` when unpinned — distinct from the fact's `canon_from`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_at: Option<String>,
+}
+
+/// One world-line's playable surface (Round 556/557, design sec 7.37): the
+/// scene walk (the spatial skeleton the locators point INTO — section ids in
+/// the manuscript's deterministic order; a [`MapLocator`]'s `scene_ordinal`
+/// indexes here) and the resolved disclosure [`MapLocator`]s in walk order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PlayableWorld {
+    /// Section ids in this world's manuscript walk order (ordinal `i` =
+    /// `scene_walk[i]`). The walkable space; pinion dereferences each id.
+    pub scene_walk: Vec<String>,
+    /// The disclosure pointers for this world, in walk order.
+    pub locators: Vec<MapLocator>,
+}
+
+/// The playable-world projection for one telling (Round 556/557, design sec
+/// 7.37) — the single composing READ a pinion narrative runtime consumes,
+/// stitching the existing projections so a runtime need not re-derive across
+/// three verbs: the cross-world choice graph ([`fork_tree`], R497) + each
+/// world-line's scene walk ([`playthrough_manuscript`], R466) + the per-scene
+/// disclosure [`MapLocator`]s (the R510 resolver, already on each begins-event).
+/// Pure read projection, never gated (a playable surface is a reading surface,
+/// not a defect detector) — it adds no traversal and no authoritative state.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PlayableWorldReport {
+    /// The telling whose disclosure plan resolved the locators.
+    pub telling: String,
+    /// The cross-world choice graph (R497) — navigation context, always full
+    /// even under a `world` filter (the topology is inherently cross-world).
+    pub fork_tree: ForkTreeReport,
+    /// Per world-line (or the single `world` filter), the playable surface.
+    pub worlds: BTreeMap<String, PlayableWorld>,
+}
+
+/// Compose the playable-world projection for `telling` (Round 556/557, design
+/// sec 7.37): a PURE JOIN over [`playthrough_manuscript`] (the per-world scene
+/// walk with each begins-event's resolved disclosure) and [`fork_tree`] (the
+/// choice graph), reshaping every authored disclosure `surface` into a
+/// [`MapLocator`] whose `scene_ordinal` is the surface scene's index in the
+/// world's walk. `world` filters the per-world map (the fork tree stays full —
+/// topology is inherently cross-world). No new traversal, no new state — the
+/// locators derive entirely from the two existing projections, so they cannot
+/// drift from them. Fails loud through the sub-projections (an unregistered
+/// `world`, a typo'd `telling`).
+pub fn playable_world(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    world: Option<&str>,
+    telling: &str,
+) -> Result<PlayableWorldReport, String> {
+    let manuscript = playthrough_manuscript(store, order, world, Some(telling))?;
+    let fork_tree = fork_tree(store, order)?;
+    let mut worlds = BTreeMap::new();
+    for (world_id, manuscript_world) in &manuscript.worlds {
+        let scene_walk: Vec<String> = manuscript_world
+            .scenes
+            .iter()
+            .map(|scene| scene.section.clone())
+            .collect();
+        let ordinal: BTreeMap<&str, usize> = scene_walk
+            .iter()
+            .enumerate()
+            .map(|(index, section)| (section.as_str(), index))
+            .collect();
+        let mut locators = Vec::new();
+        for scene in &manuscript_world.scenes {
+            for event in &scene.begins {
+                let Some(disclosure) = &event.disclosure else {
+                    continue;
+                };
+                let Some(surface) = &disclosure.surface else {
+                    continue;
+                };
+                locators.push(MapLocator {
+                    world_line: world_id.clone(),
+                    fact_id: event.fact_id.clone(),
+                    scene: surface.scene.clone(),
+                    scene_ordinal: ordinal.get(surface.scene.as_str()).copied(),
+                    object: surface.object.clone(),
+                    mode: disclosure.mode,
+                    first_at: disclosure.first_at.clone(),
+                });
+            }
+        }
+        worlds.insert(
+            world_id.clone(),
+            PlayableWorld {
+                scene_walk,
+                locators,
+            },
+        );
+    }
+    Ok(PlayableWorldReport {
+        telling: telling.to_string(),
+        fork_tree,
+        worlds,
+    })
+}
+
 /// One untyped fact awaiting a typed-leg proposal (Round 458, design sec
 /// 7.15 Round A): everything the proposer needs about THIS fact, including
 /// the claim text and its sha256 — the R439 judgment-time pin the eventual
@@ -6077,6 +6214,117 @@ mod tests {
         // A typo'd telling fails loud (the registry ethos).
         let err = playthrough_manuscript(&store, &order, None, Some("nope")).unwrap_err();
         assert!(err.contains("disclosure_plans registry"), "{err}");
+    }
+
+    // ====================================================================
+    // Round 556/557 — playable-world projection (the map_locator seam, sec 7.37).
+    // ====================================================================
+
+    /// The playable-world JOIN: each authored disclosure `surface` becomes a
+    /// per-world [`MapLocator`] whose `scene_ordinal` indexes the world's scene
+    /// walk; the fork topology rides along; a fact disclosed without a surface
+    /// (the plan default) yields no locator.
+    #[test]
+    fn playable_world_resolves_surface_locators_per_world() {
+        let mut store = store_with_forks(
+            vec![
+                fact("f-main", "gt", "ch-1", None),
+                branch_fact("f-rev", "gt", "route", "ch-3"),
+            ],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let mut first_at = BTreeMap::new();
+        first_at.insert("route".to_string(), "ch-3".to_string());
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "f-main".to_string(),
+            mnemosyne_core::DisclosureOverride {
+                mode: mnemosyne_core::DisclosureMode::State,
+                first_at,
+                surface: Some(mnemosyne_core::DisclosureSurface {
+                    scene: "ch-2".to_string(),
+                    object: Some("clock".to_string()),
+                }),
+            },
+        );
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides,
+            },
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+
+        let report = playable_world(&store, &order, None, "t1").unwrap();
+        assert_eq!(report.telling, "t1");
+        // The fork topology rides along: route forks from main at ch-2.
+        assert!(report
+            .fork_tree
+            .branches
+            .iter()
+            .any(|b| b.branch_id == "route"));
+
+        // Main world: f-main's surface (ch-2) resolves to ordinal 1 in the walk
+        // [ch-1, ch-2, ch-3, ch-4]; no per-world first_at pinned for main.
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.scene_walk, vec!["ch-1", "ch-2", "ch-3", "ch-4"]);
+        assert_eq!(main.locators.len(), 1);
+        let loc = &main.locators[0];
+        assert_eq!(loc.fact_id, "f-main");
+        assert_eq!(loc.scene, "ch-2");
+        assert_eq!(loc.scene_ordinal, Some(1));
+        assert_eq!(loc.object.as_deref(), Some("clock"));
+        assert_eq!(loc.mode, mnemosyne_core::DisclosureMode::State);
+        assert_eq!(loc.first_at, None);
+
+        // Route world: f-main is visible (it begins at ch-1, before the ch-2
+        // fork), so its locator carries the per-world first_at (ch-3); f-rev
+        // falls to the plan default (withhold) with NO surface → no locator.
+        let route = &report.worlds["route"];
+        assert_eq!(route.locators.len(), 1);
+        let route_loc = &route.locators[0];
+        assert_eq!(route_loc.fact_id, "f-main");
+        assert_eq!(route_loc.first_at.as_deref(), Some("ch-3"));
+        assert_eq!(
+            route_loc.scene_ordinal,
+            route.scene_walk.iter().position(|s| s == "ch-2")
+        );
+    }
+
+    /// A surface scene that is not a node of the world's walk resolves to
+    /// `scene_ordinal = None` — surfaced, not silently dropped (the R466 idiom).
+    #[test]
+    fn playable_world_surfaces_unplaced_ordinal() {
+        let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "f-x".to_string(),
+            mnemosyne_core::DisclosureOverride {
+                mode: mnemosyne_core::DisclosureMode::Hint,
+                first_at: BTreeMap::new(),
+                surface: Some(mnemosyne_core::DisclosureSurface {
+                    scene: "ch-off".to_string(),
+                    object: None,
+                }),
+            },
+        );
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides,
+            },
+        );
+        let order = chain(&["ch-1", "ch-2"]);
+
+        let report = playable_world(&store, &order, None, "t1").unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.locators.len(), 1);
+        assert_eq!(main.locators[0].scene, "ch-off");
+        assert_eq!(main.locators[0].scene_ordinal, None);
     }
 
     // ====================================================================

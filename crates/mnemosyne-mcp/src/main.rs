@@ -570,6 +570,21 @@ pub struct ReportDisclosureCoverageArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportPlayableWorldArgs {
+    /// Telling id whose disclosure plan resolves the locators (required — a
+    /// playable world IS a telling). Fail-loud on a typo'd id.
+    pub telling: String,
+    /// Single-world filter (a registered branch id or `main`); omitted = every
+    /// query world. The fork tree stays full regardless. Fail-loud on an
+    /// unregistered id.
+    #[serde(default)]
+    pub world: Option<String>,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DisclosureLeakArgs {
     /// Telling id whose plan is the gate's authored side.
     pub telling: String,
@@ -1787,6 +1802,25 @@ impl MnemosyneServer {
     )]
     async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
         match ops::fork_tree_report(&self.workspace, None, args.0.order_path.as_deref()) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Playable world (R556/557, read-only): the map_locator seam a pinion narrative runtime consumes — per telling, the cross-world fork topology (R497) + each world-line's scene walk (R466) + the per-scene disclosure MapLocators (the authored DisclosureSurface resolved to a stable pointer {world_line, scene, scene_ordinal, object, mode, first_at}, no baked geometry = CQRS read-side). A pure JOIN over the manuscript + fork-tree projections; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated. Fail-loud on a typo'd telling / unregistered world."
+    )]
+    async fn report_playable_world(
+        &self,
+        args: Parameters<ReportPlayableWorldArgs>,
+    ) -> CallToolResult {
+        match ops::playable_world_report(
+            &self.workspace,
+            None,
+            args.0.world.as_deref(),
+            args.0.order_path.as_deref(),
+            &args.0.telling,
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
