@@ -576,7 +576,7 @@ mod tests {
             ("route".to_string(), Vec::new()),
             ("other".to_string(), Vec::new()),
         ]);
-        let order = CanonOrder::from_declaration(&decl, &ancestry, &BTreeMap::new()).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &ancestry).unwrap();
 
         // ON-PATH: route prose visits ch-1 then r-1 (route's terminal).
         let mut on = AtomicStore::new();

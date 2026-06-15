@@ -153,26 +153,23 @@ impl CanonOrder {
                 branches: BTreeMap::new(),
             },
             &BTreeMap::new(),
-            &BTreeMap::new(),
         )
     }
 
-    /// Construct from a declaration + the fork ancestry (Round 438) and the
-    /// forward confluence-suffixes (Round 533) — a branch's order composes its
-    /// whole world-line, BOTH directions. `ancestry` maps branch → backward
-    /// ancestor chain nearest-first ([`fork_ancestry`]); `forward` maps branch
-    /// → the confluences it flows INTO ([`fork_confluences`]). A branch's
-    /// order = closure of (base ∪ every backward ancestor's declared edges ∪
-    /// every forward confluence-suffix's declared edges ∪ its own),
-    /// cycle-checked per composition. Both directions contribute edge sets the
-    /// same way — an inherited prefix and a shared suffix both keep their
-    /// declared order without redeclaration; `closure_of` topo-closes the
-    /// resulting DAG unchanged (a confluence makes the lineage a DAG, not a
-    /// chain, which the order algebra already handles).
+    /// Construct from a declaration + the per-world order composition
+    /// ([`world_order_composition`], Rounds 438 + 533): `composition` maps a
+    /// branch → the OTHER branches whose declared edge sets compose its order
+    /// (its world-line membership in both directions — backward fork ancestors
+    /// and forward confluence-suffixes, unified, since the order algebra is
+    /// direction-agnostic). A branch's order = closure of (base ∪ every
+    /// contributor's declared edges ∪ its own), cycle-checked per composition;
+    /// `closure_of` topo-closes the resulting DAG unchanged (a confluence makes
+    /// a lineage a DAG, not a chain — the order algebra already handles it).
+    /// The order algebra never sees the narrative backward/forward distinction;
+    /// that lives in [`Lineage`] (visibility), where it is load-bearing.
     pub fn from_declaration(
         decl: &CanonOrderFile,
-        ancestry: &BTreeMap<String, Vec<String>>,
-        forward: &BTreeMap<String, Vec<String>>,
+        composition: &BTreeMap<String, Vec<String>>,
     ) -> Result<Self, String> {
         let base = closure_of(&decl.edges, "base")?;
         for branch in decl.branches.keys() {
@@ -192,19 +189,11 @@ impl CanonOrder {
             .branches
             .keys()
             .map(String::as_str)
-            .chain(ancestry.keys().map(String::as_str))
-            .chain(forward.keys().map(String::as_str))
+            .chain(composition.keys().map(String::as_str))
             .collect();
         for branch in all_branches {
             let mut combined = decl.edges.clone();
-            // Backward ancestors AND forward confluence-suffixes both
-            // contribute their declared edge sets to this world's order.
-            for contributor in ancestry
-                .get(branch)
-                .into_iter()
-                .flatten()
-                .chain(forward.get(branch).into_iter().flatten())
-            {
+            for contributor in composition.get(branch).into_iter().flatten() {
                 if let Some(edges) = decl.branches.get(contributor) {
                     combined.extend(edges.iter().cloned());
                 }
@@ -1017,45 +1006,37 @@ pub fn lineage_of(
     })
 }
 
-/// Backward ancestor chains (nearest-first) for every registered branch — one
-/// half of the [`CanonOrder::from_declaration`] composition input (the
-/// inherited prefix; [`fork_confluences`] is the forward half).
-pub fn fork_ancestry(
+/// Per potential query world, the OTHER branches whose declared edge sets
+/// compose into its order (Rounds 438 + 533) — the single
+/// [`CanonOrder::from_declaration`] composition input. A world's order is the
+/// closure of its base ∪ these contributors' edges ∪ its own; the contributors
+/// are its world-line membership in BOTH directions: backward fork ancestors
+/// (the inherited prefix, [`mnemosyne_core::fork_chain`]) AND forward
+/// confluence-suffixes (the shared continuation, [`mnemosyne_core::forward_confluences`]).
+/// The order algebra is direction-agnostic — it composes edge sets and
+/// `closure_of` topo-closes the resulting DAG — so the two relations unify here
+/// into one contributor list; the backward/forward DISTINCTION lives only in
+/// [`Lineage`] (visibility), where it is load-bearing. Keyed for `MAIN_BRANCH`
+/// and every registered branch (a confluence parent may be `main`); a world
+/// with no contributors is omitted (its order is the base, reached via the
+/// `reach_for` fallback — byte-stable for a pre-fork/pre-confluence store).
+pub fn world_order_composition(
     branches: &BTreeMap<String, mnemosyne_core::Branch>,
 ) -> Result<BTreeMap<String, Vec<String>>, String> {
-    let mut out = BTreeMap::new();
-    for branch in branches.keys() {
-        out.insert(
-            branch.clone(),
-            mnemosyne_core::fork_chain(branches, branch)?
-                .into_iter()
-                .map(|(ancestor, _)| ancestor)
-                .collect(),
-        );
-    }
-    Ok(out)
-}
-
-/// Forward confluence-suffixes for every potential query world — the other
-/// half of the [`CanonOrder::from_declaration`] composition input (Round 533,
-/// the shared suffix; [`fork_ancestry`] is the backward half). Keyed for
-/// `MAIN_BRANCH` and every registered branch (a confluence parent may be
-/// `main`), but only worlds that actually flow into a confluence carry a
-/// non-empty list — a pre-confluence store yields all-empty, so the order
-/// composition is byte-stable. Each value is [`mnemosyne_core::forward_confluences`].
-pub fn fork_confluences(
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     for world in
         std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
     {
-        let forward = mnemosyne_core::forward_confluences(branches, &world);
-        if !forward.is_empty() {
-            out.insert(world, forward);
+        let mut contributors: Vec<String> = mnemosyne_core::fork_chain(branches, &world)?
+            .into_iter()
+            .map(|(ancestor, _)| ancestor)
+            .collect();
+        contributors.extend(mnemosyne_core::forward_confluences(branches, &world));
+        if !contributors.is_empty() {
+            out.insert(world, contributors);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Three-state world-visibility of a fact in query world `world` (Rounds
@@ -3676,8 +3657,7 @@ mod tests {
                 ),
             ]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &BTreeMap::new(), &BTreeMap::new()).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let mk = |id: &str, branch: &str, from: &str, to: Option<&str>| {
             let mut f = fact(id, "seward", from, to);
             f.branch = Some(branch.to_string());
@@ -3916,8 +3896,7 @@ mod tests {
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &BTreeMap::new(), &BTreeMap::new()).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
@@ -3936,8 +3915,7 @@ mod tests {
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
         };
-        let err =
-            CanonOrder::from_declaration(&decl, &BTreeMap::new(), &BTreeMap::new()).unwrap_err();
+        let err = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap_err();
         assert!(err.contains("default world-line"), "{err}");
     }
 
@@ -4179,14 +4157,13 @@ mod tests {
             vec![branch_fact("f-deep", "gt", "deep", "ch-3")],
             &[("route", MAIN_BRANCH, "ch-2"), ("deep", "route", "ch-3")],
         );
-        let ancestry = fork_ancestry(&store.branches).unwrap();
+        let composition = world_order_composition(&store.branches).unwrap();
+        // No confluence here, so composition = the backward ancestor chain.
         assert_eq!(
-            ancestry["deep"],
+            composition["deep"],
             vec!["route".to_string(), MAIN_BRANCH.to_string()]
         );
-        let order =
-            CanonOrder::from_declaration(&decl, &ancestry, &fork_confluences(&store.branches))
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &composition).unwrap();
         // ch-2 -> ch-3 was declared on `route`; `deep` inherits it.
         assert!(order.le("deep", "ch-2", "ch-3"));
         assert!(!order.le(MAIN_BRANCH, "ch-2", "ch-3"));
@@ -4500,7 +4477,6 @@ mod tests {
                 )]),
             },
             &BTreeMap::from([("spine".to_string(), vec![])]),
-            &BTreeMap::new(),
         )
         .unwrap();
         // ch-3 is positioned in `spine`; a fact on `main` (the default) does not
@@ -4562,7 +4538,6 @@ mod tests {
                 ]),
             },
             &BTreeMap::from([("left".to_string(), vec![]), ("right".to_string(), vec![])]),
-            &BTreeMap::new(),
         )
         .unwrap();
         // A fact on `left` whose evidence cites ch-4 — a scene only on the
@@ -6240,12 +6215,8 @@ mod tests {
                 ("dawn".to_string(), vec![e("rk", "rv")]),
             ]),
         };
-        CanonOrder::from_declaration(
-            &decl,
-            &fork_ancestry(&store.branches).unwrap(),
-            &fork_confluences(&store.branches),
-        )
-        .unwrap()
+        CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+            .unwrap()
     }
 
     /// Round 533 — VISIBILITY: a fact authored ONCE on the confluence holds in
@@ -6382,12 +6353,9 @@ mod tests {
                 vec![["ch-2".to_string(), "k-1".to_string()]],
             )]),
         };
-        let order = CanonOrder::from_declaration(
-            &decl,
-            &fork_ancestry(&store.branches).unwrap(),
-            &fork_confluences(&store.branches),
-        )
-        .unwrap();
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
         let report = fork_tree(&store, &order).unwrap();
         let by_id = |id: &str| report.branches.iter().find(|b| b.branch_id == id).unwrap();
 

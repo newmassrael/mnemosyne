@@ -219,10 +219,9 @@ fn compose_canon_order(
     decl: &mnemosyne_validate::continuity::CanonOrderFile,
     store: &AtomicStore,
 ) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
-    use mnemosyne_validate::continuity::{fork_ancestry, fork_confluences, CanonOrder};
-    let ancestry = fork_ancestry(&store.branches).map_err(OpError::Other)?;
-    let forward = fork_confluences(&store.branches);
-    CanonOrder::from_declaration(decl, &ancestry, &forward).map_err(OpError::Other)
+    use mnemosyne_validate::continuity::{world_order_composition, CanonOrder};
+    let composition = world_order_composition(&store.branches).map_err(OpError::Other)?;
+    CanonOrder::from_declaration(decl, &composition).map_err(OpError::Other)
 }
 
 /// The continuity-scan envelope both wires emit (Round 435): the configured
