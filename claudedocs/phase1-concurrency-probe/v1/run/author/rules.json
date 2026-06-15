@@ -1,0 +1,8 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Premise truths #1/#2/#3 as exclusive state: the one water cart is with at most one crew-lead at a time, and the western-draw line is in at most one state at a time.",
+  "rules": [
+    {"id":"one-cart","predicate":"cart_with","class":"exclusive","per":"subject"},
+    {"id":"one-line-state","predicate":"line_state","class":"exclusive","per":"subject"}
+  ]
+}

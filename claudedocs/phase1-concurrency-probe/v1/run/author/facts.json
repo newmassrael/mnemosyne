@@ -1,0 +1,54 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"the ground truth — what actually happened on the ridge"},
+    {"frame_id":"wrenna-belief","description":"what Wrenna Syle believes about the state of the cut, from the word relayed to her"}
+  ],
+  "branches": [
+    {"branch_id":"hold","description":"Bo sends the cart to hold the lower edge — the town lives","forks_from":"main","forks_at":"sc-09"},
+    {"branch_id":"fall","description":"Bo keeps the cart with the saws — the fire jumps and the town is lost","forks_from":"main","forks_at":"sc-09"}
+  ],
+  "entities": [
+    {"entity_id":"bo","kind":"person","description":"Bo Aldercott, the town's road-warden, leads the cut crew"},
+    {"entity_id":"wrenna","kind":"person","description":"Wrenna Syle, the only one who reads fire well enough to walk a backfire down a slope; leads the burn crew"},
+    {"entity_id":"tam","kind":"person","description":"Tam, the runner who carries word of the cut's progress between the two crews"},
+    {"entity_id":"handteam","kind":"group","description":"the relief hand-team that closes the granite gap by pick and bar"},
+    {"entity_id":"cart","kind":"object","description":"the single mule-drawn water bowser — the only water on the ridge"},
+    {"entity_id":"cut","kind":"object","description":"the firebreak line being sawed and cleared along the saddle"},
+    {"entity_id":"backfire","kind":"object","description":"the controlled backfire Wrenna walks down toward the cut"},
+    {"entity_id":"mainfire","kind":"object","description":"the two-week wildfire cresting the ridge"},
+    {"entity_id":"town","kind":"place","description":"Coldwater Bend, in the valley below the ridge"},
+    {"entity_id":"draw","kind":"place","description":"the western draw, where a granite seam stalls the cut"}
+  ],
+  "predicates": [
+    {"predicate_id":"line_state","object_kind":"scalar","description":"the state of the firebreak line at the western draw: open / closed / breached"},
+    {"predicate_id":"cart_with","object_kind":"entity","description":"which crew-lead the one water cart is with"}
+  ],
+  "facts": [
+    {"fact_id":"f-001","frame":"gt","claim":"The two-week wildfire crests Mara Ridge above Coldwater Bend on the night the valley wind will reverse and drive it downslope at dawn","canon_from":"sc-01","evidence":["sc-01"],"entities":["mainfire","town"]},
+    {"fact_id":"f-002","frame":"gt","claim":"The only play before the wind turns is to cut the saddle firebreak and walk a controlled backfire down so the two fires meet at the cut line and die for want of fuel","canon_from":"sc-02","evidence":["sc-02","sc-01"],"entities":["cut","backfire","mainfire"]},
+    {"fact_id":"f-003","frame":"gt","claim":"Bo Aldercott's cut crew opens the firebreak at the east end of the saddle and saws west","canon_from":"sc-03","evidence":["sc-03"],"entities":["bo","cut"]},
+    {"fact_id":"f-004","frame":"gt","claim":"One mule-drawn water cart is the only water on the ridge, and both crews will need it through the night","canon_from":"sc-03","evidence":["sc-03"],"entities":["cart"]},
+    {"fact_id":"f-005","frame":"gt","claim":"Wrenna Syle lights the backfire high on the slope and begins walking its lower edge down toward the saddle","canon_from":"sc-04","evidence":["sc-04"],"entities":["wrenna","backfire"]},
+    {"fact_id":"f-006","frame":"gt","claim":"How fast Wrenna may walk the backfire depends minute by minute on how far Bo's cut has actually reached, or it crosses the unfinished line into the town","canon_from":"sc-04","evidence":["sc-04","sc-02"],"entities":["wrenna","backfire","cut","town"]},
+    {"fact_id":"f-007","frame":"gt","claim":"Tam runs the line between the crews, carrying word of the cut's progress so Wrenna can pace the backfire; neither lead can see the other in the dark and smoke","canon_from":"sc-05","evidence":["sc-05","sc-04"],"entities":["tam","wrenna","cut"]},
+    {"fact_id":"f-008","frame":"gt","claim":"The saws strike a granite seam at the western draw and the firebreak stalls there, leaving the line open","canon_from":"sc-06","evidence":["sc-06"],"entities":["cut","draw"],"payoff_expectation":"expected","typed":{"subject":"cut","predicate":"line_state","object":{"kind":"value","value":"open"}}},
+    {"fact_id":"f-009","frame":"gt","claim":"The night turns on the one cart: the saw-teams need it to keep cutting in the heat while the burn crew needs it to hold the backfire's lower edge; for the first hour it stays with the cut crew","canon_from":"sc-07","evidence":["sc-07","sc-03"],"entities":["cart","bo","wrenna"],"typed":{"subject":"cart","predicate":"cart_with","object":{"kind":"entity","id":"bo"}}},
+    {"fact_id":"f-010","frame":"wrenna-belief","claim":"Wrenna believes the western-draw line has already been cut and closed","canon_from":"sc-08","evidence":["sc-08"],"entities":["wrenna","cut","draw"],"typed":{"subject":"cut","predicate":"line_state","object":{"kind":"value","value":"closed"}}},
+    {"fact_id":"f-011","frame":"gt","claim":"The word relayed to Wrenna garbled: the western draw was reported lined when the granite gap is in fact still open","canon_from":"sc-08","evidence":["sc-08","sc-06","sc-05"],"entities":["tam","wrenna","cut","draw"]},
+    {"fact_id":"f-012","frame":"gt","claim":"Trusting the report that the line is closed, Wrenna quickens the backfire's descent toward the saddle","canon_from":"sc-08","evidence":["sc-08","sc-04"],"entities":["wrenna","backfire"]},
+    {"fact_id":"f-013","frame":"gt","claim":"At midnight a relief runner reaches Bo with the truth: the western-draw gap is still open and the quickened backfire's lower edge is coming down on it","canon_from":"sc-09","evidence":["sc-09","sc-06","sc-08"],"entities":["bo","tam","cut","draw","backfire"]},
+    {"fact_id":"f-014","frame":"gt","claim":"The cart call is forced — there is water for only one place and the dawn wall is fixed: hold the lower edge, or keep cutting the granite","canon_from":"sc-09","evidence":["sc-09","sc-07","sc-01"],"entities":["cart","bo","wrenna"]},
+
+    {"fact_id":"f-020","frame":"gt","branch":"hold","claim":"Bo sends the cart down to hold the backfire's lower edge at the draw and pulls a hand-team to take the granite gap by pick and bar, where no saws and no water are needed","canon_from":"sc-10a","evidence":["sc-10a","sc-09","sc-06"],"entities":["bo","cart","draw","handteam","wrenna"],"supersedes_in_frame":"f-009","typed":{"subject":"cart","predicate":"cart_with","object":{"kind":"entity","id":"wrenna"}}},
+    {"fact_id":"f-021","frame":"gt","branch":"hold","claim":"With the cart on it, the backfire's lower edge is held at the draw for the crucial minutes instead of jumping the open line","canon_from":"sc-11a","evidence":["sc-11a","sc-10a"],"entities":["cart","backfire","draw","wrenna"]},
+    {"fact_id":"f-022","frame":"gt","branch":"hold","claim":"The hand-team closes the granite gap by pick and bar; the western-draw line is shut at last","canon_from":"sc-12a","evidence":["sc-12a","sc-10a","sc-06"],"entities":["handteam","cut","draw"],"pays_off":["f-008"],"supersedes_in_frame":"f-008","typed":{"subject":"cut","predicate":"line_state","object":{"kind":"value","value":"closed"}}},
+    {"fact_id":"f-023","frame":"gt","branch":"hold","claim":"Held back just enough, the backfire arrives at the now-closed line; the two fires meet at the cut and die for want of anything left to burn","canon_from":"sc-13a","evidence":["sc-13a","sc-12a","sc-02"],"entities":["backfire","mainfire","cut"]},
+    {"fact_id":"f-024","frame":"gt","branch":"hold","claim":"By the time the fires meet, the line Wrenna had been told was closed is at last actually closed — her wrong belief has been overtaken by the truth","canon_from":"sc-13a","evidence":["sc-13a","sc-12a","sc-08"],"entities":["wrenna","cut","draw"]},
+    {"fact_id":"f-025","frame":"gt","branch":"hold","claim":"The wind turns at dawn: the cut is complete, the backfire met the line, and neither crew failed for want of water at the wrong moment — Coldwater Bend wakes to ash on the ridge and nothing more","canon_from":"sc-14a","evidence":["sc-14a","sc-13a","sc-12a","sc-01"],"entities":["town","cut","backfire","cart"]},
+
+    {"fact_id":"f-030","frame":"gt","branch":"fall","claim":"Bo keeps the cart with the saws at the draw to beat the granite faster, trusting the backfire's lower edge to hold dry a little longer","canon_from":"sc-10b","evidence":["sc-10b","sc-09","sc-06"],"entities":["bo","cart","draw"],"supersedes_in_frame":"f-009","typed":{"subject":"cart","predicate":"cart_with","object":{"kind":"entity","id":"bo"}}},
+    {"fact_id":"f-031","frame":"gt","branch":"fall","claim":"Dry on its lower edge and quickened by Wrenna's pace, the backfire jumps the still-open draw before the gap is cut and crosses the unfinished line","canon_from":"sc-11b","evidence":["sc-11b","sc-10b","sc-08","sc-06"],"entities":["backfire","cut","draw"],"pays_off":["f-008"],"supersedes_in_frame":"f-008","typed":{"subject":"cut","predicate":"line_state","object":{"kind":"value","value":"breached"}}},
+    {"fact_id":"f-032","frame":"gt","branch":"fall","claim":"The crossed fire runs downslope toward Coldwater Bend; the saws never beat the granite in time to matter","canon_from":"sc-12b","evidence":["sc-12b","sc-11b"],"entities":["backfire","mainfire","town","cut"]},
+    {"fact_id":"f-033","frame":"gt","branch":"fall","claim":"The wind turns at dawn and drives the loosed fire, already below the saddle, down onto the town; Coldwater Bend is gone by full light","canon_from":"sc-13b","evidence":["sc-13b","sc-12b","sc-01"],"entities":["town","mainfire","backfire"]}
+  ]
+}
