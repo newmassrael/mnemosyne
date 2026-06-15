@@ -30,3 +30,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-ai-npc-breadth-experiment/
 /claudedocs/phase1-ai-npc-breadth-experiment/**/*.atomic.json
 /claudedocs/phase1-ai-npc-breadth-experiment/**/*.playthrough.json
+!/claudedocs/phase1-ai-breadth-depth-experiment/
+/claudedocs/phase1-ai-breadth-depth-experiment/**/*.atomic.json
+/claudedocs/phase1-ai-breadth-depth-experiment/**/*.playthrough.json

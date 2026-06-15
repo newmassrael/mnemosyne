@@ -1,0 +1,87 @@
+{
+  "manifest": "ai-breadth-depth-experiment/v1",
+  "designed": "2026-06-15 (R544 manifest round; sha256 of this manifest pinned in the R544 ledger entry BEFORE any author/judge subagent runs — the R453/R499/R503/R514/R519/R530/R536/R540 pre-commit pattern). The protocol it executes was DESIGNED at R543 (design-doc sec 7.34 + the R543 ledger entry); per the R503 precedent the design and the pinned manifest are separable rounds and the pin sits adjacent to execution.",
+
+  "lineage_note": "DESIGNED by the lineage that scoped the combined axis at R543. Per the R469/R500 contamination bound this lineage may NOT author the fact base or blind-judge it; it writes this manifest + the PREMISE (the human's premise / high-level-direction role per the AI-first doctrine) + the author/judge briefs, and orchestrates the deterministic gates + manuscript assembly only.",
+
+  "question": {
+    "primary": "Can an AI SELF-AUTHOR a gate-clean, causally coherent story that is BOTH DEEP (a long, consequentially branching arc, 60-plus scenes, 3-plus terminal world-lines) AND BROAD (a large individuated cast, 10-plus people each a knowledge-frame holding what THAT person knows and believes) from a premise only, running its own write-gate-read-repair loop? R524 proved DEPTH (70-scene/7-branch base, judged coherent). R541 proved BREADTH (29-scene/12-frame cast, both pins held, judges 5/5 knowledge-realism + cast-distinctness). The untested question is whether holding BOTH at once degrades EITHER — the closest approach yet to AAA scale.",
+    "isolation": "The COMBINATION is the variable. Each axis is proven SEPARATELY; this base demands BOTH at once (depth NOT held moderate as in R541, breadth NOT held to 3 frames as in R524). The deliverable is the FACT BASE (+ per-world manuscripts + per-NPC knowledge dossiers), NOT prose; no prose is rendered or judged (R514/R515 already answered render). Convergence (the R532-R537 confluence) is AVAILABLE as ordinary vocabulary alongside fork (the R536 posture) but NOT required — a busy deep+broad plot may naturally want a JOIN; whether the author reaches for it is a RECORDED metric, not a pin.",
+    "the_cross_tension": "The decisive sub-question is whether DEPTH dilutes BREADTH (a long arc collapsing the cast into a few principals + bystanders, or pushing a frame to assert facts off its world-line = an omniscience leak the substrate cannot gate, R539) OR whether BREADTH flattens DEPTH (a big cast flattening the branches into one undifferentiated crowd, the consequential forks losing their distinct endings). PIN-D1/D2/D3 measure store-consistency + the depth floor + the breadth floor deterministically; the blind judges measure whether the deep+broad base reads as an AUTHORED story with a LIVING CAST, or an internally-consistent pile that does not add up at the hardest scale. A divergence (pins hold but judges find leaks / palette-swap cast / flattened branches) = the combined ceiling = the R476 ceiling surfacing where two axes meet, and a MEASURED pull for whichever lever the failure mode names."
+  },
+
+  "premise": {
+    "title": "The Ember Winter at Grayloam (FRESH, original — NOT reused)",
+    "file": "premise.md",
+    "fresh_rationale": "A fresh premise with NO pre-existing fact base — the AI invents the facts. The premise is chosen to DEMAND BOTH axes: a long winter cuts off an upland iron-and-charcoal settlement for a whole season (depth = a season-long arc with SEVERAL consequential decision points, not one fork), and the settlement is a crowded community of people each with private knowledge and an agenda about the ironmaster's death and about each other (breadth = a large individuated cast). It gives the setting + a seed cast + the inciting frame + the central question + structural constraints (60-plus scenes; at least 3 consequential forks producing at least 3 distinct terminal world-lines, sequential/nested forks allowed; at least 10 individuated person-frames; at least 3 setup->payoffs; several belief divergences). Everything else is the author's to invent. Convergence is permitted but not required.",
+    "human_role_note": "Authoring the premise is the human's role (premise / high-level direction / final review), NOT a contamination of the AI-authoring claim (the ai-first-end-to-end doctrine: the AI authors the FACTS; the human supplies the premise)."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R543/R544): writes manifest + premise + briefs; rebuilds the store fresh from the author's JSON; runs the deterministic gates + per-NPC frame-views; assembles per-world manuscripts; cross-references the controls. NEVER authors a fact or judges.",
+    "blind_author": "ONE fresh-context subagent. Receives ONLY premise.md + author-brief.md. Authors the fact base (sections + facts + order) into a scratch store via mnemosyne-cli, using the gates as its self-consistency feedback. BLIND to: the hypothesis, the pins, the judge rubric, the decision rule, the cross-tension question. It is told to build a deep branching arc AND allocate a frame per person, each knowing only their own road (storytelling guidance, the same register as the R520/R524/R541 author briefs) but NOT the pin thresholds, the scene/cast floors as measured pins, or that the breadth-vs-depth cross-tension is the tested variable (no teaching-to-test).",
+    "blind_judges": "3 fresh-context subagents. Receive ONLY judge-brief.md + the per-world manuscripts (frame-labelled story outline). BLIND to: the experiment, the hypothesis, that the outline is AI-authored, and each other.",
+    "contamination_bound": "the R469 discipline (the 11th use of the sec 7.18/7.19/7.22/7.23/7.25 blind-experiment family). The lineage that designed the axis may not author or judge its instance."
+  },
+
+  "deterministic_pins": {
+    "PIN_D1_convergence": {
+      "claim": "PIN. The author CONVERGES to a gate-clean (store-consistent) fact base within a bounded loop budget, AT COMBINED SCALE.",
+      "criteria_all_required": [
+        "import of the final sections.json + facts.json into a fresh empty seed store = 0 errors (loads clean).",
+        "validate-continuity --order: structural violations = 0 AND interval violations = 0 (includes the R522 evidence-reachability, the R488 off-branch checks, and the R535 confluence reconciliation gate if any confluence is declared).",
+        "report-playthrough-manuscript --world W --order, for EVERY registered non-confluence world-line W: unplaced = 0, undecidable = 0.",
+        "report-timeline-gaps --world W --order, every W: 0 gap / 0 unreached scene."
+      ],
+      "budget": "bounded authoring loop; if the author cannot reach this, PIN-D1 FAILS = the tooling-friction branch of the decision rule (recorded with the author-log iteration count)."
+    },
+    "PIN_D2_depth_floor": {
+      "claim": "PIN. The converged base meets the DEPTH FLOOR (a genuinely long, consequentially branching arc) AND the structural completeness floor.",
+      "criteria_all_required": [
+        "DEPTH: >= 60 sections (scenes) registered; >= 3 branches; >= 3 terminal world-lines (a deep arc, beating the prose-first scale-floor where store-consistency != coherence first appeared at ~60).",
+        "report-fork-tree --order: >= 2 fork points placed (0 unplaced fork points); every world-line reaches a terminal.",
+        "report-payoff-coverage --order: 0 dangling setups in any terminal world (every payoff_expectation=expected has a paying fact reachable in the world); >= 3 setup->payoff pairs total.",
+        "validate-continuity: 0 off-branch / evidence-unreachable (no fact or backreference references a coordinate off its own world-line)."
+      ]
+    },
+    "PIN_D3_breadth_floor": {
+      "claim": "PIN. The converged base meets the BREADTH FLOOR (a real, populated, individuated cast) held SIMULTANEOUSLY with the depth floor.",
+      "criteria_all_required": [
+        "BREADTH: >= 10 distinct person-frames beyond the ground-truth frame are registered, and EACH holds >= 1 fact (report-frame-view --frame <P> --branch <its world> --at <its key scene> shows holding >= 1) — a populated cast, not empty name-tags.",
+        "every person-frame's report-frame-view at its key scene is three-state honest (holding / not_holding / unknown, no mis-scoped-branch unknown leakage).",
+        "0 within-frame contradiction (validate-continuity surfaces none): no single person's frame holds two facts that cannot both be true for that mind."
+      ]
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, judge-brief.md rubric, over the orchestrator-assembled per-world manuscripts (report-playthrough-manuscript --world W --order, one per world-line; facts are frame-labelled so the judges can read who-knows-what). Single arm (a capability test, no A/B).",
+    "axes": "causal coherence / completeness / KNOWLEDGE REALISM (per-NPC acquisition coherence — the breadth axis) / CAST DISTINCTNESS (individuated minds vs palette-swaps — the breadth axis) / BRANCH INTEGRITY (distinct, motivated endings — the depth axis) / overall (1-5 each, scene-id-cited).",
+    "control_crossref": "FREE isolation signals (orchestrator computes, judges blind): (a) R524 — a 70-scene/7-branch DEPTH base judged coherent 5/5 (the depth-axis bar, ~3 frames); (b) R541 — a 29-scene/12-frame BREADTH cast judged 5/5 knowledge-realism + 5/5 cast-distinctness (the breadth-axis bar, moderate depth). This base's question is whether comparable judged coherence + knowledge-realism + branch-integrity hold when BOTH axes are pushed at once.",
+    "outcome_pin": "NONE. The procedure is pinned; the coherence + knowledge-realism + cast-distinctness + branch-integrity verdicts at combined scale are the open question."
+  },
+
+  "decision_rule_pre_committed": {
+    "all_pins_hold_and_coherent": "ALL three pins hold AND judges find it coherent with a real cast and distinct branches (majority overall coherence >= 4/5 AND knowledge-realism >= 4/5 AND cast-distinctness >= 4/5 AND branch-integrity >= 4/5, no major breaks) => AI-self-authoring SCALES on the COMBINED axis (depth AND breadth held at once) => the binding bottleneck (R529) is met near AAA scale => next = render the combined base (R529 #9 NPC dialogue) / pinion projection / the world-state axis. The expected outcome; its value is establishing the combined baseline.",
+    "pins_hold_but_incoherent": "ALL pins hold but judges find a COMBINATION failure: OMNISCIENCE LEAKS (knowledge-realism < 4 majority — a frame asserting facts off its world-line, more likely at depth x breadth) => build the R539-designed NPC-knowledge-acquisition gate; OR a PALETTE-SWAP cast (cast-distinctness < 4 — depth diluted the cast) => the combined ceiling on the breadth axis; OR FLATTENED branches (branch-integrity < 4 — breadth flattened the depth) => the combined ceiling on the depth axis. Build the lever the dominant failure mode names (leak => R539 acquisition gate; duplication-at-scale, if the author was forced to duplicate a shared tail => the R528 series-parallel lattice; possession/prose-ghost error of the R542 sc-32 class => the R527 world-state axis) then re-run. A high-value finding.",
+    "pin_d1_fails": "the author cannot converge to gate-clean within the bounded budget => authoring-loop TOOLING friction at combined scale is the binding lever => diagnose (record the iteration count + the stuck gate), consider the aggregation read-surface (sec 7.26).",
+    "pin_d2_or_d3_fails": "the author converges but cannot sustain BOTH floors at once — fewer than 60 scenes / 3 branches (depth collapsed under breadth) OR fewer than 10 populated frames (breadth collapsed under depth) => the COMBINATION is harder to self-author than either axis alone => diagnose which axis bounded the other (the headline combined-scale finding)."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R544 ledger, committed pre-execution (R544 = the manifest round).",
+    "step_1_author": "spawn the blind author (premise.md + author-brief.md). It returns the gate-clean store + sections.json/facts.json/order.json + author-log.md in run/author/.",
+    "step_2_pins": "orchestrator rebuilds the store FRESH from the author's sections.json + facts.json + order.json (independent of the author's store file), runs PIN-D1 + PIN-D2 + PIN-D3 gate criteria, records every verdict verbatim in report.md; dumps each person-frame's report-frame-view to run/frame-views/ as the breadth-floor evidence.",
+    "step_3_manuscripts": "orchestrator assembles one reading manuscript per world-line (report-playthrough-manuscript --world W --order), neutral (no pin/judge context).",
+    "step_4_judges": "spawn 3 blind judges (judge-brief.md + the manuscripts), record verdicts verbatim in run/judges/judge-{1,2,3}.md.",
+    "step_5_decide": "orchestrator applies the pre-committed decision rule, writes report.md, commits (R545).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim; no tools/ change. Scratch *.atomic.json / *.playthrough.json stay gitignored; tracked evidence = manifest, premise, briefs, the authored sections/facts/order JSON, the per-world manuscripts, the per-NPC frame-views, author-log.md, report.md."
+  },
+
+  "predictions_preregistered": {
+    "PRED_D1": "PIN. Likely HOLDS but the open risk — convergence to gate-clean is tractable per scene (R520/R524/R541), but at 60-plus scenes x 10-plus frames the loop has more state to keep consistent; PIN-D1-fail (tooling friction at combined scale) is more plausible here than in any prior run.",
+    "PRED_D2": "PIN. The DEPTH floor likely HOLDS (R524 reached 70 scenes / 7 branches); the open risk is whether the author sustains depth WHILE also spending effort on a broad cast.",
+    "PRED_D3": "PIN. The BREADTH floor likely HOLDS for frame COUNT (frames are cheap); the open risk is whether the populated frames stay MEANINGFULLY distinct over a LONG arc (judged, not pinned) or collapse toward principals + bystanders as the plot deepens.",
+    "PRED_cross_tension": "NO pin (the OPEN question). Honest expectation: the combination is strictly harder than either axis alone. The most plausible failure is an OMNISCIENCE LEAK at the margins (with 10+ minds across 60+ scenes and 3+ branches, the surface for a frame to assert an off-world-line or unwitnessed fact is much larger than R541's 29x12) and/or a tail of the recurring MISSING-PRECONDITION slip (R524 act-dig, R541 sc-32, the R476 ceiling) compounding at scale. Whether judged coherence/knowledge-realism/branch-integrity nonetheless hold (=> SCALES) or one degrades (=> the combined ceiling + a measured lever) is exactly what the judges measure. Either outcome is decision-useful."
+  }
+}
