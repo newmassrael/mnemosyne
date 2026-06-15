@@ -173,4 +173,11 @@ seams, and the experiment has standing limits:
   vocab.md, author-log / render-log / extract-log, the 3 judge verdicts, this report.
   Scratch `*.atomic.json` (the rebuilt + author + re-extraction stores) stay gitignored.
 
+**R555 reproducibility note:** the PIN-2 deep-tail sustainment scan and the per-world
+fidelity projection were run as throwaway Python at execution time; R555 elevated both
+into the Rust `tools/experiment-harness` (`cast-sustainment`, `project-world`, fail-loud,
+tested), and re-running them over the tracked `run/author/facts.json` + `order.json` and
+the re-extraction reproduces this report's numbers exactly (PIN-2: 12 frames / all worlds
+PASS / HOLD; fidelity off_path=0). The orchestration is no longer a deleted script.
+
 SSOT = this file + the R550 / R551 ledger entries.

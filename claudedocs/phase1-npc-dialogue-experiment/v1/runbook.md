@@ -40,7 +40,8 @@ firewall — see manifest.json). Six blind subagents do that work, each fresh-co
      (≠ gt) holding ≥1 fact whose `canon_from` is a deep-tail scene of W; mark the
      top-3-by-total-fact-count frames as principals. Record the per-world table; check
      the floor (≥6 frames active per tail, ≥4 of them non-principal). Computed from the
-     author's `facts.json` × `order.json` (a JSON scan, no new tool).
+     author's `facts.json` × `order.json` via `experiment-harness cast-sustainment`
+     (R555 — Rust, fail-loud; replaced the throwaway scan that first ran this).
 
 3. **Assemble structural outlines (orchestrator):** for each registered world-line W,
    `report-playthrough-manuscript --world W --telling holm --order order.json --sidecar
@@ -90,11 +91,13 @@ firewall — see manifest.json). Six blind subagents do that work, each fresh-co
   tails (the blemish PIN-2 + the sustainment axis here operationalize). Cite all three
   beside the verdict; the judges never see them.
 
-## No new harness code
+## Harness + CLI (R555 update)
 
-Reuse `mnemosyne-cli` verbs verbatim; the only computed metric (PIN-2 deep-tail
-population) is a JSON scan of the author's facts × order, recorded in report.md — no
-`tools/` change. Scratch `*.atomic.json` / `*.playthrough.json` stay gitignored;
+Reuse `mnemosyne-cli` verbs verbatim; the PIN-2 deep-tail metric runs through
+`experiment-harness cast-sustainment` and the per-world fidelity projection through
+`experiment-harness project-world` (R555 — at execution time these were throwaway
+Python, since elevated to the fail-loud Rust harness so every pin reproduces from the
+tracked inputs). Scratch `*.atomic.json` / `*.playthrough.json` stay gitignored;
 tracked evidence = manifest, premise, the four briefs, runbook, the authored
 sections/facts/order/rules JSON, the disclosure plan record, the structural outlines,
 the rendered manuscripts, the re-extraction sections/facts JSON, the frame-views, the

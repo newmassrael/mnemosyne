@@ -44,7 +44,11 @@ three blind subagents (repair-render, re-extract, A/B judges x3) do the rest. R4
 
 - The arm->version randomization removes label bias; the label-map is the only place the
   mapping lives until report.md (judges blind).
-- PIN-R3 is guaranteed by the splice (orchestrator replaces only the 4 blocks) and
+- PIN-R3 is guaranteed by the splice (`experiment-harness splice` replaces only the
+  named blocks, preserving every other byte — an unmatched scene id is a hard error) and
   CONFIRMED by the recorded diff — any judged difference is attributable to the 4 scenes.
-- No tools/ change; reuse v1 verbs + the single-world-projection method. Scratch
-  *.atomic.json gitignored (the v1 .gitignore rule covers v2 as a subdir).
+- R555: the splice + the per-world fidelity projection run through
+  `experiment-harness splice` / `project-world` (Rust, fail-loud); at execution time they
+  were throwaway Python, since elevated so arm R reproduces byte-for-byte from the tracked
+  v1 render + `run/repair/` scenes. Scratch `*.atomic.json` gitignored (the v1 .gitignore
+  rule covers v2 as a subdir).

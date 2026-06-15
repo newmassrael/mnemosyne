@@ -114,4 +114,12 @@ repair stage trustworthy. The one residue (an in-frame deduction grounding at sc
 the unchanged boundary: gates cover fidelity, not in-frame acquisition, and the blind judge
 remains the backstop for the latter.
 
+**R555 reproducibility note:** the arm-R splice, the per-world fidelity projection, and
+the A/B packet build were throwaway Python at execution time; R555 elevated the splice +
+projection into the Rust `tools/experiment-harness` (`splice`, `project-world`, fail-loud,
+tested). `splice` over the tracked v1 render + the `run/repair/` scenes reproduces arm R
+byte-for-byte (the regeneration removed one immaterial spurious EOF blank line from the
+shelter arm — prose, scene structure, gates, and the 3-0 verdict unchanged), making the
+PIN-R3 localization a mechanical guarantee rather than a hand-checked diff.
+
 SSOT = this file + the R552 / R553 ledger entries.

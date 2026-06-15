@@ -12,9 +12,12 @@
 
 mod assemble;
 mod playthrough;
+mod project;
 mod seal;
 mod shuffle;
+mod splice;
 mod story;
+mod sustain;
 mod util;
 
 use std::process::ExitCode;
@@ -28,6 +31,9 @@ USAGE:
   experiment-harness assemble --story <md> --playthrough <json> --world <name> [--titles-from <store.json>] [--out <md>]
   experiment-harness shuffle --experiment <name> [--note <text>] --out <json> <arm> <arm> [arm...]
   experiment-harness verify-seal --map <json> --sha256 <hex>
+  experiment-harness cast-sustainment --facts <facts.json> --order <order.json> [--ground-frame <id>] [--principals <n>] [--min-active <n>] [--min-nonprincipal <n>] [--min-frames <n>]
+  experiment-harness project-world --store <reextracted.atomic.json> --world <name> --out <store.json> [--main-branch <id>]
+  experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -46,6 +52,22 @@ shuffle
 
 verify-seal
   Re-hash --map and compare to --sha256. Match exits 0, mismatch exits 1.
+
+cast-sustainment
+  Read a fact base (facts.json + order.json) and report, per world-line, how many
+  distinct person-frames stay active in the deep tail (scenes after the fork). The
+  thresholds are explicit flags (default: principals 3, min-active 6,
+  min-nonprincipal 4, min-frames 10; ground frame `gt`). Exits 1 if the floor fails.
+
+project-world
+  Emit the single-world projection of a re-extracted store for validate-render-
+  fidelity: keep every narrative_fact on the target world or the spine (--main-branch,
+  default `main`), drop sibling-branch facts. A store missing narrative_facts errors.
+
+splice
+  Replace named `## sc-NN` scene blocks in --base with the re-rendered --replace
+  files (one scene each), leaving every other byte untouched. An unmatched scene id
+  is a hard error — the localization of a targeted repair is mechanically guaranteed.
 ";
 
 fn main() -> ExitCode {
@@ -68,6 +90,9 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "assemble" => cmd_assemble(&args[1..]),
         "shuffle" => cmd_shuffle(&args[1..]),
         "verify-seal" => cmd_verify_seal(&args[1..]),
+        "cast-sustainment" => cmd_cast_sustainment(&args[1..]),
+        "project-world" => cmd_project_world(&args[1..]),
+        "splice" => cmd_splice(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -129,6 +154,99 @@ fn cmd_verify_seal(args: &[String]) -> HResult<ExitCode> {
     }
 }
 
+fn cmd_cast_sustainment(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let facts = p.require("--facts")?;
+    let order = p.require("--order")?;
+    let ground_frame = p
+        .optional("--ground-frame")?
+        .unwrap_or_else(|| "gt".to_string());
+    let principals = parse_usize(p.optional("--principals")?, "--principals", 3)?;
+    let min_active = parse_usize(p.optional("--min-active")?, "--min-active", 6)?;
+    let min_nonprincipal = parse_usize(p.optional("--min-nonprincipal")?, "--min-nonprincipal", 4)?;
+    let min_frames = parse_usize(p.optional("--min-frames")?, "--min-frames", 10)?;
+    p.finish()?;
+
+    let floor = sustain::Floor {
+        ground_frame,
+        principals,
+        min_active,
+        min_nonprincipal,
+        min_frames,
+    };
+    let report = sustain::run(&facts, &order, floor)?;
+    println!(
+        "person-frames (!= {}): {}",
+        report.floor.ground_frame, report.person_frames
+    );
+    println!(
+        "principals (top-{}): {}",
+        report.floor.principals,
+        report.principals.join(", ")
+    );
+    for w in &report.worlds {
+        println!(
+            "  world {}: active={} (non-principal {}) -> {}",
+            w.world,
+            w.active.len(),
+            w.nonprincipal.len(),
+            if w.ok { "PASS" } else { "FAIL" }
+        );
+    }
+    println!(
+        "FLOOR >= {} frames, >= {} active & >= {} non-principal per tail: {}",
+        report.floor.min_frames,
+        report.floor.min_active,
+        report.floor.min_nonprincipal,
+        if report.hold { "HOLD" } else { "FAIL" }
+    );
+    if report.hold {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Ok(ExitCode::from(1))
+    }
+}
+
+fn cmd_project_world(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let store = p.require("--store")?;
+    let world = p.require("--world")?;
+    let out = p.require("--out")?;
+    let main_branch = p
+        .optional("--main-branch")?
+        .unwrap_or_else(|| "main".to_string());
+    p.finish()?;
+
+    let (kept, dropped) = project::run(&store, &world, &main_branch, &out)?;
+    eprintln!(
+        "world `{world}`: kept {kept} fact(s), dropped {dropped} sibling-branch fact(s) -> {out}"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_splice(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let base = p.require("--base")?;
+    let out = p.require("--out")?;
+    let replacements = p.take_all("--replace");
+    p.finish()?;
+    if replacements.is_empty() {
+        return Err("splice needs at least one --replace <scene.md>".to_string());
+    }
+    let used = splice::run(&base, &replacements, &out)?;
+    eprintln!("spliced {used} scene(s) into {out}");
+    Ok(ExitCode::SUCCESS)
+}
+
+fn parse_usize(value: Option<String>, name: &str, default: usize) -> HResult<usize> {
+    match value {
+        None => Ok(default),
+        Some(s) => s
+            .parse::<usize>()
+            .map_err(|e| format!("{name} must be a non-negative integer: {e}")),
+    }
+}
+
 /// A tiny strict flag parser: `--name value` options plus bare positionals.
 /// Unknown flags and missing values are loud errors at `finish()`/`require()`.
 struct Flags {
@@ -173,6 +291,20 @@ impl Flags {
             return Some(self.opts.remove(pos).1);
         }
         None
+    }
+
+    /// Drain every occurrence of a repeatable option, in order (e.g. `--replace`).
+    fn take_all(&mut self, name: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < self.opts.len() {
+            if self.opts[i].0 == name {
+                out.push(self.opts.remove(i).1);
+            } else {
+                i += 1;
+            }
+        }
+        out
     }
 
     fn require(&mut self, name: &str) -> HResult<String> {
