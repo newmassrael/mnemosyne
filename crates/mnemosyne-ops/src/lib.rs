@@ -212,15 +212,17 @@ fn resolve_narrative_rules(
     }
 }
 
-/// Compose the declaration with the store's fork ancestry into the
-/// queryable order (Round 438) — one construction path for both reads.
+/// Compose the declaration with the store's fork ancestry (Round 438) and
+/// forward confluence-suffixes (Round 533) into the queryable order — one
+/// construction path for both reads, BOTH world-line directions.
 fn compose_canon_order(
     decl: &mnemosyne_validate::continuity::CanonOrderFile,
     store: &AtomicStore,
 ) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
-    use mnemosyne_validate::continuity::{fork_ancestry, CanonOrder};
+    use mnemosyne_validate::continuity::{fork_ancestry, fork_confluences, CanonOrder};
     let ancestry = fork_ancestry(&store.branches).map_err(OpError::Other)?;
-    CanonOrder::from_declaration(decl, &ancestry).map_err(OpError::Other)
+    let forward = fork_confluences(&store.branches);
+    CanonOrder::from_declaration(decl, &ancestry, &forward).map_err(OpError::Other)
 }
 
 /// The continuity-scan envelope both wires emit (Round 435): the configured

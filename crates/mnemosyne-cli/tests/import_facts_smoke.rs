@@ -88,7 +88,8 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
         "{stdout}"
     );
     let store = read_store(tmp.path());
-    assert_eq!(store["schema_version"], 22);
+    // CURRENT_SCHEMA_VERSION — bumped to 23 by R532 (Branch.converges_from).
+    assert_eq!(store["schema_version"], 23);
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"

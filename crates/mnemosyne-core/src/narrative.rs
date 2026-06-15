@@ -26,7 +26,7 @@
 //! frame itself onto that dimension). The JSON log stays the SSOT and
 //! carries every field the index will ever need.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +130,47 @@ pub fn fork_chain(
     Err(format!(
         "branch fork ancestry of `{branch}` exceeds the registry size — cyclic out-of-band edit"
     ))
+}
+
+/// Walk a world-line's FORWARD confluence-suffix closure (Round 533 — the
+/// forward dual of [`fork_chain`]). Given a query world `world`, returns every
+/// confluence branch `C` such that `world` is, transitively, one of `C`'s
+/// converging parents (`world ∈ C.converges_from`, or `world` reaches such a
+/// `C` through a chain of confluences). These are the SHARED continuations
+/// `world` flows INTO past a merge — a fact authored once on `C` is part of
+/// `world`'s world-line (the inverse of fork inheritance: a fork CHILD inherits
+/// its parent's prefix; a converging PARENT inherits the confluence's suffix).
+/// Sorted, deduplicated. Termination needs no hop cap: each confluence enters
+/// the result set at most once (`BTreeSet` dedup), and only a fresh insert
+/// re-expands — so the walk is bounded by the registry size by construction,
+/// the dual of `fork_chain`'s linear-chain cap (a chain is not deduplicated, so
+/// it needs the explicit guard; a deduplicated frontier cannot loop).
+pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> Vec<String> {
+    // Reverse adjacency: parent branch -> the confluences converging FROM it.
+    // (`converges_from` points child->parents; the forward walk needs
+    // parent->children.)
+    let mut downstream: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (id, b) in branches {
+        for parent in &b.converges_from {
+            downstream
+                .entry(parent.branch.as_str())
+                .or_default()
+                .push(id.as_str());
+        }
+    }
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let mut frontier: Vec<String> = vec![world.to_string()];
+    while let Some(cur) = frontier.pop() {
+        let Some(confluences) = downstream.get(cur.as_str()) else {
+            continue;
+        };
+        for &c in confluences {
+            if out.insert(c.to_string()) {
+                frontier.push(c.to_string());
+            }
+        }
+    }
+    out.into_iter().collect()
 }
 
 /// One recorded conflict assertion (Round 439): the judged target plus a
