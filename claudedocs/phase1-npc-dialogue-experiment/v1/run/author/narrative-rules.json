@@ -1,0 +1,5 @@
+{
+  "rules": [
+    { "id": "one-holder-per-object", "predicate": "possession", "class": "exclusive", "per": "object" }
+  ]
+}

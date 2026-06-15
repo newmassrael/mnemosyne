@@ -1,0 +1,37 @@
+[
+  {"section_id":"sc-01","parent_doc":"cawdy","title":"The light goes out on the Sneck","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"cawdy","title":"Grey morning: the shore full of timber","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"cawdy","title":"Halsa takes the keeper's tally","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"cawdy","title":"The boy and the thing on the bar","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"cawdy","title":"The riding-officer counts the casks","coverage_expectation":"informational"},
+  {"section_id":"sc-06","parent_doc":"cawdy","title":"The mate pulled from the surf","coverage_expectation":"informational"},
+  {"section_id":"sc-07","parent_doc":"cawdy","title":"The passenger and the locked chest","coverage_expectation":"informational"},
+  {"section_id":"sc-08","parent_doc":"cawdy","title":"The salt-wife first down at the ebb","coverage_expectation":"informational"},
+  {"section_id":"sc-09","parent_doc":"cawdy","title":"The old pilot reads the Sneck","coverage_expectation":"informational"},
+  {"section_id":"sc-10","parent_doc":"cawdy","title":"The headman speaks for the Holm","coverage_expectation":"informational"},
+  {"section_id":"sc-11","parent_doc":"cawdy","title":"The factor's man wants his cargo","coverage_expectation":"informational"},
+  {"section_id":"sc-12","parent_doc":"cawdy","title":"The keeper's broken leg and the doused light","coverage_expectation":"informational"},
+  {"section_id":"sc-13","parent_doc":"cawdy","title":"The boy's third telling","coverage_expectation":"informational"},
+  {"section_id":"sc-14","parent_doc":"cawdy","title":"The short cask, and the lantern Halsa finds","coverage_expectation":"informational"},
+  {"section_id":"sc-15","parent_doc":"cawdy","title":"The Drang begins to bare: Halsa must choose","coverage_expectation":"informational"},
+
+  {"section_id":"sc-16","parent_doc":"cawdy","title":"REPORT — Halsa carries it to the officer","coverage_expectation":"informational"},
+  {"section_id":"sc-17","parent_doc":"cawdy","title":"REPORT — the officer opens the chest","coverage_expectation":"informational"},
+  {"section_id":"sc-18","parent_doc":"cawdy","title":"REPORT — the pilot and the headman before the Crown","coverage_expectation":"informational"},
+  {"section_id":"sc-19","parent_doc":"cawdy","title":"REPORT — the mate runs at the ebb","coverage_expectation":"informational"},
+  {"section_id":"sc-20","parent_doc":"cawdy","title":"REPORT — the cutter comes; the Holm gives up its own","coverage_expectation":"informational"},
+  {"section_id":"sc-21","parent_doc":"cawdy","title":"REPORT — aftermath: what the Holm keeps and loses","coverage_expectation":"informational"},
+
+  {"section_id":"sc-22","parent_doc":"cawdy","title":"SHELTER — Halsa lets the wreck stand as the sea's","coverage_expectation":"informational"},
+  {"section_id":"sc-23","parent_doc":"cawdy","title":"SHELTER — the headman buries the false light","coverage_expectation":"informational"},
+  {"section_id":"sc-24","parent_doc":"cawdy","title":"SHELTER — the passenger bargains for the chest","coverage_expectation":"informational"},
+  {"section_id":"sc-25","parent_doc":"cawdy","title":"SHELTER — the boy nearly tells the officer","coverage_expectation":"informational"},
+  {"section_id":"sc-26","parent_doc":"cawdy","title":"SHELTER — the cutter comes; the Holm holds its tongue","coverage_expectation":"informational"},
+  {"section_id":"sc-27","parent_doc":"cawdy","title":"SHELTER — aftermath: what the silence costs","coverage_expectation":"informational"},
+
+  {"section_id":"sc-28","parent_doc":"cawdy","title":"CONFRONT — Halsa calls the Holm to the shore","coverage_expectation":"informational"},
+  {"section_id":"sc-29","parent_doc":"cawdy","title":"CONFRONT — the lantern named to the headman","coverage_expectation":"informational"},
+  {"section_id":"sc-30","parent_doc":"cawdy","title":"CONFRONT — the mate's hand at the supercargo's throat","coverage_expectation":"informational"},
+  {"section_id":"sc-31","parent_doc":"cawdy","title":"CONFRONT — the reckoning on the bar","coverage_expectation":"informational"},
+  {"section_id":"sc-32","parent_doc":"cawdy","title":"CONFRONT — aftermath: the Holm answers the cutter alone","coverage_expectation":"informational"}
+]
