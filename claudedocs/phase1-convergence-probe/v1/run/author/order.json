@@ -1,0 +1,29 @@
+{
+  "edges": [
+    ["sc-01","sc-02"],
+    ["sc-02","sc-03"],
+    ["sc-03","sc-04"],
+    ["sc-04","sc-05"],
+    ["sc-05","sc-06"],
+    ["sc-06","sc-07"],
+    ["sc-07","sc-08"]
+  ],
+  "branches": {
+    "sluice": [
+      ["sc-08","sc-09a"],
+      ["sc-09a","sc-10a"],
+      ["sc-10a","sc-11a"],
+      ["sc-11a","sc-12a"],
+      ["sc-12a","sc-reckoning"],
+      ["sc-reckoning","sc-river"]
+    ],
+    "ride": [
+      ["sc-08","sc-09b"],
+      ["sc-09b","sc-10b"],
+      ["sc-10b","sc-11b"],
+      ["sc-11b","sc-12b"],
+      ["sc-12b","sc-reckoning"],
+      ["sc-reckoning","sc-river"]
+    ]
+  }
+}

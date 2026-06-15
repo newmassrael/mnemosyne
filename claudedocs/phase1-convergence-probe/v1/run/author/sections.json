@@ -1,0 +1,23 @@
+[
+  {"section_id":"sc-01","parent_doc":"harlow","title":"The rising pond","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"harlow","title":"The voiceless keeper","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"harlow","title":"The jammed relief gate","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"harlow","title":"Who kept the pond high","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"harlow","title":"The dam will overtop","coverage_expectation":"informational"},
+  {"section_id":"sc-06","parent_doc":"harlow","title":"The keeper's law","coverage_expectation":"informational"},
+  {"section_id":"sc-07","parent_doc":"harlow","title":"The race to the sluice","coverage_expectation":"informational"},
+  {"section_id":"sc-08","parent_doc":"harlow","title":"The choice","coverage_expectation":"informational"},
+
+  {"section_id":"sc-09a","parent_doc":"harlow","title":"The sluice opened","coverage_expectation":"informational"},
+  {"section_id":"sc-10a","parent_doc":"harlow","title":"The lower row in the dark","coverage_expectation":"informational"},
+  {"section_id":"sc-11a","parent_doc":"harlow","title":"The dam holds, the mill saved","coverage_expectation":"informational"},
+  {"section_id":"sc-12a","parent_doc":"harlow","title":"First light at the lower row","coverage_expectation":"informational"},
+
+  {"section_id":"sc-09b","parent_doc":"harlow","title":"The sluice held, the ride","coverage_expectation":"informational"},
+  {"section_id":"sc-10b","parent_doc":"harlow","title":"The lower row wakes","coverage_expectation":"informational"},
+  {"section_id":"sc-11b","parent_doc":"harlow","title":"The dam overtops","coverage_expectation":"informational"},
+  {"section_id":"sc-12b","parent_doc":"harlow","title":"The mill wrecked","coverage_expectation":"informational"},
+
+  {"section_id":"sc-reckoning","parent_doc":"harlow","title":"The mill-yard reckoning","coverage_expectation":"informational"},
+  {"section_id":"sc-river","parent_doc":"harlow","title":"The river's edge","coverage_expectation":"informational"}
+]
