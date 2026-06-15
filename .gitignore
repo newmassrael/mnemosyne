@@ -33,3 +33,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-ai-breadth-depth-experiment/
 /claudedocs/phase1-ai-breadth-depth-experiment/**/*.atomic.json
 /claudedocs/phase1-ai-breadth-depth-experiment/**/*.playthrough.json
+!/claudedocs/phase1-concurrency-probe/
+/claudedocs/phase1-concurrency-probe/**/*.atomic.json
+/claudedocs/phase1-concurrency-probe/**/*.playthrough.json
