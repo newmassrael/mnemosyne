@@ -1,0 +1,7 @@
+# Scratch stores stay out (the experiment convention, R404 seeded-fixture rule):
+# the authored sections.json/facts.json/order.json reproduce the store via
+# import-sections/import-facts. Tracked evidence = manifest, premise, the author
+# + judge briefs, runbook, the authored JSON sources, the per-world manuscripts,
+# the per-NPC frame-views, author-log.md, and report.md with the gate verdicts.
+*.atomic.json
+*.playthrough.json
