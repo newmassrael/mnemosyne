@@ -3374,14 +3374,20 @@ pub struct MapLocator {
 }
 
 /// One world-line's playable surface (Round 556/557, design sec 7.37): the
-/// scene walk (the spatial skeleton the locators point INTO — section ids in
-/// the manuscript's deterministic order; a [`MapLocator`]'s `scene_ordinal`
-/// indexes here) and the resolved disclosure [`MapLocator`]s in walk order.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// world's full manuscript (the spatial skeleton the locators point INTO)
+/// overlaid with the resolved disclosure [`MapLocator`]s. The manuscript is
+/// reused VERBATIM — not a `scene_walk: Vec<String>` re-projection — so the R466
+/// B-1 honesty surfaces ride through, never silently dropped (R558 review fix):
+/// `undeclared_adjacencies` (the walk is ONE valid linearization of a partial
+/// order, not the only one), `unplaced_facts`, `undecidable`,
+/// `sections_outside_order`. A [`MapLocator`]'s `scene_ordinal` indexes
+/// `manuscript.scenes`.
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct PlayableWorld {
-    /// Section ids in this world's manuscript walk order (ordinal `i` =
-    /// `scene_walk[i]`). The walkable space; pinion dereferences each id.
-    pub scene_walk: Vec<String>,
+    /// The world's manuscript (R466) reused verbatim: the ordered scene walk +
+    /// the B-1 honesty surfaces. `MapLocator::scene_ordinal` indexes
+    /// `manuscript.scenes`; pinion dereferences each scene's section id.
+    pub manuscript: WorldManuscript,
     /// The disclosure pointers for this world, in walk order.
     pub locators: Vec<MapLocator>,
 }
@@ -3424,16 +3430,14 @@ pub fn playable_world(
     let manuscript = playthrough_manuscript(store, order, world, Some(telling))?;
     let fork_tree = fork_tree(store, order)?;
     let mut worlds = BTreeMap::new();
-    for (world_id, manuscript_world) in &manuscript.worlds {
-        let scene_walk: Vec<String> = manuscript_world
+    for (world_id, manuscript_world) in manuscript.worlds {
+        // Owned-key index so the borrow ends before the manuscript moves into
+        // PlayableWorld (the manuscript is reused verbatim, R558 fix).
+        let ordinal: BTreeMap<String, usize> = manuscript_world
             .scenes
             .iter()
-            .map(|scene| scene.section.clone())
-            .collect();
-        let ordinal: BTreeMap<&str, usize> = scene_walk
-            .iter()
             .enumerate()
-            .map(|(index, section)| (section.as_str(), index))
+            .map(|(index, scene)| (scene.section.clone(), index))
             .collect();
         let mut locators = Vec::new();
         for scene in &manuscript_world.scenes {
@@ -3456,9 +3460,9 @@ pub fn playable_world(
             }
         }
         worlds.insert(
-            world_id.clone(),
+            world_id,
             PlayableWorld {
-                scene_walk,
+                manuscript: manuscript_world,
                 locators,
             },
         );
@@ -6269,7 +6273,13 @@ mod tests {
         // Main world: f-main's surface (ch-2) resolves to ordinal 1 in the walk
         // [ch-1, ch-2, ch-3, ch-4]; no per-world first_at pinned for main.
         let main = &report.worlds[MAIN_BRANCH];
-        assert_eq!(main.scene_walk, vec!["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let walk: Vec<&str> = main
+            .manuscript
+            .scenes
+            .iter()
+            .map(|s| s.section.as_str())
+            .collect();
+        assert_eq!(walk, vec!["ch-1", "ch-2", "ch-3", "ch-4"]);
         assert_eq!(main.locators.len(), 1);
         let loc = &main.locators[0];
         assert_eq!(loc.fact_id, "f-main");
@@ -6289,8 +6299,43 @@ mod tests {
         assert_eq!(route_loc.first_at.as_deref(), Some("ch-3"));
         assert_eq!(
             route_loc.scene_ordinal,
-            route.scene_walk.iter().position(|s| s == "ch-2")
+            route
+                .manuscript
+                .scenes
+                .iter()
+                .position(|s| s.section == "ch-2")
         );
+    }
+
+    /// R558 review fix: the playable surface reuses the manuscript VERBATIM, so
+    /// the R466 B-1 honesty surfaces ride through — a diamond's incomparable
+    /// middle is surfaced, never silently totalized into a false linear walk.
+    #[test]
+    fn playable_world_carries_manuscript_honesty_surfaces() {
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-1".to_string(), "ch-3".to_string()],
+            ["ch-2".to_string(), "ch-4".to_string()],
+            ["ch-3".to_string(), "ch-4".to_string()],
+        ])
+        .unwrap();
+        let mut store = store_with(vec![fact("fa", "gt", "ch-1", None)]);
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides: BTreeMap::new(),
+            },
+        );
+        let report = playable_world(&store, &order, None, "t1").unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(
+            main.manuscript.undeclared_adjacencies,
+            vec![["ch-2".to_string(), "ch-3".to_string()]],
+            "the diamond's incomparable middle rides through, not silently totalized"
+        );
+        assert_eq!(main.manuscript.scenes.len(), 4);
     }
 
     /// A surface scene that is not a node of the world's walk resolves to

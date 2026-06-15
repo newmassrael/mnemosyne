@@ -2662,10 +2662,15 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
         report.fork_tree.branch_count
     );
     for (world, w) in &report.worlds {
+        let m = &w.manuscript;
         println!(
-            "world `{world}`: {} scene(s), {} locator(s)",
-            w.scene_walk.len(),
-            w.locators.len()
+            "world `{world}`: {} scene(s), {} locator(s), undeclared_adjacencies={}, \
+             unplaced={}, undecidable={}",
+            m.scenes.len(),
+            w.locators.len(),
+            m.undeclared_adjacencies.len(),
+            m.unplaced_facts.len(),
+            m.undecidable.len()
         );
         for loc in &w.locators {
             let ord = loc
