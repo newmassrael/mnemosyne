@@ -80,6 +80,19 @@ pub struct Branch {
     /// fork ancestry is a forest by construction, no cycle is writable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forks_from: Option<BranchFork>,
+    /// Incoming world-line merges (Round 532 — convergence / confluence, the
+    /// inverse of `forks_from`). Empty = not a confluence (the forest case,
+    /// byte-stable). Non-empty = this world-line is the SHARED CONTINUATION
+    /// that the listed parents converge INTO; each entry is a [`BranchFork`]
+    /// `{branch, at}` naming a parent + the parent's merge coordinate (the
+    /// scene on the parent where it joins this continuation). A merge has ≥ 2
+    /// parents (a 1-parent "merge" is just a fork). A branch is EITHER a
+    /// fork-child (`forks_from`) XOR a confluence (`converges_from`), never
+    /// both — enforced at the mutate primitive. The merge is acyclic by the
+    /// same forest guard: every parent must already be registered, so a parent
+    /// cannot be this branch's own descendant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub converges_from: Vec<BranchFork>,
 }
 
 /// The divergence coordinate of a forked world-line (Round 438): the parent

@@ -3056,6 +3056,14 @@ pub struct ForkTreeBranch {
     /// sharing no history (the pre-fork R433 semantics).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork: Option<ForkTreeEdge>,
+    /// Incoming world-line merges (Round 532 — confluence). Empty for a fork
+    /// or standalone world; non-empty = the parents that CONVERGE into this
+    /// shared continuation, each merge point resolved against the PARENT's
+    /// composed order ([`CanonOrder::names`]). This is the edge a fork tree
+    /// alone could never show (R531: "convergence is expressed, not
+    /// declared") — the merge made structurally visible.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub converges: Vec<ForkTreeEdge>,
 }
 
 /// Fork tree over the registered world-lines (Round 497, design sec 7.21) —
@@ -3116,10 +3124,41 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
                 })
             }
         };
+        // Round 532 — the incoming-merge edges of a confluence world-line, the
+        // inverse of the fork edge. Same parent-must-be-registered fail-loud as
+        // the fork side; each merge coordinate resolved against the PARENT's
+        // composed order. An unplaced merge point lands the branch in
+        // `unplaced_fork_points` once (a fork XOR confluence, so the two never
+        // both push, but several merge edges share one branch — dedup).
+        let mut converges = Vec::with_capacity(branch.converges_from.len());
+        let mut converge_unplaced = false;
+        for edge in &branch.converges_from {
+            if edge.branch != mnemosyne_core::MAIN_BRANCH
+                && !store.branches.contains_key(&edge.branch)
+            {
+                return Err(format!(
+                    "branch `{branch_id}` converges from `{}`, which is neither `main` nor a \
+                     registered branch — fail-loud (a typo'd parent must not read as a silent \
+                     root); fix the registry",
+                    edge.branch
+                ));
+            }
+            let at_placed = order.names(&edge.branch, &edge.at);
+            converge_unplaced |= !at_placed;
+            converges.push(ForkTreeEdge {
+                parent: edge.branch.clone(),
+                at: edge.at.clone(),
+                at_placed,
+            });
+        }
+        if converge_unplaced {
+            report.unplaced_fork_points.push(branch_id.clone());
+        }
         report.branches.push(ForkTreeBranch {
             branch_id: branch_id.clone(),
             description: branch.description.clone(),
             fork,
+            converges,
         });
     }
     report.branch_count = report.branches.len();
@@ -3455,6 +3494,7 @@ mod tests {
                 description: String::new(),
                 forks_from: None,
                 forks_at: None,
+                converges_from: vec![],
             })
             .collect();
         let (entities, predicates) = derived_registries(&facts);
@@ -3910,6 +3950,7 @@ mod tests {
                     description: String::new(),
                     forks_from: fork.map(|(_, p, _)| p.to_string()),
                     forks_at: fork.map(|(_, _, a)| a.to_string()),
+                    converges_from: vec![],
                 }
             })
             .collect();
@@ -5927,6 +5968,7 @@ mod tests {
                     branch: MAIN_BRANCH.to_string(),
                     at: "s1".to_string(),
                 }),
+                converges_from: vec![],
             },
         );
         let order = chain(&["s1", "s2"]);
@@ -5949,10 +5991,71 @@ mod tests {
                     branch: "ghost".to_string(),
                     at: "s1".to_string(),
                 }),
+                converges_from: vec![],
             },
         );
         let err = fork_tree(&store, &CanonOrder::empty()).unwrap_err();
         assert!(err.contains("neither `main` nor a registered"), "{err}");
+    }
+
+    /// Round 532 — the fork tree SURFACES a confluence's incoming merges, the
+    /// edge a fork tree alone could never declare (R531: "convergence is
+    /// expressed, not declared"). Two forked world-lines converge into a shared
+    /// continuation; the merge is now structurally visible with its parents and
+    /// merge coordinates resolved.
+    #[test]
+    fn fork_tree_surfaces_confluence_merges() {
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        for b in ["sluice", "ride"] {
+            store.branches.insert(
+                b.to_string(),
+                mnemosyne_core::Branch {
+                    description: String::new(),
+                    forks_from: Some(mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.to_string(),
+                        at: "s1".to_string(),
+                    }),
+                    converges_from: vec![],
+                },
+            );
+        }
+        store.branches.insert(
+            "dawn".to_string(),
+            mnemosyne_core::Branch {
+                description: "the shared dawn".to_string(),
+                forks_from: None,
+                converges_from: vec![
+                    mnemosyne_core::BranchFork {
+                        branch: "sluice".to_string(),
+                        at: "s2".to_string(),
+                    },
+                    mnemosyne_core::BranchFork {
+                        branch: "ride".to_string(),
+                        at: "s2".to_string(),
+                    },
+                ],
+            },
+        );
+        let order = chain(&["s1", "s2", "s3"]);
+        let report = fork_tree(&store, &order).unwrap();
+        let dawn = report
+            .branches
+            .iter()
+            .find(|b| b.branch_id == "dawn")
+            .unwrap();
+        assert!(dawn.fork.is_none(), "a confluence has no single fork edge");
+        assert_eq!(dawn.converges.len(), 2, "both incoming merges surfaced");
+        let mut parents: Vec<&str> = dawn.converges.iter().map(|e| e.parent.as_str()).collect();
+        parents.sort();
+        assert_eq!(parents, vec!["ride", "sluice"]);
+        // s2 is a node of each parent's composed order (the base chain) — placed.
+        assert!(dawn.converges.iter().all(|e| e.at_placed));
+        assert!(report.unplaced_fork_points.is_empty());
     }
 
     /// The headline nested case (R497 Detroit dogfood, locked as a

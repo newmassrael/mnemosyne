@@ -1130,7 +1130,7 @@ pub enum AtomicStoreError {
 // render-acceptance gates run, and those are out-of-band render-loop tools, not
 // validate-workspace). So there is deliberately NO `schema_version < 22` arm in
 // `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 22;
+const CURRENT_SCHEMA_VERSION: u32 = 23;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3403,6 +3403,21 @@ pub struct BranchImport {
     /// Canon point of divergence (structure-section ref).
     #[serde(default)]
     pub forks_at: Option<String>,
+    /// Incoming world-line merges (Round 532 — convergence / confluence).
+    /// Each entry is `{branch, at}` (a parent + its merge coordinate); a
+    /// confluence has ≥ 2. Mutually exclusive with `forks_from`/`forks_at`.
+    /// Parents must already be registered (earlier in this manifest).
+    #[serde(default)]
+    pub converges_from: Vec<BranchConvergeImport>,
+}
+
+/// One incoming-merge edge in the import manifest (Round 532) — the authoring
+/// face of a confluence parent edge: the parent world-line + the parent's
+/// merge coordinate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchConvergeImport {
+    pub branch: String,
+    pub at: String,
 }
 
 /// One fact entry in the import manifest — the authoring face of
@@ -4067,12 +4082,93 @@ fn build_branch_fork(
     }))
 }
 
+/// Validate the incoming-merge edges of a confluence branch (Round 532 — the
+/// `converges_from` analog of [`build_branch_fork`]). Each `(parent, at)` is
+/// shaped exactly like a fork edge — same parent-exists + canon-point + blank +
+/// self-reference checks — but a confluence has ≥ 2 DISTINCT parents (a
+/// 1-parent merge is just a fork). Empty input = not a confluence.
+fn build_branch_converges(
+    store: &AtomicStore,
+    branch_id: &str,
+    converges_from: &[(&str, &str)],
+) -> Result<Vec<BranchFork>, String> {
+    if converges_from.is_empty() {
+        return Ok(Vec::new());
+    }
+    if converges_from.len() < 2 {
+        return Err(format!(
+            "branch `{branch_id}`: a confluence merges ≥ 2 parent world-lines; \
+             converges_from names only 1 (a 1-parent merge is just a fork)"
+        ));
+    }
+    let mut out = Vec::with_capacity(converges_from.len());
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for &(parent, at) in converges_from {
+        let parent = parent.trim();
+        let at = at.trim();
+        if parent.is_empty() || at.is_empty() {
+            return Err(format!(
+                "branch `{branch_id}`: converges_from needs both a parent branch and a canon point"
+            ));
+        }
+        if parent == branch_id {
+            return Err(format!("branch `{branch_id}`: cannot converge from itself"));
+        }
+        if parent != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(parent) {
+            return Err(format!(
+                "branch `{branch_id}`: converge parent `{parent}` not present in the branch \
+                 registry (register parents first; fail-loud)"
+            ));
+        }
+        if !store.sections.contains_key(at) {
+            return Err(format!(
+                "branch `{branch_id}`: converge point `{at}` not present as a section \
+                 (canon coordinates are structure refs)"
+            ));
+        }
+        if !seen.insert(parent.to_string()) {
+            return Err(format!(
+                "branch `{branch_id}`: converges_from names parent `{parent}` more than once"
+            ));
+        }
+        out.push(BranchFork {
+            branch: parent.to_string(),
+            at: at.to_string(),
+        });
+    }
+    Ok(out)
+}
+
+/// Build a [`Branch`] candidate, enforcing the fork-XOR-confluence rule (Round
+/// 532): a world-line is either a fork-child (`forks_from`) or a confluence
+/// (`converges_from`), never both. Shared by [`add_branch`] and `import_facts`.
+fn build_branch_candidate(
+    store: &AtomicStore,
+    branch_id: &str,
+    description: &str,
+    forks_from: Option<(&str, &str)>,
+    converges_from: &[(&str, &str)],
+) -> Result<Branch, String> {
+    if forks_from.is_some() && !converges_from.is_empty() {
+        return Err(format!(
+            "branch `{branch_id}`: a world-line is either a fork-child (forks_from) or a \
+             confluence (converges_from), never both"
+        ));
+    }
+    Ok(Branch {
+        description: description.trim().to_string(),
+        forks_from: build_branch_fork(store, branch_id, forks_from)?,
+        converges_from: build_branch_converges(store, branch_id, converges_from)?,
+    })
+}
+
 pub fn add_branch(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     branch_id: &str,
     description: &str,
     forks_from: Option<(&str, &str)>,
+    converges_from: &[(&str, &str)],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = branch_id.trim();
     // Fail on a blank id BEFORE fork shaping (Round 448 session review:
@@ -4090,11 +4186,8 @@ pub fn add_branch(
              never registered"
         )));
     }
-    let candidate = Branch {
-        description: description.trim().to_string(),
-        forks_from: build_branch_fork(store, id, forks_from)
-            .map_err(AtomicMutateError::Validation)?,
-    };
+    let candidate = build_branch_candidate(store, id, description, forks_from, converges_from)
+        .map_err(AtomicMutateError::Validation)?;
     let id = id.to_string();
     let created = stage_registry_entry(&mut store.branches, "add_branch", "branch", &id, candidate)
         .map_err(AtomicMutateError::Validation)?;
@@ -4522,11 +4615,14 @@ pub fn import_facts(
                 )));
             }
         };
-        let candidate = Branch {
-            description: b.description.trim().to_string(),
-            forks_from: build_branch_fork(store, id, fork_pair)
-                .map_err(AtomicMutateError::Validation)?,
-        };
+        let converge_pairs: Vec<(&str, &str)> = b
+            .converges_from
+            .iter()
+            .map(|c| (c.branch.as_str(), c.at.as_str()))
+            .collect();
+        let candidate =
+            build_branch_candidate(store, id, &b.description, fork_pair, &converge_pairs)
+                .map_err(AtomicMutateError::Validation)?;
         let created = stage_registry_entry(
             &mut store.branches,
             &format!("import_facts: manifest branch {idx}"),
@@ -8737,6 +8833,7 @@ mod tests {
             "route",
             "",
             Some((mnemosyne_core::MAIN_BRANCH, "ch-2")),
+            &[],
         )
         .unwrap();
         add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
@@ -10413,7 +10510,15 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         // The default world-line is known by construction, never registered.
-        let err = add_branch(&mut store, &path, mnemosyne_core::MAIN_BRANCH, "", None).unwrap_err();
+        let err = add_branch(
+            &mut store,
+            &path,
+            mnemosyne_core::MAIN_BRANCH,
+            "",
+            None,
+            &[],
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("known by construction"), "{err}");
         // Unregistered branch on a fact rejects at the write path.
         let on_route = FactImport {
@@ -10424,13 +10529,30 @@ mod tests {
         let err = add_fact(&mut store, &path, &on_route).unwrap_err();
         assert!(err.to_string().contains("branch registry"), "{err}");
         // Register, then the same write lands.
-        add_branch(&mut store, &path, "sea-route", "the Demeter voyage", None).unwrap();
+        add_branch(
+            &mut store,
+            &path,
+            "sea-route",
+            "the Demeter voyage",
+            None,
+            &[],
+        )
+        .unwrap();
         add_fact(&mut store, &path, &on_route).unwrap();
         assert_eq!(store.narrative_facts["f-route"].branch, "sea-route");
         // Idempotent re-register = no-op; divergent description rejects.
-        let again = add_branch(&mut store, &path, "sea-route", "the Demeter voyage", None).unwrap();
+        let again = add_branch(
+            &mut store,
+            &path,
+            "sea-route",
+            "the Demeter voyage",
+            None,
+            &[],
+        )
+        .unwrap();
         assert_eq!(again.written_bytes, 0);
-        let err = add_branch(&mut store, &path, "sea-route", "something else", None).unwrap_err();
+        let err =
+            add_branch(&mut store, &path, "sea-route", "something else", None, &[]).unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
@@ -10450,21 +10572,25 @@ mod tests {
         store.frames.insert("gt".to_string(), Frame::default());
         // Round 448 — blank id fails with the precise cause even when a
         // fork declaration is present (not a blank-named fork message).
-        let err = add_branch(&mut store, &path, "  ", "", Some(("main", "ch-2"))).unwrap_err();
+        let err = add_branch(&mut store, &path, "  ", "", Some(("main", "ch-2")), &[]).unwrap_err();
         assert!(err.to_string().contains("branch_id mandatory"), "{err}");
         // Parent must pre-exist; fork point must be a section; no self-fork.
-        let err = add_branch(&mut store, &path, "deep", "", Some(("route", "ch-2"))).unwrap_err();
+        let err =
+            add_branch(&mut store, &path, "deep", "", Some(("route", "ch-2")), &[]).unwrap_err();
         assert!(err.to_string().contains("fork parent"), "{err}");
-        let err = add_branch(&mut store, &path, "route", "", Some(("route", "ch-2"))).unwrap_err();
+        let err =
+            add_branch(&mut store, &path, "route", "", Some(("route", "ch-2")), &[]).unwrap_err();
         assert!(err.to_string().contains("itself"), "{err}");
-        let err = add_branch(&mut store, &path, "route", "", Some(("main", "ch-99"))).unwrap_err();
+        let err =
+            add_branch(&mut store, &path, "route", "", Some(("main", "ch-99")), &[]).unwrap_err();
         assert!(err.to_string().contains("ch-99"), "{err}");
         // Valid fork round-trips; immutable thereafter (divergent reject).
-        add_branch(&mut store, &path, "route", "", Some(("main", "ch-2"))).unwrap();
+        add_branch(&mut store, &path, "route", "", Some(("main", "ch-2")), &[]).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
         let fork = reloaded.branches["route"].forks_from.as_ref().unwrap();
         assert_eq!((fork.branch.as_str(), fork.at.as_str()), ("main", "ch-2"));
-        let err = add_branch(&mut store, &path, "route", "", Some(("main", "ch-3"))).unwrap_err();
+        let err =
+            add_branch(&mut store, &path, "route", "", Some(("main", "ch-3")), &[]).unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
         // Lineage succession: a route fact may supersede an inherited main
         // fact (in-world change inside one world-line); an unrelated
@@ -10477,7 +10603,7 @@ mod tests {
             ..sample_fact("f-new", "gt")
         };
         add_fact(&mut store, &path, &revision).unwrap();
-        add_branch(&mut store, &path, "standalone", "", None).unwrap();
+        add_branch(&mut store, &path, "standalone", "", None, &[]).unwrap();
         let stray = FactImport {
             branch: Some("standalone".to_string()),
             canon_from: "ch-3".to_string(),
@@ -10486,6 +10612,104 @@ mod tests {
         };
         let err = add_fact(&mut store, &path, &stray).unwrap_err();
         assert!(err.to_string().contains("fork lineage"), "{err}");
+    }
+
+    /// Round 532 — confluence (`converges_from`) registration invariants: ≥ 2
+    /// distinct registered parents, each merge point a real section, the
+    /// fork-XOR-confluence rule, and the idempotent/divergent round-trip
+    /// (the `add_branch_fork_validation` analog for the merge side).
+    #[test]
+    fn add_branch_confluence_validation() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        // Two parent world-lines to converge.
+        add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
+        add_branch(&mut store, &path, "ride", "", Some(("main", "ch-2")), &[]).unwrap();
+        // A confluence merges >= 2 parents (a 1-parent merge is just a fork).
+        let err =
+            add_branch(&mut store, &path, "dawn", "", None, &[("sluice", "ch-3")]).unwrap_err();
+        assert!(err.to_string().contains("≥ 2 parent"), "{err}");
+        // Parent must pre-exist.
+        let err = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-3"), ("ghost", "ch-3")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("converge parent"), "{err}");
+        // Merge point must be a section.
+        let err = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-99"), ("ride", "ch-3")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("ch-99"), "{err}");
+        // A duplicate parent rejects.
+        let err = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-3"), ("sluice", "ch-2")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("more than once"), "{err}");
+        // Fork XOR confluence — never both.
+        let err = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            Some(("main", "ch-2")),
+            &[("sluice", "ch-3"), ("ride", "ch-3")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("never both"), "{err}");
+        // Valid confluence round-trips; forks_from stays None.
+        add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-3"), ("ride", "ch-3")],
+        )
+        .unwrap();
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(reloaded.branches["dawn"].converges_from.len(), 2);
+        assert!(reloaded.branches["dawn"].forks_from.is_none());
+        // Idempotent re-register = no-op; a divergent merge set rejects.
+        let again = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-3"), ("ride", "ch-3")],
+        )
+        .unwrap();
+        assert_eq!(again.written_bytes, 0);
+        let err = add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-2"), ("ride", "ch-3")],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
     }
 
     /// Round 440 — parity fix regression: an idempotent re-import of a

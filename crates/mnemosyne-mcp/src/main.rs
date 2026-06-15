@@ -323,6 +323,19 @@ pub struct AddBranchArgs {
     /// Canon point of divergence (structure-section id).
     #[serde(default)]
     pub forks_at: Option<String>,
+    /// Incoming world-line merges (R532 — convergence / confluence). Each entry
+    /// is a parent + its merge coordinate; a confluence has ≥ 2. Mutually
+    /// exclusive with `forks_from`/`forks_at`.
+    #[serde(default)]
+    pub converges_from: Vec<ConvergeEdgeArg>,
+}
+
+/// One incoming-merge edge of a confluence branch (R532): the parent
+/// world-line + the parent's merge coordinate (structure-section id).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ConvergeEdgeArg {
+    pub branch: String,
+    pub at: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1439,7 +1452,19 @@ impl MnemosyneServer {
                     ));
                 }
             };
-            atomic::add_branch(store, path, &a.branch_id, &a.description, fork)
+            let converges_from: Vec<(&str, &str)> = a
+                .converges_from
+                .iter()
+                .map(|c| (c.branch.as_str(), c.at.as_str()))
+                .collect();
+            atomic::add_branch(
+                store,
+                path,
+                &a.branch_id,
+                &a.description,
+                fork,
+                &converges_from,
+            )
         });
         self.finish_mutate(outcome)
     }

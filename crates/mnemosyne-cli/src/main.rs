@@ -2576,7 +2576,12 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
     );
     for b in &report.branches {
         match &b.fork {
-            None => println!("  `{}` (standalone world)", b.branch_id),
+            // A confluence has no fork edge but is NOT standalone — its merges
+            // print below; only a true root world is "standalone" (Round 532).
+            None if b.converges.is_empty() => {
+                println!("  `{}` (standalone world)", b.branch_id)
+            }
+            None => {}
             Some(f) => println!(
                 "  `{}` forks from `{}` at {}{}",
                 b.branch_id,
@@ -2588,6 +2593,20 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
                     " [UNPLACED — not a node of the parent's order]"
                 }
             ),
+        }
+        // Round 532 — incoming merges (confluence): the join made visible.
+        for c in &b.converges {
+            println!(
+                "  `{}` converges from `{}` at {}{}",
+                b.branch_id,
+                c.parent,
+                c.at,
+                if c.at_placed {
+                    ""
+                } else {
+                    " [UNPLACED — not a node of the parent's order]"
+                }
+            );
         }
         if !b.description.is_empty() {
             println!("      choice: {}", b.description);

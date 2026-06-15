@@ -411,6 +411,7 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
     let mut description = String::new();
     let mut forks_from: Option<String> = None;
     let mut forks_at: Option<String> = None;
+    let mut converges: Vec<(String, String)> = Vec::new();
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
@@ -443,6 +444,15 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
                         .clone(),
                 )
             }
+            // Round 532 — repeatable `<parent>=<merge-section>` incoming-merge
+            // edge of a confluence world-line.
+            "--converges" => {
+                let pair = iter.next().ok_or_else(|| anyhow!("--converges missing"))?;
+                let (parent, at) = pair.split_once('=').ok_or_else(|| {
+                    anyhow!("--converges expects `<parent-branch>=<merge-section>`")
+                })?;
+                converges.push((parent.to_string(), at.to_string()));
+            }
             "--sidecar" => {
                 sidecar = Some(
                     iter.next()
@@ -460,10 +470,21 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
         (Some(p), Some(a)) => Some((p.as_str(), a.as_str())),
         _ => bail!("--forks-from and --forks-at must be given together"),
     };
+    let converges_from: Vec<(&str, &str)> = converges
+        .iter()
+        .map(|(p, a)| (p.as_str(), a.as_str()))
+        .collect();
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        mnemosyne_atomic::add_branch(&mut store, &sidecar_path, &branch_id, &description, fork),
+        mnemosyne_atomic::add_branch(
+            &mut store,
+            &sidecar_path,
+            &branch_id,
+            &description,
+            fork,
+            &converges_from,
+        ),
         json,
     )
 }
