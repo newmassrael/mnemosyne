@@ -1,0 +1,7 @@
+=== frame `soldier` branch `act` at `sc-43` ===
+  holding=5 not_holding=0 unknown=0
+  [sc-41] f-act-02: the soldier and the tinker stand with Wend at the lantern, the soldier's two-sound memory and the tinker's knowledge of the debt damning Cray to the house's face
+  [sc-12] f-sol-01: the soldier, walking home from a war he is not sure has ended, distrusts the watch the house keeps and takes the night watch himself
+  [sc-12] f-sol-02: on his watch the soldier heard two sounds, not one — a near crash inside, then a far splash by the race — and quarrels with the drover who heard only the crash
+  [sc-15] f-sol-03: the soldier helps Wend drag the body from the millrace and his memory of the far splash now fixes the time of the warden's death
+  [sc-12] f-sol-04: the soldier believes the hooded traveller a deserter like men he knew in the war and is ready to think the worst of him

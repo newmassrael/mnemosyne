@@ -1,0 +1,153 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"the ground truth — what actually happened at the Lantern House"},
+    {"frame_id":"wend","description":"Wend Aldercott, deputy ford-warden, the POV — what Wend learns night by night"},
+    {"frame_id":"clerk","description":"Halloran Voss, the circuit magistrate's clerk — what he knows and believes"},
+    {"frame_id":"factor","description":"Berdine Quist, the wool-factor — what he knows, and what he wants believed"},
+    {"frame_id":"soldier","description":"Tomas Reke, the discharged soldier — what he knows and believes"},
+    {"frame_id":"hooded","description":"Cray Holt, the hooded traveller — what he knows and conceals"},
+    {"frame_id":"midwife","description":"Senna Cobb, the midwife — what she saw and withheld"},
+    {"frame_id":"tinker","description":"Old Pell, the tinker who knows the warden — what he knows and believes"},
+    {"frame_id":"trader","description":"Garrec, the horse-trader — what he knows and believes"},
+    {"frame_id":"drover","description":"Lyle, the drover travelling with Garrec — what he knows and believes"},
+    {"frame_id":"groom","description":"Aldous Frith, the young man of the eloping couple — what he knows and believes"},
+    {"frame_id":"bride","description":"Joan Tarry, the young woman of the eloping couple — what she knows and believes"},
+    {"frame_id":"warden","description":"Mabon Aldercott, the old ford-warden (Wend's uncle), absent then dead — what he knew before he died"}
+  ],
+
+  "branches": [
+    {"branch_id":"name","description":"NAME — Wend lays the matter before the circuit clerk and lets the law take it","forks_from":"main","forks_at":"sc-17"},
+    {"branch_id":"hold","description":"HOLD — Wend keeps what he learned quiet and lets the travellers cross unhindered","forks_from":"main","forks_at":"sc-17"},
+    {"branch_id":"act","description":"ACT — Wend settles the matter at the Lantern House himself before anyone crosses","forks_from":"main","forks_at":"sc-17"}
+  ],
+
+  "entities": [
+    {"entity_id":"wend","kind":"person","description":"Wend Aldercott, deputy ford-warden, left in charge"},
+    {"entity_id":"mabon","kind":"person","description":"Mabon Aldercott, the old ford-warden, Wend's uncle"},
+    {"entity_id":"cray","kind":"person","description":"Cray Holt, the hooded traveller; Mabon's creditor"},
+    {"entity_id":"berdine","kind":"person","description":"Berdine Quist, the wool-factor"},
+    {"entity_id":"clerk","kind":"person","description":"Halloran Voss, the magistrate's clerk"},
+    {"entity_id":"soldier","kind":"person","description":"Tomas Reke, the discharged soldier"},
+    {"entity_id":"midwife","kind":"person","description":"Senna Cobb, the midwife"},
+    {"entity_id":"tinker","kind":"person","description":"Old Pell, the tinker"},
+    {"entity_id":"trader","kind":"person","description":"Garrec, the horse-trader"},
+    {"entity_id":"drover","kind":"person","description":"Lyle, the drover"},
+    {"entity_id":"groom","kind":"person","description":"Aldous Frith, the bridegroom"},
+    {"entity_id":"bride","kind":"person","description":"Joan Tarry, the bride"},
+    {"entity_id":"strongbox","kind":"item","description":"the wool-factor's iron strongbox"},
+    {"entity_id":"deed_bond","kind":"item","description":"the deed-bond pledging the Lantern House against Mabon's debt"},
+    {"entity_id":"ferry_log","kind":"item","description":"the chain-ferry log book kept by the warden"},
+    {"entity_id":"clerk_papers","kind":"item","description":"the clerk's sealed assize papers, bearing the county seal"},
+    {"entity_id":"wet_cloak","kind":"item","description":"the wet hooded cloak the midwife found drying"},
+    {"entity_id":"lantern","kind":"item","description":"the river lantern lit at the ford each dusk"}
+  ],
+
+  "predicates": [
+    {"predicate_id":"fate","object_kind":"scalar","description":"a person's living/dead state"},
+    {"predicate_id":"culprit_box","object_kind":"entity","description":"who actually emptied/staged the strongbox"},
+    {"predicate_id":"culprit_death","object_kind":"entity","description":"who is responsible for Mabon's death"},
+    {"predicate_id":"box_state","object_kind":"scalar","description":"the contents-state of the strongbox at arrival"},
+    {"predicate_id":"bond_state","object_kind":"scalar","description":"whether the deed-bond is genuine or forged"},
+    {"predicate_id":"custody","object_kind":"entity","description":"who holds an object"}
+  ],
+
+  "facts": [
+
+    {"fact_id":"f-gt-01","frame":"gt","claim":"Mabon did not go downriver on warden's business; he went to meet his creditor Cray Holt the day before the flood","canon_from":"sc-03","evidence":["sc-03"],"entities":["mabon","cray"]},
+    {"fact_id":"f-gt-02","frame":"gt","claim":"Mabon had pledged the Lantern House itself against a gambling debt to Cray, sealed in a deed-bond","canon_from":"sc-03","evidence":["sc-03"],"entities":["mabon","cray","deed_bond"],"payoff_expectation":"expected","typed":{"subject":"deed_bond","predicate":"custody","object":{"kind":"entity","id":"mabon"}}},
+    {"fact_id":"f-gt-03","frame":"gt","claim":"Cray's deed-bond is a forgery — Mabon's real debt was smaller and already half-paid; Cray forged the pledge of the whole house","canon_from":"sc-03","evidence":["sc-03"],"entities":["cray","deed_bond"],"payoff_expectation":"expected"},
+    {"fact_id":"f-gt-14","frame":"gt","claim":"the morning the house filled, Mabon was still alive — he had crossed by the chain-ferry to meet Cray and meant to return by dark","canon_from":"sc-03","evidence":["sc-03"],"entities":["mabon","cray"],"payoff_expectation":"expected","typed":{"subject":"mabon","predicate":"fate","object":{"kind":"value","value":"alive"}}},
+    {"fact_id":"f-gt-04","frame":"gt","claim":"on the first flood night Mabon met Cray at the millrace to refuse the forged bond; they struggled and Mabon drowned","canon_from":"sc-08","evidence":["sc-08","sc-03"],"entities":["mabon","cray"],"pays_off":["f-gt-14"],"typed":{"subject":"mabon","predicate":"fate","object":{"kind":"value","value":"dead"}}},
+    {"fact_id":"f-gt-05","frame":"gt","claim":"Cray is responsible for Mabon's death at the millrace","canon_from":"sc-08","evidence":["sc-08"],"entities":["cray","mabon"],"typed":{"subject":"mabon","predicate":"culprit_death","object":{"kind":"entity","id":"cray"}}},
+    {"fact_id":"f-gt-06","frame":"gt","claim":"the wool-factor's strongbox was already nearly empty when Berdine arrived — a thin layer of coin over lead weights","canon_from":"sc-04","evidence":["sc-04"],"entities":["strongbox","berdine"],"payoff_expectation":"expected"},
+    {"fact_id":"f-gt-07","frame":"gt","claim":"Berdine had embezzled his master's coin before the journey; the near-empty box is the evidence he must hide","canon_from":"sc-04","evidence":["sc-04"],"entities":["berdine","strongbox"]},
+    {"fact_id":"f-gt-08","frame":"gt","claim":"Berdine broke his own strongbox open in the night to stage a robbery and explain the missing coin","canon_from":"sc-08","evidence":["sc-08","sc-04"],"entities":["berdine","strongbox"],"typed":{"subject":"strongbox","predicate":"culprit_box","object":{"kind":"entity","id":"berdine"}}},
+    {"fact_id":"f-gt-09","frame":"gt","claim":"the cry and crash in the night were Berdine's staged break-in; the splash that followed was Mabon going into the millrace — two separate events the house heard as one","canon_from":"sc-08","evidence":["sc-08"],"entities":["berdine","mabon"]},
+    {"fact_id":"f-gt-10","frame":"gt","claim":"after the struggle Cray took the deed-bond from Mabon's body and kept it on him under the hooded cloak","canon_from":"sc-08","evidence":["sc-08","sc-03"],"entities":["cray","deed_bond"],"pays_off":["f-gt-02"],"typed":{"subject":"deed_bond","predicate":"custody","object":{"kind":"entity","id":"cray"}}},
+    {"fact_id":"f-gt-11","frame":"gt","claim":"Cray's cloak was soaked at the millrace; he hung it to dry where the midwife later found it","canon_from":"sc-08","evidence":["sc-08"],"entities":["cray","wet_cloak"],"payoff_expectation":"expected"},
+    {"fact_id":"f-gt-12","frame":"gt","claim":"Mabon tore the last leaves from the chain-ferry log so no record would show he had taken the ferry across to meet Cray","canon_from":"sc-08","evidence":["sc-08"],"entities":["mabon","ferry_log"],"payoff_expectation":"expected"},
+    {"fact_id":"f-gt-13","frame":"gt","claim":"the clerk's sealed papers carry the genuine county seal, the same seal a forger would have to match to fake a deed-bond","canon_from":"sc-07","evidence":["sc-07"],"entities":["clerk_papers","clerk"],"typed":{"subject":"clerk_papers","predicate":"custody","object":{"kind":"entity","id":"clerk"}}},
+
+    {"fact_id":"f-wend-01","frame":"wend","claim":"Wend, deputy, lights the river lantern alone as the snowmelt rises and the ford begins to flood","canon_from":"sc-01","evidence":["sc-01"],"entities":["wend","lantern"]},
+    {"fact_id":"f-wend-02","frame":"wend","claim":"Wend takes in twelve stranded travellers as the water climbs over the crossing","canon_from":"sc-02","evidence":["sc-02"],"entities":["wend"]},
+    {"fact_id":"f-wend-03","frame":"wend","claim":"Wend finds his uncle Mabon's cell empty and is told only that the warden went downriver on business","canon_from":"sc-03","evidence":["sc-03"],"entities":["wend","mabon"]},
+    {"fact_id":"f-wend-04","frame":"wend","claim":"Wend sees the wool-factor carry a heavy iron strongbox to his cell and bolt the door","canon_from":"sc-04","evidence":["sc-04"],"entities":["wend","berdine","strongbox"]},
+    {"fact_id":"f-wend-05","frame":"wend","claim":"Wend notes the clerk's papers bear a pressed county seal when the clerk lays them on the board","canon_from":"sc-07","evidence":["sc-07"],"entities":["wend","clerk_papers"]},
+    {"fact_id":"f-wend-06","frame":"wend","claim":"Wend wakes to a cry and a crash in the night and then the river's roar, and cannot tell what he heard","canon_from":"sc-08","evidence":["sc-08"],"entities":["wend"]},
+    {"fact_id":"f-wend-07","frame":"wend","claim":"in the morning Wend finds the strongbox broken open and its coin gone","canon_from":"sc-09","evidence":["sc-09","sc-04"],"entities":["wend","strongbox"]},
+    {"fact_id":"f-wend-08","frame":"wend","claim":"Wend hears Berdine accuse the hooded traveller of the theft and demand he be searched","canon_from":"sc-10","evidence":["sc-10","sc-09"],"entities":["wend","berdine","cray"]},
+    {"fact_id":"f-wend-09","frame":"wend","claim":"the tinker tells Wend on the second night that Mabon had fallen into debt to a hard man over the winter","canon_from":"sc-13","evidence":["sc-13"],"entities":["wend","tinker","mabon"]},
+    {"fact_id":"f-wend-10","frame":"wend","claim":"Wend finds the last leaves of the chain-ferry log torn out and knows Mabon kept that log faithfully for thirty years","canon_from":"sc-14","evidence":["sc-14","sc-08"],"entities":["wend","ferry_log","mabon"],"pays_off":["f-gt-12"]},
+    {"fact_id":"f-wend-11","frame":"wend","claim":"Wend learns of the deed-bond pledging the Lantern House and understands the ford itself was the stake","canon_from":"sc-14","evidence":["sc-14","sc-13"],"entities":["wend","deed_bond"],"pays_off":["f-gt-02"]},
+    {"fact_id":"f-wend-12","frame":"wend","claim":"Wend and the soldier pull Mabon's body from the millrace and Wend knows his uncle is dead, not downriver","canon_from":"sc-15","evidence":["sc-15","sc-03"],"entities":["wend","mabon","soldier"]},
+    {"fact_id":"f-wend-13","frame":"wend","claim":"confronting the hooded traveller, Wend learns the man is Cray Holt, Mabon's creditor, that the deed-bond is on him, and — against the tinker's word that the debt was small and half-paid — sees the whole-house pledge overreaches and must be forged","canon_from":"sc-16","evidence":["sc-16","sc-15","sc-13"],"entities":["wend","cray","deed_bond"],"pays_off":["f-gt-03"]},
+    {"fact_id":"f-wend-14","frame":"wend","claim":"Berdine, cornered by Wend's questions about the box, lets slip that the coin was never there to steal","canon_from":"sc-16","evidence":["sc-16","sc-09"],"entities":["wend","berdine","strongbox"],"pays_off":["f-gt-06"]},
+    {"fact_id":"f-wend-15","frame":"wend","claim":"by the third dawn Wend believes Cray killed Mabon over the forged bond and Berdine staged his own robbery, and must choose his road as the water falls","canon_from":"sc-17","evidence":["sc-17","sc-16","sc-15"],"entities":["wend","cray","berdine"]},
+
+    {"fact_id":"f-clerk-01","frame":"clerk","claim":"the clerk believes the hooded traveller robbed the strongbox in the night, taking Berdine's accusation at face value","canon_from":"sc-10","evidence":["sc-10"],"entities":["clerk","cray","strongbox"]},
+    {"fact_id":"f-clerk-02","frame":"clerk","claim":"the clerk guards his sealed assize papers and will not let them be opened before the magistrate, but knows the county seal by heart","canon_from":"sc-07","evidence":["sc-07"],"entities":["clerk","clerk_papers"]},
+    {"fact_id":"f-clerk-03","frame":"clerk","claim":"the clerk does not yet know the warden is dead; he thinks Mabon is downriver and will return to clear the ford","canon_from":"sc-13","evidence":["sc-13","sc-03"],"entities":["clerk","mabon"]},
+
+    {"fact_id":"f-factor-01","frame":"factor","claim":"Berdine knows the strongbox held almost nothing — lead under a skim of coin — because he emptied it himself before the road","canon_from":"sc-04","evidence":["sc-04"],"entities":["berdine","strongbox"]},
+    {"fact_id":"f-factor-02","frame":"factor","claim":"Berdine intends everyone to believe a thief robbed a full box, so the missing money is the thief's crime and not his","canon_from":"sc-09","evidence":["sc-09","sc-04"],"entities":["berdine","strongbox"]},
+    {"fact_id":"f-factor-03","frame":"factor","claim":"Berdine fixes on the nameless hooded traveller as the safest man to accuse, since no one will vouch for him","canon_from":"sc-10","evidence":["sc-10","sc-05"],"entities":["berdine","cray"]},
+    {"fact_id":"f-factor-04","frame":"factor","claim":"Berdine does not know the warden is dead or that any deed-bond exists; the warden's affairs are nothing to him","canon_from":"sc-13","evidence":["sc-13"],"entities":["berdine","mabon"]},
+
+    {"fact_id":"f-hooded-01","frame":"hooded","claim":"Cray came to Corvath to collect on the deed-bond and took the far cell, giving no name, to stay unknown","canon_from":"sc-05","evidence":["sc-05"],"entities":["cray","deed_bond"]},
+    {"fact_id":"f-hooded-02","frame":"hooded","claim":"Cray knows the deed-bond is forged — he made the pledge of the whole house himself, beyond Mabon's true debt","canon_from":"sc-05","evidence":["sc-05"],"entities":["cray","deed_bond"]},
+    {"fact_id":"f-hooded-03","frame":"hooded","claim":"Cray knows Mabon drowned in the struggle at the millrace and that he, Cray, left him in the race","canon_from":"sc-08","evidence":["sc-08"],"entities":["cray","mabon"]},
+    {"fact_id":"f-hooded-04","frame":"hooded","claim":"Cray believes Berdine's robbery uproar is a gift — the house hunting a coin-thief looks nowhere near the millrace","canon_from":"sc-10","evidence":["sc-10","sc-09"],"entities":["cray","berdine"]},
+    {"fact_id":"f-hooded-05","frame":"hooded","claim":"Cray means to cross the moment the water falls and carry the deed-bond away to claim the Lantern House at law","canon_from":"sc-16","evidence":["sc-16","sc-05"],"entities":["cray","deed_bond"]},
+
+    {"fact_id":"f-mid-01","frame":"midwife","claim":"the midwife, returning from a birth two valleys over, took the cell beside the hooded traveller's","canon_from":"sc-05","evidence":["sc-05"],"entities":["midwife","cray"]},
+    {"fact_id":"f-mid-02","frame":"midwife","claim":"in the grey morning the midwife found the hooded traveller's cloak hung sodden and reeking of river, hours after the rain had stopped","canon_from":"sc-11","evidence":["sc-11","sc-08"],"entities":["midwife","wet_cloak","cray"],"pays_off":["f-gt-11"]},
+    {"fact_id":"f-mid-03","frame":"midwife","claim":"the midwife says nothing of the wet cloak at first, fearing a stranger's word against a stranger in a stranded house","canon_from":"sc-11","evidence":["sc-11"],"entities":["midwife"]},
+    {"fact_id":"f-mid-04","frame":"midwife","claim":"the midwife tells Wend of the wet cloak only when the warden's body is found, knowing it now points at the hooded man","canon_from":"sc-16","evidence":["sc-16","sc-11"],"entities":["midwife","wend","wet_cloak"]},
+
+    {"fact_id":"f-tink-01","frame":"tinker","claim":"the tinker, who has crossed at Corvath a hundred times, knows Mabon well and says the warden would never leave the ford untended in flood season","canon_from":"sc-06","evidence":["sc-06"],"entities":["tinker","mabon"]},
+    {"fact_id":"f-tink-02","frame":"tinker","claim":"the tinker knows Mabon had fallen to a hard man's debt over the winter, having seen the creditor's man dun him last autumn","canon_from":"sc-06","evidence":["sc-06"],"entities":["tinker","mabon"]},
+    {"fact_id":"f-tink-03","frame":"tinker","claim":"the tinker tells Wend on the second night of the debt, the one fragment that turns Wend toward the deed-bond","canon_from":"sc-13","evidence":["sc-13","sc-06"],"entities":["tinker","wend","mabon"]},
+    {"fact_id":"f-tink-04","frame":"tinker","claim":"the tinker does not connect the hooded traveller to the creditor; he never saw the dunning man's face","canon_from":"sc-13","evidence":["sc-13"],"entities":["tinker","cray"]},
+
+    {"fact_id":"f-sol-01","frame":"soldier","claim":"the soldier, walking home from a war he is not sure has ended, distrusts the watch the house keeps and takes the night watch himself","canon_from":"sc-12","evidence":["sc-12"],"entities":["soldier"]},
+    {"fact_id":"f-sol-02","frame":"soldier","claim":"on his watch the soldier heard two sounds, not one — a near crash inside, then a far splash by the race — and quarrels with the drover who heard only the crash","canon_from":"sc-12","evidence":["sc-12","sc-08"],"entities":["soldier","drover"],"payoff_expectation":"expected"},
+    {"fact_id":"f-sol-03","frame":"soldier","claim":"the soldier helps Wend drag the body from the millrace and his memory of the far splash now fixes the time of the warden's death","canon_from":"sc-15","evidence":["sc-15","sc-12"],"entities":["soldier","wend","mabon"],"pays_off":["f-sol-02"]},
+    {"fact_id":"f-sol-04","frame":"soldier","claim":"the soldier believes the hooded traveller a deserter like men he knew in the war and is ready to think the worst of him","canon_from":"sc-12","evidence":["sc-12","sc-10"],"entities":["soldier","cray"]},
+
+    {"fact_id":"f-trad-01","frame":"trader","claim":"the horse-trader Garrec and the drover Lyle travel together but Garrec lets the house think Lyle merely hired on, to keep his own dealings quiet","canon_from":"sc-02","evidence":["sc-02"],"entities":["trader","drover"]},
+    {"fact_id":"f-trad-02","frame":"trader","claim":"the trader believes the robbery a plain coin-theft and cares only that the flood not cost him his string of horses","canon_from":"sc-10","evidence":["sc-10","sc-09"],"entities":["trader","strongbox"]},
+
+    {"fact_id":"f-drov-01","frame":"drover","claim":"the drover Lyle heard only the single crash in the night and swears there was but one noise, contradicting the soldier","canon_from":"sc-12","evidence":["sc-12","sc-08"],"entities":["drover","soldier"]},
+    {"fact_id":"f-drov-02","frame":"drover","claim":"the drover knows Garrec is no mere master but his partner in the horse-dealing, and keeps that quiet as Garrec asks","canon_from":"sc-02","evidence":["sc-02"],"entities":["drover","trader"]},
+
+    {"fact_id":"f-groom-01","frame":"groom","claim":"the bridegroom Aldous crosses to be married against Joan's family's wishes and fears the flood will let her kin overtake them","canon_from":"sc-02","evidence":["sc-02"],"entities":["groom","bride"]},
+    {"fact_id":"f-groom-02","frame":"groom","claim":"the bridegroom believes nothing of the night but his own fear and held to his cell with Joan, hearing only muffled noise","canon_from":"sc-08","evidence":["sc-08"],"entities":["groom"]},
+
+    {"fact_id":"f-bride-01","frame":"bride","claim":"the bride Joan, awake while Aldous slept, saw a hooded figure cross the yard toward the millrace in the dark","canon_from":"sc-08","evidence":["sc-08"],"entities":["bride","cray"],"payoff_expectation":"expected"},
+    {"fact_id":"f-bride-02","frame":"bride","claim":"the bride says nothing of the hooded figure, afraid any notice will draw her family's pursuit down on the house","canon_from":"sc-11","evidence":["sc-11","sc-08"],"entities":["bride"]},
+    {"fact_id":"f-bride-03","frame":"bride","claim":"the bride tells Wend of the hooded figure crossing to the race only when the body is found, freeing her fear against her caution","canon_from":"sc-16","evidence":["sc-16","sc-15"],"entities":["bride","wend","cray"],"pays_off":["f-bride-01"]},
+
+    {"fact_id":"f-ward-01","frame":"warden","claim":"Mabon knew the bond Cray held overreached his true debt and meant to refuse it to Cray's face at the millrace","canon_from":"sc-03","evidence":["sc-03"],"entities":["mabon","cray","deed_bond"]},
+    {"fact_id":"f-ward-02","frame":"warden","claim":"Mabon tore the ferry log himself before crossing, meaning to leave no proof he had gone to meet a creditor he was ashamed of","canon_from":"sc-08","evidence":["sc-08"],"entities":["mabon","ferry_log"]},
+
+    {"fact_id":"f-name-01","frame":"wend","branch":"name","claim":"Wend lays the whole matter before the clerk — the dead warden, the forged bond, the staged robbery — and asks the law to take it","canon_from":"sc-18","evidence":["sc-18","sc-17"],"entities":["wend","clerk","cray","berdine"]},
+    {"fact_id":"f-name-02","frame":"clerk","branch":"name","claim":"the clerk, hearing Wend out, abandons his belief in a simple robbery and accepts that the warden was killed and the box was staged","canon_from":"sc-18","evidence":["sc-18","sc-10"],"entities":["clerk","cray","berdine"]},
+    {"fact_id":"f-name-03","frame":"clerk","branch":"name","claim":"the clerk opens his sealed papers and matches the genuine county seal against the deed-bond, proving the bond a forgery","canon_from":"sc-19","evidence":["sc-19","sc-07"],"entities":["clerk","clerk_papers","deed_bond"],"pays_off":["f-gt-03"]},
+    {"fact_id":"f-name-04","frame":"wend","branch":"name","claim":"Wend produces the wet-cloak account and the bride's hooded figure, and the clerk binds the deed-bond evidence to Cray","canon_from":"sc-19","evidence":["sc-19","sc-16"],"entities":["wend","clerk","cray","deed_bond"]},
+    {"fact_id":"f-name-05","frame":"clerk","branch":"name","claim":"under the clerk's questioning Berdine's staged theft unravels: a robbed full box leaves coin-marks the empty box never had","canon_from":"sc-20","evidence":["sc-20","sc-16"],"entities":["clerk","berdine","strongbox"],"pays_off":["f-gt-06"],"typed":{"subject":"strongbox","predicate":"culprit_box","object":{"kind":"entity","id":"berdine"}}},
+    {"fact_id":"f-name-06","frame":"wend","branch":"name","claim":"NAME ending: the water falls and Wend gives Cray and Berdine over to the clerk for the assize; Wend keeps the ford his uncle kept","canon_from":"sc-21","evidence":["sc-21","sc-20","sc-19"],"entities":["wend","cray","berdine","clerk"]},
+
+    {"fact_id":"f-hold-01","frame":"wend","branch":"hold","claim":"Wend tells no one what he learned, judging that a stranger's word and a torn log would hang the wrong or convict no one before the law","canon_from":"sc-30","evidence":["sc-30","sc-17"],"entities":["wend"]},
+    {"fact_id":"f-hold-02","frame":"wend","branch":"hold","claim":"Wend lowers the chain-ferry and lets the house cross as the water falls, the young couple first, the soldier last","canon_from":"sc-31","evidence":["sc-31"],"entities":["wend","groom","bride","soldier"]},
+    {"fact_id":"f-hold-03","frame":"hooded","branch":"hold","claim":"Cray crosses unhindered with the deed-bond still on him, free to press his forged claim on the Lantern House at law","canon_from":"sc-31","evidence":["sc-31","sc-16"],"entities":["cray","deed_bond"]},
+    {"fact_id":"f-hold-04","frame":"wend","branch":"hold","claim":"alone after they cross, Wend burns the leaf of the deed-bond he copied from the body's papers, judging the whole-house pledge a forgery beyond his uncle's true debt and choosing silence over a doubtful charge","canon_from":"sc-32","evidence":["sc-32","sc-15"],"entities":["wend","deed_bond"],"pays_off":["f-gt-03"]},
+    {"fact_id":"f-hold-05","frame":"wend","branch":"hold","claim":"HOLD ending: the ford stands clear, Cray gone with the bond and his guilt, and Wend keeps the warden's chair alone with all he chose not to say","canon_from":"sc-33","evidence":["sc-33","sc-32"],"entities":["wend","cray"]},
+
+    {"fact_id":"f-act-01","frame":"wend","branch":"act","claim":"Wend raises the chain-ferry and shuts the ford against Cray before the water has fully fallen, settling the matter his own way","canon_from":"sc-40","evidence":["sc-40","sc-17"],"entities":["wend","cray"]},
+    {"fact_id":"f-act-02","frame":"soldier","branch":"act","claim":"the soldier and the tinker stand with Wend at the lantern, the soldier's two-sound memory and the tinker's knowledge of the debt damning Cray to the house's face","canon_from":"sc-41","evidence":["sc-41","sc-12","sc-13"],"entities":["soldier","tinker","wend","cray"],"pays_off":["f-sol-02"]},
+    {"fact_id":"f-act-03","frame":"wend","branch":"act","claim":"cornered at the ford, Cray confesses to the warden's death and to forging the bond; Wend takes the deed-bond and burns it at the river lantern","canon_from":"sc-42","evidence":["sc-42","sc-16"],"entities":["wend","cray","deed_bond"],"pays_off":["f-gt-03"]},
+    {"fact_id":"f-act-04","frame":"hooded","branch":"act","claim":"Cray, breaking past Wend for the falling ford, is taken by the high water and drowns in the race where he left Mabon","canon_from":"sc-43","evidence":["sc-43","sc-42"],"entities":["cray","mabon"],"typed":{"subject":"cray","predicate":"fate","object":{"kind":"value","value":"dead"}}},
+    {"fact_id":"f-act-05","frame":"wend","branch":"act","claim":"ACT ending: the bond burned and Cray drowned, Wend lets the rest of the house cross knowing nothing, and keeps the ford and the secret both","canon_from":"sc-43","evidence":["sc-43","sc-42"],"entities":["wend","cray"]}
+
+  ]
+}

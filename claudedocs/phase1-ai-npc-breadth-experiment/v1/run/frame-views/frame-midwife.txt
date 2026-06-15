@@ -1,0 +1,6 @@
+=== frame `midwife` branch `name` at `sc-21` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-05] f-mid-01: the midwife, returning from a birth two valleys over, took the cell beside the hooded traveller's
+  [sc-11] f-mid-02: in the grey morning the midwife found the hooded traveller's cloak hung sodden and reeking of river, hours after the rain had stopped
+  [sc-11] f-mid-03: the midwife says nothing of the wet cloak at first, fearing a stranger's word against a stranger in a stranded house
+  [sc-16] f-mid-04: the midwife tells Wend of the wet cloak only when the warden's body is found, knowing it now points at the hooded man

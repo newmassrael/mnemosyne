@@ -1,0 +1,20 @@
+=== frame `wend` branch `name` at `sc-21` ===
+  holding=18 not_holding=0 unknown=0
+  [sc-18] f-name-01: Wend lays the whole matter before the clerk — the dead warden, the forged bond, the staged robbery — and asks the law to take it
+  [sc-19] f-name-04: Wend produces the wet-cloak account and the bride's hooded figure, and the clerk binds the deed-bond evidence to Cray
+  [sc-21] f-name-06: NAME ending: the water falls and Wend gives Cray and Berdine over to the clerk for the assize; Wend keeps the ford his uncle kept
+  [sc-01] f-wend-01: Wend, deputy, lights the river lantern alone as the snowmelt rises and the ford begins to flood
+  [sc-02] f-wend-02: Wend takes in twelve stranded travellers as the water climbs over the crossing
+  [sc-03] f-wend-03: Wend finds his uncle Mabon's cell empty and is told only that the warden went downriver on business
+  [sc-04] f-wend-04: Wend sees the wool-factor carry a heavy iron strongbox to his cell and bolt the door
+  [sc-07] f-wend-05: Wend notes the clerk's papers bear a pressed county seal when the clerk lays them on the board
+  [sc-08] f-wend-06: Wend wakes to a cry and a crash in the night and then the river's roar, and cannot tell what he heard
+  [sc-09] f-wend-07: in the morning Wend finds the strongbox broken open and its coin gone
+  [sc-10] f-wend-08: Wend hears Berdine accuse the hooded traveller of the theft and demand he be searched
+  [sc-13] f-wend-09: the tinker tells Wend on the second night that Mabon had fallen into debt to a hard man over the winter
+  [sc-14] f-wend-10: Wend finds the last leaves of the chain-ferry log torn out and knows Mabon kept that log faithfully for thirty years
+  [sc-14] f-wend-11: Wend learns of the deed-bond pledging the Lantern House and understands the ford itself was the stake
+  [sc-15] f-wend-12: Wend and the soldier pull Mabon's body from the millrace and Wend knows his uncle is dead, not downriver
+  [sc-16] f-wend-13: confronting the hooded traveller, Wend learns the man is Cray Holt, Mabon's creditor, that the deed-bond is on him, and — against the tinker's word that the debt was small and half-paid — sees the whole-house pledge overreaches and must be forged
+  [sc-16] f-wend-14: Berdine, cornered by Wend's questions about the box, lets slip that the coin was never there to steal
+  [sc-17] f-wend-15: by the third dawn Wend believes Cray killed Mabon over the forged bond and Berdine staged his own robbery, and must choose his road as the water falls

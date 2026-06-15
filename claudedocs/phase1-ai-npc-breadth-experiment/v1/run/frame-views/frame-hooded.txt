@@ -1,0 +1,8 @@
+=== frame `hooded` branch `act` at `sc-43` ===
+  holding=6 not_holding=0 unknown=0
+  [sc-43] f-act-04: Cray, breaking past Wend for the falling ford, is taken by the high water and drowns in the race where he left Mabon
+  [sc-05] f-hooded-01: Cray came to Corvath to collect on the deed-bond and took the far cell, giving no name, to stay unknown
+  [sc-05] f-hooded-02: Cray knows the deed-bond is forged — he made the pledge of the whole house himself, beyond Mabon's true debt
+  [sc-08] f-hooded-03: Cray knows Mabon drowned in the struggle at the millrace and that he, Cray, left him in the race
+  [sc-10] f-hooded-04: Cray believes Berdine's robbery uproar is a gift — the house hunting a coin-thief looks nowhere near the millrace
+  [sc-16] f-hooded-05: Cray means to cross the moment the water falls and carry the deed-bond away to claim the Lantern House at law

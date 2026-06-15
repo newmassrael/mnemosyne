@@ -1,0 +1,5 @@
+=== frame `bride` branch `name` at `sc-21` ===
+  holding=3 not_holding=0 unknown=0
+  [sc-08] f-bride-01: the bride Joan, awake while Aldous slept, saw a hooded figure cross the yard toward the millrace in the dark
+  [sc-11] f-bride-02: the bride says nothing of the hooded figure, afraid any notice will draw her family's pursuit down on the house
+  [sc-16] f-bride-03: the bride tells Wend of the hooded figure crossing to the race only when the body is found, freeing her fear against her caution

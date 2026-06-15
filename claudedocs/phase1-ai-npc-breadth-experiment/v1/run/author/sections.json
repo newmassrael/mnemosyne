@@ -1,0 +1,34 @@
+[
+  {"section_id":"sc-01","parent_doc":"corvath","title":"The river rising — Wend lights the lantern alone","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"corvath","title":"The house fills — twelve strangers stranded","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"corvath","title":"The warden's empty cell — Mabon is not here","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"corvath","title":"Berdine carries the strongbox to his cell","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"corvath","title":"The hooded traveller takes the far cell, gives no name","coverage_expectation":"informational"},
+  {"section_id":"sc-06","parent_doc":"corvath","title":"Supper in the common room — the tinker speaks of the warden","coverage_expectation":"informational"},
+  {"section_id":"sc-07","parent_doc":"corvath","title":"The clerk shows his sealed papers to no one, but Wend sees the seal","coverage_expectation":"informational"},
+  {"section_id":"sc-08","parent_doc":"corvath","title":"First flood night — a cry, a crash, then the river","coverage_expectation":"informational"},
+  {"section_id":"sc-09","parent_doc":"corvath","title":"Morning — the strongbox broken open, the coin gone","coverage_expectation":"informational"},
+  {"section_id":"sc-10","parent_doc":"corvath","title":"Berdine names the hooded traveller as the thief","coverage_expectation":"informational"},
+  {"section_id":"sc-11","parent_doc":"corvath","title":"The midwife found a wet cloak — and says nothing yet","coverage_expectation":"informational"},
+  {"section_id":"sc-12","parent_doc":"corvath","title":"The soldier and the drover quarrel over the watch order","coverage_expectation":"informational"},
+  {"section_id":"sc-13","parent_doc":"corvath","title":"Second night — the tinker tells Wend the warden owed a debt","coverage_expectation":"informational"},
+  {"section_id":"sc-14","parent_doc":"corvath","title":"The deed-bond — Wend finds the chain-ferry log torn out","coverage_expectation":"informational"},
+  {"section_id":"sc-15","parent_doc":"corvath","title":"The body in the millrace — Mabon is found","coverage_expectation":"informational"},
+  {"section_id":"sc-16","parent_doc":"corvath","title":"Wend confronts the hooded traveller; the truth of the box surfaces","coverage_expectation":"informational"},
+  {"section_id":"sc-17","parent_doc":"corvath","title":"Third dawn — the water begins to fall, and Wend must choose","coverage_expectation":"informational"},
+
+  {"section_id":"sc-18","parent_doc":"corvath","title":"NAME — Wend lays the whole matter before the clerk","coverage_expectation":"informational"},
+  {"section_id":"sc-19","parent_doc":"corvath","title":"NAME — the clerk's sealed papers prove the deed-bond a forgery","coverage_expectation":"informational"},
+  {"section_id":"sc-20","parent_doc":"corvath","title":"NAME — Berdine's staged theft unravels under the clerk's questions","coverage_expectation":"informational"},
+  {"section_id":"sc-21","parent_doc":"corvath","title":"NAME terminal — Cray and Berdine bound for the assize; Wend keeps the ford","coverage_expectation":"informational"},
+
+  {"section_id":"sc-30","parent_doc":"corvath","title":"HOLD — Wend says nothing, lets the house cross","coverage_expectation":"informational"},
+  {"section_id":"sc-31","parent_doc":"corvath","title":"HOLD — the young couple cross first, the soldier last","coverage_expectation":"informational"},
+  {"section_id":"sc-32","parent_doc":"corvath","title":"HOLD — Wend burns the deed-bond he took from the body","coverage_expectation":"informational"},
+  {"section_id":"sc-33","parent_doc":"corvath","title":"HOLD terminal — the ford stands clear; Cray gone, the debt with him; Wend alone with what he knows","coverage_expectation":"informational"},
+
+  {"section_id":"sc-40","parent_doc":"corvath","title":"ACT — Wend raises the chain-ferry and shuts the ford against Cray","coverage_expectation":"informational"},
+  {"section_id":"sc-41","parent_doc":"corvath","title":"ACT — the soldier and the tinker stand with Wend; Cray is cornered","coverage_expectation":"informational"},
+  {"section_id":"sc-42","parent_doc":"corvath","title":"ACT — the deed-bond burned at the lantern; Cray confesses to Mabon","coverage_expectation":"informational"},
+  {"section_id":"sc-43","parent_doc":"corvath","title":"ACT terminal — Cray drowns at the ford he came to take; the house crosses, none the wiser","coverage_expectation":"informational"}
+]

@@ -1,0 +1,4 @@
+=== frame `warden` branch `name` at `sc-21` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-03] f-ward-01: Mabon knew the bond Cray held overreached his true debt and meant to refuse it to Cray's face at the millrace
+  [sc-08] f-ward-02: Mabon tore the ferry log himself before crossing, meaning to leave no proof he had gone to meet a creditor he was ashamed of

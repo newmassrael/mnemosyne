@@ -1,0 +1,6 @@
+=== frame `tinker` branch `name` at `sc-21` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-06] f-tink-01: the tinker, who has crossed at Corvath a hundred times, knows Mabon well and says the warden would never leave the ford untended in flood season
+  [sc-06] f-tink-02: the tinker knows Mabon had fallen to a hard man's debt over the winter, having seen the creditor's man dun him last autumn
+  [sc-13] f-tink-03: the tinker tells Wend on the second night of the debt, the one fragment that turns Wend toward the deed-bond
+  [sc-13] f-tink-04: the tinker does not connect the hooded traveller to the creditor; he never saw the dunning man's face

@@ -1,0 +1,4 @@
+=== frame `groom` branch `name` at `sc-21` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-02] f-groom-01: the bridegroom Aldous crosses to be married against Joan's family's wishes and fears the flood will let her kin overtake them
+  [sc-08] f-groom-02: the bridegroom believes nothing of the night but his own fear and held to his cell with Joan, hearing only muffled noise

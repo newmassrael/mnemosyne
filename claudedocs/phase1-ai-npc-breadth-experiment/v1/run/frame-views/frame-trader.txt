@@ -1,0 +1,4 @@
+=== frame `trader` branch `name` at `sc-21` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-02] f-trad-01: the horse-trader Garrec and the drover Lyle travel together but Garrec lets the house think Lyle merely hired on, to keep his own dealings quiet
+  [sc-10] f-trad-02: the trader believes the robbery a plain coin-theft and cares only that the flood not cost him his string of horses

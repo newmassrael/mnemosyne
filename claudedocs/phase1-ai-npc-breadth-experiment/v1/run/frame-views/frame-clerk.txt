@@ -1,0 +1,8 @@
+=== frame `clerk` branch `name` at `sc-21` ===
+  holding=6 not_holding=0 unknown=0
+  [sc-10] f-clerk-01: the clerk believes the hooded traveller robbed the strongbox in the night, taking Berdine's accusation at face value
+  [sc-07] f-clerk-02: the clerk guards his sealed assize papers and will not let them be opened before the magistrate, but knows the county seal by heart
+  [sc-13] f-clerk-03: the clerk does not yet know the warden is dead; he thinks Mabon is downriver and will return to clear the ford
+  [sc-18] f-name-02: the clerk, hearing Wend out, abandons his belief in a simple robbery and accepts that the warden was killed and the box was staged
+  [sc-19] f-name-03: the clerk opens his sealed papers and matches the genuine county seal against the deed-bond, proving the bond a forgery
+  [sc-20] f-name-05: under the clerk's questioning Berdine's staged theft unravels: a robbed full box leaves coin-marks the empty box never had

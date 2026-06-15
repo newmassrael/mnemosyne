@@ -1,0 +1,4 @@
+=== frame `drover` branch `name` at `sc-21` ===
+  holding=2 not_holding=0 unknown=0
+  [sc-12] f-drov-01: the drover Lyle heard only the single crash in the night and swears there was but one noise, contradicting the soldier
+  [sc-02] f-drov-02: the drover knows Garrec is no mere master but his partner in the horse-dealing, and keeps that quiet as Garrec asks

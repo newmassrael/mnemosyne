@@ -1,0 +1,6 @@
+=== frame `factor` branch `name` at `sc-21` ===
+  holding=4 not_holding=0 unknown=0
+  [sc-04] f-factor-01: Berdine knows the strongbox held almost nothing — lead under a skim of coin — because he emptied it himself before the road
+  [sc-09] f-factor-02: Berdine intends everyone to believe a thief robbed a full box, so the missing money is the thief's crime and not his
+  [sc-10] f-factor-03: Berdine fixes on the nameless hooded traveller as the safest man to accuse, since no one will vouch for him
+  [sc-13] f-factor-04: Berdine does not know the warden is dead or that any deed-bond exists; the warden's affairs are nothing to him
