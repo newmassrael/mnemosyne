@@ -173,6 +173,41 @@ pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> 
     out.into_iter().collect()
 }
 
+/// Whether an in-frame succession edge whose successor and predecessor sit on
+/// DIFFERENT world-lines is legitimate (Rounds 438 + 535) — THE single
+/// definition of cross-branch succession legitimacy, called by BOTH enforcement
+/// points (the write path [`check_succession_edge`] in mnemosyne-atomic and the
+/// out-of-band scan re-check in mnemosyne-validate's continuity gate), so the
+/// two cannot drift (the multi-write-path-one-invariant discipline). The edge
+/// is legitimate iff the successor's world-line INHERITS the predecessor's
+/// belief, in either direction:
+/// - BACKWARD (fork): the predecessor's branch is a fork ANCESTOR of the
+///   successor's ([`fork_chain`]) — a fork revising an inherited belief (R438).
+/// - FORWARD (confluence): the successor's branch is a CONFLUENCE the
+///   predecessor's branch flows INTO ([`forward_confluences`]) — a merge's
+///   shared continuation reconciling a parent belief at the join (R535;
+///   bounded — it only authorizes the edge, it computes no merged state).
+/// Equal branches inherit trivially (the callers guard `!=` first; handled here
+/// for totality). Any other cross-branch pair is a sibling-world edit, rejected.
+pub fn succession_branch_inherits(
+    branches: &BTreeMap<String, Branch>,
+    successor_branch: &str,
+    predecessor_branch: &str,
+) -> Result<bool, String> {
+    if successor_branch == predecessor_branch {
+        return Ok(true);
+    }
+    if fork_chain(branches, successor_branch)?
+        .iter()
+        .any(|(ancestor, _)| ancestor == predecessor_branch)
+    {
+        return Ok(true);
+    }
+    Ok(forward_confluences(branches, predecessor_branch)
+        .iter()
+        .any(|c| c == successor_branch))
+}
+
 /// One recorded conflict assertion (Round 439): the judged target plus a
 /// content pin of the target's claim AT JUDGMENT TIME. The hash is computed
 /// by the mutate primitive, never caller-supplied (the R404 pattern) — so
@@ -621,6 +656,58 @@ impl DisclosurePlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 535 — the cross-branch succession legitimacy predicate, the SINGLE
+    /// definition both enforcement points share (write path + scan re-check), so
+    /// it IS the multi-write-path parity guarantee. A confluence diamond:
+    /// `main → {sluice, ride}` (fork at `tr`) → `dawn` (the merge).
+    #[test]
+    fn succession_inherits_in_both_lineage_directions() {
+        let fork = |at: &str| BranchFork {
+            branch: MAIN_BRANCH.to_string(),
+            at: at.to_string(),
+        };
+        let converge = |b: &str, at: &str| BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        let mut branches = BTreeMap::new();
+        branches.insert(
+            "sluice".to_string(),
+            Branch {
+                forks_from: Some(fork("tr")),
+                ..Branch::default()
+            },
+        );
+        branches.insert(
+            "ride".to_string(),
+            Branch {
+                forks_from: Some(fork("tr")),
+                ..Branch::default()
+            },
+        );
+        branches.insert(
+            "dawn".to_string(),
+            Branch {
+                converges_from: vec![converge("sluice", "sl"), converge("ride", "rd")],
+                ..Branch::default()
+            },
+        );
+        let inherits =
+            |succ: &str, pred: &str| succession_branch_inherits(&branches, succ, pred).unwrap();
+        // BACKWARD: a fork inherits its ancestor's belief (R438).
+        assert!(inherits("sluice", MAIN_BRANCH));
+        // FORWARD: the merge reconciles a parent's belief (R535).
+        assert!(inherits("dawn", "sluice"));
+        assert!(inherits("dawn", "ride"));
+        // EQUAL: trivially inherits.
+        assert!(inherits("sluice", "sluice"));
+        // SIBLING: ride does not inherit sluice's belief (neither direction).
+        assert!(!inherits("ride", "sluice"));
+        // DIRECTION matters: a parent does NOT inherit the merge's belief
+        // (succession flows parent → merge, never merge → parent).
+        assert!(!inherits("sluice", "dawn"));
+    }
 
     /// Round 510 — the single disclosure resolver: `effective` and
     /// `effective_mode` agree, an override wins over the default, `first_at` is

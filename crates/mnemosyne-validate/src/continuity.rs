@@ -823,6 +823,26 @@ pub enum ContinuityViolation {
         evidence: String,
         canon_from: String,
     },
+    /// A fact authored on a CONFLUENCE cites evidence not reachable from one of
+    /// the merge's incoming parents (Round 535, the R528-Q3 reconciliation). A
+    /// confluence's shared suffix holds in EVERY converging parent world-line
+    /// (forward visibility), so its structural dependencies (`evidence`) must be
+    /// satisfiable from EACH parent's side of the join — the R488/R522 `le`
+    /// reachability checked PER incoming parent (against the fact's own
+    /// `canon_from`, which routes through that parent's merge coordinate),
+    /// because the confluence's OWN order is prefix-less and cannot connect a
+    /// parent's prefix to the suffix. Evidence reachable from only one parent (a
+    /// parent-exclusive scene) is an unreconciled cross-merge dependency: the
+    /// fact belongs on that parent (a path-dependent continuation) or must cite a
+    /// shared establishing scene. Trunk/shared evidence reachable from every
+    /// parent passes.
+    ConfluenceEvidenceUnreconciled {
+        fact: String,
+        confluence: String,
+        parent: String,
+        evidence: String,
+        canon_from: String,
+    },
     /// A stored `canon_to` lets the predecessor outlive its successor's
     /// start — the stored end contradicts the derived one (design sec 7.3).
     SuccessionContradiction {
@@ -840,8 +860,16 @@ pub enum ContinuityViolation {
         successor_frame: String,
         predecessor_frame: String,
     },
-    /// `supersedes_in_frame` crosses world-lines (Round 433; out-of-band
-    /// edit — the write path rejects this, the scan re-checks, fail-loud).
+    /// `supersedes_in_frame` crosses world-lines into a branch that does NOT
+    /// inherit the predecessor's belief (Round 433 + 535). A cross-branch
+    /// succession is legitimate in exactly two inheritance directions
+    /// ([`succession_branch_inherits`]): the predecessor is a BACKWARD fork
+    /// ancestor of the successor (a fork revises an inherited belief), or the
+    /// successor is a FORWARD confluence-suffix of the predecessor (a merge's
+    /// shared continuation reconciles a parent belief at the join, R535 —
+    /// bounded, no auto-merge engine). Any OTHER cross-branch edge is a
+    /// sibling-world edit (out-of-band; the write path rejects it, the scan
+    /// re-checks, fail-loud).
     SuccessionCrossBranch {
         successor: String,
         predecessor: String,
@@ -1081,10 +1109,23 @@ fn visibility(world: &str, lineage: &Lineage, order: &CanonOrder, fact: &Narrati
 }
 
 /// B-2 scope resolution — the ONE place conflict scoping is decided:
-/// `(frame, world-line)` with fork lineage (Rounds 433 + 438). Same frame
-/// required; the pair's JOIN world is the deeper branch when one branch is
-/// the other's ancestor (or both equal), else there is no shared world —
-/// sibling/unrelated world-lines are data, like cross-frame pairs.
+/// `(frame, world-line)` with fork lineage (Rounds 433 + 438 + 535). Same
+/// frame required; the pair's JOIN world (the playthrough where both facts
+/// co-exist, so a conflict between them is real) is found in either world-line
+/// direction:
+/// - BACKWARD (fork): one branch is the other's fork ancestor → the deeper
+///   (descendant) branch, which inherits the ancestor's prefix.
+/// - FORWARD (confluence, R535): one fact is on a CONFLUENCE the other's branch
+///   flows INTO → the PARENT, where the shared suffix is visible
+///   ([`Lineage::forward`]) alongside the parent-middle fact. This scopes a
+///   cross-merge conflict the backward `cut` cannot see.
+///
+/// Else there is no shared world — sibling/unrelated world-lines are data, like
+/// cross-frame pairs. (The sibling-confluence-common-parent case — two distinct
+/// confluences sharing a parent — would need an In-set intersection over the
+/// query worlds; it belongs to the deferred series-parallel generalization, not
+/// the R528 exclusive-OR diamond, so it stays unscoped here, surfaced as
+/// `cross_scope_pairs`, never silent.)
 fn join_world<'a>(
     a: &'a NarrativeFact,
     b: &'a NarrativeFact,
@@ -1101,6 +1142,16 @@ fn join_world<'a>(
     }
     if lineages[&b.branch].cut.contains_key(&a.branch) {
         return Some(&b.branch);
+    }
+    // Forward (Round 535): `forward(X)` lists the confluences `X` flows into,
+    // so `forward(b.branch).contains(a.branch)` means `a` is on a confluence
+    // `b`'s world-line merges into — `a` (the suffix) is visible in `b.branch`
+    // (the parent), where `b` lives natively; the join world is that parent.
+    if lineages[&b.branch].forward.contains(&a.branch) {
+        return Some(&b.branch);
+    }
+    if lineages[&a.branch].forward.contains(&b.branch) {
+        return Some(&a.branch);
     }
     None
 }
@@ -1752,16 +1803,54 @@ pub fn scan_continuity(
         if !positioned.contains(fact.canon_from.as_str()) {
             continue;
         }
+        // The world-line(s) the evidence must be reachable in. The normal case
+        // is the fact's OWN branch (R522). A fact authored on a CONFLUENCE is a
+        // merge's shared suffix — it holds in EVERY incoming parent (forward
+        // visibility), and the confluence's own order is prefix-less (it cannot
+        // connect a parent's prefix to the suffix), so its dependencies are
+        // checked against each PARENT's order instead (Round 535). The upper
+        // bound stays the fact's own `canon_from` (which sits in the suffix,
+        // downstream of the merge in each parent's composed order) — NOT the
+        // merge coordinate, so suffix-internal evidence (a shared scene before
+        // this fact) reaches correctly, while a parent-exclusive scene fails in
+        // every sibling parent.
+        let confluence_parents = store
+            .branches
+            .get(&fact.branch)
+            .filter(|b| !b.converges_from.is_empty())
+            .map(|b| b.converges_from.as_slice());
         for e in &fact.evidence {
-            if positioned.contains(e.as_str()) && !order.le(&fact.branch, e, &fact.canon_from) {
-                report
-                    .violations
-                    .push(ContinuityViolation::EvidenceUnreachable {
-                        fact: id.clone(),
-                        branch: fact.branch.clone(),
-                        evidence: e.clone(),
-                        canon_from: fact.canon_from.clone(),
-                    });
+            if !positioned.contains(e.as_str()) {
+                continue;
+            }
+            match confluence_parents {
+                None => {
+                    if !order.le(&fact.branch, e, &fact.canon_from) {
+                        report
+                            .violations
+                            .push(ContinuityViolation::EvidenceUnreachable {
+                                fact: id.clone(),
+                                branch: fact.branch.clone(),
+                                evidence: e.clone(),
+                                canon_from: fact.canon_from.clone(),
+                            });
+                    }
+                }
+                Some(parents) => {
+                    for parent in parents {
+                        if !order.le(&parent.branch, e, &fact.canon_from) {
+                            report.violations.push(
+                                ContinuityViolation::ConfluenceEvidenceUnreconciled {
+                                    fact: id.clone(),
+                                    confluence: fact.branch.clone(),
+                                    parent: parent.branch.clone(),
+                                    evidence: e.clone(),
+                                    canon_from: fact.canon_from.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -1787,9 +1876,11 @@ pub fn scan_continuity(
                 }
                 Some(t)
                     if t.branch != s.branch
-                        && !lineages
-                            .get(&s.branch)
-                            .is_some_and(|l| l.cut.contains_key(&t.branch)) =>
+                        && !mnemosyne_core::succession_branch_inherits(
+                            &store.branches,
+                            &s.branch,
+                            &t.branch,
+                        )? =>
                 {
                     report
                         .violations
@@ -6322,6 +6413,161 @@ mod tests {
                 ContinuityViolation::FrameConflictOverlap { branch, .. } if branch == "dawn"
             )),
             "a suffix-suffix conflict scopes to the confluence: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 535 — CONFLICT scoping across a confluence: a suffix fact (on the
+    /// merge) and a parent-MIDDLE fact that conflict co-hold in the PARENT world
+    /// (the suffix is visible there via forward inheritance), so the cross-merge
+    /// conflict is caught — the gap R533/R534 left bucketed as
+    /// `cross_scope_pairs`. The sibling parent is NOT dragged in.
+    #[test]
+    fn confluence_cross_merge_conflict_scopes_to_parent() {
+        // A suffix fact on `dawn` declared to conflict with `f-sluice` (sluice's
+        // exclusive middle); they co-exist only in sluice's playthrough.
+        let clash = FactImport {
+            branch: Some("dawn".to_string()),
+            conflicts_with: vec!["f-sluice".to_string()],
+            ..fact("f-merge-clash", "gt", "rv", None)
+        };
+        let store = diamond_store(vec![clash]);
+        let report = scan_continuity(&store, &diamond_order(&store), &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::FrameConflictOverlap { branch, fact_a, fact_b, .. }
+                    if branch == "sluice"
+                        && [fact_a.as_str(), fact_b.as_str()].contains(&"f-merge-clash")
+                        && [fact_a.as_str(), fact_b.as_str()].contains(&"f-sluice")
+            )),
+            "a suffix-vs-parent-middle conflict scopes to the parent: {:?}",
+            report.violations
+        );
+        assert!(
+            !report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::FrameConflictOverlap { branch, .. } if branch == "ride"
+            )),
+            "the conflict must not leak into the sibling parent: {:?}",
+            report.violations
+        );
+        assert_eq!(
+            report.cross_scope_pairs, 0,
+            "the cross-merge pair is now scoped, not bucketed"
+        );
+    }
+
+    /// Round 535 — SUCCESSION reconciliation wired at BOTH enforcement points
+    /// (they share `mnemosyne_core::succession_branch_inherits`, unit-tested for
+    /// the four directions in mnemosyne-core). A suffix fact may supersede a
+    /// parent belief at the merge — accepted by the write path (the import does
+    /// not panic) AND clean in the scan. A sibling-world succession inherits in
+    /// neither direction — rejected by the write path (it never reaches the
+    /// scan).
+    #[test]
+    fn confluence_suffix_reconciles_parent_belief() {
+        // ACCEPTED: suffix `f-reconcile` on `dawn` supersedes `f-sluice`.
+        let reconcile = FactImport {
+            branch: Some("dawn".to_string()),
+            supersedes_in_frame: Some("f-sluice".to_string()),
+            ..fact("f-reconcile", "gt", "rk", None)
+        };
+        let store = diamond_store(vec![reconcile]);
+        let report = scan_continuity(&store, &diamond_order(&store), &[]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::SuccessionCrossBranch { .. })),
+            "a confluence suffix reconciling a parent belief is allowed: {:?}",
+            report.violations
+        );
+
+        // REJECTED at the write path: a sibling-world succession (ride
+        // superseding a sluice belief) inherits in neither direction.
+        let mut store = diamond_store(vec![]);
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let err = mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                frames: vec![],
+                branches: vec![],
+                entities: vec![],
+                predicates: vec![],
+                facts: vec![FactImport {
+                    branch: Some("ride".to_string()),
+                    supersedes_in_frame: Some("f-sluice".to_string()),
+                    ..fact("f-sibling", "gt", "rd", None)
+                }],
+            },
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("does not inherit"),
+            "a sibling-world succession is rejected at the write path: {err:?}"
+        );
+    }
+
+    /// Round 535 — the per-parent dependency GATE: a suffix fact whose evidence
+    /// is reachable from only ONE incoming parent is an unreconciled cross-merge
+    /// dependency (flagged against the parent it is NOT reachable from); a suffix
+    /// fact citing a shared/trunk scene reachable from EVERY parent is clean. The
+    /// clean case also proves the false-positive fix — the confluence's own
+    /// prefix-less order cannot connect the trunk to the suffix, so the pre-R535
+    /// `le(confluence, …)` would have wrongly flagged it.
+    #[test]
+    fn confluence_evidence_reconciled_per_parent() {
+        // Suffix fact on `dawn` citing `sl` (sluice's EXCLUSIVE middle):
+        // reachable from sluice, NOT from ride.
+        let only_sluice = FactImport {
+            branch: Some("dawn".to_string()),
+            evidence: vec!["sl".to_string()],
+            ..fact("f-onesided", "gt", "rv", None)
+        };
+        let store = diamond_store(vec![only_sluice]);
+        let report = scan_continuity(&store, &diamond_order(&store), &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ConfluenceEvidenceUnreconciled {
+                    confluence,
+                    parent,
+                    evidence,
+                    ..
+                } if confluence == "dawn" && parent == "ride" && evidence == "sl"
+            )),
+            "evidence reachable from only one parent is flagged against the other: {:?}",
+            report.violations
+        );
+        assert!(
+            !report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ConfluenceEvidenceUnreconciled { parent, .. }
+                    if parent == "sluice"
+            )),
+            "…but NOT against the parent it IS reachable from: {:?}",
+            report.violations
+        );
+
+        // Suffix fact citing the pre-fork trunk `tr` — reachable from BOTH
+        // parents: clean (and the pre-R535 confluence-order check false-flagged).
+        let shared = FactImport {
+            branch: Some("dawn".to_string()),
+            evidence: vec!["tr".to_string()],
+            ..fact("f-shared-dep", "gt", "rv", None)
+        };
+        let store = diamond_store(vec![shared]);
+        let report = scan_continuity(&store, &diamond_order(&store), &[]).unwrap();
+        assert!(
+            !report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ConfluenceEvidenceUnreconciled { .. }
+                    | ContinuityViolation::EvidenceUnreachable { .. }
+            )),
+            "trunk evidence reachable from every parent is clean: {:?}",
             report.violations
         );
     }

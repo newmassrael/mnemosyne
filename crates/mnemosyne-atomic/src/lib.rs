@@ -3815,8 +3815,10 @@ fn build_typed_claim(
 /// [`validate_and_stamp_fact_refs`], and [`import_edge_proposals`]
 /// directly; the R305/R446 one-builder-site rule applied to edges):
 /// the target exists, succession is in-frame (cross-frame disagreement is
-/// data, design sec 7.3), the target's branch is this world-line or on its
-/// fork lineage (Round 438), and the resulting chain is ACYCLIC.
+/// data, design sec 7.3), the target's branch is one this world-line INHERITS
+/// (its own, a fork ancestor, or a confluence it merges into —
+/// [`mnemosyne_core::succession_branch_inherits`], Rounds 438 + 535), and the
+/// resulting chain is ACYCLIC.
 ///
 /// The cycle walk closes a hole verified live in Round 461: `add_fact` is
 /// cycle-safe only by construction (the target must pre-exist), but
@@ -3852,15 +3854,14 @@ fn check_succession_edge(
         }
         Some(t)
             if t.branch != branch
-                && !mnemosyne_core::fork_chain(branches, branch)?
-                    .iter()
-                    .any(|(ancestor, _)| *ancestor == t.branch) =>
+                && !mnemosyne_core::succession_branch_inherits(branches, branch, &t.branch)? =>
         {
             return Err(format!(
                 "fact `{fact_id}` (branch `{branch}`): supersedes_in_frame `{target}` lives on \
-                 branch `{}`, which is not on this world-line's fork lineage — \
-                 succession never crosses world-lines (divergence is data, not \
-                 succession)",
+                 branch `{}`, whose belief this world-line does not inherit — succession \
+                 crosses world-lines only by inheritance (a fork inheriting an ancestor's \
+                 belief, or a confluence reconciling a parent's at the merge), never between \
+                 siblings (divergence is data, not succession)",
                 t.branch
             ));
         }
@@ -10611,7 +10612,7 @@ mod tests {
             ..sample_fact("f-stray", "gt")
         };
         let err = add_fact(&mut store, &path, &stray).unwrap_err();
-        assert!(err.to_string().contains("fork lineage"), "{err}");
+        assert!(err.to_string().contains("does not inherit"), "{err}");
     }
 
     /// Round 532 — confluence (`converges_from`) registration invariants: ≥ 2
