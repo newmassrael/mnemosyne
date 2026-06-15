@@ -31,30 +31,59 @@ pub fn workspace_root_from(anchor: &Path) -> Result<PathBuf> {
         .unwrap_or_else(|| anchor.to_path_buf()))
 }
 
-/// Resolve sidecar path with the Round 279 precedence chain:
-/// 1. Explicit `--sidecar` CLI flag wins absolutely.
-/// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative
-///    or absolute) when discoverable.
+/// Resolve an EXPLICIT CLI path argument (Round 538) — the single source of
+/// the rule every CLI path flag follows: a relative path is **CWD-relative**
+/// (the universal CLI convention, the principle of least surprise — `cat`,
+/// `cp`, `git apply`, `cargo`, and this tool's own `--manifest` all resolve a
+/// typed path against the directory the user is standing in), an absolute path
+/// is used verbatim. This is deliberately DIFFERENT from a config-DECLARED
+/// path (`[atomic] sidecar_path`, `[continuity] canon_order_path`): a config
+/// declaration is a project-level artifact and anchors to the workspace root,
+/// not the CWD. Shared by `--sidecar` ([`resolve_sidecar`]) and `--order`
+/// (`resolve_canon_order_file`) so the two cannot drift to different anchors.
+pub fn resolve_explicit_cli_path(cwd: &Path, raw: &str) -> PathBuf {
+    let pb = PathBuf::from(raw);
+    if pb.is_absolute() {
+        pb
+    } else {
+        cwd.join(pb)
+    }
+}
+
+/// Resolve sidecar path with the Round 279 precedence chain (Round 538
+/// CWD-correct on the explicit override):
+/// 1. Explicit `--sidecar` CLI flag wins absolutely — resolved **CWD-relative**
+///    (R538: a path typed on the command line is relative to where the user
+///    stands; see [`resolve_explicit_cli_path`]).
+/// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative or
+///    absolute) when discoverable — a config declaration, **workspace-rooted**.
 /// 3. Default `<workspace_root>/docs/.atomic/workspace.atomic.json`.
 ///
-/// Workspace-relative paths join the config-declared `[workspace] root`, not
-/// `anchor` — see [`workspace_root_from`].
+/// `anchor` is the config-discovery start (the dir the command ran against, or
+/// the dir holding `mnemosyne.toml`); the config/default branches resolve
+/// against the discovered `[workspace] root`, never against `anchor` — see
+/// [`workspace_root_from`]. The imperative shell: it injects the process CWD
+/// (the invocation's defining context) into the pure [`resolve_sidecar_in`].
 pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&str>) -> Result<PathBuf> {
+    let cwd =
+        std::env::current_dir().map_err(|e| anyhow!("CWD lookup for sidecar resolution: {e}"))?;
+    resolve_sidecar_in(&cwd, anchor, sidecar)
+}
+
+/// The pure core of [`resolve_sidecar`] (Round 538) — `cwd` is injected so the
+/// explicit-override branch is deterministic and testable. The explicit
+/// override is CWD-relative and never touches `anchor` (a CLI path is not
+/// workspace-rooted); only the config/default branches discover + join the
+/// workspace root.
+fn resolve_sidecar_in(cwd: &Path, anchor: &Path, sidecar: Option<&str>) -> Result<PathBuf> {
     // Explicit override short-circuits before discovery — a malformed
-    // `mnemosyne.toml` must not block an explicitly-pathed resolve. A
-    // relative override joins the anchor directly (the dir the command was
-    // invoked against).
+    // `mnemosyne.toml` must not block an explicitly-pathed resolve.
     if let Some(p) = sidecar {
-        let pb = PathBuf::from(p);
-        return Ok(if pb.is_absolute() {
-            pb
-        } else {
-            anchor.join(pb)
-        });
+        return Ok(resolve_explicit_cli_path(cwd, p));
     }
     // No override: a malformed config propagates loud rather than silently
     // falling back to the default (R356/R359 corrupt-store sweep). The
-    // `[atomic]` / default paths join the config-declared root, not anchor.
+    // `[atomic]` / default paths join the config-declared root (project-rooted).
     let loaded = discover_config(anchor)?;
     let root = loaded
         .as_ref()
@@ -194,12 +223,42 @@ mod tests {
     }
 
     #[test]
-    fn resolve_sidecar_explicit_relative_override_joins_anchor() {
-        // An explicit `--sidecar` relative override short-circuits discovery
-        // and joins the anchor directly (the dir the command ran against).
-        let (_tmp, anchor, _root) = subdir_rooted_workspace("");
-        let got = resolve_sidecar(&anchor, Some("custom/store.json")).unwrap();
-        assert_eq!(got, anchor.join("custom/store.json"));
+    fn resolve_explicit_cli_path_is_cwd_relative_or_absolute() {
+        // R538 — the single explicit-CLI-path rule: a relative path is
+        // CWD-relative (least surprise), an absolute path passes through.
+        let cwd = Path::new("/home/u/run/author");
+        assert_eq!(
+            resolve_explicit_cli_path(cwd, "store.json"),
+            cwd.join("store.json")
+        );
+        assert_eq!(
+            resolve_explicit_cli_path(cwd, "sub/store.json"),
+            cwd.join("sub/store.json")
+        );
+        assert_eq!(
+            resolve_explicit_cli_path(cwd, "/abs/store.json"),
+            PathBuf::from("/abs/store.json")
+        );
+    }
+
+    #[test]
+    fn resolve_sidecar_in_explicit_relative_override_is_cwd_relative() {
+        // R538 — an explicit `--sidecar` relative override resolves against the
+        // CWD (the dir the user is standing in), NOT the workspace anchor. This
+        // corrects the pre-R538 anchor-join, which silently planted a subdir
+        // store at the repo root. The explicit branch short-circuits discovery,
+        // so a fake anchor is never consulted.
+        let cwd = Path::new("/home/u/run/author");
+        let anchor = Path::new("/the/workspace/root");
+        let got = resolve_sidecar_in(cwd, anchor, Some("custom/store.json")).unwrap();
+        assert_eq!(got, cwd.join("custom/store.json"));
+        assert!(
+            !got.starts_with(anchor),
+            "must not resolve under the anchor"
+        );
+        // Absolute override passes through unchanged.
+        let abs = resolve_sidecar_in(cwd, anchor, Some("/abs/store.json")).unwrap();
+        assert_eq!(abs, PathBuf::from("/abs/store.json"));
     }
 
     #[test]

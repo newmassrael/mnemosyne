@@ -179,7 +179,16 @@ fn resolve_canon_order_file(
         order_override,
         cont.and_then(|c| c.canon_order_path.as_ref()),
     ) {
-        (Some(p), _) => load_canon_order(&policy.root.join(p), None).map_err(OpError::Other),
+        // R538 — an explicit `--order` CLI override is CWD-relative (the same
+        // rule as `--sidecar` / `--manifest`; the config-declared path below
+        // stays workspace-rooted). Bypasses the sha256 pin (the pin claims
+        // nothing about a different file — the R428 `--catalog` rule).
+        (Some(p), _) => {
+            let cwd = std::env::current_dir()
+                .map_err(|e| OpError::Other(format!("CWD lookup for --order resolution: {e}")))?;
+            load_canon_order(&cascade::resolve_explicit_cli_path(&cwd, p), None)
+                .map_err(OpError::Other)
+        }
         (None, Some(p)) => load_canon_order(
             &policy.root.join(p),
             cont.and_then(|c| c.canon_order_sha256.as_deref()),

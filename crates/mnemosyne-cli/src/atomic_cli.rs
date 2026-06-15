@@ -3305,7 +3305,12 @@ sidecar_path = "from-config.json"
 "#,
         );
         let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json")).unwrap();
-        assert_eq!(resolved, tmp.path().join("from-cli.json"));
+        // R538 — the explicit override wins over the config AND resolves
+        // CWD-relative (not the config path, not the anchor): it short-circuits
+        // config discovery entirely.
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(resolved, cwd.join("from-cli.json"));
+        assert_ne!(resolved, tmp.path().join("from-config.json"));
     }
 
     #[test]
@@ -3357,10 +3362,14 @@ sidecar_path = "altdir/custom.atomic.json"
     #[test]
     fn resolve_sidecar_explicit_override_ignores_malformed_config() {
         // The explicit override short-circuits before config discovery, so a
-        // malformed config must not block an explicitly-pathed resolve.
+        // malformed config must not block an explicitly-pathed resolve. R538:
+        // it resolves CWD-relative.
         let tmp = TempDir::new().unwrap();
         write_toml(tmp.path(), "[atomic\nsidecar_path = \"x.json\"\n");
         let resolved = resolve_sidecar(tmp.path(), Some("from-cli.json")).unwrap();
-        assert_eq!(resolved, tmp.path().join("from-cli.json"));
+        assert_eq!(
+            resolved,
+            std::env::current_dir().unwrap().join("from-cli.json")
+        );
     }
 }
