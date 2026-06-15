@@ -1,0 +1,88 @@
+{
+  "manifest": "npc-dialogue-experiment/v2",
+  "designed": "2026-06-15 (R552 manifest round; sha256 of this manifest pinned in the R552 ledger entry BEFORE any repair/extract/judge subagent runs — the R503/R514/R548/R550 pre-commit pattern). Tests the owner's R551-followup hypothesis: re-render ONLY the deficient parts (a critique -> targeted re-render -> re-gate stage) and measure whether it raises completeness — the render analog of the author's write-gate-repair loop, extending the R515 warm-render-then-gate-REPAIR discipline from gate-flagged violations to JUDGE-flagged craft seams.",
+
+  "lineage_note": "DESIGNED by the lineage that ran v1 (R550/R551). Per the R469 contamination bound this lineage may NOT render prose or blind-judge; it selects the weak-scene set FROM THE v1 VERDICTS (deterministic, not invented), writes this manifest + the repair craft-note + the A/B judge brief + runbook, splices arms, and runs the deterministic gates. A blind repair-renderer, a blind re-extractor, and 3 blind A/B judges do the rest.",
+
+  "question": {
+    "primary": "Does a TARGETED, scene-scoped RE-RENDER of only the v1 judge-flagged weak scenes — a critique -> re-render -> re-gate stage inserted after the v1 warm render — RAISE the render's craft (naturalness, sustainment-feel) WITHOUT re-cooling (the R513 compliance-register risk) and WITHOUT introducing a leak or off-branch drift (the repair must still pass the R508 gates)? I.e. can you fix only the deficient parts rather than redo the whole render, and does it actually help?",
+    "isolation": "everything is HELD CONSTANT from v1 except the targeted repair: same fact base (v1 run/author), same disclosure plan, same world structure, same render for every scene EXCEPT the 4 weak ones. arm C = v1 render verbatim; arm R = v1 render with ONLY the 4 weak scenes replaced by a blind re-render. The single varied variable is the targeted repair stage.",
+    "the_real_risks": "two, both pinned or judged: (1) RE-COOL (R513) — a repair that drifts into compliance register reads colder than the original; the A/B judges measure this (arm R could LOSE). (2) REPAIR-INTRODUCED LEAK/DRIFT — dramatizing a withheld scene risks voicing the secret (esp. shelter sc-27, where the murder must stay unknown on that road) or pulling in a cross-world fact; PIN-R1/PIN-R2 catch this deterministically. The gate is exactly why a repair stage is safe — it cannot silently break fidelity."
+  },
+
+  "reuse": {
+    "fact_base": "v1 run/author/{sections,facts,order,narrative-rules}.json + the disclosure plan `holm` (rebuilt fresh into verify.atomic.json at R551). UNCHANGED.",
+    "arm_C_control": "v1 run/render/world-{report,shelter,confront}.md VERBATIM.",
+    "low_touch": "the ONLY new authoring is the re-render of 4 scenes (the R503 reuse discipline — isolate the one variable)."
+  },
+
+  "weak_scene_set_deterministic": {
+    "source": "extracted from the 3 v1 blind judge verdicts (run/judges/judge-{1,2,3}.md), NOT invented by this lineage.",
+    "scenes": [
+      "report/sc-16 — the officer's stakes-speech reads as thesis / stated-for-the-reader exposition (ALL THREE judges: j1 'tip toward stating-the-stakes', j2 'faintly stagey... narrates the stakes', j3 'a thesis-statement exchange').",
+      "confront/sc-29 — the reveal pitched as public oration / declamation (j2 'orate to a crowd... set-piece', j3 'lean a touch declamatory').",
+      "confront/sc-30 — same oration seam at the murder reveal (j2, j3).",
+      "shelter/sc-27 — narrated SUMMARY instead of a dramatized scene; the boy gets no closing line (j1, who docked shelter per-road sustainment to 4/5 on exactly this)."
+    ],
+    "craft_directions_for_repair": "report sc-16: let the stakes surface through pressure / evasion / what people will NOT say, not an officer's tidy speech. confront sc-29-30: people breaking and owning messily, not declaiming to a crowd; keep Orne's confession and Cass's admission but de-orate. shelter sc-27: DRAMATIZE — give the secondary cast (esp. the boy Wick) live closing beats in their own voices instead of third-person summary. ALL: stay in the warm storytelling register (a compliance-register repair re-cools, R513); keep each person's knowledge exactly as their road allows; do NOT voice any withheld solution the scene's road keeps hidden."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R552): selects the weak set from the verdicts, writes the manifest + craft-note + A/B judge brief + runbook; splices the blind repair output into v1 to form arm R; rebuilds + runs the gates; assembles the shuffled A/B packets. NEVER renders a scene or judges.",
+    "blind_repair_renderer": "ONE fresh-context subagent. Input = the repair craft-note (repair-brief.md, which carries the 4 scenes + their craft directions + the relevant v1 outline context per scene) ONLY. Outputs the 4 re-rendered scenes (each under its `## sc-NN`). BLIND to: the pins, the A/B design, that it is a repair being compared, the v1 judge scores.",
+    "blind_extractor": "ONE fresh-context subagent (reuses v1 extractor-brief.md). Re-extracts facts from arm R's spliced manuscripts + the shared vocab. BLIND to the original facts/plan.",
+    "blind_judges": "3 fresh-context subagents. Input = ab-judge-brief.md + a SHUFFLED A/B packet (arm C and arm R, labels hidden, per-road order randomized). BLIND to: which arm is the repair, the experiment, the weak-set, the craft-note, and each other.",
+    "contamination_bound": "the R469 discipline (12th use). The lineage that ran v1 + selected the weak set may not render or judge."
+  },
+
+  "deterministic_pins": {
+    "PIN_R1_no_new_leak": {
+      "claim": "PIN. The targeted repair introduces NO premature disclosure. Over a BLIND re-extraction of arm R: validate-disclosure-leak --telling holm --truth-frame gt, every world = leaks=0, vocabulary_shared>0 (R510 F5). Especially: the shelter-road repair of sc-27 must NOT voice the withheld murder (which stays unknown on shelter)."
+    },
+    "PIN_R2_no_new_drift": {
+      "claim": "PIN. The targeted repair introduces NO off-branch / cross-world drift. Over arm R's single-world projection: validate-render-fidelity, every world = off_path=0, unplaced=0, reached_terminal=true (the R488/R512 method)."
+    },
+    "PIN_R3_localization": {
+      "claim": "PIN. The repair stayed SCOPED. arm R differs from arm C ONLY in the 4 named scenes — guaranteed by construction (the orchestrator splices the 4 blind-rendered scenes into otherwise-byte-identical v1 manuscripts) and CONFIRMED by a recorded diff (only the 4 `## sc-NN` blocks differ).",
+      "note": "this makes the A/B a clean test of the repair alone — any judged difference is attributable to the 4 scenes, not a whole-render rewrite."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, ab-judge-brief.md, over a SHUFFLED A/B packet (arm C vs arm R, labels hidden). For EACH of the 4 repaired scenes and for the story OVERALL: forced A/B choice on dialogue-naturalness and (for shelter) cast-sustainment-feel + 'which reads more as a dramatized living scene vs arranged/summarized information'. Within-run A/B is the controlled result.",
+    "axes": "dialogue naturalness (the report sc-16 + confront sc-29-30 seam) / cast-sustainment-feel as a DRAMATIZED scene (the shelter sc-27 seam) / overall preference, each a forced A-or-B with a one-line why, scene-id-cited.",
+    "outcome_pin": "NONE. The pins are the no-break guarantee; the A/B preference is the open question."
+  },
+
+  "decision_rule_pre_committed": {
+    "R_wins_and_pins_hold": "arm R is preferred on the repaired scenes by a majority of judges AND PIN-R1/R2/R3 hold => TARGETED CRAFT-REPAIR RAISES completeness without re-cooling or breaking fidelity => the critique -> re-render -> re-gate stage is a VALIDATED render-improve loop (the render analog of the author write-gate-repair loop). It is a prompt/stage, not new substrate — build YAGNI-deferred, recipe recorded. The owner's hypothesis CONFIRMED.",
+    "R_ties_or_loses": "arm R is not preferred (tie or arm C wins) while pins hold => single-pass warm craft is at/near the model ceiling (R476) for these scenes; targeted repair does not move it on this instance. Record whether judges cite RE-COOL (R513: the repair read colder) vs simply no-better. Honest null result — still answers the owner's question.",
+    "pin_R1_or_R2_fails": "the repair leaked or drifted => dramatizing/de-orating a scene pulled in a withheld or off-branch fact => the gate CAUGHT it (the whole point: a repair stage is safe BECAUSE the gate re-runs). Record the violation; a real repair stage would re-repair in-register and re-gate before shipping. A high-value finding either way (proves the gate is the safety net for an automated repair loop)."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R552 ledger, committed pre-execution.",
+    "step_1_repair": "spawn the blind repair-renderer (repair-brief.md) -> run/repair/ (the 4 re-rendered scenes + repair-log.md).",
+    "step_2_splice": "orchestrator splices the 4 scenes into copies of the v1 manuscripts -> run/arms/R-world-*.md (arm R); arm C = the v1 manuscripts. Record the diff (PIN-R3).",
+    "step_3_extract": "spawn the blind extractor (v1 extractor-brief.md + arm R manuscripts + v1 vocab.md) -> run/extract/reextracted.atomic.json.",
+    "step_4_pins": "orchestrator runs PIN-R1 leak + PIN-R2 fidelity (single-world projection) over arm R's re-extraction; confirms PIN-R3 diff. Records verbatim.",
+    "step_5_judges": "orchestrator builds the shuffled A/B packet; spawn 3 blind A/B judges -> run/judges/judge-{1,2,3}.md.",
+    "step_6_decide": "orchestrator applies the decision rule, writes report.md, commits (R553).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs + the v1 single-world-projection method verbatim; the splice + diff are orchestrator file ops; no tools/ change. Scratch *.atomic.json gitignored."
+  },
+
+  "predictions_preregistered": {
+    "PRED_R1_R2": "PINS likely HOLD — the repair is in-register and knowledge-faithful by brief; the main genuine risk is shelter sc-27 (dramatizing the boy's close could tempt a line that brushes the secret) — exactly why PIN-R1 is pinned.",
+    "PRED_R3": "PIN holds by construction (orchestrator splice).",
+    "PRED_judged": "NO pin (the open question). Honest expectation: arm R PROBABLY wins shelter sc-27 (summary->dramatized is a clear lift) and report sc-16 (de-exposition is a known, achievable fix); confront sc-29-30 is the riskiest (a reveal scene wants SOME pitch — de-orating could flatten the climax, a possible tie/loss). A mixed result (R wins some, ties others) is the most likely and is itself informative about WHERE targeted repair helps.",
+    "PRED_recool": "the R513 re-cool risk is real but lower here than in v1's compliance arm, because the brief explicitly holds the warm register; if any scene re-cools it is the likeliest reason arm R loses one."
+  },
+
+  "honest_caveats": [
+    "n=1 — one repair-render / extractor / 3 judges, one story. One instance.",
+    "the weak-set is JUDGE-DERIVED and uneven in signal: report sc-16 flagged by all 3, confront sc-29-30 by 2, shelter sc-27 by ONLY judge-1 (a thin single-judge signal — repairing it tests a weaker claim). Recorded, not downplayed (feedback_dont_downplay_experiment_flaws).",
+    "A SEAM RISK that is itself informative: a repaired scene sits among unchanged v1 scenes, so a judge might detect the repair by a style discontinuity rather than by quality — if arm R wins, the report must check the judges' WHY cites quality, not 'one scene felt different'.",
+    "arm C here is the SAME v1 prose the v1 judges already scored, but the v2 A/B panel is FRESH — so this is a clean within-v2 A/B, not a re-use of v1's absolute scores.",
+    "this tests the STAGE on a story that already scored 5/5 — a near-ceiling starting point means the lift headroom is small; a null result may reflect 'already good' more than 'repair cannot help'. The stage's value is larger on a LOWER-scoring base (future: run it where v1-equivalent scored 3-4)."
+  ]
+}
