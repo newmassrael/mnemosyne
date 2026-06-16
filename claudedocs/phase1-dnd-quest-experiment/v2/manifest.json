@@ -1,0 +1,87 @@
+{
+  "manifest": "dnd-quest-experiment/v2",
+  "designed": "2026-06-16 (R563 manifest round; sha256 pinned in the R563 ledger entry BEFORE any repair-author/repair-render/extract/judge subagent runs — the R552 targeted-repair precedent + the R453/R499/R503/R548/R550/R561 pre-commit pattern). The owner's R562-followup: re-render the deficient parts (and ADD story where needed) and test whether targeted repair lifts the v1 D&D quest-game to a genuinely high-completion scenario.",
+
+  "lineage_note": "DESIGNED + ORCHESTRATED by the R561/R562 lineage. Per the R469/R500 contamination bound this lineage may NOT author the repair facts, render prose, re-extract, or judge; it assembles the repair-spec DETERMINISTICALLY from v1's blind judges + blind extractor, runs the deterministic gates + the splice + the seam re-check, and writes this manifest + the briefs + the runbook only.",
+
+  "base": "Reuses v1 (claudedocs/phase1-dnd-quest-experiment/v1/): the gate-clean 121-fact base (run/author/), the CLAIM render (run/render/world-claim.md), the blind extract-log + 3 judge verdicts. v2 is a REPAIR over that base, isolating the repair variable (the R552/R553 controlled-repair design).",
+
+  "question": {
+    "primary": "Can a TARGETED repair — re-render only the deficient scenes, plus the minimal STORY ADDITIONS needed to close the in-frame knowledge-acquisition seams — lift the v1 D&D quest-game to a genuinely high-completion scenario WITHOUT breaking any gate? This attacks exactly the residue R553 (pure render-repair) and R562 left open: the store-consistency != causal-coherence seams the gates cannot catch (the R539 in-frame acquisition boundary). R553 proved render-only repair raises craft 3-0 with gates holding; this tests whether AUTHOR-side additions can close the acquisition seams too.",
+    "sub_question_1_seams": "Do the author additions (D1 delver-investigation setup, D2 Pip's incense hand-off, D3 ending-count reconcile) actually CLOSE the three v1 extractor-flagged acquisition seams when the repaired render is blind re-extracted — i.e. does the journal naming now rest on a textual chain, does the deduction draw only on shared evidence, is the ending count consistent?",
+    "sub_question_2_agency": "Does the D4 render-repair (commit sc-29c/sc-30c to the authored CLAIM doom instead of the 'same end whichever way' hedge) raise the agency the v1 judges unanimously docked (4/5)?",
+    "sub_question_3_completion": "Net: do 3 blind A/B judges prefer the repaired version and read it as higher-completion, with the targeted axes (knowledge-realism, agency) risen and nothing else regressed?"
+  },
+
+  "deterministic_pins": {
+    "PIN_A_repair_gate_clean": {
+      "claim": "PIN. The repaired base (v1 + the D1/D2/D3 author additions/amendments) still passes EVERY v1 gate — adding story did not break the game.",
+      "criteria_all_required": [
+        "fresh rebuild from the repaired JSON loads 0-error.",
+        "validate-continuity --order --rules: 0 structural / 0 interval (incl. the exclusive-possession rule).",
+        "report-fork-tree: 3 world-lines placed, every road terminal.",
+        "report-playthrough-manuscript --world W every road: unplaced=0, undecidable=0.",
+        "report-payoff-coverage: every terminal dangling is still an INTENDED open quest (the D2 hand-off must not orphan a setup; the per-road quest divergence q-delver/q-reliquary is preserved).",
+        "PIN-2 quest-contract (the v1 scan) still holds: 4 kind-quest entities, the q-key->q-main order-real prerequisite, per-road divergence intact.",
+        "report-playable-world --telling delve: all 4 quest-giver surfaces still resolve (PIN-3 preserved)."
+      ]
+    },
+    "PIN_B_localization": {
+      "claim": "PIN (the R553 localization discipline). The repair is SURGICAL — only the deficiency-named facts changed, and only the affected scenes were re-rendered; every other rendered scene is byte-identical to v1.",
+      "criteria_all_required": [
+        "the repaired facts.json differs from v1 ONLY in the facts the repair-spec D1/D2/D3 name (added setup + hand-off facts, amended ending-count belief facts) — a diff confirms no other fact changed.",
+        "the orchestrator computes the affected scene set = the scenes whose fact set changed; the repaired render re-renders ONLY those scenes; all other scenes in the spliced world-claim.md are byte-identical to v1's render (a diff confirms localization)."
+      ]
+    },
+    "PIN_C_seams_closed_gates_hold": {
+      "claim": "PIN. A blind re-extraction of the repaired CLAIM render no longer shows the three v1 acquisition seams, AND the render-acceptance gates still hold (no new leak/drift from the repair).",
+      "criteria_all_required": [
+        "leak (validate-disclosure-leak --telling delve --world claim --truth-frame gt) on the repaired re-extraction: leaks=0, vocabulary_shared>0, exit 0 (the D1/D2 additions must not leak a withheld secret early).",
+        "fidelity (validate-render-fidelity --world claim): off_path=0, unplaced=0, reached_terminal=true (the repair stays on the claim road).",
+        "seam re-check (the orchestrator reads the blind extractor's NEW extract-log): the three v1 seams (D1 unshown journal chain, D2 unshared incense clue, D3 ending-count mismatch) are NOT re-flagged — the extractor finds a textual chain for the naming, a shown hand-off for the clue, and a consistent ending count. If a seam persists, PIN-C records it as the irreducible residue (not silently passed)."
+      ],
+      "honest_limit": "the seam re-check rests on the BLIND extractor's reading (the same AI-judgment boundary as R500/R512/R562); it is a strong signal, not a theorem. A seam the extractor stops flagging may still read thin to a human. Stated per feedback_dont_downplay_experiment_flaws."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, each given BOTH the v1 CLAIM render and the repaired CLAIM render as arm X / arm Y (arm->version randomized per judge, the R553 A/B shuffle), plus the quest briefing. They do NOT know which is the repair, that either is AI-authored, the hypothesis, or the pins.",
+    "axes": "per arm: knowledge-realism (does each person know only what they could come by — the D1/D2 target), agency/branch-integrity (does the ending commit and feel chosen — the D4 target), completion/polish (does it read as a finished, high-completion scenario), overall (1-5). Plus a forced A/B choice on each of {knowledge-realism, agency, overall} and a seam-spot check: name any place a character knows something with no path to it.",
+    "outcome_pin": "NONE. The procedure is pinned; whether the repair WINS the targeted axes is the open question. Free cross-ref (judges blind): v1 scored agency 4/4/4, knowledge-realism 5/5/5, game-feel 4/5/5."
+  },
+
+  "decision_rule_pre_committed": {
+    "repair_wins": "PIN-A + PIN-B + PIN-C hold AND the 3 blind A/B judges majority PREFER the repaired arm on knowledge-realism AND agency AND overall (>=2 of 3 each), with no targeted seam re-flagged => targeted repair + minimal story additions CLOSE the in-frame acquisition residue and lift the game to high completion => the critique->repair->re-gate loop extends from render-only (R553) to author+render repair; a validated completion loop, build YAGNI-deferred (a prompt/stage recipe, not substrate).",
+    "seams_persist": "PIN-A/PIN-B hold but PIN-C's seam re-check still flags a seam (or leak/fidelity break) => the in-frame acquisition residue is render-IRREDUCIBLE at this depth — author additions over the typed slice cannot close a prose-only acquisition gap without a deeper world-state/knowledge model (the R547 axis) => a confirmed honest limit, the store-consistency != causal-coherence boundary named on a concrete case, NOT downplayed.",
+    "judges_split": "pins hold, seams close, but judges do NOT majority-prefer the repair on the targeted axes => the repair was gate-correct but not a felt improvement (the necessary-not-sufficient gap, R551) => completion is a craft ceiling (R476), blind-judged, not closable by targeted edits alone.",
+    "gate_breaks": "PIN-A fails (a story addition breaks a gate) or PIN-B fails (the repair was not localized) => adding story to a converged base is not free — record what broke; the repaired base must be re-converged before any completion claim."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R563 ledger, committed pre-execution. CLI already current (report-playable-world present).",
+    "step_1_repair_author": "spawn blind repair-author (repair-spec.md + author-repair-brief.md + the v1 base JSON) -> v2/run/author/ (repaired sections/facts/order/narrative-rules JSON + repaired store + author-log.md). It closes D1/D2/D3 by adding/amending only the named facts, re-running every gate.",
+    "step_2_pins_AB": "orchestrator rebuilds fresh from the repaired JSON; runs PIN-A (every gate) + PIN-B localization (diff repaired-vs-v1 facts.json; compute the affected scene set); records verdicts.",
+    "step_3_outline": "orchestrator assembles the repaired CLAIM outline (report-playthrough-manuscript --world claim --telling delve) -> v2/run/manuscripts/world-claim.md, and the affected-scene list for the renderer.",
+    "step_4_render_repair": "spawn blind render-repair (render-repair-brief.md + the repaired outline + the v1 world-claim.md + the affected-scene list) -> v2/run/render/world-claim.md = v1 render with ONLY the affected scenes re-rendered, the rest byte-identical.",
+    "step_5_splice_check": "orchestrator diffs the repaired render vs v1 render: confirms only affected scenes changed (PIN-B render half).",
+    "step_6_extract": "orchestrator writes v2 vocab.md (reused v1 ids + any new entities); spawn the blind extractor (the v1 extractor-brief task + the repaired render + vocab.md) -> v2/run/extract/ ; orchestrator runs PIN-C leak + fidelity + reads the new extract-log for the seam re-check.",
+    "step_7_judges": "spawn 3 blind A/B judges (judge-brief-ab.md + arm X + arm Y + the quest briefing, arm->version randomized + recorded in a sealed label-map) -> v2/run/judges/judge-{1,2,3}.md.",
+    "step_8_decide": "orchestrator unblinds the label-map, applies the decision rule, writes report.md, commits (R564). NO push.",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs + the v1 briefs; PIN-B diffs + the seam re-check are recorded in report.md; no tools/ or crate change. Scratch *.atomic.json gitignored."
+  },
+
+  "predictions_preregistered": {
+    "PRED_A": "PIN-A likely HOLDS — D1/D2 are ADDITIVE (a setup fact + a hand-off fact + their evidence/payoff legs) and D3 is a belief-fact amendment; none touches the fork or the quest contract. Risk: the D2 hand-off, if added as a new scene, shifts scene ids and the affected set widens.",
+    "PRED_B": "PIN-B localization is the discipline risk — a repair-author who re-threads more than the named facts widens the affected set. The brief constrains it; the diff enforces it.",
+    "PRED_C": "PIN-C leak/fidelity likely HOLD (the additions are pre-reveal setups, not early reveals). The seam re-check is the genuine open question: whether a prose-render of an added hand-off + an earned setup actually reads as closing the acquisition gap, or the extractor finds a new thin spot. Honest expectation: D2 (hand-off) and D3 (count) close cleanly; D1 (the delver's off-page investigation) is the hardest — the delver is dead from the start, so his investigation is necessarily backstory, and backstory-as-journal may still read as asserted.",
+    "PRED_judges": "the repair likely WINS agency (D4 removes an explicit hedge the judges all named) and probably knowledge-realism (D1/D2 close named gaps); overall-completion is the real test. Honest expectation: a clear agency win, a softer knowledge-realism win, n=1."
+  },
+
+  "honest_caveats": [
+    "n=1 (one repair-author / one renderer / one extractor / 3 judges), and the SAME single CLAIM road as v1 — this tests repair, not a distribution.",
+    "the v1 base already scored high (knowledge 5/5/5, game-feel 4/5/5), so the headroom is small — a repair can win the forced A/B choice on a thin margin; the seam re-check (PIN-C) is the more objective signal than the craft A/B.",
+    "the seam re-check rests on the blind extractor's reading (the R500/R512 AI-judgment boundary) — a strong signal, not a proof; a seam it stops flagging may still read thin to a human.",
+    "D1 is structurally hard: the last delver is dead from scene one, so his identification of the shrine-keeper is irreducibly backstory delivered through a found journal — even a seeded setup may read as asserted rather than shown (the limit of closing an off-page acquisition).",
+    "this is render+author REPAIR of a declarative base, still NOT a played quest lifecycle (the R559/R546 boundary) — 'high-completion scenario' means a high-completion SCENARIO (the authored game), not a running game."
+  ]
+}
