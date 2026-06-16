@@ -1,0 +1,226 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"ground truth — what is really happening under Karrow's Reach"},
+    {"frame_id":"fighter","description":"Doran Brace, the front-line fighter — reads a fight, a guard, a collapsing floor; no reader of runes"},
+    {"frame_id":"wizard","description":"Lysa Quill, the wizard and loremaster — reads the old dwarrow runes and the warden's record"},
+    {"frame_id":"rogue","description":"Pip Sallow, the rogue and scout — finds the hidden ways and the dropped key, overhears what is not said aloud"},
+    {"frame_id":"cleric","description":"Mother Henna, the cleric and healer — senses the dead and alone can parley with the warden's shade"},
+    {"frame_id":"reeve","description":"Reeve Calder of Karrow's Reach — hires the party, the town's authority"},
+    {"frame_id":"warden","description":"Warden Orrek, the drowned shade who keeps the deep vault — held by the crown as much as he holds it"},
+    {"frame_id":"shrinekeeper","description":"Brother Vane, the shrine-keeper — the hidden architect, posing as a helpful ally"},
+    {"frame_id":"lanternboy","description":"Tam, the lantern-boy — apprentice to one of the vanished delvers"},
+    {"frame_id":"rival","description":"Skell, the rival sellsword — down first, wants the crown's worth for himself"},
+    {"frame_id":"wisewoman","description":"Old Maeve, the town wise-woman — keeper of the old lore of the cisterns and the first tithe"}
+  ],
+
+  "branches": [
+    {"branch_id":"shatter","description":"SHATTER — the wizard unmakes the crown; the rising ends, the warden is freed into death, the wealth is lost, the cheated rival turns on the party","forks_from":"main","forks_at":"sc-22"},
+    {"branch_id":"claim","description":"CLAIM — the party takes the crown's power; the shrine-keeper's errand can be fulfilled (and betrayed) and the Reach is ruled by the crown's holder — a dark road","forks_from":"main","forks_at":"sc-22"},
+    {"branch_id":"parley","description":"PARLEY — the cleric binds the rising by oath with the warden's shade; the warden keeps the crown but stills the dead, and the town keeps an eternal tithe-watch","forks_from":"main","forks_at":"sc-22"}
+  ],
+
+  "entities": [
+    {"entity_id":"fighter","kind":"person","description":"Doran Brace, the front-line fighter"},
+    {"entity_id":"wizard","kind":"person","description":"Lysa Quill, the wizard and loremaster"},
+    {"entity_id":"rogue","kind":"person","description":"Pip Sallow, the rogue and scout"},
+    {"entity_id":"cleric","kind":"person","description":"Mother Henna, the cleric and healer"},
+    {"entity_id":"reeve","kind":"person","description":"Reeve Calder, who hires the party"},
+    {"entity_id":"warden","kind":"person","description":"Warden Orrek, the drowned warden's shade"},
+    {"entity_id":"shrinekeeper","kind":"person","description":"Brother Vane, the shrine-keeper and hidden architect"},
+    {"entity_id":"lanternboy","kind":"person","description":"Tam, the lantern-boy"},
+    {"entity_id":"rival","kind":"person","description":"Skell, the rival sellsword"},
+    {"entity_id":"wisewoman","kind":"person","description":"Old Maeve, the wise-woman"},
+    {"entity_id":"delver","kind":"person","description":"the last vanished delver, Tam's master, found dead in the hold"},
+
+    {"entity_id":"crown","kind":"item","description":"the Hollow Crown, relic of the hold's last warden; drives the rising"},
+    {"entity_id":"key","kind":"item","description":"the warden's key, drowned in his cell; the only thing that opens the deep vault"},
+    {"entity_id":"journal","kind":"item","description":"the last delver's journal, found on the body; records the corpse-tithe"},
+    {"entity_id":"record","kind":"item","description":"the warden's record in dwarrow runes, read by the wizard"},
+
+    {"entity_id":"reeve-hall","kind":"place","description":"the reeve's hall in Karrow's Reach, where the main quest is given"},
+    {"entity_id":"shrine","kind":"place","description":"the town shrine, where the shrine-keeper offers help and the reliquary errand"},
+    {"entity_id":"lantern-house","kind":"place","description":"the lantern-house, the boy's home and the missing delver's lodging"},
+    {"entity_id":"vault-door","kind":"place","description":"the locked deep-vault door, where the key quest is learned"},
+    {"entity_id":"warden-cell","kind":"place","description":"the drowned warden's cell, where the key lies"},
+    {"entity_id":"deep-vault","kind":"place","description":"the deep vault, where the warden's shade keeps the crown"},
+
+    {"entity_id":"q-main","kind":"quest","description":"End the rising — reach the deep vault and resolve the crown"},
+    {"entity_id":"q-key","kind":"quest","description":"The warden's key — recover the key from the drowned warden's cell to open the vault"},
+    {"entity_id":"q-delver","kind":"quest","description":"The last delver — find the vanished delver and bring word back to the lantern-boy"},
+    {"entity_id":"q-reliquary","kind":"quest","description":"The shrine-keeper's reliquary — bring the crown to the shrine-keeper to seal it (a trap)"}
+  ],
+
+  "predicates": [
+    {"predicate_id":"pursues","object_kind":"entity","description":"which adventurer leads a given quest"},
+    {"predicate_id":"requires","object_kind":"entity","description":"a quest that is gated by another quest being done first"},
+    {"predicate_id":"completed_by","object_kind":"entity","description":"who or what discharges a quest on a road"},
+    {"predicate_id":"possession","object_kind":"entity","description":"which party holds a single-holder relic"},
+    {"predicate_id":"cause_of_rising","object_kind":"scalar","description":"the disclosure state of the shrine-keeper's hand behind the rising — hidden or exposed"},
+    {"predicate_id":"warden_disposition","object_kind":"scalar","description":"whether the warden's shade can be reasoned with or only fought"},
+    {"predicate_id":"betrayal","object_kind":"scalar","description":"whether a faction's coming betrayal is in play"},
+    {"predicate_id":"rising_state","object_kind":"scalar","description":"the standing of the rising — walking, ended, bound, or commanded"},
+    {"predicate_id":"reach_rule","object_kind":"scalar","description":"who or what holds the Reach in the aftermath of each road"}
+  ],
+
+  "facts": [
+
+    {"fact_id":"f-001","frame":"gt","claim":"Karrow's Reach clings to the lip of Vael Mooren, a drowned dwarrow undercity that sank a lifetime ago when its cisterns burst","canon_from":"sc-01","evidence":["sc-01"],"entities":["deep-vault"]},
+    {"fact_id":"f-002","frame":"gt","claim":"For a season the drowned dead have risen from the floodwater and walked the lower tunnels, and three hired delvers have already vanished","canon_from":"sc-01","evidence":["sc-01"],"entities":["delver","deep-vault"],"typed":{"subject":"deep-vault","predicate":"rising_state","object":{"kind":"value","value":"walking"}}},
+    {"fact_id":"f-003","frame":"gt","claim":"The rising is driven by the Hollow Crown, the relic of the hold's last warden, whose drowned shade keeps the deep vault","canon_from":"sc-01","evidence":["sc-01"],"entities":["crown","warden","deep-vault"]},
+    {"fact_id":"f-004","frame":"gt","claim":"The crown is no curse blown in from outside — the town's own shrine-keeper has secretly fed corpse-tithes into the floodwater to wake the warden","canon_from":"sc-01","evidence":["sc-01"],"entities":["shrinekeeper","crown"],"payoff_expectation":"expected","typed":{"subject":"shrinekeeper","predicate":"cause_of_rising","object":{"kind":"value","value":"hidden"}}},
+
+    {"fact_id":"f-010","frame":"gt","claim":"At his hall the reeve hires the party of four to go down into Vael Mooren, find what wakes the dead, and end it","canon_from":"sc-02","evidence":["sc-02"],"entities":["reeve","fighter","wizard","rogue","cleric","reeve-hall"]},
+    {"fact_id":"f-011","frame":"reeve","claim":"Reeve Calder believes the rising is a curse out of the deep hold and that ending it means reaching whatever wakes the dead and destroying it","canon_from":"sc-02","evidence":["sc-02"],"entities":["reeve"]},
+    {"fact_id":"f-012","frame":"gt","claim":"The reeve opens the main charge on the party — still the rising — a thread the adventure has promised to pay off","canon_from":"sc-02","evidence":["sc-02"],"entities":["q-main","reeve-hall"],"payoff_expectation":"expected"},
+    {"fact_id":"f-013","frame":"gt","claim":"The party takes on the reeve's charge to end the rising as their main quest","canon_from":"sc-02","evidence":["sc-02"],"entities":["q-main","fighter"],"typed":{"subject":"fighter","predicate":"pursues","object":{"kind":"entity","id":"q-main"}}},
+    {"fact_id":"f-014","frame":"fighter","claim":"Doran takes the reeve's coin and reads the job plainly: get down, find the thing, put it down, get the party out alive","canon_from":"sc-02","evidence":["sc-02"],"entities":["fighter","reeve"]},
+
+    {"fact_id":"f-020","frame":"gt","claim":"Townsfolk report drowned dead walking the lower tunnels by night and the floodwater creeping higher up the stairs","canon_from":"sc-03","evidence":["sc-03"]},
+    {"fact_id":"f-021","frame":"cleric","claim":"Mother Henna senses the dead are not merely restless but held — leashed to something deep below, not wandering free","canon_from":"sc-03","evidence":["sc-03"],"entities":["cleric"]},
+    {"fact_id":"f-022","frame":"fighter","claim":"Doran sizes up the tunnel-mouths and the footing, marking where a fight or a fall would come","canon_from":"sc-03","evidence":["sc-03"],"entities":["fighter"]},
+
+    {"fact_id":"f-030","frame":"gt","claim":"At the shrine Brother Vane greets the party warmly, offering blessings, lore of the hold, and the run of his shrine","canon_from":"sc-04","evidence":["sc-04"],"entities":["shrinekeeper","shrine"]},
+    {"fact_id":"f-031","frame":"shrinekeeper","claim":"Brother Vane plays the helpful ally to the party while concealing that he himself wakes the warden, meaning to raise the hold's wealth and rule the Reach","canon_from":"sc-04","evidence":["sc-04"],"entities":["shrinekeeper"],"typed":{"subject":"shrinekeeper","predicate":"cause_of_rising","object":{"kind":"value","value":"hidden"}}},
+    {"fact_id":"f-032","frame":"cleric","claim":"Mother Henna takes Brother Vane for a brother of the cloth and a friend, sensing nothing false in his welcome","canon_from":"sc-04","evidence":["sc-04"],"entities":["cleric","shrinekeeper"]},
+
+    {"fact_id":"f-040","frame":"gt","claim":"At the lantern-house the boy Tam tells the party his master was the last delver to go down and never came back up","canon_from":"sc-05","evidence":["sc-05"],"entities":["lanternboy","delver","lantern-house"]},
+    {"fact_id":"f-041","frame":"gt","claim":"Tam begs the party to find his master and bring word back — opening the errand of the last delver","canon_from":"sc-05","evidence":["sc-05"],"entities":["q-delver","lanternboy","lantern-house"],"payoff_expectation":"expected"},
+    {"fact_id":"f-042","frame":"gt","claim":"The rogue takes on the lantern-boy's errand to find the last delver and bring word back","canon_from":"sc-05","evidence":["sc-05"],"entities":["q-delver","rogue"],"typed":{"subject":"rogue","predicate":"pursues","object":{"kind":"entity","id":"q-delver"}}},
+    {"fact_id":"f-043","frame":"lanternboy","claim":"Tam believes his master is only lost in the dark below and may yet be found alive, and trusts the party to bring him word","canon_from":"sc-05","evidence":["sc-05"],"entities":["lanternboy","delver"]},
+
+    {"fact_id":"f-050","frame":"gt","claim":"Old Maeve the wise-woman keeps the lore of the cisterns and tells of a first corpse-tithe given to the floodwater long ago","canon_from":"sc-06","evidence":["sc-06"],"entities":["wisewoman"]},
+    {"fact_id":"f-051","frame":"wisewoman","claim":"Old Maeve knows the rising answers a tithe of the dead given to the water, and warns the party that someone living must be feeding it again","canon_from":"sc-06","evidence":["sc-06"],"entities":["wisewoman"]},
+    {"fact_id":"f-052","frame":"rogue","claim":"Pip lingers behind the others at Maeve's door and overhears her mutter that the new tithe smells of incense — shrine-work","canon_from":"sc-06","evidence":["sc-06"],"entities":["rogue","wisewoman"]},
+
+    {"fact_id":"f-060","frame":"gt","claim":"Brother Vane asks the party to bring him the crown when they find it, so he may seal it safely in his reliquary — opening the reliquary errand","canon_from":"sc-07","evidence":["sc-07"],"entities":["q-reliquary","shrinekeeper","shrine","crown"],"payoff_expectation":"expected"},
+    {"fact_id":"f-061","frame":"gt","claim":"The cleric, trusting the shrine-keeper, takes on the errand to bring him the crown to be sealed","canon_from":"sc-07","evidence":["sc-07"],"entities":["q-reliquary","cleric"],"typed":{"subject":"cleric","predicate":"pursues","object":{"kind":"entity","id":"q-reliquary"}}},
+    {"fact_id":"f-062","frame":"shrinekeeper","claim":"Brother Vane's reliquary errand is a misdirection — handing him the crown would hand him its power, the thing he has schemed for all along","canon_from":"sc-07","evidence":["sc-07","sc-04"],"entities":["shrinekeeper","crown"]},
+
+    {"fact_id":"f-070","frame":"gt","claim":"The party descends into the upper galleries of the hold, the floodwater rising about their knees","canon_from":"sc-08","evidence":["sc-08"],"entities":["fighter","wizard","rogue","cleric"]},
+
+    {"fact_id":"f-080","frame":"gt","claim":"The first of the drowned dead rise from a flooded gallery and come at the party","canon_from":"sc-09","evidence":["sc-09"]},
+    {"fact_id":"f-081","frame":"fighter","claim":"Doran reads the drowned dead as slow but tireless, and holds the narrow ground where only two can come at once","canon_from":"sc-09","evidence":["sc-09"],"entities":["fighter"]},
+    {"fact_id":"f-082","frame":"cleric","claim":"Mother Henna feels every drowned corpse pull toward the deep when it falls, as if reeled in on one line","canon_from":"sc-09","evidence":["sc-09","sc-03"],"entities":["cleric"]},
+
+    {"fact_id":"f-090","frame":"gt","claim":"Past the gallery the rogue finds a flooded stair hidden behind a fall of rubble, the secret way deeper into the hold","canon_from":"sc-10","evidence":["sc-10"],"entities":["rogue"]},
+    {"fact_id":"f-091","frame":"rogue","claim":"Pip alone marks the flooded stair and the dropped tools on it, reading that someone living went down this hidden way before them","canon_from":"sc-10","evidence":["sc-10"],"entities":["rogue","rival"]},
+
+    {"fact_id":"f-100","frame":"gt","claim":"In the dark the party meets Skell, a rival sellsword who got down first and means to have the crown's worth for himself","canon_from":"sc-11","evidence":["sc-11","sc-10"],"entities":["rival"]},
+    {"fact_id":"f-101","frame":"rival","claim":"Skell sees the party as latecomers to his prize and will work beside them only until the crown is in reach","canon_from":"sc-11","evidence":["sc-11"],"entities":["rival"],"payoff_expectation":"expected","typed":{"subject":"rival","predicate":"betrayal","object":{"kind":"value","value":"latent"}}},
+    {"fact_id":"f-102","frame":"fighter","claim":"Doran reads Skell as a fighting man who will turn the moment the gold is on the table, and keeps him in front where he can watch him","canon_from":"sc-11","evidence":["sc-11"],"entities":["fighter","rival"]},
+
+    {"fact_id":"f-110","frame":"gt","claim":"Deeper down the cleric reads the leash plainly — every walking corpse is bound to one will seated in the deep vault","canon_from":"sc-12","evidence":["sc-12","sc-03"],"entities":["cleric","warden","deep-vault"]},
+    {"fact_id":"f-111","frame":"cleric","claim":"Mother Henna knows now that the dead are held by a single warden-will below, and that such a will might be spoken to, not only fought","canon_from":"sc-12","evidence":["sc-12"],"entities":["cleric","warden"]},
+
+    {"fact_id":"f-120","frame":"gt","claim":"In a side-cell the party finds the body of the last delver, half in the floodwater, with his journal still on him","canon_from":"sc-13","evidence":["sc-13"],"entities":["delver","journal"]},
+    {"fact_id":"f-121","frame":"rogue","claim":"Pip recovers the journal from the drowned delver's body, the proof Tam's master is dead and the record of what he learned","canon_from":"sc-13","evidence":["sc-13","sc-05"],"entities":["rogue","delver","journal"]},
+
+    {"fact_id":"f-130","frame":"gt","claim":"The delver's journal records that he tracked the corpse-tithes to their source and found the shrine-keeper feeding the dead to the water","canon_from":"sc-14","evidence":["sc-14","sc-13"],"entities":["journal","shrinekeeper"]},
+    {"fact_id":"f-131","frame":"gt","claim":"Reading the journal, the party learns the shrine-keeper is the living hand behind the rising — the buried cause, now surfaced","canon_from":"sc-14","evidence":["sc-14","sc-13","sc-04"],"entities":["shrinekeeper","journal"],"pays_off":["f-004"],"typed":{"subject":"shrinekeeper","predicate":"cause_of_rising","object":{"kind":"value","value":"exposed"}}},
+    {"fact_id":"f-132","frame":"wizard","claim":"Lysa matches the journal's account to Maeve's tithe-lore and is certain Brother Vane, not any curse, woke the warden","canon_from":"sc-14","evidence":["sc-14","sc-06"],"entities":["wizard","shrinekeeper"]},
+
+    {"fact_id":"f-140","frame":"gt","claim":"The wizard finds the warden's record graven in dwarrow runes on the cell wall and begins to read it","canon_from":"sc-15","evidence":["sc-15"],"entities":["wizard","record","warden"]},
+    {"fact_id":"f-141","frame":"wizard","claim":"Lysa alone can read the dwarrow runes, and from the record learns the warden's name was Orrek and that he was no monster but a man bound to his duty","canon_from":"sc-15","evidence":["sc-15"],"entities":["wizard","warden","record"]},
+
+    {"fact_id":"f-150","frame":"gt","claim":"The party reaches the deep vault door, sealed fast, and learns no force will open it","canon_from":"sc-16","evidence":["sc-16"],"entities":["vault-door","deep-vault"]},
+    {"fact_id":"f-151","frame":"gt","claim":"At the locked vault door the party learns only the warden's own key will open it — opening the errand of the key","canon_from":"sc-16","evidence":["sc-16"],"entities":["q-key","vault-door","key"],"payoff_expectation":"expected"},
+    {"fact_id":"f-152","frame":"gt","claim":"The rogue takes on recovering the warden's key, the one way past the sealed door","canon_from":"sc-16","evidence":["sc-16"],"entities":["q-key","rogue"],"typed":{"subject":"rogue","predicate":"pursues","object":{"kind":"entity","id":"q-key"}}},
+    {"fact_id":"f-153","frame":"gt","claim":"The deep vault cannot be opened and the crown cannot be reached until the warden's key is recovered","canon_from":"sc-16","evidence":["sc-16"],"entities":["q-main","q-key"],"typed":{"subject":"q-main","predicate":"requires","object":{"kind":"entity","id":"q-key"}}},
+
+    {"fact_id":"f-160","frame":"gt","claim":"In the drowned warden's cell, off the flooded stair, the key lies in the silt where Orrek fell a lifetime ago","canon_from":"sc-17","evidence":["sc-17"],"entities":["key","warden","warden-cell"]},
+    {"fact_id":"f-161","frame":"gt","claim":"The rogue lifts the warden's key from the drowned cell, recovering it for the party and discharging the key errand","canon_from":"sc-17","evidence":["sc-17","sc-16"],"entities":["rogue","key","warden-cell","q-key"],"pays_off":["f-151"],"typed":{"subject":"q-key","predicate":"completed_by","object":{"kind":"entity","id":"rogue"}}},
+    {"fact_id":"f-162","frame":"gt","claim":"With the key recovered the party holds the warden's key — the one relic that admits them to the deep vault","canon_from":"sc-17","evidence":["sc-17"],"entities":["rogue","key"],"typed":{"subject":"rogue","predicate":"possession","object":{"kind":"entity","id":"key"}}},
+    {"fact_id":"f-163","frame":"rogue","claim":"Pip pockets the warden's key, knowing it is the only thing standing between the party and the deep vault","canon_from":"sc-17","evidence":["sc-17"],"entities":["rogue","key"]},
+
+    {"fact_id":"f-170","frame":"gt","claim":"With the warden's record read, the wizard understands the crown's true nature: it holds the warden's shade as much as it holds the dead, and it can be unmade, claimed, or left to him","canon_from":"sc-18","evidence":["sc-18","sc-15"],"entities":["wizard","crown","warden"]},
+    {"fact_id":"f-171","frame":"gt","claim":"The wizard learns the warden's shade can be reasoned with — Orrek keeps the crown under duty, not malice, and would hear a fair oath","canon_from":"sc-18","evidence":["sc-18","sc-15"],"entities":["warden","crown"],"payoff_expectation":"expected","typed":{"subject":"warden","predicate":"warden_disposition","object":{"kind":"value","value":"reasonable"}}},
+    {"fact_id":"f-172","frame":"wizard","claim":"Lysa alone knows the crown can be shattered by the unmaking she has read, and tells the party the three roads the relic allows","canon_from":"sc-18","evidence":["sc-18"],"entities":["wizard","crown"]},
+    {"fact_id":"f-173","frame":"cleric","claim":"Hearing the wizard, Mother Henna understands she could speak an oath to Orrek's shade and bind the dead without breaking the crown","canon_from":"sc-18","evidence":["sc-18","sc-12"],"entities":["cleric","warden"]},
+
+    {"fact_id":"f-180","frame":"gt","claim":"The party turns the recovered key in the deep vault door and the seal of a lifetime gives way","canon_from":"sc-19","evidence":["sc-19","sc-17"],"entities":["key","vault-door","deep-vault"],"pays_off":["f-151"]},
+    {"fact_id":"f-181","frame":"fighter","claim":"Doran sets his shoulder to the vault door as the key turns and it grinds open onto the dark water beyond","canon_from":"sc-19","evidence":["sc-19"],"entities":["fighter","vault-door"]},
+
+    {"fact_id":"f-190","frame":"gt","claim":"In the deep vault the warden's shade rises from the black water, the Hollow Crown upon his drowned brow, the dead of the hold ranked behind him","canon_from":"sc-20","evidence":["sc-20"],"entities":["warden","crown","deep-vault"]},
+    {"fact_id":"f-191","frame":"gt","claim":"The warden holds the Hollow Crown in the deep vault, the relic seated on his shade","canon_from":"sc-20","evidence":["sc-20"],"entities":["warden","crown"],"typed":{"subject":"warden","predicate":"possession","object":{"kind":"entity","id":"crown"}}},
+    {"fact_id":"f-192","frame":"warden","claim":"Orrek's shade knows the crown binds him to keep the hold's dead and that only its unmaking, its claiming, or a sworn oath will release the burden either way","canon_from":"sc-20","evidence":["sc-20"],"entities":["warden","crown"]},
+    {"fact_id":"f-193","frame":"cleric","claim":"Mother Henna meets the warden's shade and feels at once that he is weary, not wrathful — a keeper worn past the end of his duty","canon_from":"sc-20","evidence":["sc-20","sc-12"],"entities":["cleric","warden"]},
+
+    {"fact_id":"f-200","frame":"gt","claim":"Before the warden the party faces the crown and the three roads the wizard named: shatter it, claim it, or parley with the shade","canon_from":"sc-21","evidence":["sc-21","sc-18"],"entities":["crown","warden","wizard"]},
+    {"fact_id":"f-201","frame":"rival","claim":"Skell, come this far at the party's heels, fixes on the crown and means to have its worth whichever road the party takes","canon_from":"sc-21","evidence":["sc-21","sc-11"],"entities":["rival","crown"]},
+
+    {"fact_id":"f-210","frame":"gt","claim":"At the deep vault the party makes the one choice the delve turns on — shatter, claim, or parley","canon_from":"sc-22","evidence":["sc-22","sc-21"],"entities":["crown","warden"]},
+
+
+    {"fact_id":"f-300","frame":"gt","branch":"shatter","claim":"The wizard speaks the unmaking she read in the warden's record, and the runes of the Hollow Crown begin to come apart","canon_from":"sc-23s","evidence":["sc-23s","sc-18"],"entities":["wizard","crown"]},
+    {"fact_id":"f-301","frame":"wizard","branch":"shatter","claim":"Lysa holds the unmaking through to its end, knowing it costs the hold's wealth but ends the rising for good","canon_from":"sc-23s","evidence":["sc-23s"],"entities":["wizard","crown"]},
+    {"fact_id":"f-302","frame":"gt","branch":"shatter","claim":"The Hollow Crown shatters; with the relic gone the warden's shade is freed from its binding into true death","canon_from":"sc-24s","evidence":["sc-24s","sc-23s"],"entities":["crown","warden"]},
+    {"fact_id":"f-303","frame":"warden","branch":"shatter","claim":"Orrek, the crown broken, feels his long duty lifted and goes down into death thanking the wizard with his last presence","canon_from":"sc-24s","evidence":["sc-24s","sc-20"],"entities":["warden","wizard"]},
+    {"fact_id":"f-304","frame":"gt","branch":"shatter","claim":"With the warden freed and the crown gone, the leash on the dead breaks and the rising stills through the flooded tunnels","canon_from":"sc-25s","evidence":["sc-25s","sc-24s"],"entities":["deep-vault"],"pays_off":["f-012"],"typed":{"subject":"deep-vault","predicate":"rising_state","object":{"kind":"value","value":"ended"}}},
+    {"fact_id":"f-305","frame":"gt","branch":"shatter","claim":"The party has ended the rising by shattering the crown, discharging the reeve's main charge","canon_from":"sc-25s","evidence":["sc-25s","sc-02"],"entities":["q-main","wizard"],"typed":{"subject":"q-main","predicate":"completed_by","object":{"kind":"entity","id":"wizard"}}},
+
+    {"fact_id":"f-306","frame":"gt","branch":"shatter","claim":"Skell, seeing the crown's worth destroyed before his eyes, turns on the party with his blade drawn in the vault","canon_from":"sc-26s","evidence":["sc-26s","sc-11"],"entities":["rival"],"pays_off":["f-101"],"typed":{"subject":"rival","predicate":"betrayal","object":{"kind":"value","value":"open"}}},
+    {"fact_id":"f-307","frame":"rival","branch":"shatter","claim":"Skell, cheated of the prize he chased into the dark, would sooner cut down the party that cost him than climb out empty-handed","canon_from":"sc-26s","evidence":["sc-26s"],"entities":["rival"]},
+    {"fact_id":"f-308","frame":"gt","branch":"shatter","claim":"The fighter meets Skell's turn head-on and the rival's betrayal is answered with steel in the dark of the vault","canon_from":"sc-27s","evidence":["sc-27s","sc-26s"],"entities":["fighter","rival"]},
+    {"fact_id":"f-309","frame":"fighter","branch":"shatter","claim":"Doran, who marked Skell for a turncoat at the first meeting, is ready when the rival turns and puts him down","canon_from":"sc-27s","evidence":["sc-27s","sc-11"],"entities":["fighter","rival"]},
+
+    {"fact_id":"f-310","frame":"gt","branch":"shatter","claim":"With the rising stilled, the cleric moves through the tunnels laying the freed drowned dead to their rest","canon_from":"sc-28s","evidence":["sc-28s","sc-25s"],"entities":["cleric"]},
+    {"fact_id":"f-311","frame":"cleric","branch":"shatter","claim":"Mother Henna gives the last rites to each freed corpse, sorrowing that the wealth is lost but glad the dead are at peace","canon_from":"sc-28s","evidence":["sc-28s"],"entities":["cleric"]},
+    {"fact_id":"f-312","frame":"gt","branch":"shatter","claim":"The party climbs up out of the drowned hold with empty hands, the crown gone and no treasure won","canon_from":"sc-29s","evidence":["sc-29s","sc-25s"],"entities":["fighter","wizard","rogue","cleric"]},
+
+    {"fact_id":"f-313","frame":"gt","branch":"shatter","claim":"In the Reach the party names the shrine-keeper as the cause, and Brother Vane is unmasked before the reeve","canon_from":"sc-30s","evidence":["sc-30s","sc-14"],"entities":["shrinekeeper","reeve"],"pays_off":["f-004"]},
+    {"fact_id":"f-314","frame":"shrinekeeper","branch":"shatter","claim":"Brother Vane, his woken warden dead and his crown shattered, has nothing left to raise and stands exposed and powerless","canon_from":"sc-30s","evidence":["sc-30s","sc-24s"],"entities":["shrinekeeper"]},
+    {"fact_id":"f-315","frame":"reeve","branch":"shatter","claim":"Reeve Calder, shown the journal, holds Brother Vane to answer for the corpse-tithes and the vanished delvers","canon_from":"sc-30s","evidence":["sc-30s","sc-14"],"entities":["reeve","shrinekeeper"]},
+
+    {"fact_id":"f-316","frame":"gt","branch":"shatter","claim":"At the lantern-house the party brings Tam word that his master is dead, returning the journal, and the boy's errand is closed","canon_from":"sc-31s","evidence":["sc-31s","sc-05","sc-13"],"entities":["lanternboy","delver","journal","q-delver","rogue"],"pays_off":["f-041"],"typed":{"subject":"q-delver","predicate":"completed_by","object":{"kind":"entity","id":"rogue"}}},
+    {"fact_id":"f-317","frame":"lanternboy","branch":"shatter","claim":"Tam grieves his master but keeps the journal as his master's last word, and is grateful the party did not leave him wondering","canon_from":"sc-31s","evidence":["sc-31s"],"entities":["lanternboy","delver"]},
+    {"fact_id":"f-318","frame":"wisewoman","branch":"shatter","claim":"Old Maeve says the water will fall now the tithe is broken, and that the Reach is poorer but the dead will lie still","canon_from":"sc-31s","evidence":["sc-31s","sc-06"],"entities":["wisewoman"]},
+    {"fact_id":"f-319","frame":"gt","branch":"shatter","claim":"The Reach ends the season poorer and quiet: the rising over, the wealth lost, the shrine-keeper answerable, the dead at rest","canon_from":"sc-32s","evidence":["sc-32s","sc-25s"],"entities":["reeve","wisewoman","lanternboy","deep-vault"],"typed":{"subject":"deep-vault","predicate":"reach_rule","object":{"kind":"value","value":"free-and-poor"}}},
+
+
+    {"fact_id":"f-400","frame":"gt","branch":"claim","claim":"The party takes the Hollow Crown from the warden's shade and seizes its power for themselves","canon_from":"sc-23c","evidence":["sc-23c","sc-20"],"entities":["crown","warden","fighter"]},
+    {"fact_id":"f-401","frame":"gt","branch":"claim","claim":"The crown passes from the warden to the party, who now hold the Hollow Crown","canon_from":"sc-23c","evidence":["sc-23c","sc-20"],"entities":["fighter","crown","warden"],"supersedes_in_frame":"f-191","typed":{"subject":"fighter","predicate":"possession","object":{"kind":"entity","id":"crown"}}},
+    {"fact_id":"f-402","frame":"warden","branch":"claim","claim":"Orrek's shade, the crown wrested from him, is bound under the party's will now in place of his own duty, neither freed nor at rest","canon_from":"sc-24c","evidence":["sc-24c","sc-20"],"entities":["warden","crown"],"typed":{"subject":"warden","predicate":"warden_disposition","object":{"kind":"value","value":"subjugated"}}},
+    {"fact_id":"f-403","frame":"gt","branch":"claim","claim":"With the crown on a living brow the dead no longer rise wild but bend to the crown's holder, made to obey","canon_from":"sc-25c","evidence":["sc-25c","sc-23c"],"entities":["crown","deep-vault"],"pays_off":["f-012"],"typed":{"subject":"deep-vault","predicate":"rising_state","object":{"kind":"value","value":"commanded"}}},
+    {"fact_id":"f-404","frame":"gt","branch":"claim","claim":"The party has ended the wild rising by mastering it — the dead obey the crown's holder, discharging the reeve's charge in a dark coin","canon_from":"sc-25c","evidence":["sc-25c","sc-02"],"entities":["q-main","fighter"],"typed":{"subject":"q-main","predicate":"completed_by","object":{"kind":"entity","id":"fighter"}}},
+
+    {"fact_id":"f-405","frame":"gt","branch":"claim","claim":"Skell, faced with a party that commands the dead, kneels to the crown's holder rather than be broken by the corpses he came to rob","canon_from":"sc-26c","evidence":["sc-26c","sc-11"],"entities":["rival"],"pays_off":["f-101"],"typed":{"subject":"rival","predicate":"betrayal","object":{"kind":"value","value":"averted"}}},
+    {"fact_id":"f-406","frame":"rival","branch":"claim","claim":"Skell, no fool, throws in with the crown's holder, reckoning a share under a new power is better than a grave among the dead","canon_from":"sc-26c","evidence":["sc-26c"],"entities":["rival"]},
+    {"fact_id":"f-407","frame":"gt","branch":"claim","claim":"The party climbs up out of the hold bearing the Hollow Crown and the dead that come at its call","canon_from":"sc-27c","evidence":["sc-27c","sc-23c"],"entities":["crown","fighter"]},
+
+    {"fact_id":"f-408","frame":"gt","branch":"claim","claim":"At the shrine the party, holding the crown, can at last fulfil Brother Vane's errand and hand it over to be sealed","canon_from":"sc-28c","evidence":["sc-28c","sc-07"],"entities":["q-reliquary","shrinekeeper","crown","shrine"]},
+    {"fact_id":"f-409","frame":"gt","branch":"claim","claim":"The party hands the Hollow Crown to Brother Vane, fulfilling the reliquary errand","canon_from":"sc-28c","evidence":["sc-28c","sc-07"],"entities":["q-reliquary","shrinekeeper","crown","cleric"],"pays_off":["f-060"],"typed":{"subject":"q-reliquary","predicate":"completed_by","object":{"kind":"entity","id":"cleric"}}},
+    {"fact_id":"f-410","frame":"gt","branch":"claim","claim":"The crown passes from the party to Brother Vane, who now holds the Hollow Crown he schemed for all along","canon_from":"sc-28c","evidence":["sc-28c","sc-07"],"entities":["shrinekeeper","crown"],"supersedes_in_frame":"f-401","typed":{"subject":"shrinekeeper","predicate":"possession","object":{"kind":"entity","id":"crown"}}},
+    {"fact_id":"f-411","frame":"gt","branch":"claim","claim":"With the crown in his hands Brother Vane betrays the party, turning the obedient dead against them and seizing the power for himself","canon_from":"sc-29c","evidence":["sc-29c","sc-07","sc-14"],"entities":["shrinekeeper","crown"],"pays_off":["f-060"]},
+    {"fact_id":"f-412","frame":"shrinekeeper","branch":"claim","claim":"Brother Vane, the crown at last in his grasp, throws off the helpful brother and means to rule the Reach by the dead it commands","canon_from":"sc-29c","evidence":["sc-29c","sc-04"],"entities":["shrinekeeper"],"typed":{"subject":"shrinekeeper","predicate":"cause_of_rising","object":{"kind":"value","value":"exposed"}}},
+
+    {"fact_id":"f-413","frame":"gt","branch":"claim","claim":"By the end of the road the Hollow Crown rules the Reach — whether on the party's brow or, betrayed, on Brother Vane's, the living are held by the dead","canon_from":"sc-30c","evidence":["sc-30c","sc-29c"],"entities":["crown","shrinekeeper","deep-vault"],"typed":{"subject":"deep-vault","predicate":"reach_rule","object":{"kind":"value","value":"crown-ruled"}}},
+    {"fact_id":"f-414","frame":"reeve","branch":"claim","claim":"Reeve Calder finds his authority hollow — the Reach now answers to whoever wears the crown, and his hall holds no power over the dead","canon_from":"sc-30c","evidence":["sc-30c"],"entities":["reeve","crown"]},
+    {"fact_id":"f-415","frame":"wisewoman","branch":"claim","claim":"Old Maeve names the dark bargain: the rising is mastered, not ended, and the Reach has only changed which hand the dead obey","canon_from":"sc-31c","evidence":["sc-31c","sc-06"],"entities":["wisewoman","crown"]},
+    {"fact_id":"f-416","frame":"lanternboy","branch":"claim","claim":"Tam, his master never spoken of and the party turned rulers, is left under the crown's shadow with no word of the dead delver and no one to ask","canon_from":"sc-31c","evidence":["sc-31c","sc-05"],"entities":["lanternboy","delver"]},
+    {"fact_id":"f-417","frame":"gt","branch":"claim","claim":"The Reach ends under the Hollow Crown: the dead commanded, the wise-woman grim, the reeve hollow, and the lantern-boy never told what became of his master","canon_from":"sc-32c","evidence":["sc-32c","sc-30c"],"entities":["reeve","wisewoman","lanternboy","crown"]},
+
+
+    {"fact_id":"f-500","frame":"gt","branch":"parley","claim":"The cleric steps before the warden's shade and speaks to him as a keeper, not a foe, offering an oath in place of a fight","canon_from":"sc-23p","evidence":["sc-23p","sc-20"],"entities":["cleric","warden"]},
+    {"fact_id":"f-501","frame":"cleric","branch":"parley","claim":"Mother Henna, who alone can parley with the dead, names Orrek by the name the wizard read and asks him to still the dead by oath","canon_from":"sc-23p","evidence":["sc-23p","sc-15","sc-18"],"entities":["cleric","warden"]},
+    {"fact_id":"f-502","frame":"gt","branch":"parley","claim":"The warden's shade, weary of his duty and reachable as the record promised, offers the party a bargain: he keeps the crown but stills the dead, if the town keeps watch","canon_from":"sc-24p","evidence":["sc-24p","sc-18"],"entities":["warden","crown"],"pays_off":["f-171"],"typed":{"subject":"warden","predicate":"warden_disposition","object":{"kind":"value","value":"sworn"}}},
+    {"fact_id":"f-503","frame":"warden","branch":"parley","claim":"Orrek will not give up the crown that is his duty, but will hold the dead quiet so long as the living keep a true tithe-watch over the flood","canon_from":"sc-24p","evidence":["sc-24p","sc-20"],"entities":["warden","crown"]},
+    {"fact_id":"f-504","frame":"gt","branch":"parley","claim":"The cleric swears the oath with the warden's shade; the dead sink back into the floodwater and the rising is bound, though not ended","canon_from":"sc-25p","evidence":["sc-25p","sc-23p"],"entities":["cleric","warden","deep-vault"],"pays_off":["f-012"],"typed":{"subject":"deep-vault","predicate":"rising_state","object":{"kind":"value","value":"bound"}}},
+    {"fact_id":"f-505","frame":"gt","branch":"parley","claim":"The party has bound the rising by oath, the dead stilled under the warden's keeping, discharging the reeve's charge the bittersweet way","canon_from":"sc-25p","evidence":["sc-25p","sc-02"],"entities":["q-main","cleric"],"typed":{"subject":"q-main","predicate":"completed_by","object":{"kind":"entity","id":"cleric"}}},
+    {"fact_id":"f-506","frame":"gt","branch":"parley","claim":"The warden keeps the Hollow Crown by the oath's terms; the relic stays on his shade in the deep vault","canon_from":"sc-26p","evidence":["sc-26p","sc-20"],"entities":["warden","crown"],"typed":{"subject":"warden","predicate":"possession","object":{"kind":"entity","id":"crown"}}},
+    {"fact_id":"f-507","frame":"gt","branch":"parley","claim":"The oath names the price: the Reach must keep an eternal tithe-watch over the floodwater so the warden's quiet holds","canon_from":"sc-26p","evidence":["sc-26p","sc-25p","sc-06"],"entities":["wisewoman"],"payoff_expectation":"expected"},
+
+    {"fact_id":"f-508","frame":"gt","branch":"parley","claim":"Skell, told the crown stays with the warden and there is no prize to carry up, is refused his share and sent back to the surface","canon_from":"sc-27p","evidence":["sc-27p","sc-11"],"entities":["rival"],"pays_off":["f-101"],"typed":{"subject":"rival","predicate":"betrayal","object":{"kind":"value","value":"defused"}}},
+    {"fact_id":"f-509","frame":"rival","branch":"parley","claim":"Skell, sworn off the crown by the cleric's oath and outnumbered, takes his refusal sourly and climbs out with nothing","canon_from":"sc-27p","evidence":["sc-27p"],"entities":["rival"]},
+    {"fact_id":"f-510","frame":"gt","branch":"parley","claim":"The party climbs up out of the hold, the crown left below with the warden and the dead quiet behind them","canon_from":"sc-28p","evidence":["sc-28p","sc-25p"],"entities":["fighter","wizard","rogue","cleric"]},
+
+    {"fact_id":"f-511","frame":"gt","branch":"parley","claim":"At the shrine the party refuses Brother Vane the crown — it was never theirs to give — and the oath's terms expose his scheme to the town","canon_from":"sc-29p","evidence":["sc-29p","sc-07","sc-14"],"entities":["q-reliquary","shrinekeeper","shrine"],"pays_off":["f-004"]},
+    {"fact_id":"f-512","frame":"shrinekeeper","branch":"parley","claim":"Brother Vane, denied the crown and exposed by the tithe-watch the oath demands, cannot raise the dead he no longer commands and is undone","canon_from":"sc-29p","evidence":["sc-29p","sc-25p"],"entities":["shrinekeeper"]},
+    {"fact_id":"f-513","frame":"gt","branch":"parley","claim":"Old Maeve, who knows the tithe-lore best, takes up the keeping of the eternal tithe-watch over the floodwater","canon_from":"sc-30p","evidence":["sc-30p","sc-26p"],"entities":["wisewoman"],"pays_off":["f-507"]},
+    {"fact_id":"f-514","frame":"wisewoman","branch":"parley","claim":"Old Maeve accepts the watch as the price of the bargain, teaching the Reach the signs that the warden's quiet is holding","canon_from":"sc-30p","evidence":["sc-30p","sc-06"],"entities":["wisewoman"]},
+
+    {"fact_id":"f-515","frame":"gt","branch":"parley","claim":"At the lantern-house the party brings Tam word that his master is dead, returning the journal, and the boy's errand is closed","canon_from":"sc-30p","evidence":["sc-30p","sc-05","sc-13"],"entities":["lanternboy","delver","journal","q-delver","rogue"],"pays_off":["f-041"],"typed":{"subject":"q-delver","predicate":"completed_by","object":{"kind":"entity","id":"rogue"}}},
+    {"fact_id":"f-516","frame":"lanternboy","branch":"parley","claim":"Tam grieves his master and keeps the journal, and joins the watch over the water that his master died tracking","canon_from":"sc-30p","evidence":["sc-30p"],"entities":["lanternboy","delver"]},
+    {"fact_id":"f-517","frame":"reeve","branch":"parley","claim":"Reeve Calder binds the Reach to the eternal tithe-watch by his hall's authority, so the warden's quiet outlasts the party","canon_from":"sc-31p","evidence":["sc-31p","sc-26p"],"entities":["reeve","wisewoman"]},
+    {"fact_id":"f-518","frame":"gt","branch":"parley","claim":"The Reach ends watched and waiting: the dead stilled by oath, the warden keeping the crown below, Maeve and the boy on the watch, the shrine-keeper undone","canon_from":"sc-32p","evidence":["sc-32p","sc-25p"],"entities":["reeve","wisewoman","lanternboy","warden","deep-vault"],"typed":{"subject":"deep-vault","predicate":"reach_rule","object":{"kind":"value","value":"watched"}}}
+  ]
+}
