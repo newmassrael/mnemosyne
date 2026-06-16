@@ -1,0 +1,236 @@
+{
+  "frames": [
+    {"frame_id": "gt", "description": "ground truth (narration presents as simply true)"},
+    {"frame_id": "sera", "description": "Sera, Founding-Age keeper of the water"},
+    {"frame_id": "halden", "description": "Halden, Founding-Age dyer"},
+    {"frame_id": "bearer", "description": "the bearer / traveller of the wend-pipe"},
+    {"frame_id": "ode", "description": "Ode, Withering-Age field-warden"},
+    {"frame_id": "marn", "description": "Marn, Withering-Age well-tender"},
+    {"frame_id": "pell", "description": "Pell, Withering-Age weaver of the last loom"},
+    {"frame_id": "tamsin", "description": "Tamsin, Withering-Age far-field settler"}
+  ],
+  "branches": [
+    {"branch_id": "planted", "description": "the planted Withering future (the road this prose tells)"}
+  ],
+  "entities": [
+    {"entity_id": "cistern-steps", "kind": "place", "description": "the Cistern Steps"},
+    {"entity_id": "loom-quarter", "kind": "place", "description": "the Loom Quarter / craft-row"},
+    {"entity_id": "wend-fields", "kind": "place", "description": "the Wend Fields"},
+    {"entity_id": "cistern-vent", "kind": "prop", "description": "the cistern's lower vent / seam where wall meets rock"},
+    {"entity_id": "boundary-stone", "kind": "prop", "description": "the boundary-stone marking the firm ford"},
+    {"entity_id": "gorge-sapling", "kind": "prop", "description": "the bridge-tree (once a sapling) spanning the dry gorge"},
+    {"entity_id": "wend-pipe", "kind": "prop", "description": "the wend-pipe the bearer carries"},
+    {"entity_id": "cistern", "kind": "prop", "description": "the cistern at the Cistern Steps"},
+    {"entity_id": "ford", "kind": "prop", "description": "the firm ford / crossing of the Wend Fields"},
+    {"entity_id": "sera-person", "kind": "person", "description": "Sera"},
+    {"entity_id": "halden-person", "kind": "person", "description": "Halden"},
+    {"entity_id": "bearer-person", "kind": "person", "description": "the bearer"},
+    {"entity_id": "ode-person", "kind": "person", "description": "Ode"},
+    {"entity_id": "marn-person", "kind": "person", "description": "Marn"},
+    {"entity_id": "pell-person", "kind": "person", "description": "Pell"},
+    {"entity_id": "tamsin-person", "kind": "person", "description": "Tamsin"}
+  ],
+  "predicates": [
+    {"predicate_id": "condition", "object_kind": "scalar", "description": "the state a thing is in"},
+    {"predicate_id": "possession", "object_kind": "entity", "description": "who/what holds a thing"}
+  ],
+  "facts": [
+    {
+      "fact_id": "f-27p-01", "frame": "gt", "branch": "planted",
+      "entities": ["cistern"],
+      "claim": "Three generations of drought lie over Brae Hollow; every spring in the valley has failed except one source near the head of the hollow, which still gives and is the last living water in the valley.",
+      "canon_from": "sc-27p", "evidence": ["sc-27p"],
+      "typed": {"subject": "cistern", "predicate": "condition", "object": {"kind": "value", "value": "still-giving"}}
+    },
+    {
+      "fact_id": "f-27p-02", "frame": "gt", "branch": "planted",
+      "claim": "No one in the hollow can tell why this one source and no other still holds.",
+      "canon_from": "sc-27p", "evidence": ["sc-27p"]
+    },
+    {
+      "fact_id": "f-28p-01", "frame": "marn", "branch": "planted",
+      "entities": ["marn-person", "cistern"],
+      "claim": "Marn is the well-tender, as his mother was before him, and keeps the cistern at the Cistern Steps.",
+      "canon_from": "sc-28p", "evidence": ["sc-28p"],
+      "typed": {"subject": "marn-person", "predicate": "possession", "object": {"kind": "entity", "id": "cistern"}}
+    },
+    {
+      "fact_id": "f-28p-02", "frame": "gt", "branch": "planted",
+      "entities": ["cistern"],
+      "claim": "The cistern at the foot of the Cistern Steps is the last good water in the valley; its water is clean (the green smell is the smell of clean, not the other thing).",
+      "canon_from": "sc-28p", "evidence": ["sc-28p"],
+      "typed": {"subject": "cistern", "predicate": "condition", "object": {"kind": "value", "value": "clean"}}
+    },
+    {
+      "fact_id": "f-28p-03", "frame": "marn", "branch": "planted",
+      "claim": "Marn cannot answer what keeps the source good under all his keeping.",
+      "canon_from": "sc-28p", "evidence": ["sc-28p"]
+    },
+    {
+      "fact_id": "f-29p-01", "frame": "marn", "branch": "planted",
+      "claim": "Every other spring in the valley failed; Marn's spring runs clear into the cistern, never fouls and never fails, and Marn does not understand why and has no story for it that satisfies him.",
+      "canon_from": "sc-29p", "evidence": ["sc-29p"]
+    },
+    {
+      "fact_id": "f-30p-01", "frame": "gt", "branch": "planted",
+      "entities": ["bearer-person", "wend-pipe"],
+      "claim": "A traveller carrying a wend-pipe came down the Cistern Steps and crouched at a low seam in the stone where the cistern's wall met the living rock, pressing it as a person presses something familiar.",
+      "canon_from": "sc-30p", "evidence": ["sc-30p"],
+      "typed": {"subject": "bearer-person", "predicate": "possession", "object": {"kind": "entity", "id": "wend-pipe"}}
+    },
+    {
+      "fact_id": "f-30p-02", "frame": "marn", "branch": "planted",
+      "claim": "Marn did not know the seam; he had only ever tended above the waterline and saw only old, tightly fitted stone, a place where the water did not get in.",
+      "canon_from": "sc-30p", "evidence": ["sc-30p"]
+    },
+    {
+      "fact_id": "f-31p-01", "frame": "gt", "branch": "planted",
+      "claim": "Cut into the rock beside the lower seam, below the wet line, is a small worked figure, a maker's sign the traveller called a keeper's mark, weather-softened almost to nothing.",
+      "canon_from": "sc-31p", "evidence": ["sc-31p"]
+    },
+    {
+      "fact_id": "f-31p-02", "frame": "marn", "branch": "planted",
+      "claim": "Marn had never seen the mark, could not read it, and could not say who cut it, when, or whether the old hand had anything to do with the unfailing water.",
+      "canon_from": "sc-31p", "evidence": ["sc-31p"]
+    },
+    {
+      "fact_id": "f-31p-03", "frame": "gt", "branch": "planted",
+      "entities": ["cistern"],
+      "claim": "Beside the worn keeper's mark the water rises up through the dark joint of the wall into the cistern, clear and cold and good, and has not fouled or slowed through three generations of drought.",
+      "canon_from": "sc-31p", "evidence": ["sc-31p"],
+      "typed": {"subject": "cistern", "predicate": "condition", "object": {"kind": "value", "value": "clean"}}
+    },
+    {
+      "fact_id": "f-32p-01", "frame": "gt", "branch": "planted",
+      "entities": ["loom-quarter", "pell-person"],
+      "claim": "The Loom Quarter, once the loud craft-row of Brae Hollow, has gone quiet; Pell works the last loom on the dead row.",
+      "canon_from": "sc-32p", "evidence": ["sc-32p"]
+    },
+    {
+      "fact_id": "f-33p-01", "frame": "pell", "branch": "planted",
+      "claim": "There was once a quarrel in the craft-row before it died, but Pell knows nothing of it; no names or grudge were handed on, and Pell would not know any settling-stone from another.",
+      "canon_from": "sc-33p", "evidence": ["sc-33p"]
+    },
+    {
+      "fact_id": "f-34p-01", "frame": "gt", "branch": "planted",
+      "entities": ["wend-fields", "ode-person", "ford"],
+      "claim": "Past the dead row the land falls toward the Wend Fields, where a shrunk, changeable river wanders; Ode is the field-warden and keeps the only crossing, which leads to the last green field that half feeds the hollow.",
+      "canon_from": "sc-34p", "evidence": ["sc-34p"],
+      "typed": {"subject": "ode-person", "predicate": "possession", "object": {"kind": "entity", "id": "ford"}}
+    },
+    {
+      "fact_id": "f-35p-01", "frame": "gt", "branch": "planted",
+      "entities": ["boundary-stone", "ode-person"],
+      "claim": "After the spring melt the channel shifted; Ode's staff struck a squared block of cut stone half-buried at the very place the wading said was firm, a boundary-stone set on purpose to mark a place, with older, worn markings Ode could not read.",
+      "canon_from": "sc-35p", "evidence": ["sc-35p"]
+    },
+    {
+      "fact_id": "f-35p-02", "frame": "ode", "branch": "planted",
+      "claim": "Ode read that someone in some past age had set the stone exactly where the crossing held firm, and that the wandering river had never carried the firm line away from it, but could not say who, when, or how they knew.",
+      "canon_from": "sc-35p", "evidence": ["sc-35p"]
+    },
+    {
+      "fact_id": "f-36p-01", "frame": "gt", "branch": "planted",
+      "entities": ["ford"],
+      "claim": "After that the folk crossed by the stone; where the stone said firm, the bed bore them even when the brown water had shifted overnight.",
+      "canon_from": "sc-36p", "evidence": ["sc-36p"],
+      "typed": {"subject": "ford", "predicate": "condition", "object": {"kind": "value", "value": "firm"}}
+    },
+    {
+      "fact_id": "f-36p-02", "frame": "gt", "branch": "planted",
+      "entities": ["boundary-stone"],
+      "claim": "None of the Withering folk knew the stone's origin; it was older than the oldest of them, and they trusted it without a story and called it luck.",
+      "canon_from": "sc-36p", "evidence": ["sc-36p"]
+    },
+    {
+      "fact_id": "f-37p-01", "frame": "gt", "branch": "planted",
+      "entities": ["gorge-sapling"],
+      "claim": "A living, leafed tree grows root-fast in the near wall and crown-fast in the far wall of the dry gorge, once a sapling, now a bridge-tree broad enough to walk, spanning the gorge clean across.",
+      "canon_from": "sc-37p", "evidence": ["sc-37p"],
+      "typed": {"subject": "gorge-sapling", "predicate": "condition", "object": {"kind": "value", "value": "spanning-the-gorge"}}
+    },
+    {
+      "fact_id": "f-37p-02", "frame": "gt", "branch": "planted",
+      "entities": ["gorge-sapling"],
+      "claim": "The Withering folk walk the living trunk over the drop, and the tree bears them year on year and gives no sign of why it grew exactly there.",
+      "canon_from": "sc-37p", "evidence": ["sc-37p"]
+    },
+    {
+      "fact_id": "f-38p-01", "frame": "gt", "branch": "planted",
+      "entities": ["tamsin-person", "gorge-sapling"],
+      "claim": "Tamsin is the far-field settler, the only soul living across the gorge, and crosses the living trunk each day to tend the far field, which gives corn, roots, and grazing the home fields can no longer spare.",
+      "canon_from": "sc-38p", "evidence": ["sc-38p"],
+      "typed": {"subject": "tamsin-person", "predicate": "possession", "object": {"kind": "entity", "id": "gorge-sapling"}}
+    },
+    {
+      "fact_id": "f-38p-02", "frame": "tamsin", "branch": "planted",
+      "claim": "Tamsin no longer wonders much about the tree; it has become the worn-familiar way to work, asking nothing of it but that it go on holding, and it has not failed yet.",
+      "canon_from": "sc-38p", "evidence": ["sc-38p"]
+    },
+    {
+      "fact_id": "f-39p-01", "frame": "gt", "branch": "planted",
+      "entities": ["bearer-person", "wend-pipe"],
+      "claim": "The bearer raised the wend-pipe at the lip of the dry gorge and played it, crossing not the gorge but the years into the Founding Age, into a Brae Hollow green and loud and whole.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"]
+    },
+    {
+      "fact_id": "f-39p-02", "frame": "gt", "branch": "planted",
+      "entities": ["cistern-vent"],
+      "claim": "In the Founding Age, Sera the keeper of the water found a creeping rot working into the stone at the cistern's lower vent, the kind that fouls a spring if left.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"],
+      "typed": {"subject": "cistern-vent", "predicate": "condition", "object": {"kind": "value", "value": "rotting"}}
+    },
+    {
+      "fact_id": "f-39p-03", "frame": "gt", "branch": "planted",
+      "entities": ["cistern-vent"],
+      "claim": "Sera packed the lower vent, working stone and seal into the joint to seal the rot out and the good water in.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"],
+      "typed": {"subject": "cistern-vent", "predicate": "condition", "object": {"kind": "value", "value": "sealed"}}
+    },
+    {
+      "fact_id": "f-39p-04", "frame": "gt", "branch": "planted",
+      "entities": ["sera-person", "cistern-vent"],
+      "claim": "Sera cut her keeper's mark in the stone beside the sealed vent for some later keeper she would never meet; it is the same mark, weather-worn, that Marn had traced and could not read.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"],
+      "typed": {"subject": "sera-person", "predicate": "possession", "object": {"kind": "entity", "id": "cistern-vent"}}
+    },
+    {
+      "fact_id": "f-39p-05", "frame": "bearer", "branch": "planted",
+      "claim": "The bearer understood that Sera did not seal the vent for herself, but trusting the cistern to hold for whoever should keep it after her.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"]
+    },
+    {
+      "fact_id": "f-39p-06", "frame": "gt", "branch": "planted",
+      "entities": ["ford"],
+      "claim": "In the Founding Age, Halden the dyer, in a season of craft-row dispute, read the full river to judge which ford would stay firm when the channel shifted, and there was only one line that would hold true.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"],
+      "typed": {"subject": "ford", "predicate": "condition", "object": {"kind": "value", "value": "firm"}}
+    },
+    {
+      "fact_id": "f-39p-07", "frame": "gt", "branch": "planted",
+      "entities": ["halden-person", "boundary-stone"],
+      "claim": "Halden cut a boundary-stone, settling the dye-cart dispute in stone as the row demanded, and set it squared and sure at the head of the one firm ford to mark the crossing that would stay firm in the ages after him; it is the same stone Ode turned up out of the silt.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"],
+      "typed": {"subject": "halden-person", "predicate": "possession", "object": {"kind": "entity", "id": "boundary-stone"}}
+    },
+    {
+      "fact_id": "f-39p-08", "frame": "bearer", "branch": "planted",
+      "claim": "The bearer saw it whole at last: not luck, not mercy owed, but two people long ago, a keeper who sealed the rot from the water and a dyer who read the river and marked the firm ford, had reached forward across three generations of drought and held the dying hollow up.",
+      "canon_from": "sc-39p", "evidence": ["sc-39p"]
+    },
+    {
+      "fact_id": "f-40p-01", "frame": "gt", "branch": "planted",
+      "entities": ["cistern"],
+      "claim": "Brae Hollow withers on and the green time does not return, but the water at the Cistern Steps still rises clean into Marn's keeping, the firm ford still bears Ode's folk to the last green field, and the bridge-tree still spans the dry gorge for Tamsin to cross.",
+      "canon_from": "sc-40p", "evidence": ["sc-40p"],
+      "typed": {"subject": "cistern", "predicate": "condition", "object": {"kind": "value", "value": "clean"}}
+    },
+    {
+      "fact_id": "f-40p-02", "frame": "gt", "branch": "planted",
+      "entities": ["ford"],
+      "claim": "The near land fails and the far field carries the hollow; the water holds, the ford holds, and the bridge-tree holds, and on those three the withering hollow stands.",
+      "canon_from": "sc-40p", "evidence": ["sc-40p"],
+      "typed": {"subject": "ford", "predicate": "condition", "object": {"kind": "value", "value": "firm"}}
+    }
+  ]
+}
