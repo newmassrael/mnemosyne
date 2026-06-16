@@ -1,0 +1,78 @@
+{
+  "manifest": "dnd-quest-experiment/v3",
+  "designed": "2026-06-16 (R566 manifest round; sha256 pinned in the R566 ledger BEFORE any subagent runs — the R552/R561/R563 pre-commit pattern). The owner's R565-followup (choice A0): EXECUTE the tier-(3) story EXPANSION that the R565 scope investigation priced, to empirically prove the R564 D1 residual is CLOSEABLE (a scope choice, not a substrate wall).",
+
+  "lineage_note": "DESIGNED + ORCHESTRATED by the R561-R565 lineage. Per the R469 contamination bound this lineage may NOT author the expansion facts, render prose, re-extract, or judge; it writes this manifest + the briefs + the runbook, runs the deterministic gates (the leak RE-PROVE load-bearing) + the splice + the seam re-check, only.",
+
+  "base": "Reuses dnd-quest v2 (the R564 repaired base: 52 scenes / 123 facts / 11 frames / the delve disclosure plan, in v2/run/author/). v3 EXPANDS it with the delver's investigation as on-page prologue scenes — the tier-(3) move R565 scoped.",
+
+  "question": {
+    "primary": "Can a REAL story expansion — author the dead delver's investigation as on-page prologue scenes (a delver frame + a sc-00x prologue chain) — fully CLOSE the R564 D1 residual (the villain's identification was summarized off-page backstory) WITHOUT leaking the withheld villain identity early and WITHOUT making the game read as merely longer? This proves whether D1 was a SCOPE CHOICE (closeable by writing bigger) or a substrate wall.",
+    "the_withhold_split": "The crux (R565). f-004 (the cause is Brother Vane) is withheld until sc-14; the DEED (someone living feeds the tithes) is already PUBLIC (f-051, Maeve, not withheld). So the prologue shows the delver watching a ROBED/UNNAMED figure feed the dead and TRACKING the trail toward the shrine quarter — the reader witnesses real investigation — but the figure's IDENTITY (it is Vane / the shrine-keeper) is NEVER confirmed on-page in the prologue; the naming still lands at sc-14. The expansion closes 'the delver did shown tracking' while preserving the who-mystery.",
+    "sub_question_close": "does the blind extractor's seam re-check stop flagging D1 — i.e. is the delver's investigation now SHOWN on-page (the reader watched the tracking) rather than asserted in a found journal?",
+    "sub_question_no_leak": "does the leak gate still place f-004 (the named identity) at sc-14 — i.e. did showing the deed NOT leak the who?",
+    "sub_question_craft": "does the expanded game read at least as well (the prologue earns its length; dramatic irony about the deed is a feature, not bloat) — or does it read as merely longer?"
+  },
+
+  "deterministic_pins": {
+    "PIN_1_expansion_clean_and_no_leak": {
+      "claim": "PIN. The expanded base (v2 + the prologue) passes every v2 gate AND the leak gate still withholds the villain identity until sc-14 despite the prologue showing the deed — the load-bearing check.",
+      "criteria_all_required": [
+        "fresh rebuild from the expanded JSON loads 0-error.",
+        "validate-continuity --order --rules: 0 structural / 0 interval (the prologue facts + the new delver frame + the new prologue scenes are reachable/ordered).",
+        "report-fork-tree: 3 world-lines placed/terminal (the prologue is pre-fork spine).",
+        "report-playthrough-manuscript --world W every road: unplaced=0, undecidable=0.",
+        "report-payoff-coverage: the journal facts now pay off the SHOWN prologue setups (no new accidental dangling; the intended per-road open quests unchanged); PIN-2 quest-contract + PIN-3 map preserved.",
+        "LEAK RE-PROVE (load-bearing): validate-disclosure-leak --telling delve --world claim --truth-frame gt over a blind re-extraction of the rendered (prologue + touched scenes) = f-004 (Vane=cause) NOT re-extractable before its first_at sc-14, leaks=0, vocabulary_shared>0, exit 0. Showing the deed did not leak the who."
+      ],
+      "honest_limit": "the leak gate matches typed tuples; if the prologue prose lets a reader INFER the shrine-keeper (e.g. the figure plainly enters the shrine) the blind extractor may type it as shrinekeeper=cause and the gate fires — that IS the test (a too-revealing prologue should fail this pin). The author must keep the trail short of confirmation."
+    },
+    "PIN_2_D1_closed": {
+      "claim": "PIN. The blind extractor's NEW seam re-check no longer flags D1 — the delver's identification is now grounded in shown on-page investigation, not a journal conclusion from nowhere.",
+      "criteria_all_required": [
+        "the blind extractor (briefed to audit acquisition seams exactly as the v1/v2 extractor was) reports that the delver's path to the shrine-keeper is now SHOWN on-page (the reader watched the tracking), NOT 'a finished conclusion in a found journal'.",
+        "AND PIN-1's leak re-prove holds (the close did not cost the mystery — the IDENTITY is still earned at sc-14)."
+      ],
+      "honest_limit": "the seam re-check rests on the blind extractor's reading (the R500/R512 AI-judgment boundary) — a strong signal, not a theorem. If the extractor still finds a residual (e.g. the leap from 'the figure went toward the shrine' to 'it is the shrine-keeper' is itself unshown), that is recorded as the deeper residue — the honest outcome that even an on-page prologue cannot show a NAMED identification without leaking it."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind A/B judges, each given the v2 CLAIM render (no prologue) and the v3 CLAIM render (with prologue) as arm X / arm Y (randomized per judge, sealed label-map), plus the quest briefing. Blind to the expansion, the hypothesis, the pins, AI-authorship.",
+    "axes": "per arm: knowledge-realism (the delver/villain channel — is the identification earned?), opening/pacing (does the prologue earn its length, or read as bloat that delays the hook?), dramatic tension (does knowing the deed from scene one help or hurt), completion/polish, overall (1-5). Forced A/B on {knowledge-realism, more-finished-overall, would-you-keep-the-prologue}.",
+    "outcome_pin": "NONE. Free cross-ref (judges blind): v2 scored knowledge-realism repaired-arm strong; the open question is whether the prologue closes the delver channel AND is worth its length."
+  },
+
+  "decision_rule_pre_committed": {
+    "close_proven": "PIN-1 (incl. the leak re-prove) + PIN-2 hold AND judges find v3 >= v2 on knowledge-realism with no majority pacing/bloat regression (would-you-keep-the-prologue majority yes) => D1 was a SCOPE CHOICE, not a wall: a real story expansion closes the off-page acquisition residue while the withhold-split keeps the who-mystery intact. The empirical close; the residue is now priced AND demonstrably closeable.",
+    "leak_breaks": "PIN-1's leak re-prove FAILS (the prologue made the villain identity re-extractable before sc-14) => showing the deed without leaking the who is harder than the split suggested; record exactly what leaked and at which scene => the withhold-split needs a shorter trail (a v3.1), OR the off-page identification is load-bearing to the mystery (closing it on-page inherently spoils it) = a real finding about the irreducibility.",
+    "d1_persists": "pins-1 holds but the extractor STILL flags the identification as unshown (the leap from tracked-figure to named-shrine-keeper remains off-page) => even an on-page prologue cannot SHOW a NAMED identification without leaking it; the residue is intrinsic to a withheld-identity mystery, not a scope choice after all => the honest deeper limit, named.",
+    "just_longer": "pins hold and D1 closes but judges majority find v3 worse / bloated / the hook delayed => closing the residue cost the game's pacing => the expansion is a net-negative trade (the R565 craft trade-off realized) => D1 is closeable but NOT worth closing here; keep v2."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: manifest sha256-pinned in the R566 ledger, committed pre-execution. CLI current.",
+    "step_1_author": "spawn the blind expansion-author (author-expand-brief.md + the v2 base JSON) -> v3/run/author/ (expanded JSON + store + author-log). Adds the delver frame + the prologue scenes + facts; re-points the journal to pay off the shown prologue; re-gates incl. a self leak-check.",
+    "step_2_pins1": "orchestrator rebuilds fresh; runs PIN-1 every gate; defers the leak RE-PROVE to step 6 (needs the rendered prose + a blind re-extraction).",
+    "step_3_outline_affected": "orchestrator assembles the expanded CLAIM outline (report-playthrough-manuscript --world claim --telling delve) -> v3/run/manuscripts/world-claim.md; writes affected-scenes.txt = the new prologue scenes + any touched existing scene (sc-13/sc-14 where the journal now pays off shown scenes).",
+    "step_4_render": "spawn the blind render-expand (render-expand-brief.md + the expanded outline + v2's world-claim.md + affected-scenes.txt) -> v3/run/render/scenes/*.md (the new prologue prose + touched scenes), warm, ROBED-FIGURE discipline (never name/show the face).",
+    "step_5_splice": "orchestrator splices: v3 render = v2's render with the prologue prepended + the touched scenes swapped; diff confirms only the affected set changed.",
+    "step_6_extract_pinC": "write v3 vocab.md (v2 ids + the delver frame); spawn the blind extractor (v1 extractor-brief task + the spliced v3 render + vocab.md) -> v3/run/extract/; run the LEAK RE-PROVE (PIN-1 load-bearing) + fidelity; read the extract-log for the PIN-2 D1 seam re-check.",
+    "step_7_judges": "spawn 3 blind A/B judges (judge-brief-ab.md + quest-briefing.md + v2-render + v3-render, randomized, sealed label-map) -> v3/run/judges/.",
+    "step_8_decide": "orchestrator unblinds, applies the decision rule, writes report.md, commits (R567). NO push.",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs + the v1/v2 briefs; no tools/ or crate change. Scratch *.atomic.json gitignored."
+  },
+
+  "predictions_preregistered": {
+    "PRED_1": "PIN-1 gate-clean likely HOLDS (the prologue is additive pre-fork spine; the proven loop converges this scale). The LEAK RE-PROVE is the genuine risk: a prologue that shows the figure entering the shrine would let the extractor type shrinekeeper=cause and fail it — the author must end the trail at the shrine QUARTER / the sluice, short of confirmation.",
+    "PRED_2": "PIN-2 D1-closed is the open question. Honest expectation: the prologue WILL show real tracking (closing 'the journal conclusion from nowhere'), but the d1_persists branch is live — the final leap (tracked-figure -> it is the shrine-keeper) is exactly what must stay off-page to preserve the withhold, so the extractor may still note the NAMING is unshown. The most likely honest outcome is a PARTIAL close: the investigation is now shown, the naming stays (correctly) a sc-14 reveal.",
+    "PRED_judges": "the prologue likely raises the delver channel's knowledge-realism but RISKS the opening pace (a cold-open replaced by a backstory prologue is a real craft gamble); would-you-keep-the-prologue is a genuine coin-flip and the most informative judged signal."
+  },
+
+  "honest_caveats": [
+    "n=1; the same CLAIM road; the seam re-check + the judged calls rest on AI readers (the R500/R512 boundary).",
+    "the central tension is real and may be IRREDUCIBLE: a mystery that WITHHOLDS the villain identity cannot fully SHOW the identification without spoiling itself — so 'closing D1' may mean 'show the investigation, keep the naming as a reveal', which is correct craft but not a literal closure of 'every step is on-page'. The experiment is designed to surface exactly this (d1_persists), not to force a pass.",
+    "expanding a judged-high base (v2 5/4/5) risks a net-negative pacing trade (just_longer) — the experiment can find that the residue is closeable but not WORTH closing.",
+    "still a declarative-scenario expansion, NOT a played quest lifecycle (R559/R546)."
+  ]
+}
