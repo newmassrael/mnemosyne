@@ -1,0 +1,122 @@
+{
+  "manifest": "dnd-quest-experiment/v1",
+  "designed": "2026-06-16 (R561 manifest round; sha256 of this manifest pinned in the R561 ledger entry BEFORE any author/render/extract/judge subagent runs — the R453/R499/R503/R514/R519/R530/R536/R540/R548/R550 pre-commit pattern). The owner's R561 scope-fork choice C: an EXPERIMENT, run 'like really making a game, in the Dungeons-and-Dragons register'. It is the FIRST end-to-end run that exercises the R559 fact->quest contract AND the R557 map/surface seam together on a self-authored game — the integration test of the whole North-Star pipeline fact->story->quest->map made concrete with a quest-and-map-native genre.",
+
+  "lineage_note": "DESIGNED by the lineage that built + reviewed the pinion projection seam (R556-R560) and now opens this experiment (R561 load). Per the R469/R500 contamination bound this lineage may NOT author the fact base, render prose, re-extract, or judge; it writes this manifest + the PREMISE (the human's premise / high-level-direction role per the AI-first doctrine) + the four briefs + the runbook, and orchestrates the deterministic gates + the quest/map scans + the slice selection only.",
+
+  "question": {
+    "primary": "Can an AI SELF-AUTHOR a real game — a D&D-motif branching dungeon-delve as a gate-clean fact base that INSTANTIATES the R559 quest contract (objectives as kind-quest entities + pursues/completed_by/requires typed claims + payoff given/completed + a real prerequisite gate + per-road OPEN/DONE divergence) AND the R557 map/surface seam (quest-givers as resolvable MapLocators) — such that the full pipeline fact->quest->map coheres end-to-end, and the result READS like an adventure a table would want to play (blind-judged)?",
+    "sub_question_1_quest_contract": "Does a blind author, told to author quests with the contract (entity{kind:quest} + pursues/requires/giving-expected/completion-pays_off + map surface) but NOT told the thresholds, produce a quest structure that is (a) gate-clean, (b) prerequisite-real (the key quest actually gates the vault/main quest in canon order), and (c) per-road divergent (a quest discharged on one terminal road and left OPEN on another) — the R559 'quest STATE is DERIVED per world-line' claim made falsifiable on authored data?",
+    "sub_question_2_map_surface": "Does report-playable-world (R557, until now only smoke-tested on a crafted store) resolve EVERY quest-giving surface on a REAL authored game to a concrete MapLocator with 0 unresolved surfaces and 0 corrupt honesty-surfaces (R558) — i.e. does the map seam hold on authored content?",
+    "sub_question_3_game_feel": "Does the authored game READ like a real D&D adventure to blind judges — quests legible and wanted, prerequisites that make the world feel real, a fork that genuinely changes the game, a coherent map, reveals earned not blurted — when shown a player-facing quest briefing plus a warm-rendered slice?",
+    "isolation": "the quest-contract (authoring) and game-feel (render+structure) questions are kept SEPARABLE (the R518 lesson): PIN-1/PIN-2/PIN-3 are AUTHORING properties measured on author-A's base; PIN-4 + the judged game-feel are RENDER/READ properties measured on author-B's slice + the orchestrator-assembled briefing. The contract is the deterministic headline; game-feel is the open judged question."
+  },
+
+  "premise": {
+    "title": "The Drowned Hold of Vael Mooren (FRESH, original — no existing IP)",
+    "file": "premise.md",
+    "fresh_rationale": "A fresh dungeon-delve invented to DEMAND the quest+map axes at once: a town and a flooded hold (a real map with locations where quests live), a party of four with individuated craft+knowledge (breadth + per-person knowledge), FOUR interlocking quests (a main quest GATED by a key side-quest, a SKIPPABLE delver side-quest, and a TRAP errand completable on only one road = built-in per-road quest divergence), one moral fork (SHATTER / CLAIM / PARLEY) at ~45% into three distinct endings, and buried secrets (the traitor shrine-keeper, the warden's nature) earned at reveals. Quest-and-map-native by construction; NO convergence required (forest; convergence is the separate R527/R537 axis).",
+    "human_role_note": "Authoring the premise is the human's role (premise / high-level direction / final review), NOT a contamination of the AI-authoring claim (the ai-first-end-to-end doctrine: the AI authors the FACTS, the QUESTS, the MAP, and the PROSE; the human supplies the premise)."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R561): writes manifest + premise + briefs + runbook; rebuilds the store fresh from author-A's JSON; runs the deterministic gates; runs the PIN-2 quest-contract scan (a JSON+report JOIN: kind-quest entities x typed pursues/requires/completed_by x payoff-coverage-per-world x order) and the PIN-3 map-surface scan (report-playable-world); selects the render road; assembles the player-facing quest briefing from the structural reports; writes the extractor vocabulary (ids + forks_at only); runs the PIN-4 leak+fidelity gates over the blind re-extraction. NEVER authors a fact, renders a scene, re-extracts, or judges. RECORDS how painful the PIN-2 / briefing hand-JOIN was = the measured pull for report-quest-graph (R559 option B).",
+    "blind_author_A": "ONE fresh-context subagent (authoring). Input = premise.md + author-brief.md ONLY. Authors the fact base + quests + disclosure plan via mnemosyne-cli, using the gates as self-consistency feedback. BLIND to the hypothesis, the pins (incl. that quest-contract well-formedness, per-road divergence, and map resolution are measured), the rubric, the decision rule, the render/judge stages.",
+    "blind_author_B": "ONE fresh-context subagent (render). Input = render-brief.md + the trunk outline + ONE road outline ONLY. Renders warm played prose for that slice. BLIND to the pins, the rubric, the hypothesis, the original facts.json/plan, and that leak/fidelity/game-feel are tested.",
+    "blind_extractor": "ONE fresh-context subagent. Input = extractor-brief.md + the rendered slice manuscripts + vocab.md (entity/predicate/frame IDS + forks_at ONLY — no claims/facts/plan). Re-extracts facts from the PROSE, canon_from = the prose's own ## sc-NN markers, EXPLICIT only. BLIND to the original facts and the disclosure plan (so the leak/fidelity typed-tuple match is a genuine blind comparison, the R512 method).",
+    "blind_judges": "3 fresh-context subagents. Input = judge-brief.md + the player-facing quest briefing + the rendered slice ONLY (no frame labels, no plan, no internal reports). BLIND to the experiment, the hypothesis, that the content is AI-authored, the pins, and each other.",
+    "contamination_bound": "the R469 discipline (the 12th use of the blind-experiment family). The lineage that designed the axis may not author, render, re-extract, or judge its instance."
+  },
+
+  "deterministic_pins": {
+    "PIN_1_authoring_clean": {
+      "claim": "PIN. Author-A CONVERGES to a gate-clean (store-consistent) branching dungeon-delve within a bounded loop budget.",
+      "criteria_all_required": [
+        "import of the final sections.json + facts.json into a fresh empty schema-23 seed = 0 errors (loads clean).",
+        "validate-continuity --order --rules: structural violations = 0 AND interval violations = 0 (includes evidence-reachability, off-branch, and the R449 exclusive-possession rule on the crown + key).",
+        "report-fork-tree --order: the single primary fork PLACED; 0 unplaced fork points; the fork has 3 child world-lines (shatter/claim/parley); every world-line reaches a terminal.",
+        "report-playthrough-manuscript --world W --order, EVERY W: unplaced = 0, undecidable = 0.",
+        "report-timeline-gaps --world W --order, every W: 0 gap / 0 unreached scene.",
+        "report-payoff-coverage --order: computed; every dangling setup is one the author-log declares INTENTIONALLY open (a skippable/trap quest left open on a road it is not finished), NOT an accidental hole."
+      ],
+      "budget": "bounded authoring loop; if author-A cannot reach this, PIN-1 FAILS = the tooling-friction branch (record the iteration count + the stuck gate)."
+    },
+    "PIN_2_quest_contract": {
+      "claim": "PIN (NEW METRIC — operationalizes the R559 fact->quest contract as a falsifiable property of authored data). The base instantiates the quest contract: quests are well-formed obligations, one really gates another, and they resolve PER ROAD.",
+      "definition": "A quest = an entity with kind=quest. Its GIVING fact carries payoff_expectation=expected and lists the quest entity. It is COMPLETED on a road by a fact that pays_off the giving fact. pursues = a typed fact (actor -> quest). requires = a typed fact (quest -> prereq entity). discharged-on(W) = a quest whose giving fact is paid off in terminal world W (report-payoff-coverage). open-on(W) = a quest whose giving fact dangles in terminal W.",
+      "criteria_all_required": [
+        ">= 4 entities of kind=quest registered, each with: at least one typed `pursues` fact naming an actor, exactly one GIVING fact (payoff_expectation=expected, entities include the quest), and (on at least one road) a COMPLETION fact that pays_off the giving fact.",
+        "PREREQUISITE REAL: at least one quest carries a typed `requires` claim referencing another quest or a key item, AND the prerequisite is order-consistent — the prereq's completion scene precedes the dependent quest's completion (or vault-opening) scene in EVERY world-line where both occur (checked via order.json + canon reachability). The premise's key->vault->main gate is the load-bearing case.",
+        "PER-ROAD DIVERGENCE: across the three terminal worlds, there exists a quest discharged-on at least one terminal AND a quest open-on at least one terminal (quests are per-world-derived obligations, not global flags — the R559 'DERIVED per world-line' claim demonstrated). The orchestrator confirms each open quest is INTENDED (PIN-1's author-log cross-check), so 'open' means 'designed to be skippable/refusable on that road', not 'dangling bug'.",
+        "every quest-related fact is gate-clean under PIN-1 (no quest/pursues/requires/completion fact is among any continuity violation)."
+      ],
+      "honest_limit": "PIN-2 tests the DECLARATIVE quest STRUCTURE only — that the authored obligations are well-formed, gated, and per-road-divergent. It does NOT and CANNOT test a played, stateful quest LIFECYCLE (available/active/done/failed, disjunctive completion guards, the runtime state machine) — that is SCE/pinion's, the R559/R546 declarative-vs-executable line. 'The quests are well-formed and projectable' is not 'the quests play'. Stated per feedback_dont_downplay_experiment_flaws.",
+      "budget_note": "PIN-2 is computed by the orchestrator as a JSON+report JOIN over author-A's facts.json (kind-quest entities, typed claims, payoff marks) x report-payoff-coverage-per-world x order.json. NO new verb. The author is BLIND to the thresholds (the brief asks, in game-design register, to author interlocking quests that gate each other and resolve differently per road; it does not state the >=4 / per-road-divergence floor). The PAINFULNESS of this hand-JOIN is recorded = the measured pull for report-quest-graph (R559 option B)."
+    },
+    "PIN_3_map_surface": {
+      "claim": "PIN (NEW — exercises the R557 map/surface seam on REAL authored content for the first time; until now only crafted-store smoke). Every quest lives at a resolvable place on the map.",
+      "criteria_all_required": [
+        "every quest-giving fact carries a DisclosureSurface in the `delve` telling (report-disclosure-coverage --telling delve confirms a surface per quest-giver).",
+        "report-playable-world --telling delve --order resolves EVERY quest-giving surface to a MapLocator with a concrete {world_line, scene, scene_ordinal} on at least one road's walk: 0 unresolved quest-giver surfaces.",
+        "the playable-world honesty surfaces (R558: unplaced / undecidable) are 0 on every world (consistent with PIN-1) — the map is not corrupt; undeclared_adjacencies/sections_outside_order are reported but not gated."
+      ],
+      "honest_limit": "PIN-3 confirms the quest-givers PLACE on the map (the seam resolves); it does not test pinion rendering them to 3D/GUI (separate repo ../pinion, out of scope). 'The locators resolve' is not 'the world is rendered'."
+    },
+    "PIN_4_render_slice_acceptance": {
+      "claim": "PIN. The warm played render of the slice (trunk + ONE selected road) is gate-clean over a BLIND re-extraction (the R514/R515 warm-render-then-gate discipline + the R508 gates, applied to a quest-bearing slice).",
+      "criteria_all_required": [
+        "leak (R502 gate): validate-disclosure-leak --telling delve --against <reextracted> --world <rendered-road> --truth-frame gt = 0 premature leaks of a withheld secret before its first_at on that road, AND vocab_shared > 0 (the R510 F5 non-vacuous guard), exit 0.",
+        "fidelity (R505/R508 gate, the R488 prose analog): validate-render-fidelity over the re-extraction vs order.json, the rendered road = off_path = 0 (no re-extracted fact sits off the rendered road), unplaced = 0, reached_terminal = true (the rendered road reaches its ending)."
+      ],
+      "repair_protocol": "if a gate flags, that is the render-then-gate-REPAIR signal (R515): record the violation, the scene-scoped repair, and the repair COUNT as the R515 posture tax. Repairs stay in the warm played register. Do NOT silently fix; the count is reported.",
+      "scope_note": "the render is a SLICE (trunk + one road) — PIN-4 covers ONE road's render, bounding the subagent cost; the structural pins (PIN-1/2/3) cover all three roads. The slice is chosen by the orchestrator AFTER authoring as the road whose walk includes the most quest givings + at least one withheld-secret reveal, so the render genuinely exercises leak + fidelity."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, judge-brief.md rubric, over (1) the orchestrator-assembled player-facing QUEST BRIEFING (each quest's objective + where taken up + prerequisite + per-road outcome, in player register, assembled from report-payoff-coverage + report-playable-world + the kind-quest entities/claims) and (2) the rendered slice (run/render/world-*.md, no frame labels, no plan, no internal reports). Single arm (a capability test, no A/B).",
+    "axes": "quest legibility / prerequisite-structure / agency-branch-integrity / map coherence / knowledge realism / game-feel-overall (1-5 each, scene/quest-cited) + two forced calls (what most makes it a game worth playing / what most undercuts it; overall real-adventure-vs-outline-in-adventure-clothes).",
+    "control_crossref": "FREE signals (orchestrator computes, judges blind): R545 (combined depth+breadth coherence 5/5, branch-integrity 5/5); R551 (warm dialogue + cast sustainment 5/5). Those settled coherence + warmth; the open question here is whether QUEST + MAP structure reads as a real GAME.",
+    "outcome_pin": "NONE. The procedure is pinned; the game-feel verdict is the open question."
+  },
+
+  "decision_rule_pre_committed": {
+    "all_pins_hold_and_judged_good": "ALL four pins hold AND judges find (majority >= 4): quest-legibility AND agency-branch-integrity AND game-feel-overall, with no major knowledge/coherence break => the full pipeline fact->quest->map COHERES end-to-end on a self-authored real game; the R559 quest contract + the R557 map seam are INSTANTIATABLE by a blind author and READ as a real D&D adventure => the substrate carries a real branching quest-game. The on-axis expected outcome; its value is the first end-to-end quest+map game on authored content + a measured report-quest-graph pull.",
+    "pin2_fails": "author-A converges (PIN-1) but cannot instantiate the quest contract gate-clean, or cannot make the prerequisite order-real, or cannot produce per-road divergence => the R559 contract is harder to AUTHOR than the design assumed (the contract is correct but the authoring affordance is missing) => diagnose the stuck point; record as a measured pull (a quest-authoring helper, or report-quest-graph promoted from read-projection to an authoring aid). NOT a refutation of R559's ontology; a finding about authorability.",
+    "pin3_fails": "the map surfaces do not resolve on authored content (vs the R557 crafted smoke) => a real gap in the map seam surfaced by real authoring => diagnose (a surface-resolution bug, or a missing author affordance); a substrate finding worth a R557-followup fix round.",
+    "pin4_fails": "the warm render leaks (PIN-4 leak) or drifts off-road (PIN-4 fidelity) on the slice => record the repair count as the posture tax for a quest-bearing render; if repairs cannot clear it, the warm discipline costs more for a quest-bearing slice than for the R515 narration / R551 dialogue.",
+    "judged_game_feel_low": "all pins hold but judged quest-legibility or agency or game-feel < 4 majority => the structure is well-formed but does NOT READ as a game (the structure-consistency != game-feel residue, the analog of the scale-floor store-consistency != causal-coherence) => a craft ceiling (R476), blind-judged, not a substrate gap; a high-value honest finding about the gap between a correct quest graph and a game that feels worth playing.",
+    "report_quest_graph_pull": "ORTHOGONAL to the pass/fail: the orchestrator records whether assembling PIN-2 + the player-facing briefing from three separate reports (payoff-coverage + playable-world + the entity/claim JSON) was painful enough to justify BUILDING report-quest-graph (R559 option B). This experiment is the CONSUMER whose pull (or lack of it) decides whether B is built next — the R556->R557 design-then-build-when-pulled discipline."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R561 ledger, committed pre-execution (R561 = the manifest round). GOTCHA: report-playable-world (R557) is not in a pre-R557 installed CLI — execution must `cargo install --path crates/mnemosyne-cli --force` (and restart mnemosyne-mcp) first (the binary-skew lesson).",
+    "step_1_author": "spawn blind author-A (premise.md + author-brief.md) -> run/author/ (sections/facts/order/narrative-rules JSON + disclosure plan + gate-clean store + author-log.md).",
+    "step_2_pins123": "orchestrator rebuilds the store FRESH from author-A's JSON; runs PIN-1 gate criteria; runs the PIN-2 quest-contract scan (kind-quest entities x typed claims x payoff-coverage-per-world x order) and the PIN-3 report-playable-world map-surface scan; records every verdict verbatim in report.md + the hand-JOIN painfulness note.",
+    "step_3_slice_and_briefing": "orchestrator selects the render road (most quest givings + >=1 withheld-secret reveal); assembles the trunk outline + that road's outline (report-playthrough-manuscript --world W --telling delve --order) to run/manuscripts/; assembles the player-facing quest briefing to run/briefing/quest-briefing.md.",
+    "step_4_render": "spawn blind author-B (render-brief.md + the two outlines) -> run/render/world-*.md + render-log.md.",
+    "step_5_extract": "orchestrator writes run/extract/vocab.md (ids + forks_at only); spawn the blind extractor (extractor-brief.md + the rendered slice + vocab.md) -> run/extract/reextracted.atomic.json + extract-log.md.",
+    "step_6_pin4": "orchestrator runs PIN-4 leak + fidelity over the re-extraction, records verbatim (incl. any repair count).",
+    "step_7_judges": "spawn 3 blind judges (judge-brief.md + the quest briefing + the rendered slice) -> run/judges/judge-{1,2,3}.md.",
+    "step_8_decide": "orchestrator applies the pre-committed decision rule, writes report.md, commits (R562).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim; PIN-2 + the briefing are JSON/report scans recorded in report.md; no tools/ or crate change. Scratch *.atomic.json / *.playthrough.json stay gitignored; tracked evidence per runbook.md."
+  },
+
+  "predictions_preregistered": {
+    "PRED_1_authoring": "PIN-1 likely HOLDS at this scale (~45-55 scenes; convergence tractable, R524/R541/R545 precedent), though quest+map+possession+disclosure together is more authoring surface than prior runs — some extra loop iterations plausible.",
+    "PRED_2_quest_contract": "PIN-2 is the GENUINE open authoring question — first time a blind author instantiates the R559 contract. The per-road divergence (a quest open on one road, done on another) and the order-real prerequisite are deliberate-design requirements the brief asks for in game register; whether a blind author hits them gate-clean is exactly what is tested. Honest expectation: plausible (the premise hands the author a clean key->vault gate and a trap-quest), but NOT assured — the contract is new and easy to author as a flat list of always-completed errands (which would FAIL per-road divergence).",
+    "PRED_3_map_surface": "PIN-3 likely HOLDS (R557 smoke passed; surfaces are mechanical). Main risk: the author omits a surface on some quest-giver, or attaches a surface to a fact whose scene is off the resolving road.",
+    "PRED_4_render": "PIN-4 likely HOLDS (R515/R551 warm render gate-clean). Some repair count > 0 plausible for a quest-bearing slice (more chances to blurt a withheld secret through a quest-giver's mouth).",
+    "PRED_game_feel": "NO pin (the open question). Honest expectation: quest-legibility likely reads OK from a clean structure; the real risk is the rendered slice reading like a guided TOUR rather than a played game (the R504 outline-vs-story risk), and the assembled quest briefing reading like a spec table rather than a set of hooks. Game-feel is the most likely place this finds a real limit.",
+    "PRED_pull": "the report-quest-graph hand-JOIN (PIN-2 + briefing) is predicted to be MODERATELY painful — enough to register a real pull for R562/option-B, since composing per-world quest state from three reports by hand is exactly the JOIN report-quest-graph was designed to own."
+  },
+
+  "honest_caveats": [
+    "n=1 premise / 1 author-A / 1 author-B / 1 extractor / 3 judges — one instance, not a distribution (the standing single-instance caveat of this experiment family).",
+    "the experiment tests the DECLARATIVE quest STRUCTURE, NOT a played stateful quest lifecycle — the runtime available/active/done/failed machine is SCE/pinion's (the R559/R546 boundary). We show the authored quests are well-formed, gated, per-road-divergent, and map-resolvable; we do NOT show they 'play'. Named, not downplayed (feedback_dont_downplay_experiment_flaws).",
+    "PIN-2's per-road-divergence floor (>= 1 quest discharged on a terminal AND >= 1 open on a terminal) and the >= 4 quest count are defensible floors, not derived constants — pinned pre-execution so they cannot be retrofitted, but a different reasonable floor could flip a marginal verdict.",
+    "the render is a SLICE (trunk + one road), so PIN-4 + game-feel see ONE road's prose, not all three — bounds subagent cost; the structural pins cover all roads, but the judged game-feel of the OTHER two roads is inferred from the briefing, not read as prose.",
+    "game-feel is judged partly on an orchestrator-ASSEMBLED quest briefing (a hand-JOIN); a poorly-assembled briefing could depress game-feel independent of the authoring quality — recorded, and itself the report-quest-graph pull signal.",
+    "binary-skew gotcha: report-playable-world (R557) requires a current CLI install; a pre-R557 binary lacks the verb (the reference_mnemosyne_mcp_binary_skew lesson). Execution reinstalls first."
+  ]
+}

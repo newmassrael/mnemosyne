@@ -39,3 +39,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-npc-dialogue-experiment/
 /claudedocs/phase1-npc-dialogue-experiment/**/*.atomic.json
 /claudedocs/phase1-npc-dialogue-experiment/**/*.playthrough.json
+!/claudedocs/phase1-dnd-quest-experiment/
+/claudedocs/phase1-dnd-quest-experiment/**/*.atomic.json
+/claudedocs/phase1-dnd-quest-experiment/**/*.playthrough.json
