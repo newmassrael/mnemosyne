@@ -3499,8 +3499,11 @@ pub enum QuestState {
     Done,
     /// A giving fact dangles in this world (R442) and none is paid — open here.
     Open,
-    /// No giving fact is visible in this world (neither paid nor dangling) — the
-    /// quest does not apply on this road, surfaced not silently dropped.
+    /// No giving setup of this quest is visible in this world (neither paid nor
+    /// dangling) — the quest does not apply on this road. The SAME verdict also
+    /// covers an orphan quest (no giving setup bound at all): it reads `unknown`
+    /// on EVERY road and is additionally listed in `unresolved_quests`. Read the
+    /// two together to tell "not on this road" from "no payoff anchor anywhere".
     Unknown,
 }
 
@@ -3516,9 +3519,10 @@ impl QuestState {
 }
 
 /// One fact that discharges a quest's giving setup in a single world-line (R568)
-/// — the "completion fact" the R559 `QuestNode` names. Read VERBATIM from the
-/// R442 paid-setup payoff list; the `actor` is the `completed_by` discharger
-/// when the completing fact carries that claim FOR THIS quest.
+/// — the "completion fact" the R559 `QuestNode` names. Read straight from the
+/// R442 paid-setup payoff list (the payoffs crediting a giving setup that is
+/// paid here), kept only when the crediting fact carries THIS quest's
+/// `completed_by` claim; the `actor` is that claim's named discharger.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QuestCompletion {
     /// The fact that pays off a giving setup in this world (a `narrative_facts`
@@ -3565,9 +3569,9 @@ pub struct QuestNode {
     pub prerequisites: Vec<String>,
     /// The giving setups this quest opens (`PayoffExpectation::Expected` facts),
     /// sorted — the obligation that dangles while the quest is open. Bound by the
-    /// `completed_by` fact's `pays_off` edge, or (when completion is split across
-    /// two facts) the Expected setup co-located at the giver scene; empty =
-    /// `unresolved` (no payoff anchor, surfaced not dropped).
+    /// quest's own `completed_by` fact's `pays_off` edge (R559 strict combined);
+    /// empty = `unresolved` (no payoff anchor — no completed_by, or it pays off
+    /// no Expected setup; surfaced not dropped).
     pub giving_facts: Vec<String>,
     /// Per world-line, the quest's derived state (open/done/unknown) + the
     /// completion fact(s) on that road.
@@ -3602,20 +3606,22 @@ pub struct QuestGraphReport {
     pub worlds: Vec<String>,
     /// One node per `Entity{kind:"quest"}`, sorted by quest id.
     pub quests: Vec<QuestNode>,
-    /// Quest entities whose giving fact could not be resolved — they carry no
-    /// `completed_by` claim, so the obligation has no payoff anchor (surfaced,
-    /// not silently dropped — the R558 lesson). Each still appears in `quests`
-    /// with empty `giving_facts` and an all-`unknown` `per_world`.
+    /// Quest entities whose giving setup could not be bound — no `completed_by`
+    /// fact, or its `completed_by` facts pay off no `Expected` setup (R559 strict
+    /// combined). The obligation has no payoff anchor (surfaced, not silently
+    /// dropped — the R558 lesson). Each still appears in `quests` with empty
+    /// `giving_facts` and an all-`unknown` `per_world`.
     pub unresolved_quests: Vec<String>,
 }
 
 /// Compose the quest-graph projection for `telling` (R559 design sec 7.38, R568
-/// build): a PURE JOIN that owns the R562-registered hand-JOIN (quest entities +
-/// typed pursues/requires/completed_by × R442 payoff coverage per world × the
-/// R557 playable-world surface locators). Reuses [`playable_world`] and
-/// [`payoff_coverage`] VERBATIM (R558 — their honesty surfaces and open/done
-/// verdicts ride through, never re-derived). `world` filters the per-world map
-/// (the fork tree stays full — topology is inherently cross-world). No new
+/// build; R569 strict-combined binding). A PURE JOIN owning the R562 hand-JOIN
+/// (quest entities + typed pursues/requires/completed_by × R442 payoff coverage
+/// per world × the R557 playable-world surface locators). Reuses
+/// [`playable_world`] and [`payoff_coverage`] VERBATIM (R558): the open/done
+/// verdicts AND the completion beats are read straight from the R442 paid list —
+/// no second visibility pass, nothing re-derived. `world` filters the per-world
+/// map (the fork tree stays full — topology is inherently cross-world). No new
 /// traversal, no authoritative state — quest state is DERIVED per world-line
 /// (R559). Fails loud through the sub-projections.
 pub fn quest_graph(
@@ -3688,38 +3694,16 @@ pub fn quest_graph(
             _ => {}
         }
     }
-    // The `Expected` setups, and a scene -> Expected-pays_off-targets index (the
-    // setups paid off at each scene) — the bridge from a completion scene to the
-    // giving setup, covering both the combined and the split-completion cases.
+    // The `Expected` setups. A quest's giving setup is an Expected fact its OWN
+    // `completed_by` fact pays off (R559's single contract encoding — the
+    // completion fact pays off the giving). No scene-proximity bridge: binding
+    // by scene co-location would let two quests completing at one scene share
+    // givings (a cross-quest bleed), so it is not done — strict-combined only.
     let expected: BTreeSet<&str> = facts
         .iter()
         .filter(|(_, f)| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
         .map(|(id, _)| id.as_str())
         .collect();
-    let mut payoff_at_scene: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-    for fact in facts.values() {
-        for target in &fact.pays_off {
-            if expected.contains(target.as_str()) {
-                payoff_at_scene
-                    .entry(fact.canon_from.as_str())
-                    .or_default()
-                    .insert(target.clone());
-            }
-        }
-    }
-
-    // Per-world fact visibility (R438/R466): a completed_by fact is "held" on a
-    // road iff it is `In` that world-line — the design's "completion = holds_at"
-    // clause, robust to the split-completion case the payoff edge alone misses.
-    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
-    for w in &worlds {
-        lineages.insert(w.clone(), lineage_of(&store.branches, w)?);
-    }
-    let visible_in = |fact: &NarrativeFact, w: &str| -> bool {
-        lineages
-            .get(w)
-            .is_some_and(|lin| visibility(w, lin, order, fact) == Vis::In)
-    };
 
     let mut quests: Vec<QuestNode> = Vec::new();
     let mut unresolved_quests: Vec<String> = Vec::new();
@@ -3731,57 +3715,66 @@ pub fn quest_graph(
         let q_completions = completions_of
             .get(quest_id.as_str())
             .unwrap_or(&empty_completions);
-        // Bind the giving setups per completion fact: prefer the completed_by
-        // fact's OWN `pays_off` edge (the contract's combined encoding — precise,
-        // no sibling bleed); fall back to a sibling fact's payoff at the same
-        // scene ONLY when the completed_by carries no edge (the split-completion
-        // case the R562 main quest used).
+        // R559 strict combined binding: the giving setups are the `Expected`
+        // facts this quest's OWN `completed_by` facts pay off. An author who
+        // splits completion from payoff (a typed `completed_by` with no
+        // `pays_off`, the giving edge on a sibling fact) gets an honest
+        // `unresolved`, NEVER a scene-proximity-inferred binding.
         let mut q_givings: BTreeSet<String> = BTreeSet::new();
         for (_, fact, _) in q_completions {
-            let own: BTreeSet<String> = fact
-                .pays_off
-                .iter()
-                .filter(|t| expected.contains(t.as_str()))
-                .cloned()
-                .collect();
-            if !own.is_empty() {
-                q_givings.extend(own);
-            } else if let Some(targets) = payoff_at_scene.get(fact.canon_from.as_str()) {
-                q_givings.extend(targets.iter().cloned());
+            for target in &fact.pays_off {
+                if expected.contains(target.as_str()) {
+                    q_givings.insert(target.clone());
+                }
             }
         }
-        // A quest with no completion fact AND no giving setup has no obligation
-        // anchor at all — surfaced, not silently dropped (the R558 lesson).
-        if q_completions.is_empty() && q_givings.is_empty() {
+        // No giving setup bound = the obligation has no payoff anchor (no
+        // `completed_by` fact, or none pays off an Expected setup) — surfaced,
+        // not silently dropped (R558). Such a quest reads `unknown` everywhere.
+        if q_givings.is_empty() {
             unresolved_quests.push(quest_id.clone());
         }
+        // This quest's completed_by facts by id → (scene, discharger): used to
+        // credit a paid giving's R442 payoff list back to the named discharger.
+        let discharger: BTreeMap<&str, (&str, Option<&str>)> = q_completions
+            .iter()
+            .map(|(fid, fact, actor)| (*fid, (fact.canon_from.as_str(), actor.as_deref())))
+            .collect();
         let per_world: BTreeMap<String, QuestWorldState> = worlds
             .iter()
             .map(|w| {
-                // Completion beats on this road = the quest's completed_by facts
-                // visible here (each names the per-road discharger + scene).
-                let mut completions: Vec<QuestCompletion> = q_completions
-                    .iter()
-                    .filter(|(_, fact, _)| visible_in(fact, w))
-                    .map(|(fid, fact, actor)| QuestCompletion {
-                        fact: (*fid).to_string(),
-                        scene: fact.canon_from.clone(),
-                        actor: actor.clone(),
-                    })
-                    .collect();
-                completions.sort_by(|a, b| a.fact.cmp(&b.fact));
-                // open/done verdict: done if a completion holds here OR a giving
-                // setup is paid here (R442); else open if a giving setup dangles
-                // here; else the quest does not apply on this road (unknown).
+                // R442 payoff coverage is the SINGLE authority for open/done
+                // (reused verbatim, not re-derived): a giving setup PAID here =
+                // done, DANGLING here = open, neither (not visible on this road)
+                // = unknown. The completion beats are the giving's crediting
+                // payoffs that carry THIS quest's `completed_by` claim — read
+                // straight from the R442 paid list, no second visibility pass.
                 let cov = payoff.worlds.get(w);
-                let paid_here = cov.is_some_and(|c| {
-                    q_givings
-                        .iter()
-                        .any(|g| c.paid.iter().any(|p| &p.setup == g))
-                });
-                let dangling_here = cov
-                    .is_some_and(|c| q_givings.iter().any(|g| c.dangling.iter().any(|d| d == g)));
-                let state = if !completions.is_empty() || paid_here {
+                let mut completions: Vec<QuestCompletion> = Vec::new();
+                let mut paid_here = false;
+                let mut dangling_here = false;
+                if let Some(c) = cov {
+                    for g in &q_givings {
+                        if let Some(ps) = c.paid.iter().find(|p| &p.setup == g) {
+                            paid_here = true;
+                            for payoff_fact in &ps.payoffs {
+                                if let Some((scene, actor)) = discharger.get(payoff_fact.as_str()) {
+                                    completions.push(QuestCompletion {
+                                        fact: payoff_fact.clone(),
+                                        scene: (*scene).to_string(),
+                                        actor: actor.map(str::to_string),
+                                    });
+                                }
+                            }
+                        }
+                        if c.dangling.iter().any(|d| d == g) {
+                            dangling_here = true;
+                        }
+                    }
+                }
+                completions.sort_by(|a, b| a.fact.cmp(&b.fact));
+                completions.dedup();
+                let state = if paid_here {
                     QuestState::Done
                 } else if dangling_here {
                     QuestState::Open
@@ -6968,6 +6961,65 @@ mod tests {
         let keys: Vec<&str> = main_quest.per_world.keys().map(String::as_str).collect();
         assert_eq!(keys, vec!["win"]);
         assert_eq!(main_quest.per_world["win"].state, QuestState::Done);
+    }
+
+    /// R569 strict-combined contract: a quest whose `completed_by` fact carries
+    /// NO `pays_off`, with a SIBLING fact at the same scene paying off the
+    /// Expected giving, binds NOTHING — no scene-proximity rescue. The quest is
+    /// surfaced as `unresolved` + all-`unknown`, never silently bound to a
+    /// sibling's giving (the cross-quest-bleed the R568 fallback risked).
+    #[test]
+    fn quest_graph_split_completion_is_unresolved_not_scene_inferred() {
+        let give = FactImport {
+            payoff_expectation: Some("expected".to_string()),
+            ..fact("f-give", "gt", "ch-1", None)
+        };
+        let pursue = quest_fact(
+            "f-pursue",
+            "ch-1",
+            None,
+            &["hero", "q-split"],
+            ent_claim("hero", "pursues", "q-split"),
+            &[],
+        );
+        // completed_by WITHOUT a pays_off edge (the split encoding).
+        let complete = quest_fact(
+            "f-complete",
+            "ch-2",
+            None,
+            &["q-split", "hero"],
+            ent_claim("q-split", "completed_by", "hero"),
+            &[],
+        );
+        // a SIBLING at the same scene pays off the giving — the scene-proximity
+        // bait the strict binding must NOT take.
+        let sibling = FactImport {
+            pays_off: vec!["f-give".to_string()],
+            ..fact("f-sibling", "gt", "ch-2", None)
+        };
+        let mut store = store_with_forks(vec![give, pursue, complete, sibling], &[]);
+        let e = store.entities.get_mut("q-split").unwrap();
+        e.kind = "quest".to_string();
+        e.description = "Split completion".to_string();
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides: BTreeMap::new(),
+            },
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = quest_graph(&store, &order, None, "t1").unwrap();
+
+        assert_eq!(report.unresolved_quests, vec!["q-split".to_string()]);
+        let q = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-split")
+            .unwrap();
+        assert!(q.giving_facts.is_empty(), "no scene-proximity rescue");
+        assert!(q.per_world.values().all(|s| s.state == QuestState::Unknown));
     }
 
     // ====================================================================
