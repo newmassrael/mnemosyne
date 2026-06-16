@@ -1,0 +1,7 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "The cistern and the ford each hold ONE condition at a time across the two ages; the late-age state the bearer finds is the state the Founding-Age act left (rotting->sealed-clean; unmarked->marked-firm). One exclusive rule on condition-per-subject enforces no two-states-at-once on the same persisting object.",
+  "rules": [
+    { "id": "one-condition-per-object", "predicate": "condition", "class": "exclusive", "per": "subject" }
+  ]
+}

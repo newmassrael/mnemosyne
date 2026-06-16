@@ -1,0 +1,124 @@
+{
+  "frames": [
+    {"frame_id":"gt","description":"ground truth — what is really happening at Brae Hollow across both ages"},
+    {"frame_id":"sera","description":"Sera, the Founding-Age well-keeper at the Cistern Steps; knows the young hollow and her own corner only"},
+    {"frame_id":"halden","description":"Halden, the Founding-Age dyer-and-boundary-mason in the Loom Quarter; knows the craft-row dispute, never the drought to come"},
+    {"frame_id":"bearer","description":"the traveller with the wend-pipe; the only one who crosses between the two ages and sees both causes"},
+    {"frame_id":"ode","description":"Ode, the Withering-Age field-warden at the Wend Fields; inherits a hollow she did not build and cannot see the cause of"},
+    {"frame_id":"marn","description":"Marn, the Withering-Age well-tender at the Cistern Steps; keeps the last good water without knowing why it still runs"},
+    {"frame_id":"pell","description":"Pell, the Withering-Age weaver at the last loom in the quiet Loom Quarter; knows nothing of the old dispute"},
+    {"frame_id":"tamsin","description":"Tamsin, the Withering-Age far-field settler who reaches the far field across the bridge-tree (planted future only)"}
+  ],
+  "branches": [
+    {"branch_id":"planted","description":"PLANTED future — the bearer planted the gorge-sapling; a living bridge-tree spans the gorge and the far field is reachable","forks_from":"main","forks_at":"sc-26"},
+    {"branch_id":"barren","description":"BARREN future — the bearer did not plant; nothing grew, the gorge stays impassable and the far field is lost","forks_from":"main","forks_at":"sc-26"}
+  ],
+  "entities": [
+    {"entity_id":"cistern-steps","kind":"place","description":"the Cistern Steps — the upper spring and its stone catch-basin (the water); same ground in both ages"},
+    {"entity_id":"loom-quarter","kind":"place","description":"the Loom Quarter — the craft-row of dyers, weavers, a boundary-mason (the work); same ground in both ages"},
+    {"entity_id":"wend-fields","kind":"place","description":"the Wend Fields — the lower farmland and the river crossing (the living); same ground in both ages"},
+    {"entity_id":"cistern-vent","kind":"prop","description":"the cistern's lower vent — the load-bearing prop of the Cistern Steps; the same stone touched in both ages"},
+    {"entity_id":"boundary-stone","kind":"prop","description":"Halden's boundary-stone — the load-bearing prop of the Loom Quarter chain; the same stone in both ages, half-buried by the late age"},
+    {"entity_id":"gorge-sapling","kind":"prop","description":"the slow gorge-sapling — the load-bearing prop of the Wend Fields fork; planted in the Founding Age it becomes the Withering-Age bridge-tree"},
+    {"entity_id":"wend-pipe","kind":"prop","description":"the carved bone wend-pipe — the time-toggle the bearer carries to move between ages on one spot"},
+    {"entity_id":"cistern","kind":"state-object","description":"the cistern itself as a persisting state-bearer: its condition (rotting / sealed-clean) carries across the ages"},
+    {"entity_id":"ford","kind":"state-object","description":"the river ford as a persisting state-bearer: its condition (unmarked / marked-firm) carries across the ages"},
+    {"entity_id":"sera-person","kind":"person","description":"Sera, the Founding well-keeper (as a referenced figure)"},
+    {"entity_id":"halden-person","kind":"person","description":"Halden, the Founding dyer-mason (as a referenced figure)"},
+    {"entity_id":"bearer-person","kind":"person","description":"the bearer, the traveller (as a referenced figure)"},
+    {"entity_id":"ode-person","kind":"person","description":"Ode, the Withering field-warden (as a referenced figure)"},
+    {"entity_id":"marn-person","kind":"person","description":"Marn, the Withering well-tender (as a referenced figure)"},
+    {"entity_id":"pell-person","kind":"person","description":"Pell, the Withering weaver (as a referenced figure)"},
+    {"entity_id":"tamsin-person","kind":"person","description":"Tamsin, the Withering far-field settler (as a referenced figure)"}
+  ],
+  "predicates": [
+    {"predicate_id":"condition","object_kind":"scalar","description":"the persisting physical condition of a state-object (cistern: rotting/sealed-clean; ford: unmarked/marked-firm); the exclusive rule keys off this"},
+    {"predicate_id":"possession","object_kind":"entity","description":"which person holds a carried prop (the bearer holds the wend-pipe, then the gorge-sapling)"}
+  ],
+  "facts": [
+
+    {"fact_id":"f-found-young","frame":"gt","claim":"In the Founding Age Brae Hollow is young and thriving: the spring runs, the craft-row clatters, the river crossing is busy","canon_from":"sc-01","evidence":["sc-01"],"entities":["cistern-steps","loom-quarter","wend-fields"]},
+
+    {"fact_id":"f-sera-keeps","frame":"sera","claim":"Sera keeps the upper spring and its stone catch-basin at the Cistern Steps in the young hollow","canon_from":"sc-02","evidence":["sc-02"],"entities":["sera-person","cistern-steps","cistern"]},
+    {"fact_id":"f-cistern-rot","frame":"gt","claim":"In the Founding Age a creeping rot works into the rock at the cistern's lower vent","canon_from":"sc-03","evidence":["sc-03"],"entities":["cistern","cistern-vent"],"typed":{"subject":"cistern","predicate":"condition","object":{"kind":"value","value":"rotting"}}},
+    {"fact_id":"f-sera-sees-rot","frame":"sera","claim":"Sera finds the creeping rot at the cistern's lower vent and knows it will foul the water if left","canon_from":"sc-03","evidence":["sc-03"],"entities":["sera-person","cistern-vent"]},
+
+    {"fact_id":"f-seal-vent","frame":"gt","claim":"In the Founding Age Sera packs and seals the cistern's lower vent against the creeping rot","canon_from":"sc-04","evidence":["sc-04","sc-03"],"entities":["cistern","cistern-vent","sera-person"],"payoff_expectation":"expected","supersedes_in_frame":"f-cistern-rot","typed":{"subject":"cistern","predicate":"condition","object":{"kind":"value","value":"sealed"}}},
+    {"fact_id":"f-sera-seals","frame":"sera","claim":"Sera packs the lower vent tight against the rot, trusting the cistern to hold for whoever keeps it after her","canon_from":"sc-04","evidence":["sc-04","sc-03"],"entities":["sera-person","cistern-vent"]},
+
+    {"fact_id":"f-keeper-mark","frame":"gt","claim":"In the Founding Age Sera cuts her keeper's mark in the stone beside the sealed vent so a later hand will know it was tended","canon_from":"sc-05","evidence":["sc-05","sc-04"],"entities":["cistern-vent","sera-person"],"payoff_expectation":"expected"},
+    {"fact_id":"f-sera-marks","frame":"sera","claim":"Sera cuts her keeper's mark beside the vent, a sign for some keeper she will never meet","canon_from":"sc-05","evidence":["sc-05"],"entities":["sera-person","cistern-vent"]},
+    {"fact_id":"f-cistern-sweet","frame":"gt","claim":"With the vent sealed the cistern runs sweet again and Sera's work at the Steps is done","canon_from":"sc-06","evidence":["sc-06","sc-04"],"entities":["cistern","cistern-vent"]},
+
+    {"fact_id":"f-loom-busy","frame":"gt","claim":"In the Founding Age the Loom Quarter craft-row is busy with dyers, weavers, and Halden the boundary-mason","canon_from":"sc-07","evidence":["sc-07"],"entities":["loom-quarter","halden-person"]},
+    {"fact_id":"f-dispute","frame":"halden","claim":"A craft-row dispute breaks out over which crossing the dye-carts may use across the river","canon_from":"sc-08","evidence":["sc-08"],"entities":["halden-person","loom-quarter"]},
+    {"fact_id":"f-ford-unmarked","frame":"gt","claim":"In the Founding Age the only ford that will stay firm when the channel shifts is unmarked and unknown to all but a careful reader of the river","canon_from":"sc-09","evidence":["sc-09"],"entities":["ford","wend-fields"],"typed":{"subject":"ford","predicate":"condition","object":{"kind":"value","value":"unmarked"}}},
+    {"fact_id":"f-halden-reads","frame":"halden","claim":"Halden reads the river and judges which ford will hold firm when the channel shifts in years to come","canon_from":"sc-09","evidence":["sc-09"],"entities":["halden-person","ford"]},
+    {"fact_id":"f-cut-stone","frame":"halden","claim":"Halden cuts a boundary-stone to mark the firm ford, settling the dye-cart dispute in stone","canon_from":"sc-10","evidence":["sc-10","sc-08"],"entities":["halden-person","boundary-stone"]},
+
+    {"fact_id":"f-set-stone","frame":"gt","claim":"In the Founding Age Halden sets the boundary-stone at the head of the firm ford, marking the crossing that will stay firm when the river shifts","canon_from":"sc-11","evidence":["sc-11","sc-09"],"entities":["ford","boundary-stone","halden-person"],"payoff_expectation":"expected","supersedes_in_frame":"f-ford-unmarked","typed":{"subject":"ford","predicate":"condition","object":{"kind":"value","value":"marked-firm"}}},
+    {"fact_id":"f-halden-sets","frame":"halden","claim":"Halden sets the boundary-stone for a craft-row dispute, never imagining a drought, only the carts","canon_from":"sc-12","evidence":["sc-12","sc-11"],"entities":["halden-person","boundary-stone"]},
+
+    {"fact_id":"f-wend-green","frame":"gt","claim":"In the Founding Age the Wend Fields are green farmland and the river crossing is busy","canon_from":"sc-13","evidence":["sc-13"],"entities":["wend-fields"]},
+    {"fact_id":"f-bearer-arrives","frame":"gt","claim":"The bearer arrives in the young hollow carrying the carved bone wend-pipe","canon_from":"sc-14","evidence":["sc-14"],"entities":["bearer-person","wend-pipe"]},
+    {"fact_id":"f-bearer-has-pipe","frame":"bearer","claim":"The bearer carries the wend-pipe, the carved bone whistle that moves them between the ages","canon_from":"sc-14","evidence":["sc-14"],"entities":["bearer-person","wend-pipe"],"typed":{"subject":"bearer-person","predicate":"possession","object":{"kind":"entity","id":"wend-pipe"}}},
+
+    {"fact_id":"f-bearer-sees-sera","frame":"bearer","claim":"At the Cistern Steps the bearer watches Sera pack and seal the lower vent against the rot","canon_from":"sc-15","evidence":["sc-15","sc-04"],"entities":["bearer-person","sera-person","cistern-vent"]},
+    {"fact_id":"f-bearer-sees-halden","frame":"bearer","claim":"At the Loom Quarter the bearer watches Halden set the boundary-stone at the head of the firm ford","canon_from":"sc-16","evidence":["sc-16","sc-11"],"entities":["bearer-person","halden-person","boundary-stone"]},
+    {"fact_id":"f-pipe-toggles","frame":"bearer","claim":"The bearer learns the wend-pipe, played on a spot, moves them between the two ages standing on the same ground","canon_from":"sc-17","evidence":["sc-17"],"entities":["bearer-person","wend-pipe"]},
+
+    {"fact_id":"f-bearer-to-wend","frame":"bearer","claim":"The bearer walks down to the Wend Fields and the river crossing in the young hollow","canon_from":"sc-18","evidence":["sc-18"],"entities":["bearer-person","wend-fields"]},
+    {"fact_id":"f-gorge-dry","frame":"gt","claim":"At the crossing a dry gorge cuts the way to the far field across the channel","canon_from":"sc-19","evidence":["sc-19"],"entities":["wend-fields"]},
+    {"fact_id":"f-elder-gift","frame":"bearer","claim":"A field-elder gives the bearer a slow gorge-sapling and tells what it could become over generations","canon_from":"sc-20","evidence":["sc-20"],"entities":["bearer-person","gorge-sapling"],"typed":{"subject":"bearer-person","predicate":"possession","object":{"kind":"entity","id":"gorge-sapling"}}},
+
+    {"fact_id":"f-bearer-peeks-late","frame":"bearer","claim":"The bearer plays the wend-pipe and stands a moment in the withered hollow to come, the spring near the last water","canon_from":"sc-21","evidence":["sc-21"],"entities":["bearer-person","wend-pipe"]},
+    {"fact_id":"f-bearer-understands","frame":"bearer","claim":"The bearer crosses back and understands the early age is the late age's cause: what is done now lands generations on","canon_from":"sc-22","evidence":["sc-22","sc-21"],"entities":["bearer-person"]},
+    {"fact_id":"f-bearer-returns","frame":"bearer","claim":"The bearer returns to the Wend crossing with the gorge-sapling still in hand","canon_from":"sc-23","evidence":["sc-23","sc-20"],"entities":["bearer-person","gorge-sapling"]},
+    {"fact_id":"f-bearer-weighs","frame":"bearer","claim":"The bearer weighs whether the far field across the gorge is worth the planting","canon_from":"sc-24","evidence":["sc-24"],"entities":["bearer-person","gorge-sapling"]},
+    {"fact_id":"f-bearer-kneels","frame":"bearer","claim":"The bearer kneels at the lip of the dry gorge at dusk, the sapling ready","canon_from":"sc-25","evidence":["sc-25"],"entities":["bearer-person","gorge-sapling"]},
+
+    {"fact_id":"f-plant-sapling","frame":"gt","branch":"planted","claim":"At the Wend crossing in the Founding Age the bearer plants the slow gorge-sapling in the gorge wall","canon_from":"sc-26","evidence":["sc-26","sc-20"],"entities":["bearer-person","gorge-sapling","wend-fields"],"payoff_expectation":"expected","typed":{"subject":"gorge-sapling","predicate":"condition","object":{"kind":"value","value":"planted"}}},
+    {"fact_id":"f-bearer-plants","frame":"bearer","branch":"planted","claim":"The bearer plants the gorge-sapling and trusts the slow tree to span the gorge for an age it will never see","canon_from":"sc-26","evidence":["sc-26"],"entities":["bearer-person","gorge-sapling"]},
+    {"fact_id":"f-no-plant","frame":"gt","branch":"barren","claim":"At the Wend crossing in the Founding Age the bearer does not plant the gorge-sapling and walks on","canon_from":"sc-26","evidence":["sc-26","sc-20"],"entities":["bearer-person","gorge-sapling","wend-fields"]},
+    {"fact_id":"f-bearer-withholds","frame":"bearer","branch":"barren","claim":"The bearer keeps the sapling unplanted, leaving the gorge to whatever the late age makes of bare rock","canon_from":"sc-26","evidence":["sc-26"],"entities":["bearer-person","gorge-sapling"]},
+
+    {"fact_id":"f-wither-p","frame":"gt","branch":"planted","claim":"Three generations on, the Withering Age lies on Brae Hollow under a long drought, the spring near the last water in the valley","canon_from":"sc-27p","evidence":["sc-27p"],"entities":["cistern-steps","loom-quarter","wend-fields"]},
+    {"fact_id":"f-marn-keeps-p","frame":"marn","branch":"planted","claim":"Marn the well-tender keeps the cistern at the Cistern Steps, the last good water in the valley","canon_from":"sc-28p","evidence":["sc-28p"],"entities":["marn-person","cistern-steps","cistern"]},
+    {"fact_id":"f-marn-puzzled-p","frame":"marn","branch":"planted","claim":"Marn does not know why the cistern still runs clean when every other spring in the valley has failed","canon_from":"sc-29p","evidence":["sc-29p"],"entities":["marn-person","cistern"]},
+    {"fact_id":"f-bearer-recog-vent-p","frame":"bearer","branch":"planted","claim":"The bearer crosses to the Withering Steps and recognises the same vent Sera packed three generations gone","canon_from":"sc-30p","evidence":["sc-30p","sc-04"],"entities":["bearer-person","cistern-vent"]},
+    {"fact_id":"f-clean-water-p","frame":"gt","branch":"planted","claim":"Three generations on the cistern still runs clean — the last good water in the valley — because Sera sealed the vent","canon_from":"sc-31p","evidence":["sc-31p","sc-04"],"entities":["cistern","cistern-vent"],"pays_off":["f-seal-vent"],"supersedes_in_frame":"f-seal-vent","typed":{"subject":"cistern","predicate":"condition","object":{"kind":"value","value":"clean-holds"}}},
+    {"fact_id":"f-mark-found-p","frame":"bearer","branch":"planted","claim":"The bearer finds Sera's keeper's mark still cut in the stone beside the clean-running vent","canon_from":"sc-31p","evidence":["sc-31p","sc-05"],"entities":["bearer-person","cistern-vent"],"pays_off":["f-keeper-mark"]},
+
+    {"fact_id":"f-loom-quiet-p","frame":"pell","branch":"planted","claim":"The Loom Quarter has gone quiet; Pell the weaver works the last loom on the dead craft-row","canon_from":"sc-32p","evidence":["sc-32p"],"entities":["pell-person","loom-quarter"]},
+    {"fact_id":"f-pell-ignorant-p","frame":"pell","branch":"planted","claim":"Pell knows nothing of the old craft-row dispute or who cut any boundary-stone","canon_from":"sc-33p","evidence":["sc-33p"],"entities":["pell-person"]},
+
+    {"fact_id":"f-ode-keeps-p","frame":"ode","branch":"planted","claim":"Ode the field-warden keeps the crossing at the Wend Fields for the Withering folk","canon_from":"sc-34p","evidence":["sc-34p"],"entities":["ode-person","wend-fields"]},
+    {"fact_id":"f-ode-finds-stone-p","frame":"ode","branch":"planted","claim":"Ode finds a boundary-stone half-buried at the shifted channel and reads it as the mark of the firm ford","canon_from":"sc-35p","evidence":["sc-35p"],"entities":["ode-person","boundary-stone"]},
+    {"fact_id":"f-ode-crosses-p","frame":"ode","branch":"planted","claim":"The Withering folk cross to the last green field on the firm ford the boundary-stone marks, because a dyer marked it in an age none of them remember","canon_from":"sc-36p","evidence":["sc-36p","sc-11"],"entities":["ode-person","boundary-stone","ford","wend-fields"],"pays_off":["f-set-stone"],"typed":{"subject":"ford","predicate":"condition","object":{"kind":"value","value":"crossed-firm"}}},
+
+    {"fact_id":"f-bridge-tree-p","frame":"gt","branch":"planted","claim":"The gorge-sapling the bearer planted has grown to a living bridge-tree spanning the dry gorge","canon_from":"sc-37p","evidence":["sc-37p","sc-26"],"entities":["gorge-sapling","wend-fields"],"pays_off":["f-plant-sapling"],"supersedes_in_frame":"f-plant-sapling","typed":{"subject":"gorge-sapling","predicate":"condition","object":{"kind":"value","value":"bridged"}}},
+    {"fact_id":"f-tamsin-far-p","frame":"tamsin","branch":"planted","claim":"Tamsin the far-field settler reaches and works the far field across the living bridge-tree","canon_from":"sc-38p","evidence":["sc-38p","sc-37p"],"entities":["tamsin-person","gorge-sapling","wend-fields"]},
+    {"fact_id":"f-bearer-witness-p","frame":"bearer","branch":"planted","claim":"The bearer crosses to the Founding Age and witnesses why the cistern runs and the ford holds: Sera's seal and Halden's stone","canon_from":"sc-39p","evidence":["sc-39p","sc-04","sc-11"],"entities":["bearer-person","cistern-vent","boundary-stone"]},
+    {"fact_id":"f-end-p","frame":"gt","branch":"planted","claim":"Brae Hollow withers but the far field carries it: the water holds, the ford holds, and the bridge-tree holds","canon_from":"sc-40p","evidence":["sc-40p","sc-31p","sc-36p","sc-37p"],"entities":["cistern","ford","gorge-sapling"]},
+
+    {"fact_id":"f-wither-b","frame":"gt","branch":"barren","claim":"Three generations on, the Withering Age lies on Brae Hollow under a long drought, the spring near the last water in the valley","canon_from":"sc-27b","evidence":["sc-27b"],"entities":["cistern-steps","loom-quarter","wend-fields"]},
+    {"fact_id":"f-marn-keeps-b","frame":"marn","branch":"barren","claim":"Marn the well-tender keeps the cistern at the Cistern Steps, the last good water in the valley","canon_from":"sc-28b","evidence":["sc-28b"],"entities":["marn-person","cistern-steps","cistern"]},
+    {"fact_id":"f-marn-puzzled-b","frame":"marn","branch":"barren","claim":"Marn does not know why the cistern still runs clean when every other spring in the valley has failed","canon_from":"sc-29b","evidence":["sc-29b"],"entities":["marn-person","cistern"]},
+    {"fact_id":"f-bearer-recog-vent-b","frame":"bearer","branch":"barren","claim":"The bearer crosses to the Withering Steps and recognises the same vent Sera packed three generations gone","canon_from":"sc-30b","evidence":["sc-30b","sc-04"],"entities":["bearer-person","cistern-vent"]},
+    {"fact_id":"f-clean-water-b","frame":"gt","branch":"barren","claim":"Three generations on the cistern still runs clean — the last good water in the valley — because Sera sealed the vent","canon_from":"sc-31b","evidence":["sc-31b","sc-04"],"entities":["cistern","cistern-vent"],"pays_off":["f-seal-vent"],"supersedes_in_frame":"f-seal-vent","typed":{"subject":"cistern","predicate":"condition","object":{"kind":"value","value":"clean-holds"}}},
+    {"fact_id":"f-mark-found-b","frame":"bearer","branch":"barren","claim":"The bearer finds Sera's keeper's mark still cut in the stone beside the clean-running vent","canon_from":"sc-31b","evidence":["sc-31b","sc-05"],"entities":["bearer-person","cistern-vent"],"pays_off":["f-keeper-mark"]},
+
+    {"fact_id":"f-loom-quiet-b","frame":"pell","branch":"barren","claim":"The Loom Quarter has gone quiet; Pell the weaver works the last loom on the dead craft-row","canon_from":"sc-32b","evidence":["sc-32b"],"entities":["pell-person","loom-quarter"]},
+    {"fact_id":"f-pell-ignorant-b","frame":"pell","branch":"barren","claim":"Pell knows nothing of the old craft-row dispute or who cut any boundary-stone","canon_from":"sc-33b","evidence":["sc-33b"],"entities":["pell-person"]},
+
+    {"fact_id":"f-ode-keeps-b","frame":"ode","branch":"barren","claim":"Ode the field-warden keeps the crossing at the Wend Fields for the Withering folk","canon_from":"sc-34b","evidence":["sc-34b"],"entities":["ode-person","wend-fields"]},
+    {"fact_id":"f-ode-finds-stone-b","frame":"ode","branch":"barren","claim":"Ode finds a boundary-stone half-buried at the shifted channel and reads it as the mark of the firm ford","canon_from":"sc-35b","evidence":["sc-35b"],"entities":["ode-person","boundary-stone"]},
+    {"fact_id":"f-ode-crosses-b","frame":"ode","branch":"barren","claim":"The Withering folk cross to the near green field on the firm ford the boundary-stone marks, because a dyer marked it in an age none of them remember","canon_from":"sc-36b","evidence":["sc-36b","sc-11"],"entities":["ode-person","boundary-stone","ford","wend-fields"],"pays_off":["f-set-stone"],"typed":{"subject":"ford","predicate":"condition","object":{"kind":"value","value":"crossed-firm"}}},
+
+    {"fact_id":"f-bare-rock-b","frame":"gt","branch":"barren","claim":"At the gorge nothing grew; the crossing-place to the far field is bare rock","canon_from":"sc-37b","evidence":["sc-37b","sc-26"],"entities":["wend-fields"]},
+    {"fact_id":"f-far-lost-b","frame":"gt","branch":"barren","claim":"The dry gorge is impassable and the far field across it is lost to the hollow","canon_from":"sc-38b","evidence":["sc-38b","sc-37b"],"entities":["wend-fields"]},
+    {"fact_id":"f-ode-far-lost-b","frame":"ode","branch":"barren","claim":"Ode marks the far field as unreachable: no bridge spans the gorge and the hollow must live on the near field alone","canon_from":"sc-38b","evidence":["sc-38b"],"entities":["ode-person","wend-fields"]},
+    {"fact_id":"f-bearer-witness-b","frame":"bearer","branch":"barren","claim":"The bearer crosses to the Founding Age and witnesses why the cistern runs and the ford holds: Sera's seal and Halden's stone","canon_from":"sc-39b","evidence":["sc-39b","sc-04","sc-11"],"entities":["bearer-person","cistern-vent","boundary-stone"]},
+    {"fact_id":"f-end-b","frame":"gt","branch":"barren","claim":"Brae Hollow withers on the near field alone; the water and ford hold but the far field stays lost","canon_from":"sc-40b","evidence":["sc-40b","sc-31b","sc-36b","sc-38b"],"entities":["cistern","ford","wend-fields"]}
+  ]
+}
