@@ -1,0 +1,7 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "The Hollow Crown and the warden's key are single-holder relics — one party holds each at a time.",
+  "rules": [
+    { "id": "one-holder-per-relic", "predicate": "possession", "class": "exclusive", "per": "object" }
+  ]
+}
