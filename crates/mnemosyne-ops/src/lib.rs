@@ -591,6 +591,29 @@ pub fn playable_world_report(
         .map_err(OpError::Other)
 }
 
+/// Project the quest graph (Round 559 design sec 7.38, Round 568 build) over the
+/// workspace store with the shared order resolution — the fact→quest leg a
+/// pinion narrative runtime (or an authoring consumer) consumes: per telling,
+/// each `Entity{kind:"quest"}` projected to a `QuestNode` (objective, actor,
+/// per-world derived open/done state, prerequisites, completion fact, giver
+/// surface locator). A pure JOIN over the existing payoff-coverage (R442) and
+/// playable-world (R557) projections; pure read, never gated. `world` filters
+/// the per-world map (the fork tree stays full).
+pub fn quest_graph_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    world: Option<&str>,
+    order_override: Option<&str>,
+    telling: &str,
+) -> Result<mnemosyne_validate::continuity::QuestGraphReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::quest_graph(&store, &order, world, telling)
+        .map_err(OpError::Other)
+}
+
 /// Disclosure coverage (Round 507, design sec 7.24 step 4) — the per-telling
 /// classification surface (disclosed / hidden-by-design / never-planned). Pure
 /// read projection, order-independent, never gated.

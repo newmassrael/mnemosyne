@@ -3474,6 +3474,362 @@ pub fn playable_world(
     })
 }
 
+/// The R559 quest authoring-contract vocabulary (design sec 7.38). A quest is
+/// an `Entity{kind:"quest"}` plus three typed predicates: `pursues` (an actor
+/// LEADS a quest), `requires` (a quest is gated by another quest first), and
+/// `completed_by` (an actor DISCHARGES a quest on a road — the carrying fact
+/// `pays_off` the quest's giving setup). These ids ARE the contract a consumer
+/// adopts to author quests this projection can read, not arbitrary magic
+/// strings (the R547 authoring-contract-over-existing-primitives pattern);
+/// `Entity.kind` is consumer-defined per ARCHITECTURE sec 6 inv4.
+const QUEST_ENTITY_KIND: &str = "quest";
+const QUEST_PRED_PURSUES: &str = "pursues";
+const QUEST_PRED_REQUIRES: &str = "requires";
+const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
+
+/// A quest's DERIVED state in one world-line (R559: "quest state DERIVED per
+/// world-line, never stored"). Open vs done is read VERBATIM from the R442
+/// payoff coverage of the quest's giving fact — paid here = done, dangling here
+/// = open, neither (the giving fact is not visible in this world) = unknown
+/// (B-1, surfaced not assumed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestState {
+    /// A giving fact of this quest is `paid` in this world (R442) — done here.
+    Done,
+    /// A giving fact dangles in this world (R442) and none is paid — open here.
+    Open,
+    /// No giving fact is visible in this world (neither paid nor dangling) — the
+    /// quest does not apply on this road, surfaced not silently dropped.
+    Unknown,
+}
+
+impl QuestState {
+    /// Stable lowercase label (matches the serde rename), for human output.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            QuestState::Done => "done",
+            QuestState::Open => "open",
+            QuestState::Unknown => "unknown",
+        }
+    }
+}
+
+/// One fact that discharges a quest's giving setup in a single world-line (R568)
+/// — the "completion fact" the R559 `QuestNode` names. Read VERBATIM from the
+/// R442 paid-setup payoff list; the `actor` is the `completed_by` discharger
+/// when the completing fact carries that claim FOR THIS quest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QuestCompletion {
+    /// The fact that pays off a giving setup in this world (a `narrative_facts`
+    /// key) — what pinion dereferences for the completion beat.
+    pub fact: String,
+    /// That fact's `canon_from` — the scene the quest completes at on this road.
+    pub scene: String,
+    /// The actor the fact's `completed_by` claim names as the discharger on this
+    /// road, when the completing fact carries that claim for THIS quest (`None`
+    /// when the payoff fact is untyped or a `completed_by` for another quest).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+}
+
+/// A quest's state in one world-line: the derived open/done verdict plus the
+/// completion fact(s) on that road (empty when open). Per-road divergence — a
+/// quest done on one terminal and open on another — is exactly two different
+/// `QuestWorldState`s, the R559 "derived per world-line" claim made data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QuestWorldState {
+    pub state: QuestState,
+    /// The completion fact(s) discharging this quest here; empty when open.
+    pub completions: Vec<QuestCompletion>,
+}
+
+/// One quest in the graph (R559 design sec 7.38, R568 build): the narrative
+/// instance of the substrate's universal tracked-obligation pattern, PROJECTED
+/// from existing primitives — no new authoritative state. `objective`/`actors`
+/// from the `Entity{kind:"quest"}` + its `pursues` claims; `prerequisites` from
+/// `requires` claims; `giving_facts` are the `PayoffExpectation::Expected`
+/// setups its `completed_by` facts pay off; `per_world` is the R442 open/done of
+/// those givings; `locators` are the giver surfaces (R557) resolved under the
+/// telling (where the quest is picked up).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct QuestNode {
+    /// The quest entity id (an `Entity{kind:"quest"}` key).
+    pub quest_id: String,
+    /// The quest objective — the entity's `description`.
+    pub objective: String,
+    /// The actor entities that LEAD the quest (`pursues` subjects), sorted.
+    pub actors: Vec<String>,
+    /// Prerequisite quest ids that must complete first (`requires` objects),
+    /// sorted — the declarative gate (R559); the canon order proves the timing.
+    pub prerequisites: Vec<String>,
+    /// The giving setups this quest opens (`PayoffExpectation::Expected` facts),
+    /// sorted — the obligation that dangles while the quest is open. Bound by the
+    /// `completed_by` fact's `pays_off` edge, or (when completion is split across
+    /// two facts) the Expected setup co-located at the giver scene; empty =
+    /// `unresolved` (no payoff anchor, surfaced not dropped).
+    pub giving_facts: Vec<String>,
+    /// Per world-line, the quest's derived state (open/done/unknown) + the
+    /// completion fact(s) on that road.
+    pub per_world: BTreeMap<String, QuestWorldState>,
+    /// The quest-giver surface locators (R557) — a [`MapLocator`] per world where
+    /// a giving fact is disclosed at a surface (where the player picks the quest
+    /// up). World-then-walk order; empty when no giving fact carries a surface.
+    pub locators: Vec<MapLocator>,
+}
+
+/// The quest-graph projection for one telling (R559 design sec 7.38, R568 build)
+/// — the single composing READ a pinion narrative runtime (or an authoring
+/// consumer) needs for the quest layer, the sibling of [`playable_world`]. A
+/// PURE JOIN over the existing projections (R558 verbatim reuse, no
+/// re-projection): the `Entity{kind:"quest"}` entities + their typed claims, the
+/// R442 [`payoff_coverage`] (per-world open/done), and [`playable_world`] (the
+/// R497 fork topology + the R557 giver-surface locators). Never gated — a quest
+/// graph is a reading surface, not a defect detector; quest STATE is DERIVED per
+/// world-line, never stored (R559). Executable quest LOGIC (the runtime
+/// lifecycle available/active/done/failed, completion guards, the state machine)
+/// is SCE/pinion's, NOT modeled here (the R546/R559 declarative-vs-executable
+/// line). Fails loud through the sub-projections (a typo'd telling / world).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct QuestGraphReport {
+    /// The telling whose disclosure plan resolved the giver locators.
+    pub telling: String,
+    /// The cross-world choice graph (R497) — navigation context, always full
+    /// even under a `world` filter (the topology is inherently cross-world).
+    pub fork_tree: ForkTreeReport,
+    /// The world-lines covered (every query world, or the single `world`
+    /// filter), sorted — the per-world key set every `QuestNode.per_world` uses.
+    pub worlds: Vec<String>,
+    /// One node per `Entity{kind:"quest"}`, sorted by quest id.
+    pub quests: Vec<QuestNode>,
+    /// Quest entities whose giving fact could not be resolved — they carry no
+    /// `completed_by` claim, so the obligation has no payoff anchor (surfaced,
+    /// not silently dropped — the R558 lesson). Each still appears in `quests`
+    /// with empty `giving_facts` and an all-`unknown` `per_world`.
+    pub unresolved_quests: Vec<String>,
+}
+
+/// Compose the quest-graph projection for `telling` (R559 design sec 7.38, R568
+/// build): a PURE JOIN that owns the R562-registered hand-JOIN (quest entities +
+/// typed pursues/requires/completed_by × R442 payoff coverage per world × the
+/// R557 playable-world surface locators). Reuses [`playable_world`] and
+/// [`payoff_coverage`] VERBATIM (R558 — their honesty surfaces and open/done
+/// verdicts ride through, never re-derived). `world` filters the per-world map
+/// (the fork tree stays full — topology is inherently cross-world). No new
+/// traversal, no authoritative state — quest state is DERIVED per world-line
+/// (R559). Fails loud through the sub-projections.
+pub fn quest_graph(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    world: Option<&str>,
+    telling: &str,
+) -> Result<QuestGraphReport, String> {
+    // Reuse the existing projections VERBATIM (R558): playable-world gives the
+    // fork topology + per-world giver-surface locators; payoff coverage gives
+    // the per-world open/done of every giving setup (R442). No re-derivation.
+    let playable = playable_world(store, order, world, telling)?;
+    let payoff = payoff_coverage(store, order)?;
+
+    // The reported world set = playable-world's worlds (respects `world`); the
+    // fork tree stays full (cross-world topology).
+    let worlds: Vec<String> = playable.worlds.keys().cloned().collect();
+
+    let facts = &store.narrative_facts;
+
+    // Index the quest typed claims once (all keyed by quest id). A completion
+    // fact is the `completed_by` fact (it names the per-road discharger); a
+    // quest's giving SETUP is the `Expected` fact paid off AT a completion scene
+    // — the `completed_by` fact's own `pays_off` edge (the contract's intended
+    // encoding), or a sibling fact's `pays_off` at the same scene when the
+    // author split completion across two facts (a typed `completed_by` plus a
+    // separate fact carrying the `pays_off`, as the R562 base did for the main
+    // quest). The substrate has NO hard typed "giving fact of quest Q" edge;
+    // this is the same inference the R562 hand-JOIN made (an as-built finding,
+    // not a hard binding — a completion scene shared by two quests would share
+    // givings).
+    // (fact id, completing fact, named actor) — one entry per completed_by claim.
+    type CompletionEntry<'a> = (&'a str, &'a NarrativeFact, Option<String>);
+    let mut actors: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut prereqs: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    // Per quest, its `completed_by` facts.
+    let mut completions_of: BTreeMap<&str, Vec<CompletionEntry<'_>>> = BTreeMap::new();
+    for (fid, fact) in facts {
+        let Some(claim) = &fact.typed else { continue };
+        match claim.predicate.as_str() {
+            QUEST_PRED_PURSUES => {
+                // subject LEADS the object quest.
+                if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+                    actors
+                        .entry(id.as_str())
+                        .or_default()
+                        .insert(claim.subject.clone());
+                }
+            }
+            QUEST_PRED_REQUIRES => {
+                // subject quest REQUIRES the object quest first.
+                if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+                    prereqs
+                        .entry(claim.subject.as_str())
+                        .or_default()
+                        .insert(id.clone());
+                }
+            }
+            QUEST_PRED_COMPLETED_BY => {
+                // subject quest is discharged by the object actor at this fact.
+                let actor = match &claim.object {
+                    mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
+                    mnemosyne_core::TypedObject::Value { value } => Some(value.clone()),
+                };
+                completions_of
+                    .entry(claim.subject.as_str())
+                    .or_default()
+                    .push((fid.as_str(), fact, actor));
+            }
+            _ => {}
+        }
+    }
+    // The `Expected` setups, and a scene -> Expected-pays_off-targets index (the
+    // setups paid off at each scene) — the bridge from a completion scene to the
+    // giving setup, covering both the combined and the split-completion cases.
+    let expected: BTreeSet<&str> = facts
+        .iter()
+        .filter(|(_, f)| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let mut payoff_at_scene: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    for fact in facts.values() {
+        for target in &fact.pays_off {
+            if expected.contains(target.as_str()) {
+                payoff_at_scene
+                    .entry(fact.canon_from.as_str())
+                    .or_default()
+                    .insert(target.clone());
+            }
+        }
+    }
+
+    // Per-world fact visibility (R438/R466): a completed_by fact is "held" on a
+    // road iff it is `In` that world-line — the design's "completion = holds_at"
+    // clause, robust to the split-completion case the payoff edge alone misses.
+    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
+    for w in &worlds {
+        lineages.insert(w.clone(), lineage_of(&store.branches, w)?);
+    }
+    let visible_in = |fact: &NarrativeFact, w: &str| -> bool {
+        lineages
+            .get(w)
+            .is_some_and(|lin| visibility(w, lin, order, fact) == Vis::In)
+    };
+
+    let mut quests: Vec<QuestNode> = Vec::new();
+    let mut unresolved_quests: Vec<String> = Vec::new();
+    for (quest_id, entity) in &store.entities {
+        if entity.kind != QUEST_ENTITY_KIND {
+            continue;
+        }
+        let empty_completions = Vec::new();
+        let q_completions = completions_of
+            .get(quest_id.as_str())
+            .unwrap_or(&empty_completions);
+        // Bind the giving setups per completion fact: prefer the completed_by
+        // fact's OWN `pays_off` edge (the contract's combined encoding — precise,
+        // no sibling bleed); fall back to a sibling fact's payoff at the same
+        // scene ONLY when the completed_by carries no edge (the split-completion
+        // case the R562 main quest used).
+        let mut q_givings: BTreeSet<String> = BTreeSet::new();
+        for (_, fact, _) in q_completions {
+            let own: BTreeSet<String> = fact
+                .pays_off
+                .iter()
+                .filter(|t| expected.contains(t.as_str()))
+                .cloned()
+                .collect();
+            if !own.is_empty() {
+                q_givings.extend(own);
+            } else if let Some(targets) = payoff_at_scene.get(fact.canon_from.as_str()) {
+                q_givings.extend(targets.iter().cloned());
+            }
+        }
+        // A quest with no completion fact AND no giving setup has no obligation
+        // anchor at all — surfaced, not silently dropped (the R558 lesson).
+        if q_completions.is_empty() && q_givings.is_empty() {
+            unresolved_quests.push(quest_id.clone());
+        }
+        let per_world: BTreeMap<String, QuestWorldState> = worlds
+            .iter()
+            .map(|w| {
+                // Completion beats on this road = the quest's completed_by facts
+                // visible here (each names the per-road discharger + scene).
+                let mut completions: Vec<QuestCompletion> = q_completions
+                    .iter()
+                    .filter(|(_, fact, _)| visible_in(fact, w))
+                    .map(|(fid, fact, actor)| QuestCompletion {
+                        fact: (*fid).to_string(),
+                        scene: fact.canon_from.clone(),
+                        actor: actor.clone(),
+                    })
+                    .collect();
+                completions.sort_by(|a, b| a.fact.cmp(&b.fact));
+                // open/done verdict: done if a completion holds here OR a giving
+                // setup is paid here (R442); else open if a giving setup dangles
+                // here; else the quest does not apply on this road (unknown).
+                let cov = payoff.worlds.get(w);
+                let paid_here = cov.is_some_and(|c| {
+                    q_givings
+                        .iter()
+                        .any(|g| c.paid.iter().any(|p| &p.setup == g))
+                });
+                let dangling_here = cov
+                    .is_some_and(|c| q_givings.iter().any(|g| c.dangling.iter().any(|d| d == g)));
+                let state = if !completions.is_empty() || paid_here {
+                    QuestState::Done
+                } else if dangling_here {
+                    QuestState::Open
+                } else {
+                    QuestState::Unknown
+                };
+                (w.clone(), QuestWorldState { state, completions })
+            })
+            .collect();
+        // Giver-surface locators: the playable-world locators (R557, reused
+        // verbatim) whose disclosed fact is one of this quest's givings, in
+        // world-then-walk order.
+        let mut locators: Vec<MapLocator> = Vec::new();
+        for w in &worlds {
+            if let Some(pw) = playable.worlds.get(w) {
+                for loc in &pw.locators {
+                    if q_givings.contains(&loc.fact_id) {
+                        locators.push(loc.clone());
+                    }
+                }
+            }
+        }
+        quests.push(QuestNode {
+            quest_id: quest_id.clone(),
+            objective: entity.description.clone(),
+            actors: actors
+                .get(quest_id.as_str())
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default(),
+            prerequisites: prereqs
+                .get(quest_id.as_str())
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default(),
+            giving_facts: q_givings.iter().cloned().collect(),
+            per_world,
+            locators,
+        });
+    }
+
+    Ok(QuestGraphReport {
+        telling: telling.to_string(),
+        fork_tree: playable.fork_tree,
+        worlds,
+        quests,
+        unresolved_quests,
+    })
+}
+
 /// One untyped fact awaiting a typed-leg proposal (Round 458, design sec
 /// 7.15 Round A): everything the proposer needs about THIS fact, including
 /// the claim text and its sha256 — the R439 judgment-time pin the eventual
@@ -6370,6 +6726,248 @@ mod tests {
         assert_eq!(main.locators.len(), 1);
         assert_eq!(main.locators[0].scene, "ch-off");
         assert_eq!(main.locators[0].scene_ordinal, None);
+    }
+
+    // ====================================================================
+    // Round 568 — quest graph (the fact→quest projection, design sec 7.38).
+    // ====================================================================
+
+    /// A `subject predicate object-entity` typed claim (the R559 quest contract
+    /// vocabulary — all three quest predicates take an entity object).
+    fn ent_claim(subject: &str, predicate: &str, object: &str) -> mnemosyne_core::TypedClaim {
+        mnemosyne_core::TypedClaim {
+            subject: subject.to_string(),
+            predicate: predicate.to_string(),
+            object: mnemosyne_core::TypedObject::Entity {
+                id: object.to_string(),
+            },
+        }
+    }
+
+    /// A typed quest fact built from the R559 contract vocabulary.
+    fn quest_fact(
+        id: &str,
+        from: &str,
+        branch: Option<&str>,
+        entities: &[&str],
+        claim: mnemosyne_core::TypedClaim,
+        pays_off: &[&str],
+    ) -> FactImport {
+        FactImport {
+            entities: entities.iter().map(|s| s.to_string()).collect(),
+            branch: branch.map(str::to_string),
+            pays_off: pays_off.iter().map(|s| s.to_string()).collect(),
+            typed: Some(claim),
+            ..fact(id, "gt", from, None)
+        }
+    }
+
+    /// A small dnd-shaped fixture: `q-main` (gated by `q-key`, completed only on
+    /// the `win` road = per-road divergence), `q-key` (a pre-fork prerequisite,
+    /// done on every road), and `q-orphan` (a quest with no `completed_by` =
+    /// unresolved). `q-main`'s giving fact carries a giver surface under `t1`.
+    fn quest_store() -> AtomicStore {
+        let give_main = FactImport {
+            payoff_expectation: Some("expected".to_string()),
+            ..fact("f-give-main", "gt", "ch-1", None)
+        };
+        let give_key = FactImport {
+            payoff_expectation: Some("expected".to_string()),
+            ..fact("f-give-key", "gt", "ch-1", None)
+        };
+        let pursue_main = quest_fact(
+            "f-pursue-main",
+            "ch-1",
+            None,
+            &["hero", "q-main"],
+            ent_claim("hero", "pursues", "q-main"),
+            &[],
+        );
+        let pursue_key = quest_fact(
+            "f-pursue-key",
+            "ch-1",
+            None,
+            &["rogue", "q-key"],
+            ent_claim("rogue", "pursues", "q-key"),
+            &[],
+        );
+        let pursue_orphan = quest_fact(
+            "f-pursue-orphan",
+            "ch-1",
+            None,
+            &["hero", "q-orphan"],
+            ent_claim("hero", "pursues", "q-orphan"),
+            &[],
+        );
+        let require = quest_fact(
+            "f-require",
+            "ch-1",
+            None,
+            &["q-main", "q-key"],
+            ent_claim("q-main", "requires", "q-key"),
+            &[],
+        );
+        // q-key discharged pre-fork (ch-1) → done on every road.
+        let complete_key = quest_fact(
+            "f-complete-key",
+            "ch-1",
+            None,
+            &["q-key", "rogue"],
+            ent_claim("q-key", "completed_by", "rogue"),
+            &["f-give-key"],
+        );
+        // q-main discharged only on the `win` road (post-fork ch-3) → open on
+        // main, done on win = per-road divergence on data.
+        let complete_main = quest_fact(
+            "f-complete-main",
+            "ch-3",
+            Some("win"),
+            &["q-main", "wizard"],
+            ent_claim("q-main", "completed_by", "wizard"),
+            &["f-give-main"],
+        );
+        let mut store = store_with_forks(
+            vec![
+                give_main,
+                give_key,
+                pursue_main,
+                pursue_key,
+                pursue_orphan,
+                require,
+                complete_key,
+                complete_main,
+            ],
+            &[("win", MAIN_BRANCH, "ch-2")],
+        );
+        for (id, desc) in [
+            ("q-main", "End the rising"),
+            ("q-key", "Recover the warden's key"),
+            ("q-orphan", "Find the lost ledger"),
+        ] {
+            let e = store.entities.get_mut(id).unwrap();
+            e.kind = "quest".to_string();
+            e.description = desc.to_string();
+        }
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "f-give-main".to_string(),
+            mnemosyne_core::DisclosureOverride {
+                mode: mnemosyne_core::DisclosureMode::State,
+                first_at: BTreeMap::new(),
+                surface: Some(mnemosyne_core::DisclosureSurface {
+                    scene: "ch-1".to_string(),
+                    object: Some("reeve-hall".to_string()),
+                }),
+            },
+        );
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides,
+            },
+        );
+        store
+    }
+
+    /// The quest-graph JOIN: objective/actor/prerequisite/giving from the typed
+    /// claims, per-world open/done DERIVED from the R442 payoff coverage (a quest
+    /// done on one road and open on another), the completing fact + discharger
+    /// named per road, and the giver surface resolved to a per-world locator.
+    #[test]
+    fn quest_graph_derives_per_road_state_and_locators() {
+        let store = quest_store();
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = quest_graph(&store, &order, None, "t1").unwrap();
+
+        assert_eq!(report.telling, "t1");
+        assert_eq!(
+            report.worlds,
+            vec![MAIN_BRANCH.to_string(), "win".to_string()]
+        );
+        // The fork topology rides along (always full).
+        assert!(report
+            .fork_tree
+            .branches
+            .iter()
+            .any(|b| b.branch_id == "win"));
+        // Sorted by id: q-key, q-main, q-orphan.
+        let ids: Vec<&str> = report.quests.iter().map(|q| q.quest_id.as_str()).collect();
+        assert_eq!(ids, vec!["q-key", "q-main", "q-orphan"]);
+        assert_eq!(report.unresolved_quests, vec!["q-orphan".to_string()]);
+
+        let main_quest = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-main")
+            .unwrap();
+        assert_eq!(main_quest.objective, "End the rising");
+        assert_eq!(main_quest.actors, vec!["hero".to_string()]);
+        assert_eq!(main_quest.prerequisites, vec!["q-key".to_string()]);
+        assert_eq!(main_quest.giving_facts, vec!["f-give-main".to_string()]);
+        // Per-road divergence: open on main, done on win.
+        assert_eq!(main_quest.per_world[MAIN_BRANCH].state, QuestState::Open);
+        assert!(main_quest.per_world[MAIN_BRANCH].completions.is_empty());
+        let win = &main_quest.per_world["win"];
+        assert_eq!(win.state, QuestState::Done);
+        assert_eq!(win.completions.len(), 1);
+        assert_eq!(win.completions[0].fact, "f-complete-main");
+        assert_eq!(win.completions[0].scene, "ch-3");
+        assert_eq!(win.completions[0].actor.as_deref(), Some("wizard"));
+        // Giver surface resolves to a locator on each world the giving fact rides.
+        assert_eq!(main_quest.locators.len(), 2);
+        assert!(main_quest
+            .locators
+            .iter()
+            .all(|l| l.fact_id == "f-give-main" && l.object.as_deref() == Some("reeve-hall")));
+
+        // The pre-fork prerequisite is done on every road.
+        let key_quest = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-key")
+            .unwrap();
+        assert_eq!(key_quest.actors, vec!["rogue".to_string()]);
+        assert!(key_quest.prerequisites.is_empty());
+        assert_eq!(key_quest.per_world[MAIN_BRANCH].state, QuestState::Done);
+        assert_eq!(key_quest.per_world["win"].state, QuestState::Done);
+
+        // The orphan quest: no giving fact, all-unknown per world (surfaced).
+        let orphan = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-orphan")
+            .unwrap();
+        assert!(orphan.giving_facts.is_empty());
+        assert!(orphan
+            .per_world
+            .values()
+            .all(|s| s.state == QuestState::Unknown));
+    }
+
+    /// `--world` scopes every `QuestNode.per_world` to the one road, but the
+    /// fork tree stays full (the topology is inherently cross-world).
+    #[test]
+    fn quest_graph_world_filter_scopes_per_world_keeps_fork_tree_full() {
+        let store = quest_store();
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = quest_graph(&store, &order, Some("win"), "t1").unwrap();
+
+        assert_eq!(report.worlds, vec!["win".to_string()]);
+        assert!(report
+            .fork_tree
+            .branches
+            .iter()
+            .any(|b| b.branch_id == "win"));
+        let main_quest = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-main")
+            .unwrap();
+        let keys: Vec<&str> = main_quest.per_world.keys().map(String::as_str).collect();
+        assert_eq!(keys, vec!["win"]);
+        assert_eq!(main_quest.per_world["win"].state, QuestState::Done);
     }
 
     // ====================================================================

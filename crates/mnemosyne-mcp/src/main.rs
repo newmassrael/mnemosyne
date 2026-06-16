@@ -585,6 +585,21 @@ pub struct ReportPlayableWorldArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportQuestGraphArgs {
+    /// Telling id whose disclosure plan resolves the giver-surface locators
+    /// (required). Fail-loud on a typo'd id.
+    pub telling: String,
+    /// Single-world filter (a registered branch id or `main`); omitted = every
+    /// query world. The fork tree stays full regardless. Fail-loud on an
+    /// unregistered id.
+    #[serde(default)]
+    pub world: Option<String>,
+    /// Canon-order declaration path override (bypasses the pin).
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DisclosureLeakArgs {
     /// Telling id whose plan is the gate's authored side.
     pub telling: String,
@@ -1815,6 +1830,22 @@ impl MnemosyneServer {
         args: Parameters<ReportPlayableWorldArgs>,
     ) -> CallToolResult {
         match ops::playable_world_report(
+            &self.workspace,
+            None,
+            args.0.world.as_deref(),
+            args.0.order_path.as_deref(),
+            &args.0.telling,
+        ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every Entity{kind:quest} projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
+    )]
+    async fn report_quest_graph(&self, args: Parameters<ReportQuestGraphArgs>) -> CallToolResult {
+        match ops::quest_graph_report(
             &self.workspace,
             None,
             args.0.world.as_deref(),

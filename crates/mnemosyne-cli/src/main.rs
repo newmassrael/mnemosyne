@@ -308,6 +308,7 @@ fn run(args: &[String]) -> Result<()> {
         "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
         "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
         "report-playable-world" => cmd_report_playable_world(&args[2..]),
+        "report-quest-graph" => cmd_report_quest_graph(&args[2..]),
         "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
         "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
         "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
@@ -473,6 +474,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 556/557 — the map_locator seam: fork topology + per-world scene walk + per-scene disclosure pointers a pinion runtime consumes"
+    );
+    println!(
+        " {} report-quest-graph --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 559/568 — the fact->quest leg: per Entity{{kind:quest}}, objective + actor + per-world open/done + prerequisites + completion fact + giver locator"
     );
     println!(
         " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
@@ -2695,6 +2703,109 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
                 obj,
                 ord,
                 at
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Round 559/568 — quest graph (`report-quest-graph`, design sec 7.38): the
+/// fact->quest leg, the sibling of `report-playable-world`. Per telling, every
+/// `Entity{kind:"quest"}` projected to a QuestNode — objective + actor
+/// (`pursues`) + prerequisites (`requires`) + giving setups + per-world derived
+/// open/done (the R442 payoff coverage) + completion fact + giver-surface
+/// locator (R557). A pure JOIN, never gated; quest state DERIVED per world-line.
+fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
+    let a = parse_narrative_report_args(
+        args,
+        NarrativeFlags {
+            world: true,
+            telling: true,
+            ..Default::default()
+        },
+    )?;
+    let telling = a
+        .telling
+        .as_deref()
+        .ok_or_else(|| anyhow!("--telling arg required"))?;
+    let report = mnemosyne_ops::quest_graph_report(
+        &a.anchor,
+        a.sidecar_override.as_deref().map(std::path::Path::new),
+        a.world.as_deref(),
+        a.order_override.as_deref(),
+        telling,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if a.json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    println!(
+        "=== quest graph — telling `{}` — {} quest(s), {} world(s), {} registered branch(es) ===",
+        report.telling,
+        report.quests.len(),
+        report.worlds.len(),
+        report.fork_tree.branch_count
+    );
+    if !report.unresolved_quests.is_empty() {
+        println!(
+            "unresolved (no completed_by anchor): {}",
+            report.unresolved_quests.join(", ")
+        );
+    }
+    for q in &report.quests {
+        println!("quest `{}`: {}", q.quest_id, q.objective);
+        let or_dash = |v: &[String]| {
+            if v.is_empty() {
+                "—".to_string()
+            } else {
+                v.join(", ")
+            }
+        };
+        println!(
+            "  led by: {} | requires: {} | giving: {}",
+            or_dash(&q.actors),
+            or_dash(&q.prerequisites),
+            or_dash(&q.giving_facts)
+        );
+        for (world, state) in &q.per_world {
+            let detail = state
+                .completions
+                .iter()
+                .map(|c| {
+                    let by = c
+                        .actor
+                        .as_deref()
+                        .map(|a| format!(" by {a}"))
+                        .unwrap_or_default();
+                    format!("{} @ {}{}", c.fact, c.scene, by)
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            if detail.is_empty() {
+                println!("    {world}: {}", state.state.as_str());
+            } else {
+                println!("    {world}: {} ({detail})", state.state.as_str());
+            }
+        }
+        for loc in &q.locators {
+            let ord = loc
+                .scene_ordinal
+                .map(|o| o.to_string())
+                .unwrap_or_else(|| "unplaced".to_string());
+            let obj = loc
+                .object
+                .as_deref()
+                .map(|o| format!("/{o}"))
+                .unwrap_or_default();
+            println!(
+                "    giver[{}] {} @ {}{} (#{}) [{}]",
+                loc.mode.as_str(),
+                loc.fact_id,
+                loc.scene,
+                obj,
+                ord,
+                loc.world_line
             );
         }
     }
