@@ -1,0 +1,7 @@
+## sc-29c — The shrine-keeper's betrayal at the shrine
+
+The warmth went out of him the instant his fingers closed on the iron.
+
+It went out the way a lamp goes out — all at once, and then a different thing standing where the light had been. Brother Vane lifted the Hollow Crown and the obedient dead, that had followed the party up out of the dark at the crown's call, felt the call change hands. The leash had run from the dead through the crown to the four of them; now it ran to him. The drowned of Vael Mooren turned their dead faces from the delvers who had carried them up and fixed them on the brother who held the iron, and waited on his will instead.
+
+He did not pretend any longer. He threw off the helpful brother like a wet cloak, and there was no friend left in his face, only the patient hunger that had been under it the whole time — under the blessings, under the bread, under the kind soft errand they had carried for him every step of the long climb. He had schemed a lifetime and a season of the drowned dead toward this, he told them, almost gently, the way you'd tell a slow child a thing it should have seen for itself. He had woken the warden. He had fed the water. He had asked them, so warmly, to bring the crown to no hand but his — and they had gone down and taken it up and climbed it all the way back to him and *set it in his palm*. He would rule the Reach now, he said, by the dead it commanded. And the dead the party had mastered waded toward the party at his word, because the party had handed away the one thing on the earth that ruled them.

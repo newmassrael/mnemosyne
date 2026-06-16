@@ -1,0 +1,1390 @@
+{
+  "frames": [
+    {
+      "frame_id": "gt",
+      "description": "ground truth — what is really happening under Karrow's Reach"
+    },
+    {
+      "frame_id": "fighter",
+      "description": "Doran Brace, the front-line fighter"
+    },
+    {
+      "frame_id": "wizard",
+      "description": "Lysa Quill, the wizard and loremaster"
+    },
+    {
+      "frame_id": "rogue",
+      "description": "Pip Sallow, the rogue and scout"
+    },
+    {
+      "frame_id": "cleric",
+      "description": "Mother Henna, the cleric and healer"
+    },
+    {
+      "frame_id": "reeve",
+      "description": "Reeve Calder of Karrow's Reach"
+    },
+    {
+      "frame_id": "warden",
+      "description": "Warden Orrek, the drowned shade who keeps the deep vault"
+    },
+    {
+      "frame_id": "shrinekeeper",
+      "description": "Brother Vane, the shrine-keeper"
+    },
+    {
+      "frame_id": "lanternboy",
+      "description": "Tam, the lantern-boy"
+    },
+    {
+      "frame_id": "rival",
+      "description": "Skell, the rival sellsword"
+    },
+    {
+      "frame_id": "wisewoman",
+      "description": "Old Maeve, the town wise-woman"
+    }
+  ],
+  "branches": [
+    {
+      "branch_id": "claim",
+      "description": "The CLAIM road — the party claims the crown at the fork",
+      "forks_from": "main",
+      "forks_at": "sc-22"
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "fighter",
+      "kind": "person",
+      "description": "Doran Brace"
+    },
+    {
+      "entity_id": "wizard",
+      "kind": "person",
+      "description": "Lysa Quill"
+    },
+    {
+      "entity_id": "rogue",
+      "kind": "person",
+      "description": "Pip Sallow"
+    },
+    {
+      "entity_id": "cleric",
+      "kind": "person",
+      "description": "Mother Henna"
+    },
+    {
+      "entity_id": "reeve",
+      "kind": "person",
+      "description": "Reeve Calder"
+    },
+    {
+      "entity_id": "warden",
+      "kind": "person",
+      "description": "Warden Orrek"
+    },
+    {
+      "entity_id": "shrinekeeper",
+      "kind": "person",
+      "description": "Brother Vane"
+    },
+    {
+      "entity_id": "lanternboy",
+      "kind": "person",
+      "description": "Tam"
+    },
+    {
+      "entity_id": "rival",
+      "kind": "person",
+      "description": "Skell"
+    },
+    {
+      "entity_id": "wisewoman",
+      "kind": "person",
+      "description": "Old Maeve"
+    },
+    {
+      "entity_id": "delver",
+      "kind": "person",
+      "description": "The last delver, Tam's master"
+    },
+    {
+      "entity_id": "crown",
+      "kind": "item",
+      "description": "the Hollow Crown"
+    },
+    {
+      "entity_id": "key",
+      "kind": "item",
+      "description": "the warden's key"
+    },
+    {
+      "entity_id": "journal",
+      "kind": "item",
+      "description": "the delver's journal"
+    },
+    {
+      "entity_id": "record",
+      "kind": "item",
+      "description": "the warden's graven record"
+    },
+    {
+      "entity_id": "reeve-hall",
+      "kind": "place",
+      "description": "Reeve Calder's hall"
+    },
+    {
+      "entity_id": "shrine",
+      "kind": "place",
+      "description": "the shrine of the Reach"
+    },
+    {
+      "entity_id": "lantern-house",
+      "kind": "place",
+      "description": "the lantern-house"
+    },
+    {
+      "entity_id": "vault-door",
+      "kind": "place",
+      "description": "the deep vault door"
+    },
+    {
+      "entity_id": "warden-cell",
+      "kind": "place",
+      "description": "the warden's cell"
+    },
+    {
+      "entity_id": "deep-vault",
+      "kind": "place",
+      "description": "the deep vault"
+    },
+    {
+      "entity_id": "q-main",
+      "kind": "quest",
+      "description": "find and end the cause of the rising"
+    },
+    {
+      "entity_id": "q-key",
+      "kind": "quest",
+      "description": "find the warden's key"
+    },
+    {
+      "entity_id": "q-delver",
+      "kind": "quest",
+      "description": "find Tam's missing master and bring word"
+    },
+    {
+      "entity_id": "q-reliquary",
+      "kind": "quest",
+      "description": "bring the crown to Brother Vane"
+    }
+  ],
+  "predicates": [
+    {
+      "predicate_id": "pursues",
+      "object_kind": "entity",
+      "description": "subject pursues a quest"
+    },
+    {
+      "predicate_id": "requires",
+      "object_kind": "entity",
+      "description": "a quest requires an entity"
+    },
+    {
+      "predicate_id": "completed_by",
+      "object_kind": "entity",
+      "description": "a quest is completed by a subject"
+    },
+    {
+      "predicate_id": "possession",
+      "object_kind": "entity",
+      "description": "subject holds/possesses an item"
+    },
+    {
+      "predicate_id": "cause_of_rising",
+      "object_kind": "scalar",
+      "description": "what caused the dead to rise"
+    },
+    {
+      "predicate_id": "warden_disposition",
+      "object_kind": "scalar",
+      "description": "the warden's disposition"
+    },
+    {
+      "predicate_id": "betrayal",
+      "object_kind": "scalar",
+      "description": "a betrayal"
+    },
+    {
+      "predicate_id": "rising_state",
+      "object_kind": "scalar",
+      "description": "the state of the rising"
+    },
+    {
+      "predicate_id": "reach_rule",
+      "object_kind": "scalar",
+      "description": "who rules the Reach"
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "r-001",
+      "frame": "gt",
+      "claim": "Karrow's Reach is a town on a cliff's lip clinging to the broken rim of Vael Mooren, the great dwarrow undercity that sank into the dark a lifetime ago when its cisterns burst and drowned the lower halls.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ]
+    },
+    {
+      "fact_id": "r-002",
+      "frame": "gt",
+      "claim": "For a season the dead have begun to walk: out of the floodwater in the lower tunnels the long-drowned dwarrow rise by night and come up the stairs a little further each darkness.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "rising_state",
+        "object": {
+          "kind": "value",
+          "value": "the dead walk and rise up the stairs each night"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-003",
+      "frame": "gt",
+      "claim": "Three delvers hired out of the Reach went down to learn the cause and none of the three came back up.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ]
+    },
+    {
+      "fact_id": "r-004",
+      "frame": "gt",
+      "claim": "It was the Hollow Crown that woke the dead: far below in the deep vault at the hold's drowned heart, the relic of Vael Mooren's last warden holds court over the water, the warden's own shade keeps it, and the dead answer the will the crown bends to its keeping.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ],
+      "typed": {
+        "subject": "crown",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "the Hollow Crown woke the dead"
+        }
+      },
+      "entities": [
+        "crown"
+      ]
+    },
+    {
+      "fact_id": "r-005",
+      "frame": "gt",
+      "claim": "No one in the town above could have named the Hollow Crown as the cause.",
+      "canon_from": "sc-01",
+      "evidence": [
+        "sc-01"
+      ]
+    },
+    {
+      "fact_id": "r-006",
+      "frame": "gt",
+      "claim": "Reeve Calder hires the four delvers, standing them in front of his fire in his hall, to go down into Vael Mooren, find the thing that wakes the dead, and put an end to it.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ],
+      "typed": {
+        "subject": "fighter",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "q-main"
+        }
+      },
+      "entities": [
+        "fighter",
+        "q-main"
+      ]
+    },
+    {
+      "fact_id": "r-007",
+      "frame": "reeve",
+      "claim": "Calder believes the rising is a curse blown up out of the deep hold, and that curses get ended by reaching whatever spun them and breaking it.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ],
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "a curse"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-008",
+      "frame": "reeve",
+      "claim": "Calder says he has already sent three good delvers down and bought three widows for the trouble; the charge to the party is to find the thing that wakes the dead and end it.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ]
+    },
+    {
+      "fact_id": "r-009",
+      "frame": "fighter",
+      "claim": "Doran takes the coin and accepts the charge, reading the job as work and not a curse, and says they will end the rising or not come back to say they couldn't.",
+      "canon_from": "sc-02",
+      "evidence": [
+        "sc-02"
+      ],
+      "typed": {
+        "subject": "q-main",
+        "predicate": "requires",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "q-main"
+      ]
+    },
+    {
+      "fact_id": "r-010",
+      "frame": "gt",
+      "claim": "The town reports drowned dead rising by night up the lower stairs and the floodwater creeping higher up the steps each week.",
+      "canon_from": "sc-03",
+      "evidence": [
+        "sc-03"
+      ]
+    },
+    {
+      "fact_id": "r-011",
+      "frame": "cleric",
+      "claim": "Standing at a tunnel-mouth, Mother Henna senses the dead below are not restless dead lingering out of grief but are held, leashed by something deep beneath that has a grip on them and keeps them.",
+      "canon_from": "sc-03",
+      "evidence": [
+        "sc-03"
+      ]
+    },
+    {
+      "fact_id": "r-012",
+      "frame": "fighter",
+      "claim": "Doran walks the tunnel-mouths and marks the footing — the rubble, the pinches, the wet steps — filing away the lay of the ground.",
+      "canon_from": "sc-03",
+      "evidence": [
+        "sc-03"
+      ]
+    },
+    {
+      "fact_id": "r-013",
+      "frame": "gt",
+      "claim": "The shrine of the Reach stands a little above the town, and Brother Vane the shrine-keeper comes down its steps to meet the party with both hands out and a warm smile, offering blessings, the old lore of the hold, and the run of his shrine, and asking for nothing.",
+      "canon_from": "sc-04",
+      "evidence": [
+        "sc-04"
+      ]
+    },
+    {
+      "fact_id": "r-014",
+      "frame": "gt",
+      "claim": "Brother Vane already has what he wants and means to keep building it, and shows no sign of it; no word of it is spoken.",
+      "canon_from": "sc-04",
+      "evidence": [
+        "sc-04"
+      ]
+    },
+    {
+      "fact_id": "r-015",
+      "frame": "cleric",
+      "claim": "Mother Henna takes Brother Vane's welcome at face value as a brother of the cloth and a friend, turns her sense for falseness on him and finds nothing, and likes him at once.",
+      "canon_from": "sc-04",
+      "evidence": [
+        "sc-04"
+      ]
+    },
+    {
+      "fact_id": "r-016",
+      "frame": "gt",
+      "claim": "The lantern-house leans at the edge of town where the road becomes the descent, and a boy of about twelve named Tam keeps it lit; the lamps are his master's trade.",
+      "canon_from": "sc-05",
+      "evidence": [
+        "sc-05"
+      ]
+    },
+    {
+      "fact_id": "r-017",
+      "frame": "lanternboy",
+      "claim": "Tam says his master went down — last of all of them — said he would be back by the third night and to keep the big lamp burning, and that was twelve nights ago.",
+      "canon_from": "sc-05",
+      "evidence": [
+        "sc-05"
+      ]
+    },
+    {
+      "fact_id": "r-018",
+      "frame": "lanternboy",
+      "claim": "Tam says his master got a notion these last weeks that someone was putting fresh dead into the water, feeding the flood, and went down to follow where the new ones came from and learn who, meaning to have a name when he climbed back up.",
+      "canon_from": "sc-05",
+      "evidence": [
+        "sc-05"
+      ]
+    },
+    {
+      "fact_id": "r-019",
+      "frame": "rogue",
+      "claim": "Pip takes the errand from Tam to find his master and bring word, swearing on her hand they will bring him word.",
+      "canon_from": "sc-05",
+      "evidence": [
+        "sc-05"
+      ],
+      "typed": {
+        "subject": "rogue",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "q-delver"
+        }
+      },
+      "entities": [
+        "q-delver",
+        "rogue"
+      ]
+    },
+    {
+      "fact_id": "r-020",
+      "frame": "wisewoman",
+      "claim": "Old Maeve, who keeps the cistern-lore and deep-lore, says the water down there was given a tithe long ago — a tithe of the dead, bodies down into the dark, to wake a thing and set it keeping, a lifetime ago.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ]
+    },
+    {
+      "fact_id": "r-021",
+      "frame": "wisewoman",
+      "claim": "Maeve says a tithe wakes nothing twice; if the dead are walking now it is because someone living is feeding the water now, giving it fresh dead — find that hand and you've found the rising.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ],
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "a living hand feeding the water fresh dead now"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-022",
+      "frame": "wisewoman",
+      "claim": "Maeve mutters to her fire, heard only by Pip, that the new tithe has a smell on it — incense — and smells like shrine-work.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ]
+    },
+    {
+      "fact_id": "r-023",
+      "frame": "rogue",
+      "claim": "Pip alone hears Maeve's mutter about the new tithe smelling of incense and shrine-work, files it, and says nothing.",
+      "canon_from": "sc-06",
+      "evidence": [
+        "sc-06"
+      ]
+    },
+    {
+      "fact_id": "r-024",
+      "frame": "shrinekeeper",
+      "claim": "At the shrine before the descent, Brother Vane asks the party that when they find the cause and possibly the relic itself — the old warden's crown — they bring it to him and not to the reeve, saying he has a reliquary blessed and waiting and that such a thing should be sealed by a brother's hands so it can never wake another corpse.",
+      "canon_from": "sc-07",
+      "evidence": [
+        "sc-07"
+      ],
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "q-reliquary"
+        }
+      },
+      "entities": [
+        "q-reliquary",
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-025",
+      "frame": "cleric",
+      "claim": "Mother Henna gladly takes on the reliquary errand for all of them, believing a relic like that belongs sealed in holy keeping, and means to keep it.",
+      "canon_from": "sc-07",
+      "evidence": [
+        "sc-07"
+      ],
+      "typed": {
+        "subject": "cleric",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "q-reliquary"
+        }
+      },
+      "entities": [
+        "cleric",
+        "q-reliquary"
+      ]
+    },
+    {
+      "fact_id": "r-026",
+      "frame": "gt",
+      "claim": "Brother Vane's reliquary is no seal; to hand him the crown would be to hand him the thing itself, the power he has bent a lifetime and a season of the drowned dead toward gathering into his own grasp; there is no kindness behind his hand on his breast, and not a word of this is spoken.",
+      "canon_from": "sc-07",
+      "evidence": [
+        "sc-07"
+      ],
+      "typed": {
+        "subject": "q-reliquary",
+        "predicate": "requires",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "q-reliquary"
+      ]
+    },
+    {
+      "fact_id": "r-027",
+      "frame": "gt",
+      "claim": "The party descends into Vael Mooren, the flood about their knees and rising as they go, with Doran first holding the lamp.",
+      "canon_from": "sc-08",
+      "evidence": [
+        "sc-08"
+      ]
+    },
+    {
+      "fact_id": "r-028",
+      "frame": "gt",
+      "claim": "The drowned dead rise out of a flooded gallery and wade at the party.",
+      "canon_from": "sc-09",
+      "evidence": [
+        "sc-09"
+      ]
+    },
+    {
+      "fact_id": "r-029",
+      "frame": "fighter",
+      "claim": "Doran reads the dead as slow but tireless and unable to be made afraid, falls back to where the gallery pinches to a throat, and sets his shield to make them come one and two at a time.",
+      "canon_from": "sc-09",
+      "evidence": [
+        "sc-09"
+      ]
+    },
+    {
+      "fact_id": "r-030",
+      "frame": "cleric",
+      "claim": "Striking a corpse down, Mother Henna feels that as each dies something in it pulls downward and deepward, back toward the flood, as if each is reeled in on a single thread that runs down out of sight.",
+      "canon_from": "sc-09",
+      "evidence": [
+        "sc-09"
+      ]
+    },
+    {
+      "fact_id": "r-031",
+      "frame": "rogue",
+      "claim": "Behind a fall of broken rubble at the gallery's far end Pip finds a hidden flooded stair going down, the true throat of the hold.",
+      "canon_from": "sc-10",
+      "evidence": [
+        "sc-10"
+      ]
+    },
+    {
+      "fact_id": "r-032",
+      "frame": "rogue",
+      "claim": "Pip finds dropped tools on the steps — a pick and a snapped lantern-bracket — not rusted to nothing, and reads that someone living came this hidden way down recently and went on into the dark below; she says aloud somebody has been down here lately, this way.",
+      "canon_from": "sc-10",
+      "evidence": [
+        "sc-10"
+      ]
+    },
+    {
+      "fact_id": "r-033",
+      "frame": "gt",
+      "claim": "A rival sellsword named Skell is waiting where the flooded stair bottoms out, sitting on a dry shelf with his blade and a lamp, down ahead of the party.",
+      "canon_from": "sc-11",
+      "evidence": [
+        "sc-11"
+      ]
+    },
+    {
+      "fact_id": "r-034",
+      "frame": "rival",
+      "claim": "Skell names himself a sellsword who wants the worth of whatever the warden's crown will fetch and means to come up with it, and offers to walk and work beside the party.",
+      "canon_from": "sc-11",
+      "evidence": [
+        "sc-11"
+      ],
+      "typed": {
+        "subject": "rival",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "rival"
+      ]
+    },
+    {
+      "fact_id": "r-035",
+      "frame": "fighter",
+      "claim": "Doran reads Skell as a competent fighting man who would turn the moment the gold was on the table, agrees he may walk with them, and keeps him out in front in the lamplight, never at his back.",
+      "canon_from": "sc-11",
+      "evidence": [
+        "sc-11"
+      ]
+    },
+    {
+      "fact_id": "r-036",
+      "frame": "cleric",
+      "claim": "Deeper down, Mother Henna can read the leash plainly: every walking dead thing in Vael Mooren is bound, held by a single will seated somewhere below in the deep, holding all of them at once on one tether — not loosed by a curse to wander.",
+      "canon_from": "sc-12",
+      "evidence": [
+        "sc-12"
+      ],
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "a single will below holds all the dead on one tether"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-037",
+      "frame": "cleric",
+      "claim": "Mother Henna says a will is not like a curse — a will can be broken but it can also be spoken to and reasoned with; there is someone down there who might be reasoned with.",
+      "canon_from": "sc-12",
+      "evidence": [
+        "sc-12"
+      ]
+    },
+    {
+      "fact_id": "r-038",
+      "frame": "gt",
+      "claim": "The party finds the body of the last delver in a side-cell off the passage, half out of the floodwater, dead a while; it is Tam's master.",
+      "canon_from": "sc-13",
+      "evidence": [
+        "sc-13"
+      ]
+    },
+    {
+      "fact_id": "r-039",
+      "frame": "rogue",
+      "claim": "Pip goes through the body and lifts free his oilskin-wrapped journal, recognizing the dead man as Tam's master and the answer she swore to bring the boy — he is not lost but dead.",
+      "canon_from": "sc-13",
+      "evidence": [
+        "sc-13"
+      ],
+      "typed": {
+        "subject": "rogue",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "journal"
+        }
+      },
+      "entities": [
+        "journal",
+        "rogue"
+      ]
+    },
+    {
+      "fact_id": "r-040",
+      "frame": "rogue",
+      "claim": "Over the body Pip tells the other three at last what she heard at Maeve's door: that Maeve said the new tithe had a smell on it, incense, and that it smelled like shrine-work, saying she should have said it sooner.",
+      "canon_from": "sc-13",
+      "evidence": [
+        "sc-13"
+      ]
+    },
+    {
+      "fact_id": "r-041",
+      "frame": "gt",
+      "claim": "The delver's journal is the careful record of his hunt: he marked where the fresh dead went into the water, watched the floodwater take new bodies night on night, and set himself to learn whose hand did it, tracking the source of the corpse-tithes to the one who fed them, and the last pages told where the tracking had led him.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ]
+    },
+    {
+      "fact_id": "r-042",
+      "frame": "wizard",
+      "claim": "Lysa reads the journal aloud; it says the tracking led the delver to the shrine, to the shrine-keeper, to Brother Vane.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ],
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "Brother Vane is the living hand that put the fresh dead in the water"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-043",
+      "frame": "gt",
+      "claim": "Brother Vane is the living hand that put the fresh dead in the water and the living hand behind the whole season of the drowned dead.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ],
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "Brother Vane fed the water and woke the rising"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-044",
+      "frame": "wizard",
+      "claim": "Lysa lays the journal's hunt beside Maeve's lore (a tithe wakes nothing twice; someone living is feeding the water now) and Pip's account (the new tithe smelled of incense, of shrine-work), calls them three witnesses, and concludes it was never a curse but Vane who woke the warden.",
+      "canon_from": "sc-14",
+      "evidence": [
+        "sc-14"
+      ],
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "cause_of_rising",
+        "object": {
+          "kind": "value",
+          "value": "Vane woke the warden; it was never a curse"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-045",
+      "frame": "wizard",
+      "claim": "Lysa finds graven into the wet stone of the side-cell, in dwarrow script, a record — the warden's own record — which she alone can read.",
+      "canon_from": "sc-15",
+      "evidence": [
+        "sc-15"
+      ],
+      "typed": {
+        "subject": "wizard",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "record"
+        }
+      },
+      "entities": [
+        "record",
+        "wizard"
+      ]
+    },
+    {
+      "fact_id": "r-046",
+      "frame": "wizard",
+      "claim": "Lysa reads from the record that the warden's name was Orrek, that he was no monster, and that he was a keeper who stayed at his post when the water came and took up a burden because there was no one else to hold it — a man bound to his charge under duty.",
+      "canon_from": "sc-15",
+      "evidence": [
+        "sc-15"
+      ],
+      "typed": {
+        "subject": "warden",
+        "predicate": "warden_disposition",
+        "object": {
+          "kind": "value",
+          "value": "a dutiful keeper, no monster, bound to his charge"
+        }
+      },
+      "entities": [
+        "warden"
+      ]
+    },
+    {
+      "fact_id": "r-047",
+      "frame": "gt",
+      "claim": "The passage ends at the deep vault door, a slab of dwarrow-work sealed so close the floodwater barely weeps through; Doran's shoulder and Skell's pry-bar fail to open it, and no force will.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ]
+    },
+    {
+      "fact_id": "r-048",
+      "frame": "wizard",
+      "claim": "Lysa reads the lintel above the seam — only the warden's key turns this lock — and tells them the door knows only one key, the warden's own, and nothing else will admit them; the crown is on the far side and cannot be reached until someone finds the key.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ],
+      "typed": {
+        "subject": "vault-door",
+        "predicate": "requires",
+        "object": {
+          "kind": "entity",
+          "id": "key"
+        }
+      },
+      "entities": [
+        "key",
+        "vault-door"
+      ]
+    },
+    {
+      "fact_id": "r-049",
+      "frame": "rogue",
+      "claim": "Pip takes on the task of finding the warden's key without being asked.",
+      "canon_from": "sc-16",
+      "evidence": [
+        "sc-16"
+      ],
+      "typed": {
+        "subject": "rogue",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "q-key"
+        }
+      },
+      "entities": [
+        "q-key",
+        "rogue"
+      ]
+    },
+    {
+      "fact_id": "r-050",
+      "frame": "rogue",
+      "claim": "Off the flooded stair Pip finds Orrek's cell, drowned to the ceiling in one half, the silt undisturbed.",
+      "canon_from": "sc-17",
+      "evidence": [
+        "sc-17"
+      ]
+    },
+    {
+      "fact_id": "r-051",
+      "frame": "rogue",
+      "claim": "Pip finds the warden's key in the silt where Orrek fell with it, lifts it dripping into the lamplight — dark dwarrow-iron, heavy, cold — and puts it deep in her coat, knowing it is the only thing standing between the party and the deep vault.",
+      "canon_from": "sc-17",
+      "evidence": [
+        "sc-17"
+      ],
+      "typed": {
+        "subject": "rogue",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "key"
+        }
+      },
+      "entities": [
+        "key",
+        "rogue"
+      ]
+    },
+    {
+      "fact_id": "r-052",
+      "frame": "wizard",
+      "claim": "With the warden's record read whole, Lysa tells them the Hollow Crown does not merely command the dead but holds Orrek — his shade bound into the relic as surely as the dead are bound to him — so the warden and the crown are one keeping.",
+      "canon_from": "sc-18",
+      "evidence": [
+        "sc-18"
+      ]
+    },
+    {
+      "fact_id": "r-053",
+      "frame": "wizard",
+      "claim": "Lysa names three roads the relic allows and no more: unmake it (shatter the crown by an unmaking she alone has read and can speak); claim it (take the crown in living hands and pass its power to a new holder, the leash changing grip but not breaking); or bind it by an oath (because Orrek kept the dead under duty not malice, his shade would hear a fair oath sworn, the rising laid down and the crown neither broken nor seized).",
+      "canon_from": "sc-18",
+      "evidence": [
+        "sc-18"
+      ]
+    },
+    {
+      "fact_id": "r-054",
+      "frame": "wizard",
+      "claim": "Lysa says leaving the crown on his brow and walking away is no road at all, only refusing to choose, and the water would go on rising.",
+      "canon_from": "sc-18",
+      "evidence": [
+        "sc-18"
+      ]
+    },
+    {
+      "fact_id": "r-055",
+      "frame": "cleric",
+      "claim": "Mother Henna understands the oath is a thing she herself could do — she could swear to Orrek's shade and bind the dead by the swearing, laying the whole rising down without breaking or taking the crown.",
+      "canon_from": "sc-18",
+      "evidence": [
+        "sc-18"
+      ]
+    },
+    {
+      "fact_id": "r-056",
+      "frame": "gt",
+      "claim": "Pip puts the warden's key into the deep vault's lock; with Pip's turn and Doran's weight the lifetime-old seal gives and the door grinds open by inches onto the deeper dark beyond.",
+      "canon_from": "sc-19",
+      "evidence": [
+        "sc-19"
+      ],
+      "typed": {
+        "subject": "q-key",
+        "predicate": "completed_by",
+        "object": {
+          "kind": "entity",
+          "id": "rogue"
+        }
+      },
+      "entities": [
+        "q-key",
+        "rogue"
+      ]
+    },
+    {
+      "fact_id": "r-057",
+      "frame": "gt",
+      "claim": "The deep vault is a drowned hall of black still water, and out of the middle of it the warden rises — a broad dwarrow shape in keeper's mail with the Hollow Crown on his brow — with the dead of the hold ranked behind him, motionless because he has not moved them; he holds the crown and the crown holds them.",
+      "canon_from": "sc-20",
+      "evidence": [
+        "sc-20"
+      ],
+      "typed": {
+        "subject": "warden",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "warden"
+      ]
+    },
+    {
+      "fact_id": "r-058",
+      "frame": "warden",
+      "claim": "Orrek's shade knows the crown binds him to keep the hold's dead and that the binding has only three ends — its unmaking, its claiming, or an oath sworn that would loose the burden either way — and he waits to learn which end the party has brought him.",
+      "canon_from": "sc-20",
+      "evidence": [
+        "sc-20"
+      ]
+    },
+    {
+      "fact_id": "r-059",
+      "frame": "cleric",
+      "claim": "Looking into Orrek's drowned face Mother Henna feels no wrath but bottomless weariness — a keeper worn down past the last edge of his duty, holding because no one ever came to take the holding away; not a monster, a tired man who could not put a thing down.",
+      "canon_from": "sc-20",
+      "evidence": [
+        "sc-20"
+      ],
+      "typed": {
+        "subject": "warden",
+        "predicate": "warden_disposition",
+        "object": {
+          "kind": "value",
+          "value": "weary, not wrathful; a tired keeper who cannot put the burden down"
+        }
+      },
+      "entities": [
+        "warden"
+      ]
+    },
+    {
+      "fact_id": "r-060",
+      "frame": "gt",
+      "claim": "The four stand at the water's edge before the warden with the three roads — shatter, claim, parley — all there to take, and the choosing theirs.",
+      "canon_from": "sc-21",
+      "evidence": [
+        "sc-21"
+      ]
+    },
+    {
+      "fact_id": "r-061",
+      "frame": "rival",
+      "claim": "Skell has followed the party to the water's edge, his eyes on the crown, meaning to come up out of Vael Mooren with the worth of that circlet whichever road the four take; he says nothing yet and waits.",
+      "canon_from": "sc-21",
+      "evidence": [
+        "sc-21"
+      ],
+      "typed": {
+        "subject": "rival",
+        "predicate": "pursues",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "rival"
+      ]
+    },
+    {
+      "fact_id": "r-062",
+      "frame": "gt",
+      "claim": "At the deep vault the party makes the one choice the whole delve narrowed to — shatter the crown, claim the crown, or parley with the shade — and they choose to claim it.",
+      "canon_from": "sc-22",
+      "evidence": [
+        "sc-22"
+      ],
+      "branch": "claim"
+    },
+    {
+      "fact_id": "r-063",
+      "frame": "gt",
+      "claim": "Doran wades out and lifts the Hollow Crown off Orrek's brow; the warden does not fight it but bows his drowned head and lets living hands take it; Henna's oath dies unspoken in her throat.",
+      "canon_from": "sc-23c",
+      "evidence": [
+        "sc-23c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "fighter",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "fighter"
+      ]
+    },
+    {
+      "fact_id": "r-064",
+      "frame": "gt",
+      "claim": "As the crown leaves the shade and passes into Doran's grip, the leash of all the drowned dead of Vael Mooren passes out of the warden's hold and into Doran's, the crown going from the warden to the four of them.",
+      "canon_from": "sc-23c",
+      "evidence": [
+        "sc-23c"
+      ],
+      "branch": "claim"
+    },
+    {
+      "fact_id": "r-065",
+      "frame": "gt",
+      "claim": "With the crown wrested from his brow Orrek's shade is not freed; the binding does not release him but only changes hands, the leash now running from the dead through the crown to the party, and Orrek hanging on the end of it bound under their will, neither loosed nor at rest.",
+      "canon_from": "sc-24c",
+      "evidence": [
+        "sc-24c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "warden",
+        "predicate": "warden_disposition",
+        "object": {
+          "kind": "value",
+          "value": "bound under the party's will, neither loosed nor at rest"
+        }
+      },
+      "entities": [
+        "warden"
+      ]
+    },
+    {
+      "fact_id": "r-066",
+      "frame": "gt",
+      "claim": "With the crown on living hands the drowned of Vael Mooren no longer rise wild toward the stairs but bend, turning their dead faces toward the one who holds the crown and waiting, ranked and still and obedient; the wild rising is over, ended by taking the crown's handle and mastering it.",
+      "canon_from": "sc-25c",
+      "evidence": [
+        "sc-25c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "rising_state",
+        "object": {
+          "kind": "value",
+          "value": "mastered — the dead obey the crown's holder"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-067",
+      "frame": "gt",
+      "claim": "Doran has ended the rising the reeve charged them to end, not by breaking the thing that woke the dead but by taking its handle and mastering it; the charge is discharged in a dark coin.",
+      "canon_from": "sc-25c",
+      "evidence": [
+        "sc-25c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "q-main",
+        "predicate": "completed_by",
+        "object": {
+          "kind": "entity",
+          "id": "fighter"
+        }
+      },
+      "entities": [
+        "fighter",
+        "q-main"
+      ]
+    },
+    {
+      "fact_id": "r-068",
+      "frame": "rival",
+      "claim": "Skell sees the dead come to heel, reckons he cannot draw on four delvers backed by a standing army of the obedient drowned, laughs and kneels, asks for a share under the new power, and throws in with the crown's holder.",
+      "canon_from": "sc-26c",
+      "evidence": [
+        "sc-26c"
+      ],
+      "branch": "claim"
+    },
+    {
+      "fact_id": "r-069",
+      "frame": "gt",
+      "claim": "The party climbs up out of Vael Mooren with Doran bearing the Hollow Crown, and at its call the obedient dead climb in their wake, the drowned of the hold rising out of their flood to follow the living up the long stairs into the grey light of the Reach.",
+      "canon_from": "sc-27c",
+      "evidence": [
+        "sc-27c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "fighter",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "fighter"
+      ]
+    },
+    {
+      "fact_id": "r-070",
+      "frame": "gt",
+      "claim": "At the shrine above the town Brother Vane waits with both hands out, and Mother Henna, remembering the reliquary errand and meaning to keep her word, puts the Hollow Crown into Brother Vane's keeping; the crown leaves the party's hold and settles into the shrine-keeper's grasp — the crown he schemed for all along.",
+      "canon_from": "sc-28c",
+      "evidence": [
+        "sc-28c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-071",
+      "frame": "gt",
+      "claim": "Mother Henna fulfills the reliquary errand, putting the crown into the brother's hands.",
+      "canon_from": "sc-28c",
+      "evidence": [
+        "sc-28c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "q-reliquary",
+        "predicate": "completed_by",
+        "object": {
+          "kind": "entity",
+          "id": "cleric"
+        }
+      },
+      "entities": [
+        "cleric",
+        "q-reliquary"
+      ]
+    },
+    {
+      "fact_id": "r-072",
+      "frame": "gt",
+      "claim": "The instant Vane's fingers close on the iron the warmth goes out of him; he lifts the Hollow Crown and the leash that ran from the dead through the crown to the four delvers now runs to him, the drowned of Vael Mooren turning their dead faces from the delvers to the brother who holds the iron and waiting on his will.",
+      "canon_from": "sc-29c",
+      "evidence": [
+        "sc-29c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "possession",
+        "object": {
+          "kind": "entity",
+          "id": "crown"
+        }
+      },
+      "entities": [
+        "crown",
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-073",
+      "frame": "shrinekeeper",
+      "claim": "Brother Vane drops the helpful-brother guise and tells the party he schemed a lifetime and a season of the drowned dead toward this: he woke the warden, he fed the water, he asked them to bring the crown to no hand but his, and they took it up and set it in his palm; he will rule the Reach now by the dead it commands, and the dead the party mastered wade toward them at his word.",
+      "canon_from": "sc-29c",
+      "evidence": [
+        "sc-29c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "betrayal",
+        "object": {
+          "kind": "value",
+          "value": "Vane reveals he engineered the whole scheme and turns the dead on the party"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-074",
+      "frame": "gt",
+      "claim": "The Hollow Crown rules Karrow's Reach now, and the only thing the party decided was whose brow it ruled from; in claiming and handing over the crown they delivered it and the Reach to Brother Vane, the schemer who sent them down after it.",
+      "canon_from": "sc-30c",
+      "evidence": [
+        "sc-30c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "reach_rule",
+        "object": {
+          "kind": "value",
+          "value": "Brother Vane rules the Reach by the crown and the dead"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-075",
+      "frame": "gt",
+      "claim": "Reeve Calder's authority is now worth nothing; the rising is ended — mastered and kept — but the new hand is not his and never will be, and the Reach answers to the crown, the crown answers to Brother Vane, and Calder sits in a hall that no longer means anything.",
+      "canon_from": "sc-30c",
+      "evidence": [
+        "sc-30c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "shrinekeeper",
+        "predicate": "reach_rule",
+        "object": {
+          "kind": "value",
+          "value": "the Reach answers to the crown, the crown to Vane; the reeve has no power"
+        }
+      },
+      "entities": [
+        "shrinekeeper"
+      ]
+    },
+    {
+      "fact_id": "r-076",
+      "frame": "wisewoman",
+      "claim": "Old Maeve names the bargain: the rising is not ended but mastered, a different and worse word; the dead still walk, only taught a new hand to walk for, and the Reach was not saved from the drowned but only changed which fist the drowned obey.",
+      "canon_from": "sc-31c",
+      "evidence": [
+        "sc-31c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "rising_state",
+        "object": {
+          "kind": "value",
+          "value": "mastered, not ended — the dead still walk for a new hand"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    },
+    {
+      "fact_id": "r-077",
+      "frame": "gt",
+      "claim": "In the lantern-house the big lamp still burns because no one told the boy to put it out; Tam keeps it lit for a master who will not climb to its light, and no one comes to tell him so or to bring the word Pip swore — the question still in him, where is he, did you find him, you swore you'd bring me word.",
+      "canon_from": "sc-31c",
+      "evidence": [
+        "sc-31c"
+      ],
+      "branch": "claim"
+    },
+    {
+      "fact_id": "r-078",
+      "frame": "gt",
+      "claim": "The Reach ends under the Hollow Crown: the dead command, ranked and obedient, walking to a living will; the wise-woman grim at her fire; the reeve hollow in his hall; and the lantern-boy left holding a light for a master who will never come, under the shadow of the crown, while the water below stands still and waits for whoever holds the iron next.",
+      "canon_from": "sc-32c",
+      "evidence": [
+        "sc-32c"
+      ],
+      "branch": "claim",
+      "typed": {
+        "subject": "deep-vault",
+        "predicate": "reach_rule",
+        "object": {
+          "kind": "value",
+          "value": "the Reach ends under the Hollow Crown, the dead obedient to a living will"
+        }
+      },
+      "entities": [
+        "deep-vault"
+      ]
+    }
+  ]
+}
