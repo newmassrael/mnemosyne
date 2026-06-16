@@ -1,0 +1,78 @@
+{
+  "manifest": "time-travel-experiment/v2",
+  "designed": "2026-06-16 (R572 manifest round; sha256 of this manifest pinned in the R572 ledger entry BEFORE any render/extract/judge subagent runs — the R453/R499/R514/R548/R550/R561/R570 pre-commit pattern). Owner-CHOSEN follow-up to R571's honest blemish (option (가) of the R572 fork: a render-discipline experiment first, then decide whether a substrate addition (나) is warranted).",
+
+  "lineage_note": "DESIGNED by the lineage that ran v1 (R570/R571). Per the R469/R500 contamination bound this lineage may NOT render, re-extract, or judge; it writes this manifest + the v2 render-brief + the v2 A/B judge-brief + the runbook, and orchestrates the deterministic gates + the slice assembly + the A/B shuffle only. NO new author: v2 REUSES v1's FROZEN gate-clean base (the R553 controlled-re-render discipline; the frozen-ledger rule forbids re-authoring v1's fact base).",
+
+  "the_question_being_closed": {
+    "v1_finding": "R571 (REACHES) left ONE honest blemish: the render leak gate flagged 1 leak (f-seal-vent disclosed at sc-04). Diagnosis: a Founding-FIRST reading + a withhold-the-cause plan are incompatible — the cause-EVENT occurs in the Founding age, so rendering the Founding trunk first discloses it; the result is DRAMATIC IRONY (reader knows, late-age characters don't), not a reader-MYSTERY. The 3 judges loved the irony reading; the mechanical gate flagged the mismatch. store-consistency != DISCLOSURE-coherence on the time axis.",
+    "v2_question": "Does the SAME frozen base, RE-RENDERED in a WITHERING-FIRST (mystery) discourse — the reader starts in the ruined future not knowing why anything survives, and the Founding causes are first disclosed only when the bearer crosses back at the reveal (sc-39p) — pass the leak gate (leak=0) that the v1 Founding-first render FAILED? And does a genuine reader-MYSTERY reveal read as BETTER, WORSE, or equal time travel vs v1's dramatic irony (blind A/B)?",
+    "the_substrate_sub_question_for_the_R572_fork": "Resolving (가) ALSO answers the expressibility half of (나): if a Withering-first render passes leak=0 on the EXISTING substrate (by first-disclosing each Founding cause at/after its pin in the prose), then the discourse-order reveal is EXPRESSIBLE today — and the open (나) question narrows from 'is it expressible?' to 'should it be ENFORCED (a first-class discourse-order axis the gate checks the render against)?'. If a Withering-first render CANNOT cleanly reach leak=0 (the prose headings fight the canon-order leak check), that is the measured pull for a substrate addition (나)."
+  },
+
+  "design_resolution_R572": {
+    "how_the_leak_gate_decides (verified in code, disclosure.rs:211-278)": "For each withhold/first_at-targeted fact, the gate matches the BLIND re-extracted truth-frame facts by typed tuple and reads each match's `canon_from` (the prose's own `## sc-NN` heading). A withhold match = a leak outright; a first_at match strictly BEFORE the pin in CANON order (order.le(world, coord, pin)) = a leak. So the gate measures WHEN-IN-THE-PROSE a withheld cause is first stated, via the heading the renderer writes it under.",
+    "therefore_the_mystery_render_passes_iff": "the renderer NEVER states a withheld Founding cause (the typed tuples of f-seal-vent / f-set-stone) under any heading at-or-before its pin sc-39p — i.e. the Withering scenes (sc-27p..sc-38p) disclose NO Founding cause (the late-age characters do not know it, exactly as v1 already rendered them), and the Founding causes are first stated only at the bearer's cross-back reveal, written under the sc-39p heading. The Founding age is experienced THROUGH the reveal, not as a pre-reveal trunk.",
+    "the_controlled_variable": "v2 changes ONLY the render's discourse: arm MYSTERY renders the planted WITHERING walk (sc-27p..sc-40p) as the spine, with the Founding causes revealed at sc-39p — it does NOT render the Founding trunk (sc-01..sc-26) up front. arm IRONY = v1's render verbatim (Founding trunk + planted Withering, the leak-1 reading). Same frozen facts, same disclosure plan, same world-line; ONLY the reading order/slice differs. This isolates the discourse-order variable (the R553 discipline)."
+  },
+
+  "reuse": {
+    "frozen_base": "v1's run/author/{sections,facts,order,narrative-rules}.json + the disclosure plan in the store (FROZEN — not re-authored; the frozen-ledger rule). The orchestrator rebuilds it fresh, exactly as in R571.",
+    "arm_IRONY": "v1's run/render/{world-trunk,world-planted}.md verbatim (the R571 render = the dramatic-irony reading, leak=1).",
+    "extractor_brief": "v1's extractor-brief.md reused verbatim (the re-extraction method is identical).",
+    "harness": "the R480/R555 experiment-harness splice/project-world where it fits; PIN scans are production mnemosyne-cli verbs."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R572): rebuilds v1's frozen base; assembles the arm-MYSTERY render outline (the Withering planted walk + the reveal brief); spawns the blind re-render; writes the extractor vocab (reused); spawns the blind extractor over the MYSTERY prose; runs the leak + fidelity gates; assembles the A/B (arm IRONY = v1 prose, arm MYSTERY = v2 prose, randomized per judge); spawns 3 blind judges; applies the decision rule. NEVER renders, re-extracts, or judges.",
+    "blind_renderer": "ONE fresh-context subagent. Input = the v2 render-brief + the arm-MYSTERY outline ONLY. Renders the Withering-first mystery prose. BLIND to v1's render, the pins, the leak finding, the A/B, the hypothesis.",
+    "blind_extractor": "ONE fresh-context subagent (v1 extractor-brief reused). Input = the MYSTERY prose + vocab.md ONLY. Re-extracts, canon_from = the prose `## sc-NN` markers. BLIND to the base + plan.",
+    "blind_judges": "3 fresh-context subagents. Input = the v2 A/B judge-brief + BOTH arms' prose (labelled only arm-1 / arm-2, randomized per judge) ONLY. BLIND to which arm is which, the experiment, the AI-authorship, each other.",
+    "contamination_bound": "the R469 discipline (14th use). The lineage that found the v1 blemish may not render, re-extract, or judge its v2 follow-up."
+  },
+
+  "deterministic_pins": {
+    "PIN_M1_mystery_leak_clean": {
+      "claim": "PIN (the headline). The Withering-first MYSTERY render is leak-CLEAN — the reader-mystery reveal passes the gate that the v1 Founding-first IRONY render FAILED.",
+      "criteria_all_required": [
+        "validate-disclosure-leak --telling wend --against <reextracted-MYSTERY> --world planted --truth-frame gt: leaks = 0 (NO withheld Founding cause disclosed before its pin), AND vocabulary_shared > 0 (the R510 F5 non-vacuous guard).",
+        "validate-render-fidelity over the MYSTERY re-extraction vs order.json, world planted: off_path = 0, unplaced = 0, reached_terminal = true (the mystery render stays on the planted road and reaches its ending).",
+        "CONTRAST (recorded, not a separate pin): the v1 IRONY render under the identical gate = leak 1 (the R571 result, re-confirmed) — the SAME base + plan, ONLY the discourse differs, flips leak 1 -> 0."
+      ],
+      "repair_protocol": "if the MYSTERY render leaks, record the leak + the scene-scoped repair + the repair COUNT (the R515 posture tax). If repairs CANNOT clear it — i.e. a Withering-first render cannot reach leak=0 on the existing substrate without contorting the prose headings — that is the MEASURED PULL for the (나) substrate addition (a first-class discourse-order axis). Record it as such.",
+      "expressibility_verdict": "this pin's outcome IS the (가)->(나) decision input: PASS (leak 0) => future-first is EXPRESSIBLE on the existing substrate via render discipline => (나) is about ENFORCEMENT, lower urgency. FAIL/needs-contortion => (나) substrate addition is pull-justified."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, the v2 A/B judge-brief, over BOTH prose arms (arm-1 / arm-2, which-is-which randomized per judge; no labels betraying mystery vs irony). The cross-age briefing (v1) is provided to both as the shared player-facing reference.",
+    "axes": "reveal-impact (does the Founding cause land as a genuine surprise / earned reveal, or is it already known?) / era-texture (is the Founding age vivid as a living place?) / time-travel-coherence / overall — each 1-5, plus the forced A/B call: which arm reads as the better TIME-TRAVEL game, and WHY (mystery vs irony, named in the judge's own words).",
+    "honest_expectation_preregistered": "MYSTERY likely wins reveal-impact (a held-back cause lands as a surprise) but may LOSE era-texture (the Founding age, not rendered up front, is thinner — seen only through the reveal). IRONY likely wins era-texture (the young hollow is lived in full) but the 'reveal' is a re-statement of what the reader saw. The A/B is genuinely open — the v1 judges already gave IRONY 5/5, so MYSTERY must beat a strong baseline.",
+    "outcome_pin": "NONE. The leak pin (PIN-M1) is the deterministic headline; the A/B craft verdict is the open question (does a real reader-mystery reveal read as better time travel?)."
+  },
+
+  "decision_rule_pre_committed": {
+    "mystery_leak_clean_and_judged": "PIN-M1 holds (MYSTERY leak 0 + fidelity clean, IRONY re-confirmed leak 1) => the R571 blemish is EXECUTABLE-CLOSED: a Withering-first discourse yields a genuine reader-mystery reveal that passes the gate on the EXISTING substrate; future-first is EXPRESSIBLE (informing (나): enforcement, not expressibility, is the open question). The A/B craft verdict (mystery vs irony) is reported as the open finding, NOT downplayed whichever way it falls.",
+    "mystery_leaks_or_needs_contortion": "the MYSTERY render cannot reach leak 0 without contorting prose headings against the canon-order leak check => future-first is NOT cleanly expressible today => the MEASURED PULL for (나): a first-class discourse-order (syuzhet) axis the renderer declares and the gate checks the render against. A substrate-design finding, the input to the (나) round.",
+    "ab_mystery_loses_craft": "PIN-M1 holds but judges prefer IRONY on overall time-travel => an honest craft finding (a held-back cause can read as thinner than a lived-in past): the gate-clean form is not automatically the better-reading form (the analog of fidelity != craft, R500). Recorded, not downplayed."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R572 ledger, committed pre-execution (R572 = the manifest round). Reuse the current CLI (post-R568); rebuild v1's frozen base fresh from its JSON.",
+    "step_1_outline": "orchestrator assembles the arm-MYSTERY outline: the planted Withering walk (sc-27p..sc-40p) as the reading spine, with an explicit reveal brief at sc-39p (the bearer crosses back; the Founding causes — Sera's seal, Halden's stone — are first disclosed HERE, under the sc-39p heading, never before). The Founding trunk (sc-01..sc-26) is NOT a pre-reveal act. Disclosure-annotated from the frozen plan.",
+    "step_2_render": "spawn the blind renderer (v2 render-brief + the arm-MYSTERY outline) -> run/render-mystery/world-planted.md + render-log.md.",
+    "step_3_extract": "orchestrator writes run/extract-mystery/vocab.md (reuse v1's vocab); spawn the blind extractor (v1 extractor-brief + the MYSTERY prose + vocab) -> run/extract-mystery/reextracted.atomic.json + extract-log.md.",
+    "step_4_pin_m1": "orchestrator runs the leak + fidelity gates over the MYSTERY re-extraction; re-confirms the v1 IRONY leak-1 under the identical gate; records both verbatim (the leak 1 -> 0 contrast).",
+    "step_5_ab_judges": "orchestrator assembles the A/B (arm IRONY = v1 prose, arm MYSTERY = v2 prose), randomizes which is arm-1/arm-2 per judge, records the label map; spawns 3 blind judges (v2 A/B judge-brief + both arms + the cross-age briefing) -> run/judges-v2/judge-{1,2,3}.md.",
+    "step_6_decide": "orchestrator applies the decision rule, writes report.md, appends the R573 changelog entry + commit. Do NOT push (the push consent gate).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim + the R555 harness splice/shuffle; PIN-M1 is the production leak+fidelity gates; no tools/ or crate change. Scratch *.atomic.json stay gitignored."
+  },
+
+  "honest_caveats": [
+    "n=1 (1 re-render / 1 extractor / 3 judges) on ONE base — a controlled single-instance re-render, not a distribution (the standing caveat).",
+    "v2 REUSES v1's frozen base (the same fabula + facts + disclosure plan); it tests the DISCOURSE-ORDER variable ONLY, not a new story. A different base could behave differently.",
+    "the MYSTERY render is the Withering planted walk; the Founding age is seen only through the reveal, so the era-texture A/B is structurally tilted (IRONY shows the Founding age in full, MYSTERY does not) — named pre-execution, not downplayed (feedback_dont_downplay_experiment_flaws); the A/B measures the genuine trade (reveal-impact vs era-texture).",
+    "PIN-M1 leak-0 proves the discourse-order reveal is EXPRESSIBLE on the existing substrate; it does NOT prove the substrate ENFORCES it (the (나) question) — a Founding-first render of the same base still leaks (nothing forces the right order). The (가) result is the input to the (나) decision, not a substitute for it.",
+    "the A/B baseline is strong (v1 IRONY drew 5/5 from 3 judges); MYSTERY winning is not assured."
+  ]
+}
