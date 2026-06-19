@@ -13425,6 +13425,30 @@
         "live craft note: a time-travel reader-mystery reveal needs Withering-first discourse and TRADES era-texture for reveal-impact; a base that withholds the CAUSAL significance on the bearer's first Founding visit could keep BOTH the lived-in past AND the earned reveal (untested)",
         "push status: R570+R571 PUSHED @ dec51a1; R572 (9fe2eea) + R573 committed NOT pushed"
       ]
+    },
+    "Round 574 — drop the dead impl ref-kind branch from the supersession gate": {
+      "decision_summary": "Recognize only the decision ref-kind in the supersession-state gate, matching what the atomic-store projection emits; the impl branch had no producer since Phase 0 and was unreachable dead code.",
+      "changes_bullets": [
+        "Remove the dead impl alternative from section_decision_violation; the supersession-state gate now recognizes only the decision ref-kind that project_cross_ref_facts actually emits.",
+        "Align seven decision/impl doc and test comments to decision across mnemosyne-cascade and mnemosyne-projection.",
+        "Replace the incidental impl label in the outbound-crossref isolation test fixture with the real impact_scope kind."
+      ],
+      "verification_bullets": [
+        "cargo clippy on mnemosyne-cascade and mnemosyne-projection (all-targets): clean.",
+        "cargo test: cascade lib 24 pass (outbound-crossref isolation and ref_kind-mutation tests included), phase_1_5 integration 7 pass, projection 7 pass.",
+        "Behavior unchanged: project_cross_ref_facts never emits an impl ref, so the removed gate branch was unreachable in production since the Phase 0 scaffolding commit."
+      ],
+      "publishable_decision_summary": "Recognize only the decision ref-kind in the supersession-state gate, matching what the atomic-store projection emits; the impl branch had no producer since Phase 0 and was unreachable dead code.",
+      "publishable_changes_bullets": [
+        "Remove the dead impl alternative from section_decision_violation; the supersession-state gate now recognizes only the decision ref-kind that project_cross_ref_facts actually emits.",
+        "Align seven decision/impl doc and test comments to decision across mnemosyne-cascade and mnemosyne-projection.",
+        "Replace the incidental impl label in the outbound-crossref isolation test fixture with the real impact_scope kind."
+      ],
+      "publishable_verification_bullets": [
+        "cargo clippy on mnemosyne-cascade and mnemosyne-projection (all-targets): clean.",
+        "cargo test: cascade lib 24 pass (outbound-crossref isolation and ref_kind-mutation tests included), phase_1_5 integration 7 pass, projection 7 pass.",
+        "Behavior unchanged: project_cross_ref_facts never emits an impl ref, so the removed gate branch was unreachable in production since the Phase 0 scaffolding commit."
+      ]
     }
   },
   "inventory_entries": {},

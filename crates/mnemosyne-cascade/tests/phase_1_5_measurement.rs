@@ -177,7 +177,7 @@ fn aggregator_results_are_deterministic_within_and_across_dbs() {
     }
 }
 
-/// Violation injection — one Superseded section without an outbound decision/impl
+/// Violation injection — one Superseded section without an outbound decision
 /// ref is detected as exactly one violation, even embedded in the full fixture.
 #[test]
 fn violation_injection_detected_in_full_fixture() {

@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn superseded_without_outbound_ref_is_flagged() {
-        // A Superseded section with no outbound decision/impl cross-ref violates
+        // A Superseded section with no outbound decision cross-ref violates
         // the supersession invariant — the projection must surface it.
         let store = store_with(vec![(
             "old",
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn superseded_with_outbound_impact_ref_passes() {
         // impact_scope projects to a CrossRef of kind "impact_scope", which is
-        // not a supersession pointer (decision/impl), so a bare impact edge does
+        // not a supersession pointer (decision), so a bare impact edge does
         // not satisfy the invariant.
         let store = store_with(vec![
             (
@@ -206,7 +206,7 @@ mod tests {
             ("new", section("New", Some(DecisionStatus::Active), &[])),
         ]);
         let svc = ProjectionService::build(&store, MAIN_BRANCH_ID);
-        // impact_scope alone is not a decision/impl ref → still one violation.
+        // impact_scope alone is not a decision ref → still one violation.
         assert_eq!(
             svc.validate().section_decision,
             ValidationResult::violations(1)

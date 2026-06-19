@@ -183,7 +183,7 @@ pub fn outbound_crossrefs_by_section<'db>(
 }
 
 /// Per-section decision_status check. Returns 0 on pass, 1 on violation
-/// (Superseded section without outbound decision/impl ref). Active sections
+/// (Superseded section without outbound decision ref). Active sections
 /// short-circuit without reading cross_refs — no dep on the cross-ref list,
 /// so mutating any CrossRef does NOT invalidate this sub-query for active
 /// sections.
@@ -203,10 +203,9 @@ pub fn section_decision_violation<'db>(
     }
     let entity_id = section.entity_id(db);
     let outbound = outbound_crossrefs_by_section(db, branch_index, entity_id);
-    let has_supersedes_ref = outbound.iter().any(|cr| {
-        cr.ref_kind(db).eq_ignore_ascii_case("decision")
-            || cr.ref_kind(db).eq_ignore_ascii_case("impl")
-    });
+    let has_supersedes_ref = outbound
+        .iter()
+        .any(|cr| cr.ref_kind(db).eq_ignore_ascii_case("decision"));
     if has_supersedes_ref {
         0
     } else {
@@ -1085,7 +1084,7 @@ mod tests {
             ],
             &[
                 make_cross_ref(1, 10, 50, "decision"),
-                make_cross_ref(1, 10, 51, "impl"),
+                make_cross_ref(1, 10, 51, "impact_scope"),
                 make_cross_ref(1, 20, 52, "decision"),
                 make_cross_ref(1, 30, 53, "decision"),
             ],
@@ -1114,7 +1113,7 @@ mod tests {
         // not read ref_kind, only from_section).
         // - section_decision_violation(section_1, idx) re-runs (it reads
         // ref_kind on its outbound list, which now contains X with new
-        // ref_kind → still detects no decision/impl → violations += 1).
+        // ref_kind → still detects no decision ref → violations += 1).
         // - section_decision_violation for sections 2, 3 stay cached
         // (ref_kind on X is NOT in their outbound).
         // - Aggregator re-runs (section_1's sub-query return changed).
@@ -1146,9 +1145,9 @@ mod tests {
         assert!(r0.ok);
 
         db.reset_exec_counter();
-        // Mutate X's ref_kind to a non-{decision,impl} value. X is section_1's
+        // Mutate X's ref_kind to a non-decision value. X is section_1's
         // outbound CrossRef. After mutation section_1 no longer has a valid
-        // outbound decision/impl ref → violations += 1.
+        // outbound decision ref → violations += 1.
         let target_cross_ref = idx
             .cross_refs(&db)
             .iter()
