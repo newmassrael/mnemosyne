@@ -10,7 +10,6 @@ members = [
  "crates/mnemosyne-core",
  "crates/mnemosyne-plugin-tree-sitter-rust",
  "crates/mnemosyne-plugin-tree-sitter-cpp",
- "crates/mnemosyne-schema",
  "crates/mnemosyne-config",
  "crates/mnemosyne-atomic",
  "crates/mnemosyne-style",

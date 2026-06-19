@@ -316,8 +316,8 @@ impl VerificationExpectation {
 }
 
 /// Section.decision_status lifecycle vocabulary — substrate-canonical
-/// enum. Lives in `mnemosyne-core` (not in `mnemosyne-schema` or any
-/// downstream crate) so every plugin author works against one type, and
+/// enum. Lives in `mnemosyne-core` (not in any downstream leaf crate)
+/// so every plugin author works against one type, and
 /// the snapshot returned from `AtomicStoreView::snapshot` round-trips
 /// without an adapter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

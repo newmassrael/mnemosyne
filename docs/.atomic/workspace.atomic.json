@@ -13449,6 +13449,34 @@
         "cargo test: cascade lib 24 pass (outbound-crossref isolation and ref_kind-mutation tests included), phase_1_5 integration 7 pass, projection 7 pass.",
         "Behavior unchanged: project_cross_ref_facts never emits an impl ref, so the removed gate branch was unreachable in production since the Phase 0 scaffolding commit."
       ]
+    },
+    "Round 575 — remove the dead mnemosyne-schema crate (R400-superseded markdown parser model)": {
+      "decision_summary": "Remove the entire dead mnemosyne-schema crate and its zero-caller AtomicStore::resolve bridge — the markdown-parser document model R400 superseded when the atomic store became the sole directly-validated SSOT.",
+      "changes_bullets": [
+        "Delete crates/mnemosyne-schema (ParsedDoc / Section / CrossRef / RefKind / LockKind / ChangelogEntry / FrozenList plus parsed_doc_canonical and sections_by_id_map), the pre-atomic markdown document model that R400 superseded when the atomic store became the sole SSOT.",
+        "Remove the workspace member and the six now-stale path dependencies (atomic, validate, query, cli, ops, style); only atomic referenced the crate and the other five were unused.",
+        "Delete AtomicStore::resolve and its mnemosyne_schema::Section import; its sole purpose was bridging the deleted markdown model and it had zero callers.",
+        "Trim the dangling mnemosyne-schema mention from the mnemosyne-core DecisionStatus doc comment."
+      ],
+      "verification_bullets": [
+        "cargo fmt --all --check: clean.",
+        "cargo clippy --workspace --all-targets -- -D warnings: clean; the workspace compiles with no schema crate.",
+        "cargo test --workspace: 0 failed across every crate.",
+        "Pre-removal dead-code proof: zero external use of the parser types; schema Section used only by resolve() which had zero callers; no markdown parser produces these types; the crate is absent from ARCHITECTURE.md, so it is not a protected foundation."
+      ],
+      "publishable_decision_summary": "Remove the entire dead mnemosyne-schema crate and its zero-caller AtomicStore::resolve bridge — the markdown-parser document model R400 superseded when the atomic store became the sole directly-validated SSOT.",
+      "publishable_changes_bullets": [
+        "Delete crates/mnemosyne-schema (ParsedDoc / Section / CrossRef / RefKind / LockKind / ChangelogEntry / FrozenList plus parsed_doc_canonical and sections_by_id_map), the pre-atomic markdown document model that R400 superseded when the atomic store became the sole SSOT.",
+        "Remove the workspace member and the six now-stale path dependencies (atomic, validate, query, cli, ops, style); only atomic referenced the crate and the other five were unused.",
+        "Delete AtomicStore::resolve and its mnemosyne_schema::Section import; its sole purpose was bridging the deleted markdown model and it had zero callers.",
+        "Trim the dangling mnemosyne-schema mention from the mnemosyne-core DecisionStatus doc comment."
+      ],
+      "publishable_verification_bullets": [
+        "cargo fmt --all --check: clean.",
+        "cargo clippy --workspace --all-targets -- -D warnings: clean; the workspace compiles with no schema crate.",
+        "cargo test --workspace: 0 failed across every crate.",
+        "Pre-removal dead-code proof: zero external use of the parser types; schema Section used only by resolve() which had zero callers; no markdown parser produces these types; the crate is absent from ARCHITECTURE.md, so it is not a protected foundation."
+      ]
     }
   },
   "inventory_entries": {},

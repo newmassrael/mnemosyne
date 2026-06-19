@@ -91,7 +91,6 @@ paths = [
  "crates/mnemosyne-plugin-tree-sitter-rust/src/",
  "crates/mnemosyne-projection/src/",
  "crates/mnemosyne-query/src/",
- "crates/mnemosyne-schema/src/",
  "crates/mnemosyne-server/src/",
  "crates/mnemosyne-store/src/",
  "crates/mnemosyne-style/src/",

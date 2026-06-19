@@ -17,7 +17,6 @@ path = "src/main.rs"
 mnemosyne-ops = { path = "../mnemosyne-ops" }
 mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-core = { path = "../mnemosyne-core" }
-mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-style = { path = "../mnemosyne-style" }

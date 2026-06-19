@@ -12,7 +12,6 @@ mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-query = { path = "../mnemosyne-query" }
-mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-style = { path = "../mnemosyne-style" }
 mnemosyne-validate = { path = "../mnemosyne-validate" }
 

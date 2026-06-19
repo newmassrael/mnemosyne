@@ -41,7 +41,6 @@ use mnemosyne_core::{
     InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
     TypedObject,
 };
-use mnemosyne_schema::Section;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -1258,27 +1257,6 @@ impl AtomicStore {
 
     pub fn entry(&self, entry_id: &str) -> Option<&AtomicChangelogEntry> {
         self.changelog_entries.get(entry_id)
-    }
-
-    /// Resolve a markdown-derived [`Section`] to its atomic counterpart.
-    ///
-    /// Why this is not a straight `section(&section.section_id)` call: the
-    /// parser's `section_id` is a markdown-tree disambiguator and may carry
-    /// a parent prefix (`{doc-slug}/sections/{atomic-id}`) for nested
-    /// headings, while the atomic store is keyed by the bare atomic id the
-    /// renderer wrote. The `Section.atomic_section_id` field carries that
-    /// bare id verbatim from the heading's `§<token>` slot — try it first.
-    ///
-    /// Fallback path (`section_id` directly) preserves compatibility with
-    /// pre-decompose markdown and any future external doc whose headings
-    /// already happen to be bare atomic ids.
-    pub fn resolve(&self, section: &Section) -> Option<&AtomicSection> {
-        if let Some(aid) = section.atomic_section_id.as_deref() {
-            if let Some(found) = self.sections.get(aid) {
-                return Some(found);
-            }
-        }
-        self.sections.get(&section.section_id)
     }
 
     /// atomic-derived section_id set (MD-DELETION-RATIFY foundation).

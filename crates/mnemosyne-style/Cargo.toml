@@ -10,7 +10,6 @@ license.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-mnemosyne-schema = { path = "../mnemosyne-schema" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 regex.workspace = true
