@@ -912,12 +912,20 @@ pub fn extract_prose_fact_assertions(content: &str) -> Vec<(usize, String, Strin
     let mut out = Vec::new();
     for (line_idx, line) in content.lines().enumerate() {
         let mut in_backtick = false;
+        let mut in_quote = false;
         for (i, c) in line.char_indices() {
             if c == '`' {
                 in_backtick = !in_backtick;
                 continue;
             }
-            if in_backtick || c != '§' {
+            // A `§ref` inside a double-quoted span is a meta-mention / quoted
+            // example (e.g. a corrective `overclaimed "decided in §X"`), not an
+            // assertion — skip it like a backtick code-span (FP-1, R582).
+            if c == '"' {
+                in_quote = !in_quote;
+                continue;
+            }
+            if in_backtick || in_quote || c != '§' {
                 continue;
             }
             let preceding = line[..i].to_lowercase();
@@ -957,9 +965,11 @@ pub struct SectionProseFinding {
     /// Which prose field carried it (`intent` / `rationale` / `caveat` /
     /// `inputs` / `outputs`).
     pub field: &'static str,
-    /// The cited target section id (without `§`).
-    pub target: String,
-    /// The matched fact-assertion verb.
+    /// The matched fact-assertion verb. The finding deliberately does NOT pin a
+    /// single target section ref: free-prose source→target binding is unreliable
+    /// (passive voice — "X superseded by Y" — produced source==target
+    /// self-loops), so claiming one is false precision (FP-2, R582). This is an
+    /// advisory heuristic; the author reads the named field to act.
     pub verb: String,
 }
 
@@ -969,11 +979,13 @@ fn collect_section_prose(
     field: &'static str,
     text: &str,
 ) {
-    for (_, target, verb) in extract_prose_fact_assertions(text) {
+    // The matched section ref is dropped, not stored as an authoritative target —
+    // free-prose binding is unreliable (it produced self-loops), so the advisory
+    // finding names only (section, field, verb).
+    for (_, _matched_ref, verb) in extract_prose_fact_assertions(text) {
         out.push(SectionProseFinding {
             section_id: section_id.to_string(),
             field,
-            target,
             verb,
         });
     }
@@ -5953,6 +5965,31 @@ mod tests {
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].section_id, "5.41");
         assert_eq!(findings[0].field, "caveat");
-        assert_eq!(findings[0].target, "5.36");
+        // The finding names (section, field, verb); it does not pin a target ref
+        // (FP-2 — false precision dropped).
+        assert!(findings[0].verb.contains("supersede"), "{findings:?}");
+    }
+
+    #[test]
+    fn prose_fact_assertion_skips_quoted_meta_mention() {
+        // FP-1 (R582): a verb+ref inside double quotes is a meta-mention — e.g. a
+        // corrective that QUOTES the old overclaim to refute it (must never be
+        // flagged, the correction record is load-bearing). An unquoted assertion
+        // on the next line still flags.
+        let s = "\u{a7}";
+        let src = format!(
+            "// the corrective: the earlier note overclaimed \"decided in {s}5.37\"\n\
+             // but it really supersedes {s}5.36\n"
+        );
+        let hits = extract_prose_fact_assertions(&src);
+        let lines: Vec<usize> = hits.iter().map(|(l, _, _)| *l).collect();
+        assert!(
+            !lines.contains(&1),
+            "quoted meta-mention must not flag: {hits:?}"
+        );
+        assert!(
+            lines.contains(&2),
+            "unquoted assertion still flags: {hits:?}"
+        );
     }
 }

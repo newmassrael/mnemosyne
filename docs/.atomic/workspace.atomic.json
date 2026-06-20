@@ -13731,6 +13731,46 @@
         "Out of \"cheap cleanup\" scope (flagged in the session review, kept as separate decisions): the section-prose gate lives in the CLI (cmd_validate_workspace), not the reusable ops::validate_workspace pipeline, so a non-CLI consumer gets no section-prose gate (consistent with the commit-ledger surface precedent); and neither resolved_by nor superseded_by has an out-of-band \"set only on the right status\" check (the direct-JSON-edit escape hatch).",
         "Strategic open question (session review): the SSOT lint is opt-in and currently unconsumed — enable it in a real consumer (pinion warn->reject) to realize the payoff, or return to the narrative north-star bottleneck, before any further spec-side lint rounds."
       ]
+    },
+    "Round 582 — harden the prose-fact-assertion matcher: quote-scope skip + drop false target precision (pinion field report)": {
+      "decision_summary": "Respond to pinion's warn-adoption field report (it found real matcher false positives my unverified 'zero FP / zero section-prose' advisory claims missed). FP-1: skip a section ref inside a double-quoted span — a quoted verb+ref is a meta-mention (e.g. a corrective quoting the old overclaim to refute it), mirroring the backtick-skip, syntactic. FP-2: the section-prose finding no longer pins a single target ref — free-prose source->target binding is unreliable (passive voice bound the agent and produced source==target self-loops), so a target was false precision; the advisory finding now names only (section, field, verb). Both make the heuristic honestly coarse, NOT more precise. Declined the report's prose<->decision_status cross-check: it re-introduces the verification frame the SSOT design rejected (sec 9 forbids reject-grade precision on semantic prose); the value is already delivered by flag -> force-to-store -> R342/R574 rejecting false edges. The lint stays advisory (warn/info, never reject); the structural store invariants are the primary SSOT enforcement.",
+      "changes_bullets": [
+        "FP-1: extract_prose_fact_assertions now skips a section ref inside a double-quoted span (in_quote state mirroring in_backtick) — a quoted verb+ref is a meta-mention (e.g. a corrective that quotes the old overclaim to refute it), not an assertion.",
+        "FP-2: SectionProseFinding drops the `target` field; the section-prose finding now names only (section_id, field, verb). Free-prose source->target binding is unreliable (passive voice \"X superseded by Y\" bound the agent and produced source==target self-loops), so a pinned target was false precision. CLI surface + test updated.",
+        "Both fixes are syntactic and make the heuristic honestly coarse, NOT more precise. Declined the report's prose<->decision_status cross-check (#3) and left the \"deferred to\" home doc (#4) out, per the \"two cheap fixes only\" scope."
+      ],
+      "verification_bullets": [
+        "New test prose_fact_assertion_skips_quoted_meta_mention: a quoted \"decided in §X\" does not flag; an unquoted supersede on the next line still flags. Existing section-prose test updated to assert (section, field, verb), not a target.",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Honest correction: the adoption advisory's \"0 false positives / 0 section-prose findings\" were UNVERIFIED (the R577 demo was a stale snapshot; the R580 section-prose scan was never run on pinion). The pinion field report's measurements (4 code-surface, 6 section-surface) are correct; this round fixes the two real FP classes it found."
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "Declined (design line): the prose<->decision_status cross-check (report #3) re-introduces the verification frame the SSOT design rejected, and sec 9 forbids reject-grade precision on irreducibly-semantic prose; the value is already delivered by flag -> force-to-store -> R342/R574 rejecting false edges.",
+        "Not done (out of scope): \"deferred to\" Active-section home = impact_scope (doc only); a historical/resolved-deferral caveat exemption (a sec 9 residual).",
+        "Standing posture: the prose lint is and stays ADVISORY (warn/info, never reject) — prose-scanning is inherently heuristic; the primary SSOT enforcement is the structural store invariants. No further matcher precision-chasing (treadmill). The pinion field report's chief value was proving that advisory is the ceiling for this surface."
+      ],
+      "publishable_decision_summary": "Respond to pinion's warn-adoption field report (it found real matcher false positives my unverified 'zero FP / zero section-prose' advisory claims missed). FP-1: skip a section ref inside a double-quoted span — a quoted verb+ref is a meta-mention (e.g. a corrective quoting the old overclaim to refute it), mirroring the backtick-skip, syntactic. FP-2: the section-prose finding no longer pins a single target ref — free-prose source->target binding is unreliable (passive voice bound the agent and produced source==target self-loops), so a target was false precision; the advisory finding now names only (section, field, verb). Both make the heuristic honestly coarse, NOT more precise. Declined the report's prose<->decision_status cross-check: it re-introduces the verification frame the SSOT design rejected (sec 9 forbids reject-grade precision on semantic prose); the value is already delivered by flag -> force-to-store -> R342/R574 rejecting false edges. The lint stays advisory (warn/info, never reject); the structural store invariants are the primary SSOT enforcement.",
+      "publishable_changes_bullets": [
+        "FP-1: extract_prose_fact_assertions now skips a section ref inside a double-quoted span (in_quote state mirroring in_backtick) — a quoted verb+ref is a meta-mention (e.g. a corrective that quotes the old overclaim to refute it), not an assertion.",
+        "FP-2: SectionProseFinding drops the `target` field; the section-prose finding now names only (section_id, field, verb). Free-prose source->target binding is unreliable (passive voice \"X superseded by Y\" bound the agent and produced source==target self-loops), so a pinned target was false precision. CLI surface + test updated.",
+        "Both fixes are syntactic and make the heuristic honestly coarse, NOT more precise. Declined the report's prose<->decision_status cross-check (#3) and left the \"deferred to\" home doc (#4) out, per the \"two cheap fixes only\" scope."
+      ],
+      "publishable_verification_bullets": [
+        "New test prose_fact_assertion_skips_quoted_meta_mention: a quoted \"decided in §X\" does not flag; an unquoted supersede on the next line still flags. Existing section-prose test updated to assert (section, field, verb), not a target.",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Honest correction: the adoption advisory's \"0 false positives / 0 section-prose findings\" were UNVERIFIED (the R577 demo was a stale snapshot; the R580 section-prose scan was never run on pinion). The pinion field report's measurements (4 code-surface, 6 section-surface) are correct; this round fixes the two real FP classes it found."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Declined (design line): the prose<->decision_status cross-check (report #3) re-introduces the verification frame the SSOT design rejected, and sec 9 forbids reject-grade precision on irreducibly-semantic prose; the value is already delivered by flag -> force-to-store -> R342/R574 rejecting false edges.",
+        "Not done (out of scope): \"deferred to\" Active-section home = impact_scope (doc only); a historical/resolved-deferral caveat exemption (a sec 9 residual).",
+        "Standing posture: the prose lint is and stays ADVISORY (warn/info, never reject) — prose-scanning is inherently heuristic; the primary SSOT enforcement is the structural store invariants. No further matcher precision-chasing (treadmill). The pinion field report's chief value was proving that advisory is the ceiling for this surface."
+      ]
     }
   },
   "inventory_entries": {},

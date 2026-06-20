@@ -1280,10 +1280,7 @@ fn print_section_prose_fact_assertion_surface(
         severity.as_str()
     );
     for f in &findings {
-        println!(
-            " §{} [{}] {} → §{}",
-            f.section_id, f.field, f.verb, f.target
-        );
+        println!(" §{} [{}] prose asserts: {}", f.section_id, f.field, f.verb);
     }
     if !findings.is_empty() && severity == Severity::Reject {
         bail!(
