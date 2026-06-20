@@ -465,6 +465,19 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub severity_blanket: Option<Severity>,
 
+    /// Severity for the prose-fact-assertion violation (`ProseFactAssertion`,
+    /// structured-fact SSOT): a code comment that RESTATES a structured fact —
+    /// a relation/status assertion verb (`supersedes`, `decided in`,
+    /// `deferred to`, ...) adjacent to a `§<id>` citation — instead of merely
+    /// POINTING to the section. Such facts have a single store home
+    /// (`decision_status` / `superseded_by` / bindings, authored via the mutate
+    /// API); prose must only project them. `None` = the axis is OFF (opt-in,
+    /// like `severity_verification`). Recommended `warn` first to measure the
+    /// existing-comment backlog, then escalate to `reject`. See
+    /// claudedocs/structured-fact-ssot-design.md.
+    #[serde(default)]
+    pub severity_prose_fact_assertion: Option<Severity>,
+
     /// comment-only filtering toggle. When `true` (default),
     /// the citation extractor only sees text inside language comments
     /// (`//`, `/* */`, `#`); string-literal contents and code identifiers

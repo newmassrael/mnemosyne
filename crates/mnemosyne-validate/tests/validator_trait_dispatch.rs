@@ -35,6 +35,7 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
             severity_confirmation: None,
             severity_classification: None,
             severity_blanket: None,
+            severity_prose_fact_assertion: None,
             severity_inventory: mnemosyne_config::Severity::Reject,
             comment_only: true,
             inventory_prefixes: vec![],

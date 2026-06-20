@@ -4145,6 +4145,10 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         Some(s) => Some(parse_sev("--severity-blanket", s)?),
         None => cfg.severity_blanket,
     };
+    // v1 prose-fact-assertion axis (structured-fact SSOT) — config-only
+    // severity (no CLI override yet); validator_cfg = cfg.clone() carries it
+    // into the scan, so no explicit validator_cfg assignment is needed.
+    let severity_prose_fact_assertion: Option<Severity> = cfg.severity_prose_fact_assertion;
     let severity_inventory = match &severity_inventory_override {
         Some(s) => parse_sev("--severity-inventory", s)?,
         None => cfg.severity_inventory,
@@ -4236,6 +4240,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let inventory_missing_count = get("inventory_missing");
     let inventory_deprecated_count = get("inventory_deprecated");
     let symbol_mismatch_count = get("symbol_mismatch");
+    let prose_fact_assertion_count = get("prose_fact_assertion");
     let inventory_count = inventory_missing_count + inventory_deprecated_count;
     let hallucination_count = missing_count + section_missing_count;
     // Round 385 — coverage split. The binding bucket is the per-edge axis:
@@ -4276,6 +4281,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "verification_missing_count": verification_missing_count,
             "misclassified_coverage_count": misclassified_coverage_count,
             "blanket_verifies_count": blanket_verifies_count,
+            "prose_fact_assertion_count": prose_fact_assertion_count,
             "unconfirmed_verifies": unconfirmed_verifies_count,
             "decay_count": decay_count,
             "inventory_missing_count": inventory_missing_count,
@@ -4331,10 +4337,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         println!(
             "violations: total={} missing={} section_missing={} \
  citation_unbound={} binding_unbacked={} impl_missing={} verification_missing={} \
- misclassified_coverage={} blanket_verifies={} decay={} \
+ misclassified_coverage={} blanket_verifies={} prose_fact_assertion={} decay={} \
  inv_missing={} inv_deprecated={} unconfirmed_verifies={} \
  (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} \
- severity_classification={} severity_blanket={} severity_inventory={})",
+ severity_classification={} severity_blanket={} severity_prose_fact_assertion={} \
+ severity_inventory={})",
             violations.len(),
             missing_count,
             section_missing_count,
@@ -4344,6 +4351,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             verification_missing_count,
             misclassified_coverage_count,
             blanket_verifies_count,
+            prose_fact_assertion_count,
             decay_count,
             inventory_missing_count,
             inventory_deprecated_count,
@@ -4356,6 +4364,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 .map(Severity::as_str)
                 .unwrap_or("off"),
             severity_blanket.map(Severity::as_str).unwrap_or("off"),
+            severity_prose_fact_assertion
+                .map(Severity::as_str)
+                .unwrap_or("off"),
             severity_inventory.as_str(),
         );
         // `CodeRefViolation: Display` renders the legacy TTY shape
@@ -4408,6 +4419,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "{} blanket-class violation(s) — BlanketVerifies={} \
  (severity_blanket=reject)",
             blanket_verifies_count, blanket_verifies_count,
+        ));
+    }
+    if prose_fact_assertion_count > 0 && severity_prose_fact_assertion == Some(Severity::Reject) {
+        reject_msgs.push(format!(
+            "{} prose-fact-assertion violation(s) — ProseFactAssertion={} \
+ (severity_prose_fact_assertion=reject)",
+            prose_fact_assertion_count, prose_fact_assertion_count,
         ));
     }
     if inventory_count > 0 && severity_inventory.is_reject() {

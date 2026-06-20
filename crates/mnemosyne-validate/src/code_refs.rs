@@ -403,6 +403,7 @@ impl CodeRefViolation {
                 ViolationKind::InventoryMissing => "inventory_missing",
                 ViolationKind::InventoryDeprecated => "inventory_deprecated",
                 ViolationKind::SymbolMismatch => "symbol_mismatch",
+                ViolationKind::ProseFactAssertion => "prose_fact_assertion",
             },
             CodeRefViolation::BindingUnbacked { .. } => "binding_unbacked",
             CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
@@ -432,6 +433,7 @@ impl CodeRefViolation {
                 ViolationKind::InventoryMissing | ViolationKind::InventoryDeprecated => {
                     DefectClass::Inventory
                 }
+                ViolationKind::ProseFactAssertion => DefectClass::ProseFactAssertion,
             },
             CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
             CodeRefViolation::ImplementationMissing { .. } => DefectClass::Binding,
@@ -664,6 +666,12 @@ pub enum DefectClass {
     /// bound `verifies` to >1 section. Its own opt-in `severity_blanket` knob
     /// (SCE field-report P1 — the cheap, metadata-free granularity fence).
     Blanket,
+    /// Structured-fact SSOT violation (`ProseFactAssertion`): a code comment
+    /// restates a store-homed structured fact (relation/status verb adjacent to
+    /// a `§<id>`) instead of pointing to it. Its own opt-in
+    /// `severity_prose_fact_assertion` knob — prose is read-side only, the fact
+    /// lives once in the store. See claudedocs/structured-fact-ssot-design.md.
+    ProseFactAssertion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -707,6 +715,15 @@ pub enum ViolationKind {
     /// registered symbol covers this line — code drifted under the spec's
     /// claim, or the symbol set is stale.
     SymbolMismatch,
+    /// Structured-fact SSOT violation — a current-state code comment RESTATES a
+    /// structured fact instead of POINTING to it: a relation/status assertion
+    /// verb (`supersedes` / `decided in` / `deferred to` / ...) sits adjacent
+    /// to a `§<id>` citation on the same comment line. Such facts have a single
+    /// store home (`decision_status` / `superseded_by` / bindings, authored via
+    /// the mutate API), so prose acting as their source is a second source of
+    /// truth. Emitted only when `severity_prose_fact_assertion` is set. See
+    /// claudedocs/structured-fact-ssot-design.md.
+    ProseFactAssertion,
 }
 
 /// Walk configured paths under `root`, collecting all readable files.
@@ -839,6 +856,76 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// line inherits when the previous comment line *ends with* the prefix,
 /// e.g. `/// WAI-ARIA 1.2` then `/// §6.6.6`). Both still require a
 /// registered prefix verbatim, so a citation never skips without one.
+/// Forbidden structured-fact-assertion verbs (lowercased substrings). A
+/// current-state prose surface (a code comment) may POINT to a section
+/// (`§<id>`) but must not RESTATE a structured fact about it: relation and
+/// status assertions have a single store home (`decision_status` /
+/// `superseded_by` / bindings, authored via the mutate API), and prose must
+/// only project them. Matched as case-insensitive substring containment, so a
+/// stem (`supersede`) also covers its inflections (`supersedes` / `superseded`).
+/// Scoped to verbs actually in use; `implements` is deliberately excluded (it
+/// is the binding idiom, already governed by the binding axis + max-rigor). See
+/// claudedocs/structured-fact-ssot-design.md.
+const PROSE_FACT_ASSERTION_VERBS: &[&str] = &[
+    "supersede",
+    "decided in",
+    "ratified in",
+    "deferred to",
+    "depends on",
+    "refines",
+    "conflicts with",
+    "폐기",
+    "대체",
+];
+
+/// Scan comment text for the structured-fact SSOT violation "a fact-assertion
+/// verb restates a fact about a `§<id>` citation in prose". Returns
+/// `(line_number, section_id, verb)` per hit: on a single comment line a
+/// forbidden verb (see [`PROSE_FACT_ASSERTION_VERBS`]) occurs before a `§<id>`
+/// citation, so the prose is sourcing a store-homed fact instead of pointing to
+/// it. Backtick code-spans are skipped (a `§<id>` inside `` `…` `` is a
+/// documentation example, mirroring [`extract_section_citations`]). At most one
+/// hit per line — the violation is per comment, not per token. Independent of
+/// whether the cited id resolves: restating a fact in prose is the violation
+/// regardless of the id's validity.
+pub fn extract_prose_fact_assertions(content: &str) -> Vec<(usize, String, String)> {
+    let mut out = Vec::new();
+    for (line_idx, line) in content.lines().enumerate() {
+        let mut in_backtick = false;
+        for (i, c) in line.char_indices() {
+            if c == '`' {
+                in_backtick = !in_backtick;
+                continue;
+            }
+            if in_backtick || c != '§' {
+                continue;
+            }
+            let preceding = line[..i].to_lowercase();
+            let verb = match PROSE_FACT_ASSERTION_VERBS
+                .iter()
+                .find(|v| preceding.contains(**v))
+            {
+                Some(v) => *v,
+                None => continue,
+            };
+            // Parse the cited id tail with the same char class as
+            // `extract_section_citations` (trailing `.` dropped).
+            let tail = &line[i + c.len_utf8()..];
+            let id: String = tail
+                .chars()
+                .take_while(|t| is_section_id_char(*t) || *t == '.')
+                .collect();
+            let id = id.trim_end_matches('.').to_string();
+            if id.is_empty() {
+                continue;
+            }
+            out.push((line_idx + 1, id, verb.to_string()));
+            break;
+        }
+    }
+    out
+}
+
 pub fn extract_section_citations(
     content: &str,
     external_prefixes_numeric: &[String],
@@ -1907,6 +1994,28 @@ impl SetEqualityValidator {
                 }
             }
 
+            // ---- Prose-fact-assertion axis (structured-fact SSOT, opt-in) ----
+            // A current-state code comment must POINT to a section, not RESTATE
+            // a structured fact about it (a relation/status verb adjacent to a
+            // `§<id>`). Such facts live once in the store (decision_status /
+            // superseded_by / bindings, authored via the mutate API) and prose
+            // only projects them. OFF unless `severity_prose_fact_assertion` is
+            // set. Reached only in filter_id.is_none() mode (the section-axis
+            // guard above already `continue`s the decay-filter pass). See
+            // claudedocs/structured-fact-ssot-design.md.
+            if self.config.severity_prose_fact_assertion.is_some() {
+                for (line, section_id, _verb) in extract_prose_fact_assertions(&content) {
+                    violations.push(CodeRefViolation::Citation {
+                        citation: Citation {
+                            file: rel.clone(),
+                            line,
+                            entry_id: format!("§{}", section_id),
+                        },
+                        kind: ViolationKind::ProseFactAssertion,
+                    });
+                }
+            }
+
             // ---- Inventory ID axis (Phase 1A) ----
             // Active / Reserved → silent; Deprecated → InventoryDeprecated;
             // missing IDs → InventoryMissing. `[[orphan_ledger]] kind =
@@ -2540,6 +2649,7 @@ mod tests {
                 severity_confirmation: None,
                 severity_classification: None,
                 severity_blanket: None,
+                severity_prose_fact_assertion: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only,
                 inventory_prefixes: inventory_prefixes.to_vec(),
@@ -2779,6 +2889,7 @@ mod tests {
                 severity_confirmation: None,
                 severity_classification: None,
                 severity_blanket: None,
+                severity_prose_fact_assertion: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -3045,6 +3156,7 @@ mod tests {
                 severity_confirmation: None,
                 severity_classification: None,
                 severity_blanket: None,
+                severity_prose_fact_assertion: None,
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -5645,6 +5757,62 @@ mod tests {
             v.is_empty(),
             "no-hyphen foreign id must be skipped: {:?}",
             v
+        );
+    }
+
+    #[test]
+    fn prose_fact_assertion_flags_verb_beside_section_ref() {
+        // A relation/status verb adjacent to a section ref restates a
+        // store-homed fact in prose -> flagged. A bare pointer or a "see"
+        // pointer is read-side only -> ok; a ref inside backticks is a
+        // documentation example -> skipped. The section sigil is built at
+        // runtime (s) so this source file carries no literal section-citation
+        // token for the code-ref gate to read.
+        let s = "\u{a7}";
+        let src = format!(
+            "// the policy is decided in {s}5.37, which supersedes {s}5.36\n\
+             // see {s}5.36 for the bridge\n\
+             // plain {s}5.41 pointer\n\
+             // example: `decided in {s}9.99` in a code span\n"
+        );
+        let hits = extract_prose_fact_assertions(&src);
+        let lines: Vec<usize> = hits.iter().map(|(l, _, _)| *l).collect();
+        assert!(lines.contains(&1), "verb+ref line must flag: {hits:?}");
+        assert!(
+            !lines.contains(&2),
+            "a pointer line must not flag: {hits:?}"
+        );
+        assert!(
+            !lines.contains(&3),
+            "a bare pointer must not flag: {hits:?}"
+        );
+        assert!(
+            !lines.contains(&4),
+            "a backticked ref is an example: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn prose_fact_assertion_rejects_the_r1013_1_comment_shape() {
+        // The pinion R1013.1 failure shape: a comment RESTATED structured facts
+        // (a decided-in claim and a supersedes claim) the store did not hold.
+        // Both lines flag as prose sourcing a store-homed fact -- the design
+        // acceptance test (claudedocs/structured-fact-ssot-design.md). The sigil
+        // is built at runtime so the source has no literal citation token.
+        let s = "\u{a7}";
+        let src = format!(
+            "// the grid font policy is decided in {s}5.37 (self-hosted),\n\
+             // which supersedes this {s}5.36 bridge\n"
+        );
+        let hits = extract_prose_fact_assertions(&src);
+        let lines: Vec<usize> = hits.iter().map(|(l, _, _)| *l).collect();
+        assert!(
+            lines.contains(&1),
+            "decided-in assertion must flag: {hits:?}"
+        );
+        assert!(
+            lines.contains(&2),
+            "supersedes assertion must flag: {hits:?}"
         );
     }
 }

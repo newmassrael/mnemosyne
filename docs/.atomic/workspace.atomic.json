@@ -13525,6 +13525,50 @@
         "typed relation edges (depends_on / refines / conflicts_with) built only when a relation verb is first used (SSOT completion, demand-pulled), scoped to that verb.",
         "Detailed design lives in claudedocs/structured-fact-ssot-design.md (gitignored working artifact); memory anchor project_sce_adoption_uc1.md."
       ]
+    },
+    "Round 577 — implement v1 of the structured-fact SSOT lint (prose-fact-assertion axis)": {
+      "decision_summary": "Build v1 of the structured-fact SSOT design (ratified R576): a new opt-in prose-fact-assertion axis in validate-code-refs that flags a current-state code comment which RESTATES a structured fact (a relation/status verb adjacent to a §<id>) instead of pointing to it. The fact has a single store home (decision_status/superseded_by/bindings, authored via the mutate API); prose only projects. Deterministic and AI-free; opt-in via severity_prose_fact_assertion (None=off). Scoped to used relation/status verbs; implements excluded (binding idiom). The design acceptance test — the real R1013.1 comment shape — is rejected by the lint. Section-body surface, open/deferred-state verbs, and a CLI override are deferred per design sec 12.",
+      "changes_bullets": [
+        "Add the prose-fact-assertion axis to validate-code-refs (mnemosyne-validate): a current-state code comment that RESTATES a structured fact — a relation/status verb adjacent to a §<id> citation — is flagged ProseFactAssertion, because the fact has a single store home and prose must only point to it.",
+        "New ViolationKind::ProseFactAssertion + DefectClass::ProseFactAssertion + extract_prose_fact_assertions helper (closed verb set, backtick-skipped, one hit per line, independent of whether the cited id resolves).",
+        "New opt-in config axis severity_prose_fact_assertion (Option<Severity>, None = off), wired through the cli tally / summary line / JSON / reject gate exactly like severity_verification and severity_blanket.",
+        "Scope: relation/status verbs in use (supersede, decided in, ratified in, deferred to, depends on, refines, conflicts with, plus Korean 폐기/대체); implements is excluded (binding idiom, already governed by the binding axis + max-rigor)."
+      ],
+      "verification_bullets": [
+        "New unit tests pass: prose_fact_assertion_flags_verb_beside_section_ref (positive + 'see §X' pointer / bare pointer / backtick-example negatives) and prose_fact_assertion_rejects_the_r1013_1_comment_shape (the design acceptance test on the real R1013.1 comment text — both 'decided in §5.37' and 'supersedes §5.36' lines flag).",
+        "cargo fmt --all --check clean; cargo clippy -D warnings clean on mnemosyne-config + mnemosyne-validate + mnemosyne-cli; cargo test across those three crates = 0 failed.",
+        "Axis is opt-in (None default), so no behavior change for existing consumers (Mnemosyne dogfood, SCE) until a workspace sets the knob; the 4 SetEqualityValidatorConfig struct literals updated to carry the new field."
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "Deferred to later rounds (design sec 12 open items): open-question representation (DecisionStatus has no Open variant, gating the deferred/open verbs), the section-body/caveat scan surface, a CLI severity override, multilingual verb expansion, and an explicit read-side projection helper (the existing query read-path already renders a section's status/title).",
+        "Live acceptance against pinion R1013.1 (enable severity_prose_fact_assertion in pinion's mnemosyne.toml and confirm the already-committed paint_adapter.rs comment flags) is pending — a pinion-side config step.",
+        "Design SSOT: claudedocs/structured-fact-ssot-design.md, ratified R576."
+      ],
+      "publishable_decision_summary": "Build v1 of the structured-fact SSOT design (ratified R576): a new opt-in prose-fact-assertion axis in validate-code-refs that flags a current-state code comment which RESTATES a structured fact (a relation/status verb adjacent to a §<id>) instead of pointing to it. The fact has a single store home (decision_status/superseded_by/bindings, authored via the mutate API); prose only projects. Deterministic and AI-free; opt-in via severity_prose_fact_assertion (None=off). Scoped to used relation/status verbs; implements excluded (binding idiom). The design acceptance test — the real R1013.1 comment shape — is rejected by the lint. Section-body surface, open/deferred-state verbs, and a CLI override are deferred per design sec 12.",
+      "publishable_changes_bullets": [
+        "Add the prose-fact-assertion axis to validate-code-refs (mnemosyne-validate): a current-state code comment that RESTATES a structured fact — a relation/status verb adjacent to a §<id> citation — is flagged ProseFactAssertion, because the fact has a single store home and prose must only point to it.",
+        "New ViolationKind::ProseFactAssertion + DefectClass::ProseFactAssertion + extract_prose_fact_assertions helper (closed verb set, backtick-skipped, one hit per line, independent of whether the cited id resolves).",
+        "New opt-in config axis severity_prose_fact_assertion (Option<Severity>, None = off), wired through the cli tally / summary line / JSON / reject gate exactly like severity_verification and severity_blanket.",
+        "Scope: relation/status verbs in use (supersede, decided in, ratified in, deferred to, depends on, refines, conflicts with, plus Korean 폐기/대체); implements is excluded (binding idiom, already governed by the binding axis + max-rigor)."
+      ],
+      "publishable_verification_bullets": [
+        "New unit tests pass: prose_fact_assertion_flags_verb_beside_section_ref (positive + 'see §X' pointer / bare pointer / backtick-example negatives) and prose_fact_assertion_rejects_the_r1013_1_comment_shape (the design acceptance test on the real R1013.1 comment text — both 'decided in §5.37' and 'supersedes §5.36' lines flag).",
+        "cargo fmt --all --check clean; cargo clippy -D warnings clean on mnemosyne-config + mnemosyne-validate + mnemosyne-cli; cargo test across those three crates = 0 failed.",
+        "Axis is opt-in (None default), so no behavior change for existing consumers (Mnemosyne dogfood, SCE) until a workspace sets the knob; the 4 SetEqualityValidatorConfig struct literals updated to carry the new field."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Deferred to later rounds (design sec 12 open items): open-question representation (DecisionStatus has no Open variant, gating the deferred/open verbs), the section-body/caveat scan surface, a CLI severity override, multilingual verb expansion, and an explicit read-side projection helper (the existing query read-path already renders a section's status/title).",
+        "Live acceptance against pinion R1013.1 (enable severity_prose_fact_assertion in pinion's mnemosyne.toml and confirm the already-committed paint_adapter.rs comment flags) is pending — a pinion-side config step.",
+        "Design SSOT: claudedocs/structured-fact-ssot-design.md, ratified R576."
+      ]
     }
   },
   "inventory_entries": {},
