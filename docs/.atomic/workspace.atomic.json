@@ -13697,6 +13697,40 @@
         "alternatives_rejected prose (a struct surface, not a string field) is deferred; the five string fields scanned cover the overwhelming majority of section prose.",
         "With sec 12b closed, the structured-fact SSOT design is complete for the open-question case across BOTH surfaces (code comments + section prose); the remaining design item — sec 6 typed relations for depends/refines/conflicts — stays demand-gated (no consumer today)."
       ]
+    },
+    "Round 581 — session cleanup: sync the SSOT design doc + dedupe the validate-workspace store load": {
+      "decision_summary": "Mop up two cheap loose ends from the R576-R580 structured-fact SSOT arc surfaced by the session review: (1) sync the gitignored design doc to reflect what shipped (R577-R580) and resolve its sec 12 open items — it was stale at the R576 'design only' state; (2) remove the redundant AtomicStore::load in the section-prose surface by reusing the store cmd_validate_workspace already loaded. No behavior change. The deeper review items (CLI-side gating split from the ops pipeline; the resolved_by/superseded_by out-of-band defense-in-depth gap; the opt-in-unconsumed strategic question) are NOT cheap cleanup and are recorded as carry, not done here.",
+      "changes_bullets": [
+        "Sync claudedocs/structured-fact-ssot-design.md (gitignored working artifact): Status -> IMPLEMENTED (R577-R580); add a sec 0 \"Implementation status\" mapping each round and resolving the sec 12 open items; note the latent-payoff / demand-gated remainder. It was stale at the R576 \"design only\" state; the changelog stays the SSOT.",
+        "Dedupe the store load: print_section_prose_fact_assertion_surface now takes the &AtomicStore already loaded by cmd_validate_workspace instead of reloading it."
+      ],
+      "verification_bullets": [
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; mnemosyne-cli builds.",
+        "No behavior change: the section-prose surface reads the same store + config; only the redundant load is removed (the store is now shared from the caller)."
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "Out of \"cheap cleanup\" scope (flagged in the session review, kept as separate decisions): the section-prose gate lives in the CLI (cmd_validate_workspace), not the reusable ops::validate_workspace pipeline, so a non-CLI consumer gets no section-prose gate (consistent with the commit-ledger surface precedent); and neither resolved_by nor superseded_by has an out-of-band \"set only on the right status\" check (the direct-JSON-edit escape hatch).",
+        "Strategic open question (session review): the SSOT lint is opt-in and currently unconsumed — enable it in a real consumer (pinion warn->reject) to realize the payoff, or return to the narrative north-star bottleneck, before any further spec-side lint rounds."
+      ],
+      "publishable_decision_summary": "Mop up two cheap loose ends from the R576-R580 structured-fact SSOT arc surfaced by the session review: (1) sync the gitignored design doc to reflect what shipped (R577-R580) and resolve its sec 12 open items — it was stale at the R576 'design only' state; (2) remove the redundant AtomicStore::load in the section-prose surface by reusing the store cmd_validate_workspace already loaded. No behavior change. The deeper review items (CLI-side gating split from the ops pipeline; the resolved_by/superseded_by out-of-band defense-in-depth gap; the opt-in-unconsumed strategic question) are NOT cheap cleanup and are recorded as carry, not done here.",
+      "publishable_changes_bullets": [
+        "Sync claudedocs/structured-fact-ssot-design.md (gitignored working artifact): Status -> IMPLEMENTED (R577-R580); add a sec 0 \"Implementation status\" mapping each round and resolving the sec 12 open items; note the latent-payoff / demand-gated remainder. It was stale at the R576 \"design only\" state; the changelog stays the SSOT.",
+        "Dedupe the store load: print_section_prose_fact_assertion_surface now takes the &AtomicStore already loaded by cmd_validate_workspace instead of reloading it."
+      ],
+      "publishable_verification_bullets": [
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; mnemosyne-cli builds.",
+        "No behavior change: the section-prose surface reads the same store + config; only the redundant load is removed (the store is now shared from the caller)."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Out of \"cheap cleanup\" scope (flagged in the session review, kept as separate decisions): the section-prose gate lives in the CLI (cmd_validate_workspace), not the reusable ops::validate_workspace pipeline, so a non-CLI consumer gets no section-prose gate (consistent with the commit-ledger surface precedent); and neither resolved_by nor superseded_by has an out-of-band \"set only on the right status\" check (the direct-JSON-edit escape hatch).",
+        "Strategic open question (session review): the SSOT lint is opt-in and currently unconsumed — enable it in a real consumer (pinion warn->reject) to realize the payoff, or return to the narrative north-star bottleneck, before any further spec-side lint rounds."
+      ]
     }
   },
   "inventory_entries": {},

@@ -1167,7 +1167,7 @@ fn cmd_validate_workspace() -> Result<()> {
     let atomic = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
         .map_err(|e| anyhow!("atomic store load: {}", e))?;
     print_commit_ledger_drift_surface(&root, &atomic)?;
-    print_section_prose_fact_assertion_surface(&root)?;
+    print_section_prose_fact_assertion_surface(&atomic)?;
 
     if report.failed {
         bail!(
@@ -1252,7 +1252,9 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
 /// one knob governs both surfaces (uniform enforcement). OFF unless
 /// `severity_prose_fact_assertion` is set; gates the exit code only at `reject`
 /// (mirrors the commit-ledger surface's gating pattern).
-fn print_section_prose_fact_assertion_surface(root: &std::path::Path) -> Result<()> {
+fn print_section_prose_fact_assertion_surface(
+    atomic: &mnemosyne_atomic::AtomicStore,
+) -> Result<()> {
     let cfg = match workspace_config() {
         Ok(c) => c,
         Err(_) => return Ok(()),
@@ -1270,13 +1272,8 @@ fn print_section_prose_fact_assertion_surface(root: &std::path::Path) -> Result<
         Some(s) => s,
         None => return Ok(()), // axis off — no scan, no surface line
     };
-    let store = match mnemosyne_atomic::AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(
-        root, None,
-    )?) {
-        Ok(s) => s,
-        Err(_) => return Ok(()),
-    };
-    let findings = mnemosyne_validate::code_refs::scan_section_prose_fact_assertions(&store);
+    // Reuse the store already loaded by the caller (no redundant load).
+    let findings = mnemosyne_validate::code_refs::scan_section_prose_fact_assertions(atomic);
     println!(
         "section prose-fact-assertion: {} finding(s) (severity_prose_fact_assertion={})",
         findings.len(),
