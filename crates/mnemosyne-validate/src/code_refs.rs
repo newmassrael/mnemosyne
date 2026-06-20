@@ -962,8 +962,9 @@ pub fn extract_prose_fact_assertions(content: &str) -> Vec<(usize, String, Strin
 pub struct SectionProseFinding {
     /// The section whose prose carries the assertion.
     pub section_id: String,
-    /// Which prose field carried it (`intent` / `rationale` / `caveat` /
-    /// `inputs` / `outputs`).
+    /// Which settable prose field carried it (`intent` / `rationale` /
+    /// `inputs` / `outputs`). The append-only `caveats` field is exempt — see
+    /// [`scan_section_prose_fact_assertions`].
     pub field: &'static str,
     /// The matched fact-assertion verb. The finding deliberately does NOT pin a
     /// single target section ref: free-prose source→target binding is unreliable
@@ -991,13 +992,22 @@ fn collect_section_prose(
     }
 }
 
-/// Scan every section's prose fields for the structured-fact SSOT violation
-/// (sec 12b) — the store-side counterpart of the code-comment lint. Reuses
-/// [`extract_prose_fact_assertions`] so the verb set and detection are identical
-/// across both surfaces (one rule, two places). Gated by the same
-/// `severity_prose_fact_assertion` axis at the call site. (alternatives_rejected
-/// prose is a struct surface deferred to a follow-up; the five string fields
-/// below carry the overwhelming majority of section prose.)
+/// Scan every section's CURRENT-STATE prose fields for the structured-fact SSOT
+/// violation (sec 12b) — the store-side counterpart of the code-comment lint.
+/// Reuses [`extract_prose_fact_assertions`] so the verb set and detection are
+/// identical across both surfaces (one rule, two places). Gated by the same
+/// `severity_prose_fact_assertion` axis at the call site.
+///
+/// Only fields with a SETTER (`intent` / `rationale` / `inputs` / `outputs` —
+/// each replaceable, so a flagged assertion can be remediated) are scanned.
+/// `caveats_bullets` is **deliberately exempt**: it is append-only (only
+/// `add_section_caveat`, no set/remove), an audit ledger that accumulates
+/// per-round decisions — so a homed-verb inside a caveat has no sanctioned
+/// remediation path and would be permanent noise. Exempting it applies the same
+/// audit-vs-current-state line that exempts the changelog (R584, confirming the
+/// sec 9 irreducible residual with the concrete append-only mechanism a pinion
+/// field report surfaced). `alternatives_rejected` (a struct surface) stays
+/// deferred.
 pub fn scan_section_prose_fact_assertions(
     store: &mnemosyne_atomic::AtomicStore,
 ) -> Vec<SectionProseFinding> {
@@ -1008,9 +1018,6 @@ pub fn scan_section_prose_fact_assertions(
         }
         for b in &section.rationale_bullets {
             collect_section_prose(&mut out, section_id, "rationale", b);
-        }
-        for b in &section.caveats_bullets {
-            collect_section_prose(&mut out, section_id, "caveat", b);
         }
         for b in &section.inputs_bullets {
             collect_section_prose(&mut out, section_id, "inputs", b);
@@ -5947,26 +5954,27 @@ mod tests {
     }
 
     #[test]
-    fn section_prose_fact_assertion_flags_caveat_not_pointer() {
-        // R580 / sec 12b — the store-side surface. A section caveat that RESTATES
-        // a relation ("supersedes §X") is flagged; a bare pointer in intent
-        // ("see §Y") is not. Sigil built at runtime so this source carries no
-        // literal citation token.
+    fn section_prose_lints_settable_fields_but_exempts_append_only_caveat() {
+        // R584 / sec 12b — store-side surface, scoped to SETTABLE fields. A
+        // fact-assertion in `rationale` (replaceable → remediable) is flagged;
+        // the same assertion in an append-only `caveat` (audit ledger, no
+        // set/remove primitive → no remediation path) is EXEMPT; a bare pointer
+        // in `intent` is not an assertion. Sigil built at runtime.
         use mnemosyne_atomic::{AtomicSection, AtomicStore};
         let s = "\u{a7}";
         let mut store = AtomicStore::new();
         let sec = AtomicSection {
-            caveats_bullets: vec![format!("the canonical fix supersedes {s}5.36")],
-            intent: Some(format!("see {s}5.37 for the self-hosted engine")),
+            rationale_bullets: vec![format!("the canonical fix supersedes {s}5.36")],
+            caveats_bullets: vec![format!("historical: superseded by {s}5.37 at R20")],
+            intent: Some(format!("see {s}5.3 for the DSL")),
             ..AtomicSection::default()
         };
         store.sections.insert("5.41".to_string(), sec);
         let findings = scan_section_prose_fact_assertions(&store);
+        // Only the rationale assertion flags — caveat exempt, intent is a pointer.
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].section_id, "5.41");
-        assert_eq!(findings[0].field, "caveat");
-        // The finding names (section, field, verb); it does not pin a target ref
-        // (FP-2 — false precision dropped).
+        assert_eq!(findings[0].field, "rationale");
         assert!(findings[0].verb.contains("supersede"), "{findings:?}");
     }
 

@@ -13803,6 +13803,46 @@
         "Install-command (consumer report item B): README.md / docs/SCHEMA_GUIDE.md already pin the package name (`... mnemosyne-cli`); the missing-package \"multiple packages\" error was only in this session's chat advisory, not the repo. Corrected form: `cargo install --git <url> --rev <sha> mnemosyne-cli --locked`. No repo change needed.",
         "rust-toolchain.toml stays at 1.94.1 (dev toolchain); MSRV (the consumer floor) is 1.88 and now CI-verified. Future MSRV bumps update only Cargo.toml rust-version; the CI job follows automatically."
       ]
+    },
+    "Round 584 — exempt the append-only caveats field from the section-prose lint (pinion follow-up #4)": {
+      "decision_summary": "pinion's follow-up to R582 surfaced that the R580 section-prose lint produces permanent, unremediable noise on the caveats field: caveats are append-only (only add_section_caveat; no set/remove primitive — an audit ledger accumulating per-round decisions), and direct JSON edits are contract-forbidden, so a homed-verb inside a caveat has NO sanctioned 'demote the prose' path (my R582 prescription was unexecutable for that surface). Confirmed in code: caveats has only an add primitive while intent/rationale/inputs/outputs each have a setter (replaceable → remediable). Resolution = pinion option (a): exempt caveats from the section-prose lint — it is an append-only audit surface, so the same audit-vs-current-state line that exempts the changelog applies. Rejected option (b) (a caveat remove/replace primitive) as a frozen-ledger violation. The lint now scans only the settable current-state fields, where a flagged assertion can actually be remediated via its setter. This confirms the sec 9 irreducible-residual classification with the concrete append-only mechanism.",
+      "changes_bullets": [
+        "scan_section_prose_fact_assertions no longer scans caveats_bullets — caveats are append-only (only add_section_caveat; no set/remove primitive), an audit ledger accumulating per-round decisions, and direct JSON edits are contract-forbidden, so a homed-verb inside a caveat has NO sanctioned remediation path; linting it = permanent noise. Exempt like the changelog (the same audit-vs-current-state line).",
+        "The lint now scans only the SETTABLE current-state prose fields (intent / rationale / inputs / outputs), each replaceable via its setter so a flagged assertion is actually remediable. SectionProseFinding.field doc updated.",
+        "Rejected the alternative of adding a caveat remove/replace primitive (a frozen-ledger violation)."
+      ],
+      "verification_bullets": [
+        "New test section_prose_lints_settable_fields_but_exempts_append_only_caveat: a supersede in rationale (settable) flags; the same in a caveat (append-only) is exempt; a bare pointer in intent does not flag.",
+        "Confirmed in code: caveats has only add_section_caveat (no set/remove); intent/rationale/inputs/outputs each have a setter (replaceable → remediable).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed."
+      ],
+      "impact_refs": [
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "pinion follow-up confirmations: FP-1/FP-2 (R582) field-verified resolved on rev 959555b; the install-command package-name is already correct in repo (README/SCHEMA_GUIDE), only the chat advisory omitted it.",
+        "The MSRV 1.94->1.88 fix (R583) is committed but UNPUSHED — pinion still sees 1.94 on origin until R583 (+ this R584) are pushed. Push delivers both the MSRV correction and this caveat exemption.",
+        "alternatives_rejected struct surface still deferred. The one real pinion cleanup candidate remains §5.36 active-vs-superseded drift, to be verified against R342/R574 mutate-invariant enforcement by pinion."
+      ],
+      "publishable_decision_summary": "pinion's follow-up to R582 surfaced that the R580 section-prose lint produces permanent, unremediable noise on the caveats field: caveats are append-only (only add_section_caveat; no set/remove primitive — an audit ledger accumulating per-round decisions), and direct JSON edits are contract-forbidden, so a homed-verb inside a caveat has NO sanctioned 'demote the prose' path (my R582 prescription was unexecutable for that surface). Confirmed in code: caveats has only an add primitive while intent/rationale/inputs/outputs each have a setter (replaceable → remediable). Resolution = pinion option (a): exempt caveats from the section-prose lint — it is an append-only audit surface, so the same audit-vs-current-state line that exempts the changelog applies. Rejected option (b) (a caveat remove/replace primitive) as a frozen-ledger violation. The lint now scans only the settable current-state fields, where a flagged assertion can actually be remediated via its setter. This confirms the sec 9 irreducible-residual classification with the concrete append-only mechanism.",
+      "publishable_changes_bullets": [
+        "scan_section_prose_fact_assertions no longer scans caveats_bullets — caveats are append-only (only add_section_caveat; no set/remove primitive), an audit ledger accumulating per-round decisions, and direct JSON edits are contract-forbidden, so a homed-verb inside a caveat has NO sanctioned remediation path; linting it = permanent noise. Exempt like the changelog (the same audit-vs-current-state line).",
+        "The lint now scans only the SETTABLE current-state prose fields (intent / rationale / inputs / outputs), each replaceable via its setter so a flagged assertion is actually remediable. SectionProseFinding.field doc updated.",
+        "Rejected the alternative of adding a caveat remove/replace primitive (a frozen-ledger violation)."
+      ],
+      "publishable_verification_bullets": [
+        "New test section_prose_lints_settable_fields_but_exempts_append_only_caveat: a supersede in rationale (settable) flags; the same in a caveat (append-only) is exempt; a bare pointer in intent does not flag.",
+        "Confirmed in code: caveats has only add_section_caveat (no set/remove); intent/rationale/inputs/outputs each have a setter (replaceable → remediable).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "pinion follow-up confirmations: FP-1/FP-2 (R582) field-verified resolved on rev 959555b; the install-command package-name is already correct in repo (README/SCHEMA_GUIDE), only the chat advisory omitted it.",
+        "The MSRV 1.94->1.88 fix (R583) is committed but UNPUSHED — pinion still sees 1.94 on origin until R583 (+ this R584) are pushed. Push delivers both the MSRV correction and this caveat exemption.",
+        "alternatives_rejected struct surface still deferred. The one real pinion cleanup candidate remains §5.36 active-vs-superseded drift, to be verified against R342/R574 mutate-invariant enforcement by pinion."
+      ]
     }
   },
   "inventory_entries": {},
