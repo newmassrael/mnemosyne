@@ -625,7 +625,7 @@ fn print_help(prog: &str) {
  "   refresh normative_excerpt.text + text_sha256 from a medium-forge epub-anchor-map/v2; preserves authored anchor_url + source_revision (section must already carry an excerpt)"
  );
     println!(
- " {} set-section-decision-status --section §<N> --status active|superseded|removed [--superseding §<M>] [--sidecar <path>] [--json]",
+ " {} set-section-decision-status --section §<N> --status active|superseded|removed|open [--superseding §<M>] [--sidecar <path>] [--json]",
  prog
  );
     println!(

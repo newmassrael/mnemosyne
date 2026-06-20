@@ -201,7 +201,8 @@ pub enum CoverageClass {
     NormativeGap,
     /// `Informative` and live — prose-only, exempt from the coverage axiom.
     InformativeExempt,
-    /// `Removed` tombstone — excluded from the coverage denominator entirely.
+    /// Lifecycle-excluded from the coverage denominator entirely — a `Removed`
+    /// tombstone or an `Open` (not-yet-decided) section (`is_axiom_exempt`).
     RemovedExcluded,
 }
 
@@ -213,21 +214,23 @@ pub enum CoverageClass {
 /// the axiom flags, and it is `{Normative, !Removed, no implements coverage}`
 /// under either ordering.
 fn classify_section_coverage(section: &mnemosyne_core::SectionView) -> CoverageClass {
-    let removed =
-        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
+    let exempt = section
+        .decision_status
+        .unwrap_or(DecisionStatus::Active)
+        .is_axiom_exempt();
     match section.coverage_expectation {
         // Both exempt classes (R421 3-state) leave the coverage axiom: a section
         // out-of-scope here, or inherently informational, expects no implements.
         mnemosyne_core::CoverageExpectation::OutOfScopeHere
         | mnemosyne_core::CoverageExpectation::Informational => {
-            if removed {
+            if exempt {
                 CoverageClass::RemovedExcluded
             } else {
                 CoverageClass::InformativeExempt
             }
         }
         mnemosyne_core::CoverageExpectation::Normative => {
-            if removed {
+            if exempt {
                 CoverageClass::RemovedExcluded
             } else if section.bindings.iter().any(|b| counts_as_coverage(b.kind)) {
                 CoverageClass::Implemented
@@ -248,9 +251,11 @@ fn classify_section_coverage(section: &mnemosyne_core::SectionView) -> CoverageC
 /// axis uses. The kind predicate is the exhaustive [`counts_as_coverage`]'s
 /// sibling: `Verifies` is the only kind that satisfies it.
 fn is_verification_gap(section: &mnemosyne_core::SectionView) -> bool {
-    let removed =
-        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
-    !removed
+    let exempt = section
+        .decision_status
+        .unwrap_or(DecisionStatus::Active)
+        .is_axiom_exempt();
+    !exempt
         && matches!(
             section.coverage_expectation,
             mnemosyne_core::CoverageExpectation::Normative
@@ -273,9 +278,11 @@ fn is_verification_gap(section: &mnemosyne_core::SectionView) -> bool {
 /// `references` bindings are fine on an exempt section (a «trace» edge, not a
 /// fulfillment claim). Mirrors [`is_verification_gap`] — opt-in, predicate-only.
 fn is_coverage_misclassified(section: &mnemosyne_core::SectionView) -> bool {
-    let removed =
-        section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
-    if removed {
+    let lifecycle_exempt = section
+        .decision_status
+        .unwrap_or(DecisionStatus::Active)
+        .is_axiom_exempt();
+    if lifecycle_exempt {
         return false;
     }
     let exempt = matches!(
@@ -302,9 +309,11 @@ fn is_coverage_misclassified(section: &mnemosyne_core::SectionView) -> bool {
 fn scan_blanket_verifies(snapshot: &mnemosyne_core::AtomicSnapshot) -> Vec<CodeRefViolation> {
     let mut by_artifact: BTreeMap<(String, Option<String>), Vec<String>> = BTreeMap::new();
     for (section_id, section) in &snapshot.sections {
-        let removed =
-            section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
-        if removed {
+        let exempt = section
+            .decision_status
+            .unwrap_or(DecisionStatus::Active)
+            .is_axiom_exempt();
+        if exempt {
             continue;
         }
         for b in &section.bindings {
@@ -3303,11 +3312,20 @@ mod tests {
             "dead".to_string(),
             view(Some(DecisionStatus::Removed), Ce::Normative, &[]),
         );
+        // Open (not-yet-decided) Normative with no coverage → lifecycle-excluded
+        // like Removed, NOT a normative gap (is_axiom_exempt, R578).
+        snap.sections.insert(
+            "openq".to_string(),
+            view(Some(DecisionStatus::Open), Ce::Normative, &[]),
+        );
         let r = classify_coverage(&snap);
         assert_eq!(r.implemented, vec!["impl".to_string()]);
         assert_eq!(r.normative_gap, vec!["gap".to_string()]);
         assert_eq!(r.informative_exempt, vec!["info".to_string()]);
-        assert_eq!(r.removed_excluded, vec!["dead".to_string()]);
+        assert_eq!(
+            r.removed_excluded,
+            vec!["dead".to_string(), "openq".to_string()]
+        );
         assert_eq!(r.applicable(), 2);
         assert_eq!(r.coverage_ratio(), Some(0.5));
     }

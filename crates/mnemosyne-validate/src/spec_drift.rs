@@ -71,12 +71,15 @@ pub fn scan_spec_drift(store: &AtomicStore, workspace_revision: &str) -> Vec<Spe
         .iter()
         .filter_map(|(section_id, section)| {
             let excerpt = section.normative_excerpt.as_ref()?;
-            // Superseded/Removed Sections are expected to trail the
-            // workspace rev (partial-migration); only live Sections drift.
-            // Unset decision_status == Active (the live default).
+            // Superseded/Removed Sections are expected to trail the workspace
+            // rev (partial-migration); Open (not-yet-decided) is not a ratified
+            // live spec mirror either. Only live Active Sections drift. Unset
+            // decision_status == Active (the live default).
             if matches!(
                 section.skeleton.decision_status,
-                Some(DecisionStatus::Superseded) | Some(DecisionStatus::Removed)
+                Some(DecisionStatus::Superseded)
+                    | Some(DecisionStatus::Removed)
+                    | Some(DecisionStatus::Open)
             ) {
                 return None;
             }

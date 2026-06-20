@@ -2203,7 +2203,9 @@ pub fn set_section_decision_status(
         section.skeleton.decision_status = Some(new_status);
         section.superseded_by = match new_status {
             DecisionStatus::Superseded => superseding.map(str::to_string),
-            DecisionStatus::Active | DecisionStatus::Removed => None,
+            // Open poses an undecided question, so like Active/Removed it
+            // carries no superseding pointer (Open → Active/Removed on resolve).
+            DecisionStatus::Active | DecisionStatus::Removed | DecisionStatus::Open => None,
         };
     }
     save_with_receipt(

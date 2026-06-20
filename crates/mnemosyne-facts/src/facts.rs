@@ -133,6 +133,7 @@ fn encode_decision_status(status: Option<DecisionStatus>) -> u8 {
         Some(DecisionStatus::Active) => 1,
         Some(DecisionStatus::Superseded) => 2,
         Some(DecisionStatus::Removed) => 3,
+        Some(DecisionStatus::Open) => 4,
     }
 }
 
@@ -145,6 +146,7 @@ fn read_decision_status(
         1 => Ok(Some(DecisionStatus::Active)),
         2 => Ok(Some(DecisionStatus::Superseded)),
         3 => Ok(Some(DecisionStatus::Removed)),
+        4 => Ok(Some(DecisionStatus::Open)),
         other => Err(FactCodecError::UnknownDiscriminator(
             other,
             "decision_status",
@@ -330,6 +332,29 @@ mod tests {
         };
         let bytes = fact.encode_value();
         let decoded = SectionFact::decode_value(1, 7, 1, &bytes).expect("decode");
+        assert_eq!(decoded, fact);
+    }
+
+    #[test]
+    fn section_fact_round_trip_open_status() {
+        // R578 — the Open discriminator (4) round-trips like Active/Superseded/
+        // Removed; locks the new decision-lifecycle state into the fact codec.
+        let fact = SectionFact {
+            key: FactKey {
+                branch_id: 1,
+                entity_id: 99,
+                valid_from: 1,
+            },
+            section_id: "grid-cjk".to_string(),
+            skeleton: SectionSkeleton {
+                title: "open question".to_string(),
+                parent_doc: "docs/DESIGN.md".to_string(),
+                parent_section: None,
+                decision_status: Some(DecisionStatus::Open),
+            },
+        };
+        let bytes = fact.encode_value();
+        let decoded = SectionFact::decode_value(1, 99, 1, &bytes).expect("decode");
         assert_eq!(decoded, fact);
     }
 

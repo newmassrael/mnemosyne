@@ -13569,6 +13569,50 @@
         "Live acceptance against pinion R1013.1 (enable severity_prose_fact_assertion in pinion's mnemosyne.toml and confirm the already-committed paint_adapter.rs comment flags) is pending — a pinion-side config step.",
         "Design SSOT: claudedocs/structured-fact-ssot-design.md, ratified R576."
       ]
+    },
+    "Round 578 — add DecisionStatus::Open to complete the decision lifecycle (SSOT design sec 12a)": {
+      "decision_summary": "Implement design sec 12a (the open-question SSOT home): add DecisionStatus::Open, the not-yet-decided lifecycle state the enum was missing (it had only Active/Superseded/Removed). Open joins Removed as axiom-exempt (no in-force decision to back) via a new is_axiom_exempt() helper that is the single source for the coverage/verification/confirmation/spec-drift exemption set, replacing 6 inline == Removed checks (closing the half-enforced-invariant risk). Wired through the fact codec (discriminator 4), as_str, the CLI set-section-decision-status parser, and superseded_by handling (Open carries none). This lets prose POINT at an open question (a section in Open state) instead of restating it. Does NOT yet enable the lint open/deferred verbs (downstream: needs the deferred-to typed relation per sec 6).",
+      "changes_bullets": [
+        "Add DecisionStatus::Open (4th state, appended to preserve the existing Ord) — the not-yet-decided lifecycle state the enum was missing; Open resolves to Active or is withdrawn to Removed, never Superseded.",
+        "Add DecisionStatus::is_axiom_exempt() (Removed | Open) as the single source for the decision-backing exemption, replacing the 6 inline == Removed checks across coverage / verification / misclassification / blanket / verifies-linkage / confirmation (closes the half-enforced-invariant risk).",
+        "Exempt Open from spec rev-drift (an Open question is not a ratified live mirror) alongside Superseded/Removed.",
+        "Wire Open through the fact codec (discriminator 4), as_str (\"open\"), the CLI set-section-decision-status parser + help text, and set_section_decision_status (an Open section carries no superseded_by)."
+      ],
+      "verification_bullets": [
+        "New tests pass: core decision_status_open_label_and_axiom_exemption (as_str \"open\" + exemption set Removed/Open true, Active/Superseded false), facts section_fact_round_trip_open_status (discriminator 4 round-trips), code_refs classify_coverage_partitions extended (an Open Normative section with no coverage is lifecycle-excluded, NOT a normative gap).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Compiler-confirmed exhaustiveness: the one non-exhaustive match the new variant broke (set_section_decision_status superseded_by) was handled; every other DecisionStatus match across the 20 touched files compiles."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "Downstream (design sec 12 + sec 6): enable the lint's open/deferred verbs, which needs the deferred-to typed relation (open question -> resolving section) and resolving the \"open\" verb noise (a common English word).",
+        "No CURRENT_SCHEMA_VERSION bump (additive enum value, pre-release no-compat); revisit only if a forward-compat guard is later wanted.",
+        "MCP does not expose set-section-decision-status (CLI-only, unchanged); add only if a named consumer needs to set Open via MCP (YAGNI)."
+      ],
+      "publishable_decision_summary": "Implement design sec 12a (the open-question SSOT home): add DecisionStatus::Open, the not-yet-decided lifecycle state the enum was missing (it had only Active/Superseded/Removed). Open joins Removed as axiom-exempt (no in-force decision to back) via a new is_axiom_exempt() helper that is the single source for the coverage/verification/confirmation/spec-drift exemption set, replacing 6 inline == Removed checks (closing the half-enforced-invariant risk). Wired through the fact codec (discriminator 4), as_str, the CLI set-section-decision-status parser, and superseded_by handling (Open carries none). This lets prose POINT at an open question (a section in Open state) instead of restating it. Does NOT yet enable the lint open/deferred verbs (downstream: needs the deferred-to typed relation per sec 6).",
+      "publishable_changes_bullets": [
+        "Add DecisionStatus::Open (4th state, appended to preserve the existing Ord) — the not-yet-decided lifecycle state the enum was missing; Open resolves to Active or is withdrawn to Removed, never Superseded.",
+        "Add DecisionStatus::is_axiom_exempt() (Removed | Open) as the single source for the decision-backing exemption, replacing the 6 inline == Removed checks across coverage / verification / misclassification / blanket / verifies-linkage / confirmation (closes the half-enforced-invariant risk).",
+        "Exempt Open from spec rev-drift (an Open question is not a ratified live mirror) alongside Superseded/Removed.",
+        "Wire Open through the fact codec (discriminator 4), as_str (\"open\"), the CLI set-section-decision-status parser + help text, and set_section_decision_status (an Open section carries no superseded_by)."
+      ],
+      "publishable_verification_bullets": [
+        "New tests pass: core decision_status_open_label_and_axiom_exemption (as_str \"open\" + exemption set Removed/Open true, Active/Superseded false), facts section_fact_round_trip_open_status (discriminator 4 round-trips), code_refs classify_coverage_partitions extended (an Open Normative section with no coverage is lifecycle-excluded, NOT a normative gap).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Compiler-confirmed exhaustiveness: the one non-exhaustive match the new variant broke (set_section_decision_status superseded_by) was handled; every other DecisionStatus match across the 20 touched files compiles."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Downstream (design sec 12 + sec 6): enable the lint's open/deferred verbs, which needs the deferred-to typed relation (open question -> resolving section) and resolving the \"open\" verb noise (a common English word).",
+        "No CURRENT_SCHEMA_VERSION bump (additive enum value, pre-release no-compat); revisit only if a forward-compat guard is later wanted.",
+        "MCP does not expose set-section-decision-status (CLI-only, unchanged); add only if a named consumer needs to set Open via MCP (YAGNI)."
+      ]
     }
   },
   "inventory_entries": {},

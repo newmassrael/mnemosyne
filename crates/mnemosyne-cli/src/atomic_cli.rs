@@ -2431,7 +2431,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
 
 /// Round 265 — atomic decision_status setter CLI surface.
 ///
-/// `--section §<id> --status active|superseded|removed [--sidecar <path>] [--json]`
+/// `--section §<id> --status active|superseded|removed|open [--sidecar <path>] [--json]`
 ///
 /// Sets `AtomicSection.decision_status` on the atomic store. Stage B
 /// freshness substrate — once the atomic store carries non-Active status,
@@ -2478,14 +2478,15 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
-    let status_raw =
-        status_str.ok_or_else(|| anyhow!("--status arg required (active|superseded|removed)"))?;
+    let status_raw = status_str
+        .ok_or_else(|| anyhow!("--status arg required (active|superseded|removed|open)"))?;
     let new_status = match status_raw.to_ascii_lowercase().as_str() {
         "active" => DecisionStatus::Active,
         "superseded" => DecisionStatus::Superseded,
         "removed" => DecisionStatus::Removed,
+        "open" => DecisionStatus::Open,
         other => bail!(
-            "--status `{}` invalid (expected active|superseded|removed)",
+            "--status `{}` invalid (expected active|superseded|removed|open)",
             other
         ),
     };

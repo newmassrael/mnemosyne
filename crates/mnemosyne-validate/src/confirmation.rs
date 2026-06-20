@@ -105,9 +105,11 @@ pub fn scan_confirmation_gate(
             .collect();
     let mut out = Vec::new();
     for (section_id, section) in &snapshot.sections {
-        let removed =
-            section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
-        if removed
+        let exempt = section
+            .decision_status
+            .unwrap_or(DecisionStatus::Active)
+            .is_axiom_exempt();
+        if exempt
             || !matches!(section.coverage_expectation, CoverageExpectation::Normative)
             || !matches!(
                 section.verification_expectation,

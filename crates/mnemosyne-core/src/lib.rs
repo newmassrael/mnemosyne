@@ -326,6 +326,17 @@ pub enum DecisionStatus {
     Active,
     Superseded,
     Removed,
+    /// The section poses a not-yet-decided question — it sits on the decision
+    /// lifecycle but no decision is in force yet (`Open` → `Active` when
+    /// resolved, or `Removed` if withdrawn; never `Superseded`, which replaces
+    /// one *decision* with another). Like `Removed`, an `Open` section is EXEMPT
+    /// from the coverage / verification axioms: there is no decision to back
+    /// with code or tests yet. This is the structured-fact SSOT home for the
+    /// open-question state — prose POINTS at an open question (`§<id>` in `Open`
+    /// state) instead of RESTATING "this is still open"
+    /// (claudedocs/structured-fact-ssot-design.md sec 12a). Appended last to
+    /// preserve the existing `Ord` over Active/Superseded/Removed.
+    Open,
 }
 
 impl DecisionStatus {
@@ -336,7 +347,19 @@ impl DecisionStatus {
             DecisionStatus::Active => "active",
             DecisionStatus::Superseded => "superseded",
             DecisionStatus::Removed => "removed",
+            DecisionStatus::Open => "open",
         }
+    }
+
+    /// Lifecycle states that carry no in-force, backable decision — `Removed`
+    /// (tombstone) and `Open` (question not yet decided). Such sections are
+    /// EXEMPT from the decision-backing axioms (coverage / verification /
+    /// confirmation): there is nothing to back with code or tests. `Active` and
+    /// `Superseded` are NOT exempt — a superseded section's historical bindings
+    /// are still audited. Single source for the exemption set so the axes cannot
+    /// drift apart (CLAUDE.md half-enforced-invariant guard).
+    pub fn is_axiom_exempt(self) -> bool {
+        matches!(self, DecisionStatus::Removed | DecisionStatus::Open)
     }
 }
 
@@ -605,6 +628,17 @@ mod tests {
         assert!(h
             .chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+
+    #[test]
+    fn decision_status_open_label_and_axiom_exemption() {
+        // R578 — Open completes the decision lifecycle and joins Removed as an
+        // axiom-exempt state (no in-force decision to back with code/tests).
+        assert_eq!(DecisionStatus::Open.as_str(), "open");
+        assert!(DecisionStatus::Open.is_axiom_exempt());
+        assert!(DecisionStatus::Removed.is_axiom_exempt());
+        assert!(!DecisionStatus::Active.is_axiom_exempt());
+        assert!(!DecisionStatus::Superseded.is_axiom_exempt());
     }
 
     struct AlwaysNoneResolver;

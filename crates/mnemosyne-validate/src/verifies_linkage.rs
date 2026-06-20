@@ -142,9 +142,11 @@ pub fn scan_verifies_linkage(
     }
     let mut report = LinkageReport::default();
     for (section_id, section) in &snapshot.sections {
-        let removed =
-            section.decision_status.unwrap_or(DecisionStatus::Active) == DecisionStatus::Removed;
-        if removed {
+        let exempt = section
+            .decision_status
+            .unwrap_or(DecisionStatus::Active)
+            .is_axiom_exempt();
+        if exempt {
             continue;
         }
         for b in &section.bindings {
