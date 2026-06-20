@@ -1167,6 +1167,7 @@ fn cmd_validate_workspace() -> Result<()> {
     let atomic = AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(&root, None)?)
         .map_err(|e| anyhow!("atomic store load: {}", e))?;
     print_commit_ledger_drift_surface(&root, &atomic)?;
+    print_section_prose_fact_assertion_surface(&root)?;
 
     if report.failed {
         bail!(
@@ -1239,6 +1240,61 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
     );
     for (sid, n) in &per_section {
         println!(" §{}: {} citation(s)", sid, n);
+    }
+    Ok(())
+}
+
+/// Structured-fact SSOT — section-prose surface (design sec 12b). The
+/// counterpart of the code-comment lint (`validate-code-refs`
+/// `severity_prose_fact_assertion`): a section's own prose
+/// (`intent`/`rationale`/`caveat`/`inputs`/`outputs`) must POINT to a section,
+/// not RESTATE a structured fact about it. Reuses the same axis + verb set, so
+/// one knob governs both surfaces (uniform enforcement). OFF unless
+/// `severity_prose_fact_assertion` is set; gates the exit code only at `reject`
+/// (mirrors the commit-ledger surface's gating pattern).
+fn print_section_prose_fact_assertion_surface(root: &std::path::Path) -> Result<()> {
+    let cfg = match workspace_config() {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+    let scfg = match cfg
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+    {
+        Some(c) => c,
+        None => return Ok(()),
+    };
+    let severity = match scfg.severity_prose_fact_assertion {
+        Some(s) => s,
+        None => return Ok(()), // axis off — no scan, no surface line
+    };
+    let store = match mnemosyne_atomic::AtomicStore::load(&mnemosyne_ops::cascade::resolve_sidecar(
+        root, None,
+    )?) {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let findings = mnemosyne_validate::code_refs::scan_section_prose_fact_assertions(&store);
+    println!(
+        "section prose-fact-assertion: {} finding(s) (severity_prose_fact_assertion={})",
+        findings.len(),
+        severity.as_str()
+    );
+    for f in &findings {
+        println!(
+            " §{} [{}] {} → §{}",
+            f.section_id, f.field, f.verb, f.target
+        );
+    }
+    if !findings.is_empty() && severity == Severity::Reject {
+        bail!(
+            "{} section prose-fact-assertion violation(s) — section prose restates a \
+ store-homed fact; author it via the structured primitive and leave a bare §<id> \
+ pointer (severity_prose_fact_assertion=reject)",
+            findings.len()
+        );
     }
     Ok(())
 }

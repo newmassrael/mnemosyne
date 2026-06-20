@@ -946,6 +946,70 @@ pub fn extract_prose_fact_assertions(content: &str) -> Vec<(usize, String, Strin
     out
 }
 
+/// One section-prose structured-fact-assertion finding (sec 12b). A section's
+/// own prose field RESTATES a structured fact (a verb from
+/// [`PROSE_FACT_ASSERTION_VERBS`] next to a `§<id>`) instead of pointing to it —
+/// the same SSOT violation as a code comment, on the store-side surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionProseFinding {
+    /// The section whose prose carries the assertion.
+    pub section_id: String,
+    /// Which prose field carried it (`intent` / `rationale` / `caveat` /
+    /// `inputs` / `outputs`).
+    pub field: &'static str,
+    /// The cited target section id (without `§`).
+    pub target: String,
+    /// The matched fact-assertion verb.
+    pub verb: String,
+}
+
+fn collect_section_prose(
+    out: &mut Vec<SectionProseFinding>,
+    section_id: &str,
+    field: &'static str,
+    text: &str,
+) {
+    for (_, target, verb) in extract_prose_fact_assertions(text) {
+        out.push(SectionProseFinding {
+            section_id: section_id.to_string(),
+            field,
+            target,
+            verb,
+        });
+    }
+}
+
+/// Scan every section's prose fields for the structured-fact SSOT violation
+/// (sec 12b) — the store-side counterpart of the code-comment lint. Reuses
+/// [`extract_prose_fact_assertions`] so the verb set and detection are identical
+/// across both surfaces (one rule, two places). Gated by the same
+/// `severity_prose_fact_assertion` axis at the call site. (alternatives_rejected
+/// prose is a struct surface deferred to a follow-up; the five string fields
+/// below carry the overwhelming majority of section prose.)
+pub fn scan_section_prose_fact_assertions(
+    store: &mnemosyne_atomic::AtomicStore,
+) -> Vec<SectionProseFinding> {
+    let mut out = Vec::new();
+    for (section_id, section) in &store.sections {
+        if let Some(intent) = &section.intent {
+            collect_section_prose(&mut out, section_id, "intent", intent);
+        }
+        for b in &section.rationale_bullets {
+            collect_section_prose(&mut out, section_id, "rationale", b);
+        }
+        for b in &section.caveats_bullets {
+            collect_section_prose(&mut out, section_id, "caveat", b);
+        }
+        for b in &section.inputs_bullets {
+            collect_section_prose(&mut out, section_id, "inputs", b);
+        }
+        for b in &section.outputs_bullets {
+            collect_section_prose(&mut out, section_id, "outputs", b);
+        }
+    }
+    out
+}
+
 pub fn extract_section_citations(
     content: &str,
     external_prefixes_numeric: &[String],
@@ -5868,5 +5932,27 @@ mod tests {
         assert!(!lines.contains(&3), "depends-on has no home, must not flag");
         assert!(!lines.contains(&4), "refines has no home, must not flag");
         assert!(!lines.contains(&5), "bare 'open' is noise, must not flag");
+    }
+
+    #[test]
+    fn section_prose_fact_assertion_flags_caveat_not_pointer() {
+        // R580 / sec 12b — the store-side surface. A section caveat that RESTATES
+        // a relation ("supersedes §X") is flagged; a bare pointer in intent
+        // ("see §Y") is not. Sigil built at runtime so this source carries no
+        // literal citation token.
+        use mnemosyne_atomic::{AtomicSection, AtomicStore};
+        let s = "\u{a7}";
+        let mut store = AtomicStore::new();
+        let sec = AtomicSection {
+            caveats_bullets: vec![format!("the canonical fix supersedes {s}5.36")],
+            intent: Some(format!("see {s}5.37 for the self-hosted engine")),
+            ..AtomicSection::default()
+        };
+        store.sections.insert("5.41".to_string(), sec);
+        let findings = scan_section_prose_fact_assertions(&store);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].section_id, "5.41");
+        assert_eq!(findings[0].field, "caveat");
+        assert_eq!(findings[0].target, "5.36");
     }
 }

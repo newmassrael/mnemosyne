@@ -13657,6 +13657,46 @@
         "No out-of-band validator for \"resolved_by set implies Open\": parity with superseded_by (which likewise has no reverse-direction check); the single write path + the projection orphan-check are the enforced invariants.",
         "No CURRENT_SCHEMA_VERSION bump (additive serde-default field, pre-release no-compat)."
       ]
+    },
+    "Round 580 — extend the prose-fact-assertion lint to the section-prose surface (SSOT design sec 12b)": {
+      "decision_summary": "Close the last enforcement gap (design sec 12b): the prose-fact-assertion lint now also covers the store-side surface — a section's own prose (intent/rationale/caveat/inputs/outputs) must POINT to a section, not RESTATE a structured fact about it, exactly as a code comment must. New scan_section_prose_fact_assertions reuses extract_prose_fact_assertions (one rule, two surfaces), surfaced + gated in validate-workspace under the same severity_prose_fact_assertion axis (one knob governs both code comments and section prose). The code-comment surface runs in validate-code-refs (source scan); the section-prose surface runs in validate-workspace (raw store) — the natural split, since SectionView snapshots carry no prose. Opt-in; gates only at reject (mirrors the commit-ledger drift surface).",
+      "changes_bullets": [
+        "Add scan_section_prose_fact_assertions (mnemosyne-validate) — iterates store sections' intent/rationale/caveat/inputs/outputs prose, reusing extract_prose_fact_assertions, returning SectionProseFinding {section_id, field, target, verb}. One rule, two surfaces.",
+        "Wire it into validate-workspace as a CLI surface (print_section_prose_fact_assertion_surface): off unless severity_prose_fact_assertion is set; prints per-finding; gates the exit only at reject (mirrors the commit-ledger drift surface).",
+        "One axis (severity_prose_fact_assertion) now governs BOTH surfaces — code comments (validate-code-refs, source scan) and section prose (validate-workspace, raw store) — the natural split since SectionView snapshots carry no prose."
+      ],
+      "verification_bullets": [
+        "New test section_prose_fact_assertion_flags_caveat_not_pointer: a caveat that restates \"supersedes §X\" is flagged (field=caveat, target=X); a bare \"see §Y\" pointer in intent is not.",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Axis opt-in (None default) → no behavior change for the dogfood / SCE until a workspace sets the knob; the validate-workspace surface returns early when the axis is off (the Mnemosyne dogfood does not set it, so this commit's pre-commit validate-workspace is unaffected)."
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "alternatives_rejected prose (a struct surface, not a string field) is deferred; the five string fields scanned cover the overwhelming majority of section prose.",
+        "With sec 12b closed, the structured-fact SSOT design is complete for the open-question case across BOTH surfaces (code comments + section prose); the remaining design item — sec 6 typed relations for depends/refines/conflicts — stays demand-gated (no consumer today)."
+      ],
+      "publishable_decision_summary": "Close the last enforcement gap (design sec 12b): the prose-fact-assertion lint now also covers the store-side surface — a section's own prose (intent/rationale/caveat/inputs/outputs) must POINT to a section, not RESTATE a structured fact about it, exactly as a code comment must. New scan_section_prose_fact_assertions reuses extract_prose_fact_assertions (one rule, two surfaces), surfaced + gated in validate-workspace under the same severity_prose_fact_assertion axis (one knob governs both code comments and section prose). The code-comment surface runs in validate-code-refs (source scan); the section-prose surface runs in validate-workspace (raw store) — the natural split, since SectionView snapshots carry no prose. Opt-in; gates only at reject (mirrors the commit-ledger drift surface).",
+      "publishable_changes_bullets": [
+        "Add scan_section_prose_fact_assertions (mnemosyne-validate) — iterates store sections' intent/rationale/caveat/inputs/outputs prose, reusing extract_prose_fact_assertions, returning SectionProseFinding {section_id, field, target, verb}. One rule, two surfaces.",
+        "Wire it into validate-workspace as a CLI surface (print_section_prose_fact_assertion_surface): off unless severity_prose_fact_assertion is set; prints per-finding; gates the exit only at reject (mirrors the commit-ledger drift surface).",
+        "One axis (severity_prose_fact_assertion) now governs BOTH surfaces — code comments (validate-code-refs, source scan) and section prose (validate-workspace, raw store) — the natural split since SectionView snapshots carry no prose."
+      ],
+      "publishable_verification_bullets": [
+        "New test section_prose_fact_assertion_flags_caveat_not_pointer: a caveat that restates \"supersedes §X\" is flagged (field=caveat, target=X); a bare \"see §Y\" pointer in intent is not.",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Axis opt-in (None default) → no behavior change for the dogfood / SCE until a workspace sets the knob; the validate-workspace surface returns early when the axis is off (the Mnemosyne dogfood does not set it, so this commit's pre-commit validate-workspace is unaffected)."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "alternatives_rejected prose (a struct surface, not a string field) is deferred; the five string fields scanned cover the overwhelming majority of section prose.",
+        "With sec 12b closed, the structured-fact SSOT design is complete for the open-question case across BOTH surfaces (code comments + section prose); the remaining design item — sec 6 typed relations for depends/refines/conflicts — stays demand-gated (no consumer today)."
+      ]
     }
   },
   "inventory_entries": {},
