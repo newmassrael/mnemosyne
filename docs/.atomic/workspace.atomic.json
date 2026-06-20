@@ -13613,6 +13613,50 @@
         "No CURRENT_SCHEMA_VERSION bump (additive enum value, pre-release no-compat); revisit only if a forward-compat guard is later wanted.",
         "MCP does not expose set-section-decision-status (CLI-only, unchanged); add only if a named consumer needs to set Open via MCP (YAGNI)."
       ]
+    },
+    "Round 579 — resolved_by forward-pointer + curate the prose-fact-assertion verb set to homed verbs (SSOT design sec 12a/sec 6)": {
+      "decision_summary": "Build SSOT design sec 12a/sec 6 step 2 in one round. (A) Add resolved_by — the open-question SSOT home for 'deferred to §Y', symmetric with superseded_by (dedicated cardinality-1 forward-pointer, set only when Open, own invariant; projected as a resolved_by cross-ref so it is orphan-checked; deliberately NOT a premature general relation store, which would risk a shared-field half-enforced invariant). set_section_decision_status gains a resolving param; the CLI gains --resolving guarded to --status open. (B) Curate the prose-fact-assertion lint to 'lint a verb iff its fact has a store home': add deferred to / open question / still open; remove depends on / refines / conflicts with (no home yet — R577 over-included them = alternative-less ban); keep bare 'open' out (noise).",
+      "changes_bullets": [
+        "Add AtomicSection.resolved_by (Option<String>, serde-default) — the open-question forward-pointer to its expected resolver, symmetric with superseded_by: a dedicated cardinality-1 field set only when decision_status==Open (optional there), each lifecycle pointer keeping its own invariant (no general relation bag = no half-enforced-invariant risk).",
+        "set_section_decision_status gains a `resolving` param (sets resolved_by for Open, clears it on every other transition); the CLI gains `--resolving §<M>` guarded to `--status open`, plus help text.",
+        "Project resolved_by as a `resolved_by`-kind cross-ref so it is orphan-checked through the existing machinery — no new validator (parity with superseded_by, which also has no reverse-direction out-of-band check).",
+        "Curate the prose-fact-assertion lint verb set to the rule \"lint a verb iff its fact has a store home\": ADD deferred to (resolved_by) / open question / still open (decision_status=Open); REMOVE depends on / refines / conflicts with (no typed-relation home yet — R577 over-included them = alternative-less ban); bare \"open\" stays excluded (noise)."
+      ],
+      "verification_bullets": [
+        "New tests pass: atomic set_section_decision_status_open_sets_and_clears_resolved_by (Open sets the pointer, → Active clears it), project resolved_by_projects_a_resolved_by_cross_ref (projection symmetric with supersession), code_refs prose_fact_assertion_verb_set_is_homed_only (deferred-to/open-question flag; depends-on/refines/bare-open do NOT).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Compiler-guided caller migration of the now-6-arg set_section_decision_status: all 11 call sites updated (10 atomic tests + 1 code_refs test) plus the CLI; no production caller missed (MCP does not expose this primitive)."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "carry_forward_bullets": [
+        "depends on / refines / conflicts with re-enter the lint only when their typed-relation homes are built (sec 6, demand-pulled — none exists today).",
+        "No out-of-band validator for \"resolved_by set implies Open\": parity with superseded_by (which likewise has no reverse-direction check); the single write path + the projection orphan-check are the enforced invariants.",
+        "No CURRENT_SCHEMA_VERSION bump (additive serde-default field, pre-release no-compat)."
+      ],
+      "publishable_decision_summary": "Build SSOT design sec 12a/sec 6 step 2 in one round. (A) Add resolved_by — the open-question SSOT home for 'deferred to §Y', symmetric with superseded_by (dedicated cardinality-1 forward-pointer, set only when Open, own invariant; projected as a resolved_by cross-ref so it is orphan-checked; deliberately NOT a premature general relation store, which would risk a shared-field half-enforced invariant). set_section_decision_status gains a resolving param; the CLI gains --resolving guarded to --status open. (B) Curate the prose-fact-assertion lint to 'lint a verb iff its fact has a store home': add deferred to / open question / still open; remove depends on / refines / conflicts with (no home yet — R577 over-included them = alternative-less ban); keep bare 'open' out (noise).",
+      "publishable_changes_bullets": [
+        "Add AtomicSection.resolved_by (Option<String>, serde-default) — the open-question forward-pointer to its expected resolver, symmetric with superseded_by: a dedicated cardinality-1 field set only when decision_status==Open (optional there), each lifecycle pointer keeping its own invariant (no general relation bag = no half-enforced-invariant risk).",
+        "set_section_decision_status gains a `resolving` param (sets resolved_by for Open, clears it on every other transition); the CLI gains `--resolving §<M>` guarded to `--status open`, plus help text.",
+        "Project resolved_by as a `resolved_by`-kind cross-ref so it is orphan-checked through the existing machinery — no new validator (parity with superseded_by, which also has no reverse-direction out-of-band check).",
+        "Curate the prose-fact-assertion lint verb set to the rule \"lint a verb iff its fact has a store home\": ADD deferred to (resolved_by) / open question / still open (decision_status=Open); REMOVE depends on / refines / conflicts with (no typed-relation home yet — R577 over-included them = alternative-less ban); bare \"open\" stays excluded (noise)."
+      ],
+      "publishable_verification_bullets": [
+        "New tests pass: atomic set_section_decision_status_open_sets_and_clears_resolved_by (Open sets the pointer, → Active clears it), project resolved_by_projects_a_resolved_by_cross_ref (projection symmetric with supersession), code_refs prose_fact_assertion_verb_set_is_homed_only (deferred-to/open-question flag; depends-on/refines/bare-open do NOT).",
+        "cargo fmt --all --check clean; cargo clippy --workspace --all-targets -- -D warnings clean; cargo test --workspace = 0 failed.",
+        "Compiler-guided caller migration of the now-6-arg set_section_decision_status: all 11 call sites updated (10 atomic tests + 1 code_refs test) plus the CLI; no production caller missed (MCP does not expose this primitive)."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api",
+        "code-citation-defense"
+      ],
+      "publishable_carry_forward_bullets": [
+        "depends on / refines / conflicts with re-enter the lint only when their typed-relation homes are built (sec 6, demand-pulled — none exists today).",
+        "No out-of-band validator for \"resolved_by set implies Open\": parity with superseded_by (which likewise has no reverse-direction check); the single write path + the projection orphan-check are the enforced invariants.",
+        "No CURRENT_SCHEMA_VERSION bump (additive serde-default field, pre-release no-compat)."
+      ]
     }
   },
   "inventory_entries": {},

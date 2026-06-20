@@ -43,6 +43,12 @@ const IMPACT_SCOPE_REF_KIND: &str = "impact_scope";
 /// Superseded-state invariant (R342).
 const SUPERSEDED_BY_REF_KIND: &str = "decision";
 
+/// Cross-ref kind emitted for an `AtomicSection.resolved_by` edge — an open
+/// question's forward-pointer to the section expected to resolve it (the
+/// structured-fact SSOT home for "deferred to §Y"; sec 12a). Projecting it
+/// routes the edge through the existing cross-ref orphan check for free.
+const RESOLVED_BY_REF_KIND: &str = "resolved_by";
+
 /// Deterministic numeric entity id for a string `section_id`: the first 8 bytes
 /// (big-endian) of its SHA-256 digest. Content-addressable and stable across
 /// rebuilds, so the same section always maps to the same composite-key row. The
@@ -109,6 +115,14 @@ impl AtomicStore {
                     from_section,
                     to_section: section_entity_id(target),
                     ref_kind: SUPERSEDED_BY_REF_KIND.to_string(),
+                });
+            }
+            if let Some(target) = &section.resolved_by {
+                out.push(CrossRefFact {
+                    branch_id,
+                    from_section,
+                    to_section: section_entity_id(target),
+                    ref_kind: RESOLVED_BY_REF_KIND.to_string(),
                 });
             }
         }
@@ -226,6 +240,25 @@ mod tests {
             refs.iter().filter(|r| r.ref_kind == "impact_scope").count(),
             1
         );
+    }
+
+    #[test]
+    fn resolved_by_projects_a_resolved_by_cross_ref() {
+        // R579: an Open question's resolution forward-pointer projects as a
+        // `resolved_by`-kind edge (source = open question, target = resolver),
+        // symmetric with the supersession edge and orphan-checked the same way.
+        let mut q = section("Question", &[]);
+        q.skeleton.decision_status = Some(DecisionStatus::Open);
+        q.resolved_by = Some("resolver".to_string());
+        let store = store_with(vec![("q", q)]);
+        let refs = store.project_cross_ref_facts(MAIN_BRANCH_ID);
+        let resolved: Vec<_> = refs
+            .iter()
+            .filter(|r| r.ref_kind == "resolved_by")
+            .collect();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].from_section, section_entity_id("q"));
+        assert_eq!(resolved[0].to_section, section_entity_id("resolver"));
     }
 
     #[test]

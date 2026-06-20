@@ -868,23 +868,34 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// Forbidden structured-fact-assertion verbs (lowercased substrings). A
 /// current-state prose surface (a code comment) may POINT to a section
 /// (`§<id>`) but must not RESTATE a structured fact about it: relation and
-/// status assertions have a single store home (`decision_status` /
-/// `superseded_by` / bindings, authored via the mutate API), and prose must
-/// only project them. Matched as case-insensitive substring containment, so a
-/// stem (`supersede`) also covers its inflections (`supersedes` / `superseded`).
-/// Scoped to verbs actually in use; `implements` is deliberately excluded (it
-/// is the binding idiom, already governed by the binding axis + max-rigor). See
-/// claudedocs/structured-fact-ssot-design.md.
+/// status assertions have a single store home (authored via the mutate API),
+/// and prose must only project them. Matched as case-insensitive substring
+/// containment, so a stem (`supersede`) also covers its inflections
+/// (`supersedes` / `superseded`).
+///
+/// **Curation rule (sec 6):** a verb is listed IFF the fact it asserts has a
+/// store home, so the author has a structured alternative — otherwise the lint
+/// would be an alternative-less ban. Homes:
+/// - supersede / 폐기 / 대체 → `superseded_by`
+/// - deferred to → `resolved_by` (R579, sec 12a)
+/// - decided in / ratified in → `decision_status` (Active)
+/// - open question / still open → `decision_status` (Open, R578)
+///
+/// Deliberately EXCLUDED: `depends on` / `refines` / `conflicts with` have no
+/// typed-relation home yet (build per sec 6 when first used, then add here);
+/// bare `open` is too noisy a word (false positives) for too little
+/// fabrication risk — only the specific `open question` / `still open` phrases
+/// are linted; `implements` is the binding idiom (binding axis + max-rigor).
+/// See claudedocs/structured-fact-ssot-design.md.
 const PROSE_FACT_ASSERTION_VERBS: &[&str] = &[
     "supersede",
-    "decided in",
-    "ratified in",
-    "deferred to",
-    "depends on",
-    "refines",
-    "conflicts with",
     "폐기",
     "대체",
+    "deferred to",
+    "decided in",
+    "ratified in",
+    "open question",
+    "still open",
 ];
 
 /// Scan comment text for the structured-fact SSOT violation "a fact-assertion
@@ -3484,6 +3495,7 @@ mod tests {
             "dead",
             mnemosyne_core::DecisionStatus::Removed,
             None,
+            None,
         )
         .unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
@@ -5832,5 +5844,29 @@ mod tests {
             lines.contains(&2),
             "supersedes assertion must flag: {hits:?}"
         );
+    }
+
+    #[test]
+    fn prose_fact_assertion_verb_set_is_homed_only() {
+        // R579 — the verb set is curated to facts with a store home, so the
+        // remedy (move it to the store, point) is always available. "deferred to"
+        // (resolved_by) and "open question" (decision_status=Open) flag; "depends
+        // on" / "refines" have no typed-relation home yet → must NOT flag; bare
+        // "open" is noise → must NOT flag. Sigil built at runtime.
+        let s = "\u{a7}";
+        let src = format!(
+            "// deferred to {s}5.37\n\
+             // the open question is tracked in {s}5.37\n\
+             // depends on {s}5.36\n\
+             // refines {s}5.36\n\
+             // open the file at {s}5.36\n"
+        );
+        let hits = extract_prose_fact_assertions(&src);
+        let lines: Vec<usize> = hits.iter().map(|(l, _, _)| *l).collect();
+        assert!(lines.contains(&1), "deferred-to must flag: {hits:?}");
+        assert!(lines.contains(&2), "open-question must flag: {hits:?}");
+        assert!(!lines.contains(&3), "depends-on has no home, must not flag");
+        assert!(!lines.contains(&4), "refines has no home, must not flag");
+        assert!(!lines.contains(&5), "bare 'open' is noise, must not flag");
     }
 }

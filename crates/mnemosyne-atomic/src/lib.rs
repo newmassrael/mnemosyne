@@ -107,6 +107,19 @@ pub struct AtomicSection {
     /// see the supersession relation from the store instead of re-parsed markdown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<String>,
+    /// Resolution forward-pointer — the section_id (without `§`) of the section
+    /// expected to RESOLVE this open question. `Some` only when
+    /// `decision_status == Open`, and OPTIONAL there (an open question may not
+    /// yet know its resolver). Symmetric with [`Self::superseded_by`]: each
+    /// lifecycle forward-pointer is its own field with its own invariant (no
+    /// general relation bag — keeps invariant enforcement un-shared per the
+    /// CLAUDE.md half-enforced-invariant guard). Set by the single write path
+    /// [`set_section_decision_status`]; projected to a `resolved_by`-kind
+    /// `CrossRefFact` (orphan-checked like supersession). The structured-fact
+    /// SSOT home for "deferred to §Y" prose
+    /// (claudedocs/structured-fact-ssot-design.md sec 12a / sec 6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_by: Option<String>,
     /// code/config block list. T3 style threshold: code block itself exempt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
@@ -2192,6 +2205,7 @@ pub fn set_section_decision_status(
     section_id: &str,
     new_status: DecisionStatus,
     superseding: Option<&str>,
+    resolving: Option<&str>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     if new_status == DecisionStatus::Superseded && superseding.is_none() {
         return Err(AtomicMutateError::Validation(
@@ -2206,6 +2220,12 @@ pub fn set_section_decision_status(
             // Open poses an undecided question, so like Active/Removed it
             // carries no superseding pointer (Open → Active/Removed on resolve).
             DecisionStatus::Active | DecisionStatus::Removed | DecisionStatus::Open => None,
+        };
+        // Symmetric resolution forward-pointer — set only while Open, cleared on
+        // every other transition (Open → Active/Removed/Superseded drops it).
+        section.resolved_by = match new_status {
+            DecisionStatus::Open => resolving.map(str::to_string),
+            DecisionStatus::Active | DecisionStatus::Removed | DecisionStatus::Superseded => None,
         };
     }
     save_with_receipt(
@@ -7496,6 +7516,7 @@ mod tests {
             "39",
             DecisionStatus::Superseded,
             Some("40"),
+            None,
         )
         .unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
@@ -7516,14 +7537,17 @@ mod tests {
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_section(&mut store, "1");
-        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None).unwrap();
-        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None).unwrap();
+        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None, None)
+            .unwrap();
+        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None, None)
+            .unwrap();
         set_section_decision_status(
             &mut store,
             &path,
             "1",
             DecisionStatus::Superseded,
             Some("2"),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -7541,9 +7565,15 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        let err =
-            set_section_decision_status(&mut store, &path, "39", DecisionStatus::Superseded, None)
-                .unwrap_err();
+        let err = set_section_decision_status(
+            &mut store,
+            &path,
+            "39",
+            DecisionStatus::Superseded,
+            None,
+            None,
+        )
+        .unwrap_err();
         match err {
             AtomicMutateError::Validation(msg) => {
                 assert!(
@@ -7581,8 +7611,10 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_section(&mut store, "1");
         seed_section(&mut store, "2");
-        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None).unwrap();
-        set_section_decision_status(&mut store, &path, "2", DecisionStatus::Removed, None).unwrap();
+        set_section_decision_status(&mut store, &path, "1", DecisionStatus::Active, None, None)
+            .unwrap();
+        set_section_decision_status(&mut store, &path, "2", DecisionStatus::Removed, None, None)
+            .unwrap();
         assert_eq!(
             store.section("1").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Active)
@@ -7609,6 +7641,7 @@ mod tests {
             "39",
             DecisionStatus::Superseded,
             Some("40"),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -7637,14 +7670,49 @@ mod tests {
             "39",
             DecisionStatus::Superseded,
             Some("40"),
+            None,
         )
         .unwrap();
         assert_eq!(
             store.section("39").unwrap().superseded_by.as_deref(),
             Some("40")
         );
-        set_section_decision_status(&mut store, &path, "39", DecisionStatus::Active, None).unwrap();
+        set_section_decision_status(&mut store, &path, "39", DecisionStatus::Active, None, None)
+            .unwrap();
         assert!(store.section("39").unwrap().superseded_by.is_none());
+    }
+
+    #[test]
+    fn set_section_decision_status_open_sets_and_clears_resolved_by() {
+        // R579 — symmetric to superseded_by: → Open stores the optional
+        // resolution forward-pointer; a later → Active clears it. The single
+        // write path keeps decision_status / resolved_by coherent.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "q");
+        seed_section(&mut store, "r");
+        set_section_decision_status(
+            &mut store,
+            &path,
+            "q",
+            DecisionStatus::Open,
+            None,
+            Some("r"),
+        )
+        .unwrap();
+        assert_eq!(
+            store.section("q").unwrap().skeleton.decision_status,
+            Some(DecisionStatus::Open)
+        );
+        assert_eq!(
+            store.section("q").unwrap().resolved_by.as_deref(),
+            Some("r")
+        );
+        // Resolving the question (→ Active) clears the forward-pointer.
+        set_section_decision_status(&mut store, &path, "q", DecisionStatus::Active, None, None)
+            .unwrap();
+        assert!(store.section("q").unwrap().resolved_by.is_none());
     }
 
     #[test]

@@ -2431,7 +2431,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
 
 /// Round 265 — atomic decision_status setter CLI surface.
 ///
-/// `--section §<id> --status active|superseded|removed|open [--sidecar <path>] [--json]`
+/// `--section §<id> --status active|superseded|removed|open [--superseding §<M>] [--resolving §<M>] [--sidecar <path>] [--json]`
 ///
 /// Sets `AtomicSection.decision_status` on the atomic store. Stage B
 /// freshness substrate — once the atomic store carries non-Active status,
@@ -2440,6 +2440,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
     let mut section: Option<String> = None;
     let mut status_str: Option<String> = None;
     let mut superseding: Option<String> = None;
+    let mut resolving: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
@@ -2463,6 +2464,13 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
                 superseding = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--superseding missing"))?
+                        .clone(),
+                )
+            }
+            "--resolving" => {
+                resolving = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--resolving missing"))?
                         .clone(),
                 )
             }
@@ -2499,7 +2507,16 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
             status_raw
         );
     }
+    // Symmetric guard: the resolution forward-pointer is only meaningful for an
+    // Open question (Open → its expected resolver). Optional even then.
+    if new_status != DecisionStatus::Open && resolving.is_some() {
+        bail!(
+            "--resolving is only valid with `--status open` (got `--status {}`)",
+            status_raw
+        );
+    }
     let superseding_strip = superseding.as_deref().map(strip_section_prefix);
+    let resolving_strip = resolving.as_deref().map(strip_section_prefix);
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = set_section_decision_status(
@@ -2508,6 +2525,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
         &section,
         new_status,
         superseding_strip.as_deref(),
+        resolving_strip.as_deref(),
     );
 
     // Round 266 — auto-cascade trigger (Stage B freshness). When the new
