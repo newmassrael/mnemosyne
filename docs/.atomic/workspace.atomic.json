@@ -13477,6 +13477,54 @@
         "cargo test --workspace: 0 failed across every crate.",
         "Pre-removal dead-code proof: zero external use of the parser types; schema Section used only by resolve() which had zero callers; no markdown parser produces these types; the crate is absent from ARCHITECTURE.md, so it is not a protected foundation."
       ]
+    },
+    "Round 576 — ratify the structured-fact SSOT design (prose projects facts, never sources them)": {
+      "decision_summary": "Ratify the structured-fact SSOT structure as the textbook fix for the pinion R1013.1 class (prose acting as a write-side source of store-homed facts: false supersede/decided/bundled claims that passed every gate). A structured fact (relation/status/binding) lives once in the store; current-state prose may only point/project, never restate; a syntactic lint forbids fact-assertion verbs beside a section ref in current-state surfaces, changelog audit-narrative exempt. Verification was the wrong frame (it presupposes two copies; SSOT forbids the second), so the prior claim-substantiation-gate draft is superseded. Reuse existing homes and verification (decision_status/superseded_by, BindingKind + max-rigor, R342/R574); typed relations are SSOT completion scoped to used relation verbs, not a speculative ontology. Design-only; build deferred pending open items (notably an open-question state has no DecisionStatus home).",
+      "changes_bullets": [
+        "Authored claudedocs/structured-fact-ssot-design.md and deleted the superseded claim-substantiation-gate-design.md draft (verification-as-frame was the smell).",
+        "Ratify the structure: a structured fact (relation/status/binding) has one store home; current-state prose (code comments, section caveats/intent/rationale/body) may only point or project, never restate; the changelog audit-narrative is exempt.",
+        "The only new mechanism is a syntactic lint (a fact-assertion verb beside a section ref in current-state surfaces); everything else reuses existing homes and verification (decision_status/superseded_by, BindingKind + max-rigor R413-R428, supersede invariant R342/R574).",
+        "Reframe typed relations as SSOT completion: every used relation needs one home so prose can project it; build per used verb only, never a speculative ontology."
+      ],
+      "verification_bullets": [
+        "Motivating case verified against the pinion SSOT: §5.37 = self-hosted text engine (no font-bundle policy), §5.36 Active with superseded_by None, Nanum/Noto only under pinion-text-font/tests/fonts/ as parser fixtures — the false claims had no store backing yet passed every gate.",
+        "Confirmed Mnemosyne DecisionStatus = Active/Superseded/Removed (no Open variant) — recorded as the gating open item before the deferred/open verbs can be linted.",
+        "Design composes with existing mechanisms (R342/R574 supersede invariant, max-rigor R413-R428 bindings, R400 SSOT/projection precedent); no new verification subsystem is introduced.",
+        "Design-only, nothing built: v1 = the lint plus a read-side projection helper; acceptance test = authoring the R1013.1 comment is rejected at the lint, leaving the fabrication no honest home."
+      ],
+      "impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "carry_forward_bullets": [
+        "Build deferred pending open items: open-question representation (no DecisionStatus Open), current-state surface boundary, pointer-window bound, multilingual verb set, code-comment read-side projection surface.",
+        "typed relation edges (depends_on / refines / conflicts_with) built only when a relation verb is first used (SSOT completion, demand-pulled), scoped to that verb.",
+        "Detailed design lives in claudedocs/structured-fact-ssot-design.md (gitignored working artifact); memory anchor project_sce_adoption_uc1.md."
+      ],
+      "publishable_decision_summary": "Ratify the structured-fact SSOT structure as the textbook fix for the pinion R1013.1 class (prose acting as a write-side source of store-homed facts: false supersede/decided/bundled claims that passed every gate). A structured fact (relation/status/binding) lives once in the store; current-state prose may only point/project, never restate; a syntactic lint forbids fact-assertion verbs beside a section ref in current-state surfaces, changelog audit-narrative exempt. Verification was the wrong frame (it presupposes two copies; SSOT forbids the second), so the prior claim-substantiation-gate draft is superseded. Reuse existing homes and verification (decision_status/superseded_by, BindingKind + max-rigor, R342/R574); typed relations are SSOT completion scoped to used relation verbs, not a speculative ontology. Design-only; build deferred pending open items (notably an open-question state has no DecisionStatus home).",
+      "publishable_changes_bullets": [
+        "Authored claudedocs/structured-fact-ssot-design.md and deleted the superseded claim-substantiation-gate-design.md draft (verification-as-frame was the smell).",
+        "Ratify the structure: a structured fact (relation/status/binding) has one store home; current-state prose (code comments, section caveats/intent/rationale/body) may only point or project, never restate; the changelog audit-narrative is exempt.",
+        "The only new mechanism is a syntactic lint (a fact-assertion verb beside a section ref in current-state surfaces); everything else reuses existing homes and verification (decision_status/superseded_by, BindingKind + max-rigor R413-R428, supersede invariant R342/R574).",
+        "Reframe typed relations as SSOT completion: every used relation needs one home so prose can project it; build per used verb only, never a speculative ontology."
+      ],
+      "publishable_verification_bullets": [
+        "Motivating case verified against the pinion SSOT: §5.37 = self-hosted text engine (no font-bundle policy), §5.36 Active with superseded_by None, Nanum/Noto only under pinion-text-font/tests/fonts/ as parser fixtures — the false claims had no store backing yet passed every gate.",
+        "Confirmed Mnemosyne DecisionStatus = Active/Superseded/Removed (no Open variant) — recorded as the gating open item before the deferred/open verbs can be linted.",
+        "Design composes with existing mechanisms (R342/R574 supersede invariant, max-rigor R413-R428 bindings, R400 SSOT/projection precedent); no new verification subsystem is introduced.",
+        "Design-only, nothing built: v1 = the lint plus a read-side projection helper; acceptance test = authoring the R1013.1 comment is rejected at the lint, leaving the fabrication no honest home."
+      ],
+      "publishable_impact_refs": [
+        "code-citation-defense",
+        "atomic-store-mutate-api",
+        "code-citation-defense/bidirectional-binding"
+      ],
+      "publishable_carry_forward_bullets": [
+        "Build deferred pending open items: open-question representation (no DecisionStatus Open), current-state surface boundary, pointer-window bound, multilingual verb set, code-comment read-side projection surface.",
+        "typed relation edges (depends_on / refines / conflicts_with) built only when a relation verb is first used (SSOT completion, demand-pulled), scoped to that verb.",
+        "Detailed design lives in claudedocs/structured-fact-ssot-design.md (gitignored working artifact); memory anchor project_sce_adoption_uc1.md."
+      ]
     }
   },
   "inventory_entries": {},
