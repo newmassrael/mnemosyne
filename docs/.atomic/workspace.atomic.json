@@ -13771,6 +13771,38 @@
         "Not done (out of scope): \"deferred to\" Active-section home = impact_scope (doc only); a historical/resolved-deferral caveat exemption (a sec 9 residual).",
         "Standing posture: the prose lint is and stays ADVISORY (warn/info, never reject) — prose-scanning is inherently heuristic; the primary SSOT enforcement is the structural store invariants. No further matcher precision-chasing (treadmill). The pinion field report's chief value was proving that advisory is the ceiling for this surface."
       ]
+    },
+    "Round 583 — correct the over-declared MSRV (1.94 to 1.88, consumer-flagged) + repair and extend the CI (msrv job)": {
+      "decision_summary": "A 1.88 consumer (pinion) field-flagged that workspace.package.rust-version = 1.94 was an inaccurate over-declaration — the code builds and runs on rustc 1.88 (HEAD) and no language/dep feature requires 1.94 (it was the then-current toolchain in the Phase 0 scaffold, never validated). Correct the MSRV to the field-proven floor 1.88. To keep the claim continuously verified (not another unverified declaration — the same accuracy principle the prose-fact lint enforces) add a msrv CI job that reads rust-version from Cargo.toml (single source, no drift) and runs cargo check --workspace on that toolchain via RUSTUP_TOOLCHAIN, overriding the rust-toolchain.toml dev pin of 1.94.1 (dev-on-latest, support-down-to-MSRV). Discovered while doing so: mnemosyne-validate.yml was malformed (unparseable indentation) so the GitHub CI had been silently non-running; rewrote it into valid YAML in the same change. The cargo install --git adoption commands in README/SCHEMA_GUIDE are correct (they include mnemosyne-cli); the missing-package error was only in this session's chat advisory.",
+      "changes_bullets": [
+        "Correct workspace.package.rust-version 1.94 -> 1.88 (the field-proven floor; the 1.94 was a stale, unverified Phase 0 default with no actual >1.88 language/dep requirement, flagged by a 1.88 consumer that built + ran HEAD).",
+        "Rewrite .github/workflows/mnemosyne-validate.yml from a malformed (unparseable) indentation state into valid YAML — the GitHub CI had been silently non-running, so the local pre-commit/pre-push hooks were the only actual gate.",
+        "Add a `msrv` CI job: reads rust-version from Cargo.toml (single source, no drift), installs that toolchain, runs `cargo check --workspace` under RUSTUP_TOOLCHAIN (overriding the 1.94.1 rust-toolchain.toml dev pin) so the MSRV claim is verified on every push — not another unverified declaration."
+      ],
+      "verification_bullets": [
+        "python yaml.safe_load parses the rewritten workflow (jobs: validate, msrv); the MSRV-derivation grep extracts \"1.88\" from Cargo.toml; cargo clippy on the dev toolchain (1.94.1) still builds (rust-version is metadata only).",
+        "The MSRV build on rustc 1.88 itself is verified by the new CI job on first run — I cannot test 1.88 locally (only the 1.94.1 dev toolchain), which is exactly why the CI job exists; the consumer field-proved 1.88 builds HEAD.",
+        "Honest note: the discovery that mnemosyne-validate.yml was unparseable means prior \"GitHub CI green\" assumptions were unfounded; the local hooks were the real gate. Both now run."
+      ],
+      "carry_forward_bullets": [
+        "Install-command (consumer report item B): README.md / docs/SCHEMA_GUIDE.md already pin the package name (`... mnemosyne-cli`); the missing-package \"multiple packages\" error was only in this session's chat advisory, not the repo. Corrected form: `cargo install --git <url> --rev <sha> mnemosyne-cli --locked`. No repo change needed.",
+        "rust-toolchain.toml stays at 1.94.1 (dev toolchain); MSRV (the consumer floor) is 1.88 and now CI-verified. Future MSRV bumps update only Cargo.toml rust-version; the CI job follows automatically."
+      ],
+      "publishable_decision_summary": "A 1.88 consumer (pinion) field-flagged that workspace.package.rust-version = 1.94 was an inaccurate over-declaration — the code builds and runs on rustc 1.88 (HEAD) and no language/dep feature requires 1.94 (it was the then-current toolchain in the Phase 0 scaffold, never validated). Correct the MSRV to the field-proven floor 1.88. To keep the claim continuously verified (not another unverified declaration — the same accuracy principle the prose-fact lint enforces) add a msrv CI job that reads rust-version from Cargo.toml (single source, no drift) and runs cargo check --workspace on that toolchain via RUSTUP_TOOLCHAIN, overriding the rust-toolchain.toml dev pin of 1.94.1 (dev-on-latest, support-down-to-MSRV). Discovered while doing so: mnemosyne-validate.yml was malformed (unparseable indentation) so the GitHub CI had been silently non-running; rewrote it into valid YAML in the same change. The cargo install --git adoption commands in README/SCHEMA_GUIDE are correct (they include mnemosyne-cli); the missing-package error was only in this session's chat advisory.",
+      "publishable_changes_bullets": [
+        "Correct workspace.package.rust-version 1.94 -> 1.88 (the field-proven floor; the 1.94 was a stale, unverified Phase 0 default with no actual >1.88 language/dep requirement, flagged by a 1.88 consumer that built + ran HEAD).",
+        "Rewrite .github/workflows/mnemosyne-validate.yml from a malformed (unparseable) indentation state into valid YAML — the GitHub CI had been silently non-running, so the local pre-commit/pre-push hooks were the only actual gate.",
+        "Add a `msrv` CI job: reads rust-version from Cargo.toml (single source, no drift), installs that toolchain, runs `cargo check --workspace` under RUSTUP_TOOLCHAIN (overriding the 1.94.1 rust-toolchain.toml dev pin) so the MSRV claim is verified on every push — not another unverified declaration."
+      ],
+      "publishable_verification_bullets": [
+        "python yaml.safe_load parses the rewritten workflow (jobs: validate, msrv); the MSRV-derivation grep extracts \"1.88\" from Cargo.toml; cargo clippy on the dev toolchain (1.94.1) still builds (rust-version is metadata only).",
+        "The MSRV build on rustc 1.88 itself is verified by the new CI job on first run — I cannot test 1.88 locally (only the 1.94.1 dev toolchain), which is exactly why the CI job exists; the consumer field-proved 1.88 builds HEAD.",
+        "Honest note: the discovery that mnemosyne-validate.yml was unparseable means prior \"GitHub CI green\" assumptions were unfounded; the local hooks were the real gate. Both now run."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Install-command (consumer report item B): README.md / docs/SCHEMA_GUIDE.md already pin the package name (`... mnemosyne-cli`); the missing-package \"multiple packages\" error was only in this session's chat advisory, not the repo. Corrected form: `cargo install --git <url> --rev <sha> mnemosyne-cli --locked`. No repo change needed.",
+        "rust-toolchain.toml stays at 1.94.1 (dev toolchain); MSRV (the consumer floor) is 1.88 and now CI-verified. Future MSRV bumps update only Cargo.toml rust-version; the CI job follows automatically."
+      ]
     }
   },
   "inventory_entries": {},

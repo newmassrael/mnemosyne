@@ -1,48 +1,88 @@
 name: mnemosyne-validate
 
-# Phase 0 self-application (Round 79 OPTION C carry). Mnemosyne dogfoods
-# its own validate-workspace + validate-code-refs on every push / PR.
-# (The atomic store + GENERATED.md are the workspace docs; DESIGN.md was
-# retired in Round 251.)
+# Phase 0 self-application (Round 79 OPTION C carry). Mnemosyne dogfoods its
+# own validate-workspace + validate-code-refs on every push / PR. (The atomic
+# store is the sole directly-validated SSOT; GENERATED.md / DESIGN.md were
+# retired in Round 251/400.)
+#
+# R583: this file was rewritten from a malformed (unparseable) indentation
+# state — the GitHub CI had been silently non-running — and an `msrv` job was
+# added to verify the declared MSRV (workspace.package.rust-version) actually
+# compiles, after a 1.88 consumer field-flagged a stale, unverified 1.94.
 
 on:
- push:
- branches: [main]
- pull_request:
+  push:
+    branches: [main]
+  pull_request:
 
 concurrency:
- group: ${{ github.workflow }}-${{ github.ref }}
- cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
- validate:
- runs-on: ubuntu-latest
- timeout-minutes: 30
- steps:
- - uses: actions/checkout@v4
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
- - name: Install rust toolchain (rust-toolchain.toml)
- run: rustup show
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
 
- - name: Cache cargo
- uses: actions/cache@v4
- with:
-  path: |
- ~/.cargo/registry
- ~/.cargo/git
- target
-  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-  restore-keys: |
- ${{ runner.os }}-cargo-
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
- - name: cargo test --workspace
- run: cargo test --workspace --locked
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked
 
- - name: mnemosyne-cli validate-workspace
- run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
+      - name: mnemosyne-cli validate-workspace
+        run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
 
- - name: mnemosyne-cli validate-code-refs (Round 257 Stage 2)
- # Subcommand skips when [plugins.set_equality_validator] is
- # unconfigured; when configured with severity_missing = "reject",
- # missing citations fail the build.
- run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
+      - name: mnemosyne-cli validate-code-refs (Round 257 Stage 2)
+        # Subcommand skips when [plugins.set_equality_validator] is
+        # unconfigured; when configured with severity_missing = "reject",
+        # missing citations fail the build.
+        run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
+
+  msrv:
+    name: MSRV (workspace.package.rust-version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Verify the declared MSRV actually compiles. The version is read from
+      # Cargo.toml (single source — no drift with rust-version). rust-toolchain.toml
+      # pins the newer *dev* toolchain; RUSTUP_TOOLCHAIN overrides it so this job
+      # builds on the MSRV itself (dev-on-latest, support-down-to-MSRV).
+      - name: Read MSRV from Cargo.toml
+        id: msrv
+        run: |
+          echo "version=$(grep -oP 'rust-version\s*=\s*"\K[0-9.]+' Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Install MSRV toolchain
+        run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
+
+      - name: Cache cargo (MSRV)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msrv-
+
+      - name: cargo check --workspace on MSRV
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+        run: cargo check --workspace --locked

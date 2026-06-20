@@ -22,7 +22,11 @@ members = [
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.94"
+# MSRV — the field-proven floor (a 1.88 consumer built + ran HEAD), corrected
+# down from a stale 1.94 that no language/dep feature actually required. The
+# `msrv` CI job verifies this on every push; `rust-toolchain.toml` separately
+# pins the newer *dev* toolchain (dev-on-latest, support-down-to-MSRV).
+rust-version = "1.88"
 publish = false
 license = "MIT OR Apache-2.0"
 
