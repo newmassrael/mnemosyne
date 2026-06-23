@@ -1,0 +1,602 @@
+{
+  "sections": {
+    "s01-arrival": {
+      "title": "조수가 차오르기 전에",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "외지인 지운이 물때에만 열리는 갯들을 건너 무월도에 든다. 소금, 노인뿐인 마을, 밤의 부름.",
+      "rationale_bullets": [
+        "공포의 규칙(대답하지 마라)을 경고로 먼저 심어 둔다 — 의미는 7장에 가서야 회수."
+      ]
+    },
+    "s02-the-tally": {
+      "title": "문설주의 금",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "문설주의 칼금과 당집 종소리. 종이 시간이 아니라 '남은 수'를 센다는 첫 단서.",
+      "rationale_bullets": [
+        "체호프의 총: 셈/종/금 세 가지 소도구를 한 장에 배치하고 의미는 보류(withhold)."
+      ]
+    },
+    "s03-the-funeral": {
+      "title": "장례",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "할머니 장례가 비정상적으로 빠르다. 무당이 시신의 눈·입을 소금으로 막아 '셈에 다시 끼지' 않게 한다.",
+      "rationale_bullets": [
+        "지운 프레임의 오인(자연사)을 명시적으로 세워, 5장의 진실 폭로로 supersede할 토대."
+      ]
+    },
+    "s04-the-empty-beds": {
+      "title": "빈 방들",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "아이 없는 마을, 정성껏 보존된 빈 아이 방 셋. 흉년·붉은 물 회상. 종소리가 하루 만에 줄어든다.",
+      "rationale_bullets": [
+        "독자에게 '셈의 대상은 사람'을 imply. 빈 방=과거의 셈을 후반 회수로 연결."
+      ]
+    },
+    "s05-the-letter": {
+      "title": "할머니의 편지",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "할머니의 숨긴 편지: 삼십 년 전의 계약, 사리마다 이름 하나. 지운을 살리려 육지로 보냈다는 고백.",
+      "rationale_bullets": [
+        "핵심 배경을 imply 단계로 공개. 지운 프레임을 진실로 전환(supersede). 이판수가 편지를 태운다."
+      ]
+    },
+    "s06-the-shaman": {
+      "title": "무선의 굿",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "무당 무선이 대체 규칙을 알려 준다: 부르는 이름에 다른 사람이 대답하면 그이는 그 사람을 데려간다.",
+      "rationale_bullets": [
+        "클라이맥스 트릭(대체)을 명시적 규칙으로 심는다 — 8장의 이름 바꿔치기 회수를 위한 셋업."
+      ]
+    },
+    "s07-the-lowest-tide": {
+      "title": "그믐 사리",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "그믐 사리. 지운의 이름이 태어나기 전부터 갯벌에 약속돼 있었음이 드러난다. 물어미가 부른다.",
+      "rationale_bullets": [
+        "1장의 경고를 문자 그대로 회수(물 돌아설 때/대답). state 직전의 최대 긴장."
+      ]
+    },
+    "s08-the-count": {
+      "title": "셈",
+      "parent_doc": "MANUSCRIPT",
+      "decision_status": "active",
+      "intent": "지운이 자기 이름 대신 계약의 시초인 이판수의 이름을 외친다. 셈이 바뀌고 길이 바다로 돌아간다.",
+      "rationale_bullets": [
+        "모든 복선의 회수 지점. 진실의 state-공개. 새 동그라미가 이판수 문설주에 그어진다."
+      ]
+    }
+  },
+  "changelog_entries": {
+    "Round 1": {
+      "decision_summary": "무대 세팅: 8장면 골격 + 프레임/엔티티 등기. 산문은 MANUSCRIPT.md, 구조는 스토어.",
+      "changes_bullets": [
+        "8개 장면 섹션 + 로그라인/장작법 노트",
+        "5개 인식 프레임(ground-truth/지운/마을/금례/무선)",
+        "10개 엔티티(인물/물어미/장소/소도구)"
+      ],
+      "verification_bullets": [
+        "query --list-sections로 8장면 확인",
+        "프레임/엔티티 등록 확인"
+      ],
+      "impact_refs": [
+        "s01-arrival",
+        "s02-the-tally",
+        "s08-the-count"
+      ],
+      "carry_forward_bullets": [
+        "다음 라운드: 사실 베이스 + 복선-회수 그래프"
+      ],
+      "publishable_decision_summary": "무대 세팅: 8장면 골격 + 프레임/엔티티 등기. 산문은 MANUSCRIPT.md, 구조는 스토어.",
+      "publishable_changes_bullets": [
+        "8개 장면 섹션 + 로그라인/장작법 노트",
+        "5개 인식 프레임(ground-truth/지운/마을/금례/무선)",
+        "10개 엔티티(인물/물어미/장소/소도구)"
+      ],
+      "publishable_verification_bullets": [
+        "query --list-sections로 8장면 확인",
+        "프레임/엔티티 등록 확인"
+      ],
+      "publishable_impact_refs": [
+        "s01-arrival",
+        "s02-the-tally",
+        "s08-the-count"
+      ],
+      "publishable_carry_forward_bullets": [
+        "다음 라운드: 사실 베이스 + 복선-회수 그래프"
+      ]
+    },
+    "Round 2": {
+      "decision_summary": "사실 베이스 + 복선/회수 + 프레임 분기(극적 아이러니)와 supersession 부설.",
+      "changes_bullets": [
+        "진실 체인(계약/셈=사람/지운 약속/금례 거역) typed 사실로",
+        "체호프 셋업 6종 + 회수 5종 + pays-off 링크",
+        "마을 신앙 vs 진실 conflict, 지운 오인→진실 supersede"
+      ],
+      "verification_bullets": [
+        "report-payoff-coverage로 셋업↔회수 정합 확인",
+        "validate-continuity 통과"
+      ],
+      "impact_refs": [
+        "s04-the-empty-beds",
+        "s05-the-letter",
+        "s06-the-shaman",
+        "s07-the-lowest-tide"
+      ],
+      "carry_forward_bullets": [
+        "다음: reader telling 공개 일정(보류→암시→명시) 배선"
+      ],
+      "publishable_decision_summary": "사실 베이스 + 복선/회수 + 프레임 분기(극적 아이러니)와 supersession 부설.",
+      "publishable_changes_bullets": [
+        "진실 체인(계약/셈=사람/지운 약속/금례 거역) typed 사실로",
+        "체호프 셋업 6종 + 회수 5종 + pays-off 링크",
+        "마을 신앙 vs 진실 conflict, 지운 오인→진실 supersede"
+      ],
+      "publishable_verification_bullets": [
+        "report-payoff-coverage로 셋업↔회수 정합 확인",
+        "validate-continuity 통과"
+      ],
+      "publishable_impact_refs": [
+        "s04-the-empty-beds",
+        "s05-the-letter",
+        "s06-the-shaman",
+        "s07-the-lowest-tide"
+      ],
+      "publishable_carry_forward_bullets": [
+        "다음: reader telling 공개 일정(보류→암시→명시) 배선"
+      ]
+    },
+    "Round 3": {
+      "decision_summary": "독자 공개 일정 확정: 계약 진실을 보류→암시→명시로 통제(슬로우번 공포의 핵심).",
+      "changes_bullets": [
+        "reader telling 추가(default withhold)",
+        "4개 핵심 진실에 hint/imply/state 공개 시점 지정"
+      ],
+      "verification_bullets": [
+        "validate-disclosure-leak로 조기 누설 0 확인",
+        "report-disclosure-coverage로 공개 곡선 확인"
+      ],
+      "impact_refs": [
+        "s02-the-tally",
+        "s05-the-letter",
+        "s08-the-count"
+      ],
+      "carry_forward_bullets": [
+        "후속: 분기(다른 결말 world-line) 실험 여지"
+      ],
+      "publishable_decision_summary": "독자 공개 일정 확정: 계약 진실을 보류→암시→명시로 통제(슬로우번 공포의 핵심).",
+      "publishable_changes_bullets": [
+        "reader telling 추가(default withhold)",
+        "4개 핵심 진실에 hint/imply/state 공개 시점 지정"
+      ],
+      "publishable_verification_bullets": [
+        "validate-disclosure-leak로 조기 누설 0 확인",
+        "report-disclosure-coverage로 공개 곡선 확인"
+      ],
+      "publishable_impact_refs": [
+        "s02-the-tally",
+        "s05-the-letter",
+        "s08-the-count"
+      ],
+      "publishable_carry_forward_bullets": [
+        "후속: 분기(다른 결말 world-line) 실험 여지"
+      ]
+    }
+  },
+  "inventory_entries": {},
+  "confirmation_events": {},
+  "frames": {
+    "frame-geumrye": {
+      "description": "할머니 금례가 숨긴 앎 — 계약을 깨려다 먼저 셈에 든 자의 시점."
+    },
+    "frame-jiun": {
+      "description": "서지운이 매 순간 아는/믿는 것. 1장의 무지에서 진실로 이동."
+    },
+    "frame-munseon": {
+      "description": "무당 무선의 앎 — 셈은 미움이 아니라 대체로만 비껴갈 수 있다."
+    },
+    "frame-village": {
+      "description": "마을 사람들의 공유 믿음 — 물어미는 우리를 '지켜 준다'는 신앙적 위안."
+    },
+    "ground-truth": {
+      "description": "무월도에서 실제로 참인 것 — 계약과 셈의 진실."
+    }
+  },
+  "branches": {},
+  "entities": {
+    "ent-bell": {
+      "kind": "object",
+      "description": "당집 종. 시간이 아니라 '남은 수'를 셈해 운다."
+    },
+    "ent-flat": {
+      "kind": "place",
+      "description": "갯벌/물목. 물이 돌아서는 한 순간 셈이 이뤄지는 경계."
+    },
+    "ent-geumrye": {
+      "kind": "character",
+      "description": "금례. 지운의 할머니. 셈을 깨려고 지운을 육지로 보냈다."
+    },
+    "ent-island": {
+      "kind": "place",
+      "description": "무월도. 물때에만 갯들로 육지와 이어지는 조간대 섬."
+    },
+    "ent-jiun": {
+      "kind": "character",
+      "description": "서지운. 일곱 살에 떠나 스물일곱에 할머니 장례로 귀향한 마지막 핏줄."
+    },
+    "ent-letter": {
+      "kind": "object",
+      "description": "할머니의 기름종이 편지. 계약과 지운의 약속된 이름을 담은 고백."
+    },
+    "ent-mother": {
+      "kind": "being",
+      "description": "물어미. 갯벌이 낳은 어미. 사리마다 부른 이름 하나를 셈해 데려간다."
+    },
+    "ent-munseon": {
+      "kind": "character",
+      "description": "무선. 마을 무당. 시신을 소금으로 봉하고 대체 규칙을 안다."
+    },
+    "ent-pansu": {
+      "kind": "character",
+      "description": "이판수. 이장이자 삼십 년 전 계약을 시작한 장본인."
+    },
+    "ent-tally": {
+      "kind": "object",
+      "description": "문설주의 칼금. 셈의 장부. 대신 간 집엔 동그라미가 더해진다."
+    }
+  },
+  "predicates": {
+    "pred-bound-by": {
+      "object_kind": "scalar",
+      "description": "주어가 어떤 계약/조건에 묶여 있다."
+    },
+    "pred-collects": {
+      "object_kind": "scalar",
+      "description": "주어가 무엇을 셈해 거둔다."
+    },
+    "pred-defied": {
+      "object_kind": "scalar",
+      "description": "주어가 무엇을 거역했다."
+    },
+    "pred-promised-to": {
+      "object_kind": "entity",
+      "description": "주어(이름)가 어떤 존재에게 약속되어 있다."
+    }
+  },
+  "narrative_facts": {
+    "f-bell-counts": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-bell"
+      ],
+      "claim": "당집 종은 시각이 아니라 내림수를 울린다 — 어제 일곱, 오늘 여섯.",
+      "canon_from": "s02-the-tally",
+      "evidence": [
+        "s02-the-tally"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "f-bell-silent": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-bell"
+      ],
+      "claim": "셈이 치러진 이튿날 종은 울지 않고 새 금도 그어지지 않는다.",
+      "canon_from": "s08-the-count",
+      "evidence": [
+        "s08-the-count"
+      ],
+      "pays_off": [
+        "f-bell-counts"
+      ]
+    },
+    "f-children-were-counts": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-island",
+        "ent-mother"
+      ],
+      "claim": "사라진 아이들은 흉년기에 셈으로 치러진 이름들이었다.",
+      "canon_from": "s08-the-count",
+      "evidence": [
+        "s08-the-count"
+      ],
+      "pays_off": [
+        "f-empty-beds"
+      ]
+    },
+    "f-count-is-people": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-mother"
+      ],
+      "claim": "물어미가 거두는 셈은 사람이다 — 마을이 부른 이름 하나씩.",
+      "canon_from": "s04-the-empty-beds",
+      "evidence": [
+        "s04-the-empty-beds"
+      ],
+      "typed": {
+        "subject": "ent-mother",
+        "predicate": "pred-collects",
+        "object": {
+          "kind": "value",
+          "value": "사리마다 약속된 이름 하나"
+        }
+      },
+      "pays_off": [
+        "f-tally-marks"
+      ]
+    },
+    "f-empty-beds": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-island"
+      ],
+      "claim": "보존된 빈 아이 방 셋. 섬에 아이가 하나도 남지 않았다.",
+      "canon_from": "s04-the-empty-beds",
+      "evidence": [
+        "s04-the-empty-beds"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "f-geumrye-defied": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-geumrye",
+        "ent-jiun"
+      ],
+      "claim": "금례는 지운을 육지로 보내 셈에서 빼려 함으로써 계약을 거역했다.",
+      "canon_from": "s05-the-letter",
+      "evidence": [
+        "s05-the-letter"
+      ],
+      "typed": {
+        "subject": "ent-geumrye",
+        "predicate": "pred-defied",
+        "object": {
+          "kind": "value",
+          "value": "계약 — 지운을 육지로 보내어"
+        }
+      }
+    },
+    "f-jiun-learns-truth": {
+      "frame": "frame-jiun",
+      "entities": [
+        "ent-geumrye",
+        "ent-mother"
+      ],
+      "claim": "지운은 할머니가 계약을 거역해 먼저 셈에 들었음을 편지로 알게 된다.",
+      "canon_from": "s05-the-letter",
+      "evidence": [
+        "s05-the-letter"
+      ],
+      "supersedes_in_frame": "f-jiun-thinks-natural"
+    },
+    "f-jiun-names-pansu": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-jiun",
+        "ent-pansu",
+        "ent-mother"
+      ],
+      "claim": "지운은 부름에 자기 대신 계약의 시초 이판수의 이름으로 대답한다.",
+      "canon_from": "s08-the-count",
+      "evidence": [
+        "s08-the-count"
+      ],
+      "pays_off": [
+        "f-substitution-rule",
+        "f-jiun-promised"
+      ]
+    },
+    "f-jiun-promised": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-jiun",
+        "ent-mother"
+      ],
+      "claim": "지운의 이름은 그가 태어나기도 전에 갯벌에 약속돼 있었다.",
+      "canon_from": "s07-the-lowest-tide",
+      "evidence": [
+        "s07-the-lowest-tide",
+        "s05-the-letter"
+      ],
+      "payoff_expectation": "expected",
+      "typed": {
+        "subject": "ent-jiun",
+        "predicate": "pred-promised-to",
+        "object": {
+          "kind": "entity",
+          "id": "ent-mother"
+        }
+      },
+      "pays_off": [
+        "f-letter-hidden"
+      ]
+    },
+    "f-jiun-thinks-natural": {
+      "frame": "frame-jiun",
+      "entities": [
+        "ent-geumrye"
+      ],
+      "claim": "지운은 할머니가 노환으로 자연사했다고 여긴다.",
+      "canon_from": "s03-the-funeral",
+      "evidence": [
+        "s03-the-funeral"
+      ]
+    },
+    "f-letter-hidden": {
+      "frame": "frame-geumrye",
+      "entities": [
+        "ent-letter",
+        "ent-jiun"
+      ],
+      "claim": "장판 밑 할머니의 편지가 지운에게 결코 돌아오지 말라 경고한다.",
+      "canon_from": "s05-the-letter",
+      "evidence": [
+        "s05-the-letter"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "f-mother-takes-at-turn": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-mother",
+        "ent-flat"
+      ],
+      "claim": "물이 돌아서는 한 순간, 물어미는 부른 이름에 대답한 자를 데려간다.",
+      "canon_from": "s07-the-lowest-tide",
+      "evidence": [
+        "s07-the-lowest-tide"
+      ],
+      "pays_off": [
+        "f-warning-flat",
+        "f-substitution-rule"
+      ]
+    },
+    "f-pact-exists": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-island",
+        "ent-mother"
+      ],
+      "claim": "무월도는 삼십 년 전 흉년에 물어미와 맺은 계약으로만 존속한다.",
+      "canon_from": "s01-arrival",
+      "evidence": [
+        "s01-arrival"
+      ],
+      "payoff_expectation": "expected",
+      "typed": {
+        "subject": "ent-island",
+        "predicate": "pred-bound-by",
+        "object": {
+          "kind": "value",
+          "value": "물어미의 셈 — 한 사리에 이름 하나"
+        }
+      }
+    },
+    "f-pansu-taken": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-pansu",
+        "ent-mother",
+        "ent-tally"
+      ],
+      "claim": "들물이 이판수를 데려가고, 그의 문설주에 새 동그라미가 그어진다.",
+      "canon_from": "s08-the-count",
+      "evidence": [
+        "s08-the-count"
+      ],
+      "pays_off": [
+        "f-substitution-rule",
+        "f-pact-exists"
+      ]
+    },
+    "f-substitution-rule": {
+      "frame": "frame-munseon",
+      "entities": [
+        "ent-mother",
+        "ent-munseon"
+      ],
+      "claim": "부르는 이름에 다른 사람이 대답하면, 물어미는 그 대답한 사람을 데려간다.",
+      "canon_from": "s06-the-shaman",
+      "evidence": [
+        "s06-the-shaman"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "f-tally-marks": {
+      "frame": "ground-truth",
+      "entities": [
+        "ent-tally"
+      ],
+      "claim": "집집 문설주마다 칼금이 빼곡히 늘어 가고, 대신 간 집엔 동그라미가 더해진다.",
+      "canon_from": "s02-the-tally",
+      "evidence": [
+        "s02-the-tally"
+      ],
+      "payoff_expectation": "expected"
+    },
+    "f-village-believes-protect": {
+      "frame": "frame-village",
+      "entities": [
+        "ent-mother",
+        "ent-island"
+      ],
+      "claim": "마을은 물어미가 자신들을 '지켜 준다'고 믿으며 셈을 신앙으로 견딘다.",
+      "canon_from": "s02-the-tally",
+      "evidence": [
+        "s02-the-tally"
+      ],
+      "conflicts_with": [
+        {
+          "target": "f-count-is-people",
+          "target_claim_sha256": "3045ca7dcbb372930b3a2f6bd34af02a6c9e4fd70c92d508b712291ad355217d"
+        }
+      ]
+    },
+    "f-warning-flat": {
+      "frame": "frame-village",
+      "entities": [
+        "ent-flat",
+        "ent-island"
+      ],
+      "claim": "물 돌아설 때 갯벌에 있지 마라. 누가 부르거든 대답하지 마라 — 마을의 첫 가르침.",
+      "canon_from": "s01-arrival",
+      "evidence": [
+        "s01-arrival"
+      ],
+      "payoff_expectation": "expected"
+    }
+  },
+  "disclosure_plans": {
+    "reader": {
+      "description": "독자에게 계약의 진실을 어떻게/언제 흘릴지: 보류→암시→명시.",
+      "overrides": {
+        "f-count-is-people": {
+          "mode": "imply",
+          "first_at": {
+            "main": "s04-the-empty-beds"
+          },
+          "surface": {
+            "scene": "s04-the-empty-beds"
+          }
+        },
+        "f-geumrye-defied": {
+          "mode": "imply",
+          "first_at": {
+            "main": "s05-the-letter"
+          },
+          "surface": {
+            "scene": "s05-the-letter"
+          }
+        },
+        "f-jiun-promised": {
+          "mode": "state",
+          "first_at": {
+            "main": "s08-the-count"
+          },
+          "surface": {
+            "scene": "s08-the-count"
+          }
+        },
+        "f-pact-exists": {
+          "mode": "hint",
+          "first_at": {
+            "main": "s02-the-tally"
+          },
+          "surface": {
+            "scene": "s02-the-tally"
+          }
+        }
+      }
+    }
+  },
+  "schema_version": 23
+}

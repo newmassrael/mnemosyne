@@ -1,0 +1,37 @@
+# The Tide That Counts — a Mnemosyne narrative workspace.
+#
+# This is a SEPARATE Mnemosyne workspace from the Mnemosyne self-spec at the
+# repo root. It dogfoods Mnemosyne's medium-neutral narrative layer (frames /
+# entities / facts / disclosure plans / continuity + payoff validation) as a
+# horror-novel "writers' room": the atomic store is the structured story bible
+# and audit trail; the human-readable prose lives in MANUSCRIPT.md.
+#
+# `discover_config` walks upward from CWD and finds THIS file first when the
+# CLI is run from inside tales/the-tide-that-counts/, so novel mutations never
+# touch the root workspace store.
+
+[workspace]
+# Folk-horror slow burn (Midnight Mass faith-and-dread × "from the woods"
+# folk horror), relocated to a Korean tidal-flat fishing island.
+
+[atomic]
+sidecar_path = ".atomic/tide.atomic.json"
+
+# Declared canon (discourse) order of the scenes — a precedence DAG. Enabling
+# this turns on the continuity gate and lets the irony / manuscript reports
+# compare canon starts across frames.
+[continuity]
+canon_order_path = "canon-order.json"
+
+[schema]
+changelog_titles = ["Changelog", "changelog"]
+entry_id_prefix = "Round "
+anchor_convention = "section_number"
+medium_name = "novel"
+
+[style]
+locale = "en"
+[style.thresholds]
+max_paragraph_length = 4000
+max_sentence_length = 1200
+max_section_body_length = 8000

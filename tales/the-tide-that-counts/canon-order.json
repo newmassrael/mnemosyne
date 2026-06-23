@@ -1,0 +1,12 @@
+{
+  "edges": [
+    ["s01-arrival", "s02-the-tally"],
+    ["s02-the-tally", "s03-the-funeral"],
+    ["s03-the-funeral", "s04-the-empty-beds"],
+    ["s04-the-empty-beds", "s05-the-letter"],
+    ["s05-the-letter", "s06-the-shaman"],
+    ["s06-the-shaman", "s07-the-lowest-tide"],
+    ["s07-the-lowest-tide", "s08-the-count"]
+  ],
+  "branches": {}
+}
