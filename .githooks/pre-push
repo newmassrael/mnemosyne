@@ -36,6 +36,23 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# Skip the gates for delete-only pushes. Git feeds one line per ref update on
+# stdin ("<local_ref> <local_sha> <remote_ref> <remote_sha>"); a deletion has
+# an all-zero <local_sha> and publishes no commits, so there is nothing to
+# validate. If every ref update is a deletion, exit clean. (An empty stdin —
+# no ref updates — is likewise nothing to publish.)
+delete_only=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    [[ -z "${local_sha:-}" ]] && continue
+    if [[ ! "$local_sha" =~ ^0+$ ]]; then
+        delete_only=0
+    fi
+done
+if [[ "$delete_only" -eq 1 ]]; then
+    echo "pre-push: delete-only push (no commits to validate) — skipping gates" >&2
+    exit 0
+fi
+
 # Prefer the release binary if it exists (much faster than `cargo run`).
 if [[ -x "target/release/mnemosyne-cli" ]]; then
     cli=(target/release/mnemosyne-cli)
