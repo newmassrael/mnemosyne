@@ -7,6 +7,10 @@
 # commit (manual atomic.json edits, amends, rebases, `--no-verify`
 # bypasses) that pre-commit may have missed.
 #
+# Exception: delete-only pushes (branch/tag deletions) publish no commits,
+# so there is nothing to validate — they skip all gates (see delete_only
+# below). Drift on the working state is caught on the next commit push.
+#
 # Checks:
 #
 #   1. `mnemosyne-cli validate-workspace` (store-direct, the SSOT)
