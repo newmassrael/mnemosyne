@@ -1,0 +1,20 @@
+[
+  { "section_id": "sc-01-long-climb",       "parent_doc": "ban-tower", "title": "The Long Climb" },
+  { "section_id": "sc-02-empty-cab",         "parent_doc": "ban-tower", "title": "An Empty Cab" },
+  { "section_id": "sc-03-torn-page",         "parent_doc": "ban-tower", "title": "The Torn Page" },
+  { "section_id": "sc-04-last-words",        "parent_doc": "ban-tower", "title": "Last Words on the Crank" },
+  { "section_id": "sc-05-no-answer",         "parent_doc": "ban-tower", "title": "Dispatch Does Not Answer" },
+  { "section_id": "sc-06-reading-the-room",  "parent_doc": "ban-tower", "title": "Reading the Room" },
+  { "section_id": "sc-07-window-narrows",    "parent_doc": "ban-tower", "title": "The Window Narrows" },
+  { "section_id": "sc-08-west-draw",         "parent_doc": "ban-tower", "title": "West Draw (The Choice)" },
+
+  { "section_id": "sc-09h-holding",          "parent_doc": "ban-tower", "title": "Holding the Tower" },
+  { "section_id": "sc-10h-dawn-net",         "parent_doc": "ban-tower", "title": "The Dawn Net" },
+  { "section_id": "sc-11h-first-light",      "parent_doc": "ban-tower", "title": "First Light" },
+  { "section_id": "sc-12h-what-the-log-says","parent_doc": "ban-tower", "title": "What the Log Says" },
+
+  { "section_id": "sc-09d-down-the-scree",   "parent_doc": "ban-tower", "title": "Down the Scree" },
+  { "section_id": "sc-10d-cold-ring",        "parent_doc": "ban-tower", "title": "The Cold Ring" },
+  { "section_id": "sc-11d-on-the-scree",     "parent_doc": "ban-tower", "title": "On the Scree" },
+  { "section_id": "sc-12d-carry-out",        "parent_doc": "ban-tower", "title": "Carry Out" }
+]

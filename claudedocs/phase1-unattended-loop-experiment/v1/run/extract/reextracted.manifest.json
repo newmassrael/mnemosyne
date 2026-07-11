@@ -1,0 +1,867 @@
+{
+ "frames": [
+  {
+   "frame_id": "dispatch"
+  },
+  {
+   "frame_id": "ground-truth"
+  },
+  {
+   "frame_id": "ranger"
+  },
+  {
+   "frame_id": "relief"
+  },
+  {
+   "frame_id": "senior"
+  }
+ ],
+ "entities": [
+  {
+   "entity_id": "e-dell",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-fire-ring",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-log",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-marla",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-radio",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-rope",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-scree",
+   "kind": "location"
+  },
+  {
+   "entity_id": "e-sella",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-tomas",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-torn-page",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-tower",
+   "kind": "location"
+  },
+  {
+   "entity_id": "e-westdraw",
+   "kind": "location"
+  },
+  {
+   "entity_id": "e-wren",
+   "kind": "character"
+  },
+  {
+   "entity_id": "q-westdraw",
+   "kind": "quest"
+  }
+ ],
+ "predicates": [
+  {
+   "predicate_id": "completed_by",
+   "object_kind": "entity"
+  },
+  {
+   "predicate_id": "life_state",
+   "object_kind": "scalar"
+  },
+  {
+   "predicate_id": "pursues",
+   "object_kind": "entity"
+  },
+  {
+   "predicate_id": "signal_kind",
+   "object_kind": "scalar"
+  }
+ ],
+ "facts": [
+  {
+   "fact_id": "f-01",
+   "frame": "ground-truth",
+   "claim": "Wren Calloway climbs on foot up to the Ban Tower to take up the season's last watch.",
+   "canon_from": "sc-01-long-climb",
+   "evidence": [
+    "sc-01-long-climb"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-02",
+   "frame": "ground-truth",
+   "claim": "The country around the tower has gone a hundred days without rain in a deep drought.",
+   "canon_from": "sc-01-long-climb",
+   "evidence": [
+    "sc-01-long-climb"
+   ],
+   "entities": [
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-03",
+   "frame": "ground-truth",
+   "claim": "The Ban Tower is a glass-cabbed lookout standing on stilts about a hundred feet in the air.",
+   "canon_from": "sc-01-long-climb",
+   "evidence": [
+    "sc-01-long-climb"
+   ],
+   "entities": [
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-04",
+   "frame": "ground-truth",
+   "claim": "The tower's cab door was left unlatched, against a lookout's settled habit.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-05",
+   "frame": "relief",
+   "claim": "Wren expects Tomas Hale to be at the tower to hand her the watch.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tomas"
+   ]
+  },
+  {
+   "fact_id": "f-06",
+   "frame": "ground-truth",
+   "claim": "The cab is cold, its stove having gone out hours earlier.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-07",
+   "frame": "ground-truth",
+   "claim": "Tomas's mug of coffee stands on the map table with a skin formed over it.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-08",
+   "frame": "ground-truth",
+   "claim": "Tomas Hale is absent from the tower.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-09",
+   "frame": "ground-truth",
+   "claim": "The logbook lies open under the west window and the fire-finder is trained on a bearing.",
+   "canon_from": "sc-02-empty-cab",
+   "evidence": [
+    "sc-02-empty-cab"
+   ],
+   "entities": [
+    "e-log",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-10",
+   "frame": "ground-truth",
+   "claim": "The logbook is written in Tomas's hand with routine watch entries of times and weather.",
+   "canon_from": "sc-03-torn-page",
+   "evidence": [
+    "sc-03-torn-page"
+   ],
+   "entities": [
+    "e-log",
+    "e-tomas"
+   ]
+  },
+  {
+   "fact_id": "f-11",
+   "frame": "ground-truth",
+   "claim": "The logbook's last page has been cleanly torn out along the binding.",
+   "canon_from": "sc-03-torn-page",
+   "evidence": [
+    "sc-03-torn-page"
+   ],
+   "entities": [
+    "e-log",
+    "e-torn-page"
+   ]
+  },
+  {
+   "fact_id": "f-12",
+   "frame": "relief",
+   "claim": "Wren infers the last page was torn out deliberately and in a hurry.",
+   "canon_from": "sc-03-torn-page",
+   "evidence": [
+    "sc-03-torn-page"
+   ],
+   "entities": [
+    "e-torn-page",
+    "e-log"
+   ]
+  },
+  {
+   "fact_id": "f-13",
+   "frame": "ground-truth",
+   "claim": "A radio slip records Tomas's last call, timed to the evening before, reporting smoke in the west draw with a bearing.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-radio",
+    "e-tomas",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-14",
+   "frame": "ground-truth",
+   "claim": "The fire-finder is locked to the bearing across the west draw where Tomas sighted the smoke.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-tower",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-15",
+   "frame": "ground-truth",
+   "claim": "Tomas called the smoke report down to the valley dispatch.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-westdraw",
+    "e-marla"
+   ]
+  },
+  {
+   "fact_id": "f-16",
+   "frame": "ground-truth",
+   "claim": "Dispatch's reply, copied into the log margin, marked the column unconfirmed with nothing read from below.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-radio",
+    "e-marla",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-17",
+   "frame": "senior",
+   "claim": "Tomas believed he had seen smoke rise in the west draw.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-westdraw"
+   ],
+   "typed": {
+    "subject": "e-westdraw",
+    "predicate": "signal_kind",
+    "object": {
+     "kind": "value",
+     "value": "smoke"
+    }
+   }
+  },
+  {
+   "fact_id": "f-18",
+   "frame": "relief",
+   "claim": "Wren resolves to confirm the column and find out what became of Tomas.",
+   "canon_from": "sc-04-last-words",
+   "evidence": [
+    "sc-04-last-words"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tomas",
+    "e-westdraw",
+    "q-westdraw"
+   ],
+   "typed": {
+    "subject": "e-wren",
+    "predicate": "pursues",
+    "object": {
+     "kind": "entity",
+     "id": "q-westdraw"
+    }
+   }
+  },
+  {
+   "fact_id": "f-19",
+   "frame": "ground-truth",
+   "claim": "Wren radios dispatcher Marla Vane and reports she has relieved the post.",
+   "canon_from": "sc-05-no-answer",
+   "evidence": [
+    "sc-05-no-answer"
+   ],
+   "entities": [
+    "e-wren",
+    "e-marla",
+    "e-radio"
+   ]
+  },
+  {
+   "fact_id": "f-20",
+   "frame": "ground-truth",
+   "claim": "Dispatch's instruments, run twice on the valley cameras and the far tower, read the west draw as dead ground with no column.",
+   "canon_from": "sc-05-no-answer",
+   "evidence": [
+    "sc-05-no-answer"
+   ],
+   "entities": [
+    "e-marla",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-21",
+   "frame": "dispatch",
+   "claim": "Marla Vane holds that there is no fire in the west draw and never was.",
+   "canon_from": "sc-05-no-answer",
+   "evidence": [
+    "sc-05-no-answer"
+   ],
+   "entities": [
+    "e-marla",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-22",
+   "frame": "relief",
+   "claim": "Wren regards Tomas as only missing and refuses to call him dead.",
+   "canon_from": "sc-05-no-answer",
+   "evidence": [
+    "sc-05-no-answer"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tomas"
+   ]
+  },
+  {
+   "fact_id": "f-23",
+   "frame": "ground-truth",
+   "claim": "Tomas's stiff-soled off-tower boots are gone from under the bunk.",
+   "canon_from": "sc-06-reading-the-room",
+   "evidence": [
+    "sc-06-reading-the-room"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-24",
+   "frame": "ground-truth",
+   "claim": "The coil of climbing rope is gone from the iron hook by the cab door.",
+   "canon_from": "sc-06-reading-the-room",
+   "evidence": [
+    "sc-06-reading-the-room"
+   ],
+   "entities": [
+    "e-rope",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-25",
+   "frame": "relief",
+   "claim": "Wren infers Tomas took his boots and rope and went down into the west draw.",
+   "canon_from": "sc-06-reading-the-room",
+   "evidence": [
+    "sc-06-reading-the-room"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-rope",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-26",
+   "frame": "relief",
+   "claim": "Wren infers Tomas believed a person, not a wildfire, was down the draw, because a man brings rope to a person.",
+   "canon_from": "sc-06-reading-the-room",
+   "evidence": [
+    "sc-06-reading-the-room"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-27",
+   "frame": "ground-truth",
+   "claim": "District ranger Dell Ossory's drought protocol requires a manned tower to stay manned all night in a dry season.",
+   "canon_from": "sc-07-window-narrows",
+   "evidence": [
+    "sc-07-window-narrows"
+   ],
+   "entities": [
+    "e-dell",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-28",
+   "frame": "ranger",
+   "claim": "Dell Ossory expects the Ban Tower to stay manned and to answer at dawn.",
+   "canon_from": "sc-07-window-narrows",
+   "evidence": [
+    "sc-07-window-narrows"
+   ],
+   "entities": [
+    "e-dell",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-29",
+   "frame": "ground-truth",
+   "claim": "The radio net will close for the night soon, after which the tower cannot reach the valley.",
+   "canon_from": "sc-07-window-narrows",
+   "evidence": [
+    "sc-07-window-narrows"
+   ],
+   "entities": [
+    "e-radio",
+    "e-marla"
+   ]
+  },
+  {
+   "fact_id": "f-30",
+   "frame": "relief",
+   "claim": "Wren recognizes that leaving the tower takes the district's only eyes off the country.",
+   "canon_from": "sc-07-window-narrows",
+   "evidence": [
+    "sc-07-window-narrows"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tower",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-31",
+   "frame": "relief",
+   "claim": "Wren believes a person is down in the west draw, and that belief is the only light pointing her decision.",
+   "canon_from": "sc-08-west-draw",
+   "evidence": [
+    "sc-08-west-draw"
+   ],
+   "entities": [
+    "e-wren",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-32",
+   "frame": "ground-truth",
+   "claim": "Wren decides to descend into the west draw and goes back inside for her rope.",
+   "canon_from": "sc-08-west-draw",
+   "evidence": [
+    "sc-08-west-draw"
+   ],
+   "entities": [
+    "e-wren",
+    "e-rope",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-33",
+   "frame": "ground-truth",
+   "claim": "Wren leaves the cab lit behind her and descends the ridge on foot toward the west draw.",
+   "canon_from": "sc-09d-down-the-scree",
+   "evidence": [
+    "sc-09d-down-the-scree"
+   ],
+   "entities": [
+    "e-wren",
+    "e-tower",
+    "e-westdraw",
+    "e-scree"
+   ]
+  },
+  {
+   "fact_id": "f-34",
+   "frame": "ground-truth",
+   "claim": "A rigged climbing handline is made fast around a wind-twisted pine at the lip of the scree and runs down into the draw.",
+   "canon_from": "sc-09d-down-the-scree",
+   "evidence": [
+    "sc-09d-down-the-scree"
+   ],
+   "entities": [
+    "e-rope",
+    "e-scree"
+   ]
+  },
+  {
+   "fact_id": "f-35",
+   "frame": "relief",
+   "claim": "Wren infers someone earlier stood here, rigged the handline, and descended it.",
+   "canon_from": "sc-09d-down-the-scree",
+   "evidence": [
+    "sc-09d-down-the-scree"
+   ],
+   "entities": [
+    "e-rope",
+    "e-scree"
+   ]
+  },
+  {
+   "fact_id": "f-36",
+   "frame": "ground-truth",
+   "claim": "Wren follows the handline down into the draw.",
+   "canon_from": "sc-09d-down-the-scree",
+   "evidence": [
+    "sc-09d-down-the-scree"
+   ],
+   "entities": [
+    "e-wren",
+    "e-rope",
+    "e-scree"
+   ]
+  },
+  {
+   "fact_id": "f-37",
+   "frame": "ground-truth",
+   "claim": "On the floor of the draw is a fire ring of blackened stones with gray ash, cold and dead for hours.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-fire-ring",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-38",
+   "frame": "ground-truth",
+   "claim": "The fire in the draw was real, laid by human hands exactly where Tomas had aimed the fire-finder, so the valley's read was wrong.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-fire-ring",
+    "e-westdraw",
+    "e-tomas"
+   ]
+  },
+  {
+   "fact_id": "f-39",
+   "frame": "ground-truth",
+   "claim": "A stranded hiker, Sella Roan, is at the far bank of the draw, alive, injured in the leg and half-frozen.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-sella",
+    "e-westdraw"
+   ],
+   "typed": {
+    "subject": "e-sella",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   }
+  },
+  {
+   "fact_id": "f-40",
+   "frame": "ground-truth",
+   "claim": "Sella had been stranded in the draw for two days after a fall took her leg.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-sella",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-41",
+   "frame": "ground-truth",
+   "claim": "Sella fed the fire for two days as a distress signal to be seen.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-sella",
+    "e-fire-ring"
+   ],
+   "typed": {
+    "subject": "e-fire-ring",
+    "predicate": "signal_kind",
+    "object": {
+     "kind": "value",
+     "value": "distress-signal"
+    }
+   }
+  },
+  {
+   "fact_id": "f-42",
+   "frame": "ground-truth",
+   "claim": "Of everyone on the ridge, only Tomas had seen Sella's smoke.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-sella",
+    "e-fire-ring"
+   ]
+  },
+  {
+   "fact_id": "f-43",
+   "frame": "ground-truth",
+   "claim": "Wren reaches Sella in the cold ash and reassures her that she has come.",
+   "canon_from": "sc-10d-cold-ring",
+   "evidence": [
+    "sc-10d-cold-ring"
+   ],
+   "entities": [
+    "e-wren",
+    "e-sella"
+   ]
+  },
+  {
+   "fact_id": "f-44",
+   "frame": "ground-truth",
+   "claim": "The handline Wren descended is Tomas's own rope, the forty feet from the bare hook in the cab.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-rope",
+    "e-tomas",
+    "e-tower"
+   ]
+  },
+  {
+   "fact_id": "f-45",
+   "frame": "ground-truth",
+   "claim": "The rope runs past the fire ring toward the head of the draw and ends at a broken ledge where the rock sheared away.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-rope",
+    "e-fire-ring",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-46",
+   "frame": "ground-truth",
+   "claim": "Tomas Hale lies dead at the foot of the scree below the broken ledge.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-scree",
+    "e-westdraw"
+   ],
+   "typed": {
+    "subject": "e-tomas",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  },
+  {
+   "fact_id": "f-47",
+   "frame": "ground-truth",
+   "claim": "Tomas died the evening before Wren climbed the ridge and had lain there ever since.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-scree"
+   ]
+  },
+  {
+   "fact_id": "f-48",
+   "frame": "ground-truth",
+   "claim": "Tomas rigged his line and worked along the ledge to reach the hiker when the ledge gave way beneath him and killed him.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-rope",
+    "e-sella",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-49",
+   "frame": "ground-truth",
+   "claim": "Tomas carried the torn last log page folded in his coat, the record of the smoke he would not let the valley talk him out of.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-torn-page",
+    "e-log",
+    "e-tomas"
+   ]
+  },
+  {
+   "fact_id": "f-50",
+   "frame": "ground-truth",
+   "claim": "Tomas had been right that the smoke in the west draw was real.",
+   "canon_from": "sc-11d-on-the-scree",
+   "evidence": [
+    "sc-11d-on-the-scree"
+   ],
+   "entities": [
+    "e-tomas",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-51",
+   "frame": "ground-truth",
+   "claim": "At dawn Wren radios dispatch from the floor of the draw and gives the location, the fire ring landmark, and the broken ledge.",
+   "canon_from": "sc-12d-carry-out",
+   "evidence": [
+    "sc-12d-carry-out"
+   ],
+   "entities": [
+    "e-wren",
+    "e-marla",
+    "e-radio",
+    "e-westdraw"
+   ]
+  },
+  {
+   "fact_id": "f-52",
+   "frame": "ground-truth",
+   "claim": "Wren reports one survivor, the hiker, needing a litter up the north approach, and one recovery, Tomas.",
+   "canon_from": "sc-12d-carry-out",
+   "evidence": [
+    "sc-12d-carry-out"
+   ],
+   "entities": [
+    "e-sella",
+    "e-tomas",
+    "e-marla"
+   ]
+  },
+  {
+   "fact_id": "f-53",
+   "frame": "ground-truth",
+   "claim": "The rescue of the stranded hiker is completed by Wren coming down into the draw.",
+   "canon_from": "sc-12d-carry-out",
+   "evidence": [
+    "sc-12d-carry-out"
+   ],
+   "entities": [
+    "e-wren",
+    "e-sella",
+    "q-westdraw"
+   ],
+   "typed": {
+    "subject": "q-westdraw",
+    "predicate": "completed_by",
+    "object": {
+     "kind": "entity",
+     "id": "e-wren"
+    }
+   }
+  },
+  {
+   "fact_id": "f-54",
+   "frame": "ground-truth",
+   "claim": "Dispatch sends the rescue and its engines start to bring out the survivor and recover Tomas.",
+   "canon_from": "sc-12d-carry-out",
+   "evidence": [
+    "sc-12d-carry-out"
+   ],
+   "entities": [
+    "e-marla",
+    "e-westdraw"
+   ]
+  }
+ ]
+}
