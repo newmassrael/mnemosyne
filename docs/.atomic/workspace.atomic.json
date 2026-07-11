@@ -13939,6 +13939,56 @@
         "promote when load-bearing: place-graph report + spatial-integrity gate + spatial-fidelity gate (deterministic and medium-neutral, so in-core Validator + report, not the external harness)",
         "invariant: relations are the stable SSOT; metric coordinates are renderer-local, volatile, untracked; each renderer solves coordinates to satisfy the declared relations"
       ]
+    },
+    "Round 587 — describe-schema: the authoring contract as machine-readable data (R585 debt item 1)": {
+      "decision_summary": "Build describe-schema (R585 debt item 1, the largest correctness win): the medium-neutral authoring contract emitted as machine-readable data so an external generate-gate-repair agent self-serves the schema (registries, fact shape, fixed vocabularies, rule classes, quest encoding, write-time invariants) instead of reading source. A pure STATIC projection: store-independent (the contract is fixed; store contents are query/list-*), medium-neutral by construction. The generate-gate-repair LLM loop stays an outside agent/MCP client; only this deterministic surface lands. (Renumbered from the earlier R586 to resolve a round-number collision with a parallel R586 spatial-debt entry.)",
+      "changes_bullets": [
+        "crates/mnemosyne-validate/src/schema.rs: new module — SchemaContract + describe_schema() emitting the registries (sections/frames/branches/entities/predicates/disclosure_plans), the narrative-fact shape (required + optional fields), the fixed vocabularies (disclosure_mode / payoff_expectation / predicate_object_kind), the deterministic rule classes (exclusive / transition / interval), the quest encoding (Entity{kind:quest} + pursues/requires/completed_by, completion pays off an Expected setup), and 12 write-time fail-loud invariants",
+        "drift guard: the vocabularies are built from the real mnemosyne-core enums via as_str() + an exhaustive per-value match, the rule classes from the real continuity::RuleClass — an added variant or class breaks the exhaustive match (a compile error at the description site), so the contract cannot silently fall behind the code",
+        "single-sourcing: continuity's quest-convention consts (QUEST_ENTITY_KIND / pursues / requires / completed_by) and RuleClass promoted to pub(crate); mnemosyne-atomic CURRENT_SCHEMA_VERSION promoted to pub so the contract reports its schema generation",
+        "surfaces: mnemosyne-ops::describe_schema() thin wrapper; describe-schema [--json] CLI verb (human render + machine JSON, fail-loud on an unexpected arg); describe_schema no-arg MCP tool",
+        "the invariant set is grounded in the actual mutate-primitive rejects (build_candidate_fact / build_typed_claim / set_disclosure), not asserted from doc-comments — the R585 evidence-before-claiming lesson",
+        "static and store-independent by design: the contract is fixed, so it loads no store and cannot fail; a store's live registered predicates/entities stay query / list-*"
+      ],
+      "verification_bullets": [
+        "cargo build green; cargo test -p mnemosyne-validate schema = 2/2 (contract completeness + the enum-mirror assertions proving the drift guard is in force; JSON serialization)",
+        "e2e CLI smoke: describe-schema --json parses, schema_version=23, 6 registries, 3 vocabularies with the exact enum values, 3 rule classes, quest kind=quest + 3 predicates, 4 required fact fields, 12 invariants; human render clean; describe-schema --bogus fail-loud exit 1",
+        "clippy -D warnings clean across the workspace; validate-workspace unaffected by the store-independent surface: T1 orphan=0 / T3 reject=0 / entries pre-append 333",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart) — the R557/R561 installed-binary-skew gotcha"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R585 debt item 2 is next: the propose-verdict transaction + actionable violations (the loop's atomic unit) — apply a candidate batch to a scratch sidecar, run every gate, return commit-or-rollback plus structured rule + locus + expected + repair-hint violations so an agent repairs programmatically",
+        "then item 3 authoring-frontier report (one consolidated coverage-gap surface an unattended loop pulls work from), item 4 all-primitive batch manifest (throughput), item 5 guardrail Validator gates (hallucinated-ref / wrong-branch / orphan / citation-hygiene)",
+        "invariant held: the generate-gate-repair LLM loop stays an external agent/MCP client; only the deterministic, medium-neutral describe-schema surface landed",
+        "describe-schema stays a STATIC contract; a store's live registered predicates/entities are query / list-*, deliberately not folded in here"
+      ],
+      "publishable_decision_summary": "Build describe-schema (R585 debt item 1, the largest correctness win): the medium-neutral authoring contract emitted as machine-readable data so an external generate-gate-repair agent self-serves the schema (registries, fact shape, fixed vocabularies, rule classes, quest encoding, write-time invariants) instead of reading source. A pure STATIC projection: store-independent (the contract is fixed; store contents are query/list-*), medium-neutral by construction. The generate-gate-repair LLM loop stays an outside agent/MCP client; only this deterministic surface lands. (Renumbered from the earlier R586 to resolve a round-number collision with a parallel R586 spatial-debt entry.)",
+      "publishable_changes_bullets": [
+        "crates/mnemosyne-validate/src/schema.rs: new module — SchemaContract + describe_schema() emitting the registries (sections/frames/branches/entities/predicates/disclosure_plans), the narrative-fact shape (required + optional fields), the fixed vocabularies (disclosure_mode / payoff_expectation / predicate_object_kind), the deterministic rule classes (exclusive / transition / interval), the quest encoding (Entity{kind:quest} + pursues/requires/completed_by, completion pays off an Expected setup), and 12 write-time fail-loud invariants",
+        "drift guard: the vocabularies are built from the real mnemosyne-core enums via as_str() + an exhaustive per-value match, the rule classes from the real continuity::RuleClass — an added variant or class breaks the exhaustive match (a compile error at the description site), so the contract cannot silently fall behind the code",
+        "single-sourcing: continuity's quest-convention consts (QUEST_ENTITY_KIND / pursues / requires / completed_by) and RuleClass promoted to pub(crate); mnemosyne-atomic CURRENT_SCHEMA_VERSION promoted to pub so the contract reports its schema generation",
+        "surfaces: mnemosyne-ops::describe_schema() thin wrapper; describe-schema [--json] CLI verb (human render + machine JSON, fail-loud on an unexpected arg); describe_schema no-arg MCP tool",
+        "the invariant set is grounded in the actual mutate-primitive rejects (build_candidate_fact / build_typed_claim / set_disclosure), not asserted from doc-comments — the R585 evidence-before-claiming lesson",
+        "static and store-independent by design: the contract is fixed, so it loads no store and cannot fail; a store's live registered predicates/entities stay query / list-*"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build green; cargo test -p mnemosyne-validate schema = 2/2 (contract completeness + the enum-mirror assertions proving the drift guard is in force; JSON serialization)",
+        "e2e CLI smoke: describe-schema --json parses, schema_version=23, 6 registries, 3 vocabularies with the exact enum values, 3 rule classes, quest kind=quest + 3 predicates, 4 required fact fields, 12 invariants; human render clean; describe-schema --bogus fail-loud exit 1",
+        "clippy -D warnings clean across the workspace; validate-workspace unaffected by the store-independent surface: T1 orphan=0 / T3 reject=0 / entries pre-append 333",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart) — the R557/R561 installed-binary-skew gotcha"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R585 debt item 2 is next: the propose-verdict transaction + actionable violations (the loop's atomic unit) — apply a candidate batch to a scratch sidecar, run every gate, return commit-or-rollback plus structured rule + locus + expected + repair-hint violations so an agent repairs programmatically",
+        "then item 3 authoring-frontier report (one consolidated coverage-gap surface an unattended loop pulls work from), item 4 all-primitive batch manifest (throughput), item 5 guardrail Validator gates (hallucinated-ref / wrong-branch / orphan / citation-hygiene)",
+        "invariant held: the generate-gate-repair LLM loop stays an external agent/MCP client; only the deterministic, medium-neutral describe-schema surface landed",
+        "describe-schema stays a STATIC contract; a store's live registered predicates/entities are query / list-*, deliberately not folded in here"
+      ]
     }
   },
   "inventory_entries": {},

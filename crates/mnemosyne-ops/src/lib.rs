@@ -614,6 +614,16 @@ pub fn quest_graph_report(
         .map_err(OpError::Other)
 }
 
+/// The medium-neutral authoring contract (Round 587, R585 debt item 1) — the
+/// `describe-schema` surface an external generate-gate-repair agent reads to
+/// self-serve the registries / fact shape / fixed vocabularies / rule classes /
+/// quest encoding / write-time invariants instead of reading source. A PURE
+/// static projection: store-independent (the contract is fixed; store CONTENTS
+/// are `query`/`list-*`), no I/O, cannot fail.
+pub fn describe_schema() -> mnemosyne_validate::schema::SchemaContract {
+    mnemosyne_validate::schema::describe_schema()
+}
+
 /// Disclosure coverage (Round 507, design sec 7.24 step 4) — the per-telling
 /// classification surface (disclosed / hidden-by-design / never-planned). Pure
 /// read projection, order-independent, never gated.

@@ -309,6 +309,8 @@ fn run(args: &[String]) -> Result<()> {
         "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
         "report-playable-world" => cmd_report_playable_world(&args[2..]),
         "report-quest-graph" => cmd_report_quest_graph(&args[2..]),
+        // Round 587 — the medium-neutral authoring contract (static, store-independent).
+        "describe-schema" => cmd_describe_schema(&args[2..]),
         "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
         "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
         "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
@@ -481,6 +483,10 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 559/568 — the fact->quest leg: per Entity{{kind:quest}}, objective + actor + per-world open/done + prerequisites + completion fact + giver locator"
+    );
+    println!(" {} describe-schema [--json]", prog);
+    println!(
+        "   Round 587 — the medium-neutral authoring contract (static): registries + fact shape + fixed vocabularies + rule classes + quest encoding + write-time invariants"
     );
     println!(
         " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
@@ -2858,6 +2864,87 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
                 loc.world_line
             );
         }
+    }
+    Ok(())
+}
+
+/// Round 587 — the medium-neutral authoring contract (`describe-schema`, R585
+/// debt item 1): the registries, fact shape, fixed vocabularies, rule classes,
+/// quest encoding, and write-time invariants an external generate-gate-repair
+/// agent reads to self-serve instead of reading source. STATIC and
+/// store-independent (the contract is fixed; store CONTENTS are `query` /
+/// `list-*`). `--json` emits the full machine form.
+fn cmd_describe_schema(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other => return Err(anyhow!("describe-schema: unexpected arg `{other}`")),
+        }
+    }
+    let c = mnemosyne_ops::describe_schema();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&c)?);
+        return Ok(());
+    }
+    println!("=== authoring contract (schema v{}) ===", c.schema_version);
+    println!("{}", c.overview);
+    println!("\n-- registries (declare an id here before a fact references it) --");
+    for r in &c.registries {
+        let lb = if r.load_bearing {
+            " [load-bearing]"
+        } else {
+            ""
+        };
+        println!("  {} (key: {}, via {}){}", r.name, r.key, r.add_op, lb);
+        println!("    referenced by: {}", r.referenced_by);
+        println!("    {}", r.description);
+    }
+    println!("\n-- fact ({}) --", c.fact.add_op);
+    println!("  {}", c.fact.description);
+    for f in &c.fact.fields {
+        let req = if f.required { "required" } else { "optional" };
+        println!("  {} : {} [{}] — {}", f.name, f.ty, req, f.description);
+    }
+    println!("\n-- typed claim --");
+    println!("  {}", c.typed_claim.description);
+    println!("  subject: {}", c.typed_claim.subject);
+    println!("  predicate: {}", c.typed_claim.predicate);
+    for o in &c.typed_claim.object_shapes {
+        println!("  object `{}`: {}", o.value, o.description);
+    }
+    println!("\n-- fixed vocabularies --");
+    for v in &c.vocabularies {
+        let def = v
+            .default
+            .map(|d| format!(" (default {d})"))
+            .unwrap_or_default();
+        println!("  {}{} — applies to {}", v.name, def, v.applies_to);
+        for val in &v.values {
+            println!("    {} : {}", val.value, val.description);
+        }
+    }
+    println!("\n-- narrative-rule classes (deterministic continuity gate) --");
+    for r in &c.narrative_rules {
+        println!("  {} — {}", r.class, r.description);
+        for p in &r.parameters {
+            println!("    {} : {} — {}", p.name, p.ty, p.description);
+        }
+    }
+    println!(
+        "\n-- quest encoding (Entity{{kind:{}}}) --",
+        c.quest_encoding.entity_kind
+    );
+    println!("  {}", c.quest_encoding.description);
+    for p in &c.quest_encoding.predicates {
+        println!("  {} [{}] — {}", p.predicate, p.object_shape, p.role);
+    }
+    println!("  completion: {}", c.quest_encoding.completion_rule);
+    println!("  state: {}", c.quest_encoding.state_derivation);
+    println!("\n-- write-time invariants (fail-loud) --");
+    for inv in &c.invariants {
+        println!("  {} @ {}", inv.name, inv.enforced_at);
+        println!("    {}", inv.rule);
     }
     Ok(())
 }

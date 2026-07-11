@@ -586,10 +586,13 @@ struct IntervalBoundWire {
 }
 
 /// The class tag, split from its leg so leg/class coherence is checked
-/// explicitly instead of by the lenient `flatten`.
+/// explicitly instead of by the lenient `flatten`. `pub(crate)` so the
+/// authoring-contract description (`schema::describe_schema`, R587) enumerates
+/// the rule classes from THIS enum — an added class breaks its exhaustive match
+/// (the single-source drift guard) instead of silently going undescribed.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum RuleClass {
+pub(crate) enum RuleClass {
     Exclusive,
     Transition,
     Interval,
@@ -3482,10 +3485,10 @@ pub fn playable_world(
 /// adopts to author quests this projection can read, not arbitrary magic
 /// strings (the R547 authoring-contract-over-existing-primitives pattern);
 /// `Entity.kind` is consumer-defined per ARCHITECTURE sec 6 inv4.
-const QUEST_ENTITY_KIND: &str = "quest";
-const QUEST_PRED_PURSUES: &str = "pursues";
-const QUEST_PRED_REQUIRES: &str = "requires";
-const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
+pub(crate) const QUEST_ENTITY_KIND: &str = "quest";
+pub(crate) const QUEST_PRED_PURSUES: &str = "pursues";
+pub(crate) const QUEST_PRED_REQUIRES: &str = "requires";
+pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 
 /// A quest's DERIVED state in one world-line (R559: "quest state DERIVED per
 /// world-line, never stored"). Open vs done is read VERBATIM from the R442

@@ -1142,7 +1142,11 @@ pub enum AtomicStoreError {
 // render-acceptance gates run, and those are out-of-band render-loop tools, not
 // validate-workspace). So there is deliberately NO `schema_version < 22` arm in
 // `load`, and no migration report is needed.
-const CURRENT_SCHEMA_VERSION: u32 = 23;
+/// The store schema generation the current binary writes and validates
+/// against (bumped on a breaking shape change). Public so the medium-neutral
+/// authoring contract (`describe-schema`, R587) can report which generation it
+/// describes.
+pub const CURRENT_SCHEMA_VERSION: u32 = 23;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {

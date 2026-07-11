@@ -1858,6 +1858,13 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (Entity{kind:quest} + pursues/requires/completed_by, completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args."
+    )]
+    async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        self.tool_json(&ops::describe_schema())
+    }
+
+    #[tool(
         description = "Disclosure coverage (R507, read-only): per telling, every fact classified disclosed / hidden-by-design (an explicit withhold override) / never-planned (no override under a withhold-default telling = the author's todo list). A SURFACE (the R442 dangling-is-a-todo discipline), never gated. Fail-loud on a typo'd telling."
     )]
     async fn report_disclosure_coverage(
