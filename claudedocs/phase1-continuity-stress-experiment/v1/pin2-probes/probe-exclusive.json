@@ -1,0 +1,4 @@
+{ "facts": [ { "fact_id":"probe-excl","frame":"ground-truth","branch":"main",
+  "claim":"the master also holds the lantern at the same moment","canon_from":"sc-04","evidence":["sc-04"],
+  "entities":["e-master","e-lantern"],
+  "typed":{"subject":"e-master","predicate":"holds","object":{"kind":"entity","id":"e-lantern"}} } ] }

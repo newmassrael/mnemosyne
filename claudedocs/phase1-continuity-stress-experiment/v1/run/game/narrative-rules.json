@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "id": "lantern-custody",
+      "class": "exclusive",
+      "predicate": "holds",
+      "per": "object"
+    },
+    {
+      "id": "gate-sequence",
+      "class": "transition",
+      "predicate": "gate_state",
+      "allowed": [["barred", "cracked"], ["cracked", "open"], ["open", "cracked"], ["cracked", "barred"]]
+    },
+    {
+      "id": "fill-hold",
+      "class": "interval",
+      "predicate": "open_clock",
+      "right": "fill_start_clock",
+      "op": "ge",
+      "bound": { "const": 30 }
+    }
+  ]
+}

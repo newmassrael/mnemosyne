@@ -1,0 +1,6 @@
+[workspace]
+
+[continuity]
+canon_order_path = "canon-order.json"
+rules_path = "narrative-rules.json"
+interval_severity = "reject"

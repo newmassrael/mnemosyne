@@ -1,0 +1,4 @@
+{ "facts": [ { "fact_id":"probe-trans","frame":"ground-truth","branch":"hold",
+  "claim":"the gate is flung fully open in one motion","canon_from":"sc-14","evidence":["sc-14"],
+  "entities":["e-gate"],"supersedes_in_frame":"f-gate-barred",
+  "typed":{"subject":"e-gate","predicate":"gate_state","object":{"kind":"value","value":"open"}} } ] }

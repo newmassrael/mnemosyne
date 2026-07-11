@@ -1,0 +1,265 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is true of the world tonight" },
+    { "frame_id": "wick", "description": "the apprentice keeper's belief" },
+    { "frame_id": "master", "description": "the absent master keeper, via the standing order and log" },
+    { "frame_id": "marrow", "description": "the barge-master of the Marrow" }
+  ],
+  "branches": [
+    { "branch_id": "hold", "description": "HOLD the gate barred till dawn (the WORK road is the main spine)", "forks_from": "main", "forks_at": "sc-06" }
+  ],
+  "entities": [
+    { "entity_id": "e-wick", "kind": "character", "description": "apprentice keeper on watch" },
+    { "entity_id": "e-master", "kind": "character", "description": "the master keeper, away downriver" },
+    { "entity_id": "e-marrow-master", "kind": "character", "description": "barge-master of the Marrow" },
+    { "entity_id": "e-lantern", "kind": "item", "description": "the single storm-lantern" },
+    { "entity_id": "e-gate", "kind": "fixture", "description": "the lock-gate" },
+    { "entity_id": "e-pound", "kind": "fixture", "description": "the upper pound above the lock" },
+    { "entity_id": "e-marrow", "kind": "vessel", "description": "the barge Marrow" },
+    { "entity_id": "e-quest", "kind": "quest", "description": "see the night through by a keeper's duty" }
+  ],
+  "predicates": [
+    { "predicate_id": "holds", "object_kind": "entity", "description": "custody: subject carries the object item" },
+    { "predicate_id": "gate_state", "object_kind": "scalar", "description": "the lock-gate's state (barred/cracked/open)" },
+    { "predicate_id": "fill_start_clock", "object_kind": "scalar", "description": "clock-minute the pound began filling" },
+    { "predicate_id": "open_clock", "object_kind": "scalar", "description": "clock-minute the gate was brought open" },
+    { "predicate_id": "carries", "object_kind": "entity", "description": "a vessel bears the object aboard" },
+    { "predicate_id": "pursues", "object_kind": "entity", "description": "quest: actor leads the quest" },
+    { "predicate_id": "completed_by", "object_kind": "entity", "description": "quest: quest discharged by actor" }
+  ],
+  "facts": [
+    {
+      "fact_id": "f-alone", "frame": "ground-truth",
+      "claim": "The master keeper is away downriver, and Wick holds the watch at Harrow Sluice alone.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-wick", "e-master"]
+    },
+    {
+      "fact_id": "f-storm", "frame": "ground-truth",
+      "claim": "A bad storm drives the canal and the flood is coming up fast.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-pound"]
+    },
+    {
+      "fact_id": "f-gate-barred", "frame": "ground-truth",
+      "claim": "The lock-gate stands barred against the rising water.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-gate"],
+      "typed": { "subject": "e-gate", "predicate": "gate_state", "object": { "kind": "value", "value": "barred" } }
+    },
+    {
+      "fact_id": "f-order", "frame": "ground-truth",
+      "claim": "The master's standing order forbids working the lock at night, alone.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-master", "e-gate"],
+      "payoff_expectation": "expected"
+    },
+    {
+      "fact_id": "f-order-master", "frame": "master",
+      "claim": "The master keeper trusts the order to hold the boy safe: no night working, alone.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-master", "e-wick"]
+    },
+    {
+      "fact_id": "f-order-wick", "frame": "wick",
+      "claim": "Wick knows the order by heart: no night working, and never alone.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-wick"]
+    },
+    {
+      "fact_id": "f-lantern-one", "frame": "ground-truth",
+      "claim": "There is exactly one storm-lantern, and whoever works the gate must be the one carrying it.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-lantern"],
+      "payoff_expectation": "expected"
+    },
+    {
+      "fact_id": "f-lantern-wick", "frame": "ground-truth",
+      "claim": "Wick takes up the storm-lantern; it burns in his hand.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-wick", "e-lantern"],
+      "typed": { "subject": "e-wick", "predicate": "holds", "object": { "kind": "entity", "id": "e-lantern" } }
+    },
+    {
+      "fact_id": "f-pound-rising", "frame": "ground-truth",
+      "claim": "The upper pound is filling; bring the gate open too early and the surge will swamp whatever lies in the lock.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-pound"],
+      "payoff_expectation": "expected"
+    },
+    {
+      "fact_id": "f-fill-start", "frame": "ground-truth",
+      "claim": "The pound began taking water at the turn of the third hour.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-pound"],
+      "typed": { "subject": "e-pound", "predicate": "fill_start_clock", "object": { "kind": "value", "value": "180" } }
+    },
+    {
+      "fact_id": "f-marrow-signal", "frame": "ground-truth",
+      "claim": "The Marrow signals from the dark below the gate, asking passage before the flood crests.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-marrow", "e-marrow-master"]
+    },
+    {
+      "fact_id": "f-marrow-belief", "frame": "marrow",
+      "claim": "The barge-master is sure he must pass now or be driven onto the weir.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-marrow-master", "e-marrow"]
+    },
+    {
+      "fact_id": "f-secret", "frame": "ground-truth",
+      "claim": "The Marrow is carrying the injured master keeper home.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-marrow", "e-master"],
+      "typed": { "subject": "e-marrow", "predicate": "carries", "object": { "kind": "entity", "id": "e-master" } }
+    },
+    {
+      "fact_id": "f-choice", "frame": "ground-truth",
+      "claim": "Wick stands at the gate with the lantern, the barge below and the order in his ear, and must choose.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-wick", "e-gate", "e-marrow"]
+    },
+    {
+      "fact_id": "f-quest-give", "frame": "wick",
+      "claim": "Wick takes on the night's charge: to see the Marrow and the lock through by a keeper's duty.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-wick", "e-quest"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-wick", "predicate": "pursues", "object": { "kind": "entity", "id": "e-quest" } }
+    },
+
+    {
+      "fact_id": "f-work-answer", "frame": "wick",
+      "claim": "Wick answers the Marrow into the dark: he will work the lock, order or no order.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-wick", "e-marrow"]
+    },
+    {
+      "fact_id": "f-work-break-order", "frame": "ground-truth",
+      "claim": "Wick breaks the standing order and works the lock at night, alone.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-wick", "e-gate"],
+      "pays_off": ["f-order"]
+    },
+    {
+      "fact_id": "f-gate-crack", "frame": "ground-truth",
+      "claim": "Wick hauls the beam and the gate comes off the bar to a crack.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-gate"],
+      "supersedes_in_frame": "f-gate-barred",
+      "typed": { "subject": "e-gate", "predicate": "gate_state", "object": { "kind": "value", "value": "cracked" } }
+    },
+    {
+      "fact_id": "f-lantern-pass", "frame": "ground-truth",
+      "claim": "Wick passes the lantern to the barge-master to hold at the sill while he throws his weight on the beam.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-marrow-master", "e-lantern"],
+      "supersedes_in_frame": "f-lantern-wick", "pays_off": ["f-lantern-one"],
+      "typed": { "subject": "e-marrow-master", "predicate": "holds", "object": { "kind": "entity", "id": "e-lantern" } }
+    },
+    {
+      "fact_id": "f-wait", "frame": "ground-truth",
+      "claim": "Wick gives the pound its minutes, counting, while the Marrow drifts toward the weir.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-pound", "e-marrow"],
+      "pays_off": ["f-pound-rising"]
+    },
+    {
+      "fact_id": "f-wait-wick", "frame": "wick",
+      "claim": "Wick fears he has waited too long, and fears he has not waited long enough.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-wick", "e-pound"]
+    },
+    {
+      "fact_id": "f-lantern-back", "frame": "ground-truth",
+      "claim": "The barge-master passes the lantern back, and Wick takes it up to work the final lift.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-wick", "e-lantern"],
+      "supersedes_in_frame": "f-lantern-pass",
+      "typed": { "subject": "e-wick", "predicate": "holds", "object": { "kind": "entity", "id": "e-lantern" } }
+    },
+    {
+      "fact_id": "f-open-clock", "frame": "ground-truth",
+      "claim": "Wick brings the gate open at five-and-thirty past the third hour, a full thirty-five minutes of fill.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-pound"],
+      "typed": { "subject": "e-pound", "predicate": "open_clock", "object": { "kind": "value", "value": "215" } }
+    },
+    {
+      "fact_id": "f-gate-open", "frame": "ground-truth",
+      "claim": "With the pound full, Wick brings the gate open for the Marrow.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-gate"],
+      "supersedes_in_frame": "f-gate-crack",
+      "typed": { "subject": "e-gate", "predicate": "gate_state", "object": { "kind": "value", "value": "open" } }
+    },
+    {
+      "fact_id": "f-reveal", "frame": "ground-truth",
+      "claim": "As the Marrow rises into the lantern-light, Wick sees who lies in her well: the master keeper, carried home hurt.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-marrow", "e-master", "e-wick"]
+    },
+    {
+      "fact_id": "f-marrow-relief", "frame": "marrow",
+      "claim": "The barge-master weeps: the keeper's boy opened for them in time.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-marrow-master", "e-wick"]
+    },
+    {
+      "fact_id": "f-gate-close-crack", "frame": "ground-truth",
+      "claim": "As the Marrow clears the sill, Wick brings the gate down off open to a crack.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-gate"],
+      "supersedes_in_frame": "f-gate-open",
+      "typed": { "subject": "e-gate", "predicate": "gate_state", "object": { "kind": "value", "value": "cracked" } }
+    },
+    {
+      "fact_id": "f-quest-done-work", "frame": "wick",
+      "claim": "Wick discharges his charge: the Marrow is through and moored, the night seen out, though he broke the order to do it.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-quest", "e-wick"],
+      "pays_off": ["f-quest-give"],
+      "typed": { "subject": "e-quest", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-wick" } }
+    },
+    {
+      "fact_id": "f-gate-close-barred", "frame": "ground-truth",
+      "claim": "With the Marrow safe above, Wick bars the gate against the flood once more.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-gate"],
+      "supersedes_in_frame": "f-gate-close-crack",
+      "typed": { "subject": "e-gate", "predicate": "gate_state", "object": { "kind": "value", "value": "barred" } }
+    },
+    {
+      "fact_id": "f-master-return", "frame": "master",
+      "claim": "Laid in the lockhouse, the master keeper will live to strike the order from the book himself.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-master", "e-wick"]
+    },
+
+    {
+      "fact_id": "f-hold-refuse", "frame": "wick", "branch": "hold",
+      "claim": "Wick refuses the Marrow: the order stands, and the gate stays barred till dawn.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-wick", "e-marrow"]
+    },
+    {
+      "fact_id": "f-hold-keep-order", "frame": "ground-truth", "branch": "hold",
+      "claim": "Wick keeps the standing order and does not work the lock at night, alone.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-wick", "e-gate"],
+      "pays_off": ["f-order"]
+    },
+    {
+      "fact_id": "f-lantern-keep", "frame": "ground-truth", "branch": "hold",
+      "claim": "The one lantern stays in Wick's hand by the barred gate; there is no one to pass it to.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-wick", "e-lantern"],
+      "supersedes_in_frame": "f-lantern-wick", "pays_off": ["f-lantern-one"],
+      "typed": { "subject": "e-wick", "predicate": "holds", "object": { "kind": "entity", "id": "e-lantern" } }
+    },
+    {
+      "fact_id": "f-drift", "frame": "marrow", "branch": "hold",
+      "claim": "Refused, the Marrow drifts back downriver on the flood toward the weir.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-marrow", "e-marrow-master"]
+    },
+    {
+      "fact_id": "f-drift-gt", "frame": "ground-truth", "branch": "hold",
+      "claim": "In the dark the Marrow is driven onto the weir shoal and her hull is stove.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-marrow"]
+    },
+    {
+      "fact_id": "f-pound-spill", "frame": "ground-truth", "branch": "hold",
+      "claim": "Unworked, the upper pound crests and spills roaring over the weir at dawn.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-pound"],
+      "pays_off": ["f-pound-rising"]
+    },
+    {
+      "fact_id": "f-quest-done-hold", "frame": "wick", "branch": "hold",
+      "claim": "By the standing order Wick logs the night honestly: the gate held, the barge refused, the watch kept.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-quest", "e-wick"],
+      "pays_off": ["f-quest-give"],
+      "typed": { "subject": "e-quest", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-wick" } }
+    },
+    {
+      "fact_id": "f-hold-cost", "frame": "ground-truth", "branch": "hold",
+      "claim": "The master keeper never comes home, and Wick, who kept faith with the order, never learns whose passage he barred.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-master", "e-wick"]
+    }
+  ],
+  "disclosure_plans": [
+    {
+      "telling_id": "default", "default_mode": "withhold",
+      "description": "the reader reconstructs the night; the one secret is revealed only on the road that earns it",
+      "overrides": [
+        { "fact_id": "f-secret", "mode": "state", "first_at": [ ["main", "sc-11"] ] }
+      ]
+    }
+  ]
+}

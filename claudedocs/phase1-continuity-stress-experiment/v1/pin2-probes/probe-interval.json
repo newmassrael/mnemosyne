@@ -1,0 +1,4 @@
+{ "facts": [ { "fact_id":"probe-interval","frame":"ground-truth","branch":"main",
+  "claim":"the gate is brought to open too early","canon_from":"sc-11","evidence":["sc-11"],
+  "entities":["e-pound"],"supersedes_in_frame":"f-open-clock",
+  "typed":{"subject":"e-pound","predicate":"open_clock","object":{"kind":"value","value":"200"}} } ] }
