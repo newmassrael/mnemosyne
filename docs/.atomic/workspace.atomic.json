@@ -14319,6 +14319,40 @@
         "NEXT = R596 owner cadence: (A) close Finding 4 — the loop's \"done\" (frontier 0/0/0) omits the canon ORDER: add the canon-order requirement to describe-schema AND make report-authoring-frontier flag unordered fact-bearing scenes as a gap [the second of the two top gaps, pull-justified by R594]; (B) pinion CONSUMER (live); (C) another experiment.",
         "R593+R594+R595 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
       ]
+    },
+    "Round 596 — report-authoring-frontier flags unordered scenes + describe-schema canon-order note (unattended-loop Finding 4)": {
+      "decision_summary": "close unattended-loop Finding 4: the loop's done (frontier 0/0/0) omitted the canon ORDER = an unrenderable store certified complete; frontier now flags unordered fact-bearing scenes + describe-schema documents the order requirement",
+      "changes_bullets": [
+        "Closed unattended-loop-experiment/v1 Finding 4 (the sharpest gap): the loop's \"done\" (report-authoring-frontier 0/0/0) omitted the canon ORDER, so it certified an UNRENDERABLE store as complete. Two-part fix. (a) report-authoring-frontier now surfaces `unordered_scenes` — fact-bearing sections not placed in the resolved canon order (with no order declared, ALL of them) — counted in total_gaps. (b) describe-schema documents the canon-order requirement: a SEPARATE edge-graph artifact (not part of the fact manifest) required for a renderable store, its JSON shape, and that the frontier flags uncovered scenes.",
+        "unordered_scenes = fact-bearing sections not in the composed canon order's nodes() — a pure read over the existing order composition (compose_canon_order), no new authoritative state, sorted; folded into total_gaps beside zero-fact scenes.",
+        "Proven on the R594 game store: BEFORE, its frontier read 0 zero-fact / 0 dangling / 0 unresolved = \"done\" while it carried no order and could not render; NOW it reports \"unordered scenes (16)\" — the exact gap the blind loop agent missed — and clears to 0 once a canon order covers the scenes. With R595 (wire format) + R596, both R594 top-gap findings are closed."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green (exit 0, 96 test binaries; incl. the new authoring_frontier_flags_unordered_scenes_when_order_absent, the ordered-case unordered.is_empty() assertion on the existing frontier test, and the describe-schema manifest_wire/canon_order key checks); cargo clippy --workspace -D warnings clean; cargo fmt clean.",
+        "e2e: report-authoring-frontier on the R594 game store (no order) flags 16 unordered scenes (total_gaps 41); the same store with the mechanical order flags 0 unordered; describe-schema renders the \"canon order (required for a renderable store)\" section.",
+        "MCP report_authoring_frontier carries the new field automatically via serde (no wire change). validate-workspace clean (T1 orphan 0 / T3 reject 0). Additive read + one describe-schema note; no production gate or schema touched."
+      ],
+      "carry_forward_bullets": [
+        "With R595 (wire format) + R596 (canon order), BOTH R594 top-gap findings are CLOSED. Findings 2 (fork-lineage dangling model under-documented) and 3 (additive frontier-repair cannot fix a topology error) remain as smaller documentation/model notes — lower value, defer unless pulled.",
+        "NEXT = R597 owner cadence: (A) re-run the unattended loop (v2) to CONFIRM the R595/R596 surfaces removed the friction (the agent should skip the 11 wire-format probes and be told to author a canon order) [validates the fixes end to end]; (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) close the smaller Findings 2/3 as describe-schema notes; (D) another experiment.",
+        "R593+R594+R595+R596 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ],
+      "publishable_decision_summary": "close unattended-loop Finding 4: the loop's done (frontier 0/0/0) omitted the canon ORDER = an unrenderable store certified complete; frontier now flags unordered fact-bearing scenes + describe-schema documents the order requirement",
+      "publishable_changes_bullets": [
+        "Closed unattended-loop-experiment/v1 Finding 4 (the sharpest gap): the loop's \"done\" (report-authoring-frontier 0/0/0) omitted the canon ORDER, so it certified an UNRENDERABLE store as complete. Two-part fix. (a) report-authoring-frontier now surfaces `unordered_scenes` — fact-bearing sections not placed in the resolved canon order (with no order declared, ALL of them) — counted in total_gaps. (b) describe-schema documents the canon-order requirement: a SEPARATE edge-graph artifact (not part of the fact manifest) required for a renderable store, its JSON shape, and that the frontier flags uncovered scenes.",
+        "unordered_scenes = fact-bearing sections not in the composed canon order's nodes() — a pure read over the existing order composition (compose_canon_order), no new authoritative state, sorted; folded into total_gaps beside zero-fact scenes.",
+        "Proven on the R594 game store: BEFORE, its frontier read 0 zero-fact / 0 dangling / 0 unresolved = \"done\" while it carried no order and could not render; NOW it reports \"unordered scenes (16)\" — the exact gap the blind loop agent missed — and clears to 0 once a canon order covers the scenes. With R595 (wire format) + R596, both R594 top-gap findings are closed."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green (exit 0, 96 test binaries; incl. the new authoring_frontier_flags_unordered_scenes_when_order_absent, the ordered-case unordered.is_empty() assertion on the existing frontier test, and the describe-schema manifest_wire/canon_order key checks); cargo clippy --workspace -D warnings clean; cargo fmt clean.",
+        "e2e: report-authoring-frontier on the R594 game store (no order) flags 16 unordered scenes (total_gaps 41); the same store with the mechanical order flags 0 unordered; describe-schema renders the \"canon order (required for a renderable store)\" section.",
+        "MCP report_authoring_frontier carries the new field automatically via serde (no wire change). validate-workspace clean (T1 orphan 0 / T3 reject 0). Additive read + one describe-schema note; no production gate or schema touched."
+      ],
+      "publishable_carry_forward_bullets": [
+        "With R595 (wire format) + R596 (canon order), BOTH R594 top-gap findings are CLOSED. Findings 2 (fork-lineage dangling model under-documented) and 3 (additive frontier-repair cannot fix a topology error) remain as smaller documentation/model notes — lower value, defer unless pulled.",
+        "NEXT = R597 owner cadence: (A) re-run the unattended loop (v2) to CONFIRM the R595/R596 surfaces removed the friction (the agent should skip the 11 wire-format probes and be told to author a canon order) [validates the fixes end to end]; (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) close the smaller Findings 2/3 as describe-schema notes; (D) another experiment.",
+        "R593+R594+R595+R596 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ]
     }
   },
   "inventory_entries": {},

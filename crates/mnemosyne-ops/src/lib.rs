@@ -482,6 +482,14 @@ pub struct AuthoringFrontierReport {
     /// Sections with NO fact anchored (no fact's `canon_from` names them) — the
     /// empty scenes to author into, sorted.
     pub zero_fact_scenes: Vec<String>,
+    /// Fact-bearing sections NOT placed in the resolved canon order (Round 596,
+    /// unattended-loop-experiment/v1 Finding 4) — a scene carries facts but no
+    /// declared order edge reaches it, so `report-playthrough-manuscript` /
+    /// `report-fork-tree` (and any render / pinion consumer) cannot place it.
+    /// When NO canon order is declared, EVERY fact-bearing scene is unordered:
+    /// the frontier's signal that the order artifact — required for a renderable
+    /// store, but not part of the fact manifest — is missing. Sorted.
+    pub unordered_scenes: Vec<String>,
     /// Fact count anchored per section (every section, including zero) — the
     /// per-node coverage map, section-id order.
     pub scene_coverage: Vec<SceneCoverage>,
@@ -533,6 +541,16 @@ pub fn authoring_frontier_report(
         .filter(|(_, n)| **n == 0)
         .map(|(s, _)| s.clone())
         .collect();
+    // Unordered fact-bearing scenes (Finding 4): a scene carries facts but is
+    // not a node of the composed canon order, so no consumer can place it. With
+    // no order declared, `nodes()` is empty and every fact-bearing scene lands
+    // here — the frontier surfacing the missing order artifact.
+    let ordered: BTreeSet<&str> = order.nodes().collect();
+    let unordered_scenes: Vec<String> = counts
+        .iter()
+        .filter(|(scene, n)| **n > 0 && !ordered.contains(scene.as_str()))
+        .map(|(s, _)| s.clone())
+        .collect();
     let scene_coverage: Vec<SceneCoverage> = counts
         .into_iter()
         .map(|(scene, fact_count)| SceneCoverage { scene, fact_count })
@@ -569,6 +587,7 @@ pub fn authoring_frontier_report(
     };
 
     let total_gaps = zero_fact_scenes.len()
+        + unordered_scenes.len()
         + distinct_dangling.len()
         + unresolved_quests.as_ref().map_or(0, Vec::len)
         + never_planned_disclosures.as_ref().map_or(0, Vec::len);
@@ -576,6 +595,7 @@ pub fn authoring_frontier_report(
     Ok(AuthoringFrontierReport {
         telling: telling.map(str::to_string),
         zero_fact_scenes,
+        unordered_scenes,
         scene_coverage,
         dangling_setups,
         unresolved_quests,
@@ -1352,10 +1372,44 @@ mod tests {
             .collect();
         assert_eq!(counts["sc-1"], 1);
         assert_eq!(counts["sc-2"], 0);
+        // The canon order (canon.json edges sc-1 -> sc-2) covers the fact-bearing
+        // sc-1, so nothing is unordered (Round 596).
+        assert!(r.unordered_scenes.is_empty());
         assert_eq!(r.total_gaps, 1); // just the one zero-fact scene
                                      // Telling-scoped sections are omitted without a telling.
         assert!(r.telling.is_none());
         assert!(r.unresolved_quests.is_none());
         assert!(r.never_planned_disclosures.is_none());
+    }
+
+    /// Round 596 (unattended-loop-experiment/v1 Finding 4): a fact-bearing scene
+    /// the canon order does not place is surfaced as an `unordered` gap — the
+    /// frontier's signal that a renderable store still needs its order artifact.
+    /// With an empty order, EVERY fact-bearing scene lands here (the exact gap
+    /// the loop's "done" — frontier 0/0/0 — used to hide).
+    #[test]
+    fn authoring_frontier_flags_unordered_scenes_when_order_absent() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        // An empty order declares no edges: nothing is placed.
+        std::fs::write(root.join("canon.json"), r#"{"edges":[],"branches":{}}"#).unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"sc-1":{},"sc-2":{}},"frames":{"gt":{}},
+               "narrative_facts":{"f-1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
+        )
+        .unwrap();
+        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        // sc-1 carries a fact but the order places nothing -> unordered.
+        assert_eq!(r.unordered_scenes, vec!["sc-1".to_string()]);
+        // sc-2 is zero-fact (a distinct gap) but not fact-bearing, so not unordered.
+        assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
+        assert_eq!(r.total_gaps, 2); // one zero-fact + one unordered
     }
 }

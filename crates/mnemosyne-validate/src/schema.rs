@@ -76,6 +76,13 @@ pub struct SchemaContract {
     /// `first_at` tuple shape — plus a complete worked example. Without this an
     /// agent must reverse-engineer the serializer from parse errors.
     pub manifest_wire: ManifestWireSpec,
+    /// The canon ORDER a store needs to be RENDERABLE (Round 596,
+    /// unattended-loop-experiment/v1 Finding 4) — a SEPARATE authoring artifact,
+    /// NOT part of the fact manifest, that the read projections require. Without
+    /// it `report-playthrough-manuscript` / `report-fork-tree` place nothing and
+    /// the store is not playable; `report-authoring-frontier` surfaces every
+    /// fact-bearing scene the order does not cover as an `unordered scenes` gap.
+    pub canon_order: &'static str,
 }
 
 /// The JSON wire format of the batch manifest (Round 595) — the serialization,
@@ -243,6 +250,17 @@ pub fn describe_schema() -> SchemaContract {
              optional check. `propose-verdict` runs the same gate over a candidate batch and \
              returns each as an actionable violation.",
         manifest_wire: manifest_wire(),
+        canon_order:
+            "The canon ORDER — the discourse sequence of the sections — is a SEPARATE artifact \
+             from the fact manifest, and a store needs it to be RENDERABLE: the read projections \
+             (`report-playthrough-manuscript`, `report-fork-tree`, and any render / pinion \
+             consumer) place a fact only at a section the order reaches. It is a JSON edge graph \
+             { \"edges\": [[from-section, to-section], …], \"branches\": { branch-id: [[from, \
+             to], …] } } — the main trunk in `edges`, each fork/branch's own edges under \
+             `branches`, pinned via `[continuity].canon_order_path` (or passed with `--order`). \
+             Authoring the facts is NOT enough: until the order covers every fact-bearing scene, \
+             `report-authoring-frontier` reports those scenes as `unordered scenes` (with no \
+             order declared, ALL of them), and the store cannot be rendered.",
     }
 }
 
@@ -947,6 +965,9 @@ mod tests {
         assert!(json.contains("\"schema_version\""));
         assert!(json.contains("quest_encoding"));
         assert!(json.contains("\"withhold\""));
+        // Round 595/596 — the wire format + canon-order contract must ship.
+        assert!(json.contains("manifest_wire"));
+        assert!(json.contains("canon_order"));
     }
 
     /// Round 592 — the fact-shape DRIFT GUARD: the described fact fields must

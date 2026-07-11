@@ -2978,6 +2978,8 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     println!("  typed object: {}", w.typed_object_wire);
     println!("\n  worked example (copy and adapt):");
     println!("{}", w.example_json);
+    println!("\n-- canon order (required for a renderable store) --");
+    println!("  {}", c.canon_order);
     Ok(())
 }
 
@@ -3153,6 +3155,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         }
     };
     list("zero-fact scenes", &report.zero_fact_scenes);
+    list("unordered scenes", &report.unordered_scenes);
     if report.dangling_setups.is_empty() {
         println!("dangling setups: none");
     } else {
