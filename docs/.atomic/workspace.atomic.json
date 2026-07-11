@@ -14127,6 +14127,48 @@
         "sections stay a separate import-sections manifest (rich SectionImport); folding them is a larger change, not pulled",
         "disclosure overrides are last-write-wins per the setter's contract; the manifest counts a re-set of an identical decision as no-op (idempotency), the standalone setter still persists unconditionally"
       ]
+    },
+    "Round 591 — close R585 debt item 5 (AI-failure guardrails) as already-satisfied, not rebuilt": {
+      "decision_summary": "Close R585 debt item 5 (AI-failure guardrail Validator gates) as ALREADY-SATISFIED after a read-verified investigation — do NOT rebuild. The four named guardrails (hallucinated-ref, wrong-branch, orphan, citation-hygiene) already exist as the architecturally-correct kind of check, and re-implementing them as new Validator plugins would REGRESS correctness: a core store-integrity invariant belongs as a built-in fail-loud check re-checked by the continuity gate, never as an optional plugin (a plugin can be unregistered), and a second implementation is the half-enforced-invariant anti-pattern. Deliverable = this evidence-based closure + one describe-schema invariant_enforcement note so an agent discovers the out-of-band guardrail coverage; zero redundant code. The unified guardrail-dispatch runner stays YAGNI (the PluginRegistry Validator extension point already exists, pull-gated).",
+      "changes_bullets": [
+        "investigation finding (read-verified, file:line): hallucinated-ref (dangling frame/branch/entity/predicate/section refs) = continuity check_store_boundary (out-of-band re-check, fail-loud) + the mutate primitive in-band + propose-verdict on a candidate batch; wrong-branch = FactCanonOffBranch (R488); orphan = validate-workspace atomic orphan refs + continuity dangling-edge re-checks (PayoffTargetMissing/ConflictTargetMissing/SuccessionTargetMissing); citation-hygiene = SetEqualityValidator (an actual Validator plugin, code_refs.rs) + the pre-commit code-citation-defense gate",
+        "propose-verdict (item 2, R588) already surfaces the narrative guardrails as ActionableViolations for the loop — the machine-actionable feedback item 5 was after already exists",
+        "describe-schema (schema.rs): added an invariant_enforcement note recording that the reference-integrity invariants are ALSO re-checked out-of-band by the continuity gate, so an agent discovers the guardrail coverage from the contract (CLI + MCP)",
+        "NOT built, with rationale: converting built-in invariants to plugins downgrades a hard invariant to an optional check (a plugin can be unregistered) = safety loss; a second implementation duplicates enforcement (the CLAUDE.md half-enforced-invariant ban); a unified guardrail-dispatch runner is YAGNI (the PluginRegistry Validator extension point already exists, pull-gate it when a real second consumer arrives)"
+      ],
+      "verification_bullets": [
+        "the four guardrails confirmed by reading the enforcement sites: continuity.rs check_store_boundary (frame/branch/entity/section refs) + the predicate re-check + FactCanonOffBranch; code_refs.rs SetEqualityValidator impl Validator; validate-workspace orphan metrics — a read-verified closure, not a measured claim (the R582 unverified-assertion lesson)",
+        "cargo build + clippy + fmt clean; schema test green; describe-schema --json emits the new invariant_enforcement note (CLI human render + MCP tool)",
+        "honest note (not downplayed): item 5's premise \"build the guardrails as Validator plugins\" was partly wrong — core store-integrity invariants are correctly BUILT-IN, not optional plugins; the correct response to a debt item that is already satisfied is a read-verified closure, not redundant code"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R585 authoring-support debt FULLY discharged: item 1 describe-schema (R587), item 2 propose-verdict (R588), item 3 authoring-frontier (R589), item 4 all-primitive manifest (R590), item 5 closed-as-satisfied (R591)",
+        "the PluginRegistry Validator slot stays the extension point for FUTURE consumer-specific guardrails (pull-gated); the built-in core invariants stay built-in",
+        "north-star return: the AI-first authoring support surfaces are paid; the next frontier is the narrative-authoring track / the pinion consumer per the RESUME memory"
+      ],
+      "publishable_decision_summary": "Close R585 debt item 5 (AI-failure guardrail Validator gates) as ALREADY-SATISFIED after a read-verified investigation — do NOT rebuild. The four named guardrails (hallucinated-ref, wrong-branch, orphan, citation-hygiene) already exist as the architecturally-correct kind of check, and re-implementing them as new Validator plugins would REGRESS correctness: a core store-integrity invariant belongs as a built-in fail-loud check re-checked by the continuity gate, never as an optional plugin (a plugin can be unregistered), and a second implementation is the half-enforced-invariant anti-pattern. Deliverable = this evidence-based closure + one describe-schema invariant_enforcement note so an agent discovers the out-of-band guardrail coverage; zero redundant code. The unified guardrail-dispatch runner stays YAGNI (the PluginRegistry Validator extension point already exists, pull-gated).",
+      "publishable_changes_bullets": [
+        "investigation finding (read-verified, file:line): hallucinated-ref (dangling frame/branch/entity/predicate/section refs) = continuity check_store_boundary (out-of-band re-check, fail-loud) + the mutate primitive in-band + propose-verdict on a candidate batch; wrong-branch = FactCanonOffBranch (R488); orphan = validate-workspace atomic orphan refs + continuity dangling-edge re-checks (PayoffTargetMissing/ConflictTargetMissing/SuccessionTargetMissing); citation-hygiene = SetEqualityValidator (an actual Validator plugin, code_refs.rs) + the pre-commit code-citation-defense gate",
+        "propose-verdict (item 2, R588) already surfaces the narrative guardrails as ActionableViolations for the loop — the machine-actionable feedback item 5 was after already exists",
+        "describe-schema (schema.rs): added an invariant_enforcement note recording that the reference-integrity invariants are ALSO re-checked out-of-band by the continuity gate, so an agent discovers the guardrail coverage from the contract (CLI + MCP)",
+        "NOT built, with rationale: converting built-in invariants to plugins downgrades a hard invariant to an optional check (a plugin can be unregistered) = safety loss; a second implementation duplicates enforcement (the CLAUDE.md half-enforced-invariant ban); a unified guardrail-dispatch runner is YAGNI (the PluginRegistry Validator extension point already exists, pull-gate it when a real second consumer arrives)"
+      ],
+      "publishable_verification_bullets": [
+        "the four guardrails confirmed by reading the enforcement sites: continuity.rs check_store_boundary (frame/branch/entity/section refs) + the predicate re-check + FactCanonOffBranch; code_refs.rs SetEqualityValidator impl Validator; validate-workspace orphan metrics — a read-verified closure, not a measured claim (the R582 unverified-assertion lesson)",
+        "cargo build + clippy + fmt clean; schema test green; describe-schema --json emits the new invariant_enforcement note (CLI human render + MCP tool)",
+        "honest note (not downplayed): item 5's premise \"build the guardrails as Validator plugins\" was partly wrong — core store-integrity invariants are correctly BUILT-IN, not optional plugins; the correct response to a debt item that is already satisfied is a read-verified closure, not redundant code"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R585 authoring-support debt FULLY discharged: item 1 describe-schema (R587), item 2 propose-verdict (R588), item 3 authoring-frontier (R589), item 4 all-primitive manifest (R590), item 5 closed-as-satisfied (R591)",
+        "the PluginRegistry Validator slot stays the extension point for FUTURE consumer-specific guardrails (pull-gated); the built-in core invariants stay built-in",
+        "north-star return: the AI-first authoring support surfaces are paid; the next frontier is the narrative-authoring track / the pinion consumer per the RESUME memory"
+      ]
     }
   },
   "inventory_entries": {},

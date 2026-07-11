@@ -53,6 +53,12 @@ pub struct SchemaContract {
     /// The write-time fail-loud invariants an author must satisfy (rejected at
     /// the mutate primitive, never a silent bad write).
     pub invariants: Vec<Invariant>,
+    /// How the reference-integrity invariants are ALSO guarded out-of-band
+    /// (Round 591) — so an agent knows a manual/out-of-band store edit that
+    /// dangles a ref does not slip past. The AI-failure guardrails
+    /// (hallucinated-ref, wrong-branch, orphan) are not a separate tool: they
+    /// are these built-in invariants, re-checked by the continuity gate.
+    pub invariant_enforcement: &'static str,
 }
 
 /// One registry: an id space that must be populated before a fact references it.
@@ -181,6 +187,16 @@ pub fn describe_schema() -> SchemaContract {
         narrative_rules: rule_class_specs(),
         quest_encoding: quest_encoding(),
         invariants: invariants(),
+        invariant_enforcement:
+            "The reference-integrity invariants (registered frame / branch / entity / predicate \
+             refs, canon_from / evidence section refs, and supersedes_in_frame / pays_off / \
+             conflict edge targets) are enforced BOTH at the mutate primitive (write-time) AND \
+             re-checked out-of-band by the continuity gate (`validate-continuity`): a manual or \
+             out-of-band store edit that dangles a ref fails the gate, and `FactCanonOffBranch` \
+             flags a fact on the wrong world-line. So the deterministic AI-failure guardrails \
+             (hallucinated-ref, wrong-branch, orphan) ARE these hard invariants — not a separate \
+             optional check. `propose-verdict` runs the same gate over a candidate batch and \
+             returns each as an actionable violation.",
     }
 }
 
@@ -749,6 +765,9 @@ mod tests {
                 inv.name
             );
         }
+
+        // The out-of-band enforcement note (R591) records the continuity re-check.
+        assert!(c.invariant_enforcement.contains("continuity"));
     }
 
     /// The contract serializes to JSON (the machine-readable deliverable).

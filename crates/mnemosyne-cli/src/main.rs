@@ -2965,6 +2965,8 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
         println!("  {} @ {}", inv.name, inv.enforced_at);
         println!("    {}", inv.rule);
     }
+    println!("\n-- out-of-band enforcement --");
+    println!("  {}", c.invariant_enforcement);
     Ok(())
 }
 
