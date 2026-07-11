@@ -14213,6 +14213,44 @@
         "describe-schema's registry/invariant descriptions remain hand-authored semantic prose (the one un-auto-guarded tier, now documented as such) — projecting the enforcement, not a second source of it",
         "the R585 authoring-support arc is now review-hardened: R587-R591 built, R592 reviewed and fixed; next frontier is the narrative-authoring track / pinion consumer per the RESUME"
       ]
+    },
+    "Round 593 — unattended generate-gate-repair loop experiment (v1 design, sha-pinned)": {
+      "decision_summary": "design/manifest round for unattended-loop-experiment/v1: prove the R585-R592 generate-gate-repair loop authors a small game unattended (sha-pinned, code 0)",
+      "changes_bullets": [
+        "Authored claudedocs/phase1-unattended-loop-experiment/v1/ (design/manifest round, code 0): premise.md (fresh IP-free \"The Ban Tower\" small game — 14-20 scenes, 4-6 frames, one two-branch fork, a withheld secret, one quest, setup->payoff chains), loop-agent-brief.md, render-brief.md, judge-brief.md, runbook.md, manifest.json.",
+        "The experiment runs the generate->propose-verdict->repair->report-authoring-frontier loop UNATTENDED: a blind agent authors from describe-schema + premise + the CLI only (no source reading), self-repairs from the actionable violations, and pulls its next work from the frontier until it reports 0 zero-fact scenes / 0 dangling setups / 0 unresolved quests. It closes R592's honest residue — the R585-R592 surfaces are built + reviewed but the loop that CONSUMES them was never run end to end (infra is not proof, R500).",
+        "Three sha-pinned pins: PIN-1 convergence (orchestrator re-derives on a FRESH rebuild from the agent's JSON, R500 self-report-not-trusted), PIN-2 surfaces-drove-it (every repair traces to a propose-verdict violation or a frontier gap, from loop-log.md — falsifiable), PIN-3 coherence (warm render, leak 0 + fidelity off_path 0, 3 blind judges Overall+Coherence >= 4/5 — the store-consistency != coherence backstop).",
+        "R469 firewall: this lineage orchestrates + verifies only; blind subagents author/render/judge. Decision rule pre-committed four ways: loop_proven / surfaces_insufficient / coherence_gap / contaminated. Three predictions preregistered (converges but >= 2 repair rounds; early violations are reference-shape; the honest next gap is a missing guidance surface not a missing gate).",
+        ".gitignore: added the experiment dir's *.atomic.json / *.playthrough.json scratch-exclusion (evidence *.md + non-atomic *.json + manifest.json tracked as permanent audit record)."
+      ],
+      "verification_bullets": [
+        "Verified the loop mechanics end to end in a throwaway scratch workspace (created + deleted, no temp file left): import-sections (JSON array of {section_id, parent_doc, title}) -> propose-verdict = commit (exit 0) / rollback (exit 1) with actionable violations {source, rule, locus, expected, repair_hint, message} in --json -> import-facts -> report-authoring-frontier surfaced zero-fact scenes + per-world dangling setups + (with --telling) unresolved quests + never-planned disclosures.",
+        "Reinstalled the CLI (cargo install --path crates/mnemosyne-cli --force) so describe-schema / propose-verdict / report-authoring-frontier are present; the previously installed binary was stale (bb01cc6b, pre-R587).",
+        "manifest.json is valid JSON; sha256 32e473c7c9c4d9a69074a0c50fcbb2ae072b28c23e2503ab08612edd7acc21f7 pinned pre-execution.",
+        "No production crate touched (code 0); working tree otherwise clean; citation hygiene verified (R585-R592, R500, R469, R442, R452 exist in the store)."
+      ],
+      "carry_forward_bullets": [
+        "NEXT = R594 EXECUTE unattended-loop-experiment/v1 behind the experiment-execution consent gate (the owner chose (A)): run runbook.md's THE ONE PROMPT — spawn the blind loop agent, verify PIN-1 on a fresh rebuild, audit PIN-2 from loop-log.md, assemble the render road outline + quest briefing, spawn the blind render + extractor + 3 judges for PIN-3, apply the decision rule, write report.md + the R594 changelog entry. Push withheld.",
+        "The experiment's deliverable is the honest NEXT GAP (PIN-2's friction list): where an unattended authoring loop still needs something the R585-R592 surfaces do not provide."
+      ],
+      "publishable_decision_summary": "design/manifest round for unattended-loop-experiment/v1: prove the R585-R592 generate-gate-repair loop authors a small game unattended (sha-pinned, code 0)",
+      "publishable_changes_bullets": [
+        "Authored claudedocs/phase1-unattended-loop-experiment/v1/ (design/manifest round, code 0): premise.md (fresh IP-free \"The Ban Tower\" small game — 14-20 scenes, 4-6 frames, one two-branch fork, a withheld secret, one quest, setup->payoff chains), loop-agent-brief.md, render-brief.md, judge-brief.md, runbook.md, manifest.json.",
+        "The experiment runs the generate->propose-verdict->repair->report-authoring-frontier loop UNATTENDED: a blind agent authors from describe-schema + premise + the CLI only (no source reading), self-repairs from the actionable violations, and pulls its next work from the frontier until it reports 0 zero-fact scenes / 0 dangling setups / 0 unresolved quests. It closes R592's honest residue — the R585-R592 surfaces are built + reviewed but the loop that CONSUMES them was never run end to end (infra is not proof, R500).",
+        "Three sha-pinned pins: PIN-1 convergence (orchestrator re-derives on a FRESH rebuild from the agent's JSON, R500 self-report-not-trusted), PIN-2 surfaces-drove-it (every repair traces to a propose-verdict violation or a frontier gap, from loop-log.md — falsifiable), PIN-3 coherence (warm render, leak 0 + fidelity off_path 0, 3 blind judges Overall+Coherence >= 4/5 — the store-consistency != coherence backstop).",
+        "R469 firewall: this lineage orchestrates + verifies only; blind subagents author/render/judge. Decision rule pre-committed four ways: loop_proven / surfaces_insufficient / coherence_gap / contaminated. Three predictions preregistered (converges but >= 2 repair rounds; early violations are reference-shape; the honest next gap is a missing guidance surface not a missing gate).",
+        ".gitignore: added the experiment dir's *.atomic.json / *.playthrough.json scratch-exclusion (evidence *.md + non-atomic *.json + manifest.json tracked as permanent audit record)."
+      ],
+      "publishable_verification_bullets": [
+        "Verified the loop mechanics end to end in a throwaway scratch workspace (created + deleted, no temp file left): import-sections (JSON array of {section_id, parent_doc, title}) -> propose-verdict = commit (exit 0) / rollback (exit 1) with actionable violations {source, rule, locus, expected, repair_hint, message} in --json -> import-facts -> report-authoring-frontier surfaced zero-fact scenes + per-world dangling setups + (with --telling) unresolved quests + never-planned disclosures.",
+        "Reinstalled the CLI (cargo install --path crates/mnemosyne-cli --force) so describe-schema / propose-verdict / report-authoring-frontier are present; the previously installed binary was stale (bb01cc6b, pre-R587).",
+        "manifest.json is valid JSON; sha256 32e473c7c9c4d9a69074a0c50fcbb2ae072b28c23e2503ab08612edd7acc21f7 pinned pre-execution.",
+        "No production crate touched (code 0); working tree otherwise clean; citation hygiene verified (R585-R592, R500, R469, R442, R452 exist in the store)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "NEXT = R594 EXECUTE unattended-loop-experiment/v1 behind the experiment-execution consent gate (the owner chose (A)): run runbook.md's THE ONE PROMPT — spawn the blind loop agent, verify PIN-1 on a fresh rebuild, audit PIN-2 from loop-log.md, assemble the render road outline + quest briefing, spawn the blind render + extractor + 3 judges for PIN-3, apply the decision rule, write report.md + the R594 changelog entry. Push withheld.",
+        "The experiment's deliverable is the honest NEXT GAP (PIN-2's friction list): where an unattended authoring loop still needs something the R585-R592 surfaces do not provide."
+      ]
     }
   },
   "inventory_entries": {},

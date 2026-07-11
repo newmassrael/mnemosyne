@@ -1,0 +1,37 @@
+{
+  "manifest": "unattended-loop-experiment/v1",
+  "designed": "R593 (Mnemosyne narrative-authoring track)",
+  "lineage_note": "Design/manifest round. This lineage is the ORCHESTRATOR: it sets up the fresh workspace, spawns blind subagents, and re-derives every pin on a fresh rebuild. It does NOT author, repair, render, or judge (R469 contamination bound). Self-report is not trusted (R500) — pins are verified from the agent's JSON, never its store or log.",
+  "question": "Do the R585-R592 authoring surfaces (describe-schema, propose-verdict, report-authoring-frontier, the all-primitive import-facts manifest) actually let a blind AI agent author a small game UNATTENDED — generate a fact manifest, gate it, self-repair from the actionable violations, and pull its next work from the frontier — with NO human interpreting the gates and NO orchestrator help? R592's honest residue: the surfaces are built + reviewed + dogfood-grounded, but the loop that CONSUMES them has never been run end to end. Infra is not proof (R500).",
+  "premise": "premise.md — 'The Ban Tower', a fresh IP-free small game: a relief fire-lookout finds the tower empty, the log torn, an unconfirmed smoke report. Required shape: 14-20 scenes, 4-6 frames, one two-branch fork, a withheld secret (disclosure plan), one quest, setup->payoff chains. The agent authors all facts; the orchestrator only seeds the premise.",
+  "firewall": {
+    "rule": "R469 contamination bound. The blind loop agent (Step 1) authors and self-repairs the store with NO orchestrator help. Separate blind subagents render (Step 5) and judge (Step 6). This lineage runs only the deterministic setup + verification + gates.",
+    "blind_subagents": ["loop agent (author + gate + repair, unattended)", "render agent", "extractor", "judge x3"],
+    "orchestrator_may": ["seed the premise + fresh empty workspace", "run describe-schema/propose-verdict/import-*/report-*/validate-workspace for VERIFICATION", "assemble outlines + the quest briefing", "run the leak + fidelity gates", "apply the decision rule"],
+    "orchestrator_may_not": ["author or repair any manifest", "hint the loop agent", "render prose", "judge"]
+  },
+  "deterministic_pins": {
+    "PIN-1_convergence": "The blind loop agent, using ONLY describe-schema + premise + the CLI (no source), reaches a state where, re-derived by the orchestrator on a FRESH rebuild from the agent's sections.json + facts*.json: (a) propose-verdict on each manifest re-applies at `commit` (idempotent no-op), (b) report-authoring-frontier --telling <plan> reports 0 zero-fact scenes AND 0 dangling setups (all worlds) AND 0 unresolved quests, (c) validate-workspace is clean. never-planned disclosures may be > 0 (an intended withhold is never 'planned' to be told).",
+    "PIN-2_surfaces_drove_it": "From loop-log.md: every repair iteration traces to a specific propose-verdict violation or report-authoring-frontier gap (falsifiable — a convergence reached by luck or by reading source FAILS this), and the agent used describe-schema, not crate source. Records the iteration count + the friction/guess/missing-info points (the deliverable).",
+    "PIN-3_coherence": "A warm render of the render road, re-extracted blind: leak = 0 (vocab_shared > 0, non-vacuous), fidelity off_path = 0 / unplaced = 0 / reached_terminal true; AND 3 blind judges return majority Overall game-feel >= 4/5 and Coherence >= 4/5 with a 'real game? yes'. The store-consistency != coherence backstop: did the loop produce a real game or a gate-passing husk?"
+  },
+  "judged_no_pin": "The judges' per-axis scores (knowledge-realism, choice-and-consequence, quest-legibility) and the named weakest link — texture, recorded, not gated.",
+  "decision_rule_pre_committed": {
+    "loop_proven": "PIN-1 AND PIN-2 AND PIN-3 all hold => the R585-R592 surfaces ENABLE unattended authoring; infra->proof closed for this axis. Deliverable = the honest NEXT GAP (from PIN-2's friction list): where the loop still needed something the surfaces do not provide.",
+    "surfaces_insufficient": "PIN-1 fails (the agent could not converge from the surfaces alone) => the surfaces are INSUFFICIENT; the finding names exactly which surface fell short (a build target), grounded in the loop-log.",
+    "coherence_gap": "PIN-1 AND PIN-2 hold but PIN-3 fails => store-consistency != causal-coherence reproduced at the LOOP level; the loop converged to a gate-clean husk. The finding = the coherence gap the deterministic surfaces cannot gate (a measured residue, not a build).",
+    "contaminated": "PIN-2 fails (the agent read source, or repairs did not trace to the surfaces) => inconclusive on surface-sufficiency; re-run with a tighter brief. Not a substrate finding."
+  },
+  "grading_procedure": "Orchestrator runs Steps 0-7 of runbook.md. PIN-1/PIN-2 verified before the render road is picked. Judges are spawned last, blind, one road. All pin outputs pasted verbatim into report.md.",
+  "predictions_preregistered": [
+    "PRED-1: the loop CONVERGES (PIN-1 holds) but takes >= 2 propose-verdict repair rounds and >= 1 frontier round — the surfaces are sufficient but not first-try; the value is in the repair loop, not a clean first shot.",
+    "PRED-2: the dominant early violations are registry/reference shape (unknown frame/entity/section, bad pays_off target) — the write-time invariants catch the agent's first-draft reference errors; continuity-gate rejects (exclusive/interval) are rarer.",
+    "PRED-3: the honest next gap is NOT a missing gate but a missing GUIDANCE surface — the frontier tells the agent WHAT is incomplete (a dangling setup, a zero-fact scene) but not the narrative SHAPE to fill it with; the agent supplies coherence, the surfaces cannot. This is the store-consistency != coherence line restated as a loop finding."
+  ],
+  "honest_caveats": [
+    "n = 1 premise / 1 loop agent / 1 render / 3 judges / one render road.",
+    "The loop agent is a capable LLM; 'unattended' means no human and no orchestrator help, not a weak agent — the claim is about the SURFACES' sufficiency for a competent agent, not about the floor.",
+    "PIN-1 proves store-validity + frontier-cleanliness, which is exactly what the surfaces gate; PIN-3 is the only check on the part they CANNOT gate (coherence). A pass on PIN-1+PIN-2 with a marginal PIN-3 is the most informative outcome, not a clean sweep.",
+    "The convergence bar (frontier 0/0/0) is the surfaces' OWN definition of complete; if that bar is itself too weak to force a real game, PIN-3 is what exposes it."
+  ]
+}

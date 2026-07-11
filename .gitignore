@@ -45,3 +45,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-time-travel-experiment/
 /claudedocs/phase1-time-travel-experiment/**/*.atomic.json
 /claudedocs/phase1-time-travel-experiment/**/*.playthrough.json
+!/claudedocs/phase1-unattended-loop-experiment/
+/claudedocs/phase1-unattended-loop-experiment/**/*.atomic.json
+/claudedocs/phase1-unattended-loop-experiment/**/*.playthrough.json
