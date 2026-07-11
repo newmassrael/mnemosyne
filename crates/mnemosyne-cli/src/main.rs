@@ -2980,6 +2980,8 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     println!("{}", w.example_json);
     println!("\n-- canon order (required for a renderable store) --");
     println!("  {}", c.canon_order);
+    println!("\n-- disclosure encoding (per-road secrets; frontier != leak gate) --");
+    println!("  {}", c.disclosure_encoding);
     Ok(())
 }
 

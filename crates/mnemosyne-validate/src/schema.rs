@@ -85,6 +85,13 @@ pub struct SchemaContract {
     /// the store is not playable; `report-authoring-frontier` surfaces every
     /// fact-bearing scene the order does not cover as an `unordered scenes` gap.
     pub canon_order: &'static str,
+    /// How to encode a per-ROAD secret without leaking it (Round 601,
+    /// unattended-loop-experiment/v2 gap B) — the `withhold` + `first_at` reveal
+    /// idiom, and WHY a clean `report-authoring-frontier` does not certify a
+    /// leak-free telling. A disclosure `mode` is world-INDEPENDENT (one decision
+    /// per fact × telling); only `first_at` is per-world, so `state`/`hint`/`imply`
+    /// discloses on every road — the trap two independent loop agents reached for.
+    pub disclosure_encoding: &'static str,
 }
 
 /// The JSON wire format of the batch manifest (Round 595) — the serialization,
@@ -268,6 +275,22 @@ pub fn describe_schema() -> SchemaContract {
              Authoring the facts is NOT enough: until the order covers every fact-bearing scene, \
              `report-authoring-frontier` reports those scenes as `unordered scenes` (with no \
              order declared, ALL of them), and the store cannot be rendered.",
+        disclosure_encoding:
+            "Encoding a per-ROAD secret without leaking it — the `withhold` + `first_at` reveal \
+             idiom. A telling's disclosure `mode` is world-INDEPENDENT (one decision per fact × \
+             telling); only `first_at` is per-world. So a fact set to `state`/`hint`/`imply` is \
+             disclosed on EVERY world-line — reaching for `state` to reveal a secret on one road \
+             LEAKS it on the others. To reveal a fact on the reveal-road yet keep it hidden \
+             elsewhere, leave the mode `withhold` and pin `first_at` for THAT road only (e.g. \
+             `first_at: [[reveal-road, reveal-scene]]`); a road with no pin stays withheld. The \
+             secrecy is the withhold default; the reveal is the per-world timing pin — never a \
+             non-withhold mode. IMPORTANT: a clean `report-authoring-frontier` does NOT certify a \
+             correct telling — the frontier counts any fact carrying an override as `planned` and \
+             never reads prose, so frontier-clean is necessary-but-NOT-sufficient. A premature \
+             leak or early reveal is a RENDER property, caught only by the render-acceptance gates \
+             (the disclosure leak gate + `report-playthrough-manuscript --telling`) over the \
+             re-extracted prose; run those before trusting a telling — they are in scope, not an \
+             afterthought.",
     }
 }
 
@@ -428,7 +451,15 @@ fn registries() -> Vec<RegistrySpec> {
                 is the default axis, known by construction and never registered. A branch is \
                 EITHER a fork (forks_from a parent at a canon point, inheriting its prefix) XOR \
                 a confluence (converges_from >= 2 parents at their merge points) — a forest by \
-                construction.",
+                construction. FORK-LINEAGE TRAP (Round 601, the dangling two independent loop \
+                agents hit): a fork inherits the parent's prefix, so a pre-fork trunk setup is \
+                `in` every fork's world-line — but the BARE parent (no fork continuing it) stays \
+                its OWN world-line, a DEAD PREFIX that still carries those trunk setups. Forking \
+                BOTH roads off `main` and never continuing bare `main` leaves `main` a dead \
+                prefix whose trunk `expected` setups have no payoff THERE and dangle (surfaced \
+                per-world by `report-payoff-coverage` / `report-authoring-frontier`). Continue \
+                `main` AS one of the roads (fork only the OTHER off it), or pay the trunk setups \
+                off before the fork — do not leave a bare pre-fork trunk carrying live setups.",
         },
         RegistrySpec {
             name: "entities",
@@ -975,6 +1006,44 @@ mod tests {
         // Round 595/596 — the wire format + canon-order contract must ship.
         assert!(json.contains("manifest_wire"));
         assert!(json.contains("canon_order"));
+        // Round 601 — the disclosure-encoding idiom must ship (gap B).
+        assert!(json.contains("disclosure_encoding"));
+    }
+
+    /// Round 601 (unattended-loop-experiment/v2 gap B + Finding 2) — the two
+    /// hand-authored prose fixes must carry their load-bearing concepts: the
+    /// disclosure-encoding idiom names the `withhold`+`first_at` reveal and the
+    /// frontier-is-not-the-leak-gate caveat; the `branches` registry names the
+    /// dead-prefix dangling trap. Prose (tier-3, not serde-guarded), so this
+    /// pins the concepts an agent must find, not the exact wording.
+    #[test]
+    fn disclosure_encoding_and_fork_lineage_trap_are_documented() {
+        let c = describe_schema();
+        let enc = c.disclosure_encoding;
+        assert!(enc.contains("withhold"), "names the withhold default");
+        assert!(enc.contains("first_at"), "names the per-world reveal pin");
+        assert!(
+            enc.contains("leak") || enc.contains("LEAK"),
+            "warns about the leak"
+        );
+        assert!(
+            enc.contains("report-authoring-frontier"),
+            "states frontier-clean is not sufficient"
+        );
+        let branches = c
+            .registries
+            .iter()
+            .find(|r| r.name == "branches")
+            .expect("branches registry present");
+        assert!(
+            branches.description.contains("dead prefix")
+                || branches.description.contains("DEAD PREFIX"),
+            "branches names the dead-prefix trap"
+        );
+        assert!(
+            branches.description.contains("dangle"),
+            "branches names the dangling consequence"
+        );
     }
 
     /// Round 592 — the fact-shape DRIFT GUARD: the described fact fields must
