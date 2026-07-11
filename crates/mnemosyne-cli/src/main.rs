@@ -313,6 +313,8 @@ fn run(args: &[String]) -> Result<()> {
         "describe-schema" => cmd_describe_schema(&args[2..]),
         // Round 588 — the generate-gate-repair loop's atomic dry-run gate.
         "propose-verdict" => cmd_propose_verdict(&args[2..]),
+        // Round 589 — the consolidated coverage-gap frontier a loop pulls work from.
+        "report-authoring-frontier" => cmd_report_authoring_frontier(&args[2..]),
         "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
         "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
         "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
@@ -496,6 +498,13 @@ fn print_help(prog: &str) {
     );
     println!(
         "   Round 588 — dry-run gate: apply a candidate batch to a throwaway clone, run shape + continuity gates, emit commit/rollback + actionable violations (exit 1 on rollback; store never written)"
+    );
+    println!(
+        " {} report-authoring-frontier [--telling <id>] [--order <path>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures"
     );
     println!(
         " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
@@ -3053,6 +3062,97 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     }
     if report.verdict == mnemosyne_ops::ProposeVerdict::Rollback {
         std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 589 — authoring frontier (`report-authoring-frontier`, R585 debt item
+/// 3): the consolidated coverage-gap surface an unattended loop pulls its next
+/// work from — zero-fact scenes + per-scene coverage + per-world dangling setups
+/// + (with `--telling`) unresolved quests + never-planned disclosures. A pure
+/// read, never gated. `--order` bypasses the pin; `--sidecar` reads a
+/// non-default store.
+fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
+    let mut telling: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--telling" => {
+                telling = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::authoring_frontier_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+        telling.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    let telling_label = report.telling.as_deref().unwrap_or("(none)");
+    println!(
+        "=== authoring frontier — telling {} — {} gap(s) ===",
+        telling_label, report.total_gaps
+    );
+    let list = |label: &str, v: &[String]| {
+        if v.is_empty() {
+            println!("{label}: none");
+        } else {
+            println!("{label} ({}): {}", v.len(), v.join(", "));
+        }
+    };
+    list("zero-fact scenes", &report.zero_fact_scenes);
+    if report.dangling_setups.is_empty() {
+        println!("dangling setups: none");
+    } else {
+        for (world, facts) in &report.dangling_setups {
+            println!(
+                "dangling setups [{world}] ({}): {}",
+                facts.len(),
+                facts.join(", ")
+            );
+        }
+    }
+    match &report.unresolved_quests {
+        Some(q) => list("unresolved quests", q),
+        None => println!("unresolved quests: (pass --telling)"),
+    }
+    match &report.never_planned_disclosures {
+        Some(d) => list("never-planned disclosures", d),
+        None => println!("never-planned disclosures: (pass --telling)"),
     }
     Ok(())
 }

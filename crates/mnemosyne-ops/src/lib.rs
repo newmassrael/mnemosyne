@@ -14,6 +14,7 @@ pub mod query;
 pub mod style;
 pub mod validate;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore};
@@ -419,6 +420,131 @@ pub fn propose_verdict(
         applied_summary: outcome.summary,
         violation_count: violations.len(),
         violations,
+    })
+}
+
+/// One scene's fact coverage (Round 589) — how many facts are anchored (via
+/// their `canon_from`) at this section.
+#[derive(Debug, Clone, Serialize)]
+pub struct SceneCoverage {
+    pub scene: String,
+    pub fact_count: usize,
+}
+
+/// The consolidated authoring FRONTIER (Round 589, R585 debt item 3) — every
+/// coverage gap an unattended generate-gate-repair loop pulls its next work
+/// from, JOINed from the scattered projections (payoff R442, disclosure R507,
+/// quest R568, plus the store's own scene/fact structure) into one read. Pure
+/// read, never gated (the dangling-is-a-todo discipline). The telling-scoped
+/// gaps (quests / disclosures) are present only when a telling is given.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthoringFrontierReport {
+    /// The telling the quest + disclosure gaps were computed for (None = the
+    /// telling-scoped sections were omitted).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub telling: Option<String>,
+    /// Sections with NO fact anchored (no fact's `canon_from` names them) — the
+    /// empty scenes to author into, sorted.
+    pub zero_fact_scenes: Vec<String>,
+    /// Fact count anchored per section (every section, including zero) — the
+    /// per-node coverage map, section-id order.
+    pub scene_coverage: Vec<SceneCoverage>,
+    /// Dangling setups per world-line (Expected facts with no visible payoff,
+    /// R442) — the Chekhov guns still to fire. Only worlds with ≥ 1 dangling.
+    pub dangling_setups: BTreeMap<String, Vec<String>>,
+    /// Quests whose giving setup could not be bound (no completed_by anchor,
+    /// R568). Present only when a telling is given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unresolved_quests: Option<Vec<String>>,
+    /// Facts never given an explicit disclosure decision under the telling
+    /// (withheld by default, R507). Present only when a telling is given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub never_planned_disclosures: Option<Vec<String>>,
+    /// Total distinct gap items across every category — the loop's "work
+    /// remaining" gauge (a dangling setup counted once across worlds).
+    pub total_gaps: usize,
+}
+
+/// Compose the authoring-frontier report (Round 589). ONE store load + order
+/// compose, then every sub-projection runs over it (no redundant reloads): the
+/// scene/fact structure gives zero-fact scenes + per-node coverage, R442 payoff
+/// gives per-world dangling setups, and — when a telling is given — R568 quests
+/// give the unresolved set and R507 disclosure gives the never-planned facts. A
+/// pure read JOIN, never gated.
+pub fn authoring_frontier_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+    telling: Option<&str>,
+) -> Result<AuthoringFrontierReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+
+    // Scene coverage: every section starts at zero, each fact credits its
+    // canon_from (the anchor). A canon_from is always an existing section (the
+    // shape gate), so nothing lands outside the map.
+    let mut counts: BTreeMap<String, usize> =
+        store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
+    for fact in store.narrative_facts.values() {
+        if let Some(c) = counts.get_mut(&fact.canon_from) {
+            *c += 1;
+        }
+    }
+    let zero_fact_scenes: Vec<String> = counts
+        .iter()
+        .filter(|(_, n)| **n == 0)
+        .map(|(s, _)| s.clone())
+        .collect();
+    let scene_coverage: Vec<SceneCoverage> = counts
+        .into_iter()
+        .map(|(scene, fact_count)| SceneCoverage { scene, fact_count })
+        .collect();
+
+    // Per-world dangling setups (R442) — keep only worlds with work outstanding.
+    let payoff =
+        mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)?;
+    let dangling_setups: BTreeMap<String, Vec<String>> = payoff
+        .worlds
+        .iter()
+        .filter(|(_, w)| !w.dangling.is_empty())
+        .map(|(world, w)| (world.clone(), w.dangling.clone()))
+        .collect();
+    let distinct_dangling: BTreeSet<&String> = payoff
+        .worlds
+        .values()
+        .flat_map(|w| w.dangling.iter())
+        .collect();
+
+    // Telling-scoped gaps (R568 quests + R507 disclosure) only when asked.
+    let (unresolved_quests, never_planned_disclosures) = match telling {
+        Some(t) => {
+            let quests = mnemosyne_validate::continuity::quest_graph(&store, &order, None, t)
+                .map_err(OpError::Other)?;
+            let disclosure = mnemosyne_validate::disclosure::disclosure_coverage(&store, t)
+                .map_err(OpError::Other)?;
+            (
+                Some(quests.unresolved_quests),
+                Some(disclosure.never_planned),
+            )
+        }
+        None => (None, None),
+    };
+
+    let total_gaps = zero_fact_scenes.len()
+        + distinct_dangling.len()
+        + unresolved_quests.as_ref().map_or(0, Vec::len)
+        + never_planned_disclosures.as_ref().map_or(0, Vec::len);
+
+    Ok(AuthoringFrontierReport {
+        telling: telling.map(str::to_string),
+        zero_fact_scenes,
+        scene_coverage,
+        dangling_setups,
+        unresolved_quests,
+        never_planned_disclosures,
+        total_gaps,
     })
 }
 

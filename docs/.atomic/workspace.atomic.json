@@ -14039,6 +14039,50 @@
         "propose-verdict is rollback-on-ANY-violation (the loop authors clean); a severity-aware verdict (warn vs reject) is deferred until a consumer needs it",
         "shape violations are fail-fast (one at a time); collecting every shape error in one pass would need a continue-on-error apply, deferred (a core-semantics change)"
       ]
+    },
+    "Round 589 — report-authoring-frontier: the consolidated coverage-gap surface a loop pulls work from (R585 debt item 3)": {
+      "decision_summary": "Build report-authoring-frontier (R585 debt item 3): one consolidated read that JOINs the scattered coverage-gap projections into the single surface an unattended generate-gate-repair loop pulls its next work from — zero-fact scenes + per-scene coverage + per-world dangling setups (R442) + (with a telling) unresolved quests (R568) + never-planned disclosures (R507). Pure read, never gated (the dangling-is-a-todo discipline); telling-scoped gaps present only when a telling is given; one store load feeds every sub-projection. The generate-gate-repair LLM loop stays outside; only this deterministic surface lands.",
+      "changes_bullets": [
+        "mnemosyne-ops: AuthoringFrontierReport + SceneCoverage + authoring_frontier_report() — ONE store load + order compose, then payoff_coverage (per-world dangling, R442) / disclosure_coverage (never-planned, R507) / quest_graph (unresolved, R568) all run over it; zero-fact scenes + per-scene counts derived from store.sections x narrative_facts.canon_from",
+        "total_gaps is the distinct union across categories (a setup dangling in N worlds is counted once) — the loop's work-remaining gauge",
+        "surfaces: report-authoring-frontier [--telling] [--order] [--sidecar] [--json] CLI verb + report_authoring_frontier MCP tool; --telling optional (omit for the telling-independent gaps only: zero-fact scenes, per-scene coverage, dangling setups)",
+        "a pure read JOIN over existing tested projections (R442/R507/R568), no new authoritative state, never gated (the dangling-is-a-todo discipline)"
+      ],
+      "verification_bullets": [
+        "cargo build + clippy -D warnings clean; fmt clean",
+        "e2e against the R585 dogfood ../the-tide-that-counts (26 chapters / 58 facts / 3 endings / reader telling): without --telling = 13 gaps (2 zero-fact scenes ch19-ledger + ch22-final-gut, 11 distinct dangling setups across 3 world-lines); with --telling reader = total_gaps 65 (2 + 11 distinct dangling + 0 unresolved quests + 52 never-planned disclosures), scene_coverage all 26 sections with per-section counts, quest/disclosure sections correctly gated behind --telling",
+        "verified via the real store — the sub-projections R442/R507/R568 are already unit-tested and the frontier is pure composition glue",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R585 debt item 4 is next: the all-primitive batch manifest (facts + entities + quests + branches + disclosure in one manifest for throughput; today only import-facts / import-sections)",
+        "then item 5 guardrail Validator gates (hallucinated-ref / wrong-branch / orphan / citation-hygiene via the PluginRegistry Validator slot)",
+        "the frontier is a pure read surface; a per-node priority/ranking of gaps is deferred until a loop needs it"
+      ],
+      "publishable_decision_summary": "Build report-authoring-frontier (R585 debt item 3): one consolidated read that JOINs the scattered coverage-gap projections into the single surface an unattended generate-gate-repair loop pulls its next work from — zero-fact scenes + per-scene coverage + per-world dangling setups (R442) + (with a telling) unresolved quests (R568) + never-planned disclosures (R507). Pure read, never gated (the dangling-is-a-todo discipline); telling-scoped gaps present only when a telling is given; one store load feeds every sub-projection. The generate-gate-repair LLM loop stays outside; only this deterministic surface lands.",
+      "publishable_changes_bullets": [
+        "mnemosyne-ops: AuthoringFrontierReport + SceneCoverage + authoring_frontier_report() — ONE store load + order compose, then payoff_coverage (per-world dangling, R442) / disclosure_coverage (never-planned, R507) / quest_graph (unresolved, R568) all run over it; zero-fact scenes + per-scene counts derived from store.sections x narrative_facts.canon_from",
+        "total_gaps is the distinct union across categories (a setup dangling in N worlds is counted once) — the loop's work-remaining gauge",
+        "surfaces: report-authoring-frontier [--telling] [--order] [--sidecar] [--json] CLI verb + report_authoring_frontier MCP tool; --telling optional (omit for the telling-independent gaps only: zero-fact scenes, per-scene coverage, dangling setups)",
+        "a pure read JOIN over existing tested projections (R442/R507/R568), no new authoritative state, never gated (the dangling-is-a-todo discipline)"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build + clippy -D warnings clean; fmt clean",
+        "e2e against the R585 dogfood ../the-tide-that-counts (26 chapters / 58 facts / 3 endings / reader telling): without --telling = 13 gaps (2 zero-fact scenes ch19-ledger + ch22-final-gut, 11 distinct dangling setups across 3 world-lines); with --telling reader = total_gaps 65 (2 + 11 distinct dangling + 0 unresolved quests + 52 never-planned disclosures), scene_coverage all 26 sections with per-section counts, quest/disclosure sections correctly gated behind --telling",
+        "verified via the real store — the sub-projections R442/R507/R568 are already unit-tested and the frontier is pure composition glue",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart)"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R585 debt item 4 is next: the all-primitive batch manifest (facts + entities + quests + branches + disclosure in one manifest for throughput; today only import-facts / import-sections)",
+        "then item 5 guardrail Validator gates (hallucinated-ref / wrong-branch / orphan / citation-hygiene via the PluginRegistry Validator slot)",
+        "the frontier is a pure read surface; a per-node priority/ranking of gaps is deferred until a loop needs it"
+      ]
     }
   },
   "inventory_entries": {},

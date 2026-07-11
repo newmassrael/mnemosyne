@@ -511,6 +511,19 @@ pub struct ProposeVerdictArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportAuthoringFrontierArgs {
+    /// Telling id — enables the quest + disclosure gap sections (unresolved
+    /// quests, never-planned disclosures). Omit for the telling-independent
+    /// gaps only (zero-fact scenes, per-scene coverage, dangling setups).
+    #[serde(default)]
+    pub telling: Option<String>,
+    /// Canon-order declaration path override (bypasses the pin). Omit to use
+    /// `[continuity].canon_order_path`.
+    #[serde(default)]
+    pub order_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTimelineGapsArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -1907,6 +1920,24 @@ impl MnemosyneServer {
     )]
     async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         self.tool_json(&ops::describe_schema())
+    }
+
+    #[tool(
+        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (facts per section) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Pure read, never gated. Fail-loud on a typo'd telling."
+    )]
+    async fn report_authoring_frontier(
+        &self,
+        args: Parameters<ReportAuthoringFrontierArgs>,
+    ) -> CallToolResult {
+        match ops::authoring_frontier_report(
+            &self.workspace,
+            None,
+            args.0.order_path.as_deref(),
+            args.0.telling.as_deref(),
+        ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
     }
 
     #[tool(
