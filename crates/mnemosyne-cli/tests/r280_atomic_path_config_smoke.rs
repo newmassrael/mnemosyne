@@ -1,5 +1,5 @@
 //! Round 280 — split-brain regression: read / validation CLI paths
-//! must honor `[atomic].sidecar_path` (and `output_path`), matching the
+//! must honor `[atomic].sidecar_path`, matching the
 //! mutate / cascade paths that already did since Round 279.
 //!
 //! Trigger: tc8-harness adopter set `[atomic].sidecar_path = "doc/.atomic/store.json"`
@@ -16,19 +16,16 @@ fn cli_binary() -> &'static str {
     env!("CARGO_BIN_EXE_mnemosyne-cli")
 }
 
-/// Write a workspace whose `[atomic].sidecar_path` + `output_path` deviate
-/// from defaults, mirroring the tc8-harness adoption layout.
+/// Write a workspace whose `[atomic].sidecar_path` deviates from the
+/// default, mirroring the tc8-harness adoption layout.
 fn write_redirected_workspace(workspace: &std::path::Path) {
     fs::create_dir_all(workspace.join("doc/.atomic")).unwrap();
     fs::create_dir_all(workspace.join("docs/coverage")).unwrap();
     let cfg = r#"
 [workspace]
-docs = ["docs/coverage/SPEC_COVERAGE.md"]
-default_doc = "docs/coverage/SPEC_COVERAGE.md"
 
 [atomic]
 sidecar_path = "doc/.atomic/store.json"
-output_path = "docs/coverage/SPEC_COVERAGE.md"
 "#;
     fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
     let stub = "# SPEC_COVERAGE\n\n## Sections\n\n## Changelog\n";
@@ -148,12 +145,9 @@ fn validate_code_refs_honors_atomic_sidecar_override() {
     // the FOO_ inventory prefix.
     let cfg = r#"
 [workspace]
-docs = ["docs/coverage/SPEC_COVERAGE.md"]
-default_doc = "docs/coverage/SPEC_COVERAGE.md"
 
 [atomic]
 sidecar_path = "doc/.atomic/store.json"
-output_path = "docs/coverage/SPEC_COVERAGE.md"
 
 [plugins.set_equality_validator]
 paths = ["src/"]

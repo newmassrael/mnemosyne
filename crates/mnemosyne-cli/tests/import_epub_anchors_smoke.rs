@@ -18,7 +18,7 @@ fn write_workspace(ws: &Path) {
     fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
     fs::write(
         ws.join("mnemosyne.toml"),
-        "[workspace]\ndocs = [\"docs/GENERATED.md\"]\ndefault_doc = \"docs/GENERATED.md\"\n\
+        "[workspace]\n\
          [schema]\nentry_id_prefix = \"Round \"\n",
     )
     .unwrap();

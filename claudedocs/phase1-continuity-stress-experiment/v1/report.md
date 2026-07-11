@@ -105,11 +105,22 @@ orchestrator-assembled manuscript beats; a blind judge read only the prose:
   procedure rather than felt jeopardy.
 - **COHERENCE 5/5** — every beat follows cleanly, no contradiction or dropped
   thread.
-- **DISCLOSURE (independent leak read): clean** — the reader learns WHO is aboard
-  the barge only at the sc-11 reveal (the injured master keeper); the earlier
-  "master away downriver" plants without giving it away. This matches the
-  authored plan (f-secret withheld, revealed at sc-11 on main) — a coherence-level
-  confirmation the telling did not leak.
+- **DISCLOSURE — DETERMINISTIC leak + fidelity gates (R502/R505; the R605 review-F1
+  fix): leak-clean, non-vacuous.** A blind extractor re-extracted the WORK-road
+  render into 16 ground-truth typed facts (using the authored vocabulary, blind to
+  the disclosure plan); `validate-disclosure-leak --telling default --world main
+  --truth-frame ground-truth` returns **leaks=0 / unordered=0 / unmatched=0 /
+  truth_frame_typed=13 / vocabulary_shared=13** (1 targeted = the withheld secret;
+  vocabulary_shared=13 ≫ 0, so NOT a vacuous pass, the R510-F5 guard). The
+  withheld `carries(e-marrow→e-master)` is re-extracted only at sc-11 — its authored
+  `first_at` pin — never earlier. `validate-render-fidelity --world main` returns
+  **off_path=0 / unplaced=0 / reached_terminal=true** (no drift onto another
+  world-line). So the "did not leak" finding rests on the deterministic gate, not a
+  subjective read — the judge's independent read (below) merely agrees. Verbatim
+  output: `pins/PIN-3-render-gates.txt`.
+- **Judge's disclosure read (agreeing, not load-bearing):** the reader learns WHO is
+  aboard only at the sc-11 reveal; the earlier "master away downriver" plants
+  without giving it away.
 
 Craft note (not downplayed, an echo of store-consistency ≠ coherence): the
 transition rule is STRUCTURALLY enforced (PIN-2 proved it bites) yet in the prose
@@ -117,10 +128,9 @@ the gate sequence reads as procedure, not tension — the one constraint the gat
 GATES but the telling under-dramatizes. The judge's weakest-link: give the beam a
 near-miss so all three constraints bite on the page, not just in the store.
 
-The full re-extraction leak + fidelity gates (R502/R505) were NOT run — deferred
-as disproportionate for a non-gating rule-stress backstop (the disclosure/warmth
-axis was settled R514/R515); the judge's independent disclosure read is the
-coherence-level check here.
+All PIN-1 / PIN-2 / PIN-3 gate outputs are preserved verbatim under `pins/` (the
+R605 review-F4 fix), so every "verified on a fresh rebuild" claim above is
+independently re-checkable from tracked artifacts, not the orchestrator's word.
 
 ## Decision (pre-committed rule)
 

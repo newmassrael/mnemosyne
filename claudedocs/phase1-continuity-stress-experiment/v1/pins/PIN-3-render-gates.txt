@@ -1,0 +1,9 @@
+### PIN-3 deterministic — the RENDER re-extraction gates (R502/R505; F1 fix). authored store = the fresh-rebuild; --against = blind re-extraction of the WORK-road render.
+
+$ validate-disclosure-leak --telling default --against <reextract> --world main --truth-frame ground-truth
+=== disclosure leak — telling `default` world `main` truth-frame `ground-truth` — 1 targeted ===
+leaks=0 unordered=0 unmatched=0 truth_frame_typed=13 vocabulary_shared=13
+
+$ validate-render-fidelity --against <reextract> --world main
+=== render fidelity — world `main` — 16 re-extracted fact(s), reached_terminal=true ===
+off_path=0 unplaced=0

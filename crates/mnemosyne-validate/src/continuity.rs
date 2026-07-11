@@ -443,7 +443,7 @@ pub enum NarrativeRuleSpec {
 /// The comparison operator of an [`NarrativeRuleSpec::Interval`] rule
 /// (Round 489): the closed set of scalar comparisons. `value(left) −
 /// value(right)  ⋈op⋈  bound`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IntervalOp {
     Ge,
@@ -489,7 +489,7 @@ pub enum IntervalBound {
 }
 
 /// Which typed leg an exclusive rule keys on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExclusiveKey {
     Subject,
@@ -538,7 +538,13 @@ const NARRATIVE_RULES_SCHEMA: &str = "narrative-rules/v1";
 /// how the lenient parse swallowed unknown keys. `schema` is the version tag
 /// and `comment` a free-text annotation slot the dogfood files carry; both
 /// are modeled so a THIRD unknown file-level key fails loud.
-#[derive(Debug, Deserialize)]
+// `Serialize` (Round 605, review F2): the rules-file wire is a serialization
+// contract documented by `schema::describe_schema().narrative_rules_wire`, so —
+// like `FactsManifest` / `CanonOrderFile` — it is reflection-pinned: a test
+// serializes a fully-populated sample and asserts the describe-schema prose
+// names every emitted key, so a serde rename here fails the build until the prose
+// is updated (the TEST-guarded tier, not hand-authored tier-3).
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NarrativeRulesWire {
     #[serde(default)]
@@ -555,7 +561,7 @@ struct NarrativeRulesWire {
 /// [`narrative_rule_from_wire`], so a transition carrying `per` (the S7
 /// miss) or an exclusive carrying `allowed` rejects rather than silently
 /// dropping the stray leg, and a missing leg is named.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NarrativeRuleWire {
     id: String,
@@ -579,7 +585,7 @@ struct NarrativeRuleWire {
 /// Wire form of an interval bound — flat, `deny_unknown_fields`, exactly one
 /// of `predicate` / `const` set (checked in [`narrative_rule_from_wire`], the
 /// explicit-coherence idiom over serde `untagged`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct IntervalBoundWire {
     #[serde(default)]
@@ -593,12 +599,40 @@ struct IntervalBoundWire {
 /// authoring-contract description (`schema::describe_schema`, R587) enumerates
 /// the rule classes from THIS enum — an added class breaks its exhaustive match
 /// (the single-source drift guard) instead of silently going undescribed.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RuleClass {
     Exclusive,
     Transition,
     Interval,
+}
+
+/// Round 605 (review F2): a fully-populated rules-file wire sample serialized to
+/// JSON, for the describe-schema reflection guard (`schema.rs`
+/// `narrative_rules_wire_prose_names_every_serde_key`). Exercises every serde key
+/// — the file-level `schema`/`comment`/`rules`, every rule leg, and the `const`
+/// bound rename — so a rename here fails that guard. Ids need not be valid (this
+/// is serialization to enumerate keys, not validation).
+#[cfg(test)]
+pub(crate) fn narrative_rules_wire_sample_json() -> serde_json::Value {
+    let sample = NarrativeRulesWire {
+        schema: Some("narrative-rules/v1".into()),
+        comment: Some("annotation".into()),
+        rules: vec![NarrativeRuleWire {
+            id: "r".into(),
+            predicate: "p".into(),
+            class: RuleClass::Interval,
+            per: Some(ExclusiveKey::Object),
+            allowed: Some(vec![["a".into(), "b".into()]]),
+            right: Some("q".into()),
+            op: Some(IntervalOp::Ge),
+            bound: Some(IntervalBoundWire {
+                predicate: Some("z".into()),
+                constant: Some(30.0),
+            }),
+        }],
+    };
+    serde_json::to_value(sample).expect("serialize rules wire sample")
 }
 
 /// Load a declared narrative-rules FILE, with the optional sha256 pin

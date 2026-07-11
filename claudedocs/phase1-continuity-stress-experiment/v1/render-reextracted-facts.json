@@ -1,0 +1,381 @@
+{
+ "frames": [
+  {
+   "frame_id": "ground-truth"
+  }
+ ],
+ "entities": [
+  {
+   "entity_id": "e-wick",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-master",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-marrow-master",
+   "kind": "character"
+  },
+  {
+   "entity_id": "e-lantern",
+   "kind": "item"
+  },
+  {
+   "entity_id": "e-gate",
+   "kind": "fixture"
+  },
+  {
+   "entity_id": "e-pound",
+   "kind": "fixture"
+  },
+  {
+   "entity_id": "e-marrow",
+   "kind": "vessel"
+  },
+  {
+   "entity_id": "e-quest",
+   "kind": "quest"
+  }
+ ],
+ "predicates": [
+  {
+   "predicate_id": "holds",
+   "object_kind": "entity"
+  },
+  {
+   "predicate_id": "gate_state",
+   "object_kind": "scalar"
+  },
+  {
+   "predicate_id": "fill_start_clock",
+   "object_kind": "scalar"
+  },
+  {
+   "predicate_id": "open_clock",
+   "object_kind": "scalar"
+  },
+  {
+   "predicate_id": "carries",
+   "object_kind": "entity"
+  },
+  {
+   "predicate_id": "pursues",
+   "object_kind": "entity"
+  },
+  {
+   "predicate_id": "completed_by",
+   "object_kind": "entity"
+  }
+ ],
+ "facts": [
+  {
+   "fact_id": "rx-01",
+   "frame": "ground-truth",
+   "claim": "Wick keeps the night watch alone; the master is away downriver until morning.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "entities": [
+    "e-wick",
+    "e-master"
+   ]
+  },
+  {
+   "fact_id": "rx-02",
+   "frame": "ground-truth",
+   "claim": "The lock-gate stands barred against the rising flood.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "entities": [
+    "e-gate",
+    "e-pound"
+   ],
+   "typed": {
+    "subject": "e-gate",
+    "predicate": "gate_state",
+    "object": {
+     "kind": "value",
+     "value": "barred"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-04",
+   "frame": "ground-truth",
+   "claim": "There is only one storm-lantern; whoever works the gate must carry it.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "entities": [
+    "e-lantern"
+   ]
+  },
+  {
+   "fact_id": "rx-05",
+   "frame": "ground-truth",
+   "claim": "Wick takes the lantern; it burns in his hand.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "entities": [
+    "e-wick",
+    "e-lantern"
+   ],
+   "typed": {
+    "subject": "e-wick",
+    "predicate": "holds",
+    "object": {
+     "kind": "entity",
+     "id": "e-lantern"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-06",
+   "frame": "ground-truth",
+   "claim": "The pound began taking water at the turn of the third hour.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "entities": [
+    "e-pound"
+   ],
+   "typed": {
+    "subject": "e-pound",
+    "predicate": "fill_start_clock",
+    "object": {
+     "kind": "value",
+     "value": "180"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-07",
+   "frame": "ground-truth",
+   "claim": "The Marrow signals from the dark, wanting up before the flood crests.",
+   "canon_from": "sc-05",
+   "evidence": [
+    "sc-05"
+   ],
+   "entities": [
+    "e-marrow"
+   ]
+  },
+  {
+   "fact_id": "rx-09",
+   "frame": "ground-truth",
+   "claim": "Wick takes the night's charge to see the Marrow and the lock through.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "entities": [
+    "e-wick",
+    "e-quest"
+   ],
+   "typed": {
+    "subject": "e-wick",
+    "predicate": "pursues",
+    "object": {
+     "kind": "entity",
+     "id": "e-quest"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-11",
+   "frame": "ground-truth",
+   "claim": "Wick hauls the beam; the gate comes off barred to a crack.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "entities": [
+    "e-gate"
+   ],
+   "typed": {
+    "subject": "e-gate",
+    "predicate": "gate_state",
+    "object": {
+     "kind": "value",
+     "value": "cracked"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-12",
+   "frame": "ground-truth",
+   "claim": "Wick passes the lantern to the barge-master to hold at the sill.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "entities": [
+    "e-marrow-master",
+    "e-lantern"
+   ],
+   "typed": {
+    "subject": "e-marrow-master",
+    "predicate": "holds",
+    "object": {
+     "kind": "entity",
+     "id": "e-lantern"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-14",
+   "frame": "ground-truth",
+   "claim": "The gate is opened at 3:35, a full thirty-five minutes of fill.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "entities": [
+    "e-gate",
+    "e-pound"
+   ],
+   "typed": {
+    "subject": "e-pound",
+    "predicate": "open_clock",
+    "object": {
+     "kind": "value",
+     "value": "215"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-15",
+   "frame": "ground-truth",
+   "claim": "The barge-master passes the lantern back to Wick.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "entities": [
+    "e-wick",
+    "e-lantern"
+   ],
+   "typed": {
+    "subject": "e-wick",
+    "predicate": "holds",
+    "object": {
+     "kind": "entity",
+     "id": "e-lantern"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-16",
+   "frame": "ground-truth",
+   "claim": "The gate comes off the crack to open; the Marrow comes up into the lock.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "entities": [
+    "e-gate",
+    "e-marrow"
+   ],
+   "typed": {
+    "subject": "e-gate",
+    "predicate": "gate_state",
+    "object": {
+     "kind": "value",
+     "value": "open"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-17",
+   "frame": "ground-truth",
+   "claim": "As the Marrow clears the sill, Wick brings the gate down off open to a crack.",
+   "canon_from": "sc-11",
+   "evidence": [
+    "sc-11"
+   ],
+   "entities": [
+    "e-gate",
+    "e-marrow"
+   ],
+   "typed": {
+    "subject": "e-gate",
+    "predicate": "gate_state",
+    "object": {
+     "kind": "value",
+     "value": "cracked"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-18",
+   "frame": "ground-truth",
+   "claim": "Wick sees the master keeper laid hurt in the Marrow's well \u2014 what she carried.",
+   "canon_from": "sc-11",
+   "evidence": [
+    "sc-11"
+   ],
+   "entities": [
+    "e-marrow",
+    "e-master"
+   ],
+   "typed": {
+    "subject": "e-marrow",
+    "predicate": "carries",
+    "object": {
+     "kind": "entity",
+     "id": "e-master"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-20",
+   "frame": "ground-truth",
+   "claim": "Wick bars the gate home again, as at the start of the night.",
+   "canon_from": "sc-12",
+   "evidence": [
+    "sc-12"
+   ],
+   "entities": [
+    "e-gate",
+    "e-marrow"
+   ],
+   "typed": {
+    "subject": "e-gate",
+    "predicate": "gate_state",
+    "object": {
+     "kind": "value",
+     "value": "barred"
+    }
+   }
+  },
+  {
+   "fact_id": "rx-21",
+   "frame": "ground-truth",
+   "claim": "The night's charge is done, accomplished by Wick.",
+   "canon_from": "sc-12",
+   "evidence": [
+    "sc-12"
+   ],
+   "entities": [
+    "e-quest",
+    "e-wick"
+   ],
+   "typed": {
+    "subject": "e-quest",
+    "predicate": "completed_by",
+    "object": {
+     "kind": "entity",
+     "id": "e-wick"
+    }
+   }
+  }
+ ]
+}

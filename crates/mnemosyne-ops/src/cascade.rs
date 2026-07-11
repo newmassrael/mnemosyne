@@ -177,10 +177,7 @@ mod tests {
         fs::create_dir_all(&anchor).unwrap();
         fs::write(
             anchor.join("mnemosyne.toml"),
-            format!(
-                "[workspace]\ndocs = [\"a.md\"]\nroot = \"..\"\n{}",
-                atomic_table
-            ),
+            format!("[workspace]\nroot = \"..\"\n{}", atomic_table),
         )
         .unwrap();
         let root = tmp.path().canonicalize().unwrap();

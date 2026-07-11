@@ -1,0 +1,27 @@
+### PIN-1 — fresh rebuild from run/game artifacts (R500: self-report not trusted)
+$ mnemosyne-cli propose-verdict --manifest ../game/facts.json  (idempotent re-apply)
+=== propose-verdict: commit ===
+would apply: 0 frames + 0 branches + 0 entities + 0 predicates + 0 facts + 0 disclosure-plans + 0 disclosure-overrides created, 60 no-op
+violations: 0 (0 gating at reject severity)
+dangling setups (advisory, non-gating): none
+
+$ mnemosyne-cli validate-continuity
+=== continuity gate (reject) ===
+  facts=38 order_nodes=15 conflict_pairs=0 cross_scope(data)=0 unordered=0
+  rules=3 rule_unordered=0 unchained_state_pairs=0 interval_unverifiable=0 interval_severity=reject
+  violations: 0 (structural=0 interval=0)
+
+$ mnemosyne-cli report-authoring-frontier --telling default
+=== authoring frontier — telling default — 37 gap(s) ===
+zero-fact scenes: none
+unordered scenes: none
+dangling setups: none
+unresolved quests: none
+never-planned disclosures (37): f-alone, f-choice, f-drift, f-drift-gt, f-fill-start, f-gate-barred, f-gate-close-barred, f-gate-close-crack, f-gate-crack, f-gate-open, f-hold-cost, f-hold-keep-order, f-hold-refuse, f-lantern-back, f-lantern-keep, f-lantern-one, f-lantern-pass, f-lantern-wick, f-marrow-belief, f-marrow-relief, f-marrow-signal, f-master-return, f-open-clock, f-order, f-order-master, f-order-wick, f-pound-rising, f-pound-spill, f-quest-done-hold, f-quest-done-work, f-quest-give, f-reveal, f-storm, f-wait, f-wait-wick, f-work-answer, f-work-break-order
+
+$ mnemosyne-cli validate-workspace
+=== mnemosyne-cli validate-workspace ===
+T1 orphan total=0 (ledger=0, new=+0, resolved=-0)
+style violations: T3 reject=0 / T3 warn=0 / T4 info=0 (Round 138 tier mobility ratify)
+atomic ledger: entries=0 / sections=15 / orphan_refs=0+0
+publishable / audit divergence: entries=0 ledger_rows=0

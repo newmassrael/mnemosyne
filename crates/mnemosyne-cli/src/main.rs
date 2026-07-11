@@ -32,8 +32,9 @@ use mnemosyne_validate::code_refs::SetEqualityValidator;
 
 /// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`
-/// (or `.mnemosyne/config.toml`); the loaded config provides
-/// `workspace.docs` + `workspace.default_doc` + workspace_root.
+/// (or `.mnemosyne/config.toml`); the loaded config provides the
+/// `workspace.root` override + the `[atomic]` sidecar path + the schema
+/// preset (the `workspace.docs`/`default_doc` markdown model was removed R400).
 fn workspace_config() -> Result<&'static LoadedConfig> {
     static CACHE: OnceLock<LoadedConfig> = OnceLock::new();
     if let Some(loaded) = CACHE.get() {

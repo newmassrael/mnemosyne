@@ -86,6 +86,7 @@ impl Severity {
 /// (`mnemosyne_preset` for this codebase, `generic_default` for external
 /// generic-markdown users).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceConfig {
     pub workspace: WorkspaceSection,
     #[serde(default)]
@@ -186,6 +187,7 @@ pub struct WorkspaceConfig {
 /// Type name is `AtomicConfigSection` (not `AtomicSection`) to disambiguate
 /// from `atomic::AtomicSection`, which is the typed-fields-per-§ store.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AtomicConfigSection {
     /// Workspace-relative or absolute sidecar JSON path. `None` (or `[atomic]`
     /// omitted entirely) falls back to the default `docs/.atomic/workspace.atomic.json`.
@@ -199,8 +201,8 @@ pub struct AtomicConfigSection {
 /// orphans. extends the ledger to also cover atomic-internal
 /// orphans introduced by dogfood-switch ratify — namely
 /// dangling refs in `ChangelogEntry.impact_refs` and `Section.impact_scope`
-/// that arise when a doc/section is removed from `workspace.docs` after a
-/// prior `Round N` entry has cited it. The frozen-ledger invariant blocks
+/// that arise when a section is removed from the store after a prior
+/// `Round N` entry has cited it. The frozen-ledger invariant blocks
 /// rewriting the prior entry; the orphan ledger absorbs the dangling refs
 /// without silencing them. This is the textbook scope-correction path:
 /// append a new Round entry recording the scope change, then register the
@@ -264,6 +266,7 @@ fn default_orphan_kind() -> OrphanKind {
 /// validate-workspace flags the orphan as "resolved" so the stale entry
 /// can be removed from the ledger.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct OrphanLedgerEntry {
     /// orphan kind. Default = `MarkdownRef` for backward
     /// compatibility with toml rows.
@@ -300,6 +303,7 @@ pub struct OrphanLedgerEntry {
 /// so workspace policy can categorize divergences without a closed-form
 /// enum that would block adoption-time vocabulary expansion.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PublishableOverrideLedgerEntry {
     /// Free-form classification of the divergence. Common values:
     /// `"redaction"` (RFC P1 privacy fix), `"typo"`, `"clarification"`.
@@ -348,6 +352,7 @@ pub struct PublishableOverrideLedgerEntry {
 ///   or `cli` (shell-out). Missing language falls through to file-only
 ///   set-equality — no language is blocked.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PluginsSection {
     #[serde(default)]
     pub set_equality_validator: Option<SetEqualityValidatorConfig>,
@@ -379,6 +384,7 @@ pub enum SymbolResolverConfig {
 /// config (in-place rename from the pre-R306 `[code_refs]` table; no semantic
 /// change, only namespace shift onto the RFC-003 plugin substrate).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SetEqualityValidatorConfig {
     /// Workspace-relative paths to scan recursively. Each entry may be a
     /// file or directory. Hidden directories (`.git/`, `.mnemosyne/`),
@@ -634,6 +640,7 @@ fn default_comment_only() -> bool {
 /// Chinese / English). `thresholds` lets external users override per-rule
 /// char count caps without forking the validator.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct StyleSection {
     /// Locale tag for sentence boundary recognition.
     /// Recognized values: `"ko"` (default), `"ja"`, `"zh"`, `"en"`.
@@ -657,6 +664,7 @@ pub struct StyleSection {
 /// `Salsa`/`salsa` and `bi-temporal`/`bitemporal`; external users add
 /// project-specific terms.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TerminologySection {
     /// canonical → list of variants. e.g.
     /// `{ "Salsa": ["salsa"], "bi-temporal": ["bitemporal"] }`.
@@ -676,6 +684,7 @@ fn default_locale() -> String {
 /// `mnemosyne.toml::[schema]`; the Mnemosyne self-application registers
 /// its `design_doc` preset here as the first dogfood consumer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SchemaSection {
     /// Heading titles that mark a `ChangelogEntry` container section.
     /// Default = `["Changelog", "Changelog", "changelog"]` (Mnemosyne preset).
@@ -783,6 +792,7 @@ impl Default for SchemaSection {
 /// against the config file's dir unless `root` is set) + external-spec
 /// mirror provenance.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceSection {
     /// Workspace root override — relative paths resolve against this when
     /// set, otherwise against the config file's parent dir.
@@ -810,6 +820,7 @@ pub struct WorkspaceSection {
 /// External-spec provenance metadata — anchors a workspace to a
 /// specific upstream standard + revision (RFC-002 FR-2).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SpecSource {
     /// Canonical URL of the upstream standard (e.g.
     /// `"https://www.w3.org/TR/scxml/"`).
@@ -854,6 +865,7 @@ pub struct SpecSource {
 /// legitimate intermediate state; the consumer escalates to `reject`
 /// (CI gate) once migration is meant to be complete.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SpecDriftSection {
     /// `reject` | `warn` | `info`. Default `warn`. Validated at config
     /// load. The `validate-spec-drift --severity` flag overrides it per
@@ -884,6 +896,7 @@ impl Default for SpecDriftSection {
 /// drift line still prints, it just stops gating the exit code
 /// (Round 377).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CommitLedgerSection {
     /// `reject` | `warn` | `info`. Default `reject`. Validated at config
     /// load.
@@ -910,6 +923,7 @@ impl Default for CommitLedgerSection {
 /// matches its own hash was edited out-of-band — corruption, never expected.
 /// The `validate-content-drift --severity` flag overrides it per run.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ContentDriftSection {
     /// `reject` | `warn` | `info`. Default `reject`. Validated at config load.
     #[serde(default = "default_severity_reject")]
@@ -935,6 +949,7 @@ impl Default for ContentDriftSection {
 /// `[content_drift]`: a `verifies` binding that contradicts the test's own
 /// declared target is a wrong claim, never a legitimate intermediate state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct VerifiesCatalogSection {
     /// Workspace-relative path to the catalog JSON
     /// (`verifies-catalog/v1`: `{ "entries": [ { "file", "symbol"?, "section_ids" } ] }`).
@@ -1227,7 +1242,6 @@ root = "."
     fn parse_spec_source_minimal() {
         let content = r#"
 [workspace]
-docs = ["docs/spec/scxml.md"]
 
 [workspace.spec_source]
 url = "https://www.w3.org/TR/scxml/"
@@ -1245,7 +1259,6 @@ revision = "2015-09-01"
     fn parse_spec_source_full() {
         let content = r#"
 [workspace]
-docs = ["docs/spec/scxml.md"]
 
 [workspace.spec_source]
 url = "https://www.w3.org/TR/scxml/"
@@ -1266,7 +1279,6 @@ fetched_at = "2026-05-27T00:00:00Z"
     fn spec_source_rejects_non_http_url() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "ftp://example.com/spec"
@@ -1284,7 +1296,6 @@ revision = "2026-01"
     fn spec_source_rejects_blank_revision() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1302,7 +1313,6 @@ revision = " "
     fn spec_source_rejects_malformed_sha() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1321,7 +1331,6 @@ fetched_sha256 = "ABC123"
     fn spec_source_epub_provenance_accepts_paired() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1345,7 +1354,6 @@ epub_sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
     fn spec_source_epub_rejects_malformed_sha() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1366,7 +1374,6 @@ epub_sha256 = "ABC123"
         // path without hash → reject (cannot be checked).
         let path_only = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1382,7 +1389,6 @@ epub_path = "docs/.atomic/epub/spec.epub"
         // hash without path → also reject (nothing to check).
         let hash_only = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [workspace.spec_source]
 url = "https://example.com/spec"
@@ -1400,7 +1406,6 @@ epub_sha256 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         // [spec_drift] absent → None; present with no severity → warn.
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [spec_drift]
 "#;
@@ -1412,7 +1417,6 @@ docs = ["docs/spec.md"]
     fn spec_drift_rejects_invalid_severity() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [spec_drift]
 severity = "block"
@@ -1432,13 +1436,11 @@ severity = "block"
         // or present-but-bare).
         let absent = r#"
 [workspace]
-docs = ["docs/spec.md"]
 "#;
         assert!(parse_config(absent).unwrap().commit_ledger.is_none());
 
         let bare = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [commit_ledger]
 "#;
@@ -1451,7 +1453,6 @@ docs = ["docs/spec.md"]
         // A consumer workspace downgrades the gate to warn.
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [commit_ledger]
 severity = "warn"
@@ -1464,7 +1465,6 @@ severity = "warn"
     fn commit_ledger_rejects_invalid_severity() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [commit_ledger]
 severity = "block"
@@ -1482,7 +1482,6 @@ severity = "block"
         // R428 — a malformed pin is a config error at load, not a silent skip.
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [verifies_catalog]
 path = "verifies-catalog.json"
@@ -1501,13 +1500,11 @@ sha256 = "not-a-hash"
         // (a cache diverging from its hash is corruption, gated by default).
         let absent = r#"
 [workspace]
-docs = ["docs/spec.md"]
 "#;
         assert!(parse_config(absent).unwrap().content_drift.is_none());
 
         let bare = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [content_drift]
 "#;
@@ -1519,7 +1516,6 @@ docs = ["docs/spec.md"]
     fn content_drift_rejects_invalid_severity() {
         let content = r#"
 [workspace]
-docs = ["docs/spec.md"]
 
 [content_drift]
 severity = "block"
@@ -1539,8 +1535,6 @@ severity = "block"
         // but silently ignored by serde).
         let content = r#"
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
 
 [atomic]
 sidecar_path = "doc/.atomic/workspace.atomic.json"
@@ -1559,8 +1553,6 @@ sidecar_path = "doc/.atomic/workspace.atomic.json"
         // None and the default sidecar path applies.
         let content = r#"
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
 "#;
         let cfg = parse_config(content).unwrap();
         assert!(cfg.atomic.is_none());
@@ -1612,7 +1604,6 @@ default_doc = "docs/GENERATED.md"
     fn schema_section_parses_when_present() {
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [schema]
 changelog_titles = ["Changelog", "Changelog"]
@@ -1626,7 +1617,7 @@ medium_name = "design_doc"
 
     #[test]
     fn schema_section_omitted_yields_none() {
-        let content = "[workspace]\ndocs = [\"a.md\"]\n";
+        let content = "[workspace]\n";
         let cfg = parse_config(content).unwrap();
         assert!(cfg.schema.is_none(), "schema must default to None");
     }
@@ -1648,7 +1639,7 @@ medium_name = "design_doc"
     // const.
     #[test]
     fn orphan_ledger_omitted_yields_empty_vec() {
-        let content = "[workspace]\ndocs = [\"a.md\"]\n";
+        let content = "[workspace]\n";
         let cfg = parse_config(content).unwrap();
         assert!(cfg.orphan_ledger.is_empty());
     }
@@ -1657,7 +1648,6 @@ medium_name = "design_doc"
     fn orphan_ledger_array_of_tables_parses() {
         let content = r#"
 [workspace]
-docs = ["ARCHITECTURE.md"]
 
 [[orphan_ledger]]
 doc = "ARCHITECTURE.md"
@@ -1690,7 +1680,6 @@ since = "2026-05-08"
     fn orphan_ledger_kind_atomic_entry_ref_parses() {
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [[orphan_ledger]]
 kind = "atomic_entry_ref"
@@ -1713,7 +1702,6 @@ since = "Round 7"
     fn orphan_ledger_kind_atomic_section_ref_parses() {
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [[orphan_ledger]]
 kind = "atomic_section_ref"
@@ -1732,7 +1720,6 @@ since = "Round 7"
     fn orphan_ledger_mixed_kinds_parses() {
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [[orphan_ledger]]
 doc = "a.md"
@@ -1759,7 +1746,6 @@ since = "Round 7"
     fn orphan_ledger_kind_unknown_variant_rejected() {
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [[orphan_ledger]]
 kind = "bogus_kind"
@@ -1784,7 +1770,6 @@ since = "Round 5"
         // anyhow context wraps the serde error, so check the full chain.
         let content = r#"
 [workspace]
-docs = ["a.md"]
 
 [[orphan_ledger]]
 doc = "a.md"
@@ -1808,7 +1793,7 @@ since = "2026-05-08"
         fs::create_dir_all(&nested).unwrap();
         fs::write(
             nested.join("mnemosyne.toml"),
-            "[workspace]\ndocs = [\"a.md\"]\nroot = \"..\"\n",
+            "[workspace]\nroot = \"..\"\n",
         )
         .unwrap();
 
@@ -1823,7 +1808,6 @@ since = "2026-05-08"
     fn set_equality_validator_empty_namespace_rejected() {
         let content = r#"
 [workspace]
-docs = ["docs/spec/scxml.md"]
 
 [plugins.set_equality_validator]
 section_namespace = ""
@@ -1840,7 +1824,6 @@ section_namespace = ""
     fn set_equality_validator_namespace_accepted() {
         let content = r#"
 [workspace]
-docs = ["docs/spec/scxml.md"]
 
 [plugins.set_equality_validator]
 section_namespace = "scxml"

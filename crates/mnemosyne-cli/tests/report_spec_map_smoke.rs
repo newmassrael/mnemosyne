@@ -45,7 +45,7 @@ fn write_workspace(
     fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
     fs::create_dir_all(workspace.join("src")).unwrap();
     let mut cfg = String::from(
-        "[workspace]\ndocs = [\"docs/GENERATED.md\"]\ndefault_doc = \"docs/GENERATED.md\"\n\
+        "[workspace]\n\
          [schema]\nentry_id_prefix = \"Round \"\n",
     );
     if let Some((url, revision)) = spec_source {

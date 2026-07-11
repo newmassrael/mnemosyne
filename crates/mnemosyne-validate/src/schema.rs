@@ -22,9 +22,11 @@
 //!   site). The quest ids + `CURRENT_SCHEMA_VERSION` are single-sourced
 //!   `pub(crate)`/`pub` constants.
 //! - TEST-guarded: the fact field set is pinned to `FactImport`'s serde shape,
-//!   and the manifest WIRE FORMAT (every kind's JSON keys + the canon-order
-//!   keys) is pinned to the real serde shapes by unit tests (Round 600) — a
-//!   renamed/added serde key fails the test until the wire prose names it.
+//!   the manifest WIRE FORMAT (every kind's JSON keys + the canon-order keys) is
+//!   pinned to the real serde shapes by unit tests (Round 600), and the
+//!   narrative-rules-FILE wire is pinned the same way (Round 605) — a
+//!   renamed/added serde key fails the test until the wire prose names it. Every
+//!   SERIALIZATION contract lives in this tier, not the hand-authored one.
 //! - HAND-AUTHORED semantic prose (NOT auto-guarded): the registry and invariant
 //!   *descriptions* are prose that PROJECTS the enforcement (the R576 "prose
 //!   projects facts" posture) — a semantics change in a mutate primitive is not
@@ -303,7 +305,8 @@ pub fn describe_schema() -> SchemaContract {
             "Declaring a narrative RULE so the continuity gate ENFORCES it — the rule CLASSES \
              (above) say what the gate CAN check; this is how to TURN A RULE ON. Rules live in a \
              SEPARATE file (like the canon order, NOT the fact manifest): a JSON object { \
-             \"schema\"?: \"narrative-rules/v1\", \"rules\": [ … ] } where each rule is { \"id\": \
+             \"schema\"?: \"narrative-rules/v1\", \"comment\"?: string (a free-text annotation \
+             slot), \"rules\": [ … ] } where each rule is { \"id\": \
              string (unique — it names the finding), \"predicate\": <predicate id> (the KEYED / \
              left typed leg, for every class), \"class\": \"exclusive\" | \"transition\" | \
              \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\"; \
@@ -1042,26 +1045,49 @@ mod tests {
         assert!(json.contains("narrative_rules_wire"));
     }
 
-    /// Round 604 (continuity-stress-experiment/v1 `surface_gap`) — the rules-file
-    /// authoring surface must name the three frictions the experiment hit: the
-    /// rules-file wiring key, the `bound` tagged shape, and the interval opt-in.
-    /// Prose (tier-3), so this pins the concepts an agent must find, not wording.
+    /// Round 604/605 (continuity-stress-experiment/v1 `surface_gap`; review F2) —
+    /// the rules-file wire is a SERIALIZATION contract, so its describe-schema
+    /// prose is REFLECTION-pinned to the real serde structs (mirroring
+    /// `manifest_wire_prose_names_every_serde_key`): every key a fully-populated
+    /// `NarrativeRulesWire` emits must be named (quoted) in the prose, so a serde
+    /// rename in `continuity.rs` fails the build until the prose is updated. This
+    /// replaces the earlier substring self-check (a wire format belongs in the
+    /// TEST-guarded tier, not hand-authored tier-3). The wiring keys +
+    /// interval opt-in are prose (not file serde keys), asserted separately.
     #[test]
-    fn narrative_rules_wire_documents_the_authoring_surface() {
-        let w = describe_schema().narrative_rules_wire;
-        assert!(w.contains("rules_path"), "names the wiring toml key");
-        assert!(w.contains("rules_sha256"), "names the optional pin");
+    fn narrative_rules_wire_prose_names_every_serde_key() {
+        fn assert_documented(value: &serde_json::Value, prose: &str) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (k, v) in map {
+                        assert!(
+                            prose.contains(&format!("\"{k}\"")),
+                            "rules-wire serde key `{k}` is not named in narrative_rules_wire prose"
+                        );
+                        assert_documented(v, prose);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|v| assert_documented(v, prose))
+                }
+                _ => {}
+            }
+        }
+        let prose = describe_schema().narrative_rules_wire;
+        assert_documented(
+            &crate::continuity::narrative_rules_wire_sample_json(),
+            prose,
+        );
+        // Wiring + gating are prose, not serde keys of the file.
+        assert!(prose.contains("rules_path") && prose.contains("rules_sha256"));
         assert!(
-            w.contains("interval_severity"),
-            "names the interval gate opt-in"
+            prose.contains("interval_severity"),
+            "the interval gate opt-in"
         );
         assert!(
-            w.contains("\"const\"") && w.contains("\"predicate\""),
-            "names the tagged bound shape"
-        );
-        assert!(
-            w.contains("exclusive") && w.contains("transition") && w.contains("interval"),
-            "names all three classes' legs"
+            prose.contains("exclusive")
+                && prose.contains("transition")
+                && prose.contains("interval")
         );
     }
 

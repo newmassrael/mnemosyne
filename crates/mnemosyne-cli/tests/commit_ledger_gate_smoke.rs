@@ -21,8 +21,6 @@ fn write_workspace(dir: &std::path::Path, commit_ledger_severity: Option<&str>) 
     fs::create_dir_all(dir.join("docs")).unwrap();
     let mut cfg = String::from(
         r#"[workspace]
-docs = ["docs/STUB.md"]
-default_doc = "docs/STUB.md"
 "#,
     );
     if let Some(sev) = commit_ledger_severity {

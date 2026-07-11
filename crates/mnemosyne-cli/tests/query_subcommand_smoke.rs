@@ -190,8 +190,8 @@ fn query_surfaces_normative_excerpt_for_spec_section() {
     // store. Also exercises a dotted section_id (`scxml-3.13`, SCE convention).
     let tmp = TempDir::new().unwrap();
     fs::create_dir_all(tmp.path().join("docs/.atomic")).unwrap();
-    let cfg = "[workspace]\ndocs = [\"docs/GENERATED.md\"]\n\
- default_doc = \"docs/GENERATED.md\"\n";
+    let cfg = "[workspace]\n\
+ ";
     fs::write(tmp.path().join("mnemosyne.toml"), cfg).unwrap();
     let atomic = serde_json::json!({
     "schema_version": 4,

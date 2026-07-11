@@ -1,0 +1,50 @@
+### PIN-2 — deterministic negative control (R570 remove-and-rescan): each probe must REJECT for its rule; the clean store commits.
+
+=== probe: exclusive (expect rollback naming the rule) ===
+$ mnemosyne-cli propose-verdict --manifest pin2-probes/probe-exclusive.json
+=== propose-verdict: rollback ===
+would apply: 0 frames + 0 branches + 0 entities + 0 predicates + 1 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op
+violations: 5 (5 gating at reject severity)
+  [continuity] rule_exclusive_overlap — exclusive rule `lantern-custody`: facts `f-lantern-back` and `probe-excl` co-hold conflicting `holds` at `sc-10` (frame `ground-truth`, branch `main`)
+    at: f-lantern-back, probe-excl (field typed)
+    expected: exclusive rule `lantern-custody` (predicate `holds`): at most one value/holder may co-hold per (frame, branch)
+    repair: supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
+  [continuity] rule_exclusive_overlap — exclusive rule `lantern-custody`: facts `f-lantern-pass` and `probe-excl` co-hold conflicting `holds` at `sc-08` (frame `ground-truth`, branch `main`)
+    at: f-lantern-pass, probe-excl (field typed)
+    expected: exclusive rule `lantern-custody` (predicate `holds`): at most one value/holder may co-hold per (frame, branch)
+    repair: supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
+  [continuity] rule_exclusive_overlap — exclusive rule `lantern-custody`: facts `f-lantern-wick` and `probe-excl` co-hold conflicting `holds` at `sc-04` (frame `ground-truth`, branch `main`)
+    at: f-lantern-wick, probe-excl (field typed)
+    expected: exclusive rule `lantern-custody` (predicate `holds`): at most one value/holder may co-hold per (frame, branch)
+    repair: supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
+  [continuity] rule_exclusive_overlap — exclusive rule `lantern-custody`: facts `f-lantern-keep` and `probe-excl` co-hold conflicting `holds` at `sc-13` (frame `ground-truth`, branch `hold`)
+    at: f-lantern-keep, probe-excl (field typed)
+    expected: exclusive rule `lantern-custody` (predicate `holds`): at most one value/holder may co-hold per (frame, branch)
+    repair: supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
+  [continuity] rule_exclusive_overlap — exclusive rule `lantern-custody`: facts `f-lantern-wick` and `probe-excl` co-hold conflicting `holds` at `sc-04` (frame `ground-truth`, branch `hold`)
+    at: f-lantern-wick, probe-excl (field typed)
+    expected: exclusive rule `lantern-custody` (predicate `holds`): at most one value/holder may co-hold per (frame, branch)
+    repair: supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
+dangling setups (advisory, non-gating): none
+
+=== probe: transition (expect rollback naming the rule) ===
+$ mnemosyne-cli propose-verdict --manifest pin2-probes/probe-transition.json
+=== propose-verdict: rollback ===
+would apply: 0 frames + 0 branches + 0 entities + 0 predicates + 1 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op
+violations: 1 (1 gating at reject severity)
+  [continuity] rule_transition_invalid — transition rule `gate-sequence`: subject `e-gate` steps `barred` -> `open` (`f-gate-barred` -> `probe-trans`) outside the allowed set
+    at: f-gate-barred, probe-trans (field typed)
+    expected: transition rule `gate-sequence` (predicate `gate_state`): `barred` -> `open` is not an allowed step
+    repair: author an intermediate succession through an allowed state, or correct the from/to values
+dangling setups (advisory, non-gating): none
+
+=== probe: interval (expect rollback naming the rule) ===
+$ mnemosyne-cli propose-verdict --manifest pin2-probes/probe-interval.json
+=== propose-verdict: rollback ===
+would apply: 0 frames + 0 branches + 0 entities + 0 predicates + 1 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op
+violations: 1 (1 gating at reject severity)
+  [continuity] rule_interval_violation — interval rule `fill-hold`: subject `e-pound` 200 - 180 not >= 30 at `sc-11` (frame `ground-truth`, branch `main`)
+    at: probe-interval, f-fill-start (field typed)
+    expected: interval rule `fill-hold`: value(`open_clock`) - value(`fill_start_clock`) >= 30
+    repair: adjust the operand values (or the bound fact) so the numeric relation holds
+dangling setups (advisory, non-gating): none

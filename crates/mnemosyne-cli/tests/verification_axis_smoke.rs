@@ -24,8 +24,8 @@ fn cli_binary() -> &'static str {
 fn write_workspace(workspace: &Path) {
     fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
     fs::create_dir_all(workspace.join("src")).unwrap();
-    let cfg = "[workspace]\ndocs = [\"docs/GENERATED.md\"]\n\
-        default_doc = \"docs/GENERATED.md\"\n[schema]\nentry_id_prefix = \"Round \"\n\
+    let cfg = "[workspace]\n\
+        [schema]\nentry_id_prefix = \"Round \"\n\
         [plugins.set_equality_validator]\npaths = [\"src/\"]\n";
     fs::write(workspace.join("mnemosyne.toml"), cfg).unwrap();
     let atomic = serde_json::json!({

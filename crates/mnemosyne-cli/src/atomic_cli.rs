@@ -3317,8 +3317,6 @@ mod tests {
             tmp.path(),
             r#"
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
 
 [atomic]
 sidecar_path = "from-config.json"
@@ -3340,8 +3338,6 @@ sidecar_path = "from-config.json"
             tmp.path(),
             r#"
 [workspace]
-docs = ["docs/GENERATED.md"]
-default_doc = "docs/GENERATED.md"
 
 [atomic]
 sidecar_path = "altdir/custom.atomic.json"
