@@ -2987,9 +2987,11 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
 /// loop's atomic dry-run gate. Apply a candidate `--manifest` to a THROWAWAY
 /// clone of the store, run the shape invariants + the continuity gate, and emit
 /// commit-or-rollback plus actionable violations (rule + locus + expected +
-/// repair hint). The real store is NEVER written; exit 1 on rollback so a loop
-/// can branch on the code. `--order` / `--rules` bypass the pins; `--sidecar`
-/// proposes against a non-default base store.
+/// repair hint) AND the per-world dangling setups the batch would leave (Round
+/// 599, advisory + non-gating — so a loop sees a structural dangling in the dry
+/// run, before it commits). The real store is NEVER written; exit 1 on rollback
+/// so a loop can branch on the code. `--order` / `--rules` bypass the pins;
+/// `--sidecar` proposes against a non-default base store.
 fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     let mut manifest_path: Option<String> = None;
     let mut order_override: Option<String> = None;
@@ -3078,6 +3080,17 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
             }
             println!("    expected: {}", v.expected);
             println!("    repair: {}", v.repair_hint);
+        }
+        if report.dangling_setups.is_empty() {
+            println!("dangling setups (advisory, non-gating): none");
+        } else {
+            for (world, facts) in &report.dangling_setups {
+                println!(
+                    "dangling setups (advisory, non-gating) [{world}] ({}): {}",
+                    facts.len(),
+                    facts.join(", ")
+                );
+            }
         }
     }
     if report.verdict == mnemosyne_ops::ProposeVerdict::Rollback {

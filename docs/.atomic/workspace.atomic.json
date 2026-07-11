@@ -14419,6 +14419,40 @@
         "NEXT = R599 owner cadence: (A) close the sharpest new gap — fold the payoff/dangling analysis into propose-verdict's dry run (it already has the throwaway clone) so the loop sees dangling BEFORE it commits [closes v2-A + v1-Finding-3, the expensive-repair-invisible-in-dry-run trap]; (B) close v1 Finding 2 (fork-lineage dangling, now RECURRED) + the leak-visibility gap as describe-schema/frontier work; (C) pinion CONSUMER (the pre-R585 NEXT, still live); (D) another experiment.",
         "R593-R598 (6 commits) all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
       ]
+    },
+    "Round 599 — propose-verdict surfaces dangling setups in the dry run (unattended-loop v2 gap A + v1 Finding 3)": {
+      "decision_summary": "close v2 gap A + v1 Finding 3: propose-verdict's dry run now reports the per-world dangling setups a batch would leave (advisory, non-gating), so a loop sees a structural dangling BEFORE it commits instead of discovering it post-import and needing a store reset",
+      "changes_bullets": [
+        "Closed unattended-loop-experiment/v2 gap A + v1 Finding 3 (the sharpest new gap): propose-verdict's DRY RUN now surfaces the per-world dangling setups the batch would leave — ADVISORY and NON-GATING (dangling is a todo, not an error, R442) — so an unattended loop sees a structural dangling BEFORE it commits, not only post-import via report-authoring-frontier.",
+        "Added dangling_setups to ProposeVerdictReport, computed via payoff_coverage on the throwaway clone (the same per-world analysis the frontier runs); the CLI renders it beside the violations; --json carries it via serde. The verdict logic is unchanged: a dangling never gates (verdict stays commit); only shape/continuity-reject rolls back.",
+        "The gap this closes: propose-verdict's dry run checked shape + reference-integrity + off-branch continuity but NOT payoff/dangling, and the frontier's dangling ran only on the APPLIED store. So a bare-prefix dangle (v2: both roads forking off main left main a dead prefix whose trunk setups dangled) was invisible until after import-facts, and fixing it meant re-branching append-only facts = a full store reset. Now the loop iterates the free dry run until BOTH continuity-clean AND dangling-acceptable, then imports once — no reset."
+      ],
+      "verification_bullets": [
+        "cargo test --workspace green (exit 0, 96 test binaries; incl. the new propose_verdict_surfaces_dangling_advisory_without_gating — an Expected unpaid setup commits with gating_violation_count 0 yet appears in dangling_setups[main]); cargo clippy --workspace -D warnings clean; cargo fmt clean.",
+        "e2e: propose-verdict on a manifest with an expected-but-unpaid setup (\"a loaded rifle hangs on the wall\") returns verdict commit, exit 0, and prints \"dangling setups (advisory, non-gating) [main] (1): f-gun\" — the loop sees the dangling in the dry run, before importing.",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0). Additive to the dry-run report; no production gate/schema/data touched (the continuity gate + its severity policy are unchanged)."
+      ],
+      "carry_forward_bullets": [
+        "Remaining from the v1/v2 findings: v2 gap B (report-authoring-frontier does not catch disclosure leaks — \"frontier clean\" != \"correct telling\") + v1 Finding 2 (fork-lineage dangling model under-documented, RECURRED on two independent agents).",
+        "NEXT = R600 owner cadence: (A) close v2 gap B + v1 Finding 2 as describe-schema/frontier work (a loop-visible leak signal or the withhold+first_at encoding spelled out; document the pre-fork-setups-pin-main-continuation model); (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) re-run the loop v3 to confirm the gap-A fix removes the reset (the agent should restructure on the dry run, never import a dangling layout); (D) another experiment.",
+        "R593-R599 (7 commits) all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ],
+      "publishable_decision_summary": "close v2 gap A + v1 Finding 3: propose-verdict's dry run now reports the per-world dangling setups a batch would leave (advisory, non-gating), so a loop sees a structural dangling BEFORE it commits instead of discovering it post-import and needing a store reset",
+      "publishable_changes_bullets": [
+        "Closed unattended-loop-experiment/v2 gap A + v1 Finding 3 (the sharpest new gap): propose-verdict's DRY RUN now surfaces the per-world dangling setups the batch would leave — ADVISORY and NON-GATING (dangling is a todo, not an error, R442) — so an unattended loop sees a structural dangling BEFORE it commits, not only post-import via report-authoring-frontier.",
+        "Added dangling_setups to ProposeVerdictReport, computed via payoff_coverage on the throwaway clone (the same per-world analysis the frontier runs); the CLI renders it beside the violations; --json carries it via serde. The verdict logic is unchanged: a dangling never gates (verdict stays commit); only shape/continuity-reject rolls back.",
+        "The gap this closes: propose-verdict's dry run checked shape + reference-integrity + off-branch continuity but NOT payoff/dangling, and the frontier's dangling ran only on the APPLIED store. So a bare-prefix dangle (v2: both roads forking off main left main a dead prefix whose trunk setups dangled) was invisible until after import-facts, and fixing it meant re-branching append-only facts = a full store reset. Now the loop iterates the free dry run until BOTH continuity-clean AND dangling-acceptable, then imports once — no reset."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test --workspace green (exit 0, 96 test binaries; incl. the new propose_verdict_surfaces_dangling_advisory_without_gating — an Expected unpaid setup commits with gating_violation_count 0 yet appears in dangling_setups[main]); cargo clippy --workspace -D warnings clean; cargo fmt clean.",
+        "e2e: propose-verdict on a manifest with an expected-but-unpaid setup (\"a loaded rifle hangs on the wall\") returns verdict commit, exit 0, and prints \"dangling setups (advisory, non-gating) [main] (1): f-gun\" — the loop sees the dangling in the dry run, before importing.",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0). Additive to the dry-run report; no production gate/schema/data touched (the continuity gate + its severity policy are unchanged)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Remaining from the v1/v2 findings: v2 gap B (report-authoring-frontier does not catch disclosure leaks — \"frontier clean\" != \"correct telling\") + v1 Finding 2 (fork-lineage dangling model under-documented, RECURRED on two independent agents).",
+        "NEXT = R600 owner cadence: (A) close v2 gap B + v1 Finding 2 as describe-schema/frontier work (a loop-visible leak signal or the withhold+first_at encoding spelled out; document the pre-fork-setups-pin-main-continuation model); (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) re-run the loop v3 to confirm the gap-A fix removes the reset (the agent should restructure on the dry run, never import a dangling layout); (D) another experiment.",
+        "R593-R599 (7 commits) all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ]
     }
   },
   "inventory_entries": {},

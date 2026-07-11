@@ -369,6 +369,15 @@ pub struct ProposeVerdictReport {
     /// ALL actionable violations found (shape + continuity), regardless of
     /// severity — so the loop sees warn/info advisories even on a commit.
     pub violations: Vec<mnemosyne_validate::verdict::ActionableViolation>,
+    /// Per-world dangling setups the batch WOULD leave (Round 599,
+    /// unattended-loop-experiment/v2 gap A) — Expected setups with no visible
+    /// payoff on a world-line, computed on the throwaway clone (R442). ADVISORY,
+    /// never gating (the dangling-is-a-todo discipline): the verdict stays
+    /// `commit`. Surfaced HERE, in the dry run, so a loop sees a structural
+    /// dangling BEFORE it commits — the frontier's `dangling_setups` was
+    /// post-import only, so a bare-prefix dangle used to require a full store
+    /// reset to fix. Only worlds with ≥ 1 dangling. Empty on a shape rejection.
+    pub dangling_setups: BTreeMap<String, Vec<String>>,
 }
 
 /// Run the `propose-verdict` dry-run transaction (Round 588; R592 severity
@@ -409,6 +418,8 @@ pub fn propose_verdict(
                 // gates, independent of the continuity severity policy.
                 gating_violation_count: violations.len(),
                 violations,
+                // No valid clone to analyse dangling on.
+                dangling_setups: BTreeMap::new(),
             });
         }
         Err(e) => return Err(OpError::Mutate(e)),
@@ -420,6 +431,18 @@ pub fn propose_verdict(
     //    that validate-continuity also uses): a class rolls back only at `reject`.
     //    ALL violations are still surfaced so the loop sees warn/info advisories.
     let order = compose_canon_order(&decl, &store)?;
+    // Advisory dangling coverage on the clone (Round 599, v2 gap A): the same
+    // per-world payoff analysis the frontier runs, but HERE in the dry run so a
+    // loop sees a structural dangling before it commits — never gating (dangling
+    // is a todo, not an error, R442).
+    let payoff =
+        mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)?;
+    let dangling_setups: BTreeMap<String, Vec<String>> = payoff
+        .worlds
+        .iter()
+        .filter(|(_, w)| !w.dangling.is_empty())
+        .map(|(world, w)| (world.clone(), w.dangling.clone()))
+        .collect();
     let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
         .map_err(OpError::Other)?;
     let severity = policy.continuity.as_ref().map(|c| c.severity);
@@ -456,6 +479,7 @@ pub fn propose_verdict(
         violation_count: violations.len(),
         gating_violation_count,
         violations,
+        dangling_setups,
     })
 }
 
@@ -1355,6 +1379,31 @@ mod tests {
         assert!(
             !w.violations.is_empty(),
             "a warn-level violation must still be surfaced on a commit"
+        );
+    }
+
+    /// Round 599 (unattended-loop-experiment/v2 gap A): propose-verdict surfaces
+    /// a would-be dangling setup as an ADVISORY on the dry run — the verdict
+    /// stays `commit` (dangling never gates), but the loop sees the dangling
+    /// BEFORE it imports, so a bare-prefix dangle no longer requires a
+    /// post-import store reset to discover.
+    #[test]
+    fn propose_verdict_surfaces_dangling_advisory_without_gating() {
+        let ws = narrative_ws("reject");
+        // An Expected setup with no payoff dangles on `main`.
+        let mut setup = fact_at("f-setup", "sc-1", "gt");
+        setup.payoff_expectation = Some("expected".to_string());
+        let r = propose_verdict(ws.path(), None, None, None, &manifest(vec![setup])).unwrap();
+        // Non-gating: the setup is a valid write, so the batch commits.
+        assert_eq!(r.verdict, ProposeVerdict::Commit);
+        assert_eq!(r.gating_violation_count, 0);
+        // The dangling IS surfaced in the dry run, per world-line.
+        assert!(
+            r.dangling_setups
+                .get("main")
+                .is_some_and(|d| d.contains(&"f-setup".to_string())),
+            "dangling advisory must name f-setup on main: {:?}",
+            r.dangling_setups
         );
     }
 
