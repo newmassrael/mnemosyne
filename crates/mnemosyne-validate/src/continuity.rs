@@ -4163,6 +4163,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities,
                 frames,
                 branches,
@@ -4520,6 +4521,7 @@ mod tests {
                 &mut st,
                 &path,
                 &FactsManifest {
+                    disclosure_plans: vec![],
                     frames: vec![mnemosyne_atomic::FrameImport {
                         frame_id: "seward".to_string(),
                         description: String::new(),
@@ -4620,6 +4622,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames,
                 branches,
                 entities,
@@ -7214,6 +7217,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -7439,6 +7443,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![],
                 branches: vec![],
                 entities: vec![],

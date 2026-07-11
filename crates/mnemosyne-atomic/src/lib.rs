@@ -3491,9 +3491,54 @@ pub struct PredicateImport {
     pub description: String,
 }
 
-/// `import-facts` manifest: frames + branches + entities + predicates +
-/// facts created in ONE atomic transaction (registries first, so
-/// same-manifest facts can reference them).
+/// One diegetic surface in a [`DisclosureOverrideImport`] (Round 590) — the
+/// flat manifest form of [`DisclosureSurface`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisclosureSurfaceImport {
+    pub scene: String,
+    #[serde(default)]
+    pub object: Option<String>,
+}
+
+/// One per-fact disclosure override in a [`DisclosurePlanImport`] (Round 590) —
+/// the manifest form of a `set-disclosure` decision. Applied through the SAME
+/// [`apply_disclosure_override`] the standalone setter uses (write-path parity).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisclosureOverrideImport {
+    pub fact_id: String,
+    /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed fail-loud.
+    pub mode: String,
+    /// Per-world-line `first_at` pins as `[branch, coord]` pairs.
+    #[serde(default)]
+    pub first_at: Vec<[String; 2]>,
+    #[serde(default)]
+    pub surface: Option<DisclosureSurfaceImport>,
+}
+
+/// One disclosure plan (telling) in the [`FactsManifest`] (Round 590) — the plan
+/// policy plus its per-fact overrides. Applied AFTER facts (registries → facts →
+/// disclosure), so an override can reference a same-manifest fact and satisfy
+/// the typed-fact invariant. Uses the SAME `apply_disclosure_plan` /
+/// `apply_disclosure_override` cores as the standalone primitives.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisclosurePlanImport {
+    pub telling_id: String,
+    /// Default disclosure mode tag; omitted = `withhold` (the plan default).
+    #[serde(default)]
+    pub default_mode: Option<String>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub overrides: Vec<DisclosureOverrideImport>,
+}
+
+/// `import-facts` manifest (Round 590 — the all-primitive form): frames +
+/// branches + entities + predicates + facts + disclosure plans created in ONE
+/// atomic transaction. Ordered so later kinds reference earlier ones —
+/// registries first, then facts, then disclosure (whose overrides reference the
+/// facts). Quests need no dedicated kind: a quest is an `Entity{kind:"quest"}`
+/// (an `entities` entry) plus `pursues`/`requires`/`completed_by` typed
+/// `facts`, so it is authored through the existing kinds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactsManifest {
     #[serde(default)]
@@ -3506,6 +3551,8 @@ pub struct FactsManifest {
     pub predicates: Vec<PredicateImport>,
     #[serde(default)]
     pub facts: Vec<FactImport>,
+    #[serde(default)]
+    pub disclosure_plans: Vec<DisclosurePlanImport>,
 }
 
 /// Single shared fact builder/validator — both write paths route here
@@ -4291,6 +4338,28 @@ pub fn add_disclosure_plan(
     default_mode: &str,
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let (id, created) = apply_disclosure_plan(store, telling_id, default_mode, description)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_disclosure_plan",
+        "disclosure_plan",
+        &id,
+        created,
+    )
+}
+
+/// Register a disclosure plan in an IN-MEMORY store WITHOUT persisting (Round
+/// 590) — the shared core of [`add_disclosure_plan`] and the all-primitive
+/// manifest apply, so both write paths enforce the SAME policy-divergence
+/// invariant (the multi-write-path parity discipline). Returns the trimmed
+/// telling id + whether it was created (a matching re-add is a no-op).
+pub(crate) fn apply_disclosure_plan(
+    store: &mut AtomicStore,
+    telling_id: &str,
+    default_mode: &str,
+    description: &str,
+) -> Result<(String, bool), AtomicMutateError> {
     let id = telling_id.trim().to_string();
     if id.is_empty() {
         return Err(AtomicMutateError::Validation(
@@ -4328,14 +4397,7 @@ pub fn add_disclosure_plan(
             )));
         }
     };
-    registry_receipt(
-        store,
-        sidecar_path,
-        "add_disclosure_plan",
-        "disclosure_plan",
-        &id,
-        created,
-    )
+    Ok((id, created))
 }
 
 /// The authored inputs to [`set_disclosure`] (Round 510 — bundled so the
@@ -4371,6 +4433,27 @@ pub fn set_disclosure(
     sidecar_path: &Path,
     decision: DisclosureDecision<'_>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let telling = decision.telling_id.trim().to_string();
+    let fact = decision.fact_id.trim().to_string();
+    apply_disclosure_override(store, decision)?;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_disclosure",
+        "disclosure_plan",
+        &format!("{telling}/{fact}"),
+    )
+}
+
+/// Set one per-fact disclosure override in an IN-MEMORY store WITHOUT persisting
+/// (Round 590) — the shared core of [`set_disclosure`] and the all-primitive
+/// manifest apply, so both write paths enforce the SAME fail-loud refs + the
+/// gate-enabling typed-fact invariant (the multi-write-path parity discipline;
+/// a manifest override must never bypass a check the standalone setter runs).
+pub(crate) fn apply_disclosure_override(
+    store: &mut AtomicStore,
+    decision: DisclosureDecision<'_>,
+) -> Result<bool, AtomicMutateError> {
     let DisclosureDecision {
         telling_id,
         fact_id,
@@ -4473,21 +4556,17 @@ pub fn set_disclosure(
         .disclosure_plans
         .get_mut(telling)
         .expect("telling presence checked above");
-    plan.overrides.insert(
-        fact.to_string(),
-        DisclosureOverride {
-            mode,
-            first_at: first_at_map,
-            surface,
-        },
-    );
-    save_with_receipt(
-        store,
-        sidecar_path,
-        "set_disclosure",
-        "disclosure_plan",
-        &format!("{telling}/{fact}"),
-    )
+    let new_override = DisclosureOverride {
+        mode,
+        first_at: first_at_map,
+        surface,
+    };
+    // Whether the stored override actually changed — a re-set of the identical
+    // decision is a no-op, so a manifest re-import stays byte-stable (the
+    // standalone `set_disclosure` persists unconditionally, its own contract).
+    let changed = plan.overrides.get(fact) != Some(&new_override);
+    plan.overrides.insert(fact.to_string(), new_override);
+    Ok(changed)
 }
 
 /// Divergent-overwrite reject message, shared by both create paths (Round
@@ -4738,15 +4817,69 @@ pub fn apply_facts_manifest(
             }
         }
     }
+    // Disclosure plans LAST (Round 590) — an override references a fact + needs
+    // the typed-fact invariant, so facts must already be staged. Same cores as
+    // the standalone add-disclosure-plan / set-disclosure (write-path parity).
+    let mut disclosure_plans_created = 0usize;
+    let mut disclosure_overrides_set = 0usize;
+    for (idx, plan) in manifest.disclosure_plans.iter().enumerate() {
+        let default_mode = plan.default_mode.as_deref().unwrap_or("withhold");
+        let (_, created) =
+            apply_disclosure_plan(store, &plan.telling_id, default_mode, &plan.description)
+                .map_err(|e| {
+                    AtomicMutateError::Validation(format!(
+                        "import_facts: manifest disclosure_plan {idx}: {e}"
+                    ))
+                })?;
+        if created {
+            disclosure_plans_created += 1;
+        } else {
+            no_op += 1;
+        }
+        for (ov_idx, ov) in plan.overrides.iter().enumerate() {
+            let first_at: Vec<(String, String)> = ov
+                .first_at
+                .iter()
+                .map(|[b, c]| (b.clone(), c.clone()))
+                .collect();
+            let surface = ov
+                .surface
+                .as_ref()
+                .map(|s| (s.scene.as_str(), s.object.as_deref()));
+            let changed = apply_disclosure_override(
+                store,
+                DisclosureDecision {
+                    telling_id: &plan.telling_id,
+                    fact_id: &ov.fact_id,
+                    mode: &ov.mode,
+                    first_at: &first_at,
+                    surface,
+                },
+            )
+            .map_err(|e| {
+                AtomicMutateError::Validation(format!(
+                    "import_facts: manifest disclosure_plan {idx} override {ov_idx}: {e}"
+                ))
+            })?;
+            if changed {
+                disclosure_overrides_set += 1;
+            } else {
+                no_op += 1;
+            }
+        }
+    }
     let summary = format!(
         "{frames_created} frames + {branches_created} branches + {entities_created} entities \
-         + {predicates_created} predicates + {facts_created} facts created, {no_op} no-op"
+         + {predicates_created} predicates + {facts_created} facts + {disclosure_plans_created} \
+         disclosure-plans + {disclosure_overrides_set} disclosure-overrides created, {no_op} no-op"
     );
     let changed = frames_created != 0
         || branches_created != 0
         || entities_created != 0
         || predicates_created != 0
-        || facts_created != 0;
+        || facts_created != 0
+        || disclosure_plans_created != 0
+        || disclosure_overrides_set != 0;
     Ok(FactsApplyOutcome { summary, changed })
 }
 
@@ -9098,6 +9231,7 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9279,6 +9413,7 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![
                     FrameImport {
                         frame_id: "gt".to_string(),
@@ -9404,6 +9539,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9730,6 +9866,7 @@ mod tests {
         let mut f_old = sample_fact("f-old", "jonathan");
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
+            disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
             frames: vec![
@@ -9748,7 +9885,8 @@ mod tests {
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(
             receipt.target_id,
-            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts created, 0 no-op"
+            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts + 0 disclosure-plans \
+             + 0 disclosure-overrides created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -9769,7 +9907,8 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         assert_eq!(
             again.target_id,
-            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts created, 4 no-op"
+            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts + 0 disclosure-plans \
+             + 0 disclosure-overrides created, 4 no-op"
         );
     }
 
@@ -9781,6 +9920,7 @@ mod tests {
         seed_chapters(&mut store);
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
+            disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
             frames: vec![],
@@ -9800,6 +9940,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 frames: frames.clone(),
                 branches: vec![],
@@ -9819,6 +9960,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
@@ -9835,6 +9977,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
                 frames,
@@ -9857,6 +10000,7 @@ mod tests {
         let mut successor = sample_fact("f2", "seward");
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
+            disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
             frames: vec![
@@ -9894,6 +10038,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
                 frames: frames.clone(),
@@ -9909,6 +10054,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
                 frames,
@@ -10035,6 +10181,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
                     branches: vec![],
@@ -10208,6 +10355,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
                     branches: vec![],
@@ -10219,6 +10367,133 @@ mod tests {
             assert_eq!(
                 add_ok, import_ok,
                 "typed write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
+            );
+        }
+    }
+
+    /// Round 590 — the disclosure write-path parity guard (CLAUDE.md
+    /// multi-write-path rule): the all-primitive manifest's disclosure override
+    /// path and the standalone `set_disclosure` must accept-or-reject the SAME
+    /// edge cases — especially the gate-enabling typed-fact invariant. Both route
+    /// through `apply_disclosure_override`, so this pins that they cannot drift.
+    #[test]
+    fn disclosure_write_path_parity_set_vs_manifest() {
+        // (label, fact_id, mode, first_at pairs)
+        let cases: Vec<(&str, &str, &str, Vec<[String; 2]>)> = vec![
+            ("state on typed fact", "typed-1", "state", vec![]),
+            ("state on untyped fact (no pin)", "prose-1", "state", vec![]),
+            // Typed-fact invariant: a withhold OR a first_at pin needs a typed leg.
+            ("withhold on untyped fact", "prose-1", "withhold", vec![]),
+            (
+                "first_at on untyped fact",
+                "prose-1",
+                "state",
+                vec![["main".to_string(), "ch-2".to_string()]],
+            ),
+            (
+                "first_at on typed fact",
+                "typed-1",
+                "state",
+                vec![["main".to_string(), "ch-2".to_string()]],
+            ),
+            ("unknown mode", "typed-1", "bogus", vec![]),
+            ("missing fact", "ghost", "state", vec![]),
+            (
+                "first_at unregistered branch",
+                "typed-1",
+                "state",
+                vec![["ghost-world".to_string(), "ch-2".to_string()]],
+            ),
+            (
+                "first_at unknown coord",
+                "typed-1",
+                "state",
+                vec![["main".to_string(), "ch-404".to_string()]],
+            ),
+        ];
+        for (label, fact_id, mode, first_at) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path_a = tmp.path().join("a.json");
+            let path_b = tmp.path().join("b.json");
+            let mut store_a = AtomicStore::new();
+            let mut store_b = AtomicStore::new();
+            for (s, p) in [(&mut store_a, &path_a), (&mut store_b, &path_b)] {
+                seed_chapters(s);
+                s.frames.insert("gt".to_string(), Frame::default());
+                s.entities.insert("kara".to_string(), Entity::default());
+                s.predicates.insert(
+                    "alive".to_string(),
+                    Predicate {
+                        object_kind: PredicateObjectKind::Scalar,
+                        description: String::new(),
+                    },
+                );
+                add_fact(
+                    s,
+                    p,
+                    &FactImport {
+                        entities: vec!["kara".to_string()],
+                        typed: Some(TypedClaim {
+                            subject: "kara".to_string(),
+                            predicate: "alive".to_string(),
+                            object: TypedObject::Value {
+                                value: "operational".to_string(),
+                            },
+                        }),
+                        ..sample_fact("typed-1", "gt")
+                    },
+                )
+                .unwrap();
+                add_fact(s, p, &sample_fact("prose-1", "gt")).unwrap();
+                add_disclosure_plan(s, p, "reader", "withhold", "").unwrap();
+            }
+
+            // Standalone path.
+            let first_at_pairs: Vec<(String, String)> = first_at
+                .iter()
+                .map(|[b, c]| (b.clone(), c.clone()))
+                .collect();
+            let set_ok = set_disclosure(
+                &mut store_a,
+                &path_a,
+                DisclosureDecision {
+                    telling_id: "reader",
+                    fact_id,
+                    mode,
+                    first_at: &first_at_pairs,
+                    surface: None,
+                },
+            )
+            .is_ok();
+
+            // Manifest path (the plan already exists → policy no-op, override applies).
+            let import_ok = import_facts(
+                &mut store_b,
+                &path_b,
+                &FactsManifest {
+                    frames: vec![],
+                    branches: vec![],
+                    entities: vec![],
+                    predicates: vec![],
+                    facts: vec![],
+                    disclosure_plans: vec![DisclosurePlanImport {
+                        telling_id: "reader".to_string(),
+                        default_mode: Some("withhold".to_string()),
+                        description: String::new(),
+                        overrides: vec![DisclosureOverrideImport {
+                            fact_id: fact_id.to_string(),
+                            mode: mode.to_string(),
+                            first_at,
+                            surface: None,
+                        }],
+                    }],
+                },
+            )
+            .is_ok();
+
+            assert_eq!(
+                set_ok, import_ok,
+                "disclosure write-path parity broken for `{label}`: set={set_ok} import={import_ok}"
             );
         }
     }
@@ -10297,6 +10572,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10372,6 +10648,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                disclosure_plans: vec![],
                 frames: vec![],
                 branches: vec![],
                 entities: vec![],
@@ -10472,6 +10749,7 @@ mod tests {
             &mut store_b,
             &path_b,
             &FactsManifest {
+                disclosure_plans: vec![],
                 entities: vec![],
                 frames: vec![],
                 branches: vec![],
@@ -10810,6 +11088,7 @@ mod tests {
             ..sample_fact("f-b", "gt")
         };
         let manifest = FactsManifest {
+            disclosure_plans: vec![],
             frames: vec![FrameImport {
                 frame_id: "gt".to_string(),
                 description: String::new(),

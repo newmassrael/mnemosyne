@@ -14083,6 +14083,50 @@
         "then item 5 guardrail Validator gates (hallucinated-ref / wrong-branch / orphan / citation-hygiene via the PluginRegistry Validator slot)",
         "the frontier is a pure read surface; a per-node priority/ranking of gaps is deferred until a loop needs it"
       ]
+    },
+    "Round 590 — the all-primitive batch manifest: disclosure folds into import-facts (R585 debt item 4)": {
+      "decision_summary": "Build the all-primitive batch manifest (R585 debt item 4): fold disclosure (plans + per-fact overrides) into the FactsManifest so frames + branches + entities + predicates + facts + disclosure land in ONE atomic import-facts transaction (registries -> facts -> disclosure, so an override references a same-manifest fact). Quests need no dedicated kind — a quest is an Entity{kind:quest} + pursues/requires/completed_by typed facts, already authored through the existing kinds. The two disclosure setters are refactored to share their in-memory cores with the manifest path (write-path parity), so no invariant is bypassed. propose-verdict now validates disclosure batches for free. The generate-gate-repair LLM loop stays outside; only the deterministic manifest surface grows.",
+      "changes_bullets": [
+        "mnemosyne-atomic: FactsManifest gains disclosure_plans[] (DisclosurePlanImport{telling_id, default_mode?, description, overrides:[{fact_id, mode, first_at?, surface?}]}); apply_facts_manifest applies them AFTER facts so an override references a same-manifest fact and satisfies the typed-fact invariant",
+        "write-path parity (CLAUDE.md multi-write-path rule): factored apply_disclosure_plan + apply_disclosure_override in-memory cores out of add_disclosure_plan / set_disclosure — the manifest path and the standalone setters share the SAME invariant enforcement, so a manifest override can never bypass a check",
+        "byte-stable idempotency preserved: apply_disclosure_override returns whether the stored decision actually changed, so a no-op manifest re-import writes nothing; set_disclosure keeps its unconditional-persist contract",
+        "import-facts + propose-verdict pick up disclosure_plans automatically (both parse FactsManifest); CLI help + parse-hint updated; quests need no dedicated kind (Entity{kind:quest} + typed facts already authors them)",
+        "new disclosure_write_path_parity_set_vs_manifest test (9 edge cases incl. the typed-fact invariant) pins the parity; the 22 existing test manifest literals updated for the new field"
+      ],
+      "verification_bullets": [
+        "cargo build + clippy -D warnings + fmt clean; full suites green (atomic 187 including the new parity test, validate 274)",
+        "e2e against ../the-tide-that-counts: a valid all-primitive manifest (entity + predicate + typed fact + disclosure plan + override) -> propose-verdict commit \"1 entities + 1 predicates + 1 facts + 1 disclosure-plans + 1 disclosure-overrides\", exit 0; a disclosure override on an UNTYPED fact -> rollback with the SAME typed-fact invariant message the standalone setter emits (parity, not a bypass); dry-run left the store 58 -> 58; a real import to a scratch copy created fact + plan + override in ONE call",
+        "propose-verdict (item 2) now validates disclosure batches for free; import-facts is CLI-only (unchanged surface)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R585 debt item 5 is next (the last): AI-failure guardrail gates as Validator plugins (hallucinated-ref / wrong-branch / orphan / citation-hygiene) via the existing PluginRegistry Validator slot",
+        "sections stay a separate import-sections manifest (rich SectionImport); folding them is a larger change, not pulled",
+        "disclosure overrides are last-write-wins per the setter's contract; the manifest counts a re-set of an identical decision as no-op (idempotency), the standalone setter still persists unconditionally"
+      ],
+      "publishable_decision_summary": "Build the all-primitive batch manifest (R585 debt item 4): fold disclosure (plans + per-fact overrides) into the FactsManifest so frames + branches + entities + predicates + facts + disclosure land in ONE atomic import-facts transaction (registries -> facts -> disclosure, so an override references a same-manifest fact). Quests need no dedicated kind — a quest is an Entity{kind:quest} + pursues/requires/completed_by typed facts, already authored through the existing kinds. The two disclosure setters are refactored to share their in-memory cores with the manifest path (write-path parity), so no invariant is bypassed. propose-verdict now validates disclosure batches for free. The generate-gate-repair LLM loop stays outside; only the deterministic manifest surface grows.",
+      "publishable_changes_bullets": [
+        "mnemosyne-atomic: FactsManifest gains disclosure_plans[] (DisclosurePlanImport{telling_id, default_mode?, description, overrides:[{fact_id, mode, first_at?, surface?}]}); apply_facts_manifest applies them AFTER facts so an override references a same-manifest fact and satisfies the typed-fact invariant",
+        "write-path parity (CLAUDE.md multi-write-path rule): factored apply_disclosure_plan + apply_disclosure_override in-memory cores out of add_disclosure_plan / set_disclosure — the manifest path and the standalone setters share the SAME invariant enforcement, so a manifest override can never bypass a check",
+        "byte-stable idempotency preserved: apply_disclosure_override returns whether the stored decision actually changed, so a no-op manifest re-import writes nothing; set_disclosure keeps its unconditional-persist contract",
+        "import-facts + propose-verdict pick up disclosure_plans automatically (both parse FactsManifest); CLI help + parse-hint updated; quests need no dedicated kind (Entity{kind:quest} + typed facts already authors them)",
+        "new disclosure_write_path_parity_set_vs_manifest test (9 edge cases incl. the typed-fact invariant) pins the parity; the 22 existing test manifest literals updated for the new field"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build + clippy -D warnings + fmt clean; full suites green (atomic 187 including the new parity test, validate 274)",
+        "e2e against ../the-tide-that-counts: a valid all-primitive manifest (entity + predicate + typed fact + disclosure plan + override) -> propose-verdict commit \"1 entities + 1 predicates + 1 facts + 1 disclosure-plans + 1 disclosure-overrides\", exit 0; a disclosure override on an UNTYPED fact -> rollback with the SAME typed-fact invariant message the standalone setter emits (parity, not a bypass); dry-run left the store 58 -> 58; a real import to a scratch copy created fact + plan + override in ONE call",
+        "propose-verdict (item 2) now validates disclosure batches for free; import-facts is CLI-only (unchanged surface)"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R585 debt item 5 is next (the last): AI-failure guardrail gates as Validator plugins (hallucinated-ref / wrong-branch / orphan / citation-hygiene) via the existing PluginRegistry Validator slot",
+        "sections stay a separate import-sections manifest (rich SectionImport); folding them is a larger change, not pulled",
+        "disclosure overrides are last-write-wins per the setter's contract; the manifest counts a re-set of an identical decision as no-op (idempotency), the standalone setter still persists unconditionally"
+      ]
     }
   },
   "inventory_entries": {},

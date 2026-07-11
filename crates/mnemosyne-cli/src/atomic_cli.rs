@@ -350,7 +350,7 @@ pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
     let parsed: mnemosyne_atomic::FactsManifest =
         serde_json::from_str(&raw).with_context(|| {
             format!(
-                "parse manifest {} (JSON object with `frames` + `facts` arrays)",
+                "parse manifest {} (JSON object with `frames`/`entities`/`facts`/`disclosure_plans` arrays)",
                 manifest_path
             )
         })?;

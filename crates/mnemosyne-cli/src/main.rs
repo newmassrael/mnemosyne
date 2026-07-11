@@ -412,8 +412,9 @@ fn print_help(prog: &str) {
     );
     println!("   bulk narrative registries + facts (Round 430/446): manifest = {{frames:[{{frame_id,description?}}], branches:[...],");
     println!("   entities:[...], predicates:[{{predicate_id,object_kind,description?}}],");
-    println!("   facts:[{{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}}]}};");
-    println!("   one atomic transaction; quote_sha256 computed at write, never caller-supplied;");
+    println!("   facts:[{{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}}],");
+    println!("   disclosure_plans:[{{telling_id,default_mode?,description?,overrides:[{{fact_id,mode,first_at?,surface?}}]}}] (Round 590 all-primitive)}};");
+    println!("   one atomic transaction (registries -> facts -> disclosure); quote_sha256 computed at write, never caller-supplied;");
     println!("   typed = {{subject,predicate,object:{{kind:entity,id}}|{{kind:value,value}}}} (Round 446 typed leg)");
     println!(
         " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
