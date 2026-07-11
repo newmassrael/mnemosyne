@@ -371,12 +371,13 @@ pub struct ProposeVerdictReport {
     pub violations: Vec<mnemosyne_validate::verdict::ActionableViolation>,
     /// Per-world dangling setups the batch WOULD leave (Round 599,
     /// unattended-loop-experiment/v2 gap A) — Expected setups with no visible
-    /// payoff on a world-line, computed on the throwaway clone (R442). ADVISORY,
-    /// never gating (the dangling-is-a-todo discipline): the verdict stays
-    /// `commit`. Surfaced HERE, in the dry run, so a loop sees a structural
-    /// dangling BEFORE it commits — the frontier's `dangling_setups` was
-    /// post-import only, so a bare-prefix dangle used to require a full store
-    /// reset to fix. Only worlds with ≥ 1 dangling. Empty on a shape rejection.
+    /// payoff on a world-line, computed on the throwaway clone (R442). ADVISORY:
+    /// dangling NEVER flips the verdict (the dangling-is-a-todo discipline), so a
+    /// populated map can ride a `commit` OR a `rollback` caused by other findings.
+    /// Surfaced HERE, in the dry run, so a loop sees a structural dangling BEFORE
+    /// it commits — the frontier's `dangling_setups` was post-import only, so a
+    /// bare-prefix dangle used to require a full store reset to fix. Only worlds
+    /// with ≥ 1 dangling. Empty on a shape rejection.
     pub dangling_setups: BTreeMap<String, Vec<String>>,
 }
 
@@ -435,14 +436,9 @@ pub fn propose_verdict(
     // per-world payoff analysis the frontier runs, but HERE in the dry run so a
     // loop sees a structural dangling before it commits — never gating (dangling
     // is a todo, not an error, R442).
-    let payoff =
-        mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)?;
-    let dangling_setups: BTreeMap<String, Vec<String>> = payoff
-        .worlds
-        .iter()
-        .filter(|(_, w)| !w.dangling.is_empty())
-        .map(|(world, w)| (world.clone(), w.dangling.clone()))
-        .collect();
+    let dangling_setups = mnemosyne_validate::continuity::payoff_coverage(&store, &order)
+        .map_err(OpError::Other)?
+        .dangling_by_world();
     let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
         .map_err(OpError::Other)?;
     let severity = policy.continuity.as_ref().map(|c| c.severity);
@@ -583,12 +579,7 @@ pub fn authoring_frontier_report(
     // Per-world dangling setups (R442) — keep only worlds with work outstanding.
     let payoff =
         mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)?;
-    let dangling_setups: BTreeMap<String, Vec<String>> = payoff
-        .worlds
-        .iter()
-        .filter(|(_, w)| !w.dangling.is_empty())
-        .map(|(world, w)| (world.clone(), w.dangling.clone()))
-        .collect();
+    let dangling_setups = payoff.dangling_by_world();
     let distinct_dangling: BTreeSet<&String> = payoff
         .worlds
         .values()

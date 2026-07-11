@@ -21,8 +21,10 @@
 //!   breaks the exhaustive match here (a compile error at the description
 //!   site). The quest ids + `CURRENT_SCHEMA_VERSION` are single-sourced
 //!   `pub(crate)`/`pub` constants.
-//! - TEST-guarded: the fact field set is pinned to `FactImport`'s serde shape by
-//!   a unit test (adding a fact field fails the test until described here).
+//! - TEST-guarded: the fact field set is pinned to `FactImport`'s serde shape,
+//!   and the manifest WIRE FORMAT (every kind's JSON keys + the canon-order
+//!   keys) is pinned to the real serde shapes by unit tests (Round 600) — a
+//!   renamed/added serde key fails the test until the wire prose names it.
 //! - HAND-AUTHORED semantic prose (NOT auto-guarded): the registry and invariant
 //!   *descriptions* are prose that PROJECTS the enforcement (the R576 "prose
 //!   projects facts" posture) — a semantics change in a mutate primitive is not
@@ -86,8 +88,13 @@ pub struct SchemaContract {
 }
 
 /// The JSON wire format of the batch manifest (Round 595) — the serialization,
-/// not the semantics. Drift-guarded: `example_json` parses through the real
-/// [`mnemosyne_atomic::FactsManifest`] and its contents are pinned by a test.
+/// not the semantics. Fully drift-guarded (Round 600): `example_json` parses
+/// through the real [`mnemosyne_atomic::FactsManifest`] and its TRICKY shapes
+/// are pinned by `manifest_example_parses_and_pins_wire_shape`; the `kinds`
+/// key prose + `typed_object_wire` are pinned by
+/// `manifest_wire_prose_names_every_serde_key`, which fails if the serializer
+/// emits any key the prose does not name. So a serde rename cannot silently
+/// leave this contract stale.
 #[derive(Debug, Clone, Serialize)]
 pub struct ManifestWireSpec {
     /// The batch verbs this manifest is fed to.
@@ -1061,5 +1068,132 @@ mod tests {
             overrides[0].first_at,
             vec![["road-b".to_string(), "sc-04".to_string()]]
         );
+    }
+
+    /// Round 600 (session review, Findings 1 + 3): extend the drift guard from
+    /// the worked example to the KEY PROSE. Every JSON key the serializer emits
+    /// for any manifest kind — including the nested confluence / typed / surface
+    /// shapes — must be NAMED (quoted) in the wire prose, and the canon-order
+    /// prose must name the real `CanonOrderFile` keys. Before this, keys present
+    /// only in prose (`converges_from`, `canon_to`, `surface`, …) and never in
+    /// the guarded example could be renamed in serde without breaking a test,
+    /// leaving `describe-schema` to hand an agent a stale wire contract.
+    #[test]
+    fn manifest_wire_prose_names_every_serde_key() {
+        // Every OBJECT key in `value` (recursively) must appear quoted in `prose`.
+        fn assert_documented(value: &serde_json::Value, prose: &str) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (k, v) in map {
+                        assert!(
+                            prose.contains(&format!("\"{k}\"")),
+                            "serde key `{k}` is not named in the wire prose"
+                        );
+                        assert_documented(v, prose);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|v| assert_documented(v, prose))
+                }
+                _ => {}
+            }
+        }
+
+        let w = describe_schema().manifest_wire;
+        let mut prose = String::from(w.typed_object_wire);
+        for k in &w.kinds {
+            prose.push_str(k.json_keys);
+        }
+
+        // A fully-populated manifest exercising every optional key + nested shape
+        // (the shape only — serde does not validate ids, so these need not be a
+        // valid store).
+        let manifest = mnemosyne_atomic::FactsManifest {
+            frames: vec![mnemosyne_atomic::FrameImport {
+                frame_id: "gt".into(),
+                description: "d".into(),
+            }],
+            branches: vec![mnemosyne_atomic::BranchImport {
+                branch_id: "b".into(),
+                description: "d".into(),
+                forks_from: Some("main".into()),
+                forks_at: Some("s".into()),
+                converges_from: vec![mnemosyne_atomic::BranchConvergeImport {
+                    branch: "b".into(),
+                    at: "s".into(),
+                }],
+            }],
+            entities: vec![mnemosyne_atomic::EntityImport {
+                entity_id: "e".into(),
+                kind: "character".into(),
+                description: "d".into(),
+            }],
+            predicates: vec![mnemosyne_atomic::PredicateImport {
+                predicate_id: "p".into(),
+                object_kind: "scalar".into(),
+                description: "d".into(),
+            }],
+            facts: vec![mnemosyne_atomic::FactImport {
+                fact_id: "f".into(),
+                frame: "gt".into(),
+                branch: Some("b".into()),
+                entities: vec!["e".into()],
+                claim: "c".into(),
+                canon_from: "s".into(),
+                canon_to: Some("s".into()),
+                evidence: vec!["s".into()],
+                conflicts_with: vec!["f0".into()],
+                supersedes_in_frame: Some("f0".into()),
+                payoff_expectation: Some("expected".into()),
+                pays_off: vec!["f0".into()],
+                typed: Some(mnemosyne_core::TypedClaim {
+                    subject: "e".into(),
+                    predicate: "p".into(),
+                    object: mnemosyne_core::TypedObject::Value { value: "v".into() },
+                }),
+                quote: Some("q".into()),
+            }],
+            disclosure_plans: vec![mnemosyne_atomic::DisclosurePlanImport {
+                telling_id: "t".into(),
+                default_mode: Some("withhold".into()),
+                description: "d".into(),
+                overrides: vec![mnemosyne_atomic::DisclosureOverrideImport {
+                    fact_id: "f".into(),
+                    mode: "state".into(),
+                    first_at: vec![["b".into(), "s".into()]],
+                    surface: Some(mnemosyne_atomic::DisclosureSurfaceImport {
+                        scene: "s".into(),
+                        object: Some("o".into()),
+                    }),
+                }],
+            }],
+        };
+        // Recurse into each kind's array (the six top-level array names are the
+        // well-known kinds, documented in the overview + FACTS_MANIFEST_SHAPE).
+        let value = serde_json::to_value(&manifest).unwrap();
+        for arr in value.as_object().unwrap().values() {
+            assert_documented(arr, &prose);
+        }
+
+        // Finding 3: the canon-order prose names the real `CanonOrderFile`
+        // STRUCTURAL keys. `branches` is a data-keyed map (its keys are branch
+        // ids, not field names), so check only the top-level fields — an empty
+        // map avoids recursing into data keys.
+        let order = crate::continuity::CanonOrderFile {
+            edges: vec![["a".to_string(), "b".to_string()]],
+            branches: std::collections::BTreeMap::new(),
+        };
+        let canon = describe_schema().canon_order;
+        for key in serde_json::to_value(&order)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+        {
+            assert!(
+                canon.contains(&format!("\"{key}\"")),
+                "canon-order structural key `{key}` is not named in the canon-order prose"
+            );
+        }
     }
 }

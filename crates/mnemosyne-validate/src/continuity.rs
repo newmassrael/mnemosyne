@@ -75,7 +75,9 @@ use serde::{Deserialize, Serialize};
 /// legitimately precede X on one world-line and follow it on another, which
 /// a single global DAG cannot express (it would be a cycle). A branch
 /// absent from `branches` orders by the base alone.
-#[derive(Debug, Clone, Default, Deserialize)]
+// `Serialize` (Round 600) lets the `describe-schema` canon-order drift guard
+// pin its prose to these field names; the loader only ever deserializes it.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct CanonOrderFile {
     #[serde(default)]
     pub edges: Vec<[String; 2]>,
@@ -2482,6 +2484,20 @@ pub struct PayoffCoverageReport {
     /// in unrelated forks. B-1 honesty either way: these are *undecided*,
     /// never listed as definitively dead.
     pub undecidable_edges: Vec<PayoffEdgeRef>,
+}
+
+impl PayoffCoverageReport {
+    /// The per-world dangling setups, keeping only worlds with ≥ 1 dangling
+    /// (Round 600 SSOT). The ONE home for the "dangling setups by world"
+    /// projection — both `propose-verdict`'s dry run (R599) and the authoring
+    /// frontier (R589) surface it, and had copy-pasted the transform.
+    pub fn dangling_by_world(&self) -> BTreeMap<String, Vec<String>> {
+        self.worlds
+            .iter()
+            .filter(|(_, w)| !w.dangling.is_empty())
+            .map(|(world, w)| (world.clone(), w.dangling.clone()))
+            .collect()
+    }
 }
 
 /// Classify setup/payoff coverage per world (Round 442). WORLD-scoped via
