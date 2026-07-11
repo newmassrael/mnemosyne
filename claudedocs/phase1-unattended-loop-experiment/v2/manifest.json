@@ -1,0 +1,30 @@
+{
+  "manifest": "unattended-loop-experiment/v2",
+  "designed": "R597 (Mnemosyne narrative-authoring track)",
+  "lineage_note": "Confirmation run. Leaner than v1: coherence was proven at v1 (loop_proven), so v2 does NOT render or judge — it measures whether the R595 (wire format) + R596 (canon-order gap) fixes REMOVED the two top frictions v1's loop-log recorded. This lineage is the ORCHESTRATOR: it seeds the workspace, spawns ONE blind loop agent, and re-derives the pins on a fresh rebuild (R469 firewall; self-report not trusted, R500).",
+  "question": "Did R595 + R596 remove the two real frictions the v1 unattended loop hit? v1's blind agent (a) wasted 11 propose-verdict probes reverse-engineering the JSON wire format describe-schema did not document, and (b) converged to a store the frontier called 'done' (0/0/0) that was NOT renderable because it had no canon order (the orchestrator had to supply one). R595 added the wire format + a worked example to describe-schema; R596 made report-authoring-frontier flag unordered scenes + describe-schema document the canon-order requirement. Does a fresh blind agent now (a) skip the wire-format probes and (b) author a canon order on its own, reaching a renderable store?",
+  "premise": "Reuse v1's premise (../v1/premise.md) — the SAME task ('The Ban Tower') so friction is compared against v1's, controlling for task difficulty. The blind agent has fresh context and does not know v1.",
+  "firewall": {
+    "rule": "R469 contamination bound. The blind loop agent authors + self-repairs with NO orchestrator help. This lineage runs only the deterministic setup + verification.",
+    "orchestrator_may": ["seed the premise + fresh empty workspace", "run describe-schema/propose-verdict/import-*/report-*/validate-workspace for VERIFICATION", "audit the loop-log"],
+    "orchestrator_may_not": ["author or repair any manifest or order", "hint the loop agent about the wire format or the canon order (those must come from describe-schema, the point of the fixes)"]
+  },
+  "deterministic_pins": {
+    "PIN-v2-1_wire_friction_removed": "From loop-log.md, re-derived by the orchestrator: the agent used the documented wire format (copied the worked example's shape) and needed AT MOST 2 propose-verdict wire-format DISCOVERY probes (v1 needed 11). A count <= 2 confirms the Finding-1 fix removed the reverse-engineering friction; > 2 means describe-schema's wire format is still insufficient.",
+    "PIN-v2-2_renderable_store_authored": "The agent authored a canon ORDER on its own (an order.json pinned via [continuity].canon_order_path, or equivalent) and, re-derived on a FRESH rebuild from the agent's artifacts, report-authoring-frontier --telling <plan> reports 0 unordered_scenes (AND 0 zero-fact / 0 dangling / 0 unresolved). The orchestrator supplies NO order. A renderable store authored unattended confirms the Finding-4 fix steered the agent."
+  },
+  "decision_rule_pre_committed": {
+    "fixes_confirmed": "PIN-v2-1 AND PIN-v2-2 hold => R595 + R596 removed both top frictions; the unattended loop now self-serves the wire format AND authors a renderable store. The infra->proof arc for these two gaps is closed on a live re-run.",
+    "wire_still_insufficient": "PIN-v2-1 fails (> 2 wire probes) => describe-schema's wire format is still incomplete; the loop-log names exactly what the agent still had to reverse-engineer (the next describe-schema fix).",
+    "order_not_surfaced": "PIN-v2-2 fails (the agent did not author an order / the frontier still shows unordered) => the frontier's unordered gap + describe-schema's canon-order note did NOT steer the agent to author the order; the finding = whether the order needs a first-class authoring primitive (not just a config file)."
+  },
+  "predictions_preregistered": [
+    "PRED-1: PIN-v2-1 holds with 0-1 probes (the agent copies the worked example).",
+    "PRED-2: PIN-v2-2 holds but is the harder one — the order has no mutate verb (it is a config-pinned order.json), so the agent may fumble the pin even though describe-schema documents it; if it fails, that is the order-primitive finding, itself a useful result."
+  ],
+  "honest_caveats": [
+    "n = 1 premise / 1 loop agent. No render / judge (coherence was proven at v1; v2 is a friction-removal confirmation, not a re-proof).",
+    "Same premise as v1 controls task difficulty but is one task; a fully general claim would vary the premise.",
+    "The probe-count bar (<= 2) is a threshold on a noisy quantity; the loop-log's NARRATIVE of what the agent had to discover is the real evidence, the count its summary."
+  ]
+}

@@ -14353,6 +14353,38 @@
         "NEXT = R597 owner cadence: (A) re-run the unattended loop (v2) to CONFIRM the R595/R596 surfaces removed the friction (the agent should skip the 11 wire-format probes and be told to author a canon order) [validates the fixes end to end]; (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) close the smaller Findings 2/3 as describe-schema notes; (D) another experiment.",
         "R593+R594+R595+R596 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
       ]
+    },
+    "Round 597 — unattended-loop-experiment/v2 design: confirm R595/R596 removed the two top frictions (sha-pinned)": {
+      "decision_summary": "design/manifest for the v2 confirmation run: does R595 (wire format) + R596 (canon-order gap) remove v1's two frictions (11 wire probes + an unrenderable no-order store)? Leaner than v1 (no render/judge), sha-pinned, code 0",
+      "changes_bullets": [
+        "Authored claudedocs/phase1-unattended-loop-experiment/v2/ (design/manifest round, code 0): loop-agent-brief.md (v2 — points only at describe-schema + premise + CLI, stop condition generalized to \"close EVERY frontier gap of any kind including any unexpected axis\", no hint about the wire format or canon order), manifest.json, runbook.md. Reuses v1's premise (../v1/premise.md — the same \"The Ban Tower\" task) so friction is compared against v1's, controlling for difficulty.",
+        "v2 is a LEANER confirmation than v1: coherence was proven at v1 (loop_proven), so v2 does NOT render or judge — it measures whether R595 (wire format) + R596 (canon-order gap) REMOVED the two top frictions v1's loop-log recorded. Two sha-pinned pins: PIN-v2-1 wire-friction-removed (the agent used the documented wire format and needed <= 2 propose-verdict wire-format probes vs v1's 11) + PIN-v2-2 renderable-store-authored (the agent authored a canon order on its own and, re-derived on a fresh rebuild, the frontier reports 0 unordered + 0 zero-fact/dangling/unresolved, orchestrator supplying no order).",
+        "R469 firewall: this lineage seeds + verifies only; the blind loop agent authors + self-repairs with no hint about the wire format or the order (both must come from describe-schema — the point of the fixes). Decision rule pre-committed three ways (fixes_confirmed / wire_still_insufficient / order_not_surfaced); two predictions preregistered (wire probes 0-1; the order pin is the harder half since it has no mutate verb)."
+      ],
+      "verification_bullets": [
+        "manifest.json valid JSON; sha256 4d15a00cb217e109e3d7256603f7f26dd85806aa54ae565cef56f390bff19901 pinned pre-execution.",
+        "Confirmed the installed CLI carries R595/R596: describe-schema shows both a \"manifest wire format\" section and a \"canon order (required for a renderable store)\" section (the surfaces the v2 agent will self-serve from).",
+        "code 0 (no production crate touched); working tree otherwise clean; citation hygiene (R595/R596/R500/R469 exist)."
+      ],
+      "carry_forward_bullets": [
+        "NEXT = R598 EXECUTE unattended-loop-experiment/v2 (experiment-execution consent already given via owner (A)): run runbook.md — spawn the blind loop agent, audit PIN-v2-1 (probe count) from loop-log, verify PIN-v2-2 (agent-authored order + 0 unordered) on a fresh rebuild, apply the decision rule, write report.md + the R598 changelog entry. Push withheld.",
+        "R593-R597 all COMMITTED, NOT PUSHED — push awaits an explicit word (origin/main @ 3693a5c)."
+      ],
+      "publishable_decision_summary": "design/manifest for the v2 confirmation run: does R595 (wire format) + R596 (canon-order gap) remove v1's two frictions (11 wire probes + an unrenderable no-order store)? Leaner than v1 (no render/judge), sha-pinned, code 0",
+      "publishable_changes_bullets": [
+        "Authored claudedocs/phase1-unattended-loop-experiment/v2/ (design/manifest round, code 0): loop-agent-brief.md (v2 — points only at describe-schema + premise + CLI, stop condition generalized to \"close EVERY frontier gap of any kind including any unexpected axis\", no hint about the wire format or canon order), manifest.json, runbook.md. Reuses v1's premise (../v1/premise.md — the same \"The Ban Tower\" task) so friction is compared against v1's, controlling for difficulty.",
+        "v2 is a LEANER confirmation than v1: coherence was proven at v1 (loop_proven), so v2 does NOT render or judge — it measures whether R595 (wire format) + R596 (canon-order gap) REMOVED the two top frictions v1's loop-log recorded. Two sha-pinned pins: PIN-v2-1 wire-friction-removed (the agent used the documented wire format and needed <= 2 propose-verdict wire-format probes vs v1's 11) + PIN-v2-2 renderable-store-authored (the agent authored a canon order on its own and, re-derived on a fresh rebuild, the frontier reports 0 unordered + 0 zero-fact/dangling/unresolved, orchestrator supplying no order).",
+        "R469 firewall: this lineage seeds + verifies only; the blind loop agent authors + self-repairs with no hint about the wire format or the order (both must come from describe-schema — the point of the fixes). Decision rule pre-committed three ways (fixes_confirmed / wire_still_insufficient / order_not_surfaced); two predictions preregistered (wire probes 0-1; the order pin is the harder half since it has no mutate verb)."
+      ],
+      "publishable_verification_bullets": [
+        "manifest.json valid JSON; sha256 4d15a00cb217e109e3d7256603f7f26dd85806aa54ae565cef56f390bff19901 pinned pre-execution.",
+        "Confirmed the installed CLI carries R595/R596: describe-schema shows both a \"manifest wire format\" section and a \"canon order (required for a renderable store)\" section (the surfaces the v2 agent will self-serve from).",
+        "code 0 (no production crate touched); working tree otherwise clean; citation hygiene (R595/R596/R500/R469 exist)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "NEXT = R598 EXECUTE unattended-loop-experiment/v2 (experiment-execution consent already given via owner (A)): run runbook.md — spawn the blind loop agent, audit PIN-v2-1 (probe count) from loop-log, verify PIN-v2-2 (agent-authored order + 0 unordered) on a fresh rebuild, apply the decision rule, write report.md + the R598 changelog entry. Push withheld.",
+        "R593-R597 all COMMITTED, NOT PUSHED — push awaits an explicit word (origin/main @ 3693a5c)."
+      ]
     }
   },
   "inventory_entries": {},
