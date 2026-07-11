@@ -60,6 +60,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
+use mnemosyne_config::Severity;
 use mnemosyne_core::NarrativeFact;
 use serde::{Deserialize, Serialize};
 
@@ -955,6 +956,52 @@ pub enum ContinuityViolation {
         bound: String,
         at: String,
     },
+}
+
+impl ContinuityViolation {
+    /// Whether this is an INTERVAL (timeline) violation, which rides the
+    /// separate `interval_severity` class (Round 491) rather than `severity`.
+    pub fn is_interval(&self) -> bool {
+        matches!(self, ContinuityViolation::RuleIntervalViolation { .. })
+    }
+}
+
+/// The per-class continuity gate decision (Round 592) — THE single source of the
+/// reject policy, shared by `validate-continuity` and `propose-verdict` so a dry
+/// run mirrors the real gate EXACTLY (before R592 they diverged: propose-verdict
+/// rolled back on store-valid content — a `warn`/`info` store, an interval
+/// time-bend with `interval_severity` OFF, or a `[continuity]`-disabled
+/// workspace). Structural violations (conflict / off-branch / succession /
+/// exclusive / transition) ride `severity`; interval (timeline) violations ride
+/// `interval_severity` (OFF by default = surface-not-gate). A class gates only at
+/// `reject`; `None` severity = that class is disabled (never gates).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContinuityGateOutcome {
+    pub structural_count: usize,
+    pub interval_count: usize,
+    /// `true` iff a reject-severity class has ≥ 1 violation — the store's own
+    /// policy would reject.
+    pub gates: bool,
+}
+
+/// Evaluate the per-class continuity gate (Round 592). See
+/// [`ContinuityGateOutcome`]. `severity` / `interval_severity` are the resolved
+/// policy (`None` = that class disabled).
+pub fn evaluate_continuity_gate(
+    severity: Option<Severity>,
+    interval_severity: Option<Severity>,
+    violations: &[ContinuityViolation],
+) -> ContinuityGateOutcome {
+    let interval_count = violations.iter().filter(|v| v.is_interval()).count();
+    let structural_count = violations.len() - interval_count;
+    let structural_gates = matches!(severity, Some(s) if s.is_reject()) && structural_count > 0;
+    let interval_gates =
+        matches!(interval_severity, Some(s) if s.is_reject()) && interval_count > 0;
+    ContinuityGateOutcome {
+        structural_count,
+        interval_count,
+        gates: structural_gates || interval_gates,
+    }
 }
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
@@ -4048,6 +4095,60 @@ mod tests {
     use super::*;
     use mnemosyne_atomic::{AtomicSection, FactImport, FactsManifest};
     use mnemosyne_core::MAIN_BRANCH;
+
+    /// Round 592 — the single-sourced per-class gate policy (the finding that
+    /// propose-verdict diverged from validate-continuity). Structural violations
+    /// ride `severity`; interval violations ride `interval_severity` (OFF by
+    /// default); a class gates only at `reject`; `None` = the class is disabled.
+    #[test]
+    fn evaluate_continuity_gate_respects_per_class_severity() {
+        let structural = ContinuityViolation::FactCanonOffBranch {
+            fact: "f".into(),
+            branch: "main".into(),
+            coord: "sc".into(),
+        };
+        let interval = ContinuityViolation::RuleIntervalViolation {
+            rule: "r".into(),
+            predicate: "p".into(),
+            right: "q".into(),
+            op: ">=".into(),
+            frame: "gt".into(),
+            branch: "main".into(),
+            subject: "s".into(),
+            left_fact: "a".into(),
+            right_fact: "b".into(),
+            left_value: "1".into(),
+            right_value: "2".into(),
+            bound: "5".into(),
+            at: "sc".into(),
+        };
+        let g = |sev, isev, v: &[ContinuityViolation]| evaluate_continuity_gate(sev, isev, v);
+        let one = std::slice::from_ref::<ContinuityViolation>;
+
+        // Structural rides `severity`.
+        assert!(g(Some(Severity::Reject), None, one(&structural)).gates);
+        assert!(!g(Some(Severity::Warn), None, one(&structural)).gates);
+        // Gate disabled ([continuity] absent) never gates.
+        assert!(!g(None, None, one(&structural)).gates);
+
+        // Interval rides `interval_severity` — OFF by default, so a reject-level
+        // `severity` must NOT gate an interval time-bend (the R592 fix).
+        assert!(!g(Some(Severity::Reject), None, one(&interval)).gates);
+        assert!(
+            g(
+                Some(Severity::Reject),
+                Some(Severity::Reject),
+                one(&interval)
+            )
+            .gates
+        );
+
+        // Counts split by class; structural presence gates the mixed set.
+        let mixed = g(Some(Severity::Reject), None, &[structural, interval]);
+        assert_eq!(mixed.structural_count, 1);
+        assert_eq!(mixed.interval_count, 1);
+        assert!(mixed.gates);
+    }
 
     fn chain(ids: &[&str]) -> CanonOrder {
         let edges: Vec<[String; 2]> = ids

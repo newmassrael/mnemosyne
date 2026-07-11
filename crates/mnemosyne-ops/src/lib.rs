@@ -352,24 +352,35 @@ impl ProposeVerdict {
 /// real store is never written (the scratch-sidecar contract, done in memory).
 #[derive(Debug, Clone, Serialize)]
 pub struct ProposeVerdictReport {
-    /// commit = the batch is clean and safe to apply; rollback = rejected.
+    /// The authoritative go/no-go: commit = the store's configured gate ACCEPTS
+    /// this batch (safe to apply); rollback = it would reject. Mirrors
+    /// `validate-continuity`'s `[continuity]` severity policy exactly (R592).
     pub verdict: ProposeVerdict,
     /// What the batch WOULD create if committed (the import summary) — present
     /// even on rollback so the agent sees the intended scope.
     pub applied_summary: String,
     pub violation_count: usize,
-    /// The actionable violations (empty iff `verdict == commit`).
+    /// How many of `violations` are at REJECT severity (the ones that cause the
+    /// rollback). On a `commit` verdict this is 0 and any listed violations are
+    /// below-reject advisories (a `warn`/`info` class, or an interval time-bend
+    /// with `interval_severity` OFF) — the loop keys off `verdict`, not on
+    /// `violations` being empty.
+    pub gating_violation_count: usize,
+    /// ALL actionable violations found (shape + continuity), regardless of
+    /// severity — so the loop sees warn/info advisories even on a commit.
     pub violations: Vec<mnemosyne_validate::verdict::ActionableViolation>,
 }
 
-/// Run the `propose-verdict` dry-run transaction (Round 588). Loads the base
-/// store (default or `sidecar`) into a throwaway clone, applies the candidate
-/// `manifest` in memory (shape invariants), then runs the continuity gate over
-/// the mutated clone, mapping every finding to an actionable violation. A shape
-/// rejection is fail-fast (one violation, no gate run); a clean apply followed
-/// by a clean gate is the only `commit`. Deterministic, AI out of the gate, and
-/// the real store is never touched — the loop calls this until `commit`, THEN
-/// applies for real via `import-facts`.
+/// Run the `propose-verdict` dry-run transaction (Round 588; R592 severity
+/// fidelity). Loads the base store (default or `sidecar`) into a throwaway
+/// clone, applies the candidate `manifest` in memory (shape invariants), then
+/// runs the continuity gate over the mutated clone, mapping every finding to an
+/// actionable violation. A shape rejection is fail-fast (one violation, hard
+/// rollback, no gate run). The continuity verdict mirrors the store's configured
+/// `[continuity]` severity EXACTLY via the shared `evaluate_continuity_gate` — a
+/// dry run never rejects content the real gate accepts. Deterministic, AI out of
+/// the gate, the real store never touched — the loop calls this until `commit`,
+/// THEN applies for real via `import-facts`.
 pub fn propose_verdict(
     workspace_root: &Path,
     sidecar: Option<&Path>,
@@ -394,6 +405,9 @@ pub fn propose_verdict(
                 verdict: ProposeVerdict::Rollback,
                 applied_summary: "no facts applied (shape rejection)".to_string(),
                 violation_count: violations.len(),
+                // A shape rejection is a hard, un-appliable failure — it always
+                // gates, independent of the continuity severity policy.
+                gating_violation_count: violations.len(),
                 violations,
             });
         }
@@ -401,24 +415,46 @@ pub fn propose_verdict(
     };
 
     // 2. Run the continuity gate over the MUTATED clone; map each finding to an
-    //    actionable violation. Any violation → rollback (the loop authors clean).
+    //    actionable violation. The verdict mirrors the store's configured
+    //    [continuity] severity EXACTLY (R592, the shared evaluate_continuity_gate
+    //    that validate-continuity also uses): a class rolls back only at `reject`.
+    //    ALL violations are still surfaced so the loop sees warn/info advisories.
     let order = compose_canon_order(&decl, &store)?;
     let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
         .map_err(OpError::Other)?;
+    let severity = policy.continuity.as_ref().map(|c| c.severity);
+    let interval_severity = policy.continuity.as_ref().and_then(|c| c.interval_severity);
+    let gate = mnemosyne_validate::continuity::evaluate_continuity_gate(
+        severity,
+        interval_severity,
+        &report.violations,
+    );
     let violations: Vec<mnemosyne_validate::verdict::ActionableViolation> = report
         .violations
         .iter()
         .map(mnemosyne_validate::verdict::continuity_actionable)
         .collect();
-    let verdict = if violations.is_empty() {
-        ProposeVerdict::Commit
+    let structural_gating = if matches!(severity, Some(s) if s.is_reject()) {
+        gate.structural_count
     } else {
+        0
+    };
+    let interval_gating = if matches!(interval_severity, Some(s) if s.is_reject()) {
+        gate.interval_count
+    } else {
+        0
+    };
+    let gating_violation_count = structural_gating + interval_gating;
+    let verdict = if gate.gates {
         ProposeVerdict::Rollback
+    } else {
+        ProposeVerdict::Commit
     };
     Ok(ProposeVerdictReport {
         verdict,
         applied_summary: outcome.summary,
         violation_count: violations.len(),
+        gating_violation_count,
         violations,
     })
 }
@@ -1161,5 +1197,165 @@ mod tests {
             inventory_decay_scan(tmp.path(), "X").is_err(),
             "malformed config must fail loud, not silently empty"
         );
+    }
+
+    /// A minimal narrative workspace: sections sc-1/sc-2 (a canon chain), a
+    /// `gt` frame, and one fact anchored at sc-1. `[continuity].severity`
+    /// configurable so a test can exercise the gate policy.
+    fn narrative_ws(severity: &str) -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            format!(
+                "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+                 [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"{severity}\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("canon.json"),
+            r#"{"edges":[["sc-1","sc-2"]],"branches":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"sc-1":{},"sc-2":{}},"frames":{"gt":{}},
+               "narrative_facts":{"f-1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
+        )
+        .unwrap();
+        tmp
+    }
+
+    fn fact_at(fact_id: &str, section: &str, frame: &str) -> mnemosyne_atomic::FactImport {
+        mnemosyne_atomic::FactImport {
+            fact_id: fact_id.to_string(),
+            frame: frame.to_string(),
+            branch: None,
+            entities: vec![],
+            claim: "a candidate claim".to_string(),
+            canon_from: section.to_string(),
+            canon_to: None,
+            evidence: vec![section.to_string()],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
+            typed: None,
+            quote: None,
+        }
+    }
+
+    fn manifest(facts: Vec<mnemosyne_atomic::FactImport>) -> mnemosyne_atomic::FactsManifest {
+        mnemosyne_atomic::FactsManifest {
+            frames: vec![],
+            branches: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts,
+            disclosure_plans: vec![],
+        }
+    }
+
+    /// A clean candidate commits; a bad-frame candidate rolls back with a shape
+    /// violation and leaves the store untouched (Round 588/592).
+    #[test]
+    fn propose_verdict_commit_and_shape_rollback() {
+        let ws = narrative_ws("reject");
+        let root = ws.path();
+
+        let clean = propose_verdict(
+            root,
+            None,
+            None,
+            None,
+            &manifest(vec![fact_at("f-2", "sc-2", "gt")]),
+        )
+        .unwrap();
+        assert_eq!(clean.verdict, ProposeVerdict::Commit);
+        assert_eq!(clean.gating_violation_count, 0);
+        assert!(clean.violations.is_empty());
+
+        let bad = propose_verdict(
+            root,
+            None,
+            None,
+            None,
+            &manifest(vec![fact_at("f-3", "sc-1", "ghost-frame")]),
+        )
+        .unwrap();
+        assert_eq!(bad.verdict, ProposeVerdict::Rollback);
+        assert_eq!(bad.gating_violation_count, 1);
+        assert_eq!(bad.violations[0].source, "shape");
+
+        // Dry run: the store still holds exactly the seeded fact.
+        let store = load_atomic_store(root, None).unwrap();
+        assert_eq!(store.narrative_facts.len(), 1);
+    }
+
+    /// Round 592 (finding 1): a structural violation gates under the default
+    /// `reject` severity but NOT under `warn` — propose-verdict mirrors the
+    /// store's configured policy instead of rolling back on everything.
+    #[test]
+    fn propose_verdict_mirrors_configured_severity() {
+        // A fact defaulting to `main` while the canon chain positions sc-1/sc-2 on
+        // main is fine; force an off-branch by pointing canon_from at an unordered
+        // section is not possible here, so use a warn-severity store and a
+        // conflicting pair to produce a structural violation.
+        let bad_pair = vec![
+            {
+                let mut f = fact_at("f-a", "sc-1", "gt");
+                f.claim = "the bell rang".into();
+                f
+            },
+            {
+                let mut f = fact_at("f-b", "sc-1", "gt");
+                f.claim = "the bell was silent".into();
+                f.conflicts_with = vec!["f-a".into()];
+                f
+            },
+        ];
+        // reject severity → the conflict gates → rollback.
+        let ws_reject = narrative_ws("reject");
+        let r = propose_verdict(
+            ws_reject.path(),
+            None,
+            None,
+            None,
+            &manifest(bad_pair.clone()),
+        )
+        .unwrap();
+        assert_eq!(r.verdict, ProposeVerdict::Rollback);
+        assert!(r.gating_violation_count >= 1);
+        // warn severity → the SAME conflict is surfaced but does NOT gate → commit.
+        let ws_warn = narrative_ws("warn");
+        let w = propose_verdict(ws_warn.path(), None, None, None, &manifest(bad_pair)).unwrap();
+        assert_eq!(w.verdict, ProposeVerdict::Commit);
+        assert_eq!(w.gating_violation_count, 0);
+        assert!(
+            !w.violations.is_empty(),
+            "a warn-level violation must still be surfaced on a commit"
+        );
+    }
+
+    /// The authoring frontier reports zero-fact scenes, per-scene coverage, and
+    /// gates the telling-scoped sections behind `--telling` (Round 589).
+    #[test]
+    fn authoring_frontier_reports_gaps_and_gates_telling() {
+        let ws = narrative_ws("reject");
+        let r = authoring_frontier_report(ws.path(), None, None, None).unwrap();
+        assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
+        let counts: std::collections::BTreeMap<_, _> = r
+            .scene_coverage
+            .iter()
+            .map(|s| (s.scene.as_str(), s.fact_count))
+            .collect();
+        assert_eq!(counts["sc-1"], 1);
+        assert_eq!(counts["sc-2"], 0);
+        assert_eq!(r.total_gaps, 1); // just the one zero-fact scene
+                                     // Telling-scoped sections are omitted without a telling.
+        assert!(r.telling.is_none());
+        assert!(r.unresolved_quests.is_none());
+        assert!(r.never_planned_disclosures.is_none());
     }
 }

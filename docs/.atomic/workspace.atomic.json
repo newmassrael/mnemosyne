@@ -14169,6 +14169,50 @@
         "the PluginRegistry Validator slot stays the extension point for FUTURE consumer-specific guardrails (pull-gated); the built-in core invariants stay built-in",
         "north-star return: the AI-first authoring support surfaces are paid; the next frontier is the narrative-authoring track / the pinion consumer per the RESUME memory"
       ]
+    },
+    "Round 592 — textbook review of R587-R591 + the 5 findings it raised, all fixed": {
+      "decision_summary": "Owner-requested cost-no-object textbook review of the R585 authoring-support arc (R587-R591), via an independent adversarial reviewer + self-audit. Verdict: sound craft but NOT textbook as-is — one real correctness+SSOT defect at the center (propose-verdict applied a stricter, divergent, non-single-sourced gate policy than validate-continuity). All 5 findings fixed this round: single-source the continuity gate policy, a fact-shape drift guard + honest drift-claim scoping, ops unit tests, a single-sourced manifest-shape hint, and stored-result parity in the disclosure test.",
+      "changes_bullets": [
+        "FINDING 1 (HIGH, correctness+SSOT): propose-verdict ignored the configured [continuity] severity — it rolled back on store-VALID content (interval time-bends with interval_severity OFF by default, warn/info severity, gate-disabled workspaces), diverging from validate-continuity and re-deriving a second gating rule. FIX: extracted evaluate_continuity_gate (ContinuityGateOutcome) as THE single-sourced per-class reject policy; both cmd_validate_continuity and propose_verdict call it; propose_verdict now mirrors the store policy exactly, surfaces ALL violations, and reports gating_violation_count",
+        "FINDING 2 (SSOT): describe-schema's \"cannot silently fall behind the code\" was overstated (only the enum/rule-class parts are compile-guarded). FIX: narrowed the module doc to three honest tiers (compile-guarded / test-guarded / hand-authored prose) + added a fact-shape drift-guard test binding fact.fields to FactImport's serde field set",
+        "FINDING 3 (tests): propose_verdict + authoring_frontier_report had no unit tests. FIX: added ops tests (commit / shape-rollback / severity-mirror [which locks in finding 1] / frontier gaps+telling-gating) + the pure evaluate_continuity_gate policy test",
+        "FINDING 4 (drift): the manifest shape was described by hand in >=4 spots that had drifted (cmd_propose_verdict still said \"frames + facts\", MCP omitted disclosure_plans). FIX: single-sourced FACTS_MANIFEST_SHAPE const for the runtime parse hints + corrected the MCP static doc",
+        "FINDING 5 (nit): the disclosure parity test checked accept/reject parity only. FIX: added stored-result equality (store_a.disclosure_plans == store_b) on the accept cases"
+      ],
+      "verification_bullets": [
+        "method: an independent adversarial reviewer (fresh-context agent, the R469/R500 self-report-not-trusted discipline) + self-audit; the reviewer confirmed the disclosure write-path parity is sound, the dry run genuinely never persists, idempotency holds, R591's close-as-satisfied restraint was right, and layering is right",
+        "cargo build + clippy -D warnings + fmt clean; full suites green (atomic 187, validate 276, ops 13) including 5 new tests; e2e: a conflict under reject severity -> rollback (1 gating); the severity-mirror unit test proves warn severity -> commit-with-surfaced-violation (the finding-1 fix)",
+        "honest note (not downplayed): I had rated finding 1 \"minor\" — the reviewer correctly escalated it to the central defect (the exact downplaying my own guidance forbids); recording it so the lesson sticks"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "the per-class continuity gate policy is now single-sourced (evaluate_continuity_gate); the other is_reject gate sites (disclosure-leak / render-fidelity / spec-drift) are DIFFERENT gates with their own severity, out of scope",
+        "describe-schema's registry/invariant descriptions remain hand-authored semantic prose (the one un-auto-guarded tier, now documented as such) — projecting the enforcement, not a second source of it",
+        "the R585 authoring-support arc is now review-hardened: R587-R591 built, R592 reviewed and fixed; next frontier is the narrative-authoring track / pinion consumer per the RESUME"
+      ],
+      "publishable_decision_summary": "Owner-requested cost-no-object textbook review of the R585 authoring-support arc (R587-R591), via an independent adversarial reviewer + self-audit. Verdict: sound craft but NOT textbook as-is — one real correctness+SSOT defect at the center (propose-verdict applied a stricter, divergent, non-single-sourced gate policy than validate-continuity). All 5 findings fixed this round: single-source the continuity gate policy, a fact-shape drift guard + honest drift-claim scoping, ops unit tests, a single-sourced manifest-shape hint, and stored-result parity in the disclosure test.",
+      "publishable_changes_bullets": [
+        "FINDING 1 (HIGH, correctness+SSOT): propose-verdict ignored the configured [continuity] severity — it rolled back on store-VALID content (interval time-bends with interval_severity OFF by default, warn/info severity, gate-disabled workspaces), diverging from validate-continuity and re-deriving a second gating rule. FIX: extracted evaluate_continuity_gate (ContinuityGateOutcome) as THE single-sourced per-class reject policy; both cmd_validate_continuity and propose_verdict call it; propose_verdict now mirrors the store policy exactly, surfaces ALL violations, and reports gating_violation_count",
+        "FINDING 2 (SSOT): describe-schema's \"cannot silently fall behind the code\" was overstated (only the enum/rule-class parts are compile-guarded). FIX: narrowed the module doc to three honest tiers (compile-guarded / test-guarded / hand-authored prose) + added a fact-shape drift-guard test binding fact.fields to FactImport's serde field set",
+        "FINDING 3 (tests): propose_verdict + authoring_frontier_report had no unit tests. FIX: added ops tests (commit / shape-rollback / severity-mirror [which locks in finding 1] / frontier gaps+telling-gating) + the pure evaluate_continuity_gate policy test",
+        "FINDING 4 (drift): the manifest shape was described by hand in >=4 spots that had drifted (cmd_propose_verdict still said \"frames + facts\", MCP omitted disclosure_plans). FIX: single-sourced FACTS_MANIFEST_SHAPE const for the runtime parse hints + corrected the MCP static doc",
+        "FINDING 5 (nit): the disclosure parity test checked accept/reject parity only. FIX: added stored-result equality (store_a.disclosure_plans == store_b) on the accept cases"
+      ],
+      "publishable_verification_bullets": [
+        "method: an independent adversarial reviewer (fresh-context agent, the R469/R500 self-report-not-trusted discipline) + self-audit; the reviewer confirmed the disclosure write-path parity is sound, the dry run genuinely never persists, idempotency holds, R591's close-as-satisfied restraint was right, and layering is right",
+        "cargo build + clippy -D warnings + fmt clean; full suites green (atomic 187, validate 276, ops 13) including 5 new tests; e2e: a conflict under reject severity -> rollback (1 gating); the severity-mirror unit test proves warn severity -> commit-with-surfaced-violation (the finding-1 fix)",
+        "honest note (not downplayed): I had rated finding 1 \"minor\" — the reviewer correctly escalated it to the central defect (the exact downplaying my own guidance forbids); recording it so the lesson sticks"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the per-class continuity gate policy is now single-sourced (evaluate_continuity_gate); the other is_reject gate sites (disclosure-leak / render-fidelity / spec-drift) are DIFFERENT gates with their own severity, out of scope",
+        "describe-schema's registry/invariant descriptions remain hand-authored semantic prose (the one un-auto-guarded tier, now documented as such) — projecting the enforcement, not a second source of it",
+        "the R585 authoring-support arc is now review-hardened: R587-R591 built, R592 reviewed and fixed; next frontier is the narrative-authoring track / pinion consumer per the RESUME"
+      ]
     }
   },
   "inventory_entries": {},

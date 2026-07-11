@@ -2049,12 +2049,17 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         .interval_severity
         .as_deref()
         .and_then(Severity::from_tag);
-    // Per-class gating (Round 491): structural violations (conflict / off-branch
-    // / succession / exclusive / transition) ride `severity`; interval (timeline)
-    // violations ride `interval_severity`, OFF by default (surface-not-gate).
-    let structural_count = report
-        .violation_count
-        .saturating_sub(report.interval_violation_count);
+    // Per-class gating (Round 491), single-sourced through the shared
+    // `evaluate_continuity_gate` (Round 592) that `propose-verdict` also uses, so
+    // the dry run mirrors this gate exactly. Structural violations ride
+    // `severity`; interval (timeline) violations ride `interval_severity` (OFF by
+    // default = surface-not-gate).
+    let gate = mnemosyne_validate::continuity::evaluate_continuity_gate(
+        severity,
+        interval_severity,
+        &report.violations,
+    );
+    let structural_count = gate.structural_count;
     if json {
         println!("{}", serde_json::to_string(&report)?);
     } else {
@@ -2088,10 +2093,7 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             println!("  {}", serde_json::to_string(v)?);
         }
     }
-    let structural_gates = matches!(severity, Some(s) if s.is_reject()) && structural_count > 0;
-    let interval_gates = matches!(interval_severity, Some(s) if s.is_reject())
-        && report.interval_violation_count > 0;
-    if structural_gates || interval_gates {
+    if gate.gates {
         std::process::exit(1);
     }
     Ok(())
@@ -3024,8 +3026,9 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     let manifest: mnemosyne_atomic::FactsManifest =
         serde_json::from_str(&raw).with_context(|| {
             format!(
-                "parse manifest {} (JSON object with `frames` + `facts` arrays)",
-                manifest_path
+                "parse manifest {} ({})",
+                manifest_path,
+                mnemosyne_atomic::FACTS_MANIFEST_SHAPE
             )
         })?;
     let loaded = workspace_config()?;
@@ -3047,7 +3050,10 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     } else {
         println!("=== propose-verdict: {} ===", report.verdict.as_str());
         println!("would apply: {}", report.applied_summary);
-        println!("violations: {}", report.violation_count);
+        println!(
+            "violations: {} ({} gating at reject severity)",
+            report.violation_count, report.gating_violation_count
+        );
         for v in &report.violations {
             println!("  [{}] {} — {}", v.source, v.rule, v.message);
             if !v.locus.facts.is_empty() {

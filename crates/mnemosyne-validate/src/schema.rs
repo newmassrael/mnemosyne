@@ -13,13 +13,22 @@
 //! invariant 4 — nothing fiction-shaped, valid for a novel / TRPG / spec
 //! consumer alike).
 //!
-//! DRIFT GUARD: the fixed vocabularies are built from the real core enums
-//! ([`DisclosureMode`] etc.) via `as_str()` + an exhaustive `match` for the
-//! per-value gloss, and the rule classes from the real
-//! [`crate::continuity::RuleClass`]. Adding an enum variant / rule class breaks
-//! the exhaustive match here (a compile error at the description site), so the
-//! contract cannot silently fall behind the code. The quest-convention ids are
-//! the same `pub(crate)` constants the projection reads, single-sourced.
+//! DRIFT GUARD — three tiers, honestly scoped (R592):
+//! - COMPILE-guarded: the fixed vocabularies are built from the real core enums
+//!   ([`DisclosureMode`] etc.) via `as_str()` + an exhaustive `match` for the
+//!   per-value gloss, and the rule classes from the real
+//!   [`crate::continuity::RuleClass`]. Adding an enum variant / rule class
+//!   breaks the exhaustive match here (a compile error at the description
+//!   site). The quest ids + `CURRENT_SCHEMA_VERSION` are single-sourced
+//!   `pub(crate)`/`pub` constants.
+//! - TEST-guarded: the fact field set is pinned to `FactImport`'s serde shape by
+//!   a unit test (adding a fact field fails the test until described here).
+//! - HAND-AUTHORED semantic prose (NOT auto-guarded): the registry and invariant
+//!   *descriptions* are prose that PROJECTS the enforcement (the R576 "prose
+//!   projects facts" posture) — a semantics change in a mutate primitive is not
+//!   caught by a compiler here, so it must be reflected by hand. This is the one
+//!   part that can drift; it is documentation of the enforcement, not a second
+//!   source of it.
 
 use mnemosyne_core::{DisclosureMode, PayoffExpectation, PredicateObjectKind};
 use serde::Serialize;
@@ -778,5 +787,50 @@ mod tests {
         assert!(json.contains("\"schema_version\""));
         assert!(json.contains("quest_encoding"));
         assert!(json.contains("\"withhold\""));
+    }
+
+    /// Round 592 — the fact-shape DRIFT GUARD: the described fact fields must
+    /// equal `FactImport`'s serde field set (plus `fact_id`, which is the map
+    /// key, described via the fact's `add_op` rather than as a field). Adding a
+    /// field to `FactImport` fails this test until `describe-schema` describes
+    /// it — closing the one place the contract could silently fall behind the
+    /// real batch shape.
+    #[test]
+    fn fact_fields_match_fact_import_serde_shape() {
+        use std::collections::BTreeSet;
+        // FactImport serializes every field (no skip_serializing_if), so a
+        // sample instance yields the full field set.
+        let sample = mnemosyne_atomic::FactImport {
+            fact_id: "x".into(),
+            frame: "f".into(),
+            branch: None,
+            entities: vec![],
+            claim: "c".into(),
+            canon_from: "s".into(),
+            canon_to: None,
+            evidence: vec![],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
+            typed: None,
+            quote: None,
+        };
+        let value = serde_json::to_value(&sample).unwrap();
+        let import_fields: BTreeSet<String> = value.as_object().unwrap().keys().cloned().collect();
+
+        let mut described: BTreeSet<String> = describe_schema()
+            .fact
+            .fields
+            .iter()
+            .map(|f| f.name.to_string())
+            .collect();
+        // fact_id is the map key, not a body field — described via add_op.
+        described.insert("fact_id".to_string());
+
+        assert_eq!(
+            import_fields, described,
+            "describe-schema fact fields drifted from FactImport's serde shape"
+        );
     }
 }

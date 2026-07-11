@@ -496,9 +496,9 @@ pub struct ValidateContinuityArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ProposeVerdictArgs {
     /// Path to the candidate `import-facts` manifest (a JSON object with
-    /// `frames`/`branches`/`entities`/`predicates`/`facts` arrays). The agent
-    /// writes the candidate batch to this file, then calls the tool; the file
-    /// is only READ (dry run).
+    /// `frames`/`branches`/`entities`/`predicates`/`facts`/`disclosure_plans`
+    /// arrays). The agent writes the candidate batch to this file, then calls
+    /// the tool; the file is only READ (dry run).
     pub manifest_path: String,
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.

@@ -350,8 +350,9 @@ pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
     let parsed: mnemosyne_atomic::FactsManifest =
         serde_json::from_str(&raw).with_context(|| {
             format!(
-                "parse manifest {} (JSON object with `frames`/`entities`/`facts`/`disclosure_plans` arrays)",
-                manifest_path
+                "parse manifest {} ({})",
+                manifest_path,
+                mnemosyne_atomic::FACTS_MANIFEST_SHAPE
             )
         })?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;

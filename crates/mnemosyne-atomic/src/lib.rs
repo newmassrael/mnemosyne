@@ -3555,6 +3555,12 @@ pub struct FactsManifest {
     pub disclosure_plans: Vec<DisclosurePlanImport>,
 }
 
+/// The one-line human description of a [`FactsManifest`]'s shape (Round 592) —
+/// single-sourced so the CLI/MCP parse hints cannot drift apart (they had, at
+/// R590: some still said "frames + facts", one omitted `disclosure_plans`).
+pub const FACTS_MANIFEST_SHAPE: &str =
+    "a JSON object with frames / branches / entities / predicates / facts / disclosure_plans arrays";
+
 /// Single shared fact builder/validator — both write paths route here
 /// (R305 parity). Enforces the scalar invariants:
 /// - `fact_id` / `frame` / `claim` / `canon_from` non-empty after trim;
@@ -10495,6 +10501,14 @@ mod tests {
                 set_ok, import_ok,
                 "disclosure write-path parity broken for `{label}`: set={set_ok} import={import_ok}"
             );
+            // On accept, both paths must produce the IDENTICAL stored override —
+            // parity of the result, not just of the accept/reject verdict (R592).
+            if set_ok {
+                assert_eq!(
+                    store_a.disclosure_plans, store_b.disclosure_plans,
+                    "disclosure stored-result parity broken for `{label}`"
+                );
+            }
         }
     }
 
