@@ -2982,6 +2982,8 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     println!("  {}", c.canon_order);
     println!("\n-- disclosure encoding (per-road secrets; frontier != leak gate) --");
     println!("  {}", c.disclosure_encoding);
+    println!("\n-- narrative rules wire (declare + wire a rule so the gate enforces it) --");
+    println!("  {}", c.narrative_rules_wire);
     Ok(())
 }
 

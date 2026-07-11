@@ -92,6 +92,14 @@ pub struct SchemaContract {
     /// per fact × telling); only `first_at` is per-world, so `state`/`hint`/`imply`
     /// discloses on every road — the trap two independent loop agents reached for.
     pub disclosure_encoding: &'static str,
+    /// How to DECLARE a narrative rule so the continuity gate enforces it (Round
+    /// 604, continuity-stress-experiment/v1 `surface_gap`) — the rule CLASSES
+    /// above say what the gate CAN check; this gives the rules-FILE JSON wire, the
+    /// `[continuity].rules_path` wiring, and the `interval_severity` opt-in. Without
+    /// it a blind agent must reverse-engineer the rules file from parse errors +
+    /// sweep candidate toml keys (a misspelled key is silently ignored; interval
+    /// silently defaults to surface-only) — the three frictions the experiment hit.
+    pub narrative_rules_wire: &'static str,
 }
 
 /// The JSON wire format of the batch manifest (Round 595) — the serialization,
@@ -291,6 +299,28 @@ pub fn describe_schema() -> SchemaContract {
              (the disclosure leak gate + `report-playthrough-manuscript --telling`) over the \
              re-extracted prose; run those before trusting a telling — they are in scope, not an \
              afterthought.",
+        narrative_rules_wire:
+            "Declaring a narrative RULE so the continuity gate ENFORCES it — the rule CLASSES \
+             (above) say what the gate CAN check; this is how to TURN A RULE ON. Rules live in a \
+             SEPARATE file (like the canon order, NOT the fact manifest): a JSON object { \
+             \"schema\"?: \"narrative-rules/v1\", \"rules\": [ … ] } where each rule is { \"id\": \
+             string (unique — it names the finding), \"predicate\": <predicate id> (the KEYED / \
+             left typed leg, for every class), \"class\": \"exclusive\" | \"transition\" | \
+             \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\"; \
+             transition → \"allowed\": [ [from, to], … ] (scalar value pairs); interval → \
+             \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
+             \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
+             bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
+             transition carrying `per`, or a bare-number `bound`, rejects). WIRE the file via \
+             `[continuity].rules_path = \"<file>\"` in mnemosyne.toml (+ an optional \
+             `rules_sha256` pin, like the canon order); `--rules <file>` overrides it. Authoring \
+             the file IS the opt-in — the gate is off until it is wired, and a MISSPELLED \
+             `[continuity]` key is rejected (fail-loud) so a typo cannot silently leave the rules \
+             unloaded. IMPORTANT: exclusive + transition violations gate at `[continuity].severity` \
+             (default reject), but INTERVAL violations are SURFACE-ONLY by default (a timeline gap \
+             can be a deliberate authored time-bend) — set `[continuity].interval_severity = \
+             \"reject\"` to make an interval rule actually GATE, else it is reported but never \
+             fails the gate.",
     }
 }
 
@@ -1008,6 +1038,31 @@ mod tests {
         assert!(json.contains("canon_order"));
         // Round 601 — the disclosure-encoding idiom must ship (gap B).
         assert!(json.contains("disclosure_encoding"));
+        // Round 604 — the rules-file authoring surface must ship (surface_gap).
+        assert!(json.contains("narrative_rules_wire"));
+    }
+
+    /// Round 604 (continuity-stress-experiment/v1 `surface_gap`) — the rules-file
+    /// authoring surface must name the three frictions the experiment hit: the
+    /// rules-file wiring key, the `bound` tagged shape, and the interval opt-in.
+    /// Prose (tier-3), so this pins the concepts an agent must find, not wording.
+    #[test]
+    fn narrative_rules_wire_documents_the_authoring_surface() {
+        let w = describe_schema().narrative_rules_wire;
+        assert!(w.contains("rules_path"), "names the wiring toml key");
+        assert!(w.contains("rules_sha256"), "names the optional pin");
+        assert!(
+            w.contains("interval_severity"),
+            "names the interval gate opt-in"
+        );
+        assert!(
+            w.contains("\"const\"") && w.contains("\"predicate\""),
+            "names the tagged bound shape"
+        );
+        assert!(
+            w.contains("exclusive") && w.contains("transition") && w.contains("interval"),
+            "names all three classes' legs"
+        );
     }
 
     /// Round 601 (unattended-loop-experiment/v2 gap B + Finding 2) — the two

@@ -964,7 +964,15 @@ pub struct VerifiesCatalogSection {
 /// non-comparable pairs are surfaced as a count, never gated. Defaults to
 /// `reject` like `[content_drift]`: a same-frame simultaneous contradiction
 /// is wrong data, never a legitimate intermediate state.
+// `deny_unknown_fields` (Round 604, continuity-stress-experiment/v1 `surface_gap`):
+// a misspelled key here (e.g. `narrative_rules_path` for `rules_path`) was
+// SILENTLY IGNORED, leaving the rules unwired and the gate off with no signal —
+// the loop had to sweep candidate key names to find the live one. Fail loud
+// instead (the CLAUDE.md no-silent-fail rule): an unknown `[continuity]` key now
+// rejects at config load. The other config sections are a follow-up (each needs
+// its own audit); this closes the key the experiment actually hit.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ContinuitySection {
     /// Workspace-relative path to the `canon-order/v1` declaration. Optional:
     /// absent = equality-only comparability.
@@ -1945,5 +1953,37 @@ rules_sha256 = "NOT-HEX"
         )
         .unwrap_err();
         assert!(err.to_string().contains("lowercase hex"), "{err}");
+    }
+
+    #[test]
+    fn continuity_rejects_an_unknown_key_fail_loud() {
+        // Round 604 (continuity-stress-experiment/v1 `surface_gap`): a misspelled
+        // key (here `narrative_rules_path` for `rules_path`) must REJECT, not be
+        // silently ignored — the footgun the experiment hit (the loop had to
+        // sweep candidate names because the wrong key wired nothing with no error).
+        let res = parse_config(
+            r#"
+[workspace]
+
+[continuity]
+narrative_rules_path = "narrative-rules.json"
+"#,
+        );
+        assert!(
+            res.is_err(),
+            "an unknown [continuity] key must fail loud, got: {res:?}"
+        );
+        // anyhow wraps the serde error under a `.context()`; the underlying
+        // "unknown field `narrative_rules_path`" is in the chain (alternate `{:#}`).
+        let err = format!("{:#}", res.unwrap_err());
+        assert!(
+            err.contains("narrative_rules_path") || err.contains("unknown field"),
+            "an unknown [continuity] key must fail loud: {err}"
+        );
+        // A correctly-spelled key still parses (the fix does not over-reject).
+        let ok = parse_config(
+            "[workspace]\n\n[continuity]\ncanon_order_path = \"canon-order.json\"\nrules_path = \"narrative-rules.json\"\n",
+        );
+        assert!(ok.is_ok(), "correct keys must still parse: {ok:?}");
     }
 }
