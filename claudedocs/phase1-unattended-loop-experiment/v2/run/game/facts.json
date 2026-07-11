@@ -1,0 +1,293 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what actually happened at the Ban Tower" },
+    { "frame_id": "relief", "description": "Wren Calloway, the relief lookout" },
+    { "frame_id": "senior", "description": "Aldous Mercer, the missing senior lookout" },
+    { "frame_id": "dispatch", "description": "Nadia Osei, the valley dispatcher" },
+    { "frame_id": "packer", "description": "Tomas Reyes, the mule packer" }
+  ],
+  "branches": [
+    { "branch_id": "call-it", "description": "Wren radios a confirmed fire and holds the tower; the descent road runs on main", "forks_from": "main", "forks_at": "sc-07" }
+  ],
+  "entities": [
+    { "entity_id": "e-wren", "kind": "character", "description": "the relief lookout" },
+    { "entity_id": "e-aldous", "kind": "character", "description": "the senior lookout" },
+    { "entity_id": "e-nadia", "kind": "character", "description": "the valley dispatcher" },
+    { "entity_id": "e-tomas", "kind": "character", "description": "the mule packer" },
+    { "entity_id": "l-tower", "kind": "location", "description": "the Ban Tower" },
+    { "entity_id": "l-westdraw", "kind": "location", "description": "the west draw below the ridge" },
+    { "entity_id": "l-camp", "kind": "location", "description": "Aldous's abandoned camp in the draw" },
+    { "entity_id": "e-log", "kind": "item", "description": "the fire-log" },
+    { "entity_id": "e-page", "kind": "item", "description": "the torn-out log page" },
+    { "entity_id": "e-button", "kind": "item", "description": "a scorched brass coat-button" },
+    { "entity_id": "e-radio", "kind": "item", "description": "the hand-crank radio / Aldous's handset" },
+    { "entity_id": "e-smoke", "kind": "phenomenon", "description": "the reported west-draw smoke column" },
+    { "entity_id": "q-account", "kind": "quest", "description": "account for the senior lookout" }
+  ],
+  "predicates": [
+    { "predicate_id": "located_in", "object_kind": "entity", "description": "an item is located in a place or container" },
+    { "predicate_id": "held_by", "object_kind": "entity", "description": "custody / belonging" },
+    { "predicate_id": "state", "object_kind": "scalar", "description": "an entity's state" },
+    { "predicate_id": "fate", "object_kind": "scalar", "description": "a person's fate" },
+    { "predicate_id": "pursues", "object_kind": "entity", "description": "quest actor leads a quest" },
+    { "predicate_id": "completed_by", "object_kind": "scalar", "description": "quest discharge on a road" }
+  ],
+  "facts": [
+    {
+      "fact_id": "f-01-empty", "frame": "ground-truth",
+      "claim": "The Ban Tower stands empty at nightfall; the senior lookout who should hand over is gone.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["l-tower", "e-aldous"]
+    },
+    {
+      "fact_id": "f-01-arrive", "frame": "relief",
+      "claim": "Wren rides up to take the season's last shift and finds no one to relieve.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-wren", "l-tower"]
+    },
+    {
+      "fact_id": "f-secret-fate", "frame": "ground-truth",
+      "claim": "Aldous deserted his post: he set a small fire in the west draw to burn his falsified log page and walked out down-valley.",
+      "canon_from": "sc-03", "evidence": ["sc-02", "sc-03"], "entities": ["e-aldous", "l-westdraw", "e-page"],
+      "typed": { "subject": "e-aldous", "predicate": "fate", "object": { "kind": "value", "value": "deserted" } }
+    },
+    {
+      "fact_id": "f-02-torn", "frame": "relief",
+      "claim": "The fire-log lies open with a page torn cleanly out.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-log", "e-page"],
+      "typed": { "subject": "e-page", "predicate": "state", "object": { "kind": "value", "value": "torn-out" } }
+    },
+    {
+      "fact_id": "f-02-button", "frame": "relief",
+      "claim": "A scorched brass coat-button is wedged in the log's spine.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-button", "e-log"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-button", "predicate": "located_in", "object": { "kind": "entity", "id": "e-log" } }
+    },
+    {
+      "fact_id": "f-02-gtpage", "frame": "ground-truth",
+      "claim": "The torn page had recorded a spot fire weeks earlier that Aldous never called in.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-page", "e-aldous"]
+    },
+    {
+      "fact_id": "f-03-entry", "frame": "relief",
+      "claim": "The log's last line reports a smoke column in the west draw, timed just before dusk.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-log", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-03-smoke", "frame": "relief",
+      "claim": "The reported smoke stands unconfirmed by anyone but the log.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-smoke", "l-westdraw"],
+      "typed": { "subject": "e-smoke", "predicate": "state", "object": { "kind": "value", "value": "reported-unconfirmed" } }
+    },
+    {
+      "fact_id": "f-03-nadia", "frame": "dispatch",
+      "claim": "Nadia's board shows the west-draw smoke was radioed in but never confirmed from the valley.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-nadia", "e-smoke"]
+    },
+    {
+      "fact_id": "f-secret-smoke", "frame": "ground-truth",
+      "claim": "The west-draw smoke was real, but it was Aldous's own burn, not a wildfire.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-smoke", "l-westdraw", "e-aldous"],
+      "typed": { "subject": "e-smoke", "predicate": "state", "object": { "kind": "value", "value": "aldous-set" } }
+    },
+    {
+      "fact_id": "f-04-radio", "frame": "relief",
+      "claim": "Cranking the set, Wren catches a faint rhythmic click on the fire-net's dead channel.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-radio"],
+      "typed": { "subject": "e-radio", "predicate": "state", "object": { "kind": "value", "value": "stray-click" } }
+    },
+    {
+      "fact_id": "f-04-nadia", "frame": "dispatch",
+      "claim": "Nadia answers the crank call and repeats that the valley never saw the smoke.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-nadia", "e-wren", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-04-quest", "frame": "relief",
+      "claim": "Wren takes it on herself to account for Aldous before the relief truck comes at dawn.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-wren", "q-account"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-wren", "predicate": "pursues", "object": { "kind": "entity", "id": "q-account" } }
+    },
+    {
+      "fact_id": "f-04-tomas", "frame": "packer",
+      "claim": "Tomas the packer recalls hauling a full duffel down the ridge for Aldous two days back, odd for mid-season.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-tomas", "e-aldous"]
+    },
+    {
+      "fact_id": "f-05-hand", "frame": "relief",
+      "claim": "Reading back, Wren finds a fortnight-old entry set down in a different, hurried hand.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-wren", "e-log"]
+    },
+    {
+      "fact_id": "f-05-senior", "frame": "senior",
+      "claim": "Aldous held that the fortnight-old spot fire was too small to report and would die on its own.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-aldous"]
+    },
+    {
+      "fact_id": "f-05-gt", "frame": "ground-truth",
+      "claim": "The fortnight-old spot fire did not die; it smoldered until Aldous tore the page.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-page", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-06-nadia", "frame": "dispatch",
+      "claim": "Nadia presses for a yes or no; a night air-response is the last thing the drought budget can carry.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-nadia", "e-wren", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-06-wren", "frame": "relief",
+      "claim": "A torn page, an unconfirmed report, a missing man, and one call to make.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-wren"]
+    },
+    {
+      "fact_id": "f-07-fork", "frame": "relief",
+      "claim": "At the crank radio Wren must either call in a confirmed fire or hold and go down the draw herself.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-wren", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-07-gt", "frame": "ground-truth",
+      "claim": "Whichever road she takes, the drought's last night is Wren's alone.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-wren"]
+    },
+
+    {
+      "fact_id": "f-08-call", "frame": "relief", "branch": "call-it",
+      "claim": "Wren keys the radio and reports a confirmed fire in the west draw.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-wren", "e-smoke", "l-westdraw"],
+      "typed": { "subject": "e-smoke", "predicate": "state", "object": { "kind": "value", "value": "reported-confirmed" } }
+    },
+    {
+      "fact_id": "f-08-gt", "frame": "ground-truth", "branch": "call-it",
+      "claim": "There is no wildfire to confirm; the call sends a crew after a cold burn.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["l-westdraw"]
+    },
+    {
+      "fact_id": "f-09-nadia", "frame": "dispatch", "branch": "call-it",
+      "claim": "Nadia scrambles a night crew up the switchbacks on Wren's word.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-nadia", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-09-tomas", "frame": "packer", "branch": "call-it",
+      "claim": "Tomas drives the crew truck up the ridge in the dark.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-tomas"]
+    },
+    {
+      "fact_id": "f-09-gt", "frame": "ground-truth", "branch": "call-it",
+      "claim": "The crew climbs to a draw with no fire in it.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["l-westdraw"]
+    },
+    {
+      "fact_id": "f-10-button", "frame": "ground-truth", "branch": "call-it",
+      "claim": "In a cold, hand-sized burn ring the crew turns up a scorched brass button and a fist of paper ash.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-button", "e-page", "l-westdraw"],
+      "pays_off": ["f-02-button", "f-02-torn"],
+      "typed": { "subject": "e-button", "predicate": "located_in", "object": { "kind": "entity", "id": "l-westdraw" } }
+    },
+    {
+      "fact_id": "f-10-wren", "frame": "relief", "branch": "call-it",
+      "claim": "No body, no wildfire; a button and ash, and a confirmed-fire call already on the record.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-wren"]
+    },
+    {
+      "fact_id": "f-11-dawn", "frame": "relief", "branch": "call-it",
+      "claim": "At dawn the relief truck comes; Wren rides down with a fire on the record no one can confirm.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-wren"]
+    },
+    {
+      "fact_id": "f-11-tomas", "frame": "packer", "branch": "call-it",
+      "claim": "Tomas says nothing of the duffel he hauled down; no one thinks to ask.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-tomas", "e-aldous"]
+    },
+    {
+      "fact_id": "f-11-quest-callit", "frame": "ground-truth", "branch": "call-it",
+      "claim": "With only a button and ash to show, the question of Aldous is closed as inconclusive.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["q-account"],
+      "pays_off": ["f-04-quest"],
+      "typed": { "subject": "q-account", "predicate": "completed_by", "object": { "kind": "value", "value": "closed-inconclusive" } }
+    },
+
+    {
+      "fact_id": "f-12-descend", "frame": "relief",
+      "claim": "Wren holds the call, takes the lantern, and starts down the west draw in the dark.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-wren", "l-westdraw"]
+    },
+    {
+      "fact_id": "f-12-nadia", "frame": "dispatch",
+      "claim": "Hearing only static after Wren's last word, Nadia logs the tower as unresponsive.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-nadia"]
+    },
+    {
+      "fact_id": "f-13-radio", "frame": "relief",
+      "claim": "Following the click downhill, Wren finds Aldous's handset left keyed-open on a rock, ticking as the wind works its crank.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-radio", "e-aldous", "l-camp"],
+      "pays_off": ["f-04-radio"],
+      "typed": { "subject": "e-radio", "predicate": "located_in", "object": { "kind": "entity", "id": "l-camp" } }
+    },
+    {
+      "fact_id": "f-13-gt", "frame": "ground-truth",
+      "claim": "The keyed-open handset is why the dead channel clicked all night.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-radio"],
+      "typed": { "subject": "e-radio", "predicate": "state", "object": { "kind": "value", "value": "keyed-open" } }
+    },
+    {
+      "fact_id": "f-14-camp", "frame": "relief",
+      "claim": "Below the handset Wren finds a cold camp: a bedroll, a coat, and a ring of ash.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-wren", "l-camp", "e-aldous"]
+    },
+    {
+      "fact_id": "f-14-button", "frame": "relief",
+      "claim": "Aldous's coat hangs on a branch, one brass button gone from the cuff.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-button", "e-aldous"],
+      "pays_off": ["f-02-button"],
+      "typed": { "subject": "e-button", "predicate": "held_by", "object": { "kind": "entity", "id": "e-aldous" } }
+    },
+    {
+      "fact_id": "f-14-page", "frame": "relief",
+      "claim": "In the ash Wren reads the burned corner of the torn log page.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-page", "l-camp"],
+      "pays_off": ["f-02-torn"]
+    },
+    {
+      "fact_id": "f-14-realize", "frame": "relief",
+      "claim": "Wren understands: no wildfire took Aldous; he burned his own falsified page and walked out down-valley.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["e-wren", "e-aldous", "e-page"]
+    },
+    {
+      "fact_id": "f-14-quest", "frame": "ground-truth",
+      "claim": "With the camp found and the page read, Wren has accounted for Aldous.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["q-account"],
+      "pays_off": ["f-04-quest"],
+      "typed": { "subject": "q-account", "predicate": "completed_by", "object": { "kind": "value", "value": "accounted" } }
+    },
+    {
+      "fact_id": "f-15-carry", "frame": "relief",
+      "claim": "At dawn Wren walks out of the draw with the truth and a decision about what to write in the log.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-wren", "e-log"]
+    },
+    {
+      "fact_id": "f-15-gt", "frame": "ground-truth",
+      "claim": "The west draw holds no fire to fight, only a man's choice to leave.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["l-westdraw", "e-aldous"]
+    },
+    {
+      "fact_id": "f-15-tomas", "frame": "packer",
+      "claim": "On the road Tomas meets her; when Wren asks about the duffel, his answer fits.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-tomas", "e-wren"]
+    }
+  ],
+  "disclosure_plans": [
+    {
+      "telling_id": "default-telling", "default_mode": "withhold",
+      "description": "The default telling withholds; the reader reconstructs, the secret surfaces only late on go-down.",
+      "overrides": [
+        { "fact_id": "f-secret-fate", "mode": "withhold", "first_at": [ ["main", "sc-14"] ] },
+        { "fact_id": "f-secret-smoke", "mode": "withhold", "first_at": [ ["main", "sc-14"] ] },
+        { "fact_id": "f-01-empty", "mode": "state" },
+        { "fact_id": "f-01-arrive", "mode": "state" },
+        { "fact_id": "f-02-torn", "mode": "state" },
+        { "fact_id": "f-03-entry", "mode": "state" },
+        { "fact_id": "f-04-nadia", "mode": "state" },
+        { "fact_id": "f-06-wren", "mode": "state" },
+        { "fact_id": "f-07-fork", "mode": "state" }
+      ]
+    }
+  ]
+}

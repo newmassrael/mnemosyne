@@ -14385,6 +14385,40 @@
         "NEXT = R598 EXECUTE unattended-loop-experiment/v2 (experiment-execution consent already given via owner (A)): run runbook.md — spawn the blind loop agent, audit PIN-v2-1 (probe count) from loop-log, verify PIN-v2-2 (agent-authored order + 0 unordered) on a fresh rebuild, apply the decision rule, write report.md + the R598 changelog entry. Push withheld.",
         "R593-R597 all COMMITTED, NOT PUSHED — push awaits an explicit word (origin/main @ 3693a5c)."
       ]
+    },
+    "Round 598 — unattended-loop-experiment/v2 EXECUTE: fixes_confirmed (R595/R596 removed both top frictions)": {
+      "decision_summary": "EXECUTE the v2 confirmation run: fixes_confirmed — the blind loop made 0 wire-format probes (v1: 11) and authored its own canon order (0 unordered on rebuild); the re-run also surfaced the next gaps (dry-run omits dangling, frontier omits leaks, Finding 2 recurred)",
+      "changes_bullets": [
+        "EXECUTED unattended-loop-experiment/v2 blind (R469 firewall, 1 blind loop agent; leaner than v1 — no render/judge, same \"The Ban Tower\" premise). VERDICT = fixes_confirmed (pre-committed rule): R595 (describe-schema wire format) + R596 (frontier canon-order gap) REMOVED both of v1's top frictions on a live re-run, re-derived independently.",
+        "PIN-v2-1 wire-friction-removed (HOLDS): the blind agent made 4 propose-verdict calls, ZERO of them wire-format fixes (v1 needed 11); the one non-commit was a content continuity fix. The loop-log credits R595 by name — \"the worked example + the object_kind:scalar -> wire tag value note prevented serialization errors\" — a non-vacuous attribution.",
+        "PIN-v2-2 renderable-store-authored (HOLDS): the agent AUTHORED canon-order.json on its own + pinned it via [continuity].canon_order_path, with NO orchestrator help — discovered from describe-schema's canon-order section + the frontier's unordered gap. Bonus: the disclosure is correctly calibrated (secret [withhold first_at=sc-14] on main, withheld on call-it, surface facts state) — better than v1's all-withhold default.",
+        "The re-run also surfaced the NEXT layer of gaps (the self-improving loop): (A) propose-verdict's dry run omits payoff/dangling coverage, so a structural dangling flaw commits before it is visible and needs a full store reset (no init/reset verb); (B) report-authoring-frontier does not catch disclosure leaks (\"frontier clean\" != \"correct telling\") — the agent leaked mode:state and recovered only via report-playthrough-manuscript; (C) v1's Finding 2 (fork-lineage dangling) RECURRED on a second independent agent = not \"smaller\", worth documenting."
+      ],
+      "verification_bullets": [
+        "Re-derived on a FRESH rebuild (R500 self-report-not-trusted): import-sections 15 + import-facts (5 frames/1 branch/13 entities/6 predicates/43 facts/1 plan/9 overrides) + the agent's canon-order.json pinned -> report-authoring-frontier --telling default-telling = 0 zero-fact / 0 unordered / 0 dangling / 0 unresolved (34 never-planned = intended withhold); validate-workspace T1 orphan 0 / T3 reject 0.",
+        "report-playthrough-manuscript confirms the agent's leak fix landed: main renders f-secret [withhold first_at=sc-14] (revealed late), call-it keeps it withheld (surface facts state).",
+        "PIN-v2-1 audited from loop-log.md: 4 propose-verdict calls, 0 wire-format probes (v1: 11). code 0 (no production crate touched this round); the v2 evidence is tracked (sections/facts/canon-order/loop-log/report), the scratch store gitignored."
+      ],
+      "carry_forward_bullets": [
+        "NEXT = R599 owner cadence: (A) close the sharpest new gap — fold the payoff/dangling analysis into propose-verdict's dry run (it already has the throwaway clone) so the loop sees dangling BEFORE it commits [closes v2-A + v1-Finding-3, the expensive-repair-invisible-in-dry-run trap]; (B) close v1 Finding 2 (fork-lineage dangling, now RECURRED) + the leak-visibility gap as describe-schema/frontier work; (C) pinion CONSUMER (the pre-R585 NEXT, still live); (D) another experiment.",
+        "R593-R598 (6 commits) all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ],
+      "publishable_decision_summary": "EXECUTE the v2 confirmation run: fixes_confirmed — the blind loop made 0 wire-format probes (v1: 11) and authored its own canon order (0 unordered on rebuild); the re-run also surfaced the next gaps (dry-run omits dangling, frontier omits leaks, Finding 2 recurred)",
+      "publishable_changes_bullets": [
+        "EXECUTED unattended-loop-experiment/v2 blind (R469 firewall, 1 blind loop agent; leaner than v1 — no render/judge, same \"The Ban Tower\" premise). VERDICT = fixes_confirmed (pre-committed rule): R595 (describe-schema wire format) + R596 (frontier canon-order gap) REMOVED both of v1's top frictions on a live re-run, re-derived independently.",
+        "PIN-v2-1 wire-friction-removed (HOLDS): the blind agent made 4 propose-verdict calls, ZERO of them wire-format fixes (v1 needed 11); the one non-commit was a content continuity fix. The loop-log credits R595 by name — \"the worked example + the object_kind:scalar -> wire tag value note prevented serialization errors\" — a non-vacuous attribution.",
+        "PIN-v2-2 renderable-store-authored (HOLDS): the agent AUTHORED canon-order.json on its own + pinned it via [continuity].canon_order_path, with NO orchestrator help — discovered from describe-schema's canon-order section + the frontier's unordered gap. Bonus: the disclosure is correctly calibrated (secret [withhold first_at=sc-14] on main, withheld on call-it, surface facts state) — better than v1's all-withhold default.",
+        "The re-run also surfaced the NEXT layer of gaps (the self-improving loop): (A) propose-verdict's dry run omits payoff/dangling coverage, so a structural dangling flaw commits before it is visible and needs a full store reset (no init/reset verb); (B) report-authoring-frontier does not catch disclosure leaks (\"frontier clean\" != \"correct telling\") — the agent leaked mode:state and recovered only via report-playthrough-manuscript; (C) v1's Finding 2 (fork-lineage dangling) RECURRED on a second independent agent = not \"smaller\", worth documenting."
+      ],
+      "publishable_verification_bullets": [
+        "Re-derived on a FRESH rebuild (R500 self-report-not-trusted): import-sections 15 + import-facts (5 frames/1 branch/13 entities/6 predicates/43 facts/1 plan/9 overrides) + the agent's canon-order.json pinned -> report-authoring-frontier --telling default-telling = 0 zero-fact / 0 unordered / 0 dangling / 0 unresolved (34 never-planned = intended withhold); validate-workspace T1 orphan 0 / T3 reject 0.",
+        "report-playthrough-manuscript confirms the agent's leak fix landed: main renders f-secret [withhold first_at=sc-14] (revealed late), call-it keeps it withheld (surface facts state).",
+        "PIN-v2-1 audited from loop-log.md: 4 propose-verdict calls, 0 wire-format probes (v1: 11). code 0 (no production crate touched this round); the v2 evidence is tracked (sections/facts/canon-order/loop-log/report), the scratch store gitignored."
+      ],
+      "publishable_carry_forward_bullets": [
+        "NEXT = R599 owner cadence: (A) close the sharpest new gap — fold the payoff/dangling analysis into propose-verdict's dry run (it already has the throwaway clone) so the loop sees dangling BEFORE it commits [closes v2-A + v1-Finding-3, the expensive-repair-invisible-in-dry-run trap]; (B) close v1 Finding 2 (fork-lineage dangling, now RECURRED) + the leak-visibility gap as describe-schema/frontier work; (C) pinion CONSUMER (the pre-R585 NEXT, still live); (D) another experiment.",
+        "R593-R598 (6 commits) all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ]
     }
   },
   "inventory_entries": {},

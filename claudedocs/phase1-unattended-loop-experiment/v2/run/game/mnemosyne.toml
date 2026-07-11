@@ -1,0 +1,4 @@
+[workspace]
+
+[continuity]
+canon_order_path = "canon-order.json"
