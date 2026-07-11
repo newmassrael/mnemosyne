@@ -311,6 +311,8 @@ fn run(args: &[String]) -> Result<()> {
         "report-quest-graph" => cmd_report_quest_graph(&args[2..]),
         // Round 587 — the medium-neutral authoring contract (static, store-independent).
         "describe-schema" => cmd_describe_schema(&args[2..]),
+        // Round 588 — the generate-gate-repair loop's atomic dry-run gate.
+        "propose-verdict" => cmd_propose_verdict(&args[2..]),
         "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
         "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
         "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
@@ -487,6 +489,13 @@ fn print_help(prog: &str) {
     println!(" {} describe-schema [--json]", prog);
     println!(
         "   Round 587 — the medium-neutral authoring contract (static): registries + fact shape + fixed vocabularies + rule classes + quest encoding + write-time invariants"
+    );
+    println!(
+        " {} propose-verdict --manifest <path.json> [--order <path>] [--rules <path>] [--sidecar <path>] [--json]",
+        prog
+    );
+    println!(
+        "   Round 588 — dry-run gate: apply a candidate batch to a throwaway clone, run shape + continuity gates, emit commit/rollback + actionable violations (exit 1 on rollback; store never written)"
     );
     println!(
         " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
@@ -2945,6 +2954,105 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     for inv in &c.invariants {
         println!("  {} @ {}", inv.name, inv.enforced_at);
         println!("    {}", inv.rule);
+    }
+    Ok(())
+}
+
+/// Round 588 — propose-verdict (R585 debt item 2): the generate-gate-repair
+/// loop's atomic dry-run gate. Apply a candidate `--manifest` to a THROWAWAY
+/// clone of the store, run the shape invariants + the continuity gate, and emit
+/// commit-or-rollback plus actionable violations (rule + locus + expected +
+/// repair hint). The real store is NEVER written; exit 1 on rollback so a loop
+/// can branch on the code. `--order` / `--rules` bypass the pins; `--sidecar`
+/// proposes against a non-default base store.
+fn cmd_propose_verdict(args: &[String]) -> Result<()> {
+    let mut manifest_path: Option<String> = None;
+    let mut order_override: Option<String> = None;
+    let mut rules_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--manifest" => {
+                manifest_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--manifest missing"))?
+                        .clone(),
+                )
+            }
+            "--order" => {
+                order_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--order missing"))?
+                        .clone(),
+                )
+            }
+            "--rules" => {
+                rules_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rules missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let manifest_path = manifest_path.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
+    let raw = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read manifest {}", manifest_path))?;
+    let manifest: mnemosyne_atomic::FactsManifest =
+        serde_json::from_str(&raw).with_context(|| {
+            format!(
+                "parse manifest {} (JSON object with `frames` + `facts` arrays)",
+                manifest_path
+            )
+        })?;
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::propose_verdict(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        order_override.as_deref(),
+        rules_override.as_deref(),
+        &manifest,
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!("=== propose-verdict: {} ===", report.verdict.as_str());
+        println!("would apply: {}", report.applied_summary);
+        println!("violations: {}", report.violation_count);
+        for v in &report.violations {
+            println!("  [{}] {} — {}", v.source, v.rule, v.message);
+            if !v.locus.facts.is_empty() {
+                let field = v
+                    .locus
+                    .field
+                    .as_deref()
+                    .map(|f| format!(" (field {f})"))
+                    .unwrap_or_default();
+                println!("    at: {}{}", v.locus.facts.join(", "), field);
+            }
+            println!("    expected: {}", v.expected);
+            println!("    repair: {}", v.repair_hint);
+        }
+    }
+    if report.verdict == mnemosyne_ops::ProposeVerdict::Rollback {
+        std::process::exit(1);
     }
     Ok(())
 }

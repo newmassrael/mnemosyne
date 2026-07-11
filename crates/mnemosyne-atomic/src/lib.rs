@@ -4561,17 +4561,31 @@ pub fn add_fact(
     }
 }
 
-/// Bulk frames + branches + entities + predicates + facts create from a
-/// manifest, as one atomic transaction (the `import_sections` A2 pattern).
-/// The registries land first so same-manifest facts can reference them;
-/// cross-fact refs are checked AFTER all facts stage, so forward references
-/// within one manifest are legal. Any rejection returns `Err` before the
-/// single save — the on-disk store is untouched.
-pub fn import_facts(
+/// The outcome of applying a [`FactsManifest`] to an in-memory store (Round
+/// 587): the human summary line plus whether anything actually changed (a
+/// pure no-op re-application persists nothing). Returned by
+/// [`apply_facts_manifest`]; [`import_facts`] turns it into a receipt.
+#[derive(Debug, Clone)]
+pub struct FactsApplyOutcome {
+    /// The `N frames + … + N facts created, N no-op` summary.
+    pub summary: String,
+    /// `true` iff at least one registry entry or fact was created (persist
+    /// only when changed — the byte-stable no-op contract).
+    pub changed: bool,
+}
+
+/// Apply a manifest to an IN-MEMORY store WITHOUT persisting (Round 588) — the
+/// shared apply core of [`import_facts`] and the dry-run `propose-verdict`
+/// transaction. Registries land first so same-manifest facts can reference
+/// them; cross-fact refs + judgment pins are checked/stamped AFTER all facts
+/// stage (forward references within one manifest are legal). Any rejection
+/// returns `Err` fail-fast — on a failure the store may be left partially
+/// mutated, so a dry run applies to a throwaway clone and `import_facts`
+/// persists only on `Ok`. This function performs NO I/O.
+pub fn apply_facts_manifest(
     store: &mut AtomicStore,
-    sidecar_path: &Path,
     manifest: &FactsManifest,
-) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+) -> Result<FactsApplyOutcome, AtomicMutateError> {
     let mut frames_created = 0usize;
     let mut branches_created = 0usize;
     let mut facts_created = 0usize;
@@ -4728,16 +4742,31 @@ pub fn import_facts(
         "{frames_created} frames + {branches_created} branches + {entities_created} entities \
          + {predicates_created} predicates + {facts_created} facts created, {no_op} no-op"
     );
-    if frames_created == 0
-        && branches_created == 0
-        && entities_created == 0
-        && predicates_created == 0
-        && facts_created == 0
-    {
+    let changed = frames_created != 0
+        || branches_created != 0
+        || entities_created != 0
+        || predicates_created != 0
+        || facts_created != 0;
+    Ok(FactsApplyOutcome { summary, changed })
+}
+
+/// Bulk frames + branches + entities + predicates + facts create from a
+/// manifest, as one atomic transaction (the `import_sections` A2 pattern) —
+/// [`apply_facts_manifest`] then a single persist. Any rejection returns `Err`
+/// before the save, so the on-disk store is untouched; a pure no-op
+/// re-application writes nothing (`written_bytes: 0`, the byte-stable
+/// idempotency contract).
+pub fn import_facts(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    manifest: &FactsManifest,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let outcome = apply_facts_manifest(store, manifest)?;
+    if !outcome.changed {
         return Ok(AtomicMutateReceipt {
             primitive: "import_facts".to_string(),
             target_kind: "narrative_fact",
-            target_id: summary,
+            target_id: outcome.summary,
             sidecar_path: sidecar_path.display().to_string(),
             written_bytes: 0,
         });
@@ -4747,7 +4776,7 @@ pub fn import_facts(
         sidecar_path,
         "import_facts",
         "narrative_fact",
-        &summary,
+        &outcome.summary,
     )
 }
 

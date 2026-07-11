@@ -13989,6 +13989,56 @@
         "invariant held: the generate-gate-repair LLM loop stays an external agent/MCP client; only the deterministic, medium-neutral describe-schema surface landed",
         "describe-schema stays a STATIC contract; a store's live registered predicates/entities are query / list-*, deliberately not folded in here"
       ]
+    },
+    "Round 588 — propose-verdict: the generate-gate-repair loop's atomic dry-run gate + actionable violations (R585 debt item 2)": {
+      "decision_summary": "Build propose-verdict (R585 debt item 2, the loop's atomic unit): one deterministic dry-run op that applies a candidate import-facts batch to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns commit-or-rollback plus ACTIONABLE violations (rule + locus of facts/field/frame/branch/at + expected + repair_hint + message) so an external agent repairs programmatically instead of parsing prose. Collapses the loop's hand-orchestration of import-facts + --sidecar + gates into one call. Pure dry run — the real store is never written; the generate-gate-repair LLM loop stays outside, only the deterministic surface lands. (Follows the renumbered R587 describe-schema; the earlier R587 label was reassigned to resolve a round-number collision.)",
+      "changes_bullets": [
+        "mnemosyne-atomic: factored apply_facts_manifest (in-memory apply, no I/O) out of import_facts — behavior-identical (import_facts = apply then a single persist, same no-op / byte-stable idempotency contract), proven by the existing 29 import tests including the add-vs-import write-path parity test",
+        "mnemosyne-validate/src/verdict.rs (new): ActionableViolation {source, rule, locus, expected, repair_hint, message} + ViolationLocus + continuity_actionable() mapping ALL 16 ContinuityViolation variants via an EXHAUSTIVE match (an added variant fails to compile — the describe-schema drift guard applied to violations)",
+        "shape violations are carried verbatim from the atomic primitive's fail-fast Validation message (which already names the fact + repair) rather than reverse-parsed into fields — the no-NLP discipline",
+        "mnemosyne-ops: propose_verdict() = load base store, clone, apply (shape), run the continuity gate over the mutated clone, verdict commit iff clean else rollback + actionable violations; ProposeVerdict enum + ProposeVerdictReport",
+        "surfaces: propose-verdict --manifest [--order] [--rules] [--sidecar] [--json] CLI verb (exit 1 on rollback for loop branching) + propose_verdict MCP tool (reads a candidate manifest path); both pure dry runs",
+        "scope: runs the store-integrity gates a fact batch faces (shape + continuity); render-acceptance gates (leak / fidelity) need re-extracted prose and stay a separate phase"
+      ],
+      "verification_bullets": [
+        "cargo build + clippy -D warnings clean; cargo fmt clean; full suites green (atomic 186, validate 274) including 2 new verdict tests (exhaustive-mapping population + shape passthrough); the import parity tests are unbroken by the apply refactor",
+        "e2e against the R585 dogfood ../the-tide-that-counts (built via build-store.sh: 7 frames / 3 branches / 26 chapters / 58 facts): a clean candidate -> verdict commit, 0 violations, exit 0; a bad-frame fact -> rollback, 1 shape violation (verbatim registry message + repair), exit 1; two conflicting co-holding facts -> rollback, 1 continuity frame_conflict_overlap with full locus {facts, frame, branch, at} + expected + repair, exit 1",
+        "DRY-RUN proven: the tide store held 58 facts before and after every propose-verdict call — the real store is never written",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart)"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "R585 debt item 3 is next: the authoring-frontier report (one consolidated coverage-gap surface an unattended loop pulls work from — scenes/nodes with zero facts, quests with no giver, dangling setups, never-planned disclosures, per-node coverage)",
+        "then item 4 all-primitive batch manifest (facts + entities + quests + branches + disclosure in one manifest for throughput), item 5 guardrail Validator gates",
+        "propose-verdict is rollback-on-ANY-violation (the loop authors clean); a severity-aware verdict (warn vs reject) is deferred until a consumer needs it",
+        "shape violations are fail-fast (one at a time); collecting every shape error in one pass would need a continue-on-error apply, deferred (a core-semantics change)"
+      ],
+      "publishable_decision_summary": "Build propose-verdict (R585 debt item 2, the loop's atomic unit): one deterministic dry-run op that applies a candidate import-facts batch to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns commit-or-rollback plus ACTIONABLE violations (rule + locus of facts/field/frame/branch/at + expected + repair_hint + message) so an external agent repairs programmatically instead of parsing prose. Collapses the loop's hand-orchestration of import-facts + --sidecar + gates into one call. Pure dry run — the real store is never written; the generate-gate-repair LLM loop stays outside, only the deterministic surface lands. (Follows the renumbered R587 describe-schema; the earlier R587 label was reassigned to resolve a round-number collision.)",
+      "publishable_changes_bullets": [
+        "mnemosyne-atomic: factored apply_facts_manifest (in-memory apply, no I/O) out of import_facts — behavior-identical (import_facts = apply then a single persist, same no-op / byte-stable idempotency contract), proven by the existing 29 import tests including the add-vs-import write-path parity test",
+        "mnemosyne-validate/src/verdict.rs (new): ActionableViolation {source, rule, locus, expected, repair_hint, message} + ViolationLocus + continuity_actionable() mapping ALL 16 ContinuityViolation variants via an EXHAUSTIVE match (an added variant fails to compile — the describe-schema drift guard applied to violations)",
+        "shape violations are carried verbatim from the atomic primitive's fail-fast Validation message (which already names the fact + repair) rather than reverse-parsed into fields — the no-NLP discipline",
+        "mnemosyne-ops: propose_verdict() = load base store, clone, apply (shape), run the continuity gate over the mutated clone, verdict commit iff clean else rollback + actionable violations; ProposeVerdict enum + ProposeVerdictReport",
+        "surfaces: propose-verdict --manifest [--order] [--rules] [--sidecar] [--json] CLI verb (exit 1 on rollback for loop branching) + propose_verdict MCP tool (reads a candidate manifest path); both pure dry runs",
+        "scope: runs the store-integrity gates a fact batch faces (shape + continuity); render-acceptance gates (leak / fidelity) need re-extracted prose and stay a separate phase"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build + clippy -D warnings clean; cargo fmt clean; full suites green (atomic 186, validate 274) including 2 new verdict tests (exhaustive-mapping population + shape passthrough); the import parity tests are unbroken by the apply refactor",
+        "e2e against the R585 dogfood ../the-tide-that-counts (built via build-store.sh: 7 frames / 3 branches / 26 chapters / 58 facts): a clean candidate -> verdict commit, 0 violations, exit 0; a bad-frame fact -> rollback, 1 shape violation (verbatim registry message + repair), exit 1; two conflicting co-holding facts -> rollback, 1 continuity frame_conflict_overlap with full locus {facts, frame, branch, at} + expected + repair, exit 1",
+        "DRY-RUN proven: the tide store held 58 facts before and after every propose-verdict call — the real store is never written",
+        "the MCP tool needs a reinstall to appear (cargo install --path crates/mnemosyne-mcp --force + restart)"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "R585 debt item 3 is next: the authoring-frontier report (one consolidated coverage-gap surface an unattended loop pulls work from — scenes/nodes with zero facts, quests with no giver, dangling setups, never-planned disclosures, per-node coverage)",
+        "then item 4 all-primitive batch manifest (facts + entities + quests + branches + disclosure in one manifest for throughput), item 5 guardrail Validator gates",
+        "propose-verdict is rollback-on-ANY-violation (the loop authors clean); a severity-aware verdict (warn vs reject) is deferred until a consumer needs it",
+        "shape violations are fail-fast (one at a time); collecting every shape error in one pass would need a continue-on-error apply, deferred (a core-semantics change)"
+      ]
     }
   },
   "inventory_entries": {},

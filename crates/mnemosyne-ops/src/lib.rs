@@ -323,6 +323,105 @@ pub fn continuity_scan(
     })
 }
 
+/// The verdict of a `propose-verdict` dry-run transaction (Round 588).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposeVerdict {
+    /// The batch applied cleanly and passed every gate — safe to commit (apply
+    /// for real via `import-facts`). NOTHING was written: this is a dry run.
+    Commit,
+    /// The batch was rejected — see `violations`. NOTHING was written.
+    Rollback,
+}
+
+impl ProposeVerdict {
+    /// Stable lowercase label (matches the serde rename).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProposeVerdict::Commit => "commit",
+            ProposeVerdict::Rollback => "rollback",
+        }
+    }
+}
+
+/// The result of the `propose-verdict` transaction (Round 588, R585 debt item
+/// 2) — the generate-gate-repair loop's atomic unit. Apply a candidate batch to
+/// a THROWAWAY in-memory clone of the store, run every applicable gate, and
+/// return commit-or-rollback plus actionable violations. A pure DRY RUN: the
+/// real store is never written (the scratch-sidecar contract, done in memory).
+#[derive(Debug, Clone, Serialize)]
+pub struct ProposeVerdictReport {
+    /// commit = the batch is clean and safe to apply; rollback = rejected.
+    pub verdict: ProposeVerdict,
+    /// What the batch WOULD create if committed (the import summary) — present
+    /// even on rollback so the agent sees the intended scope.
+    pub applied_summary: String,
+    pub violation_count: usize,
+    /// The actionable violations (empty iff `verdict == commit`).
+    pub violations: Vec<mnemosyne_validate::verdict::ActionableViolation>,
+}
+
+/// Run the `propose-verdict` dry-run transaction (Round 588). Loads the base
+/// store (default or `sidecar`) into a throwaway clone, applies the candidate
+/// `manifest` in memory (shape invariants), then runs the continuity gate over
+/// the mutated clone, mapping every finding to an actionable violation. A shape
+/// rejection is fail-fast (one violation, no gate run); a clean apply followed
+/// by a clean gate is the only `commit`. Deterministic, AI out of the gate, and
+/// the real store is never touched — the loop calls this until `commit`, THEN
+/// applies for real via `import-facts`.
+pub fn propose_verdict(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+    rules_override: Option<&str>,
+    manifest: &mnemosyne_atomic::FactsManifest,
+) -> Result<ProposeVerdictReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let rules = resolve_narrative_rules(&policy, rules_override)?;
+    let mut store = load_atomic_store(workspace_root, sidecar)?;
+
+    // 1. Apply the batch (shape invariants). A Validation breach is a shape
+    //    violation → rollback (the apply is fail-fast; the partial clone is
+    //    discarded, the real store untouched). Any other error is a real
+    //    failure, propagated — not an authoring violation.
+    let outcome = match mnemosyne_atomic::apply_facts_manifest(&mut store, manifest) {
+        Ok(o) => o,
+        Err(AtomicMutateError::Validation(msg)) => {
+            let violations = vec![mnemosyne_validate::verdict::ActionableViolation::shape(msg)];
+            return Ok(ProposeVerdictReport {
+                verdict: ProposeVerdict::Rollback,
+                applied_summary: "no facts applied (shape rejection)".to_string(),
+                violation_count: violations.len(),
+                violations,
+            });
+        }
+        Err(e) => return Err(OpError::Mutate(e)),
+    };
+
+    // 2. Run the continuity gate over the MUTATED clone; map each finding to an
+    //    actionable violation. Any violation → rollback (the loop authors clean).
+    let order = compose_canon_order(&decl, &store)?;
+    let report = mnemosyne_validate::continuity::scan_continuity(&store, &order, &rules.rules)
+        .map_err(OpError::Other)?;
+    let violations: Vec<mnemosyne_validate::verdict::ActionableViolation> = report
+        .violations
+        .iter()
+        .map(mnemosyne_validate::verdict::continuity_actionable)
+        .collect();
+    let verdict = if violations.is_empty() {
+        ProposeVerdict::Commit
+    } else {
+        ProposeVerdict::Rollback
+    };
+    Ok(ProposeVerdictReport {
+        verdict,
+        applied_summary: outcome.summary,
+        violation_count: violations.len(),
+        violations,
+    })
+}
+
 /// The frame-view envelope both wires emit (Round 435). `holding_count`
 /// rides beside the full entries so a scanning consumer never counts.
 #[derive(Debug, Clone, Serialize)]

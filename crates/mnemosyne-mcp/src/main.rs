@@ -494,6 +494,23 @@ pub struct ValidateContinuityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ProposeVerdictArgs {
+    /// Path to the candidate `import-facts` manifest (a JSON object with
+    /// `frames`/`branches`/`entities`/`predicates`/`facts` arrays). The agent
+    /// writes the candidate batch to this file, then calls the tool; the file
+    /// is only READ (dry run).
+    pub manifest_path: String,
+    /// Canon-order declaration path override (bypasses the pin). Omit to use
+    /// `[continuity].canon_order_path`.
+    #[serde(default)]
+    pub order_path: Option<String>,
+    /// `narrative-rules/v1` declaration path override. Omit to use
+    /// `[continuity].rules_path`.
+    #[serde(default)]
+    pub rules_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTimelineGapsArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -1629,6 +1646,34 @@ impl MnemosyneServer {
             None,
             args.0.order_path.as_deref(),
             args.0.rules_path.as_deref(),
+        ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest."
+    )]
+    async fn propose_verdict(&self, args: Parameters<ProposeVerdictArgs>) -> CallToolResult {
+        let raw = match std::fs::read_to_string(&args.0.manifest_path) {
+            Ok(r) => r,
+            Err(e) => {
+                return Self::tool_error(format!("read manifest {}: {e}", args.0.manifest_path))
+            }
+        };
+        let manifest: mnemosyne_atomic::FactsManifest = match serde_json::from_str(&raw) {
+            Ok(m) => m,
+            Err(e) => {
+                return Self::tool_error(format!("parse manifest {}: {e}", args.0.manifest_path))
+            }
+        };
+        match ops::propose_verdict(
+            &self.workspace,
+            None,
+            args.0.order_path.as_deref(),
+            args.0.rules_path.as_deref(),
+            &manifest,
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),

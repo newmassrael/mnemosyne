@@ -23,6 +23,7 @@ pub mod schema;
 pub mod spec_drift;
 pub mod t2;
 pub mod validator;
+pub mod verdict;
 pub mod verifies_linkage;
 
 pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
