@@ -13895,6 +13895,50 @@
         "invariant: the generate-gate-repair LLM loop stays an external agent/MCP client; only deterministic and medium-neutral surfaces land in the core",
         "serves the north star: gates = self-consistency feedback, discovery = self-extraction, now made machine-actionable for an unattended agent"
       ]
+    },
+    "Round 586": {
+      "decision_summary": "Extend the R585 AI-first-authoring support debt with the spatial support surface: relational (not metric) space needs a place-graph projection report plus deterministic spatial-integrity and spatial-fidelity gates, so text/2D/3D renderers project one topological SSOT and cannot drift from it. Storing and projecting works today with user predicates; only the deterministic guarantee is the debt.",
+      "changes_bullets": [
+        "place-graph report: project the containment hierarchy + adjacency for a renderer (the spatial analogue of report-quest-graph)",
+        "spatial-integrity gate (Validator plugin): containment cycle-free, no orphan place, no mutually-exclusive double-containment, adjacency consistency",
+        "spatial render-fidelity gate: a rendered description must not contradict declared spatial relations (extend the R505 render-fidelity pattern to spatial predicates)",
+        "convention (no feature needed to store): relational space via user predicates located-in / part-of / adjacent-to / direction-of as typed entity relations; no metric coordinates"
+      ],
+      "verification_bullets": [
+        "extends the R585 support-surface debt with the spatial axis",
+        "grounded in this session's the-tide game direction: staged text to 2D to 3D, model-complete and render-progressive (one topological SSOT, a projection per fidelity)",
+        "relational space is authorable today as user predicates + typed facts, the same path quests took before report-quest-graph; no reserved spatial constant exists in mnemosyne-validate (confirmed by source grep)",
+        "render-fidelity for narrative facts (R505) is the pattern the spatial fidelity gate extends"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "start now with no feature: author relational space as user predicates + facts; a renderer reads them via query (report-entity / query --term) and projects",
+        "promote when load-bearing: place-graph report + spatial-integrity gate + spatial-fidelity gate (deterministic and medium-neutral, so in-core Validator + report, not the external harness)",
+        "invariant: relations are the stable SSOT; metric coordinates are renderer-local, volatile, untracked; each renderer solves coordinates to satisfy the declared relations"
+      ],
+      "publishable_decision_summary": "Extend the R585 AI-first-authoring support debt with the spatial support surface: relational (not metric) space needs a place-graph projection report plus deterministic spatial-integrity and spatial-fidelity gates, so text/2D/3D renderers project one topological SSOT and cannot drift from it. Storing and projecting works today with user predicates; only the deterministic guarantee is the debt.",
+      "publishable_changes_bullets": [
+        "place-graph report: project the containment hierarchy + adjacency for a renderer (the spatial analogue of report-quest-graph)",
+        "spatial-integrity gate (Validator plugin): containment cycle-free, no orphan place, no mutually-exclusive double-containment, adjacency consistency",
+        "spatial render-fidelity gate: a rendered description must not contradict declared spatial relations (extend the R505 render-fidelity pattern to spatial predicates)",
+        "convention (no feature needed to store): relational space via user predicates located-in / part-of / adjacent-to / direction-of as typed entity relations; no metric coordinates"
+      ],
+      "publishable_verification_bullets": [
+        "extends the R585 support-surface debt with the spatial axis",
+        "grounded in this session's the-tide game direction: staged text to 2D to 3D, model-complete and render-progressive (one topological SSOT, a projection per fidelity)",
+        "relational space is authorable today as user predicates + typed facts, the same path quests took before report-quest-graph; no reserved spatial constant exists in mnemosyne-validate (confirmed by source grep)",
+        "render-fidelity for narrative facts (R505) is the pattern the spatial fidelity gate extends"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "start now with no feature: author relational space as user predicates + facts; a renderer reads them via query (report-entity / query --term) and projects",
+        "promote when load-bearing: place-graph report + spatial-integrity gate + spatial-fidelity gate (deterministic and medium-neutral, so in-core Validator + report, not the external harness)",
+        "invariant: relations are the stable SSOT; metric coordinates are renderer-local, volatile, untracked; each renderer solves coordinates to satisfy the declared relations"
+      ]
     }
   },
   "inventory_entries": {},
