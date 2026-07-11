@@ -13843,6 +13843,58 @@
         "The MSRV 1.94->1.88 fix (R583) is committed but UNPUSHED — pinion still sees 1.94 on origin until R583 (+ this R584) are pushed. Push delivers both the MSRV correction and this caveat exemption.",
         "alternatives_rejected struct surface still deferred. The one real pinion cleanup candidate remains §5.36 active-vs-superseded drift, to be verified against R342/R574 mutate-invariant enforcement by pinion."
       ]
+    },
+    "Round 585": {
+      "decision_summary": "Register the AI-first-authoring support-surface debt: the deterministic, medium-neutral surfaces Mnemosyne must add so an external agent's generate-gate-repair loop authors narrative unattended at scale. The LLM loop stays an outside agent/MCP client; only these deterministic affordances land in the core. No build in this entry, debt registration only.",
+      "changes_bullets": [
+        "describe-schema: emit the authoring contract as machine-readable data (entity kinds, predicate vocabulary, the quest encoding pursues/requires/completed_by with completion paying off an Expected setup, disclosure modes, typed-claim rules, all invariants) so an agent self-serves instead of reading source",
+        "propose-verdict transaction: one deterministic op = apply a candidate batch to a scratch sidecar, run every gate, return commit-or-rollback plus structured violations (today the loop hand-orchestrates import-facts + --sidecar + gates)",
+        "actionable violations: every gate violation carries rule + locus (fact/field) + expected + repair hint in --json, so an agent repairs programmatically rather than parsing prose",
+        "authoring-frontier report: one consolidated coverage-gap surface (scenes/nodes with zero facts, quests with no giver, dangling setups, never-planned disclosures, per-node coverage) an unattended loop pulls work from; today the pieces are scattered across payoff-coverage and disclosure-coverage",
+        "all-primitive batch manifest: one manifest importing facts + entities + quests + branches + disclosure for throughput (today only import-facts / import-sections)",
+        "AI-failure guardrail gates as Validator plugins: hallucinated-ref / wrong-branch / orphan / citation-hygiene deterministic checks via the existing PluginRegistry Validator slot"
+      ],
+      "verification_bullets": [
+        "grounded in this session's dogfood: authoring a 26-chapter game store in ../the-tide-that-counts surfaced each gap first-hand",
+        "read crates/mnemosyne-validate/src/continuity.rs to learn the quest convention (the describe-schema gap)",
+        "a batch failed mid-apply on one fact with a prose-only error (the transaction + actionable-violations gap)",
+        "hand-derived that two chapters had zero anchored facts (the authoring-frontier gap)",
+        "boundary confirmed against PluginRegistry: only SymbolResolver + Validator slots exist, both deterministic and compiled-in, so the LLM loop cannot be a plugin"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "pay in priority order: (1) describe-schema (largest correctness win), (2) propose-verdict transaction + actionable violations (the loop's atomic unit), (3) authoring-frontier report (unattended pull)",
+        "then: all-primitive batch manifest (throughput), guardrail Validator gates (feedback completeness)",
+        "invariant: the generate-gate-repair LLM loop stays an external agent/MCP client; only deterministic and medium-neutral surfaces land in the core",
+        "serves the north star: gates = self-consistency feedback, discovery = self-extraction, now made machine-actionable for an unattended agent"
+      ],
+      "publishable_decision_summary": "Register the AI-first-authoring support-surface debt: the deterministic, medium-neutral surfaces Mnemosyne must add so an external agent's generate-gate-repair loop authors narrative unattended at scale. The LLM loop stays an outside agent/MCP client; only these deterministic affordances land in the core. No build in this entry, debt registration only.",
+      "publishable_changes_bullets": [
+        "describe-schema: emit the authoring contract as machine-readable data (entity kinds, predicate vocabulary, the quest encoding pursues/requires/completed_by with completion paying off an Expected setup, disclosure modes, typed-claim rules, all invariants) so an agent self-serves instead of reading source",
+        "propose-verdict transaction: one deterministic op = apply a candidate batch to a scratch sidecar, run every gate, return commit-or-rollback plus structured violations (today the loop hand-orchestrates import-facts + --sidecar + gates)",
+        "actionable violations: every gate violation carries rule + locus (fact/field) + expected + repair hint in --json, so an agent repairs programmatically rather than parsing prose",
+        "authoring-frontier report: one consolidated coverage-gap surface (scenes/nodes with zero facts, quests with no giver, dangling setups, never-planned disclosures, per-node coverage) an unattended loop pulls work from; today the pieces are scattered across payoff-coverage and disclosure-coverage",
+        "all-primitive batch manifest: one manifest importing facts + entities + quests + branches + disclosure for throughput (today only import-facts / import-sections)",
+        "AI-failure guardrail gates as Validator plugins: hallucinated-ref / wrong-branch / orphan / citation-hygiene deterministic checks via the existing PluginRegistry Validator slot"
+      ],
+      "publishable_verification_bullets": [
+        "grounded in this session's dogfood: authoring a 26-chapter game store in ../the-tide-that-counts surfaced each gap first-hand",
+        "read crates/mnemosyne-validate/src/continuity.rs to learn the quest convention (the describe-schema gap)",
+        "a batch failed mid-apply on one fact with a prose-only error (the transaction + actionable-violations gap)",
+        "hand-derived that two chapters had zero anchored facts (the authoring-frontier gap)",
+        "boundary confirmed against PluginRegistry: only SymbolResolver + Validator slots exist, both deterministic and compiled-in, so the LLM loop cannot be a plugin"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "pay in priority order: (1) describe-schema (largest correctness win), (2) propose-verdict transaction + actionable violations (the loop's atomic unit), (3) authoring-frontier report (unattended pull)",
+        "then: all-primitive batch manifest (throughput), guardrail Validator gates (feedback completeness)",
+        "invariant: the generate-gate-repair LLM loop stays an external agent/MCP client; only deterministic and medium-neutral surfaces land in the core",
+        "serves the north star: gates = self-consistency feedback, discovery = self-extraction, now made machine-actionable for an unattended agent"
+      ]
     }
   },
   "inventory_entries": {},
