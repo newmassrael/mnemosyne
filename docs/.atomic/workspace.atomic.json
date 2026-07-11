@@ -14285,6 +14285,40 @@
         "A suspected disclosure-inversion flaw was REFUTED by the blind render + the leak gate (the config is proper mystery disclosure) — recorded as a verify-before-claiming correction, not a finding.",
         "NEXT = R595 owner cadence: (A) BUILD the top gaps — add the JSON wire format + the canon-order requirement to describe-schema, and make report-authoring-frontier flag a missing/incomplete order as a gap [pull-justified by Findings 1+4, cheapest highest-value, closes the loop's biggest friction]; (B) pinion CONSUMER (the pre-R585 NEXT, still live); (C) another experiment. Push withheld."
       ]
+    },
+    "Round 595 — describe-schema emits the manifest wire format (unattended-loop Finding 1)": {
+      "decision_summary": "close unattended-loop Finding 1: describe-schema now documents the JSON wire format (registry keys, typed-object scalar->value tagging, first_at tuples) + a drift-guarded worked example that passes propose-verdict; also paid a stale import-facts-smoke test from R590",
+      "changes_bullets": [
+        "Closed unattended-loop-experiment/v1 Finding 1 (the headline): describe-schema now emits the manifest JSON WIRE FORMAT, not just the semantic contract. Added ManifestWireSpec to SchemaContract (mnemosyne-validate::schema) — the six-array apply order, per-kind serialized JSON key names, the typed-object enum wire tagging, the first_at [branch, section] tuple shape, and a complete worked example. The CLI renders it; --json carries it via serde.",
+        "Documented the load-bearing naming quirk head-on: a predicate object_kind `scalar` serializes its typed object with tag `value` (not `scalar`), an `entity` object_kind with `{kind:entity, id}`. Chose to DOCUMENT rather than rename the wire enum — a rename would break deserialization of every existing store's {kind:value} typed legs (a data migration), so the doc fix removes the trap at zero risk.",
+        "The worked example (MANIFEST_EXAMPLE_JSON) is drift-guarded: a unit test parses it through the real mnemosyne_atomic::FactsManifest and pins its contents (the scalar Value variant, the entity Entity{id} variant, the fork forks_from string, the first_at pair) — a wire-format change breaks the build here. Not just serde-parseable: the example extracted from describe-schema --json passes propose-verdict (commit, 0 violations) against a store carrying its sections, so an agent can copy it and it validates end to end.",
+        "DEBT paid (surfaced by this round's test run, RULEBOOK same-session rule): import_facts_smoke.rs asserted the pre-R590 summary string (\"... N facts created\") — stale since R590 added the disclosure-plans/overrides suffix; the pre-commit/pre-push hooks run validate+clippy but not the full suite, so it slipped R590-R594. Updated both assertions to the R590 format (the atomic-lib unit tests already had it; only this CLI smoke was missed)."
+      ],
+      "verification_bullets": [
+        "cargo test -p mnemosyne-validate -p mnemosyne-cli -p mnemosyne-ops green (incl. the new manifest_example_parses_and_pins_wire_shape drift guard + the fixed import_facts_smoke); full cargo test --workspace green; cargo clippy -D warnings clean; cargo fmt clean.",
+        "e2e: describe-schema now renders the \"manifest wire format\" section + the worked example; the example extracted from describe-schema --json passes propose-verdict (commit, 0 violations, all 6 kinds applied) against a fresh store carrying its sections.",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0). No production data touched; the change is additive to the describe-schema contract + one stale-test fix."
+      ],
+      "carry_forward_bullets": [
+        "NEXT = R596 owner cadence: (A) close Finding 4 — the loop's \"done\" (frontier 0/0/0) omits the canon ORDER: add the canon-order requirement to describe-schema AND make report-authoring-frontier flag unordered fact-bearing scenes as a gap [the second of the two top gaps, pull-justified by R594]; (B) pinion CONSUMER (live); (C) another experiment.",
+        "R593+R594+R595 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ],
+      "publishable_decision_summary": "close unattended-loop Finding 1: describe-schema now documents the JSON wire format (registry keys, typed-object scalar->value tagging, first_at tuples) + a drift-guarded worked example that passes propose-verdict; also paid a stale import-facts-smoke test from R590",
+      "publishable_changes_bullets": [
+        "Closed unattended-loop-experiment/v1 Finding 1 (the headline): describe-schema now emits the manifest JSON WIRE FORMAT, not just the semantic contract. Added ManifestWireSpec to SchemaContract (mnemosyne-validate::schema) — the six-array apply order, per-kind serialized JSON key names, the typed-object enum wire tagging, the first_at [branch, section] tuple shape, and a complete worked example. The CLI renders it; --json carries it via serde.",
+        "Documented the load-bearing naming quirk head-on: a predicate object_kind `scalar` serializes its typed object with tag `value` (not `scalar`), an `entity` object_kind with `{kind:entity, id}`. Chose to DOCUMENT rather than rename the wire enum — a rename would break deserialization of every existing store's {kind:value} typed legs (a data migration), so the doc fix removes the trap at zero risk.",
+        "The worked example (MANIFEST_EXAMPLE_JSON) is drift-guarded: a unit test parses it through the real mnemosyne_atomic::FactsManifest and pins its contents (the scalar Value variant, the entity Entity{id} variant, the fork forks_from string, the first_at pair) — a wire-format change breaks the build here. Not just serde-parseable: the example extracted from describe-schema --json passes propose-verdict (commit, 0 violations) against a store carrying its sections, so an agent can copy it and it validates end to end.",
+        "DEBT paid (surfaced by this round's test run, RULEBOOK same-session rule): import_facts_smoke.rs asserted the pre-R590 summary string (\"... N facts created\") — stale since R590 added the disclosure-plans/overrides suffix; the pre-commit/pre-push hooks run validate+clippy but not the full suite, so it slipped R590-R594. Updated both assertions to the R590 format (the atomic-lib unit tests already had it; only this CLI smoke was missed)."
+      ],
+      "publishable_verification_bullets": [
+        "cargo test -p mnemosyne-validate -p mnemosyne-cli -p mnemosyne-ops green (incl. the new manifest_example_parses_and_pins_wire_shape drift guard + the fixed import_facts_smoke); full cargo test --workspace green; cargo clippy -D warnings clean; cargo fmt clean.",
+        "e2e: describe-schema now renders the \"manifest wire format\" section + the worked example; the example extracted from describe-schema --json passes propose-verdict (commit, 0 violations, all 6 kinds applied) against a fresh store carrying its sections.",
+        "validate-workspace clean (T1 orphan 0 / T3 reject 0). No production data touched; the change is additive to the describe-schema contract + one stale-test fix."
+      ],
+      "publishable_carry_forward_bullets": [
+        "NEXT = R596 owner cadence: (A) close Finding 4 — the loop's \"done\" (frontier 0/0/0) omits the canon ORDER: add the canon-order requirement to describe-schema AND make report-authoring-frontier flag unordered fact-bearing scenes as a gap [the second of the two top gaps, pull-justified by R594]; (B) pinion CONSUMER (live); (C) another experiment.",
+        "R593+R594+R595 all COMMITTED, NOT PUSHED — push awaits an explicit push word (origin/main @ 3693a5c)."
+      ]
     }
   },
   "inventory_entries": {},

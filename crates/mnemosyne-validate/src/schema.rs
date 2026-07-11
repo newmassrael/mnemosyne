@@ -68,6 +68,42 @@ pub struct SchemaContract {
     /// (hallucinated-ref, wrong-branch, orphan) are not a separate tool: they
     /// are these built-in invariants, re-checked by the continuity gate.
     pub invariant_enforcement: &'static str,
+    /// The JSON WIRE FORMAT of the `import-facts` / `propose-verdict` batch
+    /// manifest (Round 595, unattended-loop-experiment/v1 Finding 1). The field
+    /// specs above give the SEMANTIC contract (names + types); this gives the
+    /// SERIALIZATION an agent must emit — registry key names, the typed-object
+    /// enum tagging (incl. the `scalar` object_kind → `value` wire tag), the
+    /// `first_at` tuple shape — plus a complete worked example. Without this an
+    /// agent must reverse-engineer the serializer from parse errors.
+    pub manifest_wire: ManifestWireSpec,
+}
+
+/// The JSON wire format of the batch manifest (Round 595) — the serialization,
+/// not the semantics. Drift-guarded: `example_json` parses through the real
+/// [`mnemosyne_atomic::FactsManifest`] and its contents are pinned by a test.
+#[derive(Debug, Clone, Serialize)]
+pub struct ManifestWireSpec {
+    /// The batch verbs this manifest is fed to.
+    pub add_op: &'static str,
+    /// The top-level object shape and the order kinds are applied in.
+    pub overview: &'static str,
+    /// Per-kind serialized JSON key names (what the parser reads).
+    pub kinds: Vec<KindWire>,
+    /// The typed leg's object enum wire tagging — INCLUDING the naming quirk
+    /// that a `scalar` predicate object_kind serializes with the tag `value`.
+    pub typed_object_wire: &'static str,
+    /// A complete, valid worked example: copy it and adapt. Parses through the
+    /// real manifest parser (a test pins it, so it cannot silently drift).
+    pub example_json: &'static str,
+}
+
+/// One kind's serialized JSON key names in the batch manifest (Round 595).
+#[derive(Debug, Clone, Serialize)]
+pub struct KindWire {
+    /// The manifest array this describes (`frames` / `branches` / …).
+    pub kind: &'static str,
+    /// The serialized object's key names + shapes (the wire form, not prose).
+    pub json_keys: &'static str,
 }
 
 /// One registry: an id space that must be populated before a fact references it.
@@ -206,8 +242,132 @@ pub fn describe_schema() -> SchemaContract {
              (hallucinated-ref, wrong-branch, orphan) ARE these hard invariants — not a separate \
              optional check. `propose-verdict` runs the same gate over a candidate batch and \
              returns each as an actionable violation.",
+        manifest_wire: manifest_wire(),
     }
 }
+
+/// The wire format of the batch manifest (Round 595). The `example_json` is the
+/// SSOT an agent copies; the per-kind key notes name the exact serialized keys
+/// (which differ from the semantic field names in a few load-bearing places —
+/// `forks_from` is a bare string, the typed object is a tagged enum, `first_at`
+/// is a list of `[branch, section]` pairs).
+fn manifest_wire() -> ManifestWireSpec {
+    ManifestWireSpec {
+        add_op: "import-facts (apply) / propose-verdict (dry-run gate) — both read this manifest",
+        overview: "A JSON object with six optional arrays applied in this order in ONE atomic \
+             transaction: frames, branches, entities, predicates, facts, disclosure_plans. Later \
+             kinds may reference earlier ones (a fact names a frame/branch/entity/section; a \
+             disclosure override names a fact), so order matters — registries first, then facts, \
+             then disclosure. Any array may be omitted (defaults to empty).",
+        kinds: vec![
+            KindWire {
+                kind: "frames",
+                json_keys: "{ \"frame_id\": string, \"description\"?: string }",
+            },
+            KindWire {
+                kind: "branches",
+                json_keys: "{ \"branch_id\": string, \"description\"?: string, \"forks_from\"?: \
+                    string (a PARENT BRANCH id, e.g. \"main\" — a bare string, NOT an object), \
+                    \"forks_at\"?: string (a section id), \"converges_from\"?: [ {\"branch\": \
+                    string, \"at\": string}, … ] } — a branch is a fork (forks_from + forks_at) \
+                    XOR a confluence (converges_from)",
+            },
+            KindWire {
+                kind: "entities",
+                json_keys: "{ \"entity_id\": string, \"kind\"?: string (free-form; the one \
+                    reserved value is \"quest\"), \"description\"?: string }",
+            },
+            KindWire {
+                kind: "predicates",
+                json_keys: "{ \"predicate_id\": string, \"object_kind\": \"entity\"|\"scalar\", \
+                    \"description\"?: string }",
+            },
+            KindWire {
+                kind: "facts",
+                json_keys: "{ \"fact_id\": string, \"frame\": string, \"claim\": string, \
+                    \"canon_from\": string (section id), \"evidence\": [section id, …] (>= 1), \
+                    \"branch\"?: string (omit for main), \"canon_to\"?: string, \"entities\"?: \
+                    [entity id, …], \"payoff_expectation\"?: \"expected\"|\"unmarked\", \
+                    \"pays_off\"?: [fact id, …], \"supersedes_in_frame\"?: fact id, \
+                    \"conflicts_with\"?: [fact id, …], \"typed\"?: TypedClaim (see \
+                    typed_object_wire), \"quote\"?: string }",
+            },
+            KindWire {
+                kind: "disclosure_plans",
+                json_keys: "{ \"telling_id\": string, \"default_mode\"?: \
+                    \"withhold\"|\"state\"|\"hint\"|\"imply\" (omitted = withhold), \
+                    \"description\"?: string, \"overrides\"?: [ { \"fact_id\": string, \"mode\": \
+                    string, \"first_at\"?: [ [branch id, section id], … ] (a list of 2-element \
+                    [branch, section] arrays), \"surface\"?: {\"scene\": string, \"object\"?: \
+                    string} } ] }",
+            },
+        ],
+        typed_object_wire:
+            "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
+             id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with two \
+             variants: for a predicate whose object_kind is `entity`, write { \"kind\": \
+             \"entity\", \"id\": entity id }; for a predicate whose object_kind is `scalar`, \
+             write { \"kind\": \"value\", \"value\": string }. NOTE the deliberate naming: the \
+             predicate's object_kind is spelled `scalar`, but the object's wire tag for that \
+             shape is `value` (the object_KIND vs the runtime object shape) — write `value`, not \
+             `scalar`. The subject and any entity-shaped object must ALSO appear in the fact's \
+             `entities` list.",
+        example_json: MANIFEST_EXAMPLE_JSON,
+    }
+}
+
+/// A complete, valid `import-facts` manifest — the copy-and-adapt template
+/// (Round 595). Exercises every kind and the load-bearing serialization quirks:
+/// a fork branch (`forks_from` string), a scalar typed object (`kind`:`value`),
+/// an entity typed object (`kind`:`entity`), a setup/payoff pair, and a
+/// disclosure override with a `first_at` `[branch, section]` pin. Section ids
+/// are illustrative — serde does not check them (the store validator does). A
+/// unit test parses this through the real [`mnemosyne_atomic::FactsManifest`]
+/// and pins its contents, so a wire-format change breaks the build here.
+const MANIFEST_EXAMPLE_JSON: &str = r#"{
+  "frames": [
+    { "frame_id": "ground-truth" },
+    { "frame_id": "scout", "description": "the scout's belief" }
+  ],
+  "branches": [
+    { "branch_id": "road-b", "forks_from": "main", "forks_at": "sc-03" }
+  ],
+  "entities": [
+    { "entity_id": "e-scout", "kind": "character" },
+    { "entity_id": "e-relic", "kind": "item" }
+  ],
+  "predicates": [
+    { "predicate_id": "held_by", "object_kind": "entity", "description": "custody" },
+    { "predicate_id": "state", "object_kind": "scalar", "description": "an item's state" }
+  ],
+  "facts": [
+    {
+      "fact_id": "f-setup", "frame": "ground-truth",
+      "claim": "the relic lies in the vault", "canon_from": "sc-01",
+      "evidence": ["sc-01"], "entities": ["e-relic"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-relic", "predicate": "state",
+                 "object": { "kind": "value", "value": "hidden" } }
+    },
+    {
+      "fact_id": "f-payoff", "frame": "ground-truth", "branch": "road-b",
+      "claim": "the scout takes the relic", "canon_from": "sc-04",
+      "evidence": ["sc-04"], "entities": ["e-scout", "e-relic"],
+      "pays_off": ["f-setup"],
+      "typed": { "subject": "e-relic", "predicate": "held_by",
+                 "object": { "kind": "entity", "id": "e-scout" } }
+    }
+  ],
+  "disclosure_plans": [
+    {
+      "telling_id": "default", "default_mode": "withhold",
+      "description": "the reader reconstructs by default",
+      "overrides": [
+        { "fact_id": "f-setup", "mode": "state", "first_at": [ ["road-b", "sc-04"] ] }
+      ]
+    }
+  ]
+}"#;
 
 fn registries() -> Vec<RegistrySpec> {
     vec![
@@ -831,6 +991,54 @@ mod tests {
         assert_eq!(
             import_fields, described,
             "describe-schema fact fields drifted from FactImport's serde shape"
+        );
+    }
+
+    /// Round 595 — the WIRE-FORMAT drift guard (unattended-loop Finding 1): the
+    /// worked example must parse through the real `FactsManifest` and carry the
+    /// shapes it advertises. Renaming a serialized key or the typed-object tag
+    /// breaks this — a required key fails to parse; an optional one drops to its
+    /// default and a content assertion fires. This pins the serialization the
+    /// contract now documents so an agent never again reverse-engineers it.
+    #[test]
+    fn manifest_example_parses_and_pins_wire_shape() {
+        let example = describe_schema().manifest_wire.example_json;
+        let m: mnemosyne_atomic::FactsManifest = serde_json::from_str(example)
+            .expect("manifest example must parse through the real FactsManifest parser");
+        assert_eq!(m.frames.len(), 2);
+        assert_eq!(m.branches.len(), 1);
+        assert_eq!(m.branches[0].forks_from.as_deref(), Some("main"));
+        assert_eq!(m.branches[0].forks_at.as_deref(), Some("sc-03"));
+        assert_eq!(m.entities.len(), 2);
+        assert_eq!(m.predicates.len(), 2);
+        assert_eq!(m.facts.len(), 2);
+        // the scalar typed object serializes with the tag `value` (the quirk).
+        let setup = &m.facts[0];
+        assert_eq!(setup.payoff_expectation.as_deref(), Some("expected"));
+        match &setup.typed.as_ref().expect("setup has a typed leg").object {
+            mnemosyne_core::TypedObject::Value { value } => assert_eq!(value, "hidden"),
+            other => panic!("scalar object must be the Value variant, got {other:?}"),
+        }
+        // the entity typed object serializes with the tag `entity` + `id`.
+        let payoff = &m.facts[1];
+        assert_eq!(payoff.pays_off, vec!["f-setup".to_string()]);
+        match &payoff
+            .typed
+            .as_ref()
+            .expect("payoff has a typed leg")
+            .object
+        {
+            mnemosyne_core::TypedObject::Entity { id } => assert_eq!(id, "e-scout"),
+            other => panic!("entity object must be the Entity variant, got {other:?}"),
+        }
+        // the disclosure override's first_at is a [branch, section] pair.
+        assert_eq!(m.disclosure_plans.len(), 1);
+        let overrides = &m.disclosure_plans[0].overrides;
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(overrides[0].fact_id, "f-setup");
+        assert_eq!(
+            overrides[0].first_at,
+            vec![["road-b".to_string(), "sc-04".to_string()]]
         );
     }
 }

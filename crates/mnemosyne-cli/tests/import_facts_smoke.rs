@@ -84,7 +84,10 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(out.status.success(), "{:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("2 frames + 0 branches + 0 entities + 0 predicates + 2 facts created"),
+        stdout.contains(
+            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts + 0 disclosure-plans \
+             + 0 disclosure-overrides created"
+        ),
         "{stdout}"
     );
     let store = read_store(tmp.path());
@@ -111,7 +114,8 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(
         stdout.contains(
-            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts created, 4 no-op"
+            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts + 0 disclosure-plans \
+             + 0 disclosure-overrides created, 4 no-op"
         ),
         "{stdout}"
     );

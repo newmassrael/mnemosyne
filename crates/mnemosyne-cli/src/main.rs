@@ -2969,6 +2969,15 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     }
     println!("\n-- out-of-band enforcement --");
     println!("  {}", c.invariant_enforcement);
+    let w = &c.manifest_wire;
+    println!("\n-- manifest wire format ({}) --", w.add_op);
+    println!("  {}", w.overview);
+    for k in &w.kinds {
+        println!("  {}: {}", k.kind, k.json_keys);
+    }
+    println!("  typed object: {}", w.typed_object_wire);
+    println!("\n  worked example (copy and adapt):");
+    println!("{}", w.example_json);
     Ok(())
 }
 
