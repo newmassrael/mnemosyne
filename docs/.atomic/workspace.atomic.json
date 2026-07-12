@@ -14697,6 +14697,40 @@
         "Considered, not built: the same NOTICE in propose-verdict — deferred (its dry run already surfaces the surfaced-vs-gating gap via violation_count vs gating_violation_count, and describe-schema Round 604 covers the loop learning path); add only on real pull",
         "The Mnemosyne-side narrative loop is proven + hardened + debt-free; the next high-value move is a change of venue (pinion consumer or a new experiment) at owner cadence"
       ]
+    },
+    "Round 607 — check_store_boundary exempts MAIN_BRANCH as a confluence parent (MNEMO-GAP-002)": {
+      "decision_summary": "A consumer (the-tide-that-counts, adapting a novel into a branching game) hit a false reject: add-branch <C> --converges main=<sec> --converges <fork>=<sec> succeeds at mutate, but every canon-order consumer (validate-continuity / report-fork-tree / report-payoff-coverage / manuscript) then fails with 'canon-order declares an edge set for branch main, which is not in the branch registry'. Root cause: check_store_boundary's declared-branch loop was the only one of four sibling registry checks missing the MAIN_BRANCH exemption. world_order_composition keys MAIN_BRANCH when main is a confluence PARENT (its own docstring: 'a confluence parent may be main'), that key flows through from_declaration into branch_reach, and declared_branches() then yields main — which the unguarded loop rejects because main is never registered. The fix adds the b != MAIN_BRANCH guard, identical to the fact / branch / world siblings in the same function. This unblocks the documented main-as-confluence-parent topology, letting a completed main trunk be re-woven with a forked braid without shattering the canon trunk into a dead prefix (the R601 fork-lineage trap).",
+      "changes_bullets": [
+        "check_store_boundary (continuity.rs): the declared-branch registry loop gains the `b != MAIN_BRANCH` guard, matching its fact / branch / world sibling checks in the same function — main is legitimately yielded by declared_branches() only as a confluence parent",
+        "regression test confluence_parent_may_be_main: a main-as-confluence-parent store (main road continues, braid forks, weave reweaves both) asserts declared_branches() yields main, check_store_boundary passes, and fork_tree surfaces both merges placed with 0 unplaced"
+      ],
+      "verification_bullets": [
+        "the new test fails without the guard with the exact reported error (branch `main` ... not in the branch registry) and passes with it — an empirically proven regression guard, not just a green assertion",
+        "cargo test -p mnemosyne-validate 281 lib + 11 integration green; cargo clippy --all-targets clean; cargo fmt --all --check clean",
+        "e2e on a scratch store via the rebuilt CLI: add-branch weave --converges main=s3 --converges braid=s3b then validate-continuity exits 0 (was the false reject) and report-fork-tree prints weave converges from main at s3 + from braid at s3b, 0 unplaced",
+        "negative path intact: an order declaring a genuinely unregistered branch (ghost) is still rejected with the original registry message"
+      ],
+      "carry_forward_bullets": [
+        "the four store-boundary registry checks now share the MAIN_BRANCH exemption uniformly — no half-enforced-invariant asymmetry remains in check_store_boundary (declared_branches has exactly one caller, so the fix is total)",
+        "consumer side (the-tide-that-counts) can now retro-author a mid-story reconvergence braid over the existing canon trunk without dead-prefixing the completed main road (the R601 fork-lineage trap the gap report cites)",
+        "reported by an external consumer as MNEMO-GAP-002; diagnosis was consumer-supplied and verified against source before the one-line fix landed"
+      ],
+      "publishable_decision_summary": "A consumer (the-tide-that-counts, adapting a novel into a branching game) hit a false reject: add-branch <C> --converges main=<sec> --converges <fork>=<sec> succeeds at mutate, but every canon-order consumer (validate-continuity / report-fork-tree / report-payoff-coverage / manuscript) then fails with 'canon-order declares an edge set for branch main, which is not in the branch registry'. Root cause: check_store_boundary's declared-branch loop was the only one of four sibling registry checks missing the MAIN_BRANCH exemption. world_order_composition keys MAIN_BRANCH when main is a confluence PARENT (its own docstring: 'a confluence parent may be main'), that key flows through from_declaration into branch_reach, and declared_branches() then yields main — which the unguarded loop rejects because main is never registered. The fix adds the b != MAIN_BRANCH guard, identical to the fact / branch / world siblings in the same function. This unblocks the documented main-as-confluence-parent topology, letting a completed main trunk be re-woven with a forked braid without shattering the canon trunk into a dead prefix (the R601 fork-lineage trap).",
+      "publishable_changes_bullets": [
+        "check_store_boundary (continuity.rs): the declared-branch registry loop gains the `b != MAIN_BRANCH` guard, matching its fact / branch / world sibling checks in the same function — main is legitimately yielded by declared_branches() only as a confluence parent",
+        "regression test confluence_parent_may_be_main: a main-as-confluence-parent store (main road continues, braid forks, weave reweaves both) asserts declared_branches() yields main, check_store_boundary passes, and fork_tree surfaces both merges placed with 0 unplaced"
+      ],
+      "publishable_verification_bullets": [
+        "the new test fails without the guard with the exact reported error (branch `main` ... not in the branch registry) and passes with it — an empirically proven regression guard, not just a green assertion",
+        "cargo test -p mnemosyne-validate 281 lib + 11 integration green; cargo clippy --all-targets clean; cargo fmt --all --check clean",
+        "e2e on a scratch store via the rebuilt CLI: add-branch weave --converges main=s3 --converges braid=s3b then validate-continuity exits 0 (was the false reject) and report-fork-tree prints weave converges from main at s3 + from braid at s3b, 0 unplaced",
+        "negative path intact: an order declaring a genuinely unregistered branch (ghost) is still rejected with the original registry message"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the four store-boundary registry checks now share the MAIN_BRANCH exemption uniformly — no half-enforced-invariant asymmetry remains in check_store_boundary (declared_branches has exactly one caller, so the fix is total)",
+        "consumer side (the-tide-that-counts) can now retro-author a mid-story reconvergence braid over the existing canon trunk without dead-prefixing the completed main road (the R601 fork-lineage trap the gap report cites)",
+        "reported by an external consumer as MNEMO-GAP-002; diagnosis was consumer-supplied and verified against source before the one-line fix landed"
+      ]
     }
   },
   "inventory_entries": {},

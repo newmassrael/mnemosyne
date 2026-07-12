@@ -1320,7 +1320,11 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
         }
     }
     for b in order.declared_branches() {
-        if !store.branches.contains_key(b) {
+        // `declared_branches()` yields `main` when it is a confluence PARENT
+        // (`world_order_composition` keys `MAIN_BRANCH` in that case — a
+        // documented topology); `main` is never in the registry, so exempt it
+        // here exactly as the fact / branch / world sibling checks do below.
+        if b != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(b) {
             return Err(format!(
                 "canon-order declares an edge set for branch `{b}`, which is not in the \
                  branch registry — register it (add_branch) or fix the declaration"
@@ -7337,6 +7341,94 @@ mod tests {
         assert_eq!(parents, vec!["ride", "sluice"]);
         // s2 is a node of each parent's composed order (the base chain) — placed.
         assert!(dawn.converges.iter().all(|e| e.at_placed));
+        assert!(report.unplaced_fork_points.is_empty());
+    }
+
+    /// MNEMO-GAP-002 — a confluence PARENT may be `main` itself: the main road
+    /// continues while a sibling forks off, and the two reweave into a shared
+    /// suffix. `world_order_composition` keys `MAIN_BRANCH` in this topology
+    /// (its docstring: "a confluence parent may be `main`"), so
+    /// `declared_branches()` yields `main`; the store-boundary check must exempt
+    /// `MAIN_BRANCH` (never registered) exactly as its fact / branch / world
+    /// siblings do — else EVERY canon-order consumer (`scan_continuity`,
+    /// `fork_tree`, payoff coverage, manuscript) false-rejects the store.
+    #[test]
+    fn confluence_parent_may_be_main() {
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3", "s3b", "s4", "s5"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        // `braid` forks off the main road at s2; main keeps going on its own.
+        store.branches.insert(
+            "braid".to_string(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.to_string(),
+                    at: "s2".to_string(),
+                }),
+                converges_from: vec![],
+            },
+        );
+        // `weave` reweaves the two roads — ONE converging parent is `main`.
+        store.branches.insert(
+            "weave".to_string(),
+            mnemosyne_core::Branch {
+                description: "the reweave".to_string(),
+                forks_from: None,
+                converges_from: vec![
+                    mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.to_string(),
+                        at: "s3".to_string(),
+                    },
+                    mnemosyne_core::BranchFork {
+                        branch: "braid".to_string(),
+                        at: "s3b".to_string(),
+                    },
+                ],
+            },
+        );
+
+        // Main road s1->s2->s3->s4 (base), braid's exclusive middle s2->s3b->s4,
+        // shared suffix s4->s5 authored ONCE on the confluence.
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4")],
+            branches: BTreeMap::from([
+                ("braid".to_string(), vec![e("s2", "s3b"), e("s3b", "s4")]),
+                ("weave".to_string(), vec![e("s4", "s5")]),
+            ]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
+
+        // The composition keys `main` (it IS a confluence parent), so
+        // `declared_branches()` yields it — guarding the exact code path.
+        assert!(
+            order.declared_branches().any(|b| b == MAIN_BRANCH),
+            "main must surface as a declared branch (confluence parent) — else \
+             this test would not exercise the boundary guard"
+        );
+        // The regression: pre-fix this Errs "branch `main` ... not in the branch
+        // registry"; post-fix `MAIN_BRANCH` is exempt and the store composes.
+        check_store_boundary(&store, &order)
+            .expect("main-as-confluence-parent must pass the store-boundary check");
+
+        // And the read surface composes: the fork tree surfaces both merges,
+        // main among them, with resolved (placed) merge coordinates.
+        let report = fork_tree(&store, &order).unwrap();
+        let weave = report
+            .branches
+            .iter()
+            .find(|b| b.branch_id == "weave")
+            .unwrap();
+        let mut parents: Vec<&str> = weave.converges.iter().map(|e| e.parent.as_str()).collect();
+        parents.sort();
+        assert_eq!(parents, vec!["braid", MAIN_BRANCH]);
+        assert!(weave.converges.iter().all(|e| e.at_placed));
         assert!(report.unplaced_fork_points.is_empty());
     }
 
