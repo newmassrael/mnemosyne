@@ -44,6 +44,13 @@
 //! no parallel coarse sibling. Its introduction and the runtime retirement
 //! are ratified through Changelog entries only.
 
+// Salsa 0.27's #[tracked] macro expansion makes clippy read the idiomatic
+// `<'db>` db-lifetime on these tracked fns as elidable (needless_lifetimes);
+// the same source was clippy-clean under salsa 0.26.1. The explicit lifetime
+// is the salsa tracked-fn convention, so suppress the macro-induced false
+// positive at module scope rather than distort the signatures.
+#![allow(clippy::needless_lifetimes)]
+
 use crate::ValidationResult;
 use mnemosyne_core::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FrozenListFact, SectionFact,
