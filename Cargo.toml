@@ -37,7 +37,7 @@ serde_json = "1"
 # Phase 0e generic library extraction: replaces hardcoded WORKSPACE_DOC_PATHS
 # + MNEMOSYNE_DEFAULT_DOC with TOML-driven config (workspace.docs +
 # workspace.default_doc + workspace.root).
-toml = "0.8"
+toml = "1"
 
 # Round 162 — template engine for Phase 0f atomic typed facts → markdown
 # rendering (output axis carry). Section / ChangelogEntry atomic field
