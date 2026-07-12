@@ -1088,9 +1088,11 @@ pub struct ContinuityReport {
     pub interval_unverifiable: usize,
 }
 
-/// Fork lineage of one query world (Rounds 438 + 533): the world's full
-/// world-line membership — its BACKWARD fork ancestry (`cut`) and its FORWARD
-/// confluence-suffixes (`forward`). Empty for `MAIN_BRANCH`, standalone
+/// Fork lineage of one query world (Rounds 438 + 533 + 611): the world's full
+/// world-line membership in every direction — its BACKWARD fork ancestry
+/// (`cut`), its FORWARD confluence-suffixes (`forward`), and the
+/// BACKWARD-THEN-FORWARD suffixes a fork ancestor was displaced onto by an
+/// upstream merge (`cut_forward`). Empty for `MAIN_BRANCH`, standalone
 /// branches, and pre-fork stores.
 #[derive(Debug, Clone, Default)]
 pub struct Lineage {
@@ -1106,6 +1108,18 @@ pub struct Lineage {
     /// `cut`: backward inheritance is bounded at the fork, forward inheritance
     /// is total past the merge.
     forward: BTreeSet<String>,
+    /// Backward-then-forward (Round 611): a confluence branch a FORK ANCESTOR
+    /// of this world flows into, mapped to that ancestor's departure point. A
+    /// fork inherits the ancestor's COMPOSED walk — its own facts AND the
+    /// re-convergence suffix an UPSTREAM merge displaced onto a confluence —
+    /// not just the ancestor's directly-owned facts; a fact on such a
+    /// confluence is inherited here bounded at the SAME departure `cut` bounds
+    /// the ancestor's own facts by. Empty unless an ancestor re-converges
+    /// upstream of this fork — the series-parallel case (a divergent line off a
+    /// confluence-chain trunk, MNEMO-GAP-003). Key sets of `cut` and
+    /// `cut_forward` are disjoint: a confluence (has `converges_from`) is never
+    /// a fork ancestor (reached via `forks_from`).
+    cut_forward: BTreeMap<String, String>,
 }
 
 /// One world's lineage view over THE single world-line graph traversals
@@ -1116,27 +1130,43 @@ pub fn lineage_of(
     branches: &BTreeMap<String, mnemosyne_core::Branch>,
     world: &str,
 ) -> Result<Lineage, String> {
+    let cut_pairs = mnemosyne_core::fork_chain(branches, world)?;
+    // Backward-then-forward (Round 611): for each fork ancestor `(A, at)`,
+    // every confluence `A` flows into is inherited here bounded at the SAME
+    // departure `at` (exactly as `cut` bounds `A`'s own facts) — the displaced
+    // re-convergence suffix a divergent line off a confluence-chain trunk still
+    // owns. Nearest ancestor wins the bound: `fork_chain` is nearest-first and
+    // the nearer departure is the canonically later (more permissive) one, so
+    // `or_insert` keeps it.
+    let mut cut_forward: BTreeMap<String, String> = BTreeMap::new();
+    for (ancestor, at) in &cut_pairs {
+        for confluence in mnemosyne_core::forward_confluences(branches, ancestor) {
+            cut_forward.entry(confluence).or_insert_with(|| at.clone());
+        }
+    }
     Ok(Lineage {
-        cut: mnemosyne_core::fork_chain(branches, world)?
-            .into_iter()
-            .collect(),
+        cut: cut_pairs.into_iter().collect(),
         forward: mnemosyne_core::forward_confluences(branches, world)
             .into_iter()
             .collect(),
+        cut_forward,
     })
 }
 
 /// Per potential query world, the OTHER branches whose declared edge sets
-/// compose into its order (Rounds 438 + 533) — the single
+/// compose into its order (Rounds 438 + 533 + 611) — the single
 /// [`CanonOrder::from_declaration`] composition input. A world's order is the
 /// closure of its base ∪ these contributors' edges ∪ its own; the contributors
-/// are its world-line membership in BOTH directions: backward fork ancestors
-/// (the inherited prefix, [`mnemosyne_core::fork_chain`]) AND forward
-/// confluence-suffixes (the shared continuation, [`mnemosyne_core::forward_confluences`]).
-/// The order algebra is direction-agnostic — it composes edge sets and
-/// `closure_of` topo-closes the resulting DAG — so the two relations unify here
-/// into one contributor list; the backward/forward DISTINCTION lives only in
-/// [`Lineage`] (visibility), where it is load-bearing. Keyed for `MAIN_BRANCH`
+/// are its world-line membership in every direction: backward fork ancestors
+/// (the inherited prefix, [`mnemosyne_core::fork_chain`]), forward
+/// confluence-suffixes (the shared continuation, [`mnemosyne_core::forward_confluences`]),
+/// AND the confluences those ANCESTORS flow into (R611 — the displaced
+/// re-convergence suffix a divergent fork still orders over, mirroring
+/// [`Lineage::cut_forward`]). The order algebra is direction-agnostic — it
+/// composes edge sets and `closure_of` topo-closes the resulting DAG — so the
+/// relations unify here into one contributor list; the direction DISTINCTION
+/// lives only in [`Lineage`] (visibility), where it is load-bearing. Keyed for
+/// `MAIN_BRANCH`
 /// and every registered branch (a confluence parent may be `main`); a world
 /// with no contributors is omitted (its order is the base, reached via the
 /// `reach_for` fallback — byte-stable for a pre-fork/pre-confluence store).
@@ -1147,10 +1177,20 @@ pub fn world_order_composition(
     for world in
         std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
     {
-        let mut contributors: Vec<String> = mnemosyne_core::fork_chain(branches, &world)?
-            .into_iter()
-            .map(|(ancestor, _)| ancestor)
+        let ancestors = mnemosyne_core::fork_chain(branches, &world)?;
+        let mut contributors: Vec<String> = ancestors
+            .iter()
+            .map(|(ancestor, _)| ancestor.clone())
             .collect();
+        // Round 611: also the confluence-suffixes each fork ANCESTOR flows into,
+        // so a divergent line off a confluence-chain trunk composes the
+        // displaced segment's edges into its order — making the fork-bound
+        // comparison decidable there (else a suffix coordinate past the fork is
+        // Unknown, not definitively Out). The departure bound is enforced by
+        // `visibility` (`Lineage::cut_forward`); the order may close generously.
+        for (ancestor, _) in &ancestors {
+            contributors.extend(mnemosyne_core::forward_confluences(branches, ancestor));
+        }
         contributors.extend(mnemosyne_core::forward_confluences(branches, &world));
         if !contributors.is_empty() {
             out.insert(world, contributors);
@@ -1160,16 +1200,32 @@ pub fn world_order_composition(
 }
 
 /// Three-state world-visibility of a fact in query world `world` (Rounds
-/// 438 + 533, B-1 honest): `In` = part of this world (its own branch, an
-/// ancestor branch at-or-before the departure point, or a FORWARD
-/// confluence-suffix this world flows into); `Out` = definitively another
-/// world; `Unknown` = on an ancestor, but the declared order cannot compare
-/// its start to the fork point.
+/// 438 + 533 + 611, B-1 honest): `In` = part of this world (its own branch, a
+/// FORWARD confluence-suffix this world flows into, an ancestor branch
+/// at-or-before the departure point, or a confluence an ANCESTOR flows into
+/// at-or-before that same departure — R611); `Out` = definitively another
+/// world; `Unknown` = inherited, but the declared order cannot compare its
+/// start to the departure point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Vis {
     In,
     Out,
     Unknown,
+}
+
+/// The bounded-inheritance visibility ladder (Rounds 438 + 611): a fact
+/// inherited from an ancestor is `In` at-or-before the departure bound `at`,
+/// `Out` if the declared order puts its start strictly after, and `Unknown` if
+/// the order cannot compare its start to `at`. Shared by the direct-ancestor
+/// (`cut`) and ancestor-confluence (`cut_forward`) arms so the two cannot drift.
+fn bounded_visibility(order: &CanonOrder, world: &str, canon_from: &str, at: &str) -> Vis {
+    if order.le(world, canon_from, at) {
+        Vis::In
+    } else if order.comparable(world, canon_from, at) {
+        Vis::Out
+    } else {
+        Vis::Unknown
+    }
 }
 
 fn visibility(world: &str, lineage: &Lineage, order: &CanonOrder, fact: &NarrativeFact) -> Vis {
@@ -1186,22 +1242,23 @@ fn visibility(world: &str, lineage: &Lineage, order: &CanonOrder, fact: &Narrati
     if lineage.forward.contains(&fact.branch) {
         return Vis::In;
     }
+    // Backward-then-forward (Round 611): a fact on a confluence a fork ANCESTOR
+    // flows into is inherited up to that ancestor's departure — the displaced
+    // re-convergence suffix a divergent line off a confluence-chain trunk still
+    // owns, bounded exactly as the ancestor's own facts (`cut`) below. Checked
+    // before `cut`: the two key sets are disjoint (a confluence is never a fork
+    // ancestor), so the order only reads as prefix-then-own.
+    if let Some(at) = lineage.cut_forward.get(&fact.branch) {
+        return bounded_visibility(order, world, &fact.canon_from, at);
+    }
     match lineage.cut.get(&fact.branch) {
         None => Vis::Out,
-        Some(at) => {
-            if order.le(world, &fact.canon_from, at) {
-                Vis::In
-            } else if order.comparable(world, &fact.canon_from, at) {
-                Vis::Out
-            } else {
-                Vis::Unknown
-            }
-        }
+        Some(at) => bounded_visibility(order, world, &fact.canon_from, at),
     }
 }
 
 /// B-2 scope resolution — the ONE place conflict scoping is decided:
-/// `(frame, world-line)` with fork lineage (Rounds 433 + 438 + 535). Same
+/// `(frame, world-line)` with fork lineage (Rounds 433 + 438 + 535 + 611). Same
 /// frame required; the pair's JOIN world (the playthrough where both facts
 /// co-exist, so a conflict between them is real) is found in either world-line
 /// direction:
@@ -1211,13 +1268,20 @@ fn visibility(world: &str, lineage: &Lineage, order: &CanonOrder, fact: &Narrati
 ///   flows INTO → the PARENT, where the shared suffix is visible
 ///   ([`Lineage::forward`]) alongside the parent-middle fact. This scopes a
 ///   cross-merge conflict the backward `cut` cannot see.
+/// - BACKWARD-THEN-FORWARD (R611): one fact is on a confluence a fork ANCESTOR
+///   of the other's branch flows into ([`Lineage::cut_forward`]) → the
+///   descendant (divergent) branch, which inherits that displaced suffix up to
+///   its fork. This scopes a divergent line off a confluence-chain trunk
+///   against the trunk prefix a re-convergence moved onto the confluence — kept
+///   in step with the same-named `visibility` arm so a conflict the walk shows
+///   co-holding is never silently un-scoped (the half-invariant trap).
 ///
 /// Else there is no shared world — sibling/unrelated world-lines are data, like
-/// cross-frame pairs. (The sibling-confluence-common-parent case — two distinct
-/// confluences sharing a parent — would need an In-set intersection over the
-/// query worlds; it belongs to the deferred series-parallel generalization, not
-/// the R528 exclusive-OR diamond, so it stays unscoped here, surfaced as
-/// `cross_scope_pairs`, never silent.)
+/// cross-frame pairs. (The remaining sibling-confluence-common-parent case —
+/// two DISTINCT confluences sharing a parent, neither an ancestor of the other —
+/// would need an In-set intersection over the query worlds; it stays in the
+/// deferred series-parallel generalization, not the R528 exclusive-OR diamond,
+/// surfaced as `cross_scope_pairs`, never silent.)
 fn join_world<'a>(
     a: &'a NarrativeFact,
     b: &'a NarrativeFact,
@@ -1243,6 +1307,18 @@ fn join_world<'a>(
         return Some(&b.branch);
     }
     if lineages[&a.branch].forward.contains(&b.branch) {
+        return Some(&a.branch);
+    }
+    // Backward-then-forward (Round 611): `a` is on a confluence that a fork
+    // ANCESTOR of `b`'s world flows into ([`Lineage::cut_forward`]) — `a` is
+    // inherited (bounded at the fork) in `b.branch`, the divergent world where
+    // `b` lives natively, so that world is the join. `holds_at` re-applies the
+    // fork bound through `visibility`, so this names the world bound-free like
+    // the arms above (a past-the-fork suffix fact simply never co-holds there).
+    if lineages[&b.branch].cut_forward.contains_key(&a.branch) {
+        return Some(&b.branch);
+    }
+    if lineages[&a.branch].cut_forward.contains_key(&b.branch) {
         return Some(&a.branch);
     }
     None
@@ -7902,6 +7978,356 @@ mod tests {
         // timeline_gaps compose without error over the same topology.
         irony_intervals(&store, &order).unwrap();
         timeline_gaps(&store, &order, &[]).unwrap();
+    }
+
+    /// Round 611 — the fork-off-a-confluence-chain fixture (MNEMO-GAP-003): a
+    /// re-convergence braid (`braid` forks at `s1`, `weave` reweaves both
+    /// parents at `s2` and OWNS the `s2 -> s3 -> s4` suffix) with a DIVERGENT
+    /// line (`ending`) forking off the trunk at `s3` — DOWNSTREAM of the merge,
+    /// so the trunk prefix `ending` inherits (`f-mid` at `s3`) was displaced onto
+    /// `weave`. The suffix edges live ONLY on `weave`, never in the base, so a
+    /// divergent world orders over them solely through R611's ancestor-confluence
+    /// contributor (`world_order_composition`) — exercising the order-composition
+    /// leg, not just the base-level order the CLI repro used. `extra` injects
+    /// facts for the conflict-scoping test.
+    fn braid_chain_store(extra: Vec<FactImport>) -> (AtomicStore, CanonOrder) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3", "s4"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let on = |id: &str, branch: &str, at: &str| FactImport {
+            branch: Some(branch.to_string()),
+            ..fact(id, "gt", at, None)
+        };
+        let mut facts = vec![
+            // Pre-fork trunk SETUP on main, paid ACROSS the confluence by f-mid.
+            FactImport {
+                payoff_expectation: Some("expected".to_string()),
+                ..fact("f-prefix", "gt", "s1", None)
+            },
+            fact("f-primary", "gt", "s2", None), // main's exclusive middle
+            on("f-alt", "braid", "s2"),          // braid's exclusive middle
+            // The MID-TRUNK fact, displaced onto the confluence at the fork
+            // point s3, paying off main's pre-fork setup.
+            FactImport {
+                pays_off: vec!["f-prefix".to_string()],
+                ..on("f-mid", "weave", "s3")
+            },
+            on("f-tail", "weave", "s4"), // shared tail, PAST ending's fork
+            on("f-end-beat", "ending", "s4"), // ending's own beat at the shared s4
+        ];
+        facts.extend(extra);
+        let converge = |b: &str, at: &str| mnemosyne_atomic::BranchConvergeImport {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                // Parents-first: the confluence's parents pre-exist (R532);
+                // `ending` forks off `main` downstream of the merge.
+                branches: vec![
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "braid".to_string(),
+                        description: String::new(),
+                        forks_from: Some(MAIN_BRANCH.to_string()),
+                        forks_at: Some("s1".to_string()),
+                        converges_from: vec![],
+                    },
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "weave".to_string(),
+                        description: String::new(),
+                        forks_from: None,
+                        forks_at: None,
+                        converges_from: vec![converge("main", "s2"), converge("braid", "s2")],
+                    },
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "ending".to_string(),
+                        description: String::new(),
+                        forks_from: Some(MAIN_BRANCH.to_string()),
+                        forks_at: Some("s3".to_string()),
+                        converges_from: vec![],
+                    },
+                ],
+                entities: vec![],
+                predicates: vec![],
+                facts,
+            },
+        )
+        .unwrap();
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2")], // base carries only the pre-merge trunk
+            branches: BTreeMap::from([(
+                "weave".to_string(),
+                vec![e("s2", "s3"), e("s3", "s4")], // the displaced suffix
+            )]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
+        (store, order)
+    }
+
+    /// Round 611 — MNEMO-GAP-003: a divergent line forking off a
+    /// confluence-CHAIN trunk inherits the trunk prefix a re-convergence
+    /// displaced onto the confluence, BOUNDED at its fork. Without the
+    /// backward-then-forward arm, `ending` loses `f-mid` (the s3 setup moved onto
+    /// `weave`) even though it forked at that very point; the store also fails to
+    /// scan because `ending`'s own `f-end-beat@s4` sits on a coordinate its order
+    /// could not name until the ancestor-confluence composition leg supplied it.
+    #[test]
+    fn fork_off_confluence_chain_inherits_displaced_trunk_prefix() {
+        let (store, order) = braid_chain_store(vec![]);
+
+        // The clean store scans without contradiction — in particular NO
+        // FactCanonOffBranch for `f-end-beat@s4` (its coordinate is named in
+        // `ending`'s order only via the R611 order-composition leg).
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report.violations.is_empty(),
+            "the braid-chain store scans clean: {:?}",
+            report.violations
+        );
+
+        let holding = |world: &str, at: &str| -> Vec<String> {
+            frame_view(&store, &order, "gt", world, None, at)
+                .unwrap()
+                .holding
+                .into_iter()
+                .map(|entry| entry.fact_id)
+                .collect()
+        };
+
+        // THE FIX: `ending` inherits the displaced mid-trunk setup at its fork.
+        assert!(
+            holding("ending", "s3").contains(&"f-mid".to_string()),
+            "ending sees the mid-trunk setup displaced onto the confluence"
+        );
+        // BOUNDED regression: the shared tail PAST the fork is NOT stolen, and it
+        // is DEFINITIVELY excluded (Out, not Unknown) — the order-composition leg
+        // makes s4 comparable to the fork point s3.
+        let at_s4 = frame_view(&store, &order, "gt", "ending", None, "s4").unwrap();
+        assert!(
+            !at_s4.holding.iter().any(|e| e.fact_id == "f-tail"),
+            "ending does not steal the shared tail past its fork"
+        );
+        assert!(
+            !at_s4.unknown.contains(&"f-tail".to_string()),
+            "the tail is definitively Out, not an undecidable Unknown: {:?}",
+            at_s4.unknown
+        );
+        // ...and `ending` never sees braid's exclusive middle (scoping intact).
+        assert!(!holding("ending", "s4").contains(&"f-alt".to_string()));
+
+        // The re-convergence braid itself is unaffected: `braid` and `main` each
+        // walk the full trunk (their forward membership was already correct).
+        assert!(holding("braid", "s3").contains(&"f-mid".to_string()));
+        assert!(holding("braid", "s4").contains(&"f-tail".to_string()));
+        assert!(holding("main", "s3").contains(&"f-mid".to_string()));
+        assert!(holding("main", "s4").contains(&"f-tail".to_string()));
+
+        // payoff coverage: main's pre-fork setup is discharged in the DIVERGENT
+        // world too — f-mid pays it off there now, so it does not dangle.
+        let pay = payoff_coverage(&store, &order).unwrap();
+        let ending = &pay.worlds["ending"];
+        assert_eq!(
+            ending
+                .paid
+                .iter()
+                .map(|p| p.setup.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-prefix"],
+            "the fork's inherited setup pays off across the confluence: {ending:?}"
+        );
+        assert!(
+            ending.dangling.is_empty(),
+            "no dangling setup in the divergent world: {ending:?}"
+        );
+    }
+
+    /// Round 611 — CONSISTENCY: the recorded-conflict scoping (`join_world`)
+    /// tracks the extended visibility, so a conflict the walk shows co-holding is
+    /// never silently un-scoped (the half-invariant trap). A fact on `ending`
+    /// contradicting the displaced trunk fact `f-mid` (on the confluence) MUST be
+    /// caught in `ending`, not bucketed into `cross_scope_pairs`.
+    #[test]
+    fn fork_off_confluence_chain_conflict_scopes_to_the_divergent_world() {
+        let clash = FactImport {
+            branch: Some("ending".to_string()),
+            conflicts_with: vec!["f-mid".to_string()],
+            ..fact("f-clash", "gt", "s4", None)
+        };
+        let (store, order) = braid_chain_store(vec![clash]);
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::FrameConflictOverlap { branch, fact_a, fact_b, .. }
+                    if branch == "ending"
+                        && [fact_a.as_str(), fact_b.as_str()].contains(&"f-clash")
+                        && [fact_a.as_str(), fact_b.as_str()].contains(&"f-mid")
+            )),
+            "the divergent-vs-displaced-trunk conflict scopes to `ending`: {:?}",
+            report.violations
+        );
+        assert_eq!(
+            report.cross_scope_pairs, 0,
+            "the cross-chain pair is now scoped, not bucketed as cross-scope"
+        );
+    }
+
+    /// Round 611 — CHAIN DEPTH (the case the gap is named for): the trunk is a
+    /// CHAIN of confluences (`weave1` reweaves diamond 1, then `weave2` reweaves
+    /// diamond 2 downstream of it), so a divergent line forking off `main` past
+    /// BOTH merges must inherit the trunk prefix displaced onto BOTH — the
+    /// transitive closure `forward_confluences` already walks, now carried
+    /// through the fork by `cut_forward`. This is the consumer's real topology
+    /// (F1 + F2 + F4 = a three-confluence trunk with divergent endings).
+    #[test]
+    fn fork_off_confluence_chain_inherits_every_link_of_the_chain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3", "s4", "s4b", "s5", "s6"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let on = |id: &str, branch: &str, at: &str| FactImport {
+            branch: Some(branch.to_string()),
+            ..fact(id, "gt", at, None)
+        };
+        let facts = vec![
+            fact("f-prefix", "gt", "s1", None),  // pre-fork trunk (main)
+            fact("f-primary", "gt", "s2", None), // main's middle, diamond 1
+            on("f-alt1", "braid1", "s2"),        // braid1's middle, diamond 1
+            on("f-mid1", "weave1", "s3"),        // displaced trunk prefix, link 1
+            on("f-w1mid", "weave1", "s4"),       // weave1's middle, diamond 2
+            on("f-alt2", "braid2", "s4b"),       // braid2's middle, diamond 2
+            on("f-mid2", "weave2", "s5"),        // displaced trunk prefix, link 2
+            on("f-tail", "weave2", "s6"),        // shared tail, PAST ending's fork
+            on("f-end-beat", "ending", "s6"),    // the divergent ending's own beat
+        ];
+        let converge = |b: &str, at: &str| mnemosyne_atomic::BranchConvergeImport {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        let fork = |id: &str, from: &str, at: &str| mnemosyne_atomic::BranchImport {
+            branch_id: id.to_string(),
+            description: String::new(),
+            forks_from: Some(from.to_string()),
+            forks_at: Some(at.to_string()),
+            converges_from: vec![],
+        };
+        let merge = |id: &str, parents: Vec<mnemosyne_atomic::BranchConvergeImport>| {
+            mnemosyne_atomic::BranchImport {
+                branch_id: id.to_string(),
+                description: String::new(),
+                forks_from: None,
+                forks_at: None,
+                converges_from: parents,
+            }
+        };
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                // Parents-first (R532). Diamond 2 forks off the CONFLUENCE that
+                // ended diamond 1 — that is what makes the trunk a chain.
+                branches: vec![
+                    fork("braid1", MAIN_BRANCH, "s1"),
+                    merge(
+                        "weave1",
+                        vec![converge("main", "s2"), converge("braid1", "s2")],
+                    ),
+                    fork("braid2", "weave1", "s3"),
+                    merge(
+                        "weave2",
+                        vec![converge("weave1", "s4"), converge("braid2", "s4b")],
+                    ),
+                    // The divergent ending forks off `main` at s5 — a coordinate
+                    // main only reaches THROUGH both confluences.
+                    fork("ending", MAIN_BRANCH, "s5"),
+                ],
+                entities: vec![],
+                predicates: vec![],
+                facts,
+            },
+        )
+        .unwrap();
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2")],
+            branches: BTreeMap::from([
+                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
+                ("braid2".to_string(), vec![e("s3", "s4b")]),
+                (
+                    "weave2".to_string(),
+                    vec![e("s4", "s5"), e("s4b", "s5"), e("s5", "s6")],
+                ),
+            ]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
+
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report.violations.is_empty(),
+            "the two-link chain scans clean: {:?}",
+            report.violations
+        );
+
+        let held = |at: &str| -> Vec<String> {
+            frame_view(&store, &order, "gt", "ending", None, at)
+                .unwrap()
+                .holding
+                .into_iter()
+                .map(|entry| entry.fact_id)
+                .collect()
+        };
+        // THE CHAIN: the divergent line inherits the prefix displaced onto BOTH
+        // confluences — link 1 (`weave1`) AND link 2 (`weave2`) — plus weave1's
+        // own middle, all of which sit on main's walk at-or-before the s5 fork.
+        let at_fork = held("s5");
+        for f in ["f-prefix", "f-primary", "f-mid1", "f-w1mid", "f-mid2"] {
+            assert!(
+                at_fork.contains(&f.to_string()),
+                "ending must inherit `{f}` from the confluence chain: {at_fork:?}"
+            );
+        }
+        // BOUNDED still: the shared tail past the fork is not stolen, and neither
+        // braid's exclusive middle ever crosses into the divergent world.
+        let at_end = frame_view(&store, &order, "gt", "ending", None, "s6").unwrap();
+        let holding: Vec<&str> = at_end.holding.iter().map(|e| e.fact_id.as_str()).collect();
+        assert!(holding.contains(&"f-end-beat"));
+        for f in ["f-tail", "f-alt1", "f-alt2"] {
+            assert!(
+                !holding.contains(&f),
+                "`{f}` must not leak into the divergent world: {holding:?}"
+            );
+            assert!(
+                !at_end.unknown.contains(&f.to_string()),
+                "`{f}` is definitively Out, not Unknown: {:?}",
+                at_end.unknown
+            );
+        }
     }
 
     /// Round 535 — SUCCESSION reconciliation wired at BOTH enforcement points
