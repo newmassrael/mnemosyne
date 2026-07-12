@@ -254,6 +254,10 @@ pub struct ContinuityScanReport {
     pub unordered_pairs: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file).
     pub rules: usize,
+    /// Of `rules`, how many are INTERVAL-class (Round 491): a nonzero count
+    /// with `interval_severity` OFF is a declared-but-ungated timeline rule
+    /// the CLI names in a NOTICE (the R491 opt-in nudge).
+    pub interval_rules: usize,
     /// Exclusive-rule candidate pairs the declared order cannot compare.
     pub rule_unordered_pairs: usize,
     /// Same-frame same-subject typed pairs no succession PATH connects —
@@ -315,6 +319,7 @@ pub fn continuity_scan(
         cross_scope_pairs: report.cross_scope_pairs,
         unordered_pairs: report.unordered_pairs,
         rules: report.rules,
+        interval_rules: report.interval_rules,
         rule_unordered_pairs: report.rule_unordered_pairs,
         unchained_state_pairs: report.unchained_state_pairs,
         interval_unverifiable: report.interval_unverifiable,

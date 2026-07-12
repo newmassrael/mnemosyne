@@ -1057,6 +1057,12 @@ pub struct ContinuityReport {
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
     /// the gate's pre-Round-449 behavior exactly).
     pub rules: usize,
+    /// Of the declared `rules`, how many are INTERVAL-class (Round 491): the
+    /// count that drives the `interval_severity` opt-in NOTICE. An interval
+    /// rule is surface-only unless `interval_severity = reject`, so a nonzero
+    /// count with the class OFF is a declared-but-ungated rule the CLI names
+    /// aloud rather than leaving silent (the R491 opt-in nudge).
+    pub interval_rules: usize,
     /// Distinct exclusive-rule candidate pairs whose canon coordinates the
     /// declared order cannot compare in some world (B-1: surfaced, never
     /// gated — the rule cannot decide them).
@@ -2123,6 +2129,13 @@ pub fn scan_continuity(
     // derived pair exists only relative to a world). One holds-semantics
     // under both: `WorldCtx::holds_at`.
     report.rules = rules.len();
+    // Interval-class subset (Round 491): drives the CLI's interval_severity
+    // opt-in notice — a declared interval rule is surface-only until the class
+    // is set to reject, so the count is surfaced to name an ungated rule aloud.
+    report.interval_rules = rules
+        .iter()
+        .filter(|r| matches!(r.spec, NarrativeRuleSpec::Interval { .. }))
+        .count();
     let worlds = query_worlds(store);
     for rule in rules {
         let typed: Vec<(&String, &NarrativeFact)> = facts

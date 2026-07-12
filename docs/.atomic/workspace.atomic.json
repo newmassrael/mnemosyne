@@ -14659,6 +14659,44 @@
         "Follow-ups (noted, YAGNI until pulled): an interval-off notice (the R491 opt-in nudge, the one silent-surprise left as doc-only); the transition rule under-dramatizes in the prose (a craft note from the judge, not a defect). Neither pulled.",
         "PUSH: authorized this session by the owner's explicit push word. R601 (cc13fb0), R602 (d4db8ae), R603 (8141f60), R604 (9c78f2f), R605 push to origin/main (R593-R600 already at e51b1b2)."
       ]
+    },
+    "Round 606 — validate-continuity names a declared-but-ungated interval rule (R491 opt-in NOTICE, the last silent surprise)": {
+      "decision_summary": "The R604/R605 YAGNI-deferred follow-up is paid: the one remaining silent surprise in the continuity opt-in — a DECLARED interval rule that silently never gates because interval_severity is OFF by default (Round 491: a timeline gap can be a deliberate authored time-bend, so gating is the author opt-in) — is now LOUD at runtime, not doc-only. validate-continuity prints a NOTICE naming the count of declared interval-class rules whenever at least one is declared and interval_severity is not reject. The count rides a new interval_rules field on ContinuityReport (and its ContinuityScanReport DTO mirror), the interval-class subset of the existing rules count; the NOTICE combines that datum with the resolved interval_severity policy in the CLI presentation layer (SSOT: the count is data in the report, the nudge is presentation in the CLI). describe-schema gains a matching clause so the doc (Round 604) and the runtime agree. This NUDGES, it does not gate — the OFF default is deliberate (verify-before-claiming), so the notice stays advisory, never a policy change.",
+      "changes_bullets": [
+        "ContinuityReport gains interval_rules: the interval-class subset of the existing rules count, counted in scan_continuity beside report.rules (mirrors the interval_rules field already on TimelineGapsReport, Round 490)",
+        "ContinuityScanReport (the ops DTO) threads the same interval_rules field so the validate-continuity JSON and the MCP tool surface it",
+        "validate-continuity prints a NOTICE when interval_rules > 0 and interval_severity is not reject, naming the declared count and the opt-in (set [continuity].interval_severity = reject to gate)",
+        "describe-schema narrative-rules note gains a matching clause so the doc (Round 604) and the runtime agree: a declared interval rule with the class OFF is named aloud, not silent"
+      ],
+      "verification_bullets": [
+        "cargo build + cargo clippy --all-targets -D warnings + cargo fmt --all --check all clean",
+        "new smoke test interval_severity_off_emits_notice_naming_the_rule_count: NOTICE present at OFF naming 1 interval rule, absent at reject; validate_continuity_smoke 9/9, mnemosyne-validate lib 280/280 pass",
+        "e2e on a scratch workspace: interval_severity OFF prints the NOTICE at exit 0 (surface-only); --interval-severity reject removes the NOTICE and gates (exit 1)",
+        "validate-workspace clean: 352 entries, T1 orphan 0, T3 reject 0, commit-ledger drift missing 0"
+      ],
+      "carry_forward_bullets": [
+        "The interval opt-in surface is now complete: describe-schema documents it (Round 604), a misspelled [continuity] key fails loud (Round 604), and a declared-but-ungated interval rule is named at runtime (this round) — no silent surprise remains in the continuity opt-in",
+        "Considered, not built: the same NOTICE in propose-verdict — deferred (its dry run already surfaces the surfaced-vs-gating gap via violation_count vs gating_violation_count, and describe-schema Round 604 covers the loop learning path); add only on real pull",
+        "The Mnemosyne-side narrative loop is proven + hardened + debt-free; the next high-value move is a change of venue (pinion consumer or a new experiment) at owner cadence"
+      ],
+      "publishable_decision_summary": "The R604/R605 YAGNI-deferred follow-up is paid: the one remaining silent surprise in the continuity opt-in — a DECLARED interval rule that silently never gates because interval_severity is OFF by default (Round 491: a timeline gap can be a deliberate authored time-bend, so gating is the author opt-in) — is now LOUD at runtime, not doc-only. validate-continuity prints a NOTICE naming the count of declared interval-class rules whenever at least one is declared and interval_severity is not reject. The count rides a new interval_rules field on ContinuityReport (and its ContinuityScanReport DTO mirror), the interval-class subset of the existing rules count; the NOTICE combines that datum with the resolved interval_severity policy in the CLI presentation layer (SSOT: the count is data in the report, the nudge is presentation in the CLI). describe-schema gains a matching clause so the doc (Round 604) and the runtime agree. This NUDGES, it does not gate — the OFF default is deliberate (verify-before-claiming), so the notice stays advisory, never a policy change.",
+      "publishable_changes_bullets": [
+        "ContinuityReport gains interval_rules: the interval-class subset of the existing rules count, counted in scan_continuity beside report.rules (mirrors the interval_rules field already on TimelineGapsReport, Round 490)",
+        "ContinuityScanReport (the ops DTO) threads the same interval_rules field so the validate-continuity JSON and the MCP tool surface it",
+        "validate-continuity prints a NOTICE when interval_rules > 0 and interval_severity is not reject, naming the declared count and the opt-in (set [continuity].interval_severity = reject to gate)",
+        "describe-schema narrative-rules note gains a matching clause so the doc (Round 604) and the runtime agree: a declared interval rule with the class OFF is named aloud, not silent"
+      ],
+      "publishable_verification_bullets": [
+        "cargo build + cargo clippy --all-targets -D warnings + cargo fmt --all --check all clean",
+        "new smoke test interval_severity_off_emits_notice_naming_the_rule_count: NOTICE present at OFF naming 1 interval rule, absent at reject; validate_continuity_smoke 9/9, mnemosyne-validate lib 280/280 pass",
+        "e2e on a scratch workspace: interval_severity OFF prints the NOTICE at exit 0 (surface-only); --interval-severity reject removes the NOTICE and gates (exit 1)",
+        "validate-workspace clean: 352 entries, T1 orphan 0, T3 reject 0, commit-ledger drift missing 0"
+      ],
+      "publishable_carry_forward_bullets": [
+        "The interval opt-in surface is now complete: describe-schema documents it (Round 604), a misspelled [continuity] key fails loud (Round 604), and a declared-but-ungated interval rule is named at runtime (this round) — no silent surprise remains in the continuity opt-in",
+        "Considered, not built: the same NOTICE in propose-verdict — deferred (its dry run already surfaces the surfaced-vs-gating gap via violation_count vs gating_violation_count, and describe-schema Round 604 covers the loop learning path); add only on real pull",
+        "The Mnemosyne-side narrative loop is proven + hardened + debt-free; the next high-value move is a change of venue (pinion consumer or a new experiment) at owner cadence"
+      ]
     }
   },
   "inventory_entries": {},

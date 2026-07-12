@@ -396,3 +396,35 @@ fn interval_violation_is_surface_not_gate_under_severity_but_gates_on_interval_s
     );
     assert!(out.status.success(), "{:?}", out);
 }
+
+/// Round 491 — the interval opt-in NOTICE: with `interval_severity` OFF, a
+/// declared interval rule is surface-only, so `validate-continuity` names it
+/// aloud (a declared-but-ungated rule must not be a silent surprise). Setting
+/// the class to `reject` removes the nudge (the rule now gates).
+#[test]
+fn interval_severity_off_emits_notice_naming_the_rule_count() {
+    let tmp = TempDir::new().unwrap();
+    write_interval_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\nrules_path = \"narrative-rules.json\"\n",
+    );
+    // Human output, class OFF: the declared interval rule is surface-only, so
+    // the CLI names it in a NOTICE instead of leaving it silently ungated.
+    let out = run(tmp.path(), &["validate-continuity"]);
+    assert!(out.status.success(), "{:?}", out);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("NOTICE") && stdout.contains("1 interval rule"),
+        "expected an interval opt-in notice, got: {stdout}"
+    );
+    // Opt in: with `interval_severity reject` the rule gates, so no ungated NOTICE.
+    let out = run(
+        tmp.path(),
+        &["validate-continuity", "--interval-severity", "reject"],
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("NOTICE"),
+        "no ungated-interval notice when interval_severity = reject: {stdout}"
+    );
+}

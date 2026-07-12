@@ -2093,6 +2093,20 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         for v in &report.violations {
             println!("  {}", serde_json::to_string(v)?);
         }
+        // Interval opt-in NOTICE (Round 491): a declared interval rule is
+        // surface-only until `interval_severity = reject`. Name the count so a
+        // declared-but-ungated timeline rule is loud, not a silent surprise
+        // (verify-before-claiming: the OFF default is deliberate — a gap can be
+        // an authored time-bend — so this nudges, it does not gate).
+        if report.interval_rules > 0 && !matches!(interval_severity, Some(s) if s.is_reject()) {
+            println!(
+                "  NOTICE: {} interval rule(s) declared but interval_severity is {} \u{2014} \
+                 timeline gaps are SURFACED, not gated; set [continuity].interval_severity = \
+                 reject to gate them (a gap can be a deliberate time-bend).",
+                report.interval_rules,
+                interval_severity.map_or("off", Severity::as_str)
+            );
+        }
     }
     if gate.gates {
         std::process::exit(1);

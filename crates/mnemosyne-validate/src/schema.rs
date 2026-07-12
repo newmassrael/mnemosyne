@@ -323,7 +323,9 @@ pub fn describe_schema() -> SchemaContract {
              (default reject), but INTERVAL violations are SURFACE-ONLY by default (a timeline gap \
              can be a deliberate authored time-bend) — set `[continuity].interval_severity = \
              \"reject\"` to make an interval rule actually GATE, else it is reported but never \
-             fails the gate.",
+             fails the gate. When interval rules are declared with the class OFF, \
+             `validate-continuity` prints a NOTICE naming their count so the ungated state is \
+             loud, not silent.",
     }
 }
 
