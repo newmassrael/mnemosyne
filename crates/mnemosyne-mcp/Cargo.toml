@@ -15,7 +15,7 @@ mnemosyne-ops = { path = "../mnemosyne-ops" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-projection = { path = "../mnemosyne-projection" }
-rmcp = { version = "1.6", features = ["server", "transport-io", "macros"] }
+rmcp = { version = "2", features = ["server", "transport-io", "macros"] }
 schemars = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }

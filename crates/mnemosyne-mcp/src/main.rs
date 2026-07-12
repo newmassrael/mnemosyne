@@ -32,9 +32,8 @@ use mnemosyne_projection::{ProjectionService, ProjectionValidation};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        Annotated, CallToolResult, ListResourcesResult, PaginatedRequestParams, RawResource,
-        ReadResourceRequestParams, ReadResourceResult, ResourceContents, ServerCapabilities,
-        ServerInfo,
+        CallToolResult, ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams,
+        ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo,
     },
     schemars,
     service::{RequestContext, RoleServer},
@@ -886,11 +885,11 @@ impl MnemosyneServer {
     }
 
     fn tool_text(s: String) -> CallToolResult {
-        CallToolResult::success(vec![rmcp::model::Content::text(s)])
+        CallToolResult::success(vec![rmcp::model::ContentBlock::text(s)])
     }
 
     fn tool_error(s: String) -> CallToolResult {
-        CallToolResult::error(vec![rmcp::model::Content::text(s)])
+        CallToolResult::error(vec![rmcp::model::ContentBlock::text(s)])
     }
 
     /// Serialize a structured payload to pretty JSON (read ops + receipts).
@@ -2392,11 +2391,10 @@ impl ServerHandler for MnemosyneServer {
         let resources = resources::RESOURCES
             .iter()
             .map(|r| {
-                let raw = RawResource::new(r.uri, r.name)
+                Resource::new(r.uri, r.name)
                     .with_title(r.title)
                     .with_description(r.description)
-                    .with_mime_type("text/markdown");
-                Annotated::new(raw, None)
+                    .with_mime_type("text/markdown")
             })
             .collect();
         Ok(ListResourcesResult {
