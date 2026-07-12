@@ -44,13 +44,6 @@
 //! no parallel coarse sibling. Its introduction and the runtime retirement
 //! are ratified through Changelog entries only.
 
-// Salsa 0.27's #[tracked] macro expansion makes clippy read the idiomatic
-// `<'db>` db-lifetime on these tracked fns as elidable (needless_lifetimes);
-// the same source was clippy-clean under salsa 0.26.1. The explicit lifetime
-// is the salsa tracked-fn convention, so suppress the macro-induced false
-// positive at module scope rather than distort the signatures.
-#![allow(clippy::needless_lifetimes)]
-
 use crate::ValidationResult;
 use mnemosyne_core::{
     ChangelogEntryFact, CrossRefFact, DecisionStatus, FrozenListFact, SectionFact,
@@ -176,8 +169,8 @@ pub struct BranchIndex {
 /// - **CrossRef Vec push/remove on BranchIndex**: invalidates all S's
 /// indexed cache; downstream invalidation again gated by Vec equality.
 #[salsa::tracked]
-pub fn outbound_crossrefs_by_section<'db>(
-    db: &'db dyn CascadeDb,
+pub fn outbound_crossrefs_by_section(
+    db: &dyn CascadeDb,
     branch_index: BranchIndex,
     section_id: u64,
 ) -> Vec<CrossRefRecord> {
@@ -200,8 +193,8 @@ pub fn outbound_crossrefs_by_section<'db>(
 /// `ref_kind`/`from_section` field reads occur only on the pre-indexed result,
 /// not on the entire BranchIndex CrossRef Vec.
 #[salsa::tracked]
-pub fn section_decision_violation<'db>(
-    db: &'db dyn CascadeDb,
+pub fn section_decision_violation(
+    db: &dyn CascadeDb,
     section: SectionRecord,
     branch_index: BranchIndex,
 ) -> u32 {
@@ -251,8 +244,8 @@ pub fn section_decision_violation<'db>(
 ///
 /// (b) `outbound_crossrefs_by_section` pattern equivalent.
 #[salsa::tracked]
-pub fn section_by_entity_id<'db>(
-    db: &'db dyn CascadeDb,
+pub fn section_by_entity_id(
+    db: &dyn CascadeDb,
     branch_index: BranchIndex,
     entity_id: u64,
 ) -> Option<SectionRecord> {
@@ -272,8 +265,8 @@ pub fn section_by_entity_id<'db>(
 /// isolation. This body now only reads the resolved handle's presence —
 /// downstream sub-queries no longer pay for the full sections-Vec scan.
 #[salsa::tracked]
-pub fn frozen_list_owner_resolution<'db>(
-    db: &'db dyn CascadeDb,
+pub fn frozen_list_owner_resolution(
+    db: &dyn CascadeDb,
     frozen_list: FrozenListRecord,
     branch_index: BranchIndex,
 ) -> u32 {
@@ -316,8 +309,8 @@ pub fn frozen_list_owner_resolution<'db>(
 ///
 /// 's `section_by_entity_id` pattern equivalent.
 #[salsa::tracked]
-pub fn changelog_by_round_number<'db>(
-    db: &'db dyn CascadeDb,
+pub fn changelog_by_round_number(
+    db: &dyn CascadeDb,
     branch_index: BranchIndex,
     round_number: u64,
 ) -> Option<ChangelogRecord> {
@@ -339,10 +332,7 @@ pub fn changelog_by_round_number<'db>(
 /// + the per-round pre-indexed layer cooperate to isolate ChangelogEntry
 /// field mutations that the index does not read (e.g. `summary`).
 #[salsa::tracked]
-pub fn frozen_list_changelog_attachment<'db>(
-    db: &'db dyn CascadeDb,
-    branch_index: BranchIndex,
-) -> u32 {
+pub fn frozen_list_changelog_attachment(db: &dyn CascadeDb, branch_index: BranchIndex) -> u32 {
     let frozen_lists = branch_index.frozen_lists(db);
     let mut total: u32 = 0;
     for fl in frozen_lists {
@@ -357,8 +347,8 @@ pub fn frozen_list_changelog_attachment<'db>(
 // --- aggregator tracked queries --------------------------------------------
 
 #[salsa::tracked]
-pub fn section_decision_status_aggregated<'db>(
-    db: &'db dyn CascadeDb,
+pub fn section_decision_status_aggregated(
+    db: &dyn CascadeDb,
     branch_index: BranchIndex,
 ) -> ValidationResult {
     let sections = branch_index.sections(db);
@@ -374,8 +364,8 @@ pub fn section_decision_status_aggregated<'db>(
 }
 
 #[salsa::tracked]
-pub fn frozen_list_membership_aggregated<'db>(
-    db: &'db dyn CascadeDb,
+pub fn frozen_list_membership_aggregated(
+    db: &dyn CascadeDb,
     branch_index: BranchIndex,
 ) -> ValidationResult {
     let frozen_lists = branch_index.frozen_lists(db);
