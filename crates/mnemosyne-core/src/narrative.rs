@@ -173,6 +173,17 @@ pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> 
     out.into_iter().collect()
 }
 
+/// A world-line reference is "known" iff it is [`MAIN_BRANCH`] (the implicit,
+/// never-registered default world) or a registered branch — THE single
+/// definition of the "main or registered" guard the write path and every read
+/// surface share. Hand-copying `world != MAIN_BRANCH && !branches.contains_key`
+/// at a dozen sites is how one forgotten copy false-rejected a `main`-as-
+/// confluence-parent store (the R607 boundary bug); routing every site through
+/// this predicate makes an Nth site physically unable to drop the exemption.
+pub fn is_known_world(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
+    world == MAIN_BRANCH || branches.contains_key(world)
+}
+
 /// Whether an in-frame succession edge whose successor and predecessor sit on
 /// DIFFERENT world-lines is legitimate (Rounds 438 + 535) — THE single
 /// definition of cross-branch succession legitimacy, called by BOTH enforcement
@@ -656,6 +667,20 @@ impl DisclosurePlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The single "main or registered" world-ref guard: `main` is known even
+    /// though it is never in the registry, a registered branch is known, an
+    /// unknown id is not — and an empty registry still knows `main`.
+    #[test]
+    fn is_known_world_covers_main_and_registered_only() {
+        let mut branches = BTreeMap::new();
+        assert!(is_known_world(&branches, MAIN_BRANCH));
+        assert!(!is_known_world(&branches, "braid"));
+        branches.insert("braid".to_string(), Branch::default());
+        assert!(is_known_world(&branches, "braid"));
+        assert!(is_known_world(&branches, MAIN_BRANCH));
+        assert!(!is_known_world(&branches, "ghost"));
+    }
 
     /// Round 535 — the cross-branch succession legitimacy predicate, the SINGLE
     /// definition both enforcement points share (write path + scan re-check), so

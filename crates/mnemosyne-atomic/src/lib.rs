@@ -3609,7 +3609,7 @@ fn build_candidate_fact(
             ));
         }
         Some(b) => {
-            if b != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(b) {
+            if !mnemosyne_core::is_known_world(&store.branches, b) {
                 return Err(format!(
                     "fact `{fact_id}`: branch `{b}` not present in the branch registry \
                      (add_branch / manifest branches[] first; fail-loud — a typo'd branch \
@@ -4122,7 +4122,7 @@ fn build_branch_fork(
     if parent == branch_id {
         return Err(format!("branch `{branch_id}`: cannot fork from itself"));
     }
-    if parent != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(parent) {
+    if !mnemosyne_core::is_known_world(&store.branches, parent) {
         return Err(format!(
             "branch `{branch_id}`: fork parent `{parent}` not present in the branch \
              registry (register parents first; fail-loud)"
@@ -4172,7 +4172,7 @@ fn build_branch_converges(
         if parent == branch_id {
             return Err(format!("branch `{branch_id}`: cannot converge from itself"));
         }
-        if parent != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(parent) {
+        if !mnemosyne_core::is_known_world(&store.branches, parent) {
             return Err(format!(
                 "branch `{branch_id}`: converge parent `{parent}` not present in the branch \
                  registry (register parents first; fail-loud)"
@@ -4506,7 +4506,7 @@ pub(crate) fn apply_disclosure_override(
                 "set_disclosure: each first_at needs branch=coord (both non-empty)".to_string(),
             ));
         }
-        if branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(branch) {
+        if !mnemosyne_core::is_known_world(&store.branches, branch) {
             return Err(AtomicMutateError::Validation(format!(
                 "set_disclosure: first_at branch `{branch}` not present in the branch registry"
             )));

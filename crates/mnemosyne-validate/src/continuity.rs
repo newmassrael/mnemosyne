@@ -1322,9 +1322,10 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
     for b in order.declared_branches() {
         // `declared_branches()` yields `main` when it is a confluence PARENT
         // (`world_order_composition` keys `MAIN_BRANCH` in that case — a
-        // documented topology); `main` is never in the registry, so exempt it
-        // here exactly as the fact / branch / world sibling checks do below.
-        if b != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(b) {
+        // documented topology); `is_known_world` treats `main` as valid though
+        // it is never registered — the shared exemption every world-ref guard
+        // routes through, so no site can forget it.
+        if !mnemosyne_core::is_known_world(&store.branches, b) {
             return Err(format!(
                 "canon-order declares an edge set for branch `{b}`, which is not in the \
                  branch registry — register it (add_branch) or fix the declaration"
@@ -1339,8 +1340,7 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
                 fact.frame
             ));
         }
-        if fact.branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(&fact.branch)
-        {
+        if !mnemosyne_core::is_known_world(&store.branches, &fact.branch) {
             return Err(format!(
                 "fact `{id}`: branch `{}` not in the branch registry (out-of-band edit; \
                  the write path enforces this)",
@@ -2391,7 +2391,7 @@ pub fn frame_view(
             "frame `{frame}` not present in the frames registry (fail-loud)"
         ));
     }
-    if branch != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(branch) {
+    if !mnemosyne_core::is_known_world(&store.branches, branch) {
         return Err(format!(
             "branch `{branch}` not present in the branch registry (fail-loud — a typo'd \
              branch must not read as an empty world)"
@@ -3136,7 +3136,7 @@ pub fn playthrough_manuscript(
 ) -> Result<PlaythroughManuscriptReport, String> {
     check_store_boundary(store, order)?;
     if let Some(w) = world {
-        if w != mnemosyne_core::MAIN_BRANCH && !store.branches.contains_key(w) {
+        if !mnemosyne_core::is_known_world(&store.branches, w) {
             return Err(format!(
                 "world `{w}` not present in the branch registry (fail-loud — a typo'd \
                  world must not read as an empty manuscript)"
@@ -3397,9 +3397,7 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
         let fork = match &branch.forks_from {
             None => None,
             Some(f) => {
-                if f.branch != mnemosyne_core::MAIN_BRANCH
-                    && !store.branches.contains_key(&f.branch)
-                {
+                if !mnemosyne_core::is_known_world(&store.branches, &f.branch) {
                     return Err(format!(
                         "branch `{branch_id}` forks from `{}`, which is neither `main` nor a \
                          registered branch — fail-loud (a typo'd parent must not read as a \
@@ -3427,9 +3425,7 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
         let mut converges = Vec::with_capacity(branch.converges_from.len());
         let mut converge_unplaced = false;
         for edge in &branch.converges_from {
-            if edge.branch != mnemosyne_core::MAIN_BRANCH
-                && !store.branches.contains_key(&edge.branch)
-            {
+            if !mnemosyne_core::is_known_world(&store.branches, &edge.branch) {
                 return Err(format!(
                     "branch `{branch_id}` converges from `{}`, which is neither `main` nor a \
                      registered branch — fail-loud (a typo'd parent must not read as a silent \

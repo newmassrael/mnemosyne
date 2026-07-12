@@ -954,7 +954,7 @@ pub fn disclosure_leak_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let authored = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &authored)?;
-    if world != mnemosyne_core::MAIN_BRANCH && !authored.branches.contains_key(world) {
+    if !mnemosyne_core::is_known_world(&authored.branches, world) {
         return Err(OpError::Other(format!(
             "world `{world}` not present in the branch registry (fail-loud)"
         )));
@@ -991,7 +991,7 @@ pub fn render_fidelity_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let authored = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &authored)?;
-    if world != mnemosyne_core::MAIN_BRANCH && !authored.branches.contains_key(world) {
+    if !mnemosyne_core::is_known_world(&authored.branches, world) {
         return Err(OpError::Other(format!(
             "world `{world}` not present in the branch registry (fail-loud)"
         )));

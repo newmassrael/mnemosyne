@@ -14763,6 +14763,38 @@
         "found by an independent adversarial reviewer (R605 cost-no-object precedent); the read surfaces (payoff_coverage / frame_view / playthrough_manuscript) were already correct because they call lineage_of per world",
         "remaining review debt (next round): the 'valid world = main or registered' predicate is hand-copied across roughly a dozen sites in three crates with no single-source is_known_world — the SSOT smell whose one forgotten copy caused R607; a pure extraction refactor"
       ]
+    },
+    "Round 609 — is_known_world single-sources the main-or-registered world-ref guard (12 sites, 3 crates)": {
+      "decision_summary": "The R607 review's MEDIUM finding: the guard 'a valid world-line reference is MAIN_BRANCH or a registered branch' was hand-copied as world != MAIN_BRANCH && !branches.contains_key(world) at 12 sites across mnemosyne-core's consumers (mnemosyne-validate continuity x6, mnemosyne-atomic write path x4, mnemosyne-ops x2), with no single source. That un-single-sourced invariant IS the R607 bug's root: one site (the declared-branch loop) was added without the guard because nothing named or forced the concept. Fix: a single primitive mnemosyne_core::is_known_world(branches, world) beside its world-line siblings (fork_chain / forward_confluences / MAIN_BRANCH), with all 12 sites routed through !is_known_world(...). Pure refactor: !(world == MAIN || contains(world)) is (world != MAIN && !contains(world)) by De Morgan, and each call site keeps its own bespoke fail-loud message. Now a 13th world-ref guard cannot silently drop the main exemption — the concept has one name and one definition.",
+      "changes_bullets": [
+        "new primitive mnemosyne_core::is_known_world(branches, world) = world == MAIN_BRANCH || branches.contains_key(world), placed beside fork_chain / forward_confluences and re-exported at the crate root",
+        "12 hand-copied `!= MAIN_BRANCH && !contains_key` guards routed through !is_known_world across mnemosyne-validate (6), mnemosyne-atomic (4), mnemosyne-ops (2); each site keeps its own fail-loud message",
+        "unit test is_known_world_covers_main_and_registered_only pins the predicate: main known on an empty registry, a registered branch known, an unknown id not"
+      ],
+      "verification_bullets": [
+        "pure refactor by De Morgan, no behavior change; the 12 sites were already covered by existing tests — mnemosyne-core 188, mnemosyne-atomic, mnemosyne-validate 282, mnemosyne-ops all green",
+        "grep confirms 0 residual `!= MAIN_BRANCH && !contains_key` idiom sites and exactly 12 is_known_world call sites",
+        "cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean"
+      ],
+      "carry_forward_bullets": [
+        "closes the SSOT smell R607's review flagged: the world-ref guard now has one definition; a future site routes through the named primitive instead of re-deriving the main exemption",
+        "the R607/R608/R609 arc — boundary false-reject (R607), gate false-negative (R608), and the un-single-sourced guard that caused both (R609) — is now fully paid"
+      ],
+      "publishable_decision_summary": "The R607 review's MEDIUM finding: the guard 'a valid world-line reference is MAIN_BRANCH or a registered branch' was hand-copied as world != MAIN_BRANCH && !branches.contains_key(world) at 12 sites across mnemosyne-core's consumers (mnemosyne-validate continuity x6, mnemosyne-atomic write path x4, mnemosyne-ops x2), with no single source. That un-single-sourced invariant IS the R607 bug's root: one site (the declared-branch loop) was added without the guard because nothing named or forced the concept. Fix: a single primitive mnemosyne_core::is_known_world(branches, world) beside its world-line siblings (fork_chain / forward_confluences / MAIN_BRANCH), with all 12 sites routed through !is_known_world(...). Pure refactor: !(world == MAIN || contains(world)) is (world != MAIN && !contains(world)) by De Morgan, and each call site keeps its own bespoke fail-loud message. Now a 13th world-ref guard cannot silently drop the main exemption — the concept has one name and one definition.",
+      "publishable_changes_bullets": [
+        "new primitive mnemosyne_core::is_known_world(branches, world) = world == MAIN_BRANCH || branches.contains_key(world), placed beside fork_chain / forward_confluences and re-exported at the crate root",
+        "12 hand-copied `!= MAIN_BRANCH && !contains_key` guards routed through !is_known_world across mnemosyne-validate (6), mnemosyne-atomic (4), mnemosyne-ops (2); each site keeps its own fail-loud message",
+        "unit test is_known_world_covers_main_and_registered_only pins the predicate: main known on an empty registry, a registered branch known, an unknown id not"
+      ],
+      "publishable_verification_bullets": [
+        "pure refactor by De Morgan, no behavior change; the 12 sites were already covered by existing tests — mnemosyne-core 188, mnemosyne-atomic, mnemosyne-validate 282, mnemosyne-ops all green",
+        "grep confirms 0 residual `!= MAIN_BRANCH && !contains_key` idiom sites and exactly 12 is_known_world call sites",
+        "cargo clippy --workspace --all-targets -D warnings clean; cargo fmt --all --check clean"
+      ],
+      "publishable_carry_forward_bullets": [
+        "closes the SSOT smell R607's review flagged: the world-ref guard now has one definition; a future site routes through the named primitive instead of re-deriving the main exemption",
+        "the R607/R608/R609 arc — boundary false-reject (R607), gate false-negative (R608), and the un-single-sourced guard that caused both (R609) — is now fully paid"
+      ]
     }
   },
   "inventory_entries": {},
