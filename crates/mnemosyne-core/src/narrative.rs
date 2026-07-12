@@ -107,33 +107,139 @@ pub struct BranchFork {
     pub at: String,
 }
 
-/// Walk a branch's fork lineage toward the root (Round 440 — THE single
-/// fork-chain traversal; the write path, the continuity gate, and the
-/// frame-at-T projection all route here so the subtle termination logic
-/// cannot drift). Returns `(ancestor, departure_point)` pairs
-/// nearest-first. The forest is write-guaranteed (parents pre-exist, forks
-/// are immutable after registration); the hop cap fails loud on an
-/// out-of-band cyclic edit instead of looping.
-pub fn fork_chain(
+/// World-line MEMBERSHIP of one query world (Round 612) — THE single definition
+/// of "whose facts are part of world W, and under what departure bound".
+///
+/// Maps a branch id to the departure coordinates a fact on that branch must be
+/// at-or-before — **all of them**; the constraints CONJOIN. An EMPTY set means
+/// the branch belongs to W unconditionally (W's own branch, or a confluence W
+/// flows into — the shared continuation downstream of every parent). A branch
+/// ABSENT from the map is not part of W's world-line at all.
+///
+/// The bounds are carried as a SET of coordinates rather than folded into a
+/// single `min`, which is what keeps this order-free: nothing here consults the
+/// [`crate::Branch`] graph's canon order, so the SAME definition serves the
+/// write path (`succession_branch_inherits`) and the read path (the continuity
+/// gate's visibility) — the one-invariant discipline. The canon order compares
+/// `canon_from` against each bound later, at visibility time.
+pub type WorldMembership = BTreeMap<String, BTreeSet<String>>;
+
+/// Compute [`WorldMembership`] for `world` (Round 612 — the series-parallel
+/// lattice that replaced the enumerated `cut` / `forward` / `cut_forward`
+/// relations of Rounds 438 / 533 / 611).
+///
+/// The algebra, over the branch DAG:
+/// - **own** and every **forward confluence** ([`forward_confluences`]): unbounded.
+/// - **W forks from A at `at`**: `membership(A)`, with `at` CONJOINED into every
+///   bound — a fork inherits the ancestor's whole COMPOSED walk (its own facts
+///   AND whatever an upstream merge displaced onto a confluence), cut at the
+///   departure.
+/// - **C converges from {P_i at at_i}**: the INTERSECTION over parents of
+///   (`membership(P_i)` conjoined with `at_i`) — a confluence continues only what
+///   EVERY incoming road agrees on. That is exactly the path-independent trunk
+///   prefix: each parent's exclusive middle is missing from some other parent, so
+///   the intersection drops it, while the shared pre-merge trunk survives.
+///
+/// Fork = conjoin a bound. Merge = intersect the parents. The lattice is CLOSED:
+/// a fork off a confluence, a fork off a fork off a confluence, nested
+/// confluences, and a confluence whose parent is itself a confluence all fall out
+/// of these two rules — no further relation is ever needed (the enumerate-one-
+/// more-relation trajectory of R438 → R533 → R611 ends here).
+///
+/// CONJOINING the bounds (rather than keeping only the nearest departure) is what
+/// makes a non-monotone fork chain sound: a world that departs its parent at a
+/// coordinate BEFORE the parent's own fork point inherits BOTH cuts, so it cannot
+/// see anything past the tighter one.
+///
+/// Acyclic by write-path construction (a parent must pre-exist registration); the
+/// recursion stack fails loud on an out-of-band cyclic edit instead of looping.
+pub fn world_membership(
     branches: &BTreeMap<String, Branch>,
-    branch: &str,
-) -> Result<Vec<(String, String)>, String> {
-    let mut chain = Vec::new();
-    let mut current = branch.to_string();
-    for _ in 0..=branches.len() {
-        let Some(fork) = branches.get(&current).and_then(|b| b.forks_from.clone()) else {
-            return Ok(chain);
-        };
-        chain.push((fork.branch.clone(), fork.at));
-        current = fork.branch;
+    world: &str,
+) -> Result<WorldMembership, String> {
+    let mut memo: BTreeMap<String, WorldMembership> = BTreeMap::new();
+    let mut on_stack: BTreeSet<String> = BTreeSet::new();
+    membership_of(branches, world, &mut memo, &mut on_stack)
+}
+
+fn membership_of(
+    branches: &BTreeMap<String, Branch>,
+    world: &str,
+    memo: &mut BTreeMap<String, WorldMembership>,
+    on_stack: &mut BTreeSet<String>,
+) -> Result<WorldMembership, String> {
+    if let Some(done) = memo.get(world) {
+        return Ok(done.clone());
     }
-    Err(format!(
-        "branch fork ancestry of `{branch}` exceeds the registry size — cyclic out-of-band edit"
-    ))
+    if !on_stack.insert(world.to_string()) {
+        return Err(format!(
+            "branch lineage of `{world}` is cyclic — out-of-band edit \
+             (the mutate API cannot write a cycle: a parent must pre-exist)"
+        ));
+    }
+    // Own branch, and every confluence this world flows INTO: unconditional.
+    let mut out: WorldMembership = BTreeMap::new();
+    out.insert(world.to_string(), BTreeSet::new());
+    for confluence in forward_confluences(branches, world) {
+        out.insert(confluence, BTreeSet::new());
+    }
+    if let Some(branch) = branches.get(world) {
+        // A branch is a fork-child XOR a confluence (write-path enforced), so at
+        // most one of the two arms below contributes — an inherited entry can
+        // never collide with another inherited entry, only with the
+        // unconditional own/forward entries above, which are the most permissive
+        // and therefore win (`or_insert`).
+        if let Some(fork) = &branch.forks_from {
+            let parent = membership_of(branches, &fork.branch, memo, on_stack)?;
+            for (id, bounds) in conjoin(parent, &fork.at) {
+                out.entry(id).or_insert(bounds);
+            }
+        }
+        let mut merged: Option<WorldMembership> = None;
+        for edge in &branch.converges_from {
+            let parent = membership_of(branches, &edge.branch, memo, on_stack)?;
+            let bounded = conjoin(parent, &edge.at);
+            merged = Some(match merged {
+                None => bounded,
+                Some(acc) => intersect(acc, bounded),
+            });
+        }
+        for (id, bounds) in merged.unwrap_or_default() {
+            out.entry(id).or_insert(bounds);
+        }
+    }
+    on_stack.remove(world);
+    memo.insert(world.to_string(), out.clone());
+    Ok(out)
+}
+
+/// Cut an inherited membership at a departure coordinate: every bound gains
+/// `at`, so an inherited fact must now ALSO be at-or-before the departure.
+fn conjoin(membership: WorldMembership, at: &str) -> WorldMembership {
+    membership
+        .into_iter()
+        .map(|(id, mut bounds)| {
+            bounds.insert(at.to_string());
+            (id, bounds)
+        })
+        .collect()
+}
+
+/// Intersect two incoming roads at a merge: a branch continues past the
+/// confluence only if BOTH roads carried it, and it must satisfy BOTH roads'
+/// bounds (the constraints conjoin — the union of the two bound sets).
+fn intersect(a: WorldMembership, mut b: WorldMembership) -> WorldMembership {
+    a.into_iter()
+        .filter_map(|(id, mut bounds)| {
+            let other = b.remove(&id)?;
+            bounds.extend(other);
+            Some((id, bounds))
+        })
+        .collect()
 }
 
 /// Walk a world-line's FORWARD confluence-suffix closure (Round 533 — the
-/// forward dual of [`fork_chain`]). Given a query world `world`, returns every
+/// forward dual of the backward fork walk). Given a query world `world`, returns every
 /// confluence branch `C` such that `world` is, transitively, one of `C`'s
 /// converging parents (`world ∈ C.converges_from`, or `world` reaches such a
 /// `C` through a chain of confluences). These are the SHARED continuations
@@ -143,7 +249,7 @@ pub fn fork_chain(
 /// Sorted, deduplicated. Termination needs no hop cap: each confluence enters
 /// the result set at most once (`BTreeSet` dedup), and only a fresh insert
 /// re-expands — so the walk is bounded by the registry size by construction,
-/// the dual of `fork_chain`'s linear-chain cap (a chain is not deduplicated, so
+/// the dual of a linear fork-chain's hop cap (a chain is not deduplicated, so
 /// it needs the explicit guard; a deduplicated frontier cannot loop).
 pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> Vec<String> {
     // Reverse adjacency: parent branch -> the confluences converging FROM it.
@@ -185,21 +291,42 @@ pub fn is_known_world(branches: &BTreeMap<String, Branch>, world: &str) -> bool 
 }
 
 /// Whether an in-frame succession edge whose successor and predecessor sit on
-/// DIFFERENT world-lines is legitimate (Rounds 438 + 535) — THE single
+/// DIFFERENT world-lines is legitimate (Rounds 438 + 535 + 612) — THE single
 /// definition of cross-branch succession legitimacy, called by BOTH enforcement
 /// points (the write path [`check_succession_edge`] in mnemosyne-atomic and the
 /// out-of-band scan re-check in mnemosyne-validate's continuity gate), so the
-/// two cannot drift (the multi-write-path-one-invariant discipline). The edge
-/// is legitimate iff the successor's world-line INHERITS the predecessor's
-/// belief, in either direction:
-/// - BACKWARD (fork): the predecessor's branch is a fork ANCESTOR of the
-///   successor's ([`fork_chain`]) — a fork revising an inherited belief (R438).
-/// - FORWARD (confluence): the successor's branch is a CONFLUENCE the
-///   predecessor's branch flows INTO ([`forward_confluences`]) — a merge's
-///   shared continuation reconciling a parent belief at the join (R535;
-///   bounded — it only authorizes the edge, it computes no merged state).
-/// Equal branches inherit trivially (the callers guard `!=` first; handled here
-/// for totality). Any other cross-branch pair is a sibling-world edit, rejected.
+/// two cannot drift (the multi-write-path-one-invariant discipline).
+///
+/// Succession is DIRECTIONAL — the successor must lie DOWNSTREAM of the
+/// predecessor in the world-line flow — so it reads [`world_membership`] from
+/// both ends, and each direction means something different:
+///
+/// THE DIRECTION DISCRIMINATOR: in [`world_membership`], a NON-EMPTY bound set
+/// means UPSTREAM and an EMPTY one means own-or-DOWNSTREAM. That is exact, not a
+/// heuristic — every backward step (a fork's departure, a merge's join) CONJOINS
+/// at least one coordinate, so an inherited-prefix entry always carries a bound,
+/// while the two unconditional entries are precisely the world's own branch and
+/// the confluences it flows INTO.
+///
+/// - **BACKWARD (a fork revising an inherited belief, R438):** the predecessor is
+///   UPSTREAM of the successor — it sits in the successor's membership WITH a
+///   bound. Round 612 reads that off the lattice, which is what closes the R611
+///   hole: a fork off a confluence-chain trunk now has the displaced trunk branch
+///   in its membership, so the supersede that revises a belief it can SEE is
+///   finally legal. (Before, the read path showed the fact holding in the
+///   divergent world while this predicate refused the revision — the gate reported
+///   a contradiction and then forbade the only sanctioned way to resolve it.)
+/// - **FORWARD (a merge reconciling a parent's belief at the join, R535):** the
+///   successor is a CONFLUENCE the predecessor flows INTO — it sits in the
+///   PREDECESSOR's membership with an EMPTY bound set.
+///
+/// Both arms therefore require the successor to lie DOWNSTREAM. Revising UPSTREAM
+/// is the leak-back R438 forbids (an ancestor must never see its fork's revision;
+/// a parent must never rewrite the merge it flows into), and sideways between
+/// siblings is not succession at all — divergence is data.
+///
+/// Graph-level only, deliberately: it authorizes the EDGE; it does not evaluate
+/// the departure bound (that needs the canon order, which lives with the reader).
 pub fn succession_branch_inherits(
     branches: &BTreeMap<String, Branch>,
     successor_branch: &str,
@@ -208,15 +335,15 @@ pub fn succession_branch_inherits(
     if successor_branch == predecessor_branch {
         return Ok(true);
     }
-    if fork_chain(branches, successor_branch)?
-        .iter()
-        .any(|(ancestor, _)| ancestor == predecessor_branch)
+    if world_membership(branches, successor_branch)?
+        .get(predecessor_branch)
+        .is_some_and(|bounds| !bounds.is_empty())
     {
         return Ok(true);
     }
-    Ok(forward_confluences(branches, predecessor_branch)
-        .iter()
-        .any(|c| c == successor_branch))
+    Ok(world_membership(branches, predecessor_branch)?
+        .get(successor_branch)
+        .is_some_and(BTreeSet::is_empty))
 }
 
 /// One recorded conflict assertion (Round 439): the judged target plus a
@@ -809,5 +936,181 @@ mod tests {
         assert!(TypedObject::from_exclusive_args(None, None)
             .unwrap_err()
             .contains("needs an object"));
+    }
+
+    /// A subway-braid trunk: `main` + `braid1` (fork at s1) reconverge into the
+    /// confluence `weave1` at s2; `braid2` forks OFF THE CONFLUENCE at s3; and a
+    /// divergent `ending` forks off `main` at s3, downstream of the merge.
+    fn braid_chain() -> BTreeMap<String, Branch> {
+        let fork = |from: &str, at: &str| BranchFork {
+            branch: from.to_string(),
+            at: at.to_string(),
+        };
+        BTreeMap::from([
+            (
+                "braid1".to_string(),
+                Branch {
+                    forks_from: Some(fork(MAIN_BRANCH, "s1")),
+                    ..Branch::default()
+                },
+            ),
+            (
+                "weave1".to_string(),
+                Branch {
+                    converges_from: vec![fork(MAIN_BRANCH, "s2"), fork("braid1", "s2")],
+                    ..Branch::default()
+                },
+            ),
+            (
+                "braid2".to_string(),
+                Branch {
+                    forks_from: Some(fork("weave1", "s3")),
+                    ..Branch::default()
+                },
+            ),
+            (
+                "ending".to_string(),
+                Branch {
+                    forks_from: Some(fork(MAIN_BRANCH, "s3")),
+                    ..Branch::default()
+                },
+            ),
+        ])
+    }
+
+    /// Round 612 — MERGE = INTERSECT. A confluence continues only what EVERY
+    /// incoming road carried: the path-independent trunk prefix survives (bounded
+    /// at the merge coordinates), while each parent's EXCLUSIVE middle is dropped
+    /// (it is missing from the other parent, so the intersection removes it). This
+    /// is what the enumerated relations never expressed — pre-R612 a confluence's
+    /// membership was empty of its parents entirely, so a confluence world saw a
+    /// prefix-less fragment and a fork off it (below) lost the trunk outright.
+    #[test]
+    fn confluence_membership_is_the_intersection_of_its_parents() {
+        let b = braid_chain();
+        let weave = world_membership(&b, "weave1").unwrap();
+        assert!(weave["weave1"].is_empty(), "own branch is unbounded");
+        // `main` survives the merge — but BOUNDED by both roads' cuts, which is
+        // exactly what excludes main's own exclusive middle downstream of s1.
+        assert_eq!(
+            weave["main"],
+            BTreeSet::from(["s1".to_string(), "s2".to_string()]),
+            "the shared trunk is inherited, conjoined with BOTH roads' bounds"
+        );
+        // Neither parent's EXCLUSIVE identity crosses the merge.
+        assert!(!weave.contains_key("braid1"), "braid1's road is not shared");
+        assert!(!weave.contains_key("ending"), "a sibling never crosses");
+    }
+
+    /// Round 612 — FORK = CONJOIN A BOUND, and it composes with the merge. A fork
+    /// off a CONFLUENCE (`braid2`) inherits the confluence's whole membership —
+    /// including the pre-merge trunk the merge carried through — cut at its own
+    /// departure. Pre-R612 `fork_chain` terminated at a confluence (it has no
+    /// `forks_from`), so `braid2` lost the entire pre-merge trunk: the same class
+    /// of bug as MNEMO-GAP-003, one level up, and it is the SECOND link of every
+    /// subway-braid chain.
+    #[test]
+    fn fork_off_a_confluence_inherits_the_pre_merge_trunk() {
+        let b = braid_chain();
+        let braid2 = world_membership(&b, "braid2").unwrap();
+        assert!(braid2["braid2"].is_empty());
+        assert!(
+            braid2.contains_key("weave1"),
+            "the confluence it forked off is a member"
+        );
+        assert_eq!(
+            braid2["main"],
+            BTreeSet::from(["s1".to_string(), "s2".to_string(), "s3".to_string()]),
+            "the pre-merge trunk rides THROUGH the confluence, conjoined with the fork cut"
+        );
+        assert!(!braid2.contains_key("braid1"), "the other road stays out");
+    }
+
+    /// Round 612 — CONJOINING (not min-ing) the bounds is what makes a NON-MONOTONE
+    /// fork chain sound: `early` departs `late` at s1, but `late` itself only
+    /// departed `main` at s4. `early` must satisfy BOTH cuts, so a main fact at s2
+    /// (past s1 but before s4) is correctly excluded. Keeping only the nearest
+    /// departure — the pre-R612 shape — leaked the whole s1..s4 span into `early`.
+    #[test]
+    fn non_monotone_fork_chain_conjoins_every_cut() {
+        let fork = |from: &str, at: &str| BranchFork {
+            branch: from.to_string(),
+            at: at.to_string(),
+        };
+        let b = BTreeMap::from([
+            (
+                "late".to_string(),
+                Branch {
+                    forks_from: Some(fork(MAIN_BRANCH, "s4")),
+                    ..Branch::default()
+                },
+            ),
+            (
+                "early".to_string(),
+                Branch {
+                    forks_from: Some(fork("late", "s1")),
+                    ..Branch::default()
+                },
+            ),
+        ]);
+        assert_eq!(
+            world_membership(&b, "early").unwrap()["main"],
+            BTreeSet::from(["s1".to_string(), "s4".to_string()]),
+            "BOTH departures bind — the order then enforces the tighter one"
+        );
+    }
+
+    /// Round 612 — succession is DIRECTIONAL, and both directions now read the one
+    /// membership. A divergent ending may revise a trunk belief a merge DISPLACED
+    /// onto the confluence (the R611 hole: the gate reported the contradiction and
+    /// then forbade the only sanctioned fix); a confluence may still reconcile a
+    /// parent's belief at the merge (R535); and a fork's revision may NEVER leak
+    /// back up into its ancestor, nor sideways between siblings.
+    #[test]
+    fn succession_follows_the_membership_in_both_directions_only_downstream() {
+        let b = braid_chain();
+        let inherits = |succ: &str, pred: &str| succession_branch_inherits(&b, succ, pred).unwrap();
+        // BACKWARD, through a merge (the R611 hole this closes).
+        assert!(
+            inherits("ending", "weave1"),
+            "a divergent ending revises the displaced trunk belief it can SEE"
+        );
+        assert!(inherits("ending", MAIN_BRANCH), "and the plain trunk");
+        // FORWARD (R535): the merge reconciles a parent's belief at the join.
+        assert!(inherits("weave1", "braid1"));
+        assert!(inherits("weave1", MAIN_BRANCH));
+        // NEVER upstream — a fork's revision must not leak back into its ancestor.
+        assert!(!inherits(MAIN_BRANCH, "ending"));
+        assert!(!inherits("weave1", "braid2"));
+        // NEVER sideways — divergence is data, not succession.
+        assert!(!inherits("braid1", "ending"));
+        assert!(!inherits("ending", "braid1"));
+    }
+
+    /// Round 612 — the lattice fails LOUD on an out-of-band cyclic edit instead of
+    /// looping (the mutate API cannot write one: a parent must pre-exist).
+    #[test]
+    fn cyclic_branch_lineage_fails_loud() {
+        let fork = |from: &str| BranchFork {
+            branch: from.to_string(),
+            at: "s1".to_string(),
+        };
+        let b = BTreeMap::from([
+            (
+                "a".to_string(),
+                Branch {
+                    forks_from: Some(fork("b")),
+                    ..Branch::default()
+                },
+            ),
+            (
+                "b".to_string(),
+                Branch {
+                    forks_from: Some(fork("a")),
+                    ..Branch::default()
+                },
+            ),
+        ]);
+        assert!(world_membership(&b, "a").unwrap_err().contains("cyclic"));
     }
 }

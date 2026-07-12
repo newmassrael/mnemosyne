@@ -37,10 +37,10 @@ pub use fact::{
 
 mod narrative;
 pub use narrative::{
-    fork_chain, forward_confluences, is_known_world, succession_branch_inherits, Branch,
+    forward_confluences, is_known_world, succession_branch_inherits, world_membership, Branch,
     BranchFork, ConflictAssertion, DisclosureMode, DisclosureOverride, DisclosurePlan,
     DisclosureSurface, EffectiveDisclosure, Entity, Frame, NarrativeFact, PayoffExpectation,
-    Predicate, PredicateObjectKind, TypedClaim, TypedObject, MAIN_BRANCH,
+    Predicate, PredicateObjectKind, TypedClaim, TypedObject, WorldMembership, MAIN_BRANCH,
 };
 
 mod section_ref;
