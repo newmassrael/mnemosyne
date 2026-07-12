@@ -1387,14 +1387,23 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
 
 /// Lineage per potential query world (main + every registered branch) —
 /// THE single construction (Round 465; the scan and the edge-candidates
-/// report carried the second copy, the two-copies rule).
+/// report carried the second copy, the two-copies rule). `main` is NOT
+/// special-cased: it flows through the same [`lineage_of`] walk as every
+/// registered branch, so its FORWARD confluence-suffixes are populated when
+/// `main` is a confluence parent (Round 533 topology; a hardcoded
+/// `Lineage::default()` silently dropped main's forward membership, and the
+/// gate then under-scoped main-as-confluence-parent conflicts — the R607
+/// boundary fix unblocked the topology but left this second path stale).
+/// Byte-stable for pre-confluence stores: `forward_confluences("main")` is
+/// empty there, so `lineage_of("main") == Lineage::default()`.
 fn query_world_lineages(store: &AtomicStore) -> Result<BTreeMap<String, Lineage>, String> {
-    let mut lineages: BTreeMap<String, Lineage> = BTreeMap::new();
-    lineages.insert(mnemosyne_core::MAIN_BRANCH.to_string(), Lineage::default());
-    for branch in store.branches.keys() {
-        lineages.insert(branch.clone(), lineage_of(&store.branches, branch)?);
-    }
-    Ok(lineages)
+    std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string())
+        .chain(store.branches.keys().cloned())
+        .map(|world| {
+            let lineage = lineage_of(&store.branches, &world)?;
+            Ok((world, lineage))
+        })
+        .collect()
 }
 
 /// The query worlds the per-world surfaces SWEEP (Round 533): `MAIN_BRANCH`
@@ -7661,6 +7670,99 @@ mod tests {
         assert_eq!(
             report.cross_scope_pairs, 0,
             "the cross-merge pair is now scoped, not bucketed"
+        );
+    }
+
+    /// VERIFICATION (R608 HIGH finding) — the SAME cross-merge conflict as above
+    /// but with `main` itself as the confluence PARENT: main continues as a road
+    /// with an exclusive middle fact, braid forks, weave reweaves both, and a
+    /// suffix fact conflicts with main's middle. The suffix is forward-visible in
+    /// main, so the gate MUST scope the conflict to `main` (not bucket it into
+    /// cross_scope_pairs) — exactly as it does for the registered parent above.
+    /// Built through import_facts (the real write path).
+    #[test]
+    fn confluence_cross_merge_conflict_scopes_to_main_parent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for s in ["tr-0", "tr", "mn", "rd", "rk", "rv"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let on = |id: &str, branch: &str, at: &str| FactImport {
+            branch: Some(branch.to_string()),
+            ..fact(id, "gt", at, None)
+        };
+        // f-suffix on the confluence declared to conflict with f-main-mid, main's
+        // exclusive middle (branch=None => main). They co-hold only in main.
+        let suffix = FactImport {
+            conflicts_with: vec!["f-main-mid".to_string()],
+            ..on("f-suffix", "weave", "rv")
+        };
+        let facts = vec![
+            fact("f-trunk", "gt", "tr-0", None),
+            fact("f-fork", "gt", "tr", None),
+            fact("f-main-mid", "gt", "mn", None),
+            on("f-braid", "braid", "rd"),
+            suffix,
+        ];
+        let converge = |b: &str, at: &str| mnemosyne_atomic::BranchConvergeImport {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "braid".to_string(),
+                        description: String::new(),
+                        forks_from: Some(MAIN_BRANCH.to_string()),
+                        forks_at: Some("tr".to_string()),
+                        converges_from: vec![],
+                    },
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "weave".to_string(),
+                        description: String::new(),
+                        forks_from: None,
+                        forks_at: None,
+                        converges_from: vec![converge("main", "mn"), converge("braid", "rd")],
+                    },
+                ],
+                entities: vec![],
+                predicates: vec![],
+                facts,
+            },
+        )
+        .unwrap();
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("tr-0", "tr"), e("tr", "mn"), e("mn", "rk")],
+            branches: BTreeMap::from([
+                ("braid".to_string(), vec![e("tr", "rd"), e("rd", "rk")]),
+                ("weave".to_string(), vec![e("rk", "rv")]),
+            ]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::FrameConflictOverlap { branch, .. } if branch == MAIN_BRANCH
+            )),
+            "cross-merge conflict with main as the confluence parent must scope to \
+             `main`, not bucket into cross_scope_pairs={}: {:?}",
+            report.cross_scope_pairs,
+            report.violations
         );
     }
 
