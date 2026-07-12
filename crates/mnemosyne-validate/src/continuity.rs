@@ -7762,6 +7762,148 @@ mod tests {
         );
     }
 
+    /// SWEEP (MNEMO-GAP-002 read surfaces) — the gap report section 4 names payoff
+    /// coverage / manuscript / frame-at-T as consumers that must handle
+    /// main-as-confluence-parent. Each builds its lineage per world via
+    /// `lineage_of` (independent of the R608 `query_world_lineages` gate path),
+    /// so this fixture confirms them directly: main's world must SEE its forward
+    /// confluence suffix. A setup authored on main's exclusive middle is paid by
+    /// a fact on the confluence — the payoff is visible in main only if main's
+    /// forward membership is populated. Built through import_facts.
+    #[test]
+    fn main_as_confluence_parent_read_surfaces_see_the_suffix() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for s in ["tr-0", "tr", "mn", "rd", "rk", "rv"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let facts = vec![
+            fact("f-trunk", "gt", "tr-0", None),
+            fact("f-fork", "gt", "tr", None),
+            // main's exclusive-middle SETUP (branch=None => main).
+            FactImport {
+                payoff_expectation: Some("expected".to_string()),
+                ..fact("su-main", "gt", "mn", None)
+            },
+            FactImport {
+                branch: Some("braid".to_string()),
+                ..fact("f-braid", "gt", "rd", None)
+            },
+            // the PAYOFF, authored ONCE on the confluence suffix.
+            FactImport {
+                branch: Some("weave".to_string()),
+                pays_off: vec!["su-main".to_string()],
+                ..fact("p-suffix", "gt", "rv", None)
+            },
+        ];
+        let converge = |b: &str, at: &str| mnemosyne_atomic::BranchConvergeImport {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "braid".to_string(),
+                        description: String::new(),
+                        forks_from: Some(MAIN_BRANCH.to_string()),
+                        forks_at: Some("tr".to_string()),
+                        converges_from: vec![],
+                    },
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "weave".to_string(),
+                        description: String::new(),
+                        forks_from: None,
+                        forks_at: None,
+                        converges_from: vec![converge("main", "mn"), converge("braid", "rd")],
+                    },
+                ],
+                entities: vec![],
+                predicates: vec![],
+                facts,
+            },
+        )
+        .unwrap();
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("tr-0", "tr"), e("tr", "mn"), e("mn", "rk")],
+            branches: BTreeMap::from([
+                ("braid".to_string(), vec![e("tr", "rd"), e("rd", "rk")]),
+                ("weave".to_string(), vec![e("rk", "rv")]),
+            ]),
+        };
+        let order =
+            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
+                .unwrap();
+
+        // payoff_coverage: main's setup is PAID through the confluence suffix,
+        // not dangling — the payoff is forward-visible in main.
+        let pay = payoff_coverage(&store, &order).unwrap();
+        let main = &pay.worlds[MAIN_BRANCH];
+        assert_eq!(
+            main.paid
+                .iter()
+                .map(|p| p.setup.as_str())
+                .collect::<Vec<_>>(),
+            vec!["su-main"],
+            "main's setup pays off across the confluence: {main:?}"
+        );
+        assert_eq!(main.paid[0].payoffs, vec!["p-suffix".to_string()]);
+        assert!(
+            main.dangling.is_empty(),
+            "no dangling: the suffix payoff discharges main's setup: {main:?}"
+        );
+
+        // frame_view: main HOLDS the suffix fact at rv, and does NOT see braid's
+        // exclusive middle (scoping intact).
+        let holding = |at: &str| -> Vec<String> {
+            frame_view(&store, &order, "gt", MAIN_BRANCH, None, at)
+                .unwrap()
+                .holding
+                .into_iter()
+                .map(|entry| entry.fact_id)
+                .collect()
+        };
+        assert!(
+            holding("rv").contains(&"p-suffix".to_string()),
+            "main sees the forward confluence suffix fact"
+        );
+        assert!(
+            !holding("rk").contains(&"f-braid".to_string()),
+            "main does not see braid's exclusive middle"
+        );
+
+        // playthrough_manuscript: main renders the suffix scene, beginning the
+        // suffix fact authored once on the confluence.
+        let m = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), None).unwrap();
+        let begins: Vec<String> = m.worlds[MAIN_BRANCH]
+            .scenes
+            .iter()
+            .find(|s| s.section == "rv")
+            .map(|s| s.begins.iter().map(|ev| ev.fact_id.clone()).collect())
+            .unwrap_or_default();
+        assert!(
+            begins.contains(&"p-suffix".to_string()),
+            "main's manuscript begins the shared suffix at rv"
+        );
+
+        // The lineage_of read surfaces and the query_world_lineages gate path
+        // agree that main flows into the confluence: both irony_intervals and
+        // timeline_gaps compose without error over the same topology.
+        irony_intervals(&store, &order).unwrap();
+        timeline_gaps(&store, &order, &[]).unwrap();
+    }
+
     /// Round 535 — SUCCESSION reconciliation wired at BOTH enforcement points
     /// (they share `mnemosyne_core::succession_branch_inherits`, unit-tested for
     /// the four directions in mnemosyne-core). A suffix fact may supersede a

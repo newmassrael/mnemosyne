@@ -14795,6 +14795,34 @@
         "closes the SSOT smell R607's review flagged: the world-ref guard now has one definition; a future site routes through the named primitive instead of re-deriving the main exemption",
         "the R607/R608/R609 arc — boundary false-reject (R607), gate false-negative (R608), and the un-single-sourced guard that caused both (R609) — is now fully paid"
       ]
+    },
+    "Round 610 — read-surface sweep confirms main-as-confluence-parent (payoff / manuscript / frame-view), regression-locked": {
+      "decision_summary": "The residual-risk item from the R607-R609 review: I fixed the gate path (R608 query_world_lineages) and swept for other hardcoded-main sites, but had NOT exercised the READ surfaces the gap report section 4 names (payoff coverage / manuscript / frame-at-T) with a fact-bearing main-as-confluence-parent store. These build lineage per world via lineage_of, independent of the R608 gate path, and were claimed already-correct because lineage_of computes forward = forward_confluences(world). This round CONFIRMS that empirically and locks it. A comprehensive fixture (main road continues, braid forks, weave reweaves both; a setup on main's exclusive middle paid by a fact authored once on the confluence) asserts main SEES its forward suffix: payoff_coverage discharges main's setup through the suffix (dangling 0), frame_view holds the suffix fact at rv while excluding braid's exclusive middle, and playthrough_manuscript renders the suffix scene. irony_intervals and timeline_gaps compose over the same topology. NO new defect found — the read surfaces were correct; the arc is now confirmed across every consumer, not just the gate.",
+      "changes_bullets": [
+        "test main_as_confluence_parent_read_surfaces_see_the_suffix (built through import_facts): a setup on main's exclusive middle, paid by a fact authored once on the confluence suffix, over a main-as-confluence-parent diamond",
+        "asserts the lineage_of read surfaces see main's forward suffix: payoff_coverage dangling 0 and paid by the suffix, frame_view holds it at rv while excluding braid's exclusive middle, manuscript renders the suffix scene; irony_intervals and timeline_gaps compose over the same topology"
+      ],
+      "verification_bullets": [
+        "non-vacuous: main.paid == [su-main] and main.dangling empty both depend on main's forward suffix visibility — if it broke, su-main would dangle; the assertions are diagnostic, not a green rubber-stamp",
+        "no production change this round (test-only); mnemosyne-validate 283 lib green, clippy --all-targets clean, fmt --all --check clean"
+      ],
+      "carry_forward_bullets": [
+        "the MNEMO-GAP-002 sweep is closed: every canon consumer — gate trio (scan_continuity / timeline_gaps / edge_candidates via the R608-fixed query_world_lineages) and read surfaces (payoff / frame_view / irony / manuscript via lineage_of) — is confirmed for main-as-confluence-parent, by test not by assertion",
+        "the residual-risk caveat raised after R609 is retired; no further main-as-confluence-parent debt"
+      ],
+      "publishable_decision_summary": "The residual-risk item from the R607-R609 review: I fixed the gate path (R608 query_world_lineages) and swept for other hardcoded-main sites, but had NOT exercised the READ surfaces the gap report section 4 names (payoff coverage / manuscript / frame-at-T) with a fact-bearing main-as-confluence-parent store. These build lineage per world via lineage_of, independent of the R608 gate path, and were claimed already-correct because lineage_of computes forward = forward_confluences(world). This round CONFIRMS that empirically and locks it. A comprehensive fixture (main road continues, braid forks, weave reweaves both; a setup on main's exclusive middle paid by a fact authored once on the confluence) asserts main SEES its forward suffix: payoff_coverage discharges main's setup through the suffix (dangling 0), frame_view holds the suffix fact at rv while excluding braid's exclusive middle, and playthrough_manuscript renders the suffix scene. irony_intervals and timeline_gaps compose over the same topology. NO new defect found — the read surfaces were correct; the arc is now confirmed across every consumer, not just the gate.",
+      "publishable_changes_bullets": [
+        "test main_as_confluence_parent_read_surfaces_see_the_suffix (built through import_facts): a setup on main's exclusive middle, paid by a fact authored once on the confluence suffix, over a main-as-confluence-parent diamond",
+        "asserts the lineage_of read surfaces see main's forward suffix: payoff_coverage dangling 0 and paid by the suffix, frame_view holds it at rv while excluding braid's exclusive middle, manuscript renders the suffix scene; irony_intervals and timeline_gaps compose over the same topology"
+      ],
+      "publishable_verification_bullets": [
+        "non-vacuous: main.paid == [su-main] and main.dangling empty both depend on main's forward suffix visibility — if it broke, su-main would dangle; the assertions are diagnostic, not a green rubber-stamp",
+        "no production change this round (test-only); mnemosyne-validate 283 lib green, clippy --all-targets clean, fmt --all --check clean"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the MNEMO-GAP-002 sweep is closed: every canon consumer — gate trio (scan_continuity / timeline_gaps / edge_candidates via the R608-fixed query_world_lineages) and read surfaces (payoff / frame_view / irony / manuscript via lineage_of) — is confirmed for main-as-confluence-parent, by test not by assertion",
+        "the residual-risk caveat raised after R609 is retired; no further main-as-confluence-parent debt"
+      ]
     }
   },
   "inventory_entries": {},
