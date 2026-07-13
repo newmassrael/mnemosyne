@@ -229,9 +229,8 @@ fn compose_canon_order(
     decl: &mnemosyne_validate::continuity::CanonOrderFile,
     store: &AtomicStore,
 ) -> Result<mnemosyne_validate::continuity::CanonOrder, OpError> {
-    use mnemosyne_validate::continuity::{world_order_composition, CanonOrder};
-    let composition = world_order_composition(&store.branches).map_err(OpError::Other)?;
-    CanonOrder::from_declaration(decl, &composition).map_err(OpError::Other)
+    use mnemosyne_validate::continuity::CanonOrder;
+    CanonOrder::from_declaration(decl, &store.branches).map_err(OpError::Other)
 }
 
 /// The continuity-scan envelope both wires emit (Round 435): the configured
@@ -258,6 +257,13 @@ pub struct ContinuityScanReport {
     /// with `interval_severity` OFF is a declared-but-ungated timeline rule
     /// the CLI names in a NOTICE (the R491 opt-in nudge).
     pub interval_rules: usize,
+    /// Registered branches that declare no road of their own, so their road — and
+    /// their ENDING — is their lineage's (Round 614). Not an error: a world-line that
+    /// diverges only in FACTS and rides the trunk on is a real shape. But the substrate
+    /// cannot tell it from a divergent ending whose road was never declared, and under
+    /// THAT reading the terminal gates measure the trunk's ending instead of its own —
+    /// so the ambiguity is NAMED (the CLI notice), never guessed.
+    pub undeclared_roads: Vec<String>,
     /// Exclusive-rule candidate pairs the declared order cannot compare.
     pub rule_unordered_pairs: usize,
     /// Same-frame same-subject typed pairs no succession PATH connects —
@@ -320,6 +326,7 @@ pub fn continuity_scan(
         unordered_pairs: report.unordered_pairs,
         rules: report.rules,
         interval_rules: report.interval_rules,
+        undeclared_roads: report.undeclared_roads.clone(),
         rule_unordered_pairs: report.rule_unordered_pairs,
         unchained_state_pairs: report.unchained_state_pairs,
         interval_unverifiable: report.interval_unverifiable,

@@ -126,17 +126,192 @@ fn closure_of(
     Ok(reach)
 }
 
-/// Reachability over the declared partial order: `le(branch, a, b)` =
-/// `a == b` or a declared path `a -> b` under that branch's order (its own
-/// edges composed with the base; undeclared branch = base alone). Cycles are
-/// rejected at construction — per edge set, base ∪ branch combined (an order
-/// with a cycle is no order — fail loud).
+/// The declared canon order, carrying TWO derived structures the declaration is
+/// asked for and which must NOT be conflated (Round 614, design sec 7.39):
+///
+/// - **PRECEDENCE** (`reach`, powering [`CanonOrder::le`] / [`CanonOrder::comparable`]):
+///   *"can this world's order COMPARE coordinates a and b?"* Deliberately GENEROUS —
+///   it composes every world-line member's edges. A world MUST be able to compare a
+///   coordinate PAST its fork in order to classify a fact there as definitively `Out`
+///   rather than `Unknown`; four gates (disclosure leak, typed exclusivity, interval
+///   rules, edge candidates) depend on exactly that decidability.
+/// - **ROAD** (`road`, powering [`CanonOrder::names`] / [`CanonOrder::linearize`] /
+///   [`CanonOrder::is_maximal`]): *"which coordinates does this world actually TRAVEL,
+///   and where does it END?"* Necessarily BOUNDED.
+///
+/// Reading the ROAD off the PRECEDENCE node set is the R611 defect: it made
+/// `validate-render-fidelity` blind for divergent worlds (rewarding a render that
+/// delivered the trunk's ending and flagging the faithful one), silenced the R488
+/// wrong-world-line guard past a fork, and put phantom scenes on the pinion seam.
+///
+/// Cycles are rejected at construction, per composed edge set — an order with a cycle
+/// is no order, so this fails loud.
 #[derive(Debug, Clone)]
 pub struct CanonOrder {
     /// Closure of the shared `edges` base.
     base: BTreeMap<String, BTreeSet<String>>,
-    /// Per-branch closure of (base ∪ branch edges), keyed by branch id.
+    /// Per-branch closure of (base ∪ contributors' edges ∪ own), keyed by branch id.
+    /// The PRECEDENCE axis — generous by design (see the type doc).
     branch_reach: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// The ROAD of each world: the coordinates it actually travels ([`road_of`]).
+    /// Keyed for `MAIN_BRANCH` and every registered branch.
+    road: BTreeMap<String, BTreeSet<String>>,
+    /// Worlds that declare no road segment of their own, so their road — and
+    /// therefore their ENDING — is their lineage's (Round 614). Not an error: a
+    /// world-line that diverges only in FACTS and rides the trunk on is a real and
+    /// common shape, and the substrate cannot tell it apart from a divergent ending
+    /// that simply forgot to declare its road. Surfaced LOUDLY rather than guessed
+    /// (`undeclared_roads` → the CLI notice), because silently assuming EITHER
+    /// reading is how the render-fidelity gate came to reward a drifted render.
+    undeclared_roads: BTreeSet<String>,
+}
+
+/// The branches whose declared edge sets can carry `world`'s road, each with its
+/// OVERRIDE PRIORITY — lower = closer = wins where two of them declare an out-edge at
+/// the same coordinate (Round 614, design sec 7.39.2).
+///
+/// This is deliberately NOT [`mnemosyne_core::world_membership`]. The two axes are
+/// DUALS and diverge at a merge:
+///
+/// | | fork | merge |
+/// |---|---|---|
+/// | facts (R612) | CUT (conjoin a bound) | **INTERSECT** the parents — a fact holds only if EVERY incoming road carried it |
+/// | road (R614)  | OVERRIDE (own out-edge replaces the inherited one) | **UNION** the parents — a coordinate is travelled if EITHER incoming road travels it |
+///
+/// R612's intersect deletes the parents from a confluence's membership BY DESIGN (that
+/// is what makes the fact axis right), so for any world whose prefix runs through a
+/// merge the member edge set no longer holds the edges that carry the road. Deriving
+/// the road from the fact lattice therefore collapses it — measured: it left a playable
+/// world with a one-node road and turned its own facts into false positives.
+///
+/// BACKWARD (fork ancestors, and for a confluence ALL its parents — this is the union)
+/// gets priority by distance; FORWARD (the confluences a backward member flows into)
+/// ranks last, so a confluence continues the road only where no closer branch declares
+/// an out-edge. Siblings are never members — which is what keeps a sibling's exclusive
+/// coordinate off this world's road.
+fn road_lineage(
+    branches: &BTreeMap<String, mnemosyne_core::Branch>,
+    world: &str,
+) -> Result<BTreeMap<String, usize>, String> {
+    // Backward closure: nearest-first depth over forks_from + converges_from.
+    let mut backward: BTreeMap<String, usize> = BTreeMap::new();
+    let mut frontier = vec![(world.to_string(), 0usize)];
+    while let Some((b, depth)) = frontier.pop() {
+        match backward.get(&b) {
+            Some(seen) if *seen <= depth => continue,
+            _ => {}
+        }
+        backward.insert(b.clone(), depth);
+        if backward.len() > branches.len() + 2 {
+            return Err(format!(
+                "road lineage of `{world}` exceeds the branch registry — cyclic \
+                 out-of-band edit (the mutate API cannot write a cycle)"
+            ));
+        }
+        let Some(branch) = branches.get(&b) else {
+            continue; // MAIN_BRANCH (never registered) — the root of every fork chain
+        };
+        if let Some(fork) = &branch.forks_from {
+            frontier.push((fork.branch.clone(), depth + 1));
+        }
+        for edge in &branch.converges_from {
+            frontier.push((edge.branch.clone(), depth + 1));
+        }
+    }
+    // Forward: the confluences a backward member flows into continue its road, but
+    // only where nothing closer declares an out-edge — so they rank after every
+    // backward tier.
+    let forward_rank = backward.len() + 1;
+    let mut lineage = backward.clone();
+    for (b, depth) in &backward {
+        for confluence in mnemosyne_core::forward_confluences(branches, b) {
+            let rank = forward_rank + depth;
+            lineage
+                .entry(confluence)
+                .and_modify(|p| *p = (*p).min(rank))
+                .or_insert(rank);
+        }
+    }
+    Ok(lineage)
+}
+
+/// One world's ROAD — the coordinates it actually TRAVELS (Round 614, the override
+/// walk of design sec 7.39.2). A coordinate is on the road iff it is a SEED, or an
+/// edge reaches it FROM a coordinate already on the road, declared by the CLOSEST
+/// member branch declaring an out-edge there.
+///
+/// `u ∈ road` — "you must GET there" — is what keeps a sibling's exclusive coordinate
+/// off the road even when a confluence's edge set names it: a merge edge like
+/// `s4b -> s5` cannot fire for a world that never reaches `s4b`. (The R613 draft
+/// seeded every in-degree-0 node instead, which re-admitted exactly that leak.)
+///
+/// NO departure bound is consulted here. The cut is the OVERRIDE — a branch that
+/// declares its own successor at a shared coordinate REPLACES the inherited one; a
+/// branch that declares nothing CONTINUES its lineage's road. That is why the walk
+/// never has to ask the order to compare coordinates on a parallel chain, where they
+/// are legitimately incomparable rather than past (the R456 idiom).
+fn road_of(
+    decl: &CanonOrderFile,
+    branches: &BTreeMap<String, mnemosyne_core::Branch>,
+    world: &str,
+) -> Result<BTreeSet<String>, String> {
+    let lineage = road_lineage(branches, world)?;
+    // Out-edges per member branch (MAIN_BRANCH's segment IS the base edge set —
+    // `from_declaration` rejects a `branches.main` declaration for exactly this reason).
+    let segment = |b: &str| -> &[[String; 2]] {
+        if b == mnemosyne_core::MAIN_BRANCH {
+            &decl.edges
+        } else {
+            decl.branches.get(b).map_or(&[][..], Vec::as_slice)
+        }
+    };
+    // SEEDS: the sources of the ROOT of this world's lineage — `main`'s base for any
+    // world in main's lineage, a standalone's own segment for a standalone. Never
+    // "every in-degree-0 node of the member sub-DAG": that is the draft's bug.
+    let mut seeds: BTreeSet<&str> = BTreeSet::new();
+    for b in lineage.keys() {
+        let is_root = b == mnemosyne_core::MAIN_BRANCH
+            || branches
+                .get(b)
+                .is_some_and(|br| br.forks_from.is_none() && br.converges_from.is_empty());
+        if !is_root {
+            continue;
+        }
+        let edges = segment(b);
+        let targets: BTreeSet<&str> = edges.iter().map(|e| e[1].trim()).collect();
+        seeds.extend(
+            edges
+                .iter()
+                .map(|e| e[0].trim())
+                .filter(|n| !targets.contains(n)),
+        );
+    }
+    let mut road: BTreeSet<String> = seeds.iter().map(|s| s.to_string()).collect();
+    let mut frontier: Vec<String> = road.iter().cloned().collect();
+    while let Some(u) = frontier.pop() {
+        // The CLOSEST member declaring an out-edge at `u` wins; ties (a confluence's
+        // two parents sit at the same depth) take the UNION — roads union at a merge.
+        let best = lineage
+            .iter()
+            .filter(|(b, _)| segment(b).iter().any(|e| e[0].trim() == u))
+            .map(|(_, rank)| *rank)
+            .min();
+        let Some(best) = best else {
+            continue; // `u` is an end of this world's road
+        };
+        for (b, rank) in &lineage {
+            if *rank != best {
+                continue;
+            }
+            for e in segment(b).iter().filter(|e| e[0].trim() == u) {
+                let v = e[1].trim().to_string();
+                if road.insert(v.clone()) {
+                    frontier.push(v);
+                }
+            }
+        }
+    }
+    Ok(road)
 }
 
 impl CanonOrder {
@@ -145,6 +320,8 @@ impl CanonOrder {
         Self {
             base: BTreeMap::new(),
             branch_reach: BTreeMap::new(),
+            road: BTreeMap::new(),
+            undeclared_roads: BTreeSet::new(),
         }
     }
 
@@ -159,22 +336,29 @@ impl CanonOrder {
         )
     }
 
-    /// Construct from a declaration + the per-world order composition
-    /// ([`world_order_composition`], Rounds 438 + 533): `composition` maps a
-    /// branch → the OTHER branches whose declared edge sets compose its order
-    /// (its world-line membership in both directions — backward fork ancestors
-    /// and forward confluence-suffixes, unified, since the order algebra is
-    /// direction-agnostic). A branch's order = closure of (base ∪ every
-    /// contributor's declared edges ∪ its own), cycle-checked per composition;
-    /// `closure_of` topo-closes the resulting DAG unchanged (a confluence makes
-    /// a lineage a DAG, not a chain — the order algebra already handles it).
-    /// The order algebra never sees the narrative backward/forward distinction;
-    /// that lives in [`mnemosyne_core::world_membership`] (visibility), where it is
-    /// load-bearing.
+    /// Construct from a declaration + THE branch registry (Rounds 438 + 533 + 614).
+    /// Both derived structures are built here from that one input, so a caller can no
+    /// longer hand in an order composition that disagrees with the branch graph:
+    ///
+    /// - **PRECEDENCE** (`reach`): a world's order = closure of (base ∪ every
+    ///   world-line member's declared edges ∪ its own), cycle-checked per composition.
+    ///   `closure_of` topo-closes the resulting DAG unchanged (a confluence makes a
+    ///   lineage a DAG, not a chain). Generous BY DESIGN — see the type doc.
+    /// - **ROAD** ([`road_of`]): the coordinates each world actually TRAVELS, by the
+    ///   override walk over the branch graph. NOT derived from the precedence node set
+    ///   (that conflation is the R611 defect) and NOT derived from the R612 fact
+    ///   lattice (facts intersect at a merge; roads union).
+    ///
+    /// A registered branch that declares NO road segment of its own is recorded in
+    /// `undeclared_roads`: its road, and therefore its ENDING, is its lineage's. That
+    /// is a real and common shape (a world-line that diverges only in FACTS), and the
+    /// substrate cannot distinguish it from a divergent ending whose road was simply
+    /// never declared — so it is surfaced, never guessed.
     pub fn from_declaration(
         decl: &CanonOrderFile,
-        composition: &BTreeMap<String, Vec<String>>,
+        branches: &BTreeMap<String, mnemosyne_core::Branch>,
     ) -> Result<Self, String> {
+        let composition = &world_order_composition(branches)?;
         let base = closure_of(&decl.edges, "base")?;
         for branch in decl.branches.keys() {
             let branch = branch.trim();
@@ -210,13 +394,48 @@ impl CanonOrder {
                 closure_of(&combined, &format!("branch `{branch}`"))?,
             );
         }
-        Ok(Self { base, branch_reach })
+        // The ROAD axis (Round 614) — computed for `main` and every registered branch.
+        let mut road = BTreeMap::new();
+        let mut undeclared_roads = BTreeSet::new();
+        for world in
+            std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
+        {
+            if world != mnemosyne_core::MAIN_BRANCH && !decl.branches.contains_key(&world) {
+                undeclared_roads.insert(world.clone());
+            }
+            road.insert(world.clone(), road_of(decl, branches, &world)?);
+        }
+        Ok(Self {
+            base,
+            branch_reach,
+            road,
+            undeclared_roads,
+        })
     }
 
     /// The reach relation governing `branch` — its declared composition, or
-    /// the base for an undeclared branch.
+    /// the base for an undeclared branch. THE PRECEDENCE AXIS (generous).
     fn reach_for(&self, branch: &str) -> &BTreeMap<String, BTreeSet<String>> {
         self.branch_reach.get(branch).unwrap_or(&self.base)
+    }
+
+    /// The coordinates `branch` actually TRAVELS — THE ROAD AXIS (Round 614, bounded).
+    /// A world with no computed road (an unregistered id, or a pre-branch store) falls
+    /// back to the base spine, which is `main`'s road.
+    fn road_for(&self, branch: &str) -> BTreeSet<&str> {
+        match self.road.get(branch) {
+            Some(r) => r.iter().map(String::as_str).collect(),
+            None => self.base.keys().map(String::as_str).collect(),
+        }
+    }
+
+    /// Registered branches that declare no road segment of their own, so their road —
+    /// and their ENDING — is their lineage's (Round 614). Surfaced, never guessed: the
+    /// substrate cannot tell a facts-only divergence (rides the trunk on, correct) from
+    /// a divergent ending whose road was never declared (whose terminal gates are then
+    /// measuring the TRUNK's ending, not its own).
+    pub fn undeclared_roads(&self) -> impl Iterator<Item = &str> {
+        self.undeclared_roads.iter().map(String::as_str)
     }
 
     /// Declared-or-equal precedence under `branch`'s order.
@@ -242,11 +461,17 @@ impl CanonOrder {
             .map(String::as_str)
     }
 
-    /// `node` is named in `branch`'s composed order (Round 488). Catches a fact
-    /// whose canon coordinate is positioned in the store's canon but not in its
-    /// own branch's world-line — the wrong-branch authoring footgun.
+    /// `node` is ON `branch`'s ROAD — a coordinate that world actually TRAVELS
+    /// (Rounds 488 + 614). Catches a fact whose canon coordinate belongs to another
+    /// world-line — the wrong-branch authoring footgun.
+    ///
+    /// Round 614 moved this from the generous PRECEDENCE node set to the ROAD. Under
+    /// the old reading a divergent world "named" every coordinate any world-line member
+    /// declared — including a SIBLING's exclusive scene, smuggled in by the merge edge a
+    /// downstream confluence declares from it — so the guard went silent on exactly the
+    /// error it exists to catch.
     pub fn names(&self, branch: &str, node: &str) -> bool {
-        self.reach_for(branch).contains_key(node)
+        self.road_for(branch).contains(node)
     }
 
     /// Branch ids carrying a declared edge set.
@@ -254,32 +479,55 @@ impl CanonOrder {
         self.branch_reach.keys().map(String::as_str)
     }
 
-    /// `node` is a maximal node of `branch`'s declared composed order — a
-    /// world-line end: named by the governing declaration, no strict
-    /// descendant. Sections outside the declaration are isolated
-    /// coordinates, never maximal (Round 456 — order semantics live on
-    /// the order type, not in its readers).
+    /// `node` is an END of `branch`'s ROAD — on it, with no successor the world
+    /// travels (Rounds 456 + 614). Coordinates off the road are never maximal.
+    ///
+    /// A world-line legitimately has SEVERAL ends (parallel chains; a road that forks
+    /// past a merge), so this is the membership test and [`CanonOrder::terminals`] is
+    /// the set. Round 614 moved it off the composed order: a divergent world used to
+    /// report the TRUNK's terminal as its own, which is how `reached_terminal` came to
+    /// pass a render that delivered the wrong ending.
     pub fn is_maximal(&self, branch: &str, node: &str) -> bool {
-        self.reach_for(branch)
-            .get(node)
-            .is_some_and(BTreeSet::is_empty)
+        self.terminals(branch).contains(node)
     }
 
-    /// Deterministic topological linearization of `branch`'s composed
-    /// order (Round 466, design sec 7.17): every node the governing
-    /// declaration names, lexicographically smallest first among nodes
-    /// whose declared strict predecessors are all emitted (Kahn over the
-    /// closure — the closure of a DAG topo-sorts identically to it).
-    /// ONE valid reading of a partial order, never the only one; the
-    /// manuscript surfaces the undeclared adjacencies beside it.
+    /// Every END of `branch`'s road (Round 614) — the world-line's terminal SET. A road
+    /// node with no successor ON THE ROAD. Empty only for a world with no road at all.
+    pub fn terminals(&self, branch: &str) -> BTreeSet<&str> {
+        let road = self.road_for(branch);
+        let reach = self.reach_for(branch);
+        road.iter()
+            .copied()
+            .filter(|n| {
+                reach
+                    .get(*n)
+                    .is_none_or(|desc| !desc.iter().any(|d| road.contains(d.as_str())))
+            })
+            .collect()
+    }
+
+    /// Deterministic topological linearization of `branch`'s ROAD (Rounds 466 + 614,
+    /// design sec 7.17): every coordinate the world TRAVELS, lexicographically smallest
+    /// first among those whose road predecessors are all emitted (Kahn over the
+    /// closure — the closure of a DAG topo-sorts identically to it). ONE valid reading
+    /// of a partial order, never the only one; the manuscript surfaces the undeclared
+    /// adjacencies beside it.
+    ///
+    /// Round 614 restricted it to the road. Walking the composed ORDER made a divergent
+    /// world's manuscript (and the `playable_world` pinion seam) render PHANTOM scenes:
+    /// the trunk tail past its fork, and a sibling's exclusive road.
     pub fn linearize(&self, branch: &str) -> Vec<String> {
         let reach = self.reach_for(branch);
-        let mut pred_count: BTreeMap<&str, usize> = reach.keys().map(|k| (k.as_str(), 0)).collect();
-        for descendants in reach.values() {
+        let road = self.road_for(branch);
+        let mut pred_count: BTreeMap<&str, usize> = road.iter().map(|n| (*n, 0usize)).collect();
+        for (n, descendants) in reach {
+            if !road.contains(n.as_str()) {
+                continue; // an off-road predecessor cannot gate a road node
+            }
             for d in descendants {
-                *pred_count
-                    .get_mut(d.as_str())
-                    .expect("closure names every node") += 1;
+                if let Some(c) = pred_count.get_mut(d.as_str()) {
+                    *c += 1;
+                }
             }
         }
         let mut ready: BTreeSet<&str> = pred_count
@@ -291,13 +539,12 @@ impl CanonOrder {
         while let Some(&n) = ready.iter().next() {
             ready.remove(n);
             out.push(n.to_string());
-            for d in &reach[n] {
-                let c = pred_count
-                    .get_mut(d.as_str())
-                    .expect("closure names every node");
-                *c -= 1;
-                if *c == 0 {
-                    ready.insert(d.as_str());
+            for d in reach.get(n).into_iter().flatten() {
+                if let Some(c) = pred_count.get_mut(d.as_str()) {
+                    *c -= 1;
+                    if *c == 0 {
+                        ready.insert(d.as_str());
+                    }
                 }
             }
         }
@@ -1064,6 +1311,17 @@ pub struct ContinuityReport {
     /// count with the class OFF is a declared-but-ungated rule the CLI names
     /// aloud rather than leaving silent (the R491 opt-in nudge).
     pub interval_rules: usize,
+    /// Registered branches that declare NO road segment of their own, so their road —
+    /// and therefore their ENDING — is their lineage's (Round 614).
+    ///
+    /// NOT an error, and deliberately not gated: a world-line that diverges only in
+    /// FACTS and rides the trunk on is a real, common shape. But the substrate CANNOT
+    /// distinguish it from a divergent ending whose road was simply never declared —
+    /// and for that second reading the terminal gates are then measuring the TRUNK's
+    /// ending, not the world's own (which is how `validate-render-fidelity` came to
+    /// pass a render that delivered the wrong ending). So the ambiguity is NAMED, never
+    /// guessed: the CLI prints it and hands the author the lever.
+    pub undeclared_roads: Vec<String>,
     /// Distinct exclusive-rule candidate pairs whose canon coordinates the
     /// declared order cannot compare in some world (B-1: surfaced, never
     /// gated — the rule cannot decide them).
@@ -1869,6 +2127,11 @@ pub fn scan_continuity(
     let mut report = ContinuityReport {
         facts: facts.len(),
         order_nodes: order.node_count(),
+        // Round 614 — name the world-lines whose road (and ending) is their lineage's,
+        // because the substrate cannot tell "diverges in facts only" from "divergent
+        // ending, road not yet declared" and the terminal gates mean different things
+        // under the two readings.
+        undeclared_roads: order.undeclared_roads().map(str::to_string).collect(),
         ..Default::default()
     };
     // Canon-coordinate integrity (Round 488): a fact's canon coordinate must be
@@ -4221,6 +4484,19 @@ mod tests {
         assert!(mixed.gates);
     }
 
+    /// A branch registered as a fork of `main` at `at` (Round 614 — the ROAD axis
+    /// makes fork-vs-standalone load-bearing, so a test that means "a fork" must
+    /// register one).
+    fn fork_at(at: &str) -> mnemosyne_core::Branch {
+        mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: MAIN_BRANCH.to_string(),
+                at: at.to_string(),
+            }),
+            ..Default::default()
+        }
+    }
+
     fn chain(ids: &[&str]) -> CanonOrder {
         let edges: Vec<[String; 2]> = ids
             .windows(2)
@@ -4414,7 +4690,6 @@ mod tests {
                 ),
             ]),
         };
-        let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let mk = |id: &str, branch: &str, from: &str, to: Option<&str>| {
             let mut f = fact(id, "seward", from, to);
             f.branch = Some(branch.to_string());
@@ -4427,6 +4702,13 @@ mod tests {
         fa_b.conflicts_with = vec!["fb-b".to_string()];
         let fb_b = mk("fb-b", "b", "ch-3", None);
         let store = store_with(vec![fa_a, fb_a, fa_b, fb_b]);
+        // `a` and `b` are STANDALONE world-lines (R433: they share no history — there
+        // is no base spine here at all), so each seeds its road from its OWN edge set.
+        // The order is composed from the STORE's registry: Round 614 made that the one
+        // input, so an order can no longer be built against a branch graph that
+        // disagrees with the store it will be scanned against (this test used to hand
+        // in an EMPTY registry beside a store that registers both branches).
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
         match &report.violations[0] {
@@ -4926,7 +5208,7 @@ mod tests {
             composition["deep"].iter().collect::<BTreeSet<_>>(),
             BTreeSet::from([&"route".to_string(), &MAIN_BRANCH.to_string()])
         );
-        let order = CanonOrder::from_declaration(&decl, &composition).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         // ch-2 -> ch-3 was declared on `route`; `deep` inherits it.
         assert!(order.le("deep", "ch-2", "ch-3"));
         assert!(!order.le(MAIN_BRANCH, "ch-2", "ch-3"));
@@ -5239,7 +5521,10 @@ mod tests {
                     ],
                 )]),
             },
-            &BTreeMap::from([("spine".to_string(), vec![])]),
+            // `spine` is a STANDALONE trunk world-line (its own road; the base is
+            // empty), which is exactly the shape that made a fact defaulting to
+            // `main` a silent wrong-branch error.
+            &BTreeMap::from([("spine".to_string(), mnemosyne_core::Branch::default())]),
         )
         .unwrap();
         // ch-3 is positioned in `spine`; a fact on `main` (the default) does not
@@ -5300,7 +5585,10 @@ mod tests {
                     ),
                 ]),
             },
-            &BTreeMap::from([("left".to_string(), vec![]), ("right".to_string(), vec![])]),
+            &BTreeMap::from([
+                ("left".to_string(), fork_at("ch-2")),
+                ("right".to_string(), fork_at("ch-2")),
+            ]),
         )
         .unwrap();
         // A fact on `left` whose evidence cites ch-4 — a scene only on the
@@ -7409,9 +7697,7 @@ mod tests {
                 ("weave".to_string(), vec![e("s4", "s5")]),
             ]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
         // The composition keys `main` (it IS a confluence parent), so
         // `declared_branches()` yields it — guarding the exact code path.
@@ -7520,8 +7806,7 @@ mod tests {
                 ("dawn".to_string(), vec![e("rk", "rv")]),
             ]),
         };
-        CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-            .unwrap()
+        CanonOrder::from_declaration(&decl, &store.branches).unwrap()
     }
 
     /// Round 533 — VISIBILITY: a fact authored ONCE on the confluence holds in
@@ -7749,9 +8034,7 @@ mod tests {
                 ("weave".to_string(), vec![e("rk", "rv")]),
             ]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
             report.violations.iter().any(|v| matches!(
@@ -7845,9 +8128,7 @@ mod tests {
                 ("weave".to_string(), vec![e("rk", "rv")]),
             ]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
         // payoff_coverage: main's setup is PAID through the confluence suffix,
         // not dangling — the payoff is forward-visible in main.
@@ -8000,9 +8281,7 @@ mod tests {
                 vec![e("s2", "s3"), e("s3", "s4")], // the displaced suffix
             )]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         (store, order)
     }
 
@@ -8210,9 +8489,7 @@ mod tests {
                 ),
             ]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
@@ -8336,9 +8613,7 @@ mod tests {
             edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4b")],
             branches: BTreeMap::new(),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let holding = |world: &str, at: &str| -> Vec<String> {
             frame_view(&store, &order, "gt", world, None, at)
                 .unwrap()
@@ -8445,9 +8720,7 @@ mod tests {
             edges: vec![e("s1", "s2"), e("s2", "s3")],
             branches: BTreeMap::new(),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
             report.violations.iter().any(|v| matches!(
@@ -8465,6 +8738,177 @@ mod tests {
             report.cross_scope_pairs, 0,
             "the R533-deferred case is closed by the lattice, not special-cased"
         );
+    }
+
+    /// Round 614 — THE ROAD AXIS. The subway-braid chain, with a divergent `ending`
+    /// that DECLARES its own road. Locks every row of the design sec 7.39.2 table.
+    ///
+    /// The road is the OVERRIDE WALK: a branch that declares its own successor at a
+    /// shared coordinate REPLACES the inherited one; a branch that declares nothing
+    /// continues its lineage's road. NO fact-bound is consulted — the R613 draft
+    /// derived the road from the R612 fact lattice and it collapsed (facts INTERSECT at
+    /// a merge, roads UNION).
+    #[test]
+    fn road_axis_override_walk_bounds_each_world_line() {
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let converge = |b: &str, at: &str| mnemosyne_core::BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        let fork = |from: &str, at: &str| mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: from.to_string(),
+                at: at.to_string(),
+            }),
+            ..Default::default()
+        };
+        let branches = BTreeMap::from([
+            ("braid1".to_string(), fork(MAIN_BRANCH, "s1")),
+            (
+                "weave1".to_string(),
+                mnemosyne_core::Branch {
+                    converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
+                    ..Default::default()
+                },
+            ),
+            ("braid2".to_string(), fork("weave1", "s3")),
+            (
+                "weave2".to_string(),
+                mnemosyne_core::Branch {
+                    converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
+                    ..Default::default()
+                },
+            ),
+            ("ending".to_string(), fork(MAIN_BRANCH, "s3")),
+        ]);
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2")],
+            branches: BTreeMap::from([
+                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
+                ("braid2".to_string(), vec![e("s3", "s4b")]),
+                // the confluence declares a merge edge FROM EACH parent — including
+                // `s4b`, which is braid2's EXCLUSIVE coordinate. Under a node-set union
+                // that smuggles `s4b` into every downstream world (the R611 leak); the
+                // override walk's `u ∈ road` requirement refuses it.
+                ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
+                ("ending".to_string(), vec![e("s3", "e1")]), // its OWN divergent road
+            ]),
+        };
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
+        let road = |w: &str| -> Vec<String> {
+            order.linearize(w) // linearize walks exactly the road
+        };
+
+        // THE DIVERGENT ENDING: overrides the trunk at its fork and stops at its beat.
+        assert_eq!(road("ending"), vec!["s1", "s2", "s3", "e1"]);
+        assert!(
+            !order.names("ending", "s4"),
+            "the trunk tail is not its road"
+        );
+        assert!(
+            !order.names("ending", "s4b"),
+            "a SIBLING's exclusive coordinate must never be on this road — the merge \
+             edge `s4b -> s5` cannot fire from a source the world never reaches"
+        );
+        assert_eq!(
+            order.terminals("ending"),
+            BTreeSet::from(["e1"]),
+            "its END is its OWN, not the trunk's — this is what un-blinds reached_terminal"
+        );
+
+        // FORK OFF A CONFLUENCE: rides the trunk THROUGH the merge, overrides at s3, and
+        // never travels weave1's exclusive middle `s4`.
+        assert!(
+            order.names("braid2", "s1"),
+            "the pre-merge trunk IS its road"
+        );
+        assert!(order.names("braid2", "s4b"), "its own declared arm");
+        assert!(
+            !order.names("braid2", "s4"),
+            "weave1's exclusive middle is off-road — the R613 draft got this only VACUOUSLY \
+             (it had collapsed braid2's whole road to one node)"
+        );
+        assert_eq!(order.terminals("braid2"), BTreeSet::from(["s5"]));
+
+        // NO COLLAPSE: the parents keep their full trunk and their own middles.
+        assert!(order.names("braid1", "s1") && order.names("braid1", "s2"));
+        assert!(order.names("weave1", "s3") && order.names("weave1", "s4"));
+
+        // PRECEDENCE is untouched and still GENEROUS — a world can still COMPARE a
+        // coordinate past its fork, which is what four gates (disclosure leak, typed
+        // exclusivity, interval, edge candidates) rely on to decide `Out` vs `Unknown`.
+        assert!(order.le("ending", "s3", "s4"), "reach stays generous");
+        assert!(order.comparable("ending", "s1", "s5"));
+    }
+
+    /// Round 614 — a branch that declares NO road rides its lineage's road on, so its
+    /// ENDING is the trunk's. That is CORRECT for a world-line diverging only in FACTS,
+    /// and WRONG for a divergent ending whose road was never declared — and the
+    /// substrate cannot tell them apart. So it is NAMED (`undeclared_roads`), never
+    /// guessed, and never rejected: this is MNEMO-GAP-003's own base-declared store, and
+    /// the refuted R613 draft rejected 4 of its 6 facts.
+    #[test]
+    fn undeclared_road_rides_the_trunk_and_is_surfaced_not_rejected() {
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let branches = BTreeMap::from([
+            (
+                "braid".to_string(),
+                mnemosyne_core::Branch {
+                    forks_from: Some(mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.to_string(),
+                        at: "s1".to_string(),
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                "weave".to_string(),
+                mnemosyne_core::Branch {
+                    converges_from: vec![
+                        mnemosyne_core::BranchFork {
+                            branch: "main".to_string(),
+                            at: "s2".to_string(),
+                        },
+                        mnemosyne_core::BranchFork {
+                            branch: "braid".to_string(),
+                            at: "s2".to_string(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ),
+            (
+                "ending".to_string(),
+                mnemosyne_core::Branch {
+                    forks_from: Some(mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.to_string(),
+                        at: "s3".to_string(),
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        // Base-declared: the whole spine lives in `edges`, nobody declares a road.
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4")],
+            branches: BTreeMap::new(),
+        };
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
+
+        // Every undeclared world rides the trunk — so a fact anywhere on it is ON-ROAD
+        // and NOT rejected (the whole point: this must stay non-breaking).
+        for world in ["ending", "weave", "braid"] {
+            for coord in ["s1", "s2", "s3", "s4"] {
+                assert!(
+                    order.names(world, coord),
+                    "{world} rides the trunk while it declares no road: {coord}"
+                );
+            }
+        }
+        // ...and the ambiguity is NAMED, so an author who meant a divergent ending is
+        // told why the terminal gates cannot yet tell its ending from the trunk's.
+        let named: BTreeSet<&str> = order.undeclared_roads().collect();
+        assert_eq!(named, BTreeSet::from(["braid", "ending", "weave"]));
     }
 
     /// Round 535 — SUCCESSION reconciliation wired at BOTH enforcement points
@@ -8609,9 +9053,7 @@ mod tests {
                 vec![["ch-2".to_string(), "k-1".to_string()]],
             )]),
         };
-        let order =
-            CanonOrder::from_declaration(&decl, &world_order_composition(&store.branches).unwrap())
-                .unwrap();
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = fork_tree(&store, &order).unwrap();
         let by_id = |id: &str| report.branches.iter().find(|b| b.branch_id == id).unwrap();
 

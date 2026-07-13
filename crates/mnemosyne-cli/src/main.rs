@@ -2107,6 +2107,25 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 interval_severity.map_or("off", Severity::as_str)
             );
         }
+        // Road declaration-completeness NOTICE (Round 614). A branch that declares no
+        // road segment rides its lineage's road on, so its ENDING is the trunk's. That
+        // is correct for a world-line that diverges only in FACTS — and WRONG for a
+        // divergent ending whose road was simply never declared, whose terminal gates
+        // are then measuring the trunk's ending instead of its own. The substrate
+        // cannot tell the two apart, so name the ambiguity and hand over the lever
+        // rather than silently picking a reading (the R504 footgun this NOTICE closes).
+        if !report.undeclared_roads.is_empty() {
+            println!(
+                "  NOTICE: {} branch(es) declare no road of their own \u{2014} {}. Each rides \
+                 its lineage's road on, so its ENDING is the trunk's. Correct if it diverges \
+                 only in FACTS; if it is a DIVERGENT ENDING, declare its road in the \
+                 canon-order (\"branches\": {{\"<id>\": [[\"<fork-point>\", \"<its own scene>\"]]}}) \
+                 \u{2014} until you do, validate-render-fidelity cannot tell its ending from \
+                 the trunk's.",
+                report.undeclared_roads.len(),
+                report.undeclared_roads.join(", ")
+            );
+        }
     }
     if gate.gates {
         std::process::exit(1);

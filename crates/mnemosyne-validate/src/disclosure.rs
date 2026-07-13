@@ -572,11 +572,21 @@ mod tests {
                 ),
             ]),
         };
-        let ancestry = BTreeMap::from([
-            ("route".to_string(), Vec::new()),
-            ("other".to_string(), Vec::new()),
+        // Round 614 — `route` and `other` are FORKS of the trunk at ch-2 (as this
+        // fixture always meant). The ROAD axis makes fork-vs-standalone load-bearing:
+        // a fork rides the trunk in to its fork point, a standalone does not.
+        let fork_at_ch2 = || mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: mnemosyne_core::MAIN_BRANCH.to_string(),
+                at: "ch-2".to_string(),
+            }),
+            ..Default::default()
+        };
+        let branches = BTreeMap::from([
+            ("route".to_string(), fork_at_ch2()),
+            ("other".to_string(), fork_at_ch2()),
         ]);
-        let order = CanonOrder::from_declaration(&decl, &ancestry).unwrap();
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
 
         // ON-PATH: route prose visits ch-1 then r-1 (route's terminal).
         let mut on = AtomicStore::new();
