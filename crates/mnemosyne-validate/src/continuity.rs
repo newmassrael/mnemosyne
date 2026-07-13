@@ -405,6 +405,30 @@ impl CanonOrder {
             }
             road.insert(world.clone(), road_of(decl, branches, &world)?);
         }
+        // ORPHANED road edges (Round 615) — a declared edge whose SOURCE the branch's own
+        // road never reaches can never be travelled, so the branch silently loses whatever
+        // that edge would have carried, up to and including its own ENDING. The
+        // declaration itself is wrong (a mistyped or misattached coordinate), and the road
+        // axis made it consequential — so it fails LOUD rather than quietly truncating a
+        // world-line. A branch's edge set must ATTACH to the road it rides in on.
+        for (branch, edges) in &decl.branches {
+            let Some(r) = road.get(branch) else {
+                continue; // an edge set for an unregistered branch — the R607 guard's job
+            };
+            for e in edges {
+                let (u, v) = (e[0].trim(), e[1].trim());
+                if !r.contains(u) {
+                    return Err(format!(
+                        "canon-order: branch `{branch}` declares the edge `{u} -> {v}`, but \
+                         `{u}` is not on `{branch}`'s road — the edge can never be travelled, \
+                         so everything past it (possibly this world-line's own ending) would \
+                         be silently dropped. A branch's edge set must ATTACH to the road it \
+                         rides in on: start it AT (or before) the coordinate where this \
+                         world-line leaves its parent's road."
+                    ));
+                }
+            }
+        }
         Ok(Self {
             base,
             branch_reach,
@@ -2156,18 +2180,37 @@ pub fn scan_continuity(
             }
         }
     }
-    // Evidence reachability (Round 522, design sec 7.27 Piece B): a
-    // backreference cited in `evidence` must be reachable AT-OR-BEFORE the
-    // fact's own coordinate in its world-line — the R488 off-branch principle
-    // (canon_from) extended to evidence via the SAME `le`. Sibling-branch
-    // evidence (no path in this branch) and a forward reference (in-branch but
-    // after the fact) both fail; spine/prior evidence passes. Only positioned
+    // Evidence reachability (Rounds 522 + 615, design sec 7.27 Piece B): a
+    // backreference cited in `evidence` must be a scene this world-line COULD HAVE
+    // SEEN — i.e. one it actually TRAVELS (`names`, the ROAD axis), at-or-before the
+    // fact's own coordinate (`le`, the precedence axis). It is the R488 off-branch
+    // principle extended to evidence, so it must be enforced on the SAME axis R488 is:
+    // Round 614 moved R488 (canon_from) to the road and left this on `le` alone, which
+    // made ONE principle carry TWO different invariants — and a divergent world could
+    // then cite a SIBLING's exclusive scene as evidence and pass, because the generous
+    // precedence order still connects that scene (a confluence declares a merge edge
+    // from every parent, so a sibling's coordinate is reachable in the composed order
+    // even though the world never travels it). Both halves now ask the road.
+    //
+    // Sibling-branch evidence (off this world's road) and a forward reference (on the
+    // road but after the fact) both fail; spine/prior evidence passes. Only positioned
     // coordinates are checked: an unpositioned `canon_from` is the
     // orderless/forward-declared mode (tolerated whole, matching
     // FactCanonOffBranch), and an unpositioned evidence coordinate is the same
     // orderless tolerance per reference.
     for (id, fact) in facts {
         if !positioned.contains(fact.canon_from.as_str()) {
+            continue;
+        }
+        // A fact whose OWN coordinate is off this world's road is already reported by
+        // `FactCanonOffBranch` above — the root cause. Re-reporting it here on the
+        // evidence axis (its evidence defaults to that same coordinate) would DOUBLE
+        // the finding count without naming a single additional fact: measured on the
+        // real corpus, 14 off-road facts produced 14 duplicate evidence violations and
+        // 0 new ones. There is no world in which to evaluate "could it have seen that"
+        // when the beat itself is not on the road, so the question is not asked. Same
+        // shape as the unpositioned-coordinate skip above.
+        if !order.names(&fact.branch, &fact.canon_from) {
             continue;
         }
         // The world-line(s) the evidence must be reachable in. The normal case
@@ -2190,9 +2233,13 @@ pub fn scan_continuity(
             if !positioned.contains(e.as_str()) {
                 continue;
             }
+            // "Could this world have SEEN that scene, by now?" = it TRAVELS it
+            // (`names` — the road) AND it is at-or-before this fact (`le`).
+            let could_have_seen =
+                |world: &str| order.names(world, e) && order.le(world, e, &fact.canon_from);
             match confluence_parents {
                 None => {
-                    if !order.le(&fact.branch, e, &fact.canon_from) {
+                    if !could_have_seen(&fact.branch) {
                         report
                             .violations
                             .push(ContinuityViolation::EvidenceUnreachable {
@@ -2205,7 +2252,7 @@ pub fn scan_continuity(
                 }
                 Some(parents) => {
                     for parent in parents {
-                        if !order.le(&parent.branch, e, &fact.canon_from) {
+                        if !could_have_seen(&parent.branch) {
                             report.violations.push(
                                 ContinuityViolation::ConfluenceEvidenceUnreconciled {
                                     fact: id.clone(),
@@ -3367,9 +3414,12 @@ pub struct WorldManuscript {
     pub unplaced_facts: Vec<ManuscriptUnplacedFact>,
     /// `Vis::Unknown` facts (B-1) — never placed, never counted holding.
     pub undecidable: Vec<String>,
-    /// Store sections this world's declaration never names — isolated
-    /// coordinates (Round 456), never scenes.
-    pub sections_outside_order: Vec<String>,
+    /// Store sections this world does NOT travel (Rounds 456 + 615): coordinates the
+    /// declaration leaves isolated, AND — since the road axis (R614) — the scenes that
+    /// belong to some OTHER world-line (a sibling's exclusive road, or the trunk tail
+    /// past this world's fork). Named for what it means: they are not this world's
+    /// scenes. Not a defect surface — a reading surface (a manuscript never gates).
+    pub sections_off_road: Vec<String>,
 }
 
 /// Playthrough manuscripts over query worlds (Round 466) — pure read
@@ -3452,7 +3502,7 @@ pub fn playthrough_manuscript(
                 .filter(|w| !order.comparable(&world, &w[0], &w[1]))
                 .map(|w| [w[0].clone(), w[1].clone()])
                 .collect(),
-            sections_outside_order: store
+            sections_off_road: store
                 .sections
                 .keys()
                 .filter(|s| !node_set.contains(s.as_str()))
@@ -3764,7 +3814,7 @@ pub struct MapLocator {
 /// B-1 honesty surfaces ride through, never silently dropped (R558 review fix):
 /// `undeclared_adjacencies` (the walk is ONE valid linearization of a partial
 /// order, not the only one), `unplaced_facts`, `undecidable`,
-/// `sections_outside_order`. A [`MapLocator`]'s `scene_ordinal` indexes
+/// `sections_off_road`. A [`MapLocator`]'s `scene_ordinal` indexes
 /// `manuscript.scenes`.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct PlayableWorld {
@@ -6883,7 +6933,7 @@ mod tests {
         assert_eq!(main.unplaced_facts[0].field, "canon_from");
         assert_eq!(main.unplaced_facts[0].coordinate, "ch-3");
         assert_eq!(
-            main.sections_outside_order,
+            main.sections_off_road,
             ["ch-3".to_string(), "ch-4".to_string()]
         );
         assert!(main.scenes.iter().all(|s| s.begins.is_empty()));
@@ -8909,6 +8959,123 @@ mod tests {
         // told why the terminal gates cannot yet tell its ending from the trunk's.
         let named: BTreeSet<&str> = order.undeclared_roads().collect();
         assert_eq!(named, BTreeSet::from(["braid", "ending", "weave"]));
+    }
+
+    /// Round 615 — EVIDENCE is a ROAD question. "Could this world have SEEN that
+    /// scene?" must be enforced on the SAME axis R488 is, or one principle carries two
+    /// invariants (the half-enforced-invariant trap). R614 moved R488 to the road and
+    /// left evidence on `le` alone — so a divergent world could cite a SIBLING's
+    /// exclusive scene as evidence and PASS, because the generous precedence order still
+    /// connects it (a confluence declares a merge edge from EVERY parent, so the
+    /// sibling's coordinate is reachable in the composed order even though the world
+    /// never travels it). Both halves now ask the road.
+    ///
+    /// Also locks the NO-DOUBLE-REPORT rule: a fact whose OWN coordinate is off-road is
+    /// already named by `FactCanonOffBranch`, so the evidence axis stays quiet about it
+    /// (there is no world in which to ask "could it have seen that" when the beat itself
+    /// is not on the road) — measured: without this, 14 off-road facts in the real
+    /// corpus produced 14 duplicate evidence violations and 0 new ones.
+    #[test]
+    fn evidence_must_be_a_scene_this_world_actually_travels() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3", "s4b", "s4", "s5"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let cite = |id: &str, at: &str, ev: &str| FactImport {
+            branch: Some("ending".to_string()),
+            evidence: vec![ev.to_string()],
+            ..fact(id, "gt", at, None)
+        };
+        let converge = |b: &str, at: &str| mnemosyne_atomic::BranchConvergeImport {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        let fork = |id: &str, from: &str, at: &str| mnemosyne_atomic::BranchImport {
+            branch_id: id.to_string(),
+            description: String::new(),
+            forks_from: Some(from.to_string()),
+            forks_at: Some(at.to_string()),
+            converges_from: vec![],
+        };
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![
+                    fork("braid1", MAIN_BRANCH, "s1"),
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "weave1".to_string(),
+                        description: String::new(),
+                        forks_from: None,
+                        forks_at: None,
+                        converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
+                    },
+                    fork("braid2", "weave1", "s3"), // the SIBLING road
+                    mnemosyne_atomic::BranchImport {
+                        branch_id: "weave2".to_string(),
+                        description: String::new(),
+                        forks_from: None,
+                        forks_at: None,
+                        converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
+                    },
+                    fork("ending", MAIN_BRANCH, "s3"),
+                ],
+                entities: vec![],
+                predicates: vec![],
+                facts: vec![
+                    FactImport {
+                        branch: Some("braid2".to_string()),
+                        ..fact("f-sib", "gt", "s4b", None)
+                    },
+                    // cites `s4b` — a scene ONLY braid2 travels. `ending` never does.
+                    cite("f-cite", "s5", "s4b"),
+                    // cites `s2` — a trunk scene `ending` DID travel.
+                    cite("f-ok", "s5", "s2"),
+                ],
+            },
+        )
+        .unwrap();
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2")],
+            branches: BTreeMap::from([
+                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
+                ("braid2".to_string(), vec![e("s3", "s4b")]),
+                ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
+            ]),
+        };
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
+        // `ending` declares no road: it rides the trunk, which does NOT include `s4b`.
+        assert!(order.names("ending", "s5"), "the trunk IS its road");
+        assert!(
+            !order.names("ending", "s4b"),
+            "the sibling's exclusive scene is not"
+        );
+
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        let unreachable: Vec<&str> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::EvidenceUnreachable { fact, .. } => Some(fact.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            unreachable,
+            vec!["f-cite"],
+            "ONLY the fact citing a scene its world never travels: {:?}",
+            report.violations
+        );
     }
 
     /// Round 535 — SUCCESSION reconciliation wired at BOTH enforcement points

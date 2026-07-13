@@ -174,7 +174,7 @@ fn world_filter_narrows_and_fails_loud_and_unplaced_never_gates() {
     let main = &v["worlds"]["main"];
     assert_eq!(main["unplaced_facts"][0]["fact_id"], "f-out");
     assert_eq!(main["unplaced_facts"][0]["field"], "canon_from");
-    assert!(main["sections_outside_order"]
+    assert!(main["sections_off_road"]
         .as_array()
         .unwrap()
         .contains(&serde_json::json!("ch-3")));

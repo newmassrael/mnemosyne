@@ -2593,12 +2593,12 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
     for (world, m) in &report.worlds {
         println!(
             "world `{world}`: {} scene(s), undeclared adjacencies={}, unplaced={}, \
-             undecidable={}, outside order={}",
+             undecidable={}, off road={}",
             m.scenes.len(),
             m.undeclared_adjacencies.len(),
             m.unplaced_facts.len(),
             m.undecidable.len(),
-            m.sections_outside_order.len()
+            m.sections_off_road.len()
         );
         for s in &m.scenes {
             let title = if s.title.is_empty() {

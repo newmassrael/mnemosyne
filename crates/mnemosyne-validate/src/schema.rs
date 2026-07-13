@@ -484,17 +484,51 @@ fn registries() -> Vec<RegistrySpec> {
             load_bearing: true,
             description: "World-line branches — divergent quest-path/playthrough worlds. `main` \
                 is the default axis, known by construction and never registered. A branch is \
-                EITHER a fork (forks_from a parent at a canon point, inheriting its prefix) XOR \
-                a confluence (converges_from >= 2 parents at their merge points) — a forest by \
-                construction. FORK-LINEAGE TRAP (Round 601, the dangling two independent loop \
-                agents hit): a fork inherits the parent's prefix, so a pre-fork trunk setup is \
-                `in` every fork's world-line — but the BARE parent (no fork continuing it) stays \
-                its OWN world-line, a DEAD PREFIX that still carries those trunk setups. Forking \
-                BOTH roads off `main` and never continuing bare `main` leaves `main` a dead \
-                prefix whose trunk `expected` setups have no payoff THERE and dangle (surfaced \
-                per-world by `report-payoff-coverage` / `report-authoring-frontier`). Continue \
-                `main` AS one of the roads (fork only the OTHER off it), or pay the trunk setups \
-                off before the fork — do not leave a bare pre-fork trunk carrying live setups.",
+                EITHER a fork (forks_from a parent at a canon point) XOR a confluence \
+                (converges_from >= 2 parents at their merge points). \
+                \
+                TWO AXES, AND THEY ARE DUALS (Rounds 612 + 614) — a world-line has FACTS (what \
+                is true in it) and a ROAD (which scenes it travels). At a FORK: facts are CUT at \
+                the departure point, and the road is OVERRIDDEN (a branch that declares its own \
+                next scene at a shared coordinate replaces the inherited one). At a MERGE: facts \
+                INTERSECT (a confluence continues only what EVERY incoming road carried, so the \
+                path-independent trunk survives and each parent's EXCLUSIVE middle is dropped), \
+                while roads UNION (a coordinate is travelled if EITHER incoming road travels it). \
+                Consequences you must author for: a fork off a CONFLUENCE still inherits the \
+                whole pre-merge trunk; and AUTHORING A MERGE RELOCATES TRUNK OWNERSHIP — the \
+                scenes after the merge now belong to the confluence branch, not to `main`, so a \
+                later divergent line forking off `main` inherits them THROUGH the confluence \
+                (MNEMO-GAP-003). \
+                \
+                THE ROAD IS DECLARED IN THE CANON ORDER, NOT HERE. The order file's top-level \
+                `edges` ARE `main`'s road; each entry under `branches` is THAT world-line's own \
+                road segment. A branch that declares NO segment RIDES ITS LINEAGE'S ROAD ON — so \
+                its ENDING is the trunk's ending. That is correct for a world-line that diverges \
+                only in FACTS, and WRONG for a DIVERGENT ENDING: until such a branch declares its \
+                road (`\"branches\": {\"ending\": [[\"<fork-point>\", \"<its own scene>\"]]}`), \
+                `validate-render-fidelity` cannot tell its ending from the trunk's and \
+                `validate-continuity` names it under `undeclared_roads`. A branch's segment must \
+                ATTACH to the road it rides in on (start it AT or before where it leaves the \
+                parent's road) — an edge whose source the branch never reaches can never be \
+                travelled and is REJECTED at load. A merge edge may be declared from either side \
+                (on the parent, or on the confluence, one per parent); a confluence's merge edge \
+                from a sibling never puts that sibling's exclusive scene on YOUR road, because a \
+                scene is only travelled if the world can actually GET there. \
+                \
+                A fact's `canon_from` must be ON its branch's road (else `FactCanonOffBranch`), \
+                and so must every scene it cites in `evidence` — 'could this world have SEEN that \
+                scene, by now?' is a ROAD question (Round 615), so citing a sibling's exclusive \
+                scene is rejected even though the shared order can reach it. \
+                \
+                FORK-LINEAGE TRAP (Round 601, the dangling two independent loop agents hit): a \
+                fork inherits the parent's prefix, so a pre-fork trunk setup is `in` every fork's \
+                world-line — but the BARE parent (no fork continuing it) stays its OWN \
+                world-line, a DEAD PREFIX that still carries those trunk setups. Forking BOTH \
+                roads off `main` and never continuing bare `main` leaves `main` a dead prefix \
+                whose trunk `expected` setups have no payoff THERE and dangle (surfaced per-world \
+                by `report-payoff-coverage` / `report-authoring-frontier`). Continue `main` AS \
+                one of the roads (fork only the OTHER off it), or pay the trunk setups off before \
+                the fork — do not leave a bare pre-fork trunk carrying live setups.",
         },
         RegistrySpec {
             name: "entities",
@@ -1126,6 +1160,50 @@ mod tests {
         assert!(
             branches.description.contains("dangle"),
             "branches names the dangling consequence"
+        );
+    }
+
+    /// Round 615 — the `branches` contract must carry the WORLD-LINE MODEL a blind
+    /// author cannot otherwise self-serve. Rounds 612/614 changed what a fork and a
+    /// merge MEAN (facts intersect at a merge, roads union; a merge relocates trunk
+    /// ownership onto the confluence; a branch that declares no road inherits the
+    /// trunk's ENDING), and none of it was documented — an author reading only
+    /// `describe-schema` would have authored a divergent ending whose terminal gates
+    /// silently measured the trunk's. Prose (tier-3, not serde-guarded), so this pins
+    /// the CONCEPTS an agent must find, never the wording.
+    #[test]
+    fn branches_contract_carries_the_road_and_merge_model() {
+        let c = describe_schema();
+        let b = &c
+            .registries
+            .iter()
+            .find(|r| r.name == "branches")
+            .expect("branches registry present")
+            .description;
+        // the two axes and their DUAL behaviour at a merge
+        assert!(b.contains("ROAD"), "names the road axis");
+        assert!(
+            b.contains("INTERSECT") && b.contains("UNION"),
+            "facts intersect at a merge, roads union — the duality is the model"
+        );
+        // the GAP-003 lesson an author must plan for
+        assert!(
+            b.contains("RELOCATES TRUNK OWNERSHIP"),
+            "authoring a merge moves the post-merge scenes onto the confluence"
+        );
+        // where the road is declared, and what an UNDECLARED road costs
+        assert!(
+            b.contains("`edges` ARE `main`'s road"),
+            "the base edges are main's road segment, not a global coordinate pool"
+        );
+        assert!(
+            b.contains("undeclared_roads") && b.contains("validate-render-fidelity"),
+            "an undeclared road means the terminal gates measure the TRUNK's ending"
+        );
+        // the road is also what `evidence` is checked against (R615)
+        assert!(
+            b.contains("evidence"),
+            "citing a scene this world never travels is rejected"
         );
     }
 
