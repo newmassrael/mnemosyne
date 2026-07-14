@@ -156,6 +156,17 @@ pub struct CanonOrder {
     /// The ROAD of each world: the coordinates it actually travels ([`road_of`]).
     /// Keyed for `MAIN_BRANCH` and every registered branch.
     road: BTreeMap<String, BTreeSet<String>>,
+    /// The OWN road segment of each world (Round 617): the coordinates this
+    /// world-line DECLARED itself, as opposed to the prefix it inherited from
+    /// its lineage. A subset of `road`. For a ROOT (`main` or a standalone) that
+    /// is its whole road (it inherits nothing); for a fork/confluence it is the
+    /// targets of its OWN declared edges — the new scenes it brings — never the
+    /// inherited attach coordinate. EMPTY for a branch declaring no road segment
+    /// (an `undeclared_roads` world riding the trunk on). Because a merge
+    /// RELOCATES trunk ownership onto the confluence (Rounds 612/614), the trunk
+    /// of a merged store is OWNED across `main` and the confluences it flows
+    /// into, each carrying its own piece — [`Self::own_road_segment`].
+    own_road: BTreeMap<String, BTreeSet<String>>,
     /// Worlds that declare no road segment of their own, so their road — and
     /// therefore their ENDING — is their lineage's (Round 614). Not an error: a
     /// world-line that diverges only in FACTS and rides the trunk on is a real and
@@ -314,6 +325,53 @@ fn road_of(
     Ok(road)
 }
 
+/// One world's OWN road segment (Round 617): the coordinates it DECLARED itself,
+/// as opposed to the prefix it inherited from its lineage. A subset of the road.
+///
+/// A ROOT (`main` or a standalone) owns its whole road — it inherits nothing, so
+/// its own segment is the targets of its own edges PLUS the seed those edges
+/// start from. A fork/confluence owns only the TARGETS of its own declared edges
+/// (the new scenes it brings): the source a fork's first own edge leaves is its
+/// inherited ATTACH coordinate (a source-not-target of its own edge set, and by
+/// the R615 orphan check already on the road it rides in on), so it is never
+/// own. Intersected with `road` as defence in depth. EMPTY for a branch that
+/// declares no road segment (an `undeclared_roads` world riding the trunk on) —
+/// the caller must treat empty as "no own segment", never divide by it.
+fn own_road_of(
+    decl: &CanonOrderFile,
+    branches: &BTreeMap<String, mnemosyne_core::Branch>,
+    world: &str,
+    road: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let own_edges: &[[String; 2]] = if world == mnemosyne_core::MAIN_BRANCH {
+        &decl.edges
+    } else {
+        decl.branches.get(world).map_or(&[][..], Vec::as_slice)
+    };
+    let is_root = world == mnemosyne_core::MAIN_BRANCH
+        || branches
+            .get(world)
+            .is_some_and(|b| b.forks_from.is_none() && b.converges_from.is_empty());
+    let targets: BTreeSet<&str> = own_edges.iter().map(|e| e[1].trim()).collect();
+    let mut own: BTreeSet<String> = targets
+        .iter()
+        .filter(|v| road.contains(**v))
+        .map(|v| v.to_string())
+        .collect();
+    if is_root {
+        // The root's opening scene: a source of its own edge set that no own
+        // edge targets. For a non-root that source IS the inherited attach
+        // coordinate, so it is excluded by construction (added only here).
+        for e in own_edges {
+            let u = e[0].trim();
+            if !targets.contains(u) && road.contains(u) {
+                own.insert(u.to_string());
+            }
+        }
+    }
+    own
+}
+
 impl CanonOrder {
     /// No declaration: equality is the only comparability.
     pub fn empty() -> Self {
@@ -321,6 +379,7 @@ impl CanonOrder {
             base: BTreeMap::new(),
             branch_reach: BTreeMap::new(),
             road: BTreeMap::new(),
+            own_road: BTreeMap::new(),
             undeclared_roads: BTreeSet::new(),
         }
     }
@@ -394,8 +453,10 @@ impl CanonOrder {
                 closure_of(&combined, &format!("branch `{branch}`"))?,
             );
         }
-        // The ROAD axis (Round 614) — computed for `main` and every registered branch.
+        // The ROAD axis (Round 614) + the OWN segment (Round 617) — computed for
+        // `main` and every registered branch.
         let mut road = BTreeMap::new();
+        let mut own_road = BTreeMap::new();
         let mut undeclared_roads = BTreeSet::new();
         for world in
             std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
@@ -403,7 +464,9 @@ impl CanonOrder {
             if world != mnemosyne_core::MAIN_BRANCH && !decl.branches.contains_key(&world) {
                 undeclared_roads.insert(world.clone());
             }
-            road.insert(world.clone(), road_of(decl, branches, &world)?);
+            let r = road_of(decl, branches, &world)?;
+            own_road.insert(world.clone(), own_road_of(decl, branches, &world, &r));
+            road.insert(world.clone(), r);
         }
         // ORPHANED road edges (Round 615) — a declared edge whose SOURCE the branch's own
         // road never reaches can never be travelled, so the branch silently loses whatever
@@ -433,6 +496,7 @@ impl CanonOrder {
             base,
             branch_reach,
             road,
+            own_road,
             undeclared_roads,
         })
     }
@@ -460,6 +524,19 @@ impl CanonOrder {
     /// measuring the TRUNK's ending, not its own).
     pub fn undeclared_roads(&self) -> impl Iterator<Item = &str> {
         self.undeclared_roads.iter().map(String::as_str)
+    }
+
+    /// The coordinates `branch` DECLARED itself — its own road segment (Round
+    /// 617), a subset of its road. EMPTY for a branch that declares no road
+    /// (an `undeclared_roads` world riding the trunk on): the caller treats
+    /// empty as "no own segment" and never divides by it. A world with no
+    /// computed own road (an unregistered id, or a pre-branch store) reports
+    /// empty. See the `own_road` field doc for the root-vs-fork/confluence rule.
+    pub fn own_road_segment(&self, branch: &str) -> BTreeSet<&str> {
+        match self.own_road.get(branch) {
+            Some(o) => o.iter().map(String::as_str).collect(),
+            None => BTreeSet::new(),
+        }
     }
 
     /// Declared-or-equal precedence under `branch`'s order.
@@ -8889,6 +8966,76 @@ mod tests {
         // exclusivity, interval, edge candidates) rely on to decide `Out` vs `Unknown`.
         assert!(order.le("ending", "s3", "s4"), "reach stays generous");
         assert!(order.comparable("ending", "s1", "s5"));
+    }
+
+    /// Round 617 — `own_road_segment` credits each world-line ONLY the scenes it
+    /// DECLARED itself, on the same override-walk topology. This is the density
+    /// denominator, and the regression lock for MNEMO-GAP-005 part 3b: the gap's
+    /// `road(B) \ union(parent roads)` collapses EVERY confluence to ∅ (a
+    /// converging parent forward-inherits the merge suffix, so `road(C)` ⊆ the
+    /// parents' union) — a divide-by-zero on a legal store. The own-declared
+    /// segment gives each confluence its RELOCATED piece instead, non-empty.
+    #[test]
+    fn own_road_segment_credits_each_world_line_its_declared_scenes() {
+        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
+        let converge = |b: &str, at: &str| mnemosyne_core::BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        let fork = |from: &str, at: &str| mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: from.to_string(),
+                at: at.to_string(),
+            }),
+            ..Default::default()
+        };
+        let branches = BTreeMap::from([
+            ("braid1".to_string(), fork(MAIN_BRANCH, "s1")),
+            (
+                "weave1".to_string(),
+                mnemosyne_core::Branch {
+                    converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
+                    ..Default::default()
+                },
+            ),
+            ("braid2".to_string(), fork("weave1", "s3")),
+            (
+                "weave2".to_string(),
+                mnemosyne_core::Branch {
+                    converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
+                    ..Default::default()
+                },
+            ),
+            ("ending".to_string(), fork(MAIN_BRANCH, "s3")),
+        ]);
+        let decl = CanonOrderFile {
+            edges: vec![e("s1", "s2")],
+            branches: BTreeMap::from([
+                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
+                ("braid2".to_string(), vec![e("s3", "s4b")]),
+                ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
+                ("ending".to_string(), vec![e("s3", "e1")]),
+            ]),
+        };
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
+        let own = |w: &str| -> BTreeSet<&str> { order.own_road_segment(w) };
+
+        // main is a ROOT: its own segment is the seed + the target of its own base
+        // edge — NOT the s3/s4/s5 suffix, which the confluences RELOCATED ownership
+        // of (R612/R614). The trunk is owned across main + its confluences.
+        assert_eq!(own("main"), BTreeSet::from(["s1", "s2"]));
+        // THE FIX: a confluence gets its RELOCATED own segment, non-empty (the gap's
+        // set-difference gave ∅ here → divide-by-zero).
+        assert_eq!(own("weave1"), BTreeSet::from(["s3", "s4"]));
+        assert_eq!(own("weave2"), BTreeSet::from(["s5"]));
+        // A fork/confluence owns the TARGETS of its own edges — never its inherited
+        // attach coordinate (ending attaches at s3, owns only e1; braid2 owns s4b).
+        assert_eq!(own("ending"), BTreeSet::from(["e1"]));
+        assert_eq!(own("braid2"), BTreeSet::from(["s4b"]));
+        // An UNDECLARED-road world owns nothing → the density is honestly None, never
+        // a divide-by-zero.
+        assert!(own("braid1").is_empty());
+        assert!(order.undeclared_roads().any(|b| b == "braid1"));
     }
 
     /// Round 614 — a branch that declares NO road rides its lineage's road on, so its
