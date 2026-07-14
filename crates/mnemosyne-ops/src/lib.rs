@@ -492,11 +492,17 @@ pub fn propose_verdict(
 }
 
 /// One scene's fact coverage (Round 589) — how many facts are anchored (via
-/// their `canon_from`) at this section.
+/// their `canon_from`) at this section. `structural` (Round 618, MNEMO-GAP-005
+/// part 3a) is the DERIVED subset of `fact_count` that is quest plumbing
+/// (`structural_fact_ids`): a coverage read subtracts it so bookkeeping does not
+/// inflate "how much narrative a scene carries". Canon-vs-invented is NOT split
+/// here — it is per-branch adaptation-fidelity kept consumer-side (decision C);
+/// a consumer that wants it combines this with the facts' `branch`.
 #[derive(Debug, Clone, Serialize)]
 pub struct SceneCoverage {
     pub scene: String,
     pub fact_count: usize,
+    pub structural: usize,
 }
 
 /// Per-world-line ownership density (Round 617, MNEMO-GAP-005) — how much a
@@ -591,12 +597,23 @@ pub fn authoring_frontier_report(
 
     // Scene coverage: every section starts at zero, each fact credits its
     // canon_from (the anchor). A canon_from is always an existing section (the
-    // shape gate), so nothing lands outside the map.
+    // shape gate), so nothing lands outside the map. The structural subset
+    // (Round 618, MNEMO-GAP-005) is derived once — quest plumbing that a
+    // coverage read subtracts (no stored marker: canon/invented stays
+    // consumer-side, decision C).
+    let structural_ids = mnemosyne_validate::continuity::structural_fact_ids(&store);
     let mut counts: BTreeMap<String, usize> =
         store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
-    for fact in store.narrative_facts.values() {
+    let mut structural_counts: BTreeMap<String, usize> =
+        store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
+    for (fid, fact) in &store.narrative_facts {
         if let Some(c) = counts.get_mut(&fact.canon_from) {
             *c += 1;
+        }
+        if structural_ids.contains(fid) {
+            if let Some(c) = structural_counts.get_mut(&fact.canon_from) {
+                *c += 1;
+            }
         }
     }
     let zero_fact_scenes: Vec<String> = counts
@@ -616,7 +633,14 @@ pub fn authoring_frontier_report(
         .collect();
     let scene_coverage: Vec<SceneCoverage> = counts
         .into_iter()
-        .map(|(scene, fact_count)| SceneCoverage { scene, fact_count })
+        .map(|(scene, fact_count)| {
+            let structural = structural_counts.get(&scene).copied().unwrap_or(0);
+            SceneCoverage {
+                scene,
+                fact_count,
+                structural,
+            }
+        })
         .collect();
 
     // Per-world dangling setups (R442) — keep only worlds with work outstanding.

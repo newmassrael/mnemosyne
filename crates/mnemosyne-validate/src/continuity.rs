@@ -3998,6 +3998,49 @@ pub(crate) const QUEST_PRED_PURSUES: &str = "pursues";
 pub(crate) const QUEST_PRED_REQUIRES: &str = "requires";
 pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 
+/// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
+/// a fact is structural iff it carries a quest typed predicate
+/// (`pursues`/`requires`/`completed_by`) OR it is an `Expected` setup that a
+/// `completed_by`-typed fact pays off (a quest GIVING setup). It is the
+/// non-narrative bookkeeping a coverage read subtracts, so quest plumbing does
+/// not inflate "how much narrative content a scene carries" (Round 589's
+/// `scene_coverage` counted every fact as one).
+///
+/// The giving-setup half mirrors [`quest_graph`]'s definition (a completion
+/// fact's `pays_off` names its giving setup, R559/R568) — kept in this module
+/// beside it so the two cannot drift unseen. It is a DERIVED read over existing
+/// axes (typed legs + payoff edges), never a stored classifier: MNEMO-GAP-005
+/// verified this reproduces the consumer's id-prefix plumbing set exactly (0
+/// missed, 0 false-positive on the 827-fact store), which is why the store need
+/// carry no `structural` marker. Canon-vs-invented, by contrast, is NOT derived
+/// here — it is per-branch adaptation-fidelity metadata kept consumer-side
+/// (decision C).
+pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
+    let facts = &store.narrative_facts;
+    // Giving setups: the pays_off targets of every completed_by-typed fact.
+    let mut give_targets: BTreeSet<&str> = BTreeSet::new();
+    for fact in facts.values() {
+        if fact.typed.as_ref().map(|t| t.predicate.as_str()) == Some(QUEST_PRED_COMPLETED_BY) {
+            give_targets.extend(fact.pays_off.iter().map(String::as_str));
+        }
+    }
+    facts
+        .iter()
+        .filter(|(fid, fact)| {
+            let typed_quest = fact.typed.as_ref().is_some_and(|t| {
+                matches!(
+                    t.predicate.as_str(),
+                    QUEST_PRED_PURSUES | QUEST_PRED_REQUIRES | QUEST_PRED_COMPLETED_BY
+                )
+            });
+            let give_setup = fact.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected
+                && give_targets.contains(fid.as_str());
+            typed_quest || give_setup
+        })
+        .map(|(fid, _)| fid.clone())
+        .collect()
+}
+
 /// A quest's DERIVED state in one world-line (R559: "quest state DERIVED per
 /// world-line, never stored"). Open vs done is read VERBATIM from the R442
 /// payoff coverage of the quest's giving fact — paid here = done, dangling here
@@ -7459,6 +7502,53 @@ mod tests {
             },
         );
         store
+    }
+
+    /// Round 618 (MNEMO-GAP-005 part 3a): `structural_fact_ids` classifies quest
+    /// plumbing — the typed quest legs AND the giving setups (Expected facts a
+    /// completed_by fact pays off) — and, critically, does NOT sweep in a genuine
+    /// Chekhov setup (Expected, but paid off by a PLAIN fact, not a completion).
+    /// That 0-false-positive separation is what lets a coverage read subtract
+    /// plumbing without undercounting real narrative setups.
+    #[test]
+    fn structural_fact_ids_classifies_quest_plumbing_not_genuine_setups() {
+        let store = store_with(vec![
+            quest_fact(
+                "f-pursue",
+                "ch-1",
+                None,
+                &["hero", "q1"],
+                ent_claim("hero", "pursues", "q1"),
+                &[],
+            ),
+            quest_fact(
+                "f-complete",
+                "ch-2",
+                None,
+                &["q1", "hero"],
+                ent_claim("q1", "completed_by", "hero"),
+                &["f-give"],
+            ),
+            // Expected setup paid off by the completed_by fact = a quest giving
+            // setup (structural), even with no typed leg of its own.
+            setup_fact("f-give", "gt", "ch-1"),
+            // Expected setup paid off by a PLAIN fact = a genuine Chekhov setup
+            // (NOT structural — the 0-false-positive case).
+            setup_fact("f-chekhov", "gt", "ch-1"),
+            payoff_fact("f-payoff", "gt", "ch-3", &["f-chekhov"]),
+            fact("f-plain", "gt", "ch-1", None),
+        ]);
+        let structural = structural_fact_ids(&store);
+        assert_eq!(
+            structural,
+            BTreeSet::from([
+                "f-pursue".to_string(),
+                "f-complete".to_string(),
+                "f-give".to_string(),
+            ]),
+            "typed quest legs + the give-setup are structural; the genuine Chekhov \
+             setup, its plain payoff, and a plain fact are not"
+        );
     }
 
     /// The quest-graph JOIN: objective/actor/prerequisite/giving from the typed
