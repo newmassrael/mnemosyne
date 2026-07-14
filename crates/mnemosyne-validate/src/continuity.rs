@@ -156,17 +156,6 @@ pub struct CanonOrder {
     /// The ROAD of each world: the coordinates it actually travels ([`road_of`]).
     /// Keyed for `MAIN_BRANCH` and every registered branch.
     road: BTreeMap<String, BTreeSet<String>>,
-    /// The OWN road segment of each world (Round 617): the coordinates this
-    /// world-line DECLARED itself, as opposed to the prefix it inherited from
-    /// its lineage. A subset of `road`. For a ROOT (`main` or a standalone) that
-    /// is its whole road (it inherits nothing); for a fork/confluence it is the
-    /// targets of its OWN declared edges — the new scenes it brings — never the
-    /// inherited attach coordinate. EMPTY for a branch declaring no road segment
-    /// (an `undeclared_roads` world riding the trunk on). Because a merge
-    /// RELOCATES trunk ownership onto the confluence (Rounds 612/614), the trunk
-    /// of a merged store is OWNED across `main` and the confluences it flows
-    /// into, each carrying its own piece — [`Self::own_road_segment`].
-    own_road: BTreeMap<String, BTreeSet<String>>,
     /// Worlds that declare no road segment of their own, so their road — and
     /// therefore their ENDING — is their lineage's (Round 614). Not an error: a
     /// world-line that diverges only in FACTS and rides the trunk on is a real and
@@ -325,53 +314,6 @@ fn road_of(
     Ok(road)
 }
 
-/// One world's OWN road segment (Round 617): the coordinates it DECLARED itself,
-/// as opposed to the prefix it inherited from its lineage. A subset of the road.
-///
-/// A ROOT (`main` or a standalone) owns its whole road — it inherits nothing, so
-/// its own segment is the targets of its own edges PLUS the seed those edges
-/// start from. A fork/confluence owns only the TARGETS of its own declared edges
-/// (the new scenes it brings): the source a fork's first own edge leaves is its
-/// inherited ATTACH coordinate (a source-not-target of its own edge set, and by
-/// the R615 orphan check already on the road it rides in on), so it is never
-/// own. Intersected with `road` as defence in depth. EMPTY for a branch that
-/// declares no road segment (an `undeclared_roads` world riding the trunk on) —
-/// the caller must treat empty as "no own segment", never divide by it.
-fn own_road_of(
-    decl: &CanonOrderFile,
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-    world: &str,
-    road: &BTreeSet<String>,
-) -> BTreeSet<String> {
-    let own_edges: &[[String; 2]] = if world == mnemosyne_core::MAIN_BRANCH {
-        &decl.edges
-    } else {
-        decl.branches.get(world).map_or(&[][..], Vec::as_slice)
-    };
-    let is_root = world == mnemosyne_core::MAIN_BRANCH
-        || branches
-            .get(world)
-            .is_some_and(|b| b.forks_from.is_none() && b.converges_from.is_empty());
-    let targets: BTreeSet<&str> = own_edges.iter().map(|e| e[1].trim()).collect();
-    let mut own: BTreeSet<String> = targets
-        .iter()
-        .filter(|v| road.contains(**v))
-        .map(|v| v.to_string())
-        .collect();
-    if is_root {
-        // The root's opening scene: a source of its own edge set that no own
-        // edge targets. For a non-root that source IS the inherited attach
-        // coordinate, so it is excluded by construction (added only here).
-        for e in own_edges {
-            let u = e[0].trim();
-            if !targets.contains(u) && road.contains(u) {
-                own.insert(u.to_string());
-            }
-        }
-    }
-    own
-}
-
 impl CanonOrder {
     /// No declaration: equality is the only comparability.
     pub fn empty() -> Self {
@@ -379,7 +321,6 @@ impl CanonOrder {
             base: BTreeMap::new(),
             branch_reach: BTreeMap::new(),
             road: BTreeMap::new(),
-            own_road: BTreeMap::new(),
             undeclared_roads: BTreeSet::new(),
         }
     }
@@ -453,10 +394,8 @@ impl CanonOrder {
                 closure_of(&combined, &format!("branch `{branch}`"))?,
             );
         }
-        // The ROAD axis (Round 614) + the OWN segment (Round 617) — computed for
-        // `main` and every registered branch.
+        // The ROAD axis (Round 614) — computed for `main` and every registered branch.
         let mut road = BTreeMap::new();
-        let mut own_road = BTreeMap::new();
         let mut undeclared_roads = BTreeSet::new();
         for world in
             std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
@@ -464,9 +403,7 @@ impl CanonOrder {
             if world != mnemosyne_core::MAIN_BRANCH && !decl.branches.contains_key(&world) {
                 undeclared_roads.insert(world.clone());
             }
-            let r = road_of(decl, branches, &world)?;
-            own_road.insert(world.clone(), own_road_of(decl, branches, &world, &r));
-            road.insert(world.clone(), r);
+            road.insert(world.clone(), road_of(decl, branches, &world)?);
         }
         // ORPHANED road edges (Round 615) — a declared edge whose SOURCE the branch's own
         // road never reaches can never be travelled, so the branch silently loses whatever
@@ -496,7 +433,6 @@ impl CanonOrder {
             base,
             branch_reach,
             road,
-            own_road,
             undeclared_roads,
         })
     }
@@ -524,19 +460,6 @@ impl CanonOrder {
     /// measuring the TRUNK's ending, not its own).
     pub fn undeclared_roads(&self) -> impl Iterator<Item = &str> {
         self.undeclared_roads.iter().map(String::as_str)
-    }
-
-    /// The coordinates `branch` DECLARED itself — its own road segment (Round
-    /// 617), a subset of its road. EMPTY for a branch that declares no road
-    /// (an `undeclared_roads` world riding the trunk on): the caller treats
-    /// empty as "no own segment" and never divides by it. A world with no
-    /// computed own road (an unregistered id, or a pre-branch store) reports
-    /// empty. See the `own_road` field doc for the root-vs-fork/confluence rule.
-    pub fn own_road_segment(&self, branch: &str) -> BTreeSet<&str> {
-        match self.own_road.get(branch) {
-            Some(o) => o.iter().map(String::as_str).collect(),
-            None => BTreeSet::new(),
-        }
     }
 
     /// Declared-or-equal precedence under `branch`'s order.
@@ -3998,33 +3921,69 @@ pub(crate) const QUEST_PRED_PURSUES: &str = "pursues";
 pub(crate) const QUEST_PRED_REQUIRES: &str = "requires";
 pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 
-/// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
-/// a fact is structural iff it carries a quest typed predicate
-/// (`pursues`/`requires`/`completed_by`) OR it is an `Expected` setup that a
-/// `completed_by`-typed fact pays off (a quest GIVING setup). It is the
-/// non-narrative bookkeeping a coverage read subtracts, so quest plumbing does
-/// not inflate "how much narrative content a scene carries" (Round 589's
-/// `scene_coverage` counted every fact as one).
-///
-/// The giving-setup half mirrors [`quest_graph`]'s definition (a completion
-/// fact's `pays_off` names its giving setup, R559/R568) — kept in this module
-/// beside it so the two cannot drift unseen. It is a DERIVED read over existing
-/// axes (typed legs + payoff edges), never a stored classifier: MNEMO-GAP-005
-/// verified this reproduces the consumer's id-prefix plumbing set exactly (0
-/// missed, 0 false-positive on the 827-fact store), which is why the store need
-/// carry no `structural` marker. Canon-vs-invented, by contrast, is NOT derived
-/// here — it is per-branch adaptation-fidelity metadata kept consumer-side
-/// (decision C).
-pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
+/// The GIVING setups of every quest (Round 619) — the SINGLE home of the rule
+/// "a quest's giving setup is an `Expected` fact its OWN `completed_by`-typed
+/// fact pays off" (R559 strict-combined, gated on `kind:quest` entities). Both
+/// [`quest_graph`] (which indexes it per quest) and [`structural_fact_ids`]
+/// (which unions it) read THIS, so the two cannot disagree on which facts are
+/// quest givings — a `completed_by` fact whose subject is not a registered quest
+/// binds no giving in either. Returns quest_id -> its giving setup ids.
+fn quest_giving_setups(store: &AtomicStore) -> BTreeMap<String, BTreeSet<String>> {
     let facts = &store.narrative_facts;
-    // Giving setups: the pays_off targets of every completed_by-typed fact.
-    let mut give_targets: BTreeSet<&str> = BTreeSet::new();
+    let expected: BTreeSet<&str> = facts
+        .iter()
+        .filter(|(_, f)| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
+        .map(|(id, _)| id.as_str())
+        .collect();
+    // `completed_by`-typed facts grouped by their subject quest.
+    let mut completions_of: BTreeMap<&str, Vec<&NarrativeFact>> = BTreeMap::new();
     for fact in facts.values() {
-        if fact.typed.as_ref().map(|t| t.predicate.as_str()) == Some(QUEST_PRED_COMPLETED_BY) {
-            give_targets.extend(fact.pays_off.iter().map(String::as_str));
+        if let Some(claim) = &fact.typed {
+            if claim.predicate == QUEST_PRED_COMPLETED_BY {
+                completions_of
+                    .entry(claim.subject.as_str())
+                    .or_default()
+                    .push(fact);
+            }
         }
     }
-    facts
+    store
+        .entities
+        .iter()
+        .filter(|(_, e)| e.kind == QUEST_ENTITY_KIND)
+        .map(|(quest_id, _)| {
+            let mut givings: BTreeSet<String> = BTreeSet::new();
+            for fact in completions_of.get(quest_id.as_str()).into_iter().flatten() {
+                for target in &fact.pays_off {
+                    if expected.contains(target.as_str()) {
+                        givings.insert(target.clone());
+                    }
+                }
+            }
+            (quest_id.clone(), givings)
+        })
+        .collect()
+}
+
+/// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
+/// a fact is structural iff it carries a quest typed predicate
+/// (`pursues`/`requires`/`completed_by`) OR it is a quest GIVING setup
+/// ([`quest_giving_setups`], the shared definition `quest_graph` also uses). It
+/// is the non-narrative bookkeeping a coverage read subtracts, so quest plumbing
+/// does not inflate "how much narrative content a scene carries" (Round 589's
+/// `scene_coverage` counted every fact as one).
+///
+/// A DERIVED read over existing axes (typed legs + payoff edges), never a stored
+/// classifier: MNEMO-GAP-005 verified this reproduces the consumer's id-prefix
+/// plumbing set exactly (0 missed, 0 false-positive on the 827-fact store),
+/// which is why the store need carry no `structural` marker. Canon-vs-invented,
+/// by contrast, is NOT derived here — it is per-branch adaptation-fidelity
+/// metadata kept consumer-side (decision C).
+pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
+    let give_setups: BTreeSet<String> =
+        quest_giving_setups(store).into_values().flatten().collect();
+    store
+        .narrative_facts
         .iter()
         .filter(|(fid, fact)| {
             let typed_quest = fact.typed.as_ref().is_some_and(|t| {
@@ -4033,9 +3992,7 @@ pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
                     QUEST_PRED_PURSUES | QUEST_PRED_REQUIRES | QUEST_PRED_COMPLETED_BY
                 )
             });
-            let give_setup = fact.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected
-                && give_targets.contains(fid.as_str());
-            typed_quest || give_setup
+            typed_quest || give_setups.contains(fid.as_str())
         })
         .map(|(fid, _)| fid.clone())
         .collect()
@@ -4248,16 +4205,13 @@ pub fn quest_graph(
             _ => {}
         }
     }
-    // The `Expected` setups. A quest's giving setup is an Expected fact its OWN
-    // `completed_by` fact pays off (R559's single contract encoding — the
-    // completion fact pays off the giving). No scene-proximity bridge: binding
-    // by scene co-location would let two quests completing at one scene share
-    // givings (a cross-quest bleed), so it is not done — strict-combined only.
-    let expected: BTreeSet<&str> = facts
-        .iter()
-        .filter(|(_, f)| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
-        .map(|(id, _)| id.as_str())
-        .collect();
+    // The giving setups per quest (R559 strict combined binding: the `Expected`
+    // facts a quest's OWN `completed_by` fact pays off). Computed ONCE by the
+    // shared kernel `quest_giving_setups`, the single home of this rule — so
+    // `structural_fact_ids` (which unions it) and this per-quest index agree on
+    // which facts are quest givings (a `completed_by` fact whose subject is not a
+    // registered quest binds no giving in either).
+    let giving_map = quest_giving_setups(store);
 
     let mut quests: Vec<QuestNode> = Vec::new();
     let mut unresolved_quests: Vec<String> = Vec::new();
@@ -4269,19 +4223,7 @@ pub fn quest_graph(
         let q_completions = completions_of
             .get(quest_id.as_str())
             .unwrap_or(&empty_completions);
-        // R559 strict combined binding: the giving setups are the `Expected`
-        // facts this quest's OWN `completed_by` facts pay off. An author who
-        // splits completion from payoff (a typed `completed_by` with no
-        // `pays_off`, the giving edge on a sibling fact) gets an honest
-        // `unresolved`, NEVER a scene-proximity-inferred binding.
-        let mut q_givings: BTreeSet<String> = BTreeSet::new();
-        for (_, fact, _) in q_completions {
-            for target in &fact.pays_off {
-                if expected.contains(target.as_str()) {
-                    q_givings.insert(target.clone());
-                }
-            }
-        }
+        let q_givings: BTreeSet<String> = giving_map.get(quest_id).cloned().unwrap_or_default();
         // No giving setup bound = the obligation has no payoff anchor (no
         // `completed_by` fact, or none pays off an Expected setup) — surfaced,
         // not silently dropped (R558). Such a quest reads `unknown` everywhere.
@@ -7504,15 +7446,17 @@ mod tests {
         store
     }
 
-    /// Round 618 (MNEMO-GAP-005 part 3a): `structural_fact_ids` classifies quest
-    /// plumbing — the typed quest legs AND the giving setups (Expected facts a
-    /// completed_by fact pays off) — and, critically, does NOT sweep in a genuine
-    /// Chekhov setup (Expected, but paid off by a PLAIN fact, not a completion).
-    /// That 0-false-positive separation is what lets a coverage read subtract
-    /// plumbing without undercounting real narrative setups.
+    /// Round 618 (MNEMO-GAP-005 part 3a) + Round 619 (SSOT): `structural_fact_ids`
+    /// classifies quest plumbing — the typed quest legs AND the giving setups —
+    /// and locks the THREE guards a coverage read depends on to not undercount
+    /// real narrative setups: (1) `Expected` — an Unmarked fact a completion pays
+    /// off is NOT a giving; (2) `kind:quest` — a completed_by fact whose SUBJECT
+    /// is not a registered quest binds no giving (the shared `quest_giving_setups`
+    /// gate, so structural agrees with quest_graph); (3) a genuine Chekhov setup
+    /// (Expected, paid off by a plain fact) is not structural.
     #[test]
     fn structural_fact_ids_classifies_quest_plumbing_not_genuine_setups() {
-        let store = store_with(vec![
+        let mut store = store_with(vec![
             quest_fact(
                 "f-pursue",
                 "ch-1",
@@ -7521,33 +7465,50 @@ mod tests {
                 ent_claim("hero", "pursues", "q1"),
                 &[],
             ),
+            // q1's completion pays off an Expected giving (f-give) AND an Unmarked
+            // fact (f-unmarked) — only the Expected one is a giving.
             quest_fact(
                 "f-complete",
                 "ch-2",
                 None,
                 &["q1", "hero"],
                 ent_claim("q1", "completed_by", "hero"),
-                &["f-give"],
+                &["f-give", "f-unmarked"],
             ),
-            // Expected setup paid off by the completed_by fact = a quest giving
-            // setup (structural), even with no typed leg of its own.
             setup_fact("f-give", "gt", "ch-1"),
-            // Expected setup paid off by a PLAIN fact = a genuine Chekhov setup
-            // (NOT structural — the 0-false-positive case).
+            fact("f-unmarked", "gt", "ch-1", None),
+            // A completed_by fact whose SUBJECT (hero) is not a registered quest —
+            // itself structural (typed plumbing), but binds NO giving, so its
+            // Expected payoff target (f-nonquest-give) is NOT structural.
+            quest_fact(
+                "f-complete-nonquest",
+                "ch-2",
+                None,
+                &["hero", "warden"],
+                ent_claim("hero", "completed_by", "warden"),
+                &["f-nonquest-give"],
+            ),
+            setup_fact("f-nonquest-give", "gt", "ch-1"),
+            // Genuine Chekhov: Expected, paid off by a PLAIN fact (not a completion).
             setup_fact("f-chekhov", "gt", "ch-1"),
             payoff_fact("f-payoff", "gt", "ch-3", &["f-chekhov"]),
             fact("f-plain", "gt", "ch-1", None),
         ]);
+        // Only q1 is a quest; hero/warden are actors (default kind).
+        store.entities.get_mut("q1").unwrap().kind = "quest".to_string();
+
         let structural = structural_fact_ids(&store);
         assert_eq!(
             structural,
             BTreeSet::from([
                 "f-pursue".to_string(),
                 "f-complete".to_string(),
+                "f-complete-nonquest".to_string(),
                 "f-give".to_string(),
             ]),
-            "typed quest legs + the give-setup are structural; the genuine Chekhov \
-             setup, its plain payoff, and a plain fact are not"
+            "typed quest legs (incl. a non-quest-subject completion) + q1's Expected \
+             giving are structural; the Unmarked payoff, the non-quest giving, the \
+             genuine Chekhov setup, its plain payoff, and a plain fact are not"
         );
     }
 
@@ -9056,76 +9017,6 @@ mod tests {
         // exclusivity, interval, edge candidates) rely on to decide `Out` vs `Unknown`.
         assert!(order.le("ending", "s3", "s4"), "reach stays generous");
         assert!(order.comparable("ending", "s1", "s5"));
-    }
-
-    /// Round 617 — `own_road_segment` credits each world-line ONLY the scenes it
-    /// DECLARED itself, on the same override-walk topology. This is the density
-    /// denominator, and the regression lock for MNEMO-GAP-005 part 3b: the gap's
-    /// `road(B) \ union(parent roads)` collapses EVERY confluence to ∅ (a
-    /// converging parent forward-inherits the merge suffix, so `road(C)` ⊆ the
-    /// parents' union) — a divide-by-zero on a legal store. The own-declared
-    /// segment gives each confluence its RELOCATED piece instead, non-empty.
-    #[test]
-    fn own_road_segment_credits_each_world_line_its_declared_scenes() {
-        let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
-        let converge = |b: &str, at: &str| mnemosyne_core::BranchFork {
-            branch: b.to_string(),
-            at: at.to_string(),
-        };
-        let fork = |from: &str, at: &str| mnemosyne_core::Branch {
-            forks_from: Some(mnemosyne_core::BranchFork {
-                branch: from.to_string(),
-                at: at.to_string(),
-            }),
-            ..Default::default()
-        };
-        let branches = BTreeMap::from([
-            ("braid1".to_string(), fork(MAIN_BRANCH, "s1")),
-            (
-                "weave1".to_string(),
-                mnemosyne_core::Branch {
-                    converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
-                    ..Default::default()
-                },
-            ),
-            ("braid2".to_string(), fork("weave1", "s3")),
-            (
-                "weave2".to_string(),
-                mnemosyne_core::Branch {
-                    converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
-                    ..Default::default()
-                },
-            ),
-            ("ending".to_string(), fork(MAIN_BRANCH, "s3")),
-        ]);
-        let decl = CanonOrderFile {
-            edges: vec![e("s1", "s2")],
-            branches: BTreeMap::from([
-                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
-                ("braid2".to_string(), vec![e("s3", "s4b")]),
-                ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
-                ("ending".to_string(), vec![e("s3", "e1")]),
-            ]),
-        };
-        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
-        let own = |w: &str| -> BTreeSet<&str> { order.own_road_segment(w) };
-
-        // main is a ROOT: its own segment is the seed + the target of its own base
-        // edge — NOT the s3/s4/s5 suffix, which the confluences RELOCATED ownership
-        // of (R612/R614). The trunk is owned across main + its confluences.
-        assert_eq!(own("main"), BTreeSet::from(["s1", "s2"]));
-        // THE FIX: a confluence gets its RELOCATED own segment, non-empty (the gap's
-        // set-difference gave ∅ here → divide-by-zero).
-        assert_eq!(own("weave1"), BTreeSet::from(["s3", "s4"]));
-        assert_eq!(own("weave2"), BTreeSet::from(["s5"]));
-        // A fork/confluence owns the TARGETS of its own edges — never its inherited
-        // attach coordinate (ending attaches at s3, owns only e1; braid2 owns s4b).
-        assert_eq!(own("ending"), BTreeSet::from(["e1"]));
-        assert_eq!(own("braid2"), BTreeSet::from(["s4b"]));
-        // An UNDECLARED-road world owns nothing → the density is honestly None, never
-        // a divide-by-zero.
-        assert!(own("braid1").is_empty());
-        assert!(order.undeclared_roads().any(|b| b == "braid1"));
     }
 
     /// Round 614 — a branch that declares NO road rides its lineage's road on, so its

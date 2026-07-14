@@ -505,31 +505,33 @@ pub struct SceneCoverage {
     pub structural: usize,
 }
 
-/// Per-world-line ownership density (Round 617, MNEMO-GAP-005) — how much a
-/// world-line OWNS on the road it DECLARED itself, versus the prefix it inherits.
+/// Per-world-line ownership density (Round 617, denominator corrected Round 619)
+/// — of every scene a world-line TRAVELS, how many facts did it author itself.
 ///
 /// A divergent world inherits its trunk prefix, so the frontier's zero-fact /
-/// per-scene view shows it FULL even when its own segment carries almost nothing;
-/// this separates the two. `owned_facts` = every fact authored on the world-line
-/// (`branch == B`) anywhere. `own_scene_facts` restricts to facts whose canon
-/// coordinate lies on the world's OWN declared segment — road-consistent with the
-/// denominator, so an inherited-prefix or shared-fork-coordinate fact never
-/// inflates it (the density-inflation trap the R613 fact/road duality warns of).
-/// `own_road_scenes` = the size of that own segment. `density` =
-/// `own_scene_facts / own_road_scenes`, or **None** when the own segment is EMPTY
-/// (a facts-only / undeclared-road divergence riding the trunk — a signal, never
-/// `0` "owns nothing at its own scenes" and never infinity). `own_road_declared`
-/// is false for such a world (it is in `undeclared_roads`), so a `None` reads
-/// "rides the trunk," not a defect. Because a merge relocates trunk ownership
-/// onto the confluence (Rounds 612/614), in a merged store the trunk is owned
-/// across `main` and the confluences it flows into, each with its own piece.
+/// per-scene view shows it FULL by inheritance. Dividing its OWN facts
+/// (`branch == B`) by its FULL traversed road (`road_scenes`, R614) surfaces a
+/// world that rides a long inherited road while owning little: a low density is
+/// the "looks full, owns little" dilution the gap wanted flagged. `owned_facts` =
+/// facts authored on this world-line; `road_scenes` = the count of coordinates it
+/// travels; `density` = `owned_facts / road_scenes`, **None** only when the world
+/// travels no road at all (a store with no declared order). `main` is the trunk
+/// baseline.
+///
+/// The denominator is the FULL traversed road, NOT the world's own DECLARED
+/// segment. The Round 617 own-segment denominator was wrong twice over: it
+/// suppressed the dilution signal (a divergent world reads dense on the handful
+/// of scenes it declared, hiding the long inherited span that IS the dilution),
+/// and it miscounted a declared-into attach coordinate as own (a silent 2× error
+/// on a legal store). The full traversed road is both the honest signal and
+/// bug-free — a road is never empty (bar a store with no order), so there is no
+/// divide-by-zero and no confusing "rides the trunk" inversion. It is NOT claimed
+/// to match any external divisor.
 #[derive(Debug, Clone, Serialize)]
 pub struct BranchDensity {
     pub owned_facts: usize,
-    pub own_scene_facts: usize,
-    pub own_road_scenes: usize,
+    pub road_scenes: usize,
     pub density: Option<f64>,
-    pub own_road_declared: bool,
 }
 
 /// The consolidated authoring FRONTIER (Round 589, R585 debt item 3) — every
@@ -562,6 +564,13 @@ pub struct AuthoringFrontierReport {
     /// branch, so a divergent world that looks full by inheritance but owns
     /// little is visible. Pure read, never gated. See [`BranchDensity`].
     pub branch_owned_density: BTreeMap<String, BranchDensity>,
+    /// The derived STRUCTURAL (quest-plumbing) fact ids (Round 619,
+    /// `structural_fact_ids`), sorted — the same set `scene_coverage.structural`
+    /// counts, exposed flat so a consumer can JOIN it to each fact's `branch`
+    /// (retiring an external id-prefix heuristic) rather than only seeing a
+    /// per-scene aggregate. Canon-vs-invented is NOT here (consumer-side,
+    /// decision C).
+    pub structural_facts: Vec<String>,
     /// Dangling setups per world-line (Expected facts with no visible payoff,
     /// R442) — the Chekhov guns still to fire. Only worlds with ≥ 1 dangling.
     pub dangling_setups: BTreeMap<String, Vec<String>>,
@@ -668,37 +677,26 @@ pub fn authoring_frontier_report(
         None => (None, None),
     };
 
-    // Per-world-line ownership density (Round 617): main + every registered
-    // branch, owned facts over the world's OWN declared road segment. Pure read —
-    // a None density is a signal (rides the trunk), never a gate, so it does NOT
-    // feed total_gaps.
-    let undeclared: BTreeSet<&str> = order.undeclared_roads().collect();
+    // Per-world-line ownership density (Round 617, denominator corrected Round
+    // 619): main + every registered branch, owned facts over the FULL road the
+    // world travels. Pure read — never gated, so it does NOT feed total_gaps.
     let mut branch_owned_density: BTreeMap<String, BranchDensity> = BTreeMap::new();
     for world in std::iter::once(mnemosyne_core::MAIN_BRANCH)
         .chain(store.branches.keys().map(String::as_str))
     {
-        let own = order.own_road_segment(world);
-        let own_road_scenes = own.len();
-        let mut owned_facts = 0usize;
-        let mut own_scene_facts = 0usize;
-        for fact in store.narrative_facts.values() {
-            if fact.branch == world {
-                owned_facts += 1;
-                if own.contains(fact.canon_from.as_str()) {
-                    own_scene_facts += 1;
-                }
-            }
-        }
-        let density =
-            (own_road_scenes > 0).then(|| own_scene_facts as f64 / own_road_scenes as f64);
+        let road_scenes = order.linearize(world).len();
+        let owned_facts = store
+            .narrative_facts
+            .values()
+            .filter(|f| f.branch == world)
+            .count();
+        let density = (road_scenes > 0).then(|| owned_facts as f64 / road_scenes as f64);
         branch_owned_density.insert(
             world.to_string(),
             BranchDensity {
                 owned_facts,
-                own_scene_facts,
-                own_road_scenes,
+                road_scenes,
                 density,
-                own_road_declared: !undeclared.contains(world),
             },
         );
     }
@@ -715,6 +713,7 @@ pub fn authoring_frontier_report(
         unordered_scenes,
         scene_coverage,
         branch_owned_density,
+        structural_facts: structural_ids.into_iter().collect(),
         dangling_setups,
         unresolved_quests,
         never_planned_disclosures,
@@ -1556,13 +1555,13 @@ mod tests {
         assert_eq!(r.total_gaps, 2); // one zero-fact + one unordered
     }
 
-    /// Round 617 (MNEMO-GAP-005 part 3b): branch-owned density counts a world-line's
-    /// facts over the road it DECLARED, so a divergent world that looks full by
-    /// inheritance but owns little is visible. Locks the two traps the gap's
-    /// design tripped: a shared-fork-coordinate fact inflates `owned_facts` but
-    /// NOT `own_scene_facts` (road-consistent numerator, no inflation), and an
-    /// undeclared-road world reports `density: None` (rides the trunk), never a
-    /// divide-by-zero.
+    /// Round 617 (density) corrected Round 619: branch-owned density = a
+    /// world-line's own facts over the FULL road it TRAVELS, so a world that
+    /// rides a long inherited road while owning little reads LOW. Locks the R619
+    /// fixes: every world (incl. a CONFLUENCE and a facts-only/undeclared
+    /// divergence) gets a `Some` density — never a divide-by-zero, never the
+    /// confusing "rides the trunk" `None` the own-segment version produced — and
+    /// `density > 1.0` (facts-per-scene) is a legitimate value.
     #[test]
     fn authoring_frontier_branch_owned_density() {
         let tmp = TempDir::new().unwrap();
@@ -1573,61 +1572,51 @@ mod tests {
              [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
         )
         .unwrap();
-        // main trunk sc-1 -> sc-2 -> sc-3; `end` forks at sc-2 with its OWN scene
-        // sc-end; `ghost` forks at sc-1 declaring NO road (undeclared, rides trunk).
+        // main s1 -> s2 (base); `braid` forks main@s1 declaring NO road (facts-only
+        // divergence); `weave` is a CONFLUENCE of {main@s2, braid@s2} declaring the
+        // continuation s2 -> s3. Every world travels {s1,s2,s3} (3 scenes).
         std::fs::write(
             root.join("canon.json"),
-            r#"{"edges":[["sc-1","sc-2"],["sc-2","sc-3"]],
-               "branches":{"end":[["sc-2","sc-end"]]}}"#,
+            r#"{"edges":[["s1","s2"]],"branches":{"weave":[["s2","s3"]]}}"#,
         )
         .unwrap();
         std::fs::write(
             root.join("store.json"),
             r#"{"schema_version":23,
-               "sections":{"sc-1":{},"sc-2":{},"sc-3":{},"sc-end":{}},
+               "sections":{"s1":{},"s2":{},"s3":{}},
                "frames":{"gt":{}},
-               "branches":{"end":{"forks_from":{"branch":"main","at":"sc-2"}},
-                           "ghost":{"forks_from":{"branch":"main","at":"sc-1"}}},
+               "branches":{"braid":{"forks_from":{"branch":"main","at":"s1"}},
+                           "weave":{"converges_from":[{"branch":"main","at":"s2"},
+                                                       {"branch":"braid","at":"s2"}]}},
                "narrative_facts":{
-                 "f-m1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]},
-                 "f-m2":{"frame":"gt","claim":"c","canon_from":"sc-2","evidence":["sc-2"]},
-                 "f-m3":{"frame":"gt","claim":"c","canon_from":"sc-3","evidence":["sc-3"]},
-                 "f-e1":{"frame":"gt","branch":"end","claim":"c","canon_from":"sc-end","evidence":["sc-end"]},
-                 "f-e2":{"frame":"gt","branch":"end","claim":"c","canon_from":"sc-2","evidence":["sc-2"]},
-                 "f-g1":{"frame":"gt","branch":"ghost","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
+                 "f-m1":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]},
+                 "f-m2":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]},
+                 "f-m3":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]},
+                 "f-m4":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]},
+                 "f-w1":{"frame":"gt","branch":"weave","claim":"c","canon_from":"s3","evidence":["s3"]},
+                 "f-b1":{"frame":"gt","branch":"braid","claim":"c","canon_from":"s2","evidence":["s2"]}}}"#,
         )
         .unwrap();
         let r = authoring_frontier_report(root, None, None, None).unwrap();
         let d = &r.branch_owned_density;
 
-        // main (root) owns its whole trunk {sc-1,sc-2,sc-3}: 3 facts / 3 scenes.
+        // main owns 4 facts over its 3 traversed scenes -> density > 1.0.
         let m = &d["main"];
-        assert_eq!(
-            (m.owned_facts, m.own_scene_facts, m.own_road_scenes),
-            (3, 3, 3)
-        );
-        assert_eq!(m.density, Some(1.0));
-        assert!(m.own_road_declared);
+        assert_eq!((m.owned_facts, m.road_scenes), (4, 3));
+        assert_eq!(m.density, Some(4.0 / 3.0));
 
-        // `end` authored 2 facts but only ONE is on its own scene (sc-end); the
-        // fact at the shared fork coordinate sc-2 is inherited ground, excluded
-        // from the numerator — no inflation (the R613 dual-axis trap).
-        let end = &d["end"];
-        assert_eq!(
-            (end.owned_facts, end.own_scene_facts, end.own_road_scenes),
-            (2, 1, 1)
-        );
-        assert_eq!(end.density, Some(1.0));
-        assert!(end.own_road_declared);
+        // the CONFLUENCE gets a real density over its full traversal — no
+        // divide-by-zero (the own-segment version's fatal case), no `None`.
+        let w = &d["weave"];
+        assert_eq!((w.owned_facts, w.road_scenes), (1, 3));
+        assert_eq!(w.density, Some(1.0 / 3.0));
 
-        // `ghost` declares no road: honest None, never a divide-by-zero.
-        let g = &d["ghost"];
-        assert_eq!(
-            (g.owned_facts, g.own_scene_facts, g.own_road_scenes),
-            (1, 0, 0)
-        );
-        assert_eq!(g.density, None);
-        assert!(!g.own_road_declared);
+        // the facts-only / undeclared-road divergence gets a real density too —
+        // it rides a 3-scene road owning 1 fact, NOT a confusing "n/a rides trunk".
+        let b = &d["braid"];
+        assert_eq!((b.owned_facts, b.road_scenes), (1, 3));
+        assert_eq!(b.density, Some(1.0 / 3.0));
+        assert!(b.density.is_some(), "a facts-only divergence is never None");
 
         // density is a pure read: it does NOT feed the gap gauge.
         assert_eq!(r.total_gaps, 0);

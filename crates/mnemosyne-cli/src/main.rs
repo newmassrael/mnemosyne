@@ -3229,12 +3229,11 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
     for (world, d) in &report.branch_owned_density {
         let density = match d.density {
             Some(v) => format!("{v:.2}"),
-            None if d.own_road_declared => "n/a (no own segment)".to_string(),
-            None => "n/a (rides the trunk — no own road declared)".to_string(),
+            None => "n/a (no road)".to_string(),
         };
         println!(
-            "branch density [{world}]: {} owned fact(s), {} on {} own scene(s) = {}",
-            d.owned_facts, d.own_scene_facts, d.own_road_scenes, density
+            "branch density [{world}]: {} owned fact(s) over {} traversed scene(s) = {}",
+            d.owned_facts, d.road_scenes, density
         );
     }
     Ok(())

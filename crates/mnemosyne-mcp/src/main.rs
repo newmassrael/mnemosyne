@@ -1922,7 +1922,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (facts per section) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Pure read, never gated. Fail-loud on a typo'd telling."
+        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (facts per section, incl. a derived structural quest-plumbing count, R619) + structural_facts (the flat structural fact-id set to JOIN with each fact's branch, R619) + branch_owned_density (per world-line, own facts over its full traversed road — a divergent world that looks full by inheritance but owns little reads LOW, R617/R619) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Pure read, never gated. Fail-loud on a typo'd telling."
     )]
     async fn report_authoring_frontier(
         &self,
