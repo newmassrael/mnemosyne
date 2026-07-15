@@ -63,10 +63,20 @@ The "fast" path produces an inconsistent state that the next
 
 ## ❌ "Let me add a new feature to the schema"
 
-Schema extensions are out of scope for routine sessions. The 4 entity
-types (Section / ChangelogEntry / FrozenList / CrossRef) are
-closed-form per Round 60 ratify. Schema decomposition (Round 162) is a
-separate spec round, not a per-session concern.
+Schema extensions are out of scope for a *routine* session: they are their
+own ratified round, with a decision entry, not a side-effect of authoring.
+That is the whole of this rule.
+
+**It does NOT mean the schema is closed.** This page used to say the store
+was "4 entity types, closed-form" — that was already wrong by Round 273 (the
+fifth), and the store has grown many record types since (the narrative half
+landed from Round 430 on; `schema_version` is well past 20). A consumer read
+this line, concluded the narrative substrate did not exist, and rebuilt it
+outside the store in Python.
+
+So: do not extend the schema mid-session — **and do not infer from that rule
+that what you need is missing.** Call `describe_schema` for what the store
+actually holds, today, derived from code.
 
 ## ❌ "Let me drop the doc from `workspace.docs` to silence its orphans"
 

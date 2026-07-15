@@ -202,20 +202,39 @@ no compiler catches it, and `git blame` chases the wrong rationale.
 
 **Verification path** (existing MCP tools, no new primitives needed):
 
-1. Call `list_sections` once at session start → cache the section_id set.
-2. For each cited `Round NNN`, prefix-match `round-NNN--` in the cached
- set:
- - 0 matches = hallucinated. Do NOT write the citation. Find the
- actually-relevant round, or stop and ask the user.
+1. Call `list_changelog` once at session start → cache the entry-key set.
+ Keys are `Round NNN — <title>`.
+2. For each cited `Round NNN`, prefix-match `Round NNN ` in that set:
+ - 0 matches = hallucinated **or pre-252**. Rounds 1–251 are off-main
+ (legacy-migration closure) and are NOT in the store — a citation to
+ one cannot be verified here and must not be written as though it
+ were. Do NOT write the citation: find the actually-relevant round,
+ or stop and ask the user.
  - ≥ 1 match = exists. Proceed.
-3. For decision_status (Active vs Superseded), call
- `query_section(section_id=<full-slug>)` and read `decision_status`.
- Only cite Active entries; Superseded entries require explicit "this is
- a historical reference to a superseded decision" framing.
+3. For supersession, there is **no `decision_status` field on changelog
+ entries** — it exists only on Sections. The ledger is frozen and
+ append-only, so supersession is stated in *prose* by a later entry.
+ Before leaning on a round, search for later entries that overturn it:
+ `query --term "<the claim>" --scope changelog`, and read the newest
+ hit. Cite a superseded decision only with explicit "this is a
+ historical reference" framing.
+
+For `§<id>` refs (spec sections, not rounds), `list_sections` is the right
+call — it lists the section space only.
 
 CLI equivalents (when MCP unavailable): `mnemosyne-cli query
---list-sections` for step 1, `mnemosyne-cli query §<full-section-id>` for
-step 3.
+--list-changelog [--limit N]` for step 1, `mnemosyne-cli query --term
+<pattern> --scope changelog` for step 3, `mnemosyne-cli query
+--list-sections` for the section space.
+
+**Do not use `list_sections` to verify a round.** Round entries have not
+lived in the section space since Round 400 collapsed the markdown-doc
+model; `list_sections` returns spec sections only. Prefix-matching
+`round-NNN--` against it — as this file instructed until R620 — returns 0
+for *every* round and reads as "all citations hallucinated". A verification
+path that silently answers "does not exist" for things that do exist is
+worse than none: it is exactly how the first playable consumer concluded
+seven present capabilities were absent.
 
 **Why**: atomic store is the single source of truth for round-numbered
 decisions. Citations that name a non-existent or superseded round break

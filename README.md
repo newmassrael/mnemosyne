@@ -170,9 +170,14 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) and
 (Claude Code, Cursor, Cline, Continue, Copilot Chat, …) connect over
 stdio and gain:
 
-- **16 typed tools** — validate / query / 12 atomic mutate primitives
-  (Section + ChangelogEntry typed-field setters). Each tool's args are
-  JSONSchema-validated before reaching the validator.
+- **Typed tools** across both halves — validate / query / atomic mutate
+  primitives for the spec half (Section + ChangelogEntry typed-field
+  setters) *and* the narrative half (frames, branches, entities,
+  predicates, facts, disclosure plans, plus the continuity / disclosure
+  gates and the fork-tree, playable-world and quest-graph projections).
+  Each tool's args are JSONSchema-validated before reaching the
+  validator. **Call `describe_schema` for the authoring contract** — it
+  derives from code, so unlike this list it cannot go stale.
 - **7 concept resources** under `mnemosyne://concepts/*` — overview,
   atomic-store, frozen-ledger, tier-rules, anti-patterns,
   schema-guide, workflow. AI clients auto-load these so the agent
@@ -449,15 +454,39 @@ integrity gaps:
 - Atomic ChangelogEntry mutate API (append-only audit half + a separate
   publishable view) — the single directly-validated SSOT.
 
-### Phase 1 — Narrative medium adapter
+### Phase 1 — Narrative medium adapter (BUILT, in use)
 
-The next adoption surface: long-form fiction, game scripts, TRPG
-campaign notes, worldbuilding wikis, character bibles. These media
-share the same AI-mutation hazard pattern that motivated Phase 0 —
-LLM-driven editing breaks invariants that no compiler enforces — but
-the schema and the primitives change.
+**This section described a future. It is the present.** The narrative
+half shipped from Round 430 on, is gated by `validate-continuity`, and
+has a live consumer authoring a playable branching visual novel on an
+850+ fact store. If you are here to author a story world, you are not
+early — start with `mnemosyne-cli describe-schema`.
 
-Concrete target genres and what Mnemosyne would guard:
+What actually got built departs sharply from the speculation this
+section used to carry (per-genre entity types like `Character` /
+`Faction`, primitives like `set_character_eye_color`). The real model is
+**medium-neutral and perspectival**:
+
+- **frames** — whose belief a fact is held in. A fact is not "true"; it
+  is true *in a frame*. An unreliable narrator is native, not an
+  exception.
+- **branches** — which world-line / playthrough the fact holds on.
+- **entities + predicates** — an **open** registry (`add-predicate`),
+  not a closed per-genre schema. Typed claims are
+  `subject–predicate–object`, object = entity or scalar.
+- **narrative facts** — claim + frame + branch + canon coordinates +
+  evidence, with `conflicts_with` / `supersedes_in_frame` / `pays_off`
+  edges.
+- **declarative rules** — `Exclusive` (one holder per object),
+  `Transition` (valid state steps), `Interval` (scalar bounds) — this is
+  the world-state/possession model.
+- **disclosure plans** — what a given *telling* reveals to the reader or
+  player, and when.
+- **projections** — fork tree, playable world (with map locators), quest
+  graph (objectives, prerequisites, per-world open/done).
+
+The genre notes below are kept as the *motivating* hazards. Read them as
+history: they are why the substrate exists, not a description of it.
 
 - **Long-form fiction draft management.** A character's
   established eye color in chapter 2 must match chapter 15. A renamed
@@ -493,8 +522,11 @@ modes are visible to end users (a reader notices when a character's
 eye color contradicts the bible) which keeps the validator's reject
 mode well-calibrated.
 
-Phase 1 is currently *deferred* behind Phase 0 stack stabilization —
-not abandoned. The roadmap is honest about the boundary.
+The Round 172 audit's bet paid out, but not in the shape it predicted:
+the win came from making facts *perspectival* (frame + branch) rather
+than from per-genre entity schemas. The eye-color example above is
+handled by typed claims plus an `Exclusive` rule — no
+`set_character_eye_color` primitive exists, or should.
 
 ### Phase 1 — External-spec compliance adapter (parallel candidate)
 

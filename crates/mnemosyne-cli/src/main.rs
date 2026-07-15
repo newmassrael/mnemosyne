@@ -148,12 +148,19 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
-    let cmd = args.get(1).ok_or_else(|| {
- anyhow!(
- "usage: {} <validate|validate-workspace|query|add-section|import-sections|import-facts|add-frame|add-branch|add-entity|add-predicate|add-disclosure-plan|set-disclosure|add-fact|add-fact-conflict|amend-fact|retract-fact|style-check|set-section-intent|set-section-rationale|set-section-inputs|set-section-outputs|set-section-title|set-section-parent-doc|set-section-parent-section|add-section-caveat|set-section-alternatives|set-section-impact-scope|add-section-example|add-section-binding|remove-section-binding|set-section-binding-kind|set-section-coverage-expectation|set-section-verification-expectation|add-confirmation-event|report-payoff-substantiation|report-disclosure-coverage|validate-disclosure-leak|validate-render-fidelity|set-section-decision-status|import-epub-excerpts|remove-section|append-changelog-entry|set-changelog-publishable-decision-summary|set-changelog-publishable-changes|set-changelog-publishable-verification|set-changelog-publishable-impact-refs|set-changelog-publishable-carry-forward|redact-term|emit-publishable-override-ledger-draft|add-inventory-entry|set-inventory-status|set-inventory-section-ref|remove-inventory-entry> [args...]",
- prog
- )
- })?;
+    // A bare invocation is the discovery act — answer it with the ONE command
+    // list (`print_help`). A second hand-maintained list here is unmaintainable
+    // by construction: the one that used to live at this line had drifted to
+    // omit every narrative/playable verb (`validate-continuity`,
+    // `describe-schema`, `report-playable-world`, `report-quest-graph`,
+    // `report-typing-candidates`, …) while still naming 52 commands, so it read
+    // as exhaustive and taught the reader the narrative surface did not exist.
+    // The drift is now structurally impossible (no second list) and gated by
+    // `tests/help_covers_dispatch_smoke.rs`.
+    let Some(cmd) = args.get(1) else {
+        print_help(prog);
+        return Ok(());
+    };
 
     match cmd.as_str() {
         "validate-workspace" => cmd_validate_workspace(),
@@ -666,6 +673,40 @@ fn print_help(prog: &str) {
  " {} append-changelog-entry --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",
  prog
  );
+    println!();
+    println!(
+        " --- publishable half of the ledger (Round 295/297/300; the audit half stays frozen) ---"
+    );
+    println!(
+ " {} set-changelog-publishable-decision-summary --entry \"Round N\" --value <text> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} set-changelog-publishable-changes --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} set-changelog-publishable-verification --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} set-changelog-publishable-impact-refs --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} set-changelog-publishable-carry-forward --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
+ prog
+ );
+    println!(
+ " {} redact-term --pattern <text> --replacement <text> --kind <text> --reason <text> --applied-in \"Round N\" [--scope <s>] [--regex] [--case-insensitive] [--dry-run] [--sidecar <path>] [--json]",
+ prog
+ );
+    println!("   Round 297 — redact across the publishable half in one call, ledger-recorded");
+    println!(
+ " {} emit-publishable-override-ledger-draft --entry \"Round N\" --kind <text> --reason <text> --applied-in \"Round N\" [--sidecar <path>] [--json]",
+ prog
+ );
+    println!("   Round 300 — read-only [[publishable_override_ledger]] draft for a diverged entry");
     println!();
     println!(" --- Phase 1A inventory mutate API (Round 274) ---");
     println!(

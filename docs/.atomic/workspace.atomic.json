@@ -15185,6 +15185,54 @@
         "MNEMO-GAP-005 arc: R616 (design, both proposals refuted) + R617/R618 (build) + R619 (cost-no-object review, 7 findings fixed). R617's committed changelog entry stays as the audit trail of what was first built; this entry records the correction (frozen-ledger discipline). No NarrativeFact schema was added.",
         "CONSUMER (the-tide-that-counts): density now shows the dilution signal honestly (divergent forks read low); structural_facts retires the id-regex heuristic; canon-vs-invented stays consumer-side (decision C). Push PENDING; the new surface needs `cargo install --path crates/mnemosyne-{cli,mcp} --force`."
       ]
+    },
+    "Round 620 — discoverability defects: the CLI front door hid the narrative half": {
+      "decision_summary": "The first playable consumer (the-tide-that-counts: 852-fact store, running branching VN) filed a field report concluding Mnemosyne lacked world-state, player projection, carrier semantics, open predicates, and a map — and was wrong 7/7, rebuilding ~1,100 lines of Python outside the store. Reviewed adversarially: the count is 9, not 7 (the report also missed QUEST_PRED_REQUIRES = the declarative prerequisite, and its own claim that no round ever discussed fact-to-fact derivation is refuted by R493, which PoC-tested a causes edge and REFUTED it on data). The report's thesis is therefore CONFIRMED and its evidence is the proof: this is a DISCOVERABILITY failure, not a capability gap. Measured causes, all Mnemosyne-side and all mechanical: (1) the CLI bare-invocation usage string was a second hand-maintained command list that had drifted to omit every narrative verb (validate-continuity, describe-schema, report-playable-world, report-quest-graph, report-typing-candidates) while still naming 52, so it read exhaustive; (2) the auto-loaded MCP onboarding resources affirmatively taught that the store has 4 closed-form entity types, citing a Round 60 that is off-main, a claim already stale by R273; (3) CLAUDE.md's own citation-hygiene protocol told agents to prefix-match round-NNN-- against list_sections, which returns spec sections only, so it answers does-not-exist for all 366 rounds; (4) README framed the narrative half as deferred future work and speculated primitives that were never built. The consumer was not careless: the documented onboarding path told them the substrate did not exist. DECISION: fix the front door, and kill the drift class rather than refresh its instances — no restated counts, point at describe-schema. R585 built describe-schema because THIS consumer reported THIS gap; it still did not reach them, so the fix is routing, not another artifact.",
+      "changes_bullets": [
+        "CLI bare invocation now prints print_help; the parallel usage list at main.rs:153 is DELETED (it named 52 commands while omitting every narrative verb, so it read exhaustive)",
+        "new tests/help_covers_dispatch_smoke.rs parses the run() dispatch match from source and asserts --help names every arm, token-exact; caught 7 real drifts on first run",
+        "print_help gains the 7 undocumented R295/R297/R300 publishable-half verbs the gate found",
+        "MCP resources/overview.md rewritten: two halves (spec + narrative) named, counts removed, describe_schema made the schema authority",
+        "MCP resources/anti-patterns.md \"4 entity types closed-form per Round 60\" removed; rule kept (schema change = its own round), false closure claim dropped",
+        "CLAUDE.md citation hygiene rewired from list_sections to list_changelog; decision_status step corrected (field does not exist on changelog entries)",
+        "README 16-typed-tools count dropped; Phase 1 narrative section moved from future tense to BUILT with the real perspectival model"
+      ],
+      "verification_bullets": [
+        "help_covers_dispatch_smoke FAILED on first run naming 7 dispatched-but-undocumented verbs (set-changelog-publishable-*, redact-term, emit-publishable-override-ledger-draft) then passed after print_help fixed = non-vacuous per R510 F5",
+        "measured on this store: list_sections returns 5 sections, changelog_entries 366, so the old round-NNN-- prefix-match returned 0 for every round",
+        "measured: zero changelog entries carry decision_status across all 366; it is a Section field",
+        "measured: ledger oldest entry is Round 252, so anti-patterns.md cited Round 60 which is off-main and unverifiable; R273 already called InventoryEntry the fifth closed-form entity",
+        "field report claims re-verified: narrative.rs:688 surface STORED-but-NOT-gated CONFIRMED; §3b REFUTED by R493 causes-edge PoC + QUEST_PRED_REQUIRES declarative prerequisite"
+      ],
+      "carry_forward_bullets": [
+        "MNEMO-GAP-005 field report §3c stands as the one live un-owned gap: R547 mis-cited R546 to delegate cond-guards to SCE, R560 reverted the boundary but ordered no build, so R527 gap #2 (availability conditions) was never refuted and never built",
+        "sec 7.36 needs a forward pointer to R560; a reader landing there today gets no signal the conditional-gating-is-SCE claim was corrected",
+        "do NOT build a condition primitive yet: the consumer reporting depth-1 investigation has typed 9.7% of facts, used surface.object 0 times, and never used requires; re-author first, then re-measure (R493 refute-first precedent)",
+        "MCP resources/schema-guide.md is 171 lines vs the real 820-line docs/SCHEMA_GUIDE.md and stale at R400; GETTING_STARTED.md narrative coverage is 0"
+      ],
+      "publishable_decision_summary": "The first playable consumer (the-tide-that-counts: 852-fact store, running branching VN) filed a field report concluding Mnemosyne lacked world-state, player projection, carrier semantics, open predicates, and a map — and was wrong 7/7, rebuilding ~1,100 lines of Python outside the store. Reviewed adversarially: the count is 9, not 7 (the report also missed QUEST_PRED_REQUIRES = the declarative prerequisite, and its own claim that no round ever discussed fact-to-fact derivation is refuted by R493, which PoC-tested a causes edge and REFUTED it on data). The report's thesis is therefore CONFIRMED and its evidence is the proof: this is a DISCOVERABILITY failure, not a capability gap. Measured causes, all Mnemosyne-side and all mechanical: (1) the CLI bare-invocation usage string was a second hand-maintained command list that had drifted to omit every narrative verb (validate-continuity, describe-schema, report-playable-world, report-quest-graph, report-typing-candidates) while still naming 52, so it read exhaustive; (2) the auto-loaded MCP onboarding resources affirmatively taught that the store has 4 closed-form entity types, citing a Round 60 that is off-main, a claim already stale by R273; (3) CLAUDE.md's own citation-hygiene protocol told agents to prefix-match round-NNN-- against list_sections, which returns spec sections only, so it answers does-not-exist for all 366 rounds; (4) README framed the narrative half as deferred future work and speculated primitives that were never built. The consumer was not careless: the documented onboarding path told them the substrate did not exist. DECISION: fix the front door, and kill the drift class rather than refresh its instances — no restated counts, point at describe-schema. R585 built describe-schema because THIS consumer reported THIS gap; it still did not reach them, so the fix is routing, not another artifact.",
+      "publishable_changes_bullets": [
+        "CLI bare invocation now prints print_help; the parallel usage list at main.rs:153 is DELETED (it named 52 commands while omitting every narrative verb, so it read exhaustive)",
+        "new tests/help_covers_dispatch_smoke.rs parses the run() dispatch match from source and asserts --help names every arm, token-exact; caught 7 real drifts on first run",
+        "print_help gains the 7 undocumented R295/R297/R300 publishable-half verbs the gate found",
+        "MCP resources/overview.md rewritten: two halves (spec + narrative) named, counts removed, describe_schema made the schema authority",
+        "MCP resources/anti-patterns.md \"4 entity types closed-form per Round 60\" removed; rule kept (schema change = its own round), false closure claim dropped",
+        "CLAUDE.md citation hygiene rewired from list_sections to list_changelog; decision_status step corrected (field does not exist on changelog entries)",
+        "README 16-typed-tools count dropped; Phase 1 narrative section moved from future tense to BUILT with the real perspectival model"
+      ],
+      "publishable_verification_bullets": [
+        "help_covers_dispatch_smoke FAILED on first run naming 7 dispatched-but-undocumented verbs (set-changelog-publishable-*, redact-term, emit-publishable-override-ledger-draft) then passed after print_help fixed = non-vacuous per R510 F5",
+        "measured on this store: list_sections returns 5 sections, changelog_entries 366, so the old round-NNN-- prefix-match returned 0 for every round",
+        "measured: zero changelog entries carry decision_status across all 366; it is a Section field",
+        "measured: ledger oldest entry is Round 252, so anti-patterns.md cited Round 60 which is off-main and unverifiable; R273 already called InventoryEntry the fifth closed-form entity",
+        "field report claims re-verified: narrative.rs:688 surface STORED-but-NOT-gated CONFIRMED; §3b REFUTED by R493 causes-edge PoC + QUEST_PRED_REQUIRES declarative prerequisite"
+      ],
+      "publishable_carry_forward_bullets": [
+        "MNEMO-GAP-005 field report §3c stands as the one live un-owned gap: R547 mis-cited R546 to delegate cond-guards to SCE, R560 reverted the boundary but ordered no build, so R527 gap #2 (availability conditions) was never refuted and never built",
+        "sec 7.36 needs a forward pointer to R560; a reader landing there today gets no signal the conditional-gating-is-SCE claim was corrected",
+        "do NOT build a condition primitive yet: the consumer reporting depth-1 investigation has typed 9.7% of facts, used surface.object 0 times, and never used requires; re-author first, then re-measure (R493 refute-first precedent)",
+        "MCP resources/schema-guide.md is 171 lines vs the real 820-line docs/SCHEMA_GUIDE.md and stale at R400; GETTING_STARTED.md narrative coverage is 0"
+      ]
     }
   },
   "inventory_entries": {},
