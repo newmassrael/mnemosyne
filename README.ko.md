@@ -302,12 +302,13 @@ facts) 에서는 풀-DB 오버헤드가 얻는 게 없다 — 워크스페이스
 패턴은 "전체 파일 로드 → 한 번 mutate → 재렌더" 일 뿐이다. 단일 JSON 을
 temp + atomic rename 으로 쓰면 충분하다.
 
-RocksDB 는 Phase 0 에서도 **audit-trail 레이어**용으로 살아있다 —
-`mnemosyne-cli commit` 이 디자인 문서 커밋 트랜잭션을 `.mnemosyne/store/`
-아래 RocksDB column family 에 기록한다. §4 10-CF 스키마를 50K-asset
-워크로드에서 본격 활용하는 per-branch fact 레이어는 Phase 1+ 스코프다.
-일상적으로 쓰는 validate / mutate / render 경로는 JSON 파일만 건드리고,
-RocksDB 는 `commit` 때 깨어난다.
+RocksDB 는 `mnemosyne-store` 크레이트에 배선되어 있고 `mnemosyne-index` /
+`mnemosyne-facts` / `mnemosyne-server` 가 소비한다 — **CLI 는 아니다.**
+CLI 는 이 크레이트에 의존하지 않는다. 이 문단은 Round 623 까지 CLI 의
+commit 동사가 트랜잭션을 column family 에 기록한다고 서술했지만, 그런
+동사는 dispatch 된 적이 없다. 일상적으로 쓰는 validate / mutate / query 경로는 JSON 파일만
+건드린다. §4 10-CF 스키마를 50K-asset 워크로드에서 본격 활용하는
+per-branch fact 레이어는 Phase 1+ 스코프다.
 
 ### 왜 frozen ledger 인가, git 히스토리가 아니라
 

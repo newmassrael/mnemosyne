@@ -324,12 +324,13 @@ and the access pattern is "load whole file → mutate once →
 save." A single JSON file written via temp + atomic rename
 covers the use case.
 
-RocksDB is still wired in Phase 0 for the **audit-trail layer**:
-`mnemosyne-cli commit` records design-doc commit transactions to
-RocksDB column families under `.mnemosyne/store/`. The full per-branch
-fact layer that exercises the §4 ten-CF schema at the 50K-asset
-workload is Phase 1+ scope. The validate / mutate / render paths used
-day-to-day touch only the JSON file; RocksDB activates on `commit`.
+RocksDB is wired in the `mnemosyne-store` crate and consumed by
+`mnemosyne-index`, `mnemosyne-facts` and `mnemosyne-server` — **not by
+the CLI**, which does not depend on it. Until Round 623 this paragraph
+described a CLI commit verb recording transactions to column families;
+no such verb has ever dispatched. The validate / mutate / query paths used day-to-day
+touch only the JSON file. The full per-branch fact layer that exercises
+the §4 ten-CF schema at the 50K-asset workload is Phase 1+ scope.
 
 ### Why frozen ledger instead of git history
 
