@@ -1603,7 +1603,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Clear one telling's disclosure decision for one fact (R626). The fact is untouched — a disclosure decision belongs to the TELLING, not the fact (R506). This is the escape hatch the R626 referential guards require: retract_fact refuses to delete a fact an override still points at, and amend_fact refuses to drop the typed leg out from under a withhold/first_at decision, both saying 'clear the decision first' — so clearing must be possible. Fail-loud: the telling and the decision must exist (no silent no-op), reason mandatory."
+        description = "Clear one telling's disclosure decision for one fact (R626). The fact is untouched — a disclosure decision belongs to the TELLING, not the fact (R506). This is the escape hatch the R626 referential guards require: retract_fact refuses to delete a fact an override still points at, and amend_fact refuses to drop the typed leg out from under a withhold/first_at decision, both saying 'clear the decision first' — so clearing must be possible. Fail-loud: the telling and the decision must exist (no silent no-op), reason mandatory. NOT NEUTRAL (R627): the fact then rides the plan's default_mode, which defaults to `withhold` — so clearing a `state` decision flips that fact from told to never-told for that telling. The receipt names the resulting effective mode; if you are clearing only to retract the fact, do both, or the fact is left silently withheld."
     )]
     async fn remove_disclosure(&self, args: Parameters<RemoveDisclosureArgs>) -> CallToolResult {
         let a = args.0;

@@ -4587,6 +4587,15 @@ pub(crate) fn apply_disclosure_override(
 /// absent — no silent no-op, the caller asked to clear a specific decision.
 /// The fact itself is untouched: a disclosure decision is a property of the
 /// TELLING, never of the fact (R506).
+///
+/// Round 627 — BUT clearing is not neutral, and R626 shipped this unsaid: the
+/// fact falls back to the plan's `default_mode`, which defaults to `Withhold`
+/// (and IS `withhold` in all three plans of the real consumer store). So
+/// clearing a `state` override flips that fact from told to never-told for that
+/// telling. The receipt names the resulting effective mode rather than leaving
+/// the author to infer it — `report-disclosure-coverage` would surface it only
+/// if they thought to look, and R626's own prescribed workflow (clear, then
+/// retract) leaves the fact silently withheld if they stop after step 1.
 pub fn remove_disclosure(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -4612,12 +4621,14 @@ pub fn remove_disclosure(
              (nothing to clear)"
         )));
     }
+    // R627 — say what the fact now DOES, not just what was removed.
+    let effective = plan.default_mode.as_str();
     save_with_receipt(
         store,
         sidecar_path,
         "remove_disclosure",
         "disclosure_plan",
-        &format!("{telling} -> {fact}"),
+        &format!("{telling} -> {fact} (now rides the plan default: {effective})"),
     )
 }
 
@@ -5053,15 +5064,25 @@ fn inbound_fact_refs<'a>(
 }
 
 /// Round 626 — inbound references to `fact_id` from the DISCLOSURE side: every
-/// telling whose plan carries an override keyed by this fact. The fourth write
-/// authority over the same invariant [`apply_disclosure_override`] enforces at
-/// write time ("the fact exists", and "a withhold/first_at target is typed"):
-/// `set_disclosure` refused to CREATE those states, while `retract_fact` and
-/// `amend_fact` could still REACH them from the other side — one invariant,
-/// four write paths, one enforcer (the CLAUDE.md half-enforced-invariant
-/// anti-pattern). R508 leans on exactly this guarantee in prose ("the targeted
-/// facts are guaranteed typed by the R507 set_disclosure invariant") and only
-/// re-checks it defensively in the gate; the guarantee was not true.
+/// telling whose plan carries an override keyed by this fact. Read-only; the
+/// scan [`retract_fact`] and [`amend_fact`] consult so they stop reaching states
+/// [`apply_disclosure_override`] forbids at write time ("the fact exists", and
+/// "a withhold/first_at target is typed").
+///
+/// The write authorities over that relationship are FOUR — `set_disclosure` and
+/// `import_facts` (both routed through `apply_disclosure_override`, the only
+/// enforcer), plus `retract_fact` and `amend_fact`, which could delete the fact
+/// or drop its typed leg from the other side. One invariant, four write paths,
+/// one enforcer = the CLAUDE.md half-enforced-invariant anti-pattern. R508 leans
+/// on exactly this guarantee in prose ("the targeted facts are guaranteed typed
+/// by the R507 set_disclosure invariant") and only re-checks it defensively in
+/// the gate; the guarantee was not true.
+///
+/// Round 627 — this closes the FACT-shaped referent only. A decision also
+/// references SECTIONS (`first_at` coords, `surface.scene`) which
+/// `apply_disclosure_override` validates at write time and `remove_section`
+/// orphans silently — the same asymmetry, not disclosure-specific (it orphans a
+/// fact's own `canon_from`/`evidence` identically), so it is its own round.
 fn inbound_disclosure_refs<'a>(
     plans: &'a BTreeMap<String, DisclosurePlan>,
     fact_id: &str,
@@ -5113,26 +5134,46 @@ pub fn retract_fact(
             "fact_id `{id}` not present in atomic store"
         )));
     }
-    let mut listing = inbound_fact_refs(&store.narrative_facts, id)
-        .iter()
-        .map(|(rid, _, via)| format!("`{rid}` (via {via})"))
-        .collect::<Vec<_>>();
     // Round 626 — the disclosure plans reference fact identities too, and
     // `set_disclosure` already refuses to point an override at a fact that is
     // not present; without this leg the delete path CREATES exactly the state
     // the write path forbids, and an untargeted override (mode state/hint/imply
     // with no first_at pin) is not re-checked by any gate, so the orphan is
-    // silent. Same message, same idiom — one refusal, both legs.
-    listing.extend(
-        inbound_disclosure_refs(&store.disclosure_plans, id)
-            .iter()
-            .map(|(telling, _)| format!("`{telling}` (via disclosure override)")),
-    );
-    if !listing.is_empty() {
-        let listing = listing.join(", ");
+    // silent.
+    //
+    // Round 627 — the two classes carry SEPARATE remedies, because R626 shipped
+    // one sentence of advice for both and it was impossible for half of them: a
+    // disclosure referrer is a TELLING, and `retract-fact --fact <telling>`
+    // answers "not present in atomic store". A guard whose remedy cannot be
+    // followed is the trap R626 was written to avoid, one layer up — so each
+    // class names the primitive that actually clears it.
+    let fact_referrers = inbound_fact_refs(&store.narrative_facts, id)
+        .iter()
+        .map(|(rid, _, via)| format!("`{rid}` (via {via})"))
+        .collect::<Vec<_>>();
+    let disclosure_referrers = inbound_disclosure_refs(&store.disclosure_plans, id)
+        .iter()
+        .map(|(telling, _)| format!("`{telling}`"))
+        .collect::<Vec<_>>();
+    if !fact_referrers.is_empty() || !disclosure_referrers.is_empty() {
+        let mut clauses = Vec::new();
+        if !fact_referrers.is_empty() {
+            clauses.push(format!(
+                "is referenced by {} — retract or amend those facts first",
+                fact_referrers.join(", ")
+            ));
+        }
+        if !disclosure_referrers.is_empty() {
+            clauses.push(format!(
+                "carries a disclosure decision under telling {} — clear each with \
+                 `remove_disclosure` (CLI: remove-disclosure --telling <id> --fact {id} \
+                 --reason <text>) first",
+                disclosure_referrers.join(", ")
+            ));
+        }
         return Err(AtomicMutateError::Validation(format!(
-            "retract_fact: fact `{id}` is referenced by {listing} — retract or amend the \
-             referrers first (a recorded assertion never dangles)"
+            "retract_fact: fact `{id}` {} (a recorded assertion never dangles)",
+            clauses.join("; and it ")
         )));
     }
     store.narrative_facts.remove(id);
@@ -9457,8 +9498,14 @@ mod tests {
         for fact in ["f-withheld", "f-craft"] {
             let err = retract_fact(&mut store, &path, fact, "no longer asserted").unwrap_err();
             let msg = err.to_string();
-            assert!(msg.contains("via disclosure override"), "{msg}");
             assert!(msg.contains("never dangles"), "{msg}");
+            // Round 627 — assert the REMEDY, not just the label. R626 pinned only
+            // "via disclosure override" + "never dangles" and so locked in advice
+            // ("retract or amend the referrers first") that is impossible for this
+            // class: the referrer is a TELLING. A refusal must name the primitive
+            // that actually clears it, and the pin must hold it to that.
+            assert!(msg.contains("disclosure decision under telling"), "{msg}");
+            assert!(msg.contains("remove-disclosure --telling"), "{msg}");
             assert!(store.narrative_facts.contains_key(fact), "{fact} survived");
         }
 
@@ -9488,8 +9535,17 @@ mod tests {
         // NEGATIVE CONTROL (not over-broad): a craft-only `state` with no pin is
         // legal on an untyped fact at the write path, so dropping the typed leg
         // under one must stay legal — both paths ACCEPT the same input.
+        //
+        // Round 627 — the WRITE half of this control was a vacuous assertion in
+        // R626: it named a fact that was never added, so it passed on "fact not
+        // present" and asserted an ERROR under a comment claiming acceptance —
+        // leaving the accept leg of an R305 parity pin untested, and R626's
+        // ledger citing it as evidence it never produced. Both halves are real
+        // now: the write path ACCEPTS this input, and so must the amend path.
         set_disc(&mut store, &path, "t", "f-craft", "state", &[], None).unwrap();
-        set_disc(&mut store, &path, "t", "f-untyped-ok", "state", &[], None).unwrap_err();
+        add_fact(&mut store, &path, &untyped_import("f-untyped-ok")).unwrap();
+        set_disc(&mut store, &path, "t", "f-untyped-ok", "state", &[], None)
+            .expect("a craft-only state with no pin is legal on an untyped fact");
         amend_fact(&mut store, &path, &untyped_import("f-craft"), "craft-only")
             .expect("an untargeted override must not block an amend");
         assert!(store.narrative_facts["f-craft"].typed.is_none());

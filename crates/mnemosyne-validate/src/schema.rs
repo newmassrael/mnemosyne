@@ -956,7 +956,20 @@ fn invariants() -> Vec<Invariant> {
             name: "disclosure-needs-typed",
             rule: "a `withhold` mode OR any first_at timing pin requires the targeted fact to \
                 carry a typed claim — the premature-leak gate matches re-extracted prose to the \
-                plan by typed tuple, so a decision on an untyped fact is un-gateable.",
+                plan by typed tuple, so a decision on an untyped fact is un-gateable. Holds on \
+                every write authority (Round 626): amend-fact cannot drop the typed leg out \
+                from under a live one either — clear the decision first (remove-disclosure).",
+            enforced_at: mutate,
+        },
+        Invariant {
+            name: "disclosure-ref-integrity",
+            rule: "a fact carrying a disclosure decision under any telling cannot be retracted \
+                (Round 626) — clear each decision first (remove-disclosure --telling <id> \
+                --fact <id>). Set-disclosure refuses a decision on an absent fact, so the \
+                delete path must not create one from the far side; an override with mode \
+                state/hint/imply and no first_at pin is re-checked by NO gate, so its orphan \
+                would be silent. Clearing is not neutral: the fact then rides the plan's \
+                default_mode (default `withhold`).",
             enforced_at: mutate,
         },
         Invariant {
