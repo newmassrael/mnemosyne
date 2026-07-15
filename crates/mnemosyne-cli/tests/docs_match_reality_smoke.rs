@@ -211,6 +211,67 @@ fn documented_verbs_all_dispatch() {
     );
 }
 
+/// The schema guides must at least NAME every config section that exists.
+///
+/// The section list is derived from `WorkspaceConfig`'s own serde shape, not
+/// restated here — every field is `#[serde(default)]` with no
+/// `skip_serializing_if`, so serializing a minimal parse emits all of them.
+/// A hand-written list would be one more copy of the thing this arc is
+/// deleting.
+///
+/// Why it matters concretely: the MCP guide an agent auto-loads named four of
+/// thirteen sections and omitted `[continuity]` — the narrative gate's own
+/// config. A consumer authoring a playable story never learned the gate was
+/// configurable, ran `validate-workspace` instead, saw green, and shipped an
+/// unchecked world.
+#[test]
+fn schema_guides_name_every_config_section() {
+    let root = repo_root();
+    let cfg = mnemosyne_config::parse_config("[workspace]\n").expect("minimal config parses");
+    let value = serde_json::to_value(&cfg).expect("WorkspaceConfig is Serialize");
+    let sections: Vec<String> = value
+        .as_object()
+        .expect("WorkspaceConfig serializes to an object")
+        .keys()
+        .cloned()
+        .collect();
+    assert!(
+        sections.len() > 10,
+        "parser regression: only {} config sections derived — the gate would \
+         pass vacuously. Got: {:?}",
+        sections.len(),
+        sections
+    );
+
+    let guides = [
+        "docs/SCHEMA_GUIDE.md",
+        "crates/mnemosyne-mcp/resources/schema-guide.md",
+    ];
+    let mut bad = Vec::new();
+    for guide in guides {
+        let text = std::fs::read_to_string(root.join(guide)).expect("read schema guide");
+        for section in &sections {
+            // All three TOML spellings count as naming it: a plain table
+            // (`[atomic]`), an array-of-tables (`[[orphan_ledger]]`, which is
+            // how a Vec section is written), and a documented subtable
+            // (`[plugins.set_equality_validator]`).
+            let named = text.contains(&format!("[{}]", section))
+                || text.contains(&format!("[[{}]]", section))
+                || text.contains(&format!("[{}.", section));
+            if !named {
+                bad.push(format!("{} never names `[{}]`", guide, section));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} config section(s) exist but are undocumented — a reader cannot \
+         configure what no guide mentions:\n  {}",
+        bad.len(),
+        bad.join("\n  ")
+    );
+}
+
 /// Every fenced ```toml block that looks like a `mnemosyne.toml` must parse
 /// through the REAL loader. `[workspace]` is `deny_unknown_fields`, so a stale
 /// key here is a copy-paste config that fails at the adopter's step one.

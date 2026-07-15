@@ -185,6 +185,20 @@ when the project never numbers its history rows.
  this to redirect the sidecar into an existing `doc/` tree without
  colliding with `docs/`. CLI `--sidecar` flag wins over this config
  when both are present.
+- **`[[publishable_override_ledger]]`** — authorize an entry whose
+ *publishable* half intentionally diverges from its frozen *audit* half.
+ The audit half is append-only and never mutates (R161 §41), so when a
+ redaction or a rename must be reflected outward, `redact-term` /
+ the `set-changelog-publishable-*` setters change only the publishable
+ side and this ledger anchors the divergence. Each entry names `kind`
+ (`"redaction"` / `"typo"` / `"clarification"`), `target_id` (the entry
+ key, short `Round N` or long `Round N — title`), `fields` (which
+ `publishable_*` fields diverge — informational; the v1 gate matches at
+ entry granularity), `reason`, `applied_in` (the round that applied it),
+ `content_hash_after` (required SHA256) and optional
+ `content_hash_before`. `emit-publishable-override-ledger-draft` prints
+ a ready-to-paste block for a diverged entry. Unledgered divergence is a
+ validate-workspace failure (R296 gate).
 - **`[[orphan_ledger]]`** — register legitimate cross-ref carries
  (e.g. references to legacy docs you preserved by design). Each entry
  names `doc` / `from` / `to` / `kind` / `reason`. The validator's

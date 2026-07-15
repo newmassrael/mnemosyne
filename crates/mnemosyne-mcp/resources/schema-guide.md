@@ -163,9 +163,34 @@ Both produce `section_id = "1"`. Pick one and stay consistent within a
 doc. Existing docs that use `## §1` form parse correctly without
 config changes.
 
+## The other sections
+
+The tables above are what a *spec-half* project needs on day one. They are
+not the whole schema — `WorkspaceConfig` also carries these, and a gate
+(`docs_match_reality_smoke`) now fails if this page stops naming any of them:
+
+| Table | What it opts into |
+|---|---|
+| `[atomic]` | `sidecar_path` — where the store lives, when not the default |
+| `[continuity]` | **the narrative gate's config**: `canon_order_path`, `rules_path` (+`rules_sha256`), `severity`, `interval_severity`. Without this, `validate-continuity` has no canon order and declared interval rules never gate |
+| `[plugins]` | the code-citation defense (`[plugins.set_equality_validator]`) |
+| `[spec_drift]` | external-spec revision drift (RFC-001 UC-1) |
+| `[content_drift]` | EPUB-as-content-SSOT integrity (R404) |
+| `[commit_ledger]` | commit↔ledger drift scanning |
+| `[verifies_catalog]` | the deterministic verification catalog |
+| `[[orphan_ledger]]` | the known-stale allow-list (array of tables) |
+| `[[publishable_override_ledger]]` | recorded audit/publishable divergences |
+| `[terminology]` | `[terminology.glossary]` term normalization |
+
+Full field-level reference: `docs/SCHEMA_GUIDE.md` in the repo. This page is
+the orientation, not the copy — where the two disagree, the guide and the
+type win.
+
 ## Validation
 
-After authoring `mnemosyne.toml`, run `validate_workspace`. The first
-run reports your baseline (existing orphans, style warnings). From
-that baseline, mutations are evaluated incrementally — only *new*
-violations cause failures.
+After authoring `mnemosyne.toml`, run the gate for the half you are in:
+`validate_workspace` for the spec half, **`validate_continuity` for the
+narrative half** (they are different gates over one store; the first never
+looks at facts). The first run reports your baseline (existing orphans, style
+warnings). From that baseline, mutations are evaluated incrementally — only
+*new* violations cause failures.
