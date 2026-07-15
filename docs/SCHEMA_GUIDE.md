@@ -24,9 +24,8 @@ Every Mnemosyne workspace is configured by one TOML file. The top-level
 tables:
 
 ```toml
-[workspace]  # required
-docs = [...]   # ordered list of doc paths
-default_doc = "docs/SPEC.md" # cross-doc reference target
+[workspace]  # required (root / spec_source only; `docs` and `default_doc`
+             # were removed in Round 400 — see "Atomic sidecar path" below)
 
 [workspace.spec_source]  # optional — external-spec mirror adopters only
 url = "https://www.w3.org/TR/scxml/"
@@ -375,8 +374,6 @@ recognizes `Round N` entries under `## Changelog`.
 
 ```toml
 [workspace]
-docs = ["README.md", "ARCHITECTURE.md"]
-default_doc = "README.md"
 
 [schema]
 changelog_titles = ["Changelog"]
@@ -388,8 +385,6 @@ medium_name = "generic"
 
 ```toml
 [workspace]
-docs = ["docs/adr/ADR-0001.md", "docs/adr/ADR-0002.md", "README.md"]
-default_doc = "docs/adr/ADR-0001.md"
 
 [schema]
 changelog_titles = ["Decisions"]
@@ -549,8 +544,6 @@ atomic primitives cover the pattern end-to-end:
 ```toml
 # docs/spec/scxml/mnemosyne.toml — one workspace per external namespace
 [workspace]
-docs = ["docs/spec/scxml/SCXML.md"]
-default_doc = "docs/spec/scxml/SCXML.md"
 
 [workspace.spec_source]
 url = "https://www.w3.org/TR/scxml/"

@@ -146,213 +146,101 @@ fn main() -> ExitCode {
     }
 }
 
+/// Per-invocation dispatch context handed to every command's `run` fn.
+///
+/// It carries the raw argv slice rather than pre-split arguments so that
+/// `anchor()` stays *lazy*: resolving the workspace anchor walks the tree
+/// looking for `mnemosyne.toml` and fails when there is none, so it must run
+/// only inside the closures that actually reach the store — never for
+/// `--help`, `--version`, or an unknown verb.
+struct Ctx<'a> {
+    prog: &'a str,
+    args: &'a [String],
+}
+
+impl<'a> Ctx<'a> {
+    /// The invoked command's own arguments (everything after the verb).
+    ///
+    /// `run` constructs a `Ctx` only once `args[1]` (the verb) is known to
+    /// exist, so `args` always holds at least two elements here and the slice
+    /// is in bounds — a bare invocation returns before this point.
+    fn rest(&self) -> &'a [String] {
+        &self.args[2..]
+    }
+
+    /// The workspace anchor directory, resolved on demand.
+    fn anchor(&self) -> Result<PathBuf> {
+        workspace_anchor()
+    }
+}
+
+/// A help section header plus the preamble lines that belong to the header
+/// itself rather than to any one command under it.
+struct Group {
+    title: &'static str,
+    preamble: &'static [&'static str],
+}
+
+/// One command: the verb, its help text, and its behavior — in one place.
+///
+/// The dispatch `match` and `print_help` used to be two hand-maintained lists
+/// of the same 83 verbs, kept in agreement only by a test that parsed this
+/// source file to detect their drift. Both are now *derived* from
+/// [`COMMANDS`]: dispatch looks a verb up in it, help renders it. They cannot
+/// disagree, because there is no second list to disagree with — a verb that is
+/// dispatched is documented by construction.
+struct Command {
+    /// The verb as typed.
+    name: &'static str,
+    /// Additional verbs dispatching to the same `run` (e.g. `-h` / `help`).
+    aliases: &'static [&'static str],
+    /// Section this command is listed under; `None` = the leading ungrouped
+    /// block. The header prints when the group changes.
+    group: Option<&'static Group>,
+    /// Print a blank line before this command's first usage line (a
+    /// readability break *within* a group).
+    blank_before: bool,
+    /// Usage forms, each rendered as ` {prog} {usage}`. Multiple entries = one
+    /// verb with several call shapes (`query`).
+    usage: &'static [&'static str],
+    /// Continuation/annotation lines, printed verbatim under the usage forms.
+    notes: &'static [&'static str],
+    /// The command's behavior.
+    run: fn(&Ctx) -> Result<()>,
+}
+
+impl Command {
+    /// Does `verb` name this command, by name or by alias?
+    fn matches(&self, verb: &str) -> bool {
+        self.name == verb || self.aliases.contains(&verb)
+    }
+}
+
 fn run(args: &[String]) -> Result<()> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
-    // A bare invocation is the discovery act — answer it with the ONE command
-    // list (`print_help`). A second hand-maintained list here is unmaintainable
-    // by construction: the one that used to live at this line had drifted to
-    // omit every narrative/playable verb (`validate-continuity`,
-    // `describe-schema`, `report-playable-world`, `report-quest-graph`,
-    // `report-typing-candidates`, …) while still naming 52 commands, so it read
-    // as exhaustive and taught the reader the narrative surface did not exist.
-    // The drift is now structurally impossible (no second list) and gated by
-    // `tests/help_covers_dispatch_smoke.rs`.
+    // A bare invocation is the discovery act — answer it from [`COMMANDS`], the
+    // same table dispatch reads. The hand-maintained list that used to live at
+    // this line had drifted BOTH ways: it omitted every narrative/playable verb
+    // (`validate-continuity`, `describe-schema`, `report-playable-world`, …)
+    // while naming 53 verbs — one of which (`validate`) dispatched to nothing.
+    // Naming 53 is what made it read as exhaustive rather than partial, so a
+    // consumer concluded the narrative surface did not exist and rebuilt it in
+    // Python (R620/R621).
     let Some(cmd) = args.get(1) else {
         print_help(prog);
         return Ok(());
     };
 
-    match cmd.as_str() {
-        "validate-workspace" => cmd_validate_workspace(),
-        "query" => cmd_query(prog, &args[2..]),
-        "add-section" => atomic_cli::cmd_add_section(&workspace_anchor()?, &args[2..]),
-        "import-sections" => atomic_cli::cmd_import_sections(&workspace_anchor()?, &args[2..]),
-        // Round 430 — narrative fact primitives (Phase 1A).
-        "import-facts" => atomic_cli::cmd_import_facts(&workspace_anchor()?, &args[2..]),
-        "add-frame" => atomic_cli::cmd_add_frame(&workspace_anchor()?, &args[2..]),
-        "add-branch" => atomic_cli::cmd_add_branch(&workspace_anchor()?, &args[2..]),
-        "add-entity" => atomic_cli::cmd_add_entity(&workspace_anchor()?, &args[2..]),
-        "add-predicate" => atomic_cli::cmd_add_predicate(&workspace_anchor()?, &args[2..]),
-        "add-disclosure-plan" => {
-            atomic_cli::cmd_add_disclosure_plan(&workspace_anchor()?, &args[2..])
-        }
-        "set-disclosure" => atomic_cli::cmd_set_disclosure(&workspace_anchor()?, &args[2..]),
-        "add-fact" => atomic_cli::cmd_add_fact(&workspace_anchor()?, &args[2..]),
-        "add-fact-conflict" => atomic_cli::cmd_add_fact_conflict(&workspace_anchor()?, &args[2..]),
-        "amend-fact" => atomic_cli::cmd_amend_fact(&workspace_anchor()?, &args[2..]),
-        "retract-fact" => atomic_cli::cmd_retract_fact(&workspace_anchor()?, &args[2..]),
-        "import-epub-anchors" => {
-            atomic_cli::cmd_import_epub_anchors(&workspace_anchor()?, &args[2..])
-        }
-        "style-check" => cmd_style_check(prog, &args[2..]),
-        // atomic mutate API surface.
-        "set-section-intent" => {
-            atomic_cli::cmd_set_section_intent(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-rationale" => {
-            atomic_cli::cmd_set_section_rationale(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-inputs" => {
-            atomic_cli::cmd_set_section_inputs(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-outputs" => {
-            atomic_cli::cmd_set_section_outputs(&workspace_anchor()?, &args[2..])
-        }
-        // Round 287 — outline setter surface (Phase C).
-        "set-section-title" => atomic_cli::cmd_set_section_title(&workspace_anchor()?, &args[2..]),
-        "set-section-parent-doc" => {
-            atomic_cli::cmd_set_section_parent_doc(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-parent-section" => {
-            atomic_cli::cmd_set_section_parent_section(&workspace_anchor()?, &args[2..])
-        }
-        "add-section-caveat" => {
-            atomic_cli::cmd_add_section_caveat(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-alternatives" => {
-            atomic_cli::cmd_set_section_alternatives(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-impact-scope" => {
-            atomic_cli::cmd_set_section_impact_scope(&workspace_anchor()?, &args[2..])
-        }
-        "add-section-example" => {
-            atomic_cli::cmd_add_section_example(&workspace_anchor()?, &args[2..])
-        }
-        // Path B (Spec ↔ Code bidirectional binding) substrate — typed
-        // trace-link edges (Binding{file, symbol?, kind}).
-        "add-section-binding" => {
-            atomic_cli::cmd_add_section_binding(&workspace_anchor()?, &args[2..])
-        }
-        // Section.bindings remove primitive (set-element granularity, kind-agnostic match).
-        "remove-section-binding" => {
-            atomic_cli::cmd_remove_section_binding(&workspace_anchor()?, &args[2..])
-        }
-        // Reclassify an existing binding's kind (Stage-B implements→references).
-        "set-section-binding-kind" => {
-            atomic_cli::cmd_set_section_binding_kind(&workspace_anchor()?, &args[2..])
-        }
-        // Classify a section's coverage applicability (normative | informative);
-        // informative exempts it from the coverage axiom (Round 389).
-        "set-section-coverage-expectation" => {
-            atomic_cli::cmd_set_section_coverage_expectation(&workspace_anchor()?, &args[2..])
-        }
-        "set-section-verification-expectation" => {
-            atomic_cli::cmd_set_section_verification_expectation(&workspace_anchor()?, &args[2..])
-        }
-        "add-confirmation-event" => {
-            atomic_cli::cmd_add_confirmation_event(&workspace_anchor()?, &args[2..])
-        }
-        // Round 265 — Stage B freshness substrate. (Round 304 — _atomic suffix
-        // dropped; legacy markdown-surgical variant retired with the rest of
-        // `mutate.rs`.)
-        "set-section-decision-status" => {
-            atomic_cli::cmd_set_section_decision_status(&workspace_anchor()?, &args[2..])
-        }
-        "import-epub-excerpts" => {
-            atomic_cli::cmd_import_epub_excerpts(&workspace_anchor()?, &args[2..])
-        }
-        // Round 267 — section removal (closes Round 266 carry gap).
-        "remove-section" => atomic_cli::cmd_remove_section(&workspace_anchor()?, &args[2..]),
-        "append-changelog-entry" => {
-            atomic_cli::cmd_append_changelog_entry(&workspace_anchor()?, &args[2..])
-        }
-        // Round 295 — publishable-half setters (audit half stays frozen).
-        "set-changelog-publishable-decision-summary" => {
-            atomic_cli::cmd_set_changelog_publishable_decision_summary(
-                &workspace_anchor()?,
-                &args[2..],
-            )
-        }
-        "set-changelog-publishable-changes" => {
-            atomic_cli::cmd_set_changelog_publishable_changes(&workspace_anchor()?, &args[2..])
-        }
-        "set-changelog-publishable-verification" => {
-            atomic_cli::cmd_set_changelog_publishable_verification(&workspace_anchor()?, &args[2..])
-        }
-        "set-changelog-publishable-impact-refs" => {
-            atomic_cli::cmd_set_changelog_publishable_impact_refs(&workspace_anchor()?, &args[2..])
-        }
-        "set-changelog-publishable-carry-forward" => {
-            atomic_cli::cmd_set_changelog_publishable_carry_forward(
-                &workspace_anchor()?,
-                &args[2..],
-            )
-        }
-        // Round 297 — RFC P1 redact_term convenience primitive.
-        "redact-term" => atomic_cli::cmd_redact_term(&workspace_anchor()?, &args[2..]),
-        // Round 300 — bare-setter ledger draft companion.
-        "emit-publishable-override-ledger-draft" => {
-            atomic_cli::cmd_emit_publishable_override_ledger_draft(&workspace_anchor()?, &args[2..])
-        }
-        // Round 274 — Phase 1A inventory mutate primitives.
-        "add-inventory-entry" => {
-            atomic_cli::cmd_add_inventory_entry(&workspace_anchor()?, &args[2..])
-        }
-        "set-inventory-status" => {
-            atomic_cli::cmd_set_inventory_status(&workspace_anchor()?, &args[2..])
-        }
-        "set-inventory-section-ref" => {
-            atomic_cli::cmd_set_inventory_section_ref(&workspace_anchor()?, &args[2..])
-        }
-        "remove-inventory-entry" => {
-            atomic_cli::cmd_remove_inventory_entry(&workspace_anchor()?, &args[2..])
-        }
-        // Stage 2 of code-citation defense (Stage 1 = CLAUDE.md
-        // rule, carry).
-        "validate-code-refs" => cmd_validate_code_refs(&args[2..]),
-        "propose-implementations" => cmd_propose_implementations(&args[2..]),
-        "report-binding-migration" => cmd_report_binding_migration(&args[2..]),
-        "report-coverage" => cmd_report_coverage(&args[2..]),
-        "report-confirmation" => cmd_report_confirmation(&args[2..]),
-        "validate-confirmation" => cmd_validate_confirmation(&args[2..]),
-        // Round 431 — frame-scoped narrative continuity gate (Phase 1A Round B).
-        "validate-continuity" => cmd_validate_continuity(&args[2..]),
-        // Round 432 — frame-at-T read projection (Phase 1A Round C).
-        "report-frame-view" => cmd_report_frame_view(&args[2..]),
-        "report-entity" => cmd_report_entity(&args[2..]),
-        // Round 442 — setup/payoff coverage (read projection, never gated).
-        "report-payoff-coverage" => cmd_report_payoff_coverage(&args[2..]),
-        "report-irony-intervals" => cmd_report_irony_intervals(&args[2..]),
-        "report-playthrough-manuscript" => cmd_report_playthrough_manuscript(&args[2..]),
-        "report-fork-tree" => cmd_report_fork_tree(&args[2..]),
-        "report-playable-world" => cmd_report_playable_world(&args[2..]),
-        "report-quest-graph" => cmd_report_quest_graph(&args[2..]),
-        // Round 587 — the medium-neutral authoring contract (static, store-independent).
-        "describe-schema" => cmd_describe_schema(&args[2..]),
-        // Round 588 — the generate-gate-repair loop's atomic dry-run gate.
-        "propose-verdict" => cmd_propose_verdict(&args[2..]),
-        // Round 589 — the consolidated coverage-gap frontier a loop pulls work from.
-        "report-authoring-frontier" => cmd_report_authoring_frontier(&args[2..]),
-        "report-disclosure-coverage" => cmd_report_disclosure_coverage(&args[2..]),
-        "validate-disclosure-leak" => cmd_validate_disclosure_leak(&args[2..]),
-        "validate-render-fidelity" => cmd_validate_render_fidelity(&args[2..]),
-        "report-typing-candidates" => cmd_report_typing_candidates(&args[2..]),
-        "import-typing-proposals" => cmd_import_typing_proposals(&args[2..]),
-        "report-edge-candidates" => cmd_report_edge_candidates(&args[2..]),
-        "import-edge-proposals" => cmd_import_edge_proposals(&args[2..]),
-        "report-payoff-substantiation" => cmd_report_payoff_substantiation(&args[2..]),
-        "report-timeline-gaps" => cmd_report_timeline_gaps(&args[2..]),
-        "validate-verifies-linkage" => cmd_validate_verifies_linkage(&args[2..]),
-        "report-excerpt-hash-backfill" => cmd_report_excerpt_hash_backfill(&args[2..]),
-        "report-spec-map" => cmd_report_spec_map(&args[2..]),
-        "validate-spec-drift" => cmd_validate_spec_drift(&args[2..]),
-        "validate-content-drift" => cmd_validate_content_drift(&args[2..]),
-        "--help" | "-h" | "help" => {
-            print_help(prog);
-            Ok(())
-        }
-        "--version" | "-V" | "version" => {
-            println!(
-                "mnemosyne-cli {} ({})",
-                env!("CARGO_PKG_VERSION"),
-                env!("BUILD_GIT_HASH")
-            );
-            Ok(())
-        }
-        other => bail!("unknown command: {} (run `{} --help`)", other, prog),
+    let ctx = Ctx { prog, args };
+    match COMMANDS.iter().find(|c| c.matches(cmd)) {
+        Some(command) => (command.run)(&ctx),
+        None => bail!("unknown command: {} (run `{} --help`)", cmd, prog),
     }
 }
 
+/// Render [`COMMANDS`] in table order. Every line the help emits comes from
+/// the same table dispatch reads, so a new verb is documented the moment it is
+/// dispatchable.
 fn print_help(prog: &str) {
     println!(
         "mnemosyne-cli {} ({}) — Phase 0 design_doc lifecycle (DESIGN §66)",
@@ -361,484 +249,900 @@ fn print_help(prog: &str) {
     );
     println!();
     println!("usage:");
-    println!(
-        " {} validate-workspace 7 markdown doc full validation",
-        prog
-    );
-    println!(
-        " {} query §<section_id> [--include-related] [--include-changelog] [--json]",
-        prog
-    );
-    println!(
-        " {} query --list-sections workspace full section_id set print",
-        prog
-    );
-    println!(
-        " {} query --list-changelog [--limit N] [--json] changelog ledger in round order, oldest first (Round 467; --limit keeps the newest N beside the honest total, Round 470)",
-        prog
-    );
-    println!(
-        " {} query --list-inventory [--json] Phase 1A inventory entries (Round 278)",
-        prog
-    );
-    println!(
-        " {} query --inventory <ID> [--json] single inventory entry lookup",
-        prog
-    );
-    println!(
- " {} query --term <pattern> [--regex] [--case-insensitive|-i] [--scope all|sections|changelog|inventory] [--field name,name,...] [--json]",
- prog
- );
-    println!(
- "   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467); unknown --field names reject loudly (Round 468)"
- );
-    println!(
-        " {} style-check [--doc <path>] [--severity t3|t4|all] [--json]",
-        prog
-    );
-    println!("   T3/T4 style rule layer check (Round 129 production wire)");
-    println!();
-    println!(" --- atomic mutate API (Round 162 production wire, Phase 0f) ---");
-    println!(" Field length caps (Round 161 §41 thresholds, surfaced for DX — Round 279 carry):");
-    println!(
-        "   intent: max 200 chars; each bullet (rationale/inputs/outputs/caveats): max 100 chars"
-    );
-    println!(" {} add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]", prog);
-    println!(
-        " {} import-sections --manifest <path.json> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} import-epub-anchors --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!("   bulk create from a JSON array of {{section_id,parent_doc,title,parent_section?,normative_excerpt?}};");
-    println!("   3-way per entry: absent=create / byte-identical=no-op / divergent=reject whole manifest (atomic)");
-    println!(
-        " {} import-facts --manifest <path.json> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!("   bulk narrative registries + facts (Round 430/446): manifest = {{frames:[{{frame_id,description?}}], branches:[...],");
-    println!("   entities:[...], predicates:[{{predicate_id,object_kind,description?}}],");
-    println!("   facts:[{{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}}],");
-    println!("   disclosure_plans:[{{telling_id,default_mode?,description?,overrides:[{{fact_id,mode,first_at?,surface?}}]}}] (Round 590 all-primitive)}};");
-    println!("   one atomic transaction (registries -> facts -> disclosure); quote_sha256 computed at write, never caller-supplied;");
-    println!("   typed = {{subject,predicate,object:{{kind:entity,id}}|{{kind:value,value}}}} (Round 446 typed leg)");
-    println!(
-        " {} add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} add-branch --branch <id> [--description <text>] [--forks-from <branch> --forks-at <section>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} add-entity --entity <id> [--kind <tag>] [--description <text>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} add-predicate --predicate <id> --object-kind entity|scalar [--description <text>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud"
-    );
-    println!(
-        " {} add-disclosure-plan --telling <id> --default-mode withhold|state|hint|imply [--description <text>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} set-disclosure --telling <id> --fact <id> --mode withhold|state|hint|imply [--first-at <branch>=<section> ...] [--surface <section>[,<entity>]] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 506 — disclosure (discourse) layer: a named telling over the fact base; withhold/first_at need a typed fact (gate-matchable)"
-    );
-    println!(
-        " {} report-entity --entity <id> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} report-irony-intervals [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"
-    );
-    println!(
-        " {} report-playthrough-manuscript [--world <branch>] [--telling <id>] [--reading-walk] [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   --telling (Round 506): annotate each begins-event with its disclosure decision (mode/first_at/surface) = the render-brief carrier"
-    );
-    println!(
-        "   --reading-walk (Round 509): prune each world to its content scenes (begins>0) = the deterministic reading-copy walk (no hand prune)"
-    );
-    println!(
-        " {} report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} report-playable-world --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 556/557 — the map_locator seam: fork topology + per-world scene walk + per-scene disclosure pointers a pinion runtime consumes"
-    );
-    println!(
-        " {} report-quest-graph --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 559/568 — the fact->quest leg: per Entity{{kind:quest}}, objective + actor + per-world open/done + prerequisites + completion fact + giver locator"
-    );
-    println!(" {} describe-schema [--json]", prog);
-    println!(
-        "   Round 587 — the medium-neutral authoring contract (static): registries + fact shape + fixed vocabularies + rule classes + quest encoding + write-time invariants"
-    );
-    println!(
-        " {} propose-verdict --manifest <path.json> [--order <path>] [--rules <path>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 588 — dry-run gate: apply a candidate batch to a throwaway clone, run shape + continuity gates, emit commit/rollback + actionable violations (exit 1 on rollback; store never written)"
-    );
-    println!(
-        " {} report-authoring-frontier [--telling <id>] [--order <path>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures"
-    );
-    println!(
-        " {} report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} validate-disclosure-leak --telling <id> --against <reextracted.json> --world <branch> --truth-frame <frame> [--order <path>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        " {} validate-render-fidelity --against <reextracted.json> --world <branch> [--order <path>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 507 — disclosure render-acceptance gates over a blind re-extracted prose store; leak/fidelity exit non-zero on violation"
-    );
-    println!(
-        "   Round 466 — per-world linear scene walk with declared fact events (reading surface, never gated)"
-    );
-    println!(
-        " {} report-typing-candidates [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 458 — typing-discovery input package: untyped facts + claim sha256 + registered vocabulary"
-    );
-    println!(
-        " {} import-typing-proposals --proposals <typing-proposals.json> [--dry-run] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 459 — all-or-nothing reviewed import of proposed typed legs (claim-sha staleness re-checked, fill-blanks only)"
-    );
-    println!(
-        " {} report-edge-candidates [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 462 — edge-discovery input package: every fact row (claim sha256 + recorded edges) + succession-gap hints"
-    );
-    println!(
-        " {} import-edge-proposals --proposals <edge-proposals.json> [--dry-run] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 463 — all-or-nothing reviewed import of proposed succession/conflict edges (two-sided claim-sha staleness, fill-blanks, cycle-guarded)"
-    );
-    println!(
-        " {} report-payoff-substantiation [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 485 — deterministic payoff substantiation: each credited setup is substantiated (a typed state-change discharges it) / unsubstantiated (typed setup, hollow payoff) / unverifiable (untyped — type it); no LLM"
-    );
-    println!(
-        " {} report-timeline-gaps [--order <canon-order.json>] [--rules <narrative-rules.json>] [--world <branch>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   Round 490 — timeline-gap projection (read, never gated): the interval-rule evaluator per world — violated / unverifiable / satisfied scalar relations (value(left) - value(right) op bound)"
-    );
-    println!(" {} add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]", prog);
-    println!(
-        "   typed leg (Round 446): optional machine-readable subject-predicate-object reading of the claim, authored with it (never NLP-derived)"
-    );
-    println!(
-        " {} add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(" {} amend-fact --fact <id> --reason <text> <add-fact flags> [--sidecar <path>] [--json]   (authorial in-place revision; in-world change = --supersedes)", prog);
-    println!(
-        " {} retract-fact --fact <id> --reason <text> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   pairs with remove-section (R267); content fields populate via set-section-* afterwards"
-    );
-    println!(" {} set-section-intent --section §<N> --intent <text (max 200 chars)> [--sidecar <path>] [--json]", prog);
-    println!(" {} set-section-rationale --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
-    println!(" {} set-section-inputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
-    println!(" {} set-section-outputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]", prog);
-    println!(
-        " {} set-section-title --section §<N> --title <heading text> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(" {} set-section-parent-doc --section §<N> --parent-doc <doc-id> [--sidecar <path>] [--json]", prog);
-    println!(" {} set-section-parent-section --section §<N> (--parent §<P> | --no-parent) [--sidecar <path>] [--json]", prog);
-    println!(" {} add-section-caveat --section §<N> --bullet <text (max 100 chars)> [--sidecar <path>] [--json]", prog);
-    println!(
- " {} set-section-alternatives --section §<N> --alternatives-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
-        " {} set-section-impact-scope --section §<N> --refs §A,§B,... [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
- " {} add-section-example --section §<N> --language <lang> --code-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} add-section-binding --section §<N> --file <workspace-relative-path> [--symbol <name>] --kind implements|references [--sidecar <path>] [--json]",
- prog
- );
-    println!(
-        "   Path B typed trace-link binding (implements=«satisfy» / references=«trace»); coverage counts only implements"
-    );
-    println!(
- " {} remove-section-binding --section §<N> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- "   Section.bindings remove primitive (exact (file, symbol) match, kind-agnostic; --reason mandatory)"
- );
-    println!(
- " {} set-section-binding-kind --section §<N> --file <path> [--symbol <name>] --kind implements|references --reason <text> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- "   Reclassify an existing binding's kind (Stage-B implements→references; --reason mandatory)"
- );
-    println!(
- " {} set-section-coverage-expectation --section §<N> --expectation normative|out_of_scope_here|informational --reason <text> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-section-verification-expectation --section §<N> --expectation dedicated|by_construction --reason <text> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp <iso> [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- "   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"
- );
-    println!(
-        " {} import-epub-excerpts --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
- "   refresh normative_excerpt.text + text_sha256 from a medium-forge epub-anchor-map/v2; preserves authored anchor_url + source_revision (section must already carry an excerpt)"
- );
-    println!(
- " {} set-section-decision-status --section §<N> --status active|superseded|removed|open [--superseding §<M>] [--resolving §<M>] [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- "   atomic decision_status setter (Stage B freshness substrate); --superseding required for --status superseded (T1 rule 4 atomic axis)"
- );
-    println!(
-        " {} remove-section --section §<N> --reason <text> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!("   Round 267 section removal (audit-safeguarded; closes Round 266 carry)");
-    println!(
- " {} append-changelog-entry --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!();
-    println!(
-        " --- publishable half of the ledger (Round 295/297/300; the audit half stays frozen) ---"
-    );
-    println!(
- " {} set-changelog-publishable-decision-summary --entry \"Round N\" --value <text> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-changelog-publishable-changes --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-changelog-publishable-verification --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-changelog-publishable-impact-refs --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-changelog-publishable-carry-forward --entry \"Round N\" --bullets-file <path> [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} redact-term --pattern <text> --replacement <text> --kind <text> --reason <text> --applied-in \"Round N\" [--scope <s>] [--regex] [--case-insensitive] [--dry-run] [--sidecar <path>] [--json]",
- prog
- );
-    println!("   Round 297 — redact across the publishable half in one call, ledger-recorded");
-    println!(
- " {} emit-publishable-override-ledger-draft --entry \"Round N\" --kind <text> --reason <text> --applied-in \"Round N\" [--sidecar <path>] [--json]",
- prog
- );
-    println!("   Round 300 — read-only [[publishable_override_ledger]] draft for a diverged entry");
-    println!();
-    println!(" --- Phase 1A inventory mutate API (Round 274) ---");
-    println!(
- " {} add-inventory-entry --id <ID> --status active|deprecated|reserved [--section §<N>] [--source <text>] [--reason <text>] [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-inventory-status --id <ID> --status active|deprecated|reserved [--reason <text>] [--sidecar <path>] [--json]",
- prog
- );
-    println!(
- " {} set-inventory-section-ref --id <ID> (--section §<N> | --clear) [--sidecar <path>] [--json]",
- prog
- );
-    println!(
-        " {} remove-inventory-entry --id <ID> --reason <text> [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
- "   Round 273 InventoryEntry 5번째 closed-form 엔티티 substrate; cite-time reject (R275) + cascade (R276) carry"
- );
-    println!();
-    println!(" --- code citation defense (Round 255-260, Path B bidirectional) ---");
-    println!(
-        " {} validate-code-refs [--severity-missing reject|warn|info]\n\
- \x20                       [--severity-binding reject|warn|info]\n\
- \x20                       [--severity-coverage reject|warn|info]\n\
- \x20                       [--severity-verification reject|warn|info]\n\
- \x20                       [--severity-classification reject|warn|info]\n\
- \x20                       [--severity-blanket reject|warn|info]\n\
- \x20                       [--filter-id <entry_id>] [--json]",
-        prog
-    );
-    println!(
- "   Round 256: scan [plugins.set_equality_validator].paths for <entry_id_prefix><digits> citations,"
- );
-    println!("   reject those whose entry_id is missing from atomic store changelog_entries");
-    println!("   Round 260: §<id> citations cross-checked against AtomicSection.bindings");
-    println!("   --severity-missing: Missing + SectionMissing (hallucination class)");
-    println!(
- "   --severity-binding (Round 260): CitationUnbound + BindingUnbacked + SymbolMismatch (edge class)"
- );
-    println!(
- "   --severity-coverage (Round 385): ImplementationMissing (Active section uncited); inherits --severity-binding when unset"
- );
-    println!(
- "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)"
- );
-    println!();
-    println!(
-        " {} propose-implementations [--section §<id>] [--json]",
-        prog
-    );
-    println!(
-        "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and"
-    );
-    println!("   emit proposed §<id> binding sets + add-section-binding commands (read-only)");
-    println!(" {} report-binding-migration [--json]", prog);
-    println!(
-        "   v4→v5 surface: list bindings that inherited kind=implements by default (read-only;"
-    );
-    println!("   empty once the store is at v5 — run before upgrading a pre-v5 store)");
-    println!(" {} report-coverage [--json]", prog);
-    println!(" {} report-confirmation [--json]", prog);
-    println!(
-        " {} validate-confirmation [--severity reject|warn|info] [--json]",
-        prog
-    );
-    println!(
-        " {} validate-continuity [--order <canon-order.json>] [--rules <narrative-rules.json>] [--severity reject|warn|info] [--interval-severity reject|warn|info] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!("   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,");
-    println!(
-        "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred"
-    );
-    println!(
-        " {} report-frame-view --frame <id> [--branch <id>] [--entity <id>] --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]",
-        prog
-    );
-    println!(
-        "   read-only frame-at-T projection (Round 432): the facts frame F holds at canon point T,"
-    );
-    println!("   same holds-semantics as the gate; incomparable coordinates surface as `unknown`");
-    println!(
-        " {} validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]",
-        prog
-    );
-    println!(" {} report-excerpt-hash-backfill [--json]", prog);
-    println!(
-        "   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"
-    );
-    println!(" {} report-spec-map [--json]", prog);
-    println!(
-        "   unified spec<->fact<->code projection per section: coverage class + spec provenance"
-    );
-    println!(
-        "   (anchor_url/revision) + bindings + drift flag + reverse citation count (read-only L3 view)"
-    );
-    println!();
-    println!(" --- spec-revision drift (RFC-001 UC-1 \"B2\") ---");
-    println!(
-        " {} validate-spec-drift [--severity reject|warn|info] [--json]",
-        prog
-    );
-    println!("   flag Active Sections whose normative_excerpt.source_revision trails");
-    println!("   [workspace.spec_source].revision; Superseded/Removed exempt (partial-migration).");
-    println!(
-        "   --severity overrides [spec_drift].severity (default warn); reject => exit 1 on drift."
-    );
-    println!("   no-op (exit 0) when [workspace.spec_source] is absent.");
-    println!();
-    println!(" --- content-integrity drift (R404 — EPUB-as-content-SSOT) ---");
-    println!(
-        " {} validate-content-drift [--severity reject|warn|info] [--json]",
-        prog
-    );
-    println!("   offline re-hash of each normative_excerpt.text vs its text_sha256;");
-    println!("   a populated hash that no longer matches = drift (cache edited out-of-band).");
-    println!(
-        "   --severity overrides [content_drift].severity (default reject); reject => exit 1."
-    );
-    println!("   empty-hash excerpts are unrevalidatable (counted, not drift).");
-    println!("   also re-hashes the committed EPUB vs [workspace.spec_source].epub_sha256 when pinned (R405).");
-    println!();
-    println!(" --- meta (Round 286) ---");
-    println!(
-        " {} --version | -V | version  print binary version + build hash",
-        prog
-    );
-    println!(" {} --help | -h | help   print this help text", prog);
+
+    let mut current: Option<&str> = None;
+    for command in COMMANDS {
+        let title = command.group.map(|g| g.title);
+        if title != current {
+            if let Some(group) = command.group {
+                println!();
+                println!(" --- {} ---", group.title);
+                for line in group.preamble {
+                    println!("{}", line);
+                }
+            }
+            current = title;
+        }
+        if command.blank_before {
+            println!();
+        }
+        for usage in command.usage {
+            println!(" {} {}", prog, usage);
+        }
+        for note in command.notes {
+            println!("{}", note);
+        }
+    }
 }
+
+static GROUP_ATOMIC_MUTATE: Group = Group {
+    title: "atomic mutate API (Round 162 production wire, Phase 0f)",
+    preamble: &[
+        " Field length caps (Round 161 §41 thresholds, surfaced for DX — Round 279 carry):",
+        "   intent: max 200 chars; each bullet (rationale/inputs/outputs/caveats): max 100 chars",
+    ],
+};
+
+static GROUP_PUBLISHABLE: Group = Group {
+    title: "publishable half of the ledger (Round 295/297/300; the audit half stays frozen)",
+    preamble: &[],
+};
+
+static GROUP_INVENTORY: Group = Group {
+    title: "Phase 1A inventory mutate API (Round 274)",
+    preamble: &[],
+};
+
+static GROUP_CODE_CITATION: Group = Group {
+    title: "code citation defense (Round 255-260, Path B bidirectional)",
+    preamble: &[],
+};
+
+static GROUP_SPEC_DRIFT: Group = Group {
+    title: "spec-revision drift (RFC-001 UC-1 \"B2\")",
+    preamble: &[],
+};
+
+static GROUP_CONTENT_DRIFT: Group = Group {
+    title: "content-integrity drift (R404 — EPUB-as-content-SSOT)",
+    preamble: &[],
+};
+
+static GROUP_META: Group = Group {
+    title: "meta (Round 286)",
+    preamble: &[],
+};
+
+/// The single command list. Dispatch resolves a verb here; `print_help`
+/// renders this same slice in order. Order = help order.
+static COMMANDS: &[Command] = &[
+    Command {
+        name: "validate-workspace",
+        aliases: &[],
+        group: None,
+        blank_before: false,
+        usage: &["validate-workspace 7 markdown doc full validation"],
+        notes: &[],
+        run: |_| cmd_validate_workspace(),
+    },
+    Command {
+        name: "query",
+        aliases: &[],
+        group: None,
+        blank_before: false,
+        usage: &[
+            "query §<section_id> [--include-related] [--include-changelog] [--json]",
+            "query --list-sections workspace full section_id set print",
+            "query --list-changelog [--limit N] [--json] changelog ledger in round order, oldest first (Round 467; --limit keeps the newest N beside the honest total, Round 470)",
+            "query --list-inventory [--json] Phase 1A inventory entries (Round 278)",
+            "query --inventory <ID> [--json] single inventory entry lookup",
+            "query --term <pattern> [--regex] [--case-insensitive|-i] [--scope all|sections|changelog|inventory] [--field name,name,...] [--json]",
+        ],
+        notes: &["   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467); unknown --field names reject loudly (Round 468)"],
+        run: |c| cmd_query(c.prog, c.rest()),
+    },
+    Command {
+        name: "style-check",
+        aliases: &[],
+        group: None,
+        blank_before: false,
+        usage: &["style-check [--doc <path>] [--severity t3|t4|all] [--json]"],
+        notes: &["   T3/T4 style rule layer check (Round 129 production wire)"],
+        run: |c| cmd_style_check(c.prog, c.rest()),
+    },
+    Command {
+        name: "add-section",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-section --section §<id> --parent-doc <doc-id> --title <text> [--parent §<P>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_section(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "import-sections",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-sections --manifest <path.json> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_import_sections(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "import-epub-anchors",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-epub-anchors --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   bulk create from a JSON array of {section_id,parent_doc,title,parent_section?,normative_excerpt?};",
+            "   3-way per entry: absent=create / byte-identical=no-op / divergent=reject whole manifest (atomic)",
+        ],
+        run: |c| atomic_cli::cmd_import_epub_anchors(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "import-facts",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-facts --manifest <path.json> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   bulk narrative registries + facts (Round 430/446): manifest = {frames:[{frame_id,description?}], branches:[...],",
+            "   entities:[...], predicates:[{predicate_id,object_kind,description?}],",
+            "   facts:[{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}],",
+            "   disclosure_plans:[{telling_id,default_mode?,description?,overrides:[{fact_id,mode,first_at?,surface?}]}] (Round 590 all-primitive)};",
+            "   one atomic transaction (registries -> facts -> disclosure); quote_sha256 computed at write, never caller-supplied;",
+            "   typed = {subject,predicate,object:{kind:entity,id}|{kind:value,value}} (Round 446 typed leg)",
+        ],
+        run: |c| atomic_cli::cmd_import_facts(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-frame",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-frame --frame <id> [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_frame(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-branch",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-branch --branch <id> [--description <text>] [--forks-from <branch> --forks-at <section>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_branch(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-entity",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-entity --entity <id> [--kind <tag>] [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_entity(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-predicate",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-predicate --predicate <id> --object-kind entity|scalar [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud"],
+        run: |c| atomic_cli::cmd_add_predicate(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-disclosure-plan",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-disclosure-plan --telling <id> --default-mode withhold|state|hint|imply [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_disclosure_plan(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-disclosure",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-disclosure --telling <id> --fact <id> --mode withhold|state|hint|imply [--first-at <branch>=<section> ...] [--surface <section>[,<entity>]] [--sidecar <path>] [--json]"],
+        notes: &["   Round 506 — disclosure (discourse) layer: a named telling over the fact base; withhold/first_at need a typed fact (gate-matchable)"],
+        run: |c| atomic_cli::cmd_set_disclosure(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "report-entity",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-entity --entity <id> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| cmd_report_entity(c.rest()),
+    },
+    Command {
+        name: "report-payoff-coverage",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| cmd_report_payoff_coverage(c.rest()),
+    },
+    Command {
+        name: "report-irony-intervals",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-irony-intervals [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"],
+        run: |c| cmd_report_irony_intervals(c.rest()),
+    },
+    Command {
+        name: "report-playthrough-manuscript",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-playthrough-manuscript [--world <branch>] [--telling <id>] [--reading-walk] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   --telling (Round 506): annotate each begins-event with its disclosure decision (mode/first_at/surface) = the render-brief carrier",
+            "   --reading-walk (Round 509): prune each world to its content scenes (begins>0) = the deterministic reading-copy walk (no hand prune)",
+        ],
+        run: |c| cmd_report_playthrough_manuscript(c.rest()),
+    },
+    Command {
+        name: "report-fork-tree",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| cmd_report_fork_tree(c.rest()),
+    },
+    Command {
+        name: "report-playable-world",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-playable-world --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 556/557 — the map_locator seam: fork topology + per-world scene walk + per-scene disclosure pointers a pinion runtime consumes"],
+        run: |c| cmd_report_playable_world(c.rest()),
+    },
+    Command {
+        name: "report-quest-graph",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-quest-graph --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 559/568 — the fact->quest leg: per Entity{kind:quest}, objective + actor + per-world open/done + prerequisites + completion fact + giver locator"],
+        run: |c| cmd_report_quest_graph(c.rest()),
+    },
+    Command {
+        name: "describe-schema",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["describe-schema [--json]"],
+        notes: &["   Round 587 — the medium-neutral authoring contract (static): registries + fact shape + fixed vocabularies + rule classes + quest encoding + write-time invariants"],
+        run: |c| cmd_describe_schema(c.rest()),
+    },
+    Command {
+        name: "propose-verdict",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["propose-verdict --manifest <path.json> [--order <path>] [--rules <path>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 588 — dry-run gate: apply a candidate batch to a throwaway clone, run shape + continuity gates, emit commit/rollback + actionable violations (exit 1 on rollback; store never written)"],
+        run: |c| cmd_propose_verdict(c.rest()),
+    },
+    Command {
+        name: "report-authoring-frontier",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-authoring-frontier [--telling <id>] [--order <path>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures"],
+        run: |c| cmd_report_authoring_frontier(c.rest()),
+    },
+    Command {
+        name: "report-disclosure-coverage",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| cmd_report_disclosure_coverage(c.rest()),
+    },
+    Command {
+        name: "validate-disclosure-leak",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["validate-disclosure-leak --telling <id> --against <reextracted.json> --world <branch> --truth-frame <frame> [--order <path>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| cmd_validate_disclosure_leak(c.rest()),
+    },
+    Command {
+        name: "validate-render-fidelity",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["validate-render-fidelity --against <reextracted.json> --world <branch> [--order <path>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 507 — disclosure render-acceptance gates over a blind re-extracted prose store; leak/fidelity exit non-zero on violation",
+            "   Round 466 — per-world linear scene walk with declared fact events (reading surface, never gated)",
+        ],
+        run: |c| cmd_validate_render_fidelity(c.rest()),
+    },
+    Command {
+        name: "report-typing-candidates",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-typing-candidates [--sidecar <path>] [--json]"],
+        notes: &["   Round 458 — typing-discovery input package: untyped facts + claim sha256 + registered vocabulary"],
+        run: |c| cmd_report_typing_candidates(c.rest()),
+    },
+    Command {
+        name: "import-typing-proposals",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-typing-proposals --proposals <typing-proposals.json> [--dry-run] [--sidecar <path>] [--json]"],
+        notes: &["   Round 459 — all-or-nothing reviewed import of proposed typed legs (claim-sha staleness re-checked, fill-blanks only)"],
+        run: |c| cmd_import_typing_proposals(c.rest()),
+    },
+    Command {
+        name: "report-edge-candidates",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-edge-candidates [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 462 — edge-discovery input package: every fact row (claim sha256 + recorded edges) + succession-gap hints"],
+        run: |c| cmd_report_edge_candidates(c.rest()),
+    },
+    Command {
+        name: "import-edge-proposals",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-edge-proposals --proposals <edge-proposals.json> [--dry-run] [--sidecar <path>] [--json]"],
+        notes: &["   Round 463 — all-or-nothing reviewed import of proposed succession/conflict edges (two-sided claim-sha staleness, fill-blanks, cycle-guarded)"],
+        run: |c| cmd_import_edge_proposals(c.rest()),
+    },
+    Command {
+        name: "report-payoff-substantiation",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-payoff-substantiation [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 485 — deterministic payoff substantiation: each credited setup is substantiated (a typed state-change discharges it) / unsubstantiated (typed setup, hollow payoff) / unverifiable (untyped — type it); no LLM"],
+        run: |c| cmd_report_payoff_substantiation(c.rest()),
+    },
+    Command {
+        name: "report-timeline-gaps",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-timeline-gaps [--order <canon-order.json>] [--rules <narrative-rules.json>] [--world <branch>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 490 — timeline-gap projection (read, never gated): the interval-rule evaluator per world — violated / unverifiable / satisfied scalar relations (value(left) - value(right) op bound)"],
+        run: |c| cmd_report_timeline_gaps(c.rest()),
+    },
+    Command {
+        name: "add-fact",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-fact --fact <id> --frame <f> [--branch <id>] --claim <text> --canon-from <section> [--canon-to <section>] --evidence <sec,sec> [--entities <id,id>] [--conflicts <id,id>] [--supersedes <id>] [--payoff-expectation expected] [--pays-off <id,id>] [--typed-subject <entity> --typed-predicate <id> (--typed-object-entity <entity> | --typed-object-value <scalar>)] [--quote <text>] [--sidecar <path>] [--json]"],
+        notes: &["   typed leg (Round 446): optional machine-readable subject-predicate-object reading of the claim, authored with it (never NLP-derived)"],
+        run: |c| atomic_cli::cmd_add_fact(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-fact-conflict",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-fact-conflict --fact <id> --conflicts-with <id> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_fact_conflict(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "amend-fact",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["amend-fact --fact <id> --reason <text> <add-fact flags> [--sidecar <path>] [--json]   (authorial in-place revision; in-world change = --supersedes)"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_amend_fact(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "retract-fact",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["retract-fact --fact <id> --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   pairs with remove-section (R267); content fields populate via set-section-* afterwards"],
+        run: |c| atomic_cli::cmd_retract_fact(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-intent",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-intent --section §<N> --intent <text (max 200 chars)> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_intent(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-rationale",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-rationale --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_rationale(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-inputs",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-inputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_inputs(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-outputs",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-outputs --section §<N> --bullets-file <path (each bullet ≤ 100 chars)> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_outputs(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-title",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-title --section §<N> --title <heading text> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_title(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-parent-doc",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-parent-doc --section §<N> --parent-doc <doc-id> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_parent_doc(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-parent-section",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-parent-section --section §<N> (--parent §<P> | --no-parent) [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_parent_section(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-section-caveat",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-section-caveat --section §<N> --bullet <text (max 100 chars)> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_section_caveat(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-alternatives",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-alternatives --section §<N> --alternatives-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_alternatives(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-impact-scope",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-impact-scope --section §<N> --refs §A,§B,... [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_impact_scope(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-section-example",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-section-example --section §<N> --language <lang> --code-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_section_example(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-section-binding",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-section-binding --section §<N> --file <workspace-relative-path> [--symbol <name>] --kind implements|references [--sidecar <path>] [--json]"],
+        notes: &["   Path B typed trace-link binding (implements=«satisfy» / references=«trace»); coverage counts only implements"],
+        run: |c| atomic_cli::cmd_add_section_binding(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-section-binding",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-section-binding --section §<N> --file <path> [--symbol <name>] --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   Section.bindings remove primitive (exact (file, symbol) match, kind-agnostic; --reason mandatory)"],
+        run: |c| atomic_cli::cmd_remove_section_binding(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-binding-kind",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-binding-kind --section §<N> --file <path> [--symbol <name>] --kind implements|references --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   Reclassify an existing binding's kind (Stage-B implements→references; --reason mandatory)"],
+        run: |c| atomic_cli::cmd_set_section_binding_kind(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-coverage-expectation",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-coverage-expectation --section §<N> --expectation normative|out_of_scope_here|informational --reason <text> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_coverage_expectation(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-verification-expectation",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-verification-expectation --section §<N> --expectation dedicated|by_construction --reason <text> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_section_verification_expectation(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-confirmation-event",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp <iso> [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]"],
+        notes: &["   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"],
+        run: |c| atomic_cli::cmd_add_confirmation_event(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "import-epub-excerpts",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-epub-excerpts --anchors <epub-anchor-map.json> [--sidecar <path>] [--json]"],
+        notes: &["   refresh normative_excerpt.text + text_sha256 from a medium-forge epub-anchor-map/v2; preserves authored anchor_url + source_revision (section must already carry an excerpt)"],
+        run: |c| atomic_cli::cmd_import_epub_excerpts(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-section-decision-status",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-section-decision-status --section §<N> --status active|superseded|removed|open [--superseding §<M>] [--resolving §<M>] [--sidecar <path>] [--json]"],
+        notes: &["   atomic decision_status setter (Stage B freshness substrate); --superseding required for --status superseded (T1 rule 4 atomic axis)"],
+        run: |c| atomic_cli::cmd_set_section_decision_status(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-section",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-section --section §<N> --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   Round 267 section removal (audit-safeguarded; closes Round 266 carry)"],
+        run: |c| atomic_cli::cmd_remove_section(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "append-changelog-entry",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["append-changelog-entry --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_append_changelog_entry(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-changelog-publishable-decision-summary",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["set-changelog-publishable-decision-summary --entry <entry-id> --value <text> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_changelog_publishable_decision_summary(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-changelog-publishable-changes",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["set-changelog-publishable-changes --entry <entry-id> --bullets-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_changelog_publishable_changes(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-changelog-publishable-verification",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["set-changelog-publishable-verification --entry <entry-id> --bullets-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_changelog_publishable_verification(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-changelog-publishable-impact-refs",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["set-changelog-publishable-impact-refs --entry <entry-id> --bullets-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_changelog_publishable_impact_refs(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-changelog-publishable-carry-forward",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["set-changelog-publishable-carry-forward --entry <entry-id> --bullets-file <path> [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_changelog_publishable_carry_forward(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "redact-term",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["redact-term --pattern <text> --replacement <text> --reason <text> --applied-in <entry-id> [--kind <text>] [--scope all|decision_summary|changes_bullets|verification_bullets|impact_refs|carry_forward_bullets] [--regex] [--case-insensitive|-i] [--dry-run] [--sidecar <path>] [--json]"],
+        notes: &["   Round 297 — redact across the publishable half in one call, ledger-recorded"],
+        run: |c| atomic_cli::cmd_redact_term(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "emit-publishable-override-ledger-draft",
+        aliases: &[],
+        group: Some(&GROUP_PUBLISHABLE),
+        blank_before: false,
+        usage: &["emit-publishable-override-ledger-draft --entry <entry-id> --reason <text> --applied-in <entry-id> [--kind <text>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 300 — read-only [[publishable_override_ledger]] draft for a diverged entry"],
+        run: |c| atomic_cli::cmd_emit_publishable_override_ledger_draft(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-inventory-entry",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["add-inventory-entry --id <ID> --status active|deprecated|reserved [--section §<N>] [--source <text>] [--reason <text>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_add_inventory_entry(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-inventory-status",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["set-inventory-status --id <ID> --status active|deprecated|reserved [--reason <text>] [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_inventory_status(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-inventory-section-ref",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["set-inventory-section-ref --id <ID> (--section §<N> | --clear) [--sidecar <path>] [--json]"],
+        notes: &[],
+        run: |c| atomic_cli::cmd_set_inventory_section_ref(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-inventory-entry",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["remove-inventory-entry --id <ID> --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   Round 273 InventoryEntry 5번째 closed-form 엔티티 substrate; cite-time reject (R275) + cascade (R276) carry"],
+        run: |c| atomic_cli::cmd_remove_inventory_entry(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "validate-code-refs",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["validate-code-refs [--severity-missing reject|warn|info]"],
+        notes: &[
+            "                        [--severity-binding reject|warn|info]",
+            "                        [--severity-coverage reject|warn|info]",
+            "                        [--severity-verification reject|warn|info]",
+            "                        [--severity-classification reject|warn|info]",
+            "                        [--severity-blanket reject|warn|info]",
+            "                        [--filter-id <entry_id>] [--json]",
+            "   Round 256: scan [plugins.set_equality_validator].paths for <entry_id_prefix><digits> citations,",
+            "   reject those whose entry_id is missing from atomic store changelog_entries",
+            "   Round 260: §<id> citations cross-checked against AtomicSection.bindings",
+            "   --severity-missing: Missing + SectionMissing (hallucination class)",
+            "   --severity-binding (Round 260): CitationUnbound + BindingUnbacked + SymbolMismatch (edge class)",
+            "   --severity-coverage (Round 385): ImplementationMissing (Active section uncited); inherits --severity-binding when unset",
+            "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)",
+        ],
+        run: |c| cmd_validate_code_refs(c.rest()),
+    },
+    Command {
+        name: "propose-implementations",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: true,
+        usage: &["propose-implementations [--section §<id>] [--json]"],
+        notes: &[
+            "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and",
+            "   emit proposed §<id> binding sets + add-section-binding commands (read-only)",
+        ],
+        run: |c| cmd_propose_implementations(c.rest()),
+    },
+    Command {
+        name: "report-binding-migration",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-binding-migration [--json]"],
+        notes: &[
+            "   v4→v5 surface: list bindings that inherited kind=implements by default (read-only;",
+            "   empty once the store is at v5 — run before upgrading a pre-v5 store)",
+        ],
+        run: |c| cmd_report_binding_migration(c.rest()),
+    },
+    Command {
+        name: "report-coverage",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-coverage [--json]"],
+        notes: &[],
+        run: |c| cmd_report_coverage(c.rest()),
+    },
+    Command {
+        name: "report-confirmation",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-confirmation [--json]"],
+        notes: &[],
+        run: |c| cmd_report_confirmation(c.rest()),
+    },
+    Command {
+        name: "validate-confirmation",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["validate-confirmation [--severity reject|warn|info] [--json]"],
+        notes: &[],
+        run: |c| cmd_validate_confirmation(c.rest()),
+    },
+    Command {
+        name: "validate-continuity",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["validate-continuity [--order <canon-order.json>] [--rules <narrative-rules.json>] [--severity reject|warn|info] [--interval-severity reject|warn|info] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,",
+            "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred",
+        ],
+        run: |c| cmd_validate_continuity(c.rest()),
+    },
+    Command {
+        name: "report-frame-view",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-frame-view --frame <id> [--branch <id>] [--entity <id>] --at <section> [--order <canon-order.json>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   read-only frame-at-T projection (Round 432): the facts frame F holds at canon point T,",
+            "   same holds-semantics as the gate; incomparable coordinates surface as `unknown`",
+        ],
+        run: |c| cmd_report_frame_view(c.rest()),
+    },
+    Command {
+        name: "validate-verifies-linkage",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]"],
+        notes: &[],
+        run: |c| cmd_validate_verifies_linkage(c.rest()),
+    },
+    Command {
+        name: "report-excerpt-hash-backfill",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-excerpt-hash-backfill [--json]"],
+        notes: &["   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"],
+        run: |c| cmd_report_excerpt_hash_backfill(c.rest()),
+    },
+    Command {
+        name: "report-spec-map",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["report-spec-map [--json]"],
+        notes: &[
+            "   unified spec<->fact<->code projection per section: coverage class + spec provenance",
+            "   (anchor_url/revision) + bindings + drift flag + reverse citation count (read-only L3 view)",
+        ],
+        run: |c| cmd_report_spec_map(c.rest()),
+    },
+    Command {
+        name: "validate-spec-drift",
+        aliases: &[],
+        group: Some(&GROUP_SPEC_DRIFT),
+        blank_before: false,
+        usage: &["validate-spec-drift [--severity reject|warn|info] [--json]"],
+        notes: &[
+            "   flag Active Sections whose normative_excerpt.source_revision trails",
+            "   [workspace.spec_source].revision; Superseded/Removed exempt (partial-migration).",
+            "   --severity overrides [spec_drift].severity (default warn); reject => exit 1 on drift.",
+            "   no-op (exit 0) when [workspace.spec_source] is absent.",
+        ],
+        run: |c| cmd_validate_spec_drift(c.rest()),
+    },
+    Command {
+        name: "validate-content-drift",
+        aliases: &[],
+        group: Some(&GROUP_CONTENT_DRIFT),
+        blank_before: false,
+        usage: &["validate-content-drift [--severity reject|warn|info] [--json]"],
+        notes: &[
+            "   offline re-hash of each normative_excerpt.text vs its text_sha256;",
+            "   a populated hash that no longer matches = drift (cache edited out-of-band).",
+            "   --severity overrides [content_drift].severity (default reject); reject => exit 1.",
+            "   empty-hash excerpts are unrevalidatable (counted, not drift).",
+            "   also re-hashes the committed EPUB vs [workspace.spec_source].epub_sha256 when pinned (R405).",
+        ],
+        run: |c| cmd_validate_content_drift(c.rest()),
+    },
+    Command {
+        name: "--version",
+        aliases: &[
+            "-V",
+            "version",
+        ],
+        group: Some(&GROUP_META),
+        blank_before: false,
+        usage: &["--version | -V | version  print binary version + build hash"],
+        notes: &[],
+        run: |_| {
+            println!(
+                "mnemosyne-cli {} ({})",
+                env!("CARGO_PKG_VERSION"),
+                env!("BUILD_GIT_HASH")
+            );
+            Ok(())
+        },
+    },
+    Command {
+        name: "--help",
+        aliases: &[
+            "-h",
+            "help",
+        ],
+        group: Some(&GROUP_META),
+        blank_before: false,
+        usage: &["--help | -h | help   print this help text"],
+        notes: &[],
+        run: |c| {
+            print_help(c.prog);
+            Ok(())
+        },
+    },
+];
 
 // ============================================================================
 // query spec query API surface.
@@ -5201,10 +5505,32 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_query_args;
+    use super::{parse_query_args, COMMANDS};
+    use std::collections::HashMap;
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Every verb resolves to exactly one command. `run` dispatches by first
+    /// match, so a duplicate name or alias would make the second entry
+    /// silently unreachable — dead behavior that still documents itself in
+    /// `--help`. The table lives here (private to the bin), so this check does
+    /// too.
+    #[test]
+    fn no_verb_is_claimed_twice() {
+        let mut owner: HashMap<&str, &str> = HashMap::new();
+        for command in COMMANDS {
+            for verb in std::iter::once(&command.name).chain(command.aliases) {
+                if let Some(first) = owner.insert(verb, command.name) {
+                    panic!(
+                        "`{}` is claimed by both `{}` and `{}`; the later entry \
+                         is unreachable",
+                        verb, first, command.name
+                    );
+                }
+            }
+        }
     }
 
     // Round 470 — query modes reject loudly instead of silent dispatch

@@ -129,8 +129,9 @@ In your project root, author `mnemosyne.toml`:
 
 ```toml
 [workspace]
-docs = ["ARCHITECTURE.md", "docs/spec.md"]
-default_doc = "ARCHITECTURE.md"
+# root / spec_source only — `docs` and `default_doc` were removed in Round 400
+# along with the markdown-doc model. [workspace] is deny_unknown_fields, so a
+# leftover key fails loud at load rather than being ignored.
 
 [schema]
 changelog_titles = ["Changelog"]
@@ -263,7 +264,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install --git https://github.com/newmassrael/mnemosyne mnemosyne-cli
       - run: mnemosyne-cli validate-workspace
-      - run: mnemosyne-cli verify-generated
       - run: mnemosyne-cli validate-code-refs   # optional, requires [plugins.set_equality_validator] in mnemosyne.toml
 ```
 

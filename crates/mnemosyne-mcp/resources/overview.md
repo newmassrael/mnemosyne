@@ -23,12 +23,25 @@ content from a committed **EPUB** and the changelog via `mnemosyne-cli query`
 goes through a typed primitive (e.g. `set_section_intent`) which validates
 against tier rules (T1/T2/T3/T4) before persisting.
 
-**Do not infer the schema from this document.** Call `describe_schema` — it
-emits the authoring contract (record types, fact shape, fixed vocabularies,
-rule classes, quest encoding, write-time invariants) derived from the code,
-so it cannot go stale the way a prose summary can. This page once claimed the
+**Do not infer the schema from this document.** This page once claimed the
 store had "4 typed entities, closed-form"; a consumer believed it and rebuilt
-the narrative half in Python.
+the narrative half in Python. So ask the code — but ask the RIGHT thing, because
+no single call answers everything:
+
+| You want | Call | It does NOT tell you |
+|---|---|---|
+| How to author a story world — fact shape, typed claims, vocabularies, rule classes, quest encoding, disclosure encoding, canon order, write-time invariants | `describe_schema` | record types; anything about the spec half; what is in your store |
+| What record types exist | read `AtomicStore` (`crates/mnemosyne-atomic/src/lib.rs`) — it is the type, so it cannot lie | — |
+| What is actually in the store | `query`, `list_sections`, `list_changelog` | — |
+| Every CLI verb | `mnemosyne-cli --help` | — |
+
+`describe_schema` is the **narrative authoring contract**, and it is deliberately
+**static and store-independent** — it describes the contract, never your data.
+Its vocabularies are compile-guarded and its wire format is test-pinned, but its
+semantic prose is hand-authored and, in its own words, "the one part that can
+drift". It is the best authority on authoring; it is not an oracle. Notably it
+does not mention `ChangelogEntry` at all — the record type this project calls
+its own SSOT.
 
 ## Why this shape
 
@@ -45,9 +58,12 @@ reject *before* the mutation lands.
 Counts are deliberately absent here — a hand-maintained tally is what drifted
 last time. Ask the code:
 
-- `describe_schema` — the authoring contract (both halves), derived, static.
-- `mnemosyne-cli --help` — every dispatched verb, gated against the dispatch
-  by `tests/help_covers_dispatch_smoke.rs`.
+- `describe_schema` — the **narrative** authoring contract. Static and
+  store-independent; not a record-type census (see the table above).
+- `mnemosyne-cli --help` — every dispatched verb. Help and dispatch render
+  from one `COMMANDS` table, so a verb that runs is a verb that is listed;
+  they cannot disagree.
+- `AtomicStore` (`crates/mnemosyne-atomic/src/lib.rs`) — the record types.
 - `list_changelog` — the decision ledger, newest last. Round entries live
   here, NOT in `list_sections` (which lists spec sections only).
 

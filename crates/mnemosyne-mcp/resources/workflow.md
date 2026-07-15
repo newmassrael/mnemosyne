@@ -39,16 +39,15 @@ Specifically:
 Skipping step 3 is the most common failure — the user gets confirmation
 "done!" and the next session discovers a T1 reject.
 
-## Cross-doc references
+## Section references
 
-When authoring new content that references another section:
+Reference another section by its id: `§N` (e.g. `§2.4`). Verify the target
+exists first — `list_sections` is the section space.
 
-- Within the same doc: `§N` (e.g. `§2.4`).
-- Across docs (default_doc): `§N` (resolves to default_doc fallback).
-- Across docs (non-default): `[text](other.md#anchor)` markdown link.
-
-The parser auto-classifies these into `RefKind::Decision`, `Impl`, or
-`CrossDoc`. You don't author the kind; you author the markdown form.
+(The `[workspace] docs` / `default_doc` multi-doc markdown model, and the
+default_doc fallback for cross-doc `§N`, were removed in Round 400 with
+GENERATED.md. The store is the single directly-validated artifact; there is
+no doc list to resolve against.)
 
 ## Adding a new ChangelogEntry
 
@@ -73,14 +72,27 @@ The parser auto-classifies these into `RefKind::Decision`, `Impl`, or
 
 ## Pre-commit integration
 
-Recommend that the user install a git pre-commit hook that runs:
+This repo ships its hooks under `.githooks/` — install with
+`git config core.hooksPath .githooks`. For an adopting project, the gate to run
+depends on **which half you are in**:
 
 ```bash
-mnemosyne-cli verify-generated && mnemosyne-cli validate-workspace
+mnemosyne-cli validate-workspace     # the SPEC half: sections, changelog, cross-refs, bindings
+mnemosyne-cli validate-continuity    # the NARRATIVE half: frame-scoped continuity + declared rules
 ```
 
-Exit 0 = workspace consistent. Non-zero = mutation needed before
-commit.
+Exit 0 = consistent. Non-zero = mutation needed before commit.
+
+**`validate-workspace` is NOT the narrative gate** — it never looks at facts,
+frames, branches or disclosure. A consumer authoring a playable story ran only
+`validate-workspace`, saw it green, and believed their world was checked; the
+gate that actually checks it is `validate-continuity` (plus
+`validate-disclosure-leak` / `validate-render-fidelity` for a telling). Run the
+one that matches what you are authoring; run both if you author both.
+
+(`verify-generated`, which this page recommended until R622, was removed in
+Round 400 along with the GENERATED.md model. It has not existed for ~220
+rounds.)
 
 ## Don't do this
 

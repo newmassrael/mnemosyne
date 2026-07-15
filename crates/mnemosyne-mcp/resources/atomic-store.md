@@ -7,9 +7,18 @@ Single JSON file: `docs/.atomic/workspace.atomic.json`. Configurable via
 
 ## Shape
 
+**This is an EXCERPT, not the schema.** The store also carries
+`inventory_entries`, `confirmation_events`, and the whole narrative half
+(`frames`, `branches`, `entities`, `predicates`, `narrative_facts`,
+`disclosure_plans`). The authoritative shape is the `AtomicStore` type
+(`crates/mnemosyne-atomic/src/lib.rs`) — it is the code, so it cannot drift
+from itself. Do not treat the two collections below as the whole store: a
+consumer read a page like this one, concluded the narrative half did not
+exist, and rebuilt it outside the store.
+
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 23,
   "sections": {
     "<section_id>": {
       "intent": "...",
@@ -34,9 +43,15 @@ Single JSON file: `docs/.atomic/workspace.atomic.json`. Configurable via
 }
 ```
 
-## Why this shape (genre = audit trail, not narrative)
+## Why this shape (the CHANGELOG's genre = audit trail)
 
-The atomic store is a **dense, append-only audit ledger**. It is not
+This section is about `changelog_entries` specifically — the decision ledger.
+It is NOT a claim that the store is spec-only: the same store holds the
+narrative fact base, which is a different genre with different rules (see
+`mnemosyne://concepts/overview`). Density-is-the-essence and the frozen-ledger
+prohibition below apply to the audit ledger, not to every record type.
+
+The changelog is a **dense, append-only audit ledger**. It is not
 designed for sequential human reading. Density is the essence — every
 field carries semantic weight, and history is preserved by accumulation.
 

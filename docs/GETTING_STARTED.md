@@ -30,18 +30,14 @@ your workspace root — typically the repo root):
 
 ```toml
 [workspace]
-docs = [
- "docs/SPEC.md",
- "docs/ARCHITECTURE.md",
- "README.md",
-]
-default_doc = "docs/SPEC.md"
+# Optional: `root` (workspace root override) and `[workspace.spec_source]`
+# (external-spec mirror provenance). Nothing else — `docs` / `default_doc`
+# were removed in Round 400 with the markdown-doc model, and this section is
+# deny_unknown_fields, so a leftover key REJECTS at load.
 ```
 
-The doc paths are relative to the directory the `mnemosyne.toml` lives
-in. `default_doc` is the cross-doc reference target — when one doc
-mentions `§3` and `§3` doesn't exist locally, the parser looks it up
-under `default_doc` and reclassifies the reference as cross-doc.
+Relative paths resolve against the directory the `mnemosyne.toml` lives
+in (or `root`, when set). The store, not a doc list, is the SSOT.
 
 Optional sections customize behavior. Skip them on first run; defaults
 work for design-doc / spec / RFC / ADR style markdown:
@@ -132,7 +128,7 @@ cargo run -p mnemosyne-cli -- set-section-decision-status \
  --section §3 --status superseded --superseding §12
 
 # Append a structured changelog entry (atomic, audit-trail).
-cargo run -p mnemosyne-cli -- append-changelog-entry-v2 \
+cargo run -p mnemosyne-cli -- append-changelog-entry \
  --entry-id "Round 8" --decision "Adopt Argon2id over bcrypt" \
  --changes-file ./round8-changes.txt \
  --verification-file ./round8-verification.txt \
@@ -148,13 +144,18 @@ half-written.
 ## 6. Install pre-commit hook (optional)
 
 ```bash
-./scripts/install-hooks.sh
+git config core.hooksPath .githooks
 ```
 
-This drops a generic pre-commit hook that runs `validate-workspace` on
-every `git commit` whose staged set touches a tracked doc. The hook reads
-the doc list from `mnemosyne.toml` via `mnemosyne-cli list-docs`, so
-adopting a new doc only needs a `mnemosyne.toml` edit.
+The hooks are tracked under `.githooks/` and are the source of truth — there
+is no install script to run and no copy to keep in sync (the old
+`scripts/install-hooks.sh` copy-based flow was retired in Round 306). You get:
+
+- `pre-commit` — atomic-sidecar gate, code-citation defense, workspace
+  validate when a doc is staged, `cargo fmt --check` + clippy when `.rs` is
+  staged.
+- `commit-msg` — enforces `COMMIT_FORMAT.md`.
+- `pre-push` — re-runs validate + clippy before publishing.
 
 ## 7. LLM agent citation hygiene
 

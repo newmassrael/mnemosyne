@@ -75,8 +75,11 @@ this line, concluded the narrative substrate did not exist, and rebuilt it
 outside the store in Python.
 
 So: do not extend the schema mid-session — **and do not infer from that rule
-that what you need is missing.** Call `describe_schema` for what the store
-actually holds, today, derived from code.
+that what you need is missing.** Before concluding a capability is absent:
+`describe_schema` for the narrative authoring contract, `AtomicStore`
+(`crates/mnemosyne-atomic/src/lib.rs`) for the record types, `mnemosyne-cli
+--help` for the verbs, `list_changelog` for whether a round already decided it.
+No one of those answers all four.
 
 ## ❌ "Let me drop the doc from `workspace.docs` to silence its orphans"
 

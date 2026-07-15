@@ -169,7 +169,7 @@ The following are not supported and policy-rejected:
 - **Edit the audit half of any entry, ever.** The audit half is the
  frozen ledger. No primitive mutates it post-append. This is the source
  of the system's audit integrity.
-- **Delete a ChangelogEntry.** `append-changelog-entry-v2` enforces
+- **Delete a ChangelogEntry.** `append-changelog-entry` enforces
  monotonic `entry_id`; there is no `remove-changelog-entry`. If an
  entry was authored in error, the publishable half can be neutralized
  (e.g. replaced with `"[Withdrawn — see entry N+k]"`) and a successor
@@ -197,7 +197,7 @@ ledger anchor, cross-ref well-formedness, T1/T3 thresholds), not
 
 If your consumer needs to enforce its own prefix or formatting
 convention, the recommended path is a **consumer-side pre-commit hook**
-(or pre-append wrapper around `append-changelog-entry-v2`) that
+(or pre-append wrapper around `append-changelog-entry`) that
 validates the `decision_summary` against your project's regex before
 the primitive is invoked. This keeps schema-level invariants central
 (here) and convention-level invariants local (your repo).

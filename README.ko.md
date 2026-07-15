@@ -121,8 +121,9 @@ cargo install --path crates/mnemosyne-mcp --force
 
 ```toml
 [workspace]
-docs = ["ARCHITECTURE.md", "docs/spec.md"]
-default_doc = "ARCHITECTURE.md"
+# root / spec_source 만 — `docs` 와 `default_doc` 은 markdown-doc 모델과 함께
+# Round 400 에서 제거됐다. [workspace] 는 deny_unknown_fields 라, 남은 키는
+# 조용히 무시되지 않고 load 시점에 fail-loud 한다.
 
 [schema]
 changelog_titles = ["Changelog"]
@@ -161,9 +162,13 @@ atomic ledger sync, 그리고 소스 안의 spec-id
 `mnemosyne-mcp` 는 Model Context Protocol 서버. AI 클라이언트 (Claude Code,
 Cursor, Cline, Continue, Copilot Chat 등) 가 stdio로 연결하면 다음을 얻는다:
 
-- **16개 typed tool** — validate / query / 12개 atomic mutate primitive
-  (Section + ChangelogEntry typed-field setter). 각 tool의 인자는
-  validator 도달 전에 JSONSchema로 검증됨.
+- **양쪽 절반의 typed tool** — spec 절반(validate / query / Section +
+  ChangelogEntry typed-field setter)과 **서사 절반**(frame, branch, entity,
+  predicate, fact, disclosure plan + continuity·disclosure 게이트 + fork-tree ·
+  playable-world · quest-graph 투영). 각 tool의 인자는 validator 도달 전에
+  JSONSchema로 검증됨. **개수를 여기 적지 않는다** — 손으로 관리하는 수치는
+  반드시 드리프트한다(이 줄은 실제 70개인 시절에 "16개"라고 적혀 있었다).
+  저작 계약은 `describe_schema`, 동사 목록은 `mnemosyne-cli --help`.
 - **7개 개념 리소스** — `mnemosyne://concepts/*` URI로 노출. overview /
   atomic-store / frozen-ledger / tier-rules / anti-patterns /
   schema-guide / workflow. AI 클라이언트가 자동 로드하므로 에이전트가
@@ -244,7 +249,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install --git https://github.com/newmassrael/mnemosyne mnemosyne-cli
       - run: mnemosyne-cli validate-workspace
-      - run: mnemosyne-cli verify-generated
       - run: mnemosyne-cli validate-code-refs   # 선택 사항, mnemosyne.toml 에 [plugins.set_equality_validator] 가 있을 때
 ```
 
@@ -418,14 +422,31 @@ typed invariants 가 필요하다* — 는 디자인 문서를 훌쩍 넘어서 
 - Atomic ChangelogEntry mutate API (append-only 감사 half + 별도 publishable
   view) — 단일 직접-검증 SSOT.
 
-### Phase 1 — 서사 매체 어댑터
+### Phase 1 — 서사 매체 어댑터 (BUILT, 사용 중)
 
-다음 채택 표면: 장편 픽션, 게임 스크립트, TRPG 캠페인 노트, 월드빌딩
-위키, 캐릭터 바이블. 이 매체들은 Phase 0 를 추동한 AI 변형 위험 패턴을
-공유한다 — LLM 매개 편집이 컴파일러가 잡지 않는 invariant 를 깬다는 점.
-다만 schema 와 primitive 가 달라진다.
+**이 절은 미래를 서술했다. 그것은 현재다.** 서사 절반은 Round 430부터
+지어졌고, `validate-continuity` 가 게이트하며, 850+ fact 스토어 위에서
+분기형 비주얼 노벨을 저작하는 실제 소비자가 있다. 스토리 월드를 저작하러
+왔다면 이르지 않다 — `mnemosyne-cli describe-schema` 부터 시작하라.
 
-구체적 타겟 장르와 Mnemosyne 이 보호할 invariant:
+실제로 지어진 것은 이 절이 예전에 상상하던 것(Character / Faction 같은
+장르별 entity 타입, `set_character_eye_color` 같은 primitive)과 크게
+다르다. 진짜 모델은 **매체 중립적이고 관점적(perspectival)** 이다:
+
+- **frame** — 그 fact 를 누구의 믿음으로 갖는가. fact 는 "참"이 아니라
+  *어떤 frame 안에서* 참이다. 신뢰할 수 없는 화자가 예외가 아니라 native.
+- **branch** — 어느 세계선/플레이스루에서 성립하는가.
+- **entity + predicate** — 닫힌 장르 schema 가 아니라 **열린** 레지스트리
+  (`add-predicate`). typed claim 은 subject–predicate–object.
+- **narrative fact** — claim + frame + branch + canon 좌표 + evidence,
+  `conflicts_with` / `supersedes_in_frame` / `pays_off` edge.
+- **declarative rule** — `Exclusive` / `Transition` / `Interval`
+  (= world-state / 소유 모델).
+- **disclosure plan** — 어떤 *telling* 이 독자·플레이어에게 무엇을 언제.
+- **projection** — fork tree, playable world (map locator), quest graph.
+
+아래 장르 노트는 *동기가 된* 위험으로 남겨둔다. 역사로 읽으라 — 기반이
+존재하는 이유이지, 기반에 대한 서술이 아니다:
 
 - **장편 픽션 초고 관리.** 2장에서 정립된 캐릭터 눈 색깔이 15장과
   일치해야 한다. rename 된 세력이 무관한 장면 40개에 orphan 참조를
@@ -457,8 +478,10 @@ workspace-scope JSON store 에 DB migration 없이 들어맞는 규모, (c)
 바이블과 모순되는 걸 알아챈다 — 그래서 validator reject mode 의
 calibration 이 잘 유지된다.
 
-Phase 1 은 현재 Phase 0 스택 안정화 뒤로 *deferred* — 폐기 아니라
-유보. 로드맵은 그 경계에 솔직하다.
+Round 172 감사의 베팅은 적중했지만, 예측한 모양은 아니었다: 승부처는
+장르별 entity schema 가 아니라 fact 를 **관점적으로**(frame + branch)
+만든 것이었다. 위의 눈 색깔 예시는 typed claim + `Exclusive` 규칙으로
+처리된다 — `set_character_eye_color` primitive 는 없고, 있어서도 안 된다.
 
 ### Phase 1.5 — Cascade-gate 풀스케일 측정
 
