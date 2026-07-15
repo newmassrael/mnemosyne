@@ -394,6 +394,17 @@ pub struct SetDisclosureArgs {
     pub surface_object: Option<String>,
 }
 
+/// Round 626 — clear one telling's disclosure decision for one fact.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveDisclosureArgs {
+    /// Telling id carrying the decision.
+    pub telling_id: String,
+    /// Fact id whose decision is cleared (the fact itself is untouched).
+    pub fact_id: String,
+    /// Why the decision is withdrawn (mandatory — audit-trail safeguard).
+    pub reason: String,
+}
+
 /// The optional typed leg of a fact (R446): the machine-readable
 /// subject–predicate–object reading of the prose claim, authored in the
 /// same act (never NLP-derived). Give exactly ONE of `object_entity` /
@@ -1587,6 +1598,17 @@ impl MnemosyneServer {
                     surface,
                 },
             )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Clear one telling's disclosure decision for one fact (R626). The fact is untouched — a disclosure decision belongs to the TELLING, not the fact (R506). This is the escape hatch the R626 referential guards require: retract_fact refuses to delete a fact an override still points at, and amend_fact refuses to drop the typed leg out from under a withhold/first_at decision, both saying 'clear the decision first' — so clearing must be possible. Fail-loud: the telling and the decision must exist (no silent no-op), reason mandatory."
+    )]
+    async fn remove_disclosure(&self, args: Parameters<RemoveDisclosureArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::remove_disclosure(store, path, &a.telling_id, &a.fact_id, &a.reason)
         });
         self.finish_mutate(outcome)
     }

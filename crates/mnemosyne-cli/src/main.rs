@@ -451,6 +451,15 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_set_disclosure(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "remove-disclosure",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-disclosure --telling <id> --fact <id> --reason <text> [--sidecar <path>] [--json]"],
+        notes: &["   Round 626 — clear one telling's decision for one fact; the fact is untouched (a disclosure decision belongs to the TELLING, R506). The escape hatch the R626 retract/amend guards require — a refusal that says \"clear the decision first\" is a trap unless clearing is possible"],
+        run: |c| atomic_cli::cmd_remove_disclosure(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "report-entity",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

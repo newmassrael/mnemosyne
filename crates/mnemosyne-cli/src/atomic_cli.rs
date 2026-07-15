@@ -745,6 +745,68 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> 
     )
 }
 
+/// Round 626 — clear ONE telling's disclosure decision for one fact: the
+/// escape hatch the R626 retract/amend guards require (a guard that says
+/// "clear the decision first" with no way to clear it is a trap, not an
+/// invariant).
+pub fn cmd_remove_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut telling_id: Option<String> = None;
+    let mut fact_id: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--reason" => {
+                reason = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reason missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let reason = reason.ok_or_else(|| anyhow!("--reason arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_disclosure(
+            &mut store,
+            &sidecar_path,
+            &telling_id,
+            &fact_id,
+            &reason,
+        ),
+        json,
+    )
+}
+
 /// Round 430 — create one narrative fact (same shared build path as
 /// `import-facts`; cross-fact refs must already exist in the store).
 /// Parsed flag set shared by `add-fact` and `amend-fact` (Round 434: the two
