@@ -571,6 +571,7 @@ mod tests {
                     vec![["ch-2".to_string(), "b-1".to_string()]],
                 ),
             ]),
+            ..Default::default()
         };
         // Round 614 — `route` and `other` are FORKS of the trunk at ch-2 (as this
         // fixture always meant). The ROAD axis makes fork-vs-standalone load-bearing:

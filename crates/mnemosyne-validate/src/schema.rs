@@ -1645,6 +1645,7 @@ mod tests {
         let order = crate::continuity::CanonOrderFile {
             edges: vec![["a".to_string(), "b".to_string()]],
             branches: std::collections::BTreeMap::new(),
+            ..Default::default()
         };
         let canon = describe_schema().canon_order;
         for key in serde_json::to_value(&order)

@@ -77,8 +77,35 @@ use serde::{Deserialize, Serialize};
 /// absent from `branches` orders by the base alone.
 // `Serialize` (Round 600) lets the `describe-schema` canon-order drift guard
 // pin its prose to these field names; the loader only ever deserializes it.
+/// Round 635 (DEBT-H, filed by the consumer) — `deny_unknown_fields` mirrors
+/// the rules-file wire below, because the SAME typo class was fatal here and
+/// silent. The file is NAMED *order*, so writing its top-level key as `order`
+/// instead of `edges` is the plausible mistake — and with both fields
+/// `serde(default)` it deserialized to an EMPTY order. `order_nodes = 0` means
+/// no road: every fact becomes incomparable, `report-frame-view` yields no law,
+/// an interval rule drops to `unverifiable` so `interval_severity = reject`
+/// does NOT gate (unmeasurable is not a violation) — and `validate-continuity`
+/// reported `violations: 0`, exit 0. A green gate over a store with no order.
+/// The consumer nearly filed a false "canon_to is broken" bug against us
+/// because of it. The rules file already fail-louded a misspelled key so a typo
+/// "cannot silently leave the rules unloaded"; the order file, which the same
+/// contract says a store NEEDS to be renderable, did not.
+///
+/// `schema` and `comment` are MODELLED, exactly as the rules wire models them,
+/// so a THIRD unknown key fails loud — the real order files in this repo and in
+/// the consumer's carry both tags, and my first cut of this guard omitted them
+/// and rejected five legitimate files. The gate's first version is wrong until
+/// it is measured against the real corpus: over-rejection is as fatal as the
+/// silent pass it replaces.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CanonOrderFile {
+    /// Version tag the dogfood/consumer files carry; parsed so it is allowed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    /// Free-text annotation slot; parsed so it is allowed, never read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
     #[serde(default)]
     pub edges: Vec<[String; 2]>,
     #[serde(default)]
@@ -331,6 +358,7 @@ impl CanonOrder {
             &CanonOrderFile {
                 edges: edges.to_vec(),
                 branches: BTreeMap::new(),
+                ..Default::default()
             },
             &BTreeMap::new(),
         )
@@ -4802,6 +4830,43 @@ mod tests {
         store
     }
 
+    /// Round 635 (DEBT-H, filed by the consumer after they were bitten): a
+    /// canon-order file whose top-level key is misspelled must FAIL LOUD, not
+    /// deserialize to an empty order. The plausible typo is `order` (the file is
+    /// named *order*); with both fields `serde(default)` it silently produced
+    /// `order_nodes = 0` — no road, every fact incomparable, interval rules
+    /// dropped to `unverifiable` so `interval_severity = reject` did not gate —
+    /// and `validate-continuity` still reported `violations: 0`, exit 0. The
+    /// rules-file wire had this defense; the order file did not.
+    #[test]
+    fn misspelled_canon_order_key_fails_loud_instead_of_yielding_an_empty_order() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("canon-order.json");
+
+        // The consumer's exact typo.
+        std::fs::write(&path, br#"{"order": ["s1","s2"]}"#).unwrap();
+        let err = load_canon_order(&path, None).unwrap_err();
+        assert!(err.contains("unknown field `order`"), "{err}");
+        assert!(
+            err.contains("edges"),
+            "the error must name the real key: {err}"
+        );
+
+        // NEGATIVE CONTROL (not over-broad): the correct shape still loads, and
+        // an empty-but-well-formed file stays legal (both fields are optional).
+        std::fs::write(&path, br#"{"edges": [["s1","s2"]]}"#).unwrap();
+        let ok = load_canon_order(&path, None).unwrap();
+        assert_eq!(ok.edges.len(), 1);
+        std::fs::write(&path, b"{}").unwrap();
+        assert!(load_canon_order(&path, None).unwrap().edges.is_empty());
+
+        // The `branches` key is equally protected (same wire, same typo class).
+        std::fs::write(&path, br#"{"edges": [], "branchez": {}}"#).unwrap();
+        assert!(load_canon_order(&path, None)
+            .unwrap_err()
+            .contains("unknown field `branchez`"));
+    }
+
     #[test]
     fn same_frame_overlapping_conflict_is_a_violation() {
         let mut a = fact("fa", "seward", "ch-1", Some("ch-3"));
@@ -4868,6 +4933,7 @@ mod tests {
                     vec![["ch-3".to_string(), "ch-2".to_string()]],
                 ),
             ]),
+            ..Default::default()
         };
         let mk = |id: &str, branch: &str, from: &str, to: Option<&str>| {
             let mut f = fact(id, "seward", from, to);
@@ -5113,6 +5179,7 @@ mod tests {
                 "sea-rotue".to_string(),
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap();
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
@@ -5132,6 +5199,7 @@ mod tests {
                 MAIN_BRANCH.to_string(),
                 vec![["ch-1".to_string(), "ch-2".to_string()]],
             )]),
+            ..Default::default()
         };
         let err = CanonOrder::from_declaration(&decl, &BTreeMap::new()).unwrap_err();
         assert!(err.contains("default world-line"), "{err}");
@@ -5372,6 +5440,7 @@ mod tests {
                 "route".to_string(),
                 vec![["ch-2".to_string(), "ch-3".to_string()]],
             )]),
+            ..Default::default()
         };
         let store = store_with_forks(
             vec![branch_fact("f-deep", "gt", "deep", "ch-3")],
@@ -5699,6 +5768,7 @@ mod tests {
                         ["ch-2".to_string(), "ch-3".to_string()],
                     ],
                 )]),
+                ..Default::default()
             },
             // `spine` is a STANDALONE trunk world-line (its own road; the base is
             // empty), which is exactly the shape that made a fact defaulting to
@@ -5763,6 +5833,7 @@ mod tests {
                         vec![["ch-2".to_string(), "ch-4".to_string()]],
                     ),
                 ]),
+                ..Default::default()
             },
             &BTreeMap::from([
                 ("left".to_string(), fork_at("ch-2")),
@@ -8024,6 +8095,7 @@ mod tests {
                 ("braid".to_string(), vec![e("s2", "s3b"), e("s3b", "s4")]),
                 ("weave".to_string(), vec![e("s4", "s5")]),
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
@@ -8133,6 +8205,7 @@ mod tests {
                 ("ride".to_string(), vec![e("tr", "rd"), e("rd", "rk")]),
                 ("dawn".to_string(), vec![e("rk", "rv")]),
             ]),
+            ..Default::default()
         };
         CanonOrder::from_declaration(&decl, &store.branches).unwrap()
     }
@@ -8361,6 +8434,7 @@ mod tests {
                 ("braid".to_string(), vec![e("tr", "rd"), e("rd", "rk")]),
                 ("weave".to_string(), vec![e("rk", "rv")]),
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
@@ -8455,6 +8529,7 @@ mod tests {
                 ("braid".to_string(), vec![e("tr", "rd"), e("rd", "rk")]),
                 ("weave".to_string(), vec![e("rk", "rv")]),
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
@@ -8608,6 +8683,7 @@ mod tests {
                 "weave".to_string(),
                 vec![e("s2", "s3"), e("s3", "s4")], // the displaced suffix
             )]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         (store, order)
@@ -8816,6 +8892,7 @@ mod tests {
                     vec![e("s4", "s5"), e("s4b", "s5"), e("s5", "s6")],
                 ),
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
 
@@ -8940,6 +9017,7 @@ mod tests {
         let decl = CanonOrderFile {
             edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4b")],
             branches: BTreeMap::new(),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let holding = |world: &str, at: &str| -> Vec<String> {
@@ -9047,6 +9125,7 @@ mod tests {
         let decl = CanonOrderFile {
             edges: vec![e("s1", "s2"), e("s2", "s3")],
             branches: BTreeMap::new(),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
@@ -9121,6 +9200,7 @@ mod tests {
                 ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
                 ("ending".to_string(), vec![e("s3", "e1")]), // its OWN divergent road
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
         let road = |w: &str| -> Vec<String> {
@@ -9220,6 +9300,7 @@ mod tests {
         let decl = CanonOrderFile {
             edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4")],
             branches: BTreeMap::new(),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
 
@@ -9330,6 +9411,7 @@ mod tests {
                 ("braid2".to_string(), vec![e("s3", "s4b")]),
                 ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
             ]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         // `ending` declares no road: it rides the trunk, which does NOT include `s4b`.
@@ -9497,6 +9579,7 @@ mod tests {
                 "route".to_string(),
                 vec![["ch-2".to_string(), "k-1".to_string()]],
             )]),
+            ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let report = fork_tree(&store, &order).unwrap();
