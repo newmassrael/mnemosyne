@@ -74,8 +74,48 @@ fn invoked_verb(text: &str) -> Option<&str> {
     if next.starts_with('-') && !matches!(next, "--help" | "-h" | "--version" | "-V") {
         return None; // an outer command's flag (cargo test -p mnemosyne-cli --test x)
     }
+    // A `<placeholder>` is not a verb: a doc writing `mnemosyne-cli <verb>`
+    // means "any verb", which is how the CLI's own usage spells an argument.
+    // This MUST precede the trim below — the trim strips non-alphanumerics,
+    // so `<verb>` would otherwise arrive as a verb literally named `verb` and
+    // the gate would report a doc for describing itself (Round 640, found by
+    // the vendored init skill's own explanation of why it is gated).
+    if next.starts_with('<') {
+        return None;
+    }
     let verb = next.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
     (!verb.is_empty()).then_some(verb)
+}
+
+/// Round 640 — the extractor must tell a PLACEHOLDER from a verb, and must
+/// not buy that precision by going blind. The accept legs are the control: a
+/// guard that skipped real verbs would make this whole gate vacuous, which is
+/// worse than the false positive it fixes.
+#[test]
+fn invoked_verb_skips_placeholders_without_going_blind() {
+    // The defect: the trim strips `<` and `>`, so a placeholder used to
+    // arrive as a verb named `verb` and the gate reported a doc for
+    // explaining itself.
+    // Callers pass a code span's CONTENTS or a shell line, so backticks are
+    // already stripped by the time the text arrives — these are the real shapes.
+    assert_eq!(invoked_verb("mnemosyne-cli <verb>"), None);
+    assert_eq!(invoked_verb("mnemosyne-cli <verb> --json"), None);
+    assert_eq!(invoked_verb("cargo run -p mnemosyne-cli -- <verb>"), None);
+    // NOT over-skipped — real invocations still resolve.
+    assert_eq!(
+        invoked_verb("mnemosyne-cli add-fact --fact f"),
+        Some("add-fact")
+    );
+    assert_eq!(
+        invoked_verb("mnemosyne-cli describe-schema"),
+        Some("describe-schema")
+    );
+    assert_eq!(invoked_verb("mnemosyne-cli --help"), Some("--help"));
+    // Still not a verb: an outer command's flag, and a path argument.
+    assert_eq!(
+        invoked_verb("cargo install --path crates/mnemosyne-cli --force"),
+        None
+    );
 }
 
 /// Split a document into (prose, shell-fence lines).

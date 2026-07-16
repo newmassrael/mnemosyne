@@ -2,7 +2,18 @@
 **/*.rs.bk
 Cargo.lock.bak
 .mnemosyne/
-.claude/
+# Local Claude Code state stays out — EXCEPT the vendored adopter skill.
+# Round 640: the init skill is the surface an adopter meets FIRST, and while
+# it lived outside the repo no gate could see it — R605's deny-unknown sweep
+# cleaned the R400-era dead keys from 13 files and could not reach this one,
+# so it went on emitting a config that does not parse. The gates' scope is
+# `git ls-files "*.md"`, so being TRACKED is what puts it under them. A
+# negation cannot re-include through an excluded parent, hence `.claude/*`
+# plus a per-level opt-in rather than a bare `.claude/`.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/mnemosyne-init/
 # Claude working scratch (RFC drafts, maintainer replies) — local only
 /claudedocs/*
 # Exception: experiment evidence is permanent audit record (not transient
