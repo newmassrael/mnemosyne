@@ -71,6 +71,14 @@ pub struct QuerySectionArgs {
     pub include_changelog: bool,
 }
 
+// Round 638 — the single-entry changelog read + the citation check.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct QueryChangelogEntryArgs {
+    /// The citation to verify and read — a round, e.g. `Round 625`. The
+    /// exact stored key (with its title) also resolves.
+    pub entry_id: String,
+}
+
 // Round 467/470 — whole-ledger changelog listing (R410 read model exposed).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListChangelogArgs {
@@ -1079,6 +1087,19 @@ impl MnemosyneServer {
     )]
     async fn list_changelog(&self, args: Parameters<ListChangelogArgs>) -> CallToolResult {
         match ops::list_changelog(&self.workspace, args.0.limit) {
+            Ok(view) => self.tool_json(&view),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Verify and read ONE changelog entry by its `Round NNN` citation. THIS IS THE CITATION CHECK: call it before writing any `Round NNN` into code, a comment, a commit message, or a ledger entry — an error means the round does not exist and the citation must not be written. It resolves either stored key shape (short-form `Round 292`, long-form `Round 293 — <title>`), so never hand-match round numbers against list_changelog's keys yourself. Returns the full ChangelogEntryView (decision_summary + bullets), which is also how to read ONE decision without pulling the whole ledger into context."
+    )]
+    async fn query_changelog_entry(
+        &self,
+        args: Parameters<QueryChangelogEntryArgs>,
+    ) -> CallToolResult {
+        match ops::query::query_changelog_entry(&self.workspace, &args.0.entry_id) {
             Ok(view) => self.tool_json(&view),
             Err(e) => self.op_error(e),
         }

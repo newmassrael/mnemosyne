@@ -369,6 +369,23 @@ pub fn round_order_key(entry_id: &str) -> (u32, u64, String) {
 /// store, not a markdown doc.
 pub const ATOMIC_ONLY_PARENT_DOC: &str = "<atomic>";
 
+/// One changelog entry by its EXACT stored key, projected through the same
+/// [`build_entry_view`] the whole-ledger read uses (Round 638). `None` when
+/// the key is absent.
+///
+/// Resolving a `Round NNN` CITATION to that key is a separate concern and
+/// lives with the citation rule (`mnemosyne-validate` `code_refs`), because a
+/// citation names a number while a key may carry a title; `mnemosyne-ops`
+/// composes the two. `citation_count` is `0` — it is a per-section relevance
+/// metric, not applicable to a single-entry read (the [`list_changelog`]
+/// convention).
+pub fn changelog_entry(atomic_store: &AtomicStore, entry_id: &str) -> Option<ChangelogEntryView> {
+    atomic_store
+        .changelog_entries
+        .get(entry_id)
+        .map(|atomic| build_entry_view(entry_id, atomic, 0))
+}
+
 fn build_entry_view(
     entry_id: &str,
     atomic: &AtomicChangelogEntry,

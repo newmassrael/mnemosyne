@@ -1708,6 +1708,34 @@ fn strip_hash(content: &str) -> String {
     out
 }
 
+/// Normalize a changelog identifier of EITHER stored shape to the citation
+/// shape `<prefix><number>` — the one resolver for "which round is this?".
+///
+/// The ledger holds two key shapes: short-form (`"Round 292"`) and long-form
+/// (`"Round 293 — <title>"`). A citation names only the number, so both must
+/// reduce to the same key before comparison. This accepts a stored key OR a
+/// citation, which is what makes it a resolver rather than a formatter: pass
+/// both sides through it and compare the results.
+///
+/// Returns `None` when `s` does not carry the configured prefix followed by a
+/// number — such a string cannot collide with the cited shape.
+///
+/// Round 638 — this rule previously lived inline in the code-refs gate AND, in
+/// a DIFFERENT and BROKEN form, in CLAUDE.md's hand-executed citation-hygiene
+/// procedure (which prefix-matched `"Round NNN "` WITH A TRAILING SPACE, so it
+/// answered "hallucinated" for all 96 short-form entries — a quarter of the
+/// ledger). Two statements of one rule is the drift class Round 636 convicted;
+/// this is the single home, and prose now names the verb instead of restating
+/// the rule.
+pub fn normalize_entry_citation(prefix: &str, s: &str) -> Option<String> {
+    if prefix.is_empty() {
+        return None;
+    }
+    let rest = s.strip_prefix(prefix)?;
+    let num = scan_round_number(rest)?;
+    Some(format!("{}{}", prefix, num))
+}
+
 /// Read `<digits>(.<digits>)?` from the start of `s`. Returns the
 /// matched substring, or `None` if `s` does not start with a digit.
 /// Trailing `.` without fractional digits is not consumed.
@@ -1884,19 +1912,12 @@ impl SetEqualityValidator {
         let orphan_ledger = self.orphan_ledger.as_slice();
 
         // valid_entry_ids must match the shape produced by `extract_citations`,
-        // which returns `<prefix><number>` (e.g. "Round 293"). Atomic ledger
-        // keys are either short-form ("Round 292") or long-form
-        // ("Round 293 — <title>"); both get normalized to `<prefix><number>`
-        // by stripping prefix + re-running `scan_round_number`. Keys without
-        // the prefix cannot collide with the cited shape and are skipped.
+        // which returns `<prefix><number>` (e.g. "Round 293"). Both ledger key
+        // shapes normalize through the one shared resolver.
         let valid_entry_ids: BTreeSet<String> = snapshot
             .changelog_entry_ids
             .iter()
-            .filter_map(|k| {
-                let rest = k.strip_prefix(prefix)?;
-                let num = scan_round_number(rest)?;
-                Some(format!("{}{}", prefix, num))
-            })
+            .filter_map(|k| normalize_entry_citation(prefix, k))
             .collect();
         let section_id_set = &snapshot.section_ids_with_implied_parents;
 
@@ -2789,6 +2810,79 @@ mod tests {
     fn scan_round_number_rejects_non_digit_start() {
         assert_eq!(scan_round_number("foo"), None);
         assert_eq!(scan_round_number(""), None);
+    }
+
+    /// Round 638 — the resolver must reduce BOTH stored key shapes to the
+    /// cited shape. The short-form leg is the one CLAUDE.md's hand-executed
+    /// procedure got wrong (it matched `"Round NNN "` WITH a trailing space,
+    /// so all 96 short-form entries read as hallucinated); if this leg ever
+    /// regresses, a quarter of the ledger becomes uncitable again.
+    #[test]
+    fn normalize_entry_citation_reduces_both_stored_key_shapes() {
+        assert_eq!(
+            normalize_entry_citation("Round ", "Round 568").as_deref(),
+            Some("Round 568"),
+            "short-form key (no title) must resolve — the 96-entry class"
+        );
+        assert_eq!(
+            normalize_entry_citation("Round ", "Round 293 — the title").as_deref(),
+            Some("Round 293"),
+            "long-form key must reduce to the cited shape"
+        );
+        // A citation and its own stored key must land on the same string —
+        // that identity is what lets a caller compare the two sides.
+        assert_eq!(
+            normalize_entry_citation("Round ", "Round 293"),
+            normalize_entry_citation("Round ", "Round 293 — the title"),
+        );
+    }
+
+    /// Round 638 — the boundary that keeps the resolver from being the very
+    /// bug it replaces: a shorter number must NOT match a longer one.
+    #[test]
+    fn normalize_entry_citation_does_not_collide_on_a_number_prefix() {
+        assert_ne!(
+            normalize_entry_citation("Round ", "Round 56"),
+            normalize_entry_citation("Round ", "Round 568"),
+            "`Round 56` must never resolve to `Round 568`"
+        );
+        // An alpha-suffixed key (the Round 474 base-26 column, e.g.
+        // `Round 311aa`) REDUCES to its base number — pinned as the real
+        // behaviour, not wished away: it is pre-existing and load-bearing for
+        // the gate, which asks only "is this number a real round?". It is also
+        // exactly why the single-entry READ (`ops::query_changelog_entry`)
+        // fails loud when one citation resolves to several entries instead of
+        // picking one — a silently-arbitrary decision is the class this round
+        // exists to kill.
+        assert_eq!(
+            normalize_entry_citation("Round ", "Round 311aa").as_deref(),
+            Some("Round 311"),
+        );
+        assert_eq!(
+            normalize_entry_citation("Round ", "Round 311aa"),
+            normalize_entry_citation("Round ", "Round 311"),
+            "the reduction is why the read guards ambiguity"
+        );
+    }
+
+    /// Round 638 — non-citations are rejected, never coerced.
+    #[test]
+    fn normalize_entry_citation_rejects_what_is_not_a_citation() {
+        assert_eq!(normalize_entry_citation("Round ", "568"), None);
+        assert_eq!(normalize_entry_citation("Round ", "Section 5"), None);
+        assert_eq!(normalize_entry_citation("", "Round 5"), None);
+    }
+
+    /// Round 638 — the prefix is CONFIG-driven (`[schema].entry_id_prefix`),
+    /// never the hardcoded `"Round "`: a workspace that names its entries
+    /// differently must resolve through the same one resolver.
+    #[test]
+    fn normalize_entry_citation_honours_a_configured_prefix() {
+        assert_eq!(
+            normalize_entry_citation("Sprint ", "Sprint 12 — a title").as_deref(),
+            Some("Sprint 12")
+        );
+        assert_eq!(normalize_entry_citation("Sprint ", "Round 12"), None);
     }
 
     #[test]

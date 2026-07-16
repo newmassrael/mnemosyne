@@ -129,6 +129,65 @@ pub fn list_changelog(
     Ok(list_changelog_inner(&atomic_store, limit))
 }
 
+/// Resolve ONE `Round NNN` citation to its changelog entry (Round 638, DEBT-E)
+/// — the `query_inventory` twin the decision SSOT never had, and the machine
+/// answer to "does this round exist?" that citation hygiene must call instead
+/// of hand-matching strings.
+///
+/// Composes the two owners: the citation rule
+/// ([`mnemosyne_validate::code_refs::normalize_entry_citation`], which knows a
+/// key may be short-form `Round 292` or long-form `Round 293 — <title>`) and
+/// the view projection ([`mnemosyne_query::changelog_entry`]). An EXACT key
+/// wins outright, so citing a key that carries a disambiguating suffix always
+/// resolves to itself.
+///
+/// FAILS LOUD on ambiguity rather than picking one: `Round 311` when both
+/// `Round 311` and `Round 311aa` exist is not a verified citation, and a
+/// silently-arbitrary entry is the class of answer this round exists to kill.
+pub fn query_changelog_entry(
+    workspace_root: &Path,
+    cited: &str,
+) -> Result<ChangelogEntryView, OpError> {
+    let store = load_atomic_store(workspace_root, None)?;
+    let prefix = crate::workspace_entry_id_prefix(workspace_root)?;
+    if let Some(view) = mnemosyne_query::changelog_entry(&store, cited) {
+        return Ok(view);
+    }
+    let want = mnemosyne_validate::code_refs::normalize_entry_citation(&prefix, cited).ok_or_else(
+        || {
+            OpError::Other(format!(
+                "`{}` is not a `{}<number>` citation — this names a round, e.g. `{}625`",
+                cited, prefix, prefix
+            ))
+        },
+    )?;
+    let hits: Vec<&String> = store
+        .changelog_entries
+        .keys()
+        .filter(|k| {
+            mnemosyne_validate::code_refs::normalize_entry_citation(&prefix, k).as_deref()
+                == Some(want.as_str())
+        })
+        .collect();
+    match hits.as_slice() {
+        [] => Err(OpError::Other(format!(
+            "`{}` is not in the atomic store — the ledger is the decision SSOT, so an absent round is a HALLUCINATED citation: do not write it. (Rounds predating the ledger's first entry are off-main and equally unwritable.)",
+            want
+        ))),
+        [only] => Ok(mnemosyne_query::changelog_entry(&store, only)
+            .expect("key came from this store's own map")),
+        many => Err(OpError::Other(format!(
+            "`{}` is AMBIGUOUS — it resolves to {} entries ({}). Cite the exact key.",
+            want,
+            many.len(),
+            many.iter()
+                .map(|k| format!("`{}`", k))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
 /// Literal/regex search across atomic Section + ChangelogEntry +
 /// Inventory text fields (R292).
 pub fn query_term(workspace_root: &Path, input: &QueryTermInput) -> Result<Vec<TermHit>, OpError> {

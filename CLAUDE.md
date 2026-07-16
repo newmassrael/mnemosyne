@@ -200,18 +200,17 @@ commit messages, *verify the target exists in the atomic store*. LLM
 hallucination of round numbers is silent corruption of the audit trail —
 no compiler catches it, and `git blame` chases the wrong rationale.
 
-**Verification path** (existing MCP tools, no new primitives needed):
+**Verification path** — *ask the machine, never match strings yourself*:
 
-1. Call `list_changelog` once at session start → cache the entry-key set.
- Keys are `Round NNN — <title>`.
-2. For each cited `Round NNN`, prefix-match `Round NNN ` in that set:
- - 0 matches = hallucinated **or pre-252**. Rounds 1–251 are off-main
- (legacy-migration closure) and are NOT in the store — a citation to
- one cannot be verified here and must not be written as though it
- were. Do NOT write the citation: find the actually-relevant round,
- or stop and ask the user.
- - ≥ 1 match = exists. Proceed.
-3. For supersession, there is **no `decision_status` field on changelog
+1. For each cited `Round NNN`, call `query_changelog_entry` with it
+ (CLI: `mnemosyne-cli query --changelog-entry "Round NNN"`).
+ - **error / exit 1 = do NOT write the citation.** It is hallucinated,
+ **or pre-252**: rounds 1–251 are off-main (legacy-migration closure)
+ and are not in the store, so a citation to one cannot be verified
+ here and must not be written as though it were. Find the actually
+ relevant round, or stop and ask the user.
+ - **exit 0 = it exists**, and you now hold its decision — proceed.
+2. For supersession, there is **no `decision_status` field on changelog
  entries** — it exists only on Sections. The ledger is frozen and
  append-only, so supersession is stated in *prose* by a later entry.
  Before leaning on a round, search for later entries that overturn it:
@@ -219,13 +218,20 @@ no compiler catches it, and `git blame` chases the wrong rationale.
  hit. Cite a superseded decision only with explicit "this is a
  historical reference" framing.
 
+**Do NOT hand-match round numbers against `list_changelog`'s keys** — that
+is the instruction this file carried until R638, and it was *wrong*. Stored
+keys come in **two** shapes, short-form `Round 568` and long-form
+`Round 293 — <title>`; the rule here said to prefix-match `Round NNN `
+*with a trailing space*, which answers "hallucinated" for every short-form
+entry — **96 of 383, a quarter of the ledger** (R637 found it by following
+this very procedure and being told that `Round 568`, the round that built
+`report-quest-graph`, did not exist). `query_changelog_entry` resolves both
+shapes through the one resolver the code-citation gate already uses, so
+there is no rule here to drift from it. `list_changelog` is for *reading
+the ledger*, not for deciding whether a round exists.
+
 For `§<id>` refs (spec sections, not rounds), `list_sections` is the right
 call — it lists the section space only.
-
-CLI equivalents (when MCP unavailable): `mnemosyne-cli query
---list-changelog [--limit N]` for step 1, `mnemosyne-cli query --term
-<pattern> --scope changelog` for step 3, `mnemosyne-cli query
---list-sections` for the section space.
 
 **Do not use `list_sections` to verify a round.** Round entries have not
 lived in the section space since Round 400 collapsed the markdown-doc
@@ -242,15 +248,24 @@ audit-trail correctness silently. Catching it at the *agent's writing
 moment* is dramatically cheaper than catching it later (pre-commit / CI
 / post-merge decay scan).
 
+**Already machine-enforced** (do not re-derive by hand):
+
+- A `Round NNN` in the configured code paths (`[plugins.
+ set_equality_validator].paths` = `crates/*/src/`) is checked by
+ `validate-code-refs`, which the pre-commit hook runs on every commit —
+ a hallucinated round is a `Missing` violation and rejects the commit.
+ It scans code only: **commit messages, ledger prose, `CLAUDE.md`, and
+ memory are NOT covered**, which is why step 1 above is still yours to
+ run at the writing moment.
+
 **Out of scope** (carry forward, future rounds):
 
-- Pre-commit gate that rejects missing/superseded citations (Stage 2)
+- Pre-commit gate that rejects *superseded* citations (the missing half
+ is built, above; supersession is prose-stated and has no field)
 - Cascade trigger that surfaces decay when an entry transitions to
  Superseded (Stage 3)
 - Semantic match check ("Round NNN actually decides *this* code") —
  T3/T4 heuristic territory, not v1
-- Dedicated `verify_round_citation(n)` MCP tool — add only if the
- two-call dance shows real friction in practice
 
 ## Git hook installation (R306+ — tracked `.githooks/`)
 

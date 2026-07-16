@@ -336,6 +336,7 @@ static COMMANDS: &[Command] = &[
             "query --list-changelog [--limit N] [--json] changelog ledger in round order, oldest first (Round 467; --limit keeps the newest N beside the honest total, Round 470)",
             "query --list-inventory [--json] Phase 1A inventory entries (Round 278)",
             "query --inventory <ID> [--json] single inventory entry lookup",
+            "query --changelog-entry <ID> [--json] single changelog entry lookup — THE citation check (Round 638): resolves both stored key shapes (`Round 292` and `Round 293 — <title>`), exit 1 = hallucinated, do not write it",
             "query --term <pattern> [--regex] [--case-insensitive|-i] [--scope all|sections|changelog|inventory] [--field name,name,...] [--json]",
         ],
         notes: &["   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467); unknown --field names reject loudly (Round 468)"],
@@ -1173,6 +1174,7 @@ struct QueryArgs {
     // Round 278 — Phase 1A inventory query surface.
     list_inventory: bool,
     inventory_id: Option<String>,
+    changelog_entry_id: Option<String>,
     // Round 292 — query_term primitive (literal/regex search).
     term_pattern: Option<String>,
     term_regex: bool,
@@ -1205,6 +1207,13 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
                 out.inventory_id = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--inventory missing value"))?
+                        .clone(),
+                );
+            }
+            "--changelog-entry" => {
+                out.changelog_entry_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--changelog-entry missing value (a `Round NNN`)"))?
                         .clone(),
                 );
             }
@@ -1256,6 +1265,7 @@ fn parse_query_args(args: &[String]) -> Result<QueryArgs> {
         ("--list-changelog", out.list_changelog),
         ("--list-inventory", out.list_inventory),
         ("--inventory", out.inventory_id.is_some()),
+        ("--changelog-entry", out.changelog_entry_id.is_some()),
         ("--term", out.term_pattern.is_some()),
         ("§<section_id>", out.section_id.is_some()),
     ]
@@ -1386,6 +1396,39 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             }
             if let Some(s) = entry.reason.as_deref() {
                 println!("reason: {}", s);
+            }
+        }
+        return Ok(());
+    }
+
+    // Round 638 — the single-entry changelog read (DEBT-E), the `--inventory`
+    // twin the decision SSOT never had. Resolves EITHER stored key shape
+    // through `normalize_entry_citation`, the same resolver the code-refs gate
+    // uses — a citation names a number, never the title it cannot know.
+    if let Some(cited) = qargs.changelog_entry_id.as_deref() {
+        let view = mnemosyne_ops::query::query_changelog_entry(&root, cited)
+            .map_err(|e| anyhow!("{}", e))?;
+        if qargs.json {
+            println!("{}", serde_json::to_string_pretty(&view)?);
+        } else {
+            println!("entry_id: {}", view.entry_id);
+            if let Some(s) = view.atomic_decision_summary.as_deref() {
+                println!("\ndecision_summary:\n{}", s);
+            }
+            for (label, bullets) in [
+                ("changes", &view.atomic_changes_bullets),
+                ("verification", &view.atomic_verification_bullets),
+                ("carry_forward", &view.atomic_carry_forward_bullets),
+            ] {
+                if !bullets.is_empty() {
+                    println!("\n{}:", label);
+                    for b in bullets {
+                        println!("- {}", b);
+                    }
+                }
+            }
+            if !view.atomic_impact_refs.is_empty() {
+                println!("\nimpact_refs: {}", view.atomic_impact_refs.join(", "));
             }
         }
         return Ok(());
