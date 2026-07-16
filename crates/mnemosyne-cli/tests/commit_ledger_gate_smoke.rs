@@ -119,6 +119,66 @@ fn gate_rejects_missing_round_by_default() {
     );
 }
 
+/// Round 656 — the hint must assert the REMEDY, not merely appear (the R627
+/// discipline: a test that pins a message LABEL locks the defect in).
+///
+/// `missing` has two classes needing OPPOSITE fixes, and the gate cannot tell
+/// them apart: it reads commit subjects and resolves them against THIS
+/// workspace's ledger, so an upstream's round number is `missing` forever. The
+/// first playable consumer hit exactly that (their subject cited `R643`, ours)
+/// and reported that following the backfill-only hint would have written
+/// `Round 643` into THEIR ledger — a decision they never made.
+///
+/// This pins both remedies. Reverting to the backfill-only wording FAILS here.
+#[test]
+fn gate_hint_names_the_upstream_remedy_not_only_backfill() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws, None);
+    seed_ledger_entry(ws, "Round 999");
+    git_init(ws);
+    git(ws, &["add", "-A"]);
+    git(ws, &["commit", "-q", "-m", "seed workspace (R9999)"]);
+
+    let out = validate(ws);
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // The backfill flow stays named — it is the right remedy for OUR rounds.
+    assert!(
+        combined.contains("append-changelog-entry"),
+        "the backfill remedy must still be named; got: {}",
+        combined
+    );
+    // ...but it must be CONDITIONAL, not the only door offered.
+    assert!(
+        combined.contains("THIS workspace's round"),
+        "the backfill hint must be scoped to this workspace's own rounds; got: {}",
+        combined
+    );
+    // The upstream class must be named, and named as NOT-yours-to-backfill.
+    assert!(
+        combined.contains("ANOTHER project's round") && combined.contains("NOT yours to"),
+        "the hint must tell an upstream-citing consumer NOT to backfill; got: {}",
+        combined
+    );
+    // ...and it must point at the hatch R377 actually built, plus the
+    // subject-vs-body fact that makes the cheap fix discoverable.
+    assert!(
+        combined.contains("severity = warn"),
+        "the hint must name the R377 severity hatch; got: {}",
+        combined
+    );
+    assert!(
+        combined.contains("SUBJECTS only"),
+        "the hint must say the gate reads subjects, so the body is the escape; got: {}",
+        combined
+    );
+}
+
 #[test]
 fn gate_warn_severity_opts_out() {
     // Same history, but [commit_ledger] severity = "warn": the drift line

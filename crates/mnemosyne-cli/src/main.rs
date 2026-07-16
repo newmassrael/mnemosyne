@@ -1780,10 +1780,33 @@ fn print_commit_ledger_drift_surface(
             .map(|cl| cl.severity.as_str())
             .unwrap_or("reject");
         if severity == "reject" {
+            // Round 656 — the remedy must be followable AND true for BOTH
+            // classes of `missing`, because they need opposite fixes and the
+            // gate cannot tell them apart: it reads commit subjects and
+            // resolves them against THIS workspace's ledger, so an upstream's
+            // round number (a consumer citing `R643` of the project they
+            // adopted) is `missing` forever. Naming only the backfill flow
+            // told such a consumer to write a decision they never made into
+            // their own ledger — the R627 class (a guard whose sign points
+            // away from its own hatch: R377 built `severity`, this hint hid
+            // it). Both remedies are named unconditionally; no heuristic
+            // guesses which class a number belongs to.
             println!(
- "  hint: backfill via `mnemosyne-cli append-changelog-entry --entry-id \"Round <N> — ...\" \
-  --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B \
-  --carry-file <path>` (Round 293 backfill flow)"
+                "  hint: if R{n} is THIS workspace's round, backfill it — `mnemosyne-cli \
+  append-changelog-entry --entry-id \"Round {n} — ...\" --decision <text> \
+  --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path>` \
+  (Round 293 backfill flow).",
+                n = report
+                    .missing
+                    .first()
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "<N>".into())
+            );
+            println!(
+ "  hint: if it is ANOTHER project's round (an upstream you cite), it is NOT yours to \
+  backfill — an entry here would record a decision you never made. This gate reads commit \
+  SUBJECTS only: keep the token in the commit body instead, or set \
+  `[commit_ledger].severity = warn` (Round 377)."
  );
             bail!(
                 "commit↔ledger drift gate: {} cited round(s) missing from atomic store (Round 301)",
