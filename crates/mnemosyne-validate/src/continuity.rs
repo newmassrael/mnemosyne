@@ -2097,9 +2097,19 @@ fn scan_interval_rule(
 /// still counted it by predicate string — two readers disagreeing about one
 /// fact, exit 0. A read-time guard on quest_graph alone was a band-aid
 /// (`report-authoring-frontier` with no `--telling` calls structural_fact_ids
-/// but never quest_graph, so the miscount survived); the enforcement belongs at
-/// the STORE boundary so every reader is protected by construction. The
-/// required kind is DERIVED from the quest contract (schema), not a second list.
+/// but never quest_graph, so the miscount survived), so the enforcement is a
+/// VALIDATE-LAYER gate that every quest reader calls at entry. The required
+/// kind is DERIVED from the quest contract (schema), not a second list.
+///
+/// Round 636 — R631 called this "the STORE boundary … protected by
+/// construction". That OVERSTATES it and the wording is corrected here: the
+/// malformed fact PERSISTS at write (verified — `add-fact` accepts it; atomic
+/// cannot reject it without learning the reserved quest names, which would
+/// invert the crate dependency), and it is caught when a reader runs. So this
+/// is a shared gate, not a by-construction invariant: correct, complete for
+/// every reader that exists, but a NEW quest reader that forgets to call it is
+/// unguarded — nothing forces the call the way R634's tripwire forces a
+/// remover to pair with a scan.
 fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
     let required: BTreeMap<&'static str, mnemosyne_core::PredicateObjectKind> =
         crate::schema::quest_predicate_object_kinds()

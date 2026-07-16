@@ -218,10 +218,17 @@ pub struct QuestPredicate {
     /// The expected object shape of this predicate's typed leg, as prose.
     pub object_shape: &'static str,
     /// Round 631 — the MACHINE-READABLE required object kind, the SSOT the
-    /// validate-layer quest-shape guard reads (`object_shape` is prose for the
-    /// contract's human reader; this is what enforcement derives from, so the
-    /// two cannot drift). `None` = both kinds are allowed (`completed_by`, whose
-    /// object is an entity actor OR a scalar discharger).
+    /// validate-layer quest-shape guard reads. `None` = both kinds are allowed
+    /// (`completed_by`, whose object is an entity actor OR a scalar discharger).
+    ///
+    /// Round 636 — this doc used to claim the prose `object_shape` and this
+    /// field "cannot drift". NOTHING BOUND THEM, so it was the same unbacked
+    /// drift-safety claim R629 had just been paid to delete three rounds
+    /// earlier — a human reading the contract could be told "scalar" while the
+    /// machine enforced entity, which is exactly how R620's consumer was misled.
+    /// `quest_object_shape_prose_matches_the_enforced_kind` now binds them: the
+    /// prose must NAME the kind this field enforces. The claim is true because a
+    /// test makes it true, not because a comment says so.
     pub required_object_kind: Option<PredicateObjectKind>,
 }
 
@@ -1167,6 +1174,49 @@ fn invariants() -> Vec<Invariant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round 636 — the published quest object rule is stated twice (machine +
+    /// prose); this binds them, making R631's "cannot drift" claim true.
+    #[test]
+    fn quest_object_shape_prose_matches_the_enforced_kind() {
+        // Round 636 — the quest object rule is stated TWICE in the published
+        // contract: `object_shape` (prose, for the human/AI reading it) and
+        // `required_object_kind` (machine, what the validate guard enforces).
+        // R631 asserted in a doc comment that they "cannot drift" and bound them
+        // with NOTHING — the same unbacked drift-safety claim R629 was paid to
+        // delete. This is the binding. Drift here is not cosmetic: the contract
+        // is the authority R620 designated, so prose saying "scalar" while the
+        // machine enforces entity is precisely how that consumer was misled.
+        for p in describe_schema().quest_encoding.predicates {
+            match p.required_object_kind {
+                // The prose must NAME the kind the machine enforces.
+                Some(kind) => assert!(
+                    p.object_shape.contains(kind.as_str()),
+                    "quest predicate `{}`: enforced kind `{}` is absent from its published \
+                     prose `{}` — the contract would teach a shape the guard rejects",
+                    p.predicate,
+                    kind.as_str(),
+                    p.object_shape
+                ),
+                // `None` = both kinds legal; the prose must not read as a single
+                // fixed shape, so it has to name BOTH (completed_by: "entity or
+                // scalar value"). Without this arm the None case is unpinned and
+                // the test would be half-vacuous.
+                None => {
+                    let names_both = PredicateObjectKind::Entity.as_str();
+                    let names_scalar = PredicateObjectKind::Scalar.as_str();
+                    assert!(
+                        p.object_shape.contains(names_both)
+                            && p.object_shape.contains(names_scalar),
+                        "quest predicate `{}` accepts BOTH kinds, but its prose `{}` does not \
+                         name both — an author would read one shape as the only legal one",
+                        p.predicate,
+                        p.object_shape
+                    );
+                }
+            }
+        }
+    }
 
     /// The contract is complete and internally consistent: every declared
     /// section is present, the vocabularies mirror the core enums exactly (the
