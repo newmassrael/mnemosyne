@@ -1841,6 +1841,34 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
             refs.push(format!("section `{sid}` (via parent_section)"));
         }
     }
+    // Round 634 — a branch's fork/converge coordinate is a section ref the
+    // write path validates (`build_branch_fork` / `build_branch_converges`:
+    // "canon coordinates are structure refs"). R630 MISSED this class, and it
+    // is the SEVEREST: there is no `remove_branch` and a branch is immutable
+    // after registration, so a stranded fork/converge point is UN-fixable — a
+    // guard with no hatch (the R626 lesson) unless the section is protected
+    // here. `check_store_boundary` does not scan it either, so validate-continuity
+    // would stay green over the strand.
+    for (bid, branch) in &store.branches {
+        if branch
+            .forks_from
+            .as_ref()
+            .is_some_and(|f| f.at == section_id)
+        {
+            refs.push(format!("branch `{bid}` (via fork point)"));
+        }
+        if branch.converges_from.iter().any(|m| m.at == section_id) {
+            refs.push(format!("branch `{bid}` (via converge point)"));
+        }
+    }
+    // Round 634 — a confirmation event's claim is a section ref the write path
+    // validates (`append_confirmation_event`, R287 fail-loud). Also unfixable:
+    // confirmation events are an append-only ledger (no remover).
+    for (eid, event) in &store.confirmation_events {
+        if event.claim.section_id() == section_id {
+            refs.push(format!("confirmation event `{eid}` (via claim section)"));
+        }
+    }
     refs
 }
 
@@ -7726,6 +7754,25 @@ mod tests {
         // A child section parents onto ch-1.
         seed_section(&mut store, "child");
         set_section_parent_section(&mut store, &path, "child", Some("ch-1")).unwrap();
+        // Round 634 — a branch forks at ch-4 and a confluence merges at ch-4
+        // too. R630 MISSED both classes; they are the SEVEREST because there is
+        // no `remove_branch` and a branch is immutable after registration, so a
+        // stranded fork/converge point is UNFIXABLE — refusing here is the only
+        // defense (there is no hatch to name, unlike the three classes above).
+        seed_section(&mut store, "ch-4");
+        add_branch(
+            &mut store,
+            &path,
+            "route",
+            "",
+            Some((mnemosyne_core::MAIN_BRANCH, "ch-4")),
+            &[],
+        )
+        .unwrap();
+        // Round 634 — a confirmation event's claim section (append-only ledger,
+        // also unfixable). `sample_event`'s claim targets section `sec`.
+        seed_section(&mut store, "sec");
+        append_confirmation_event(&mut store, &path, sample_event("run-a", "run-b")).unwrap();
 
         // Each referenced section refuses removal, naming the class.
         let err = remove_section(&mut store, &path, "ch-1", "x").unwrap_err();
@@ -7744,6 +7791,21 @@ mod tests {
             .to_string();
         assert!(m3.contains("first_at"), "{m3}");
         assert!(m3.contains("surface scene"), "{m3}");
+        // Round 634 — the two classes R630 missed. Both are unfixable once
+        // stranded, so the refusal IS the defense.
+        let m4 = remove_section(&mut store, &path, "ch-4", "x")
+            .unwrap_err()
+            .to_string();
+        assert!(m4.contains("fork point"), "{m4}");
+        assert!(store.section("ch-4").is_some(), "fork point removed anyway");
+        let m5 = remove_section(&mut store, &path, "sec", "x")
+            .unwrap_err()
+            .to_string();
+        assert!(m5.contains("claim section"), "{m5}");
+        assert!(
+            store.section("sec").is_some(),
+            "claim section removed anyway"
+        );
 
         // The escape hatches actually clear each class (a guard with no hatch
         // is a trap — the R626 lesson): retract the facts, clear the decision,
