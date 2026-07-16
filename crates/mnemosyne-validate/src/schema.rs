@@ -807,7 +807,10 @@ fn exclusive_key_values() -> Vec<EnumValue> {
 ///
 /// Do not "simplify" this to `T::as_str()`: that is a hand-written mirror whose
 /// doc claims to match the serde representation and is enforced by nothing.
-fn serde_variants<T>() -> &'static [&'static str]
+///
+/// Round 644 — `pub(crate)` so the from_tag/as_str round-trip parity pins can
+/// reach the one variant oracle instead of standing up a second one.
+pub(crate) fn serde_variants<T>() -> &'static [&'static str]
 where
     T: for<'de> serde::Deserialize<'de>,
 {
@@ -1345,6 +1348,52 @@ mod tests {
 
         // The out-of-band enforcement note (R591) records the continuity re-check.
         assert!(c.invariant_enforcement.contains("continuity"));
+    }
+
+    /// Round 644 — the from_tag/as_str pair on a manually-labelled enum is TWO
+    /// hand-written mirrors of serde's own tag list, and only `as_str` is
+    /// compiler-forced (its `match` is exhaustive). `from_tag` is a `&str` match
+    /// ending `_ => None`, so a NEW variant serializes through serde but silently
+    /// fails to parse back — nothing forces the arm, exactly the class R629
+    /// convicted for `describe-schema`'s vocabularies.
+    ///
+    /// This binds BOTH directions of all six pairs to the one variant oracle
+    /// (`serde_variants`, the serde-derived list): for every published tag,
+    /// `as_str(from_tag(tag)) == tag` AND `from_tag` accepts it. Injecting a new
+    /// variant without extending its `from_tag` fails here; the pins are DERIVED,
+    /// so they carry no second copy of the vocabulary to drift (R622).
+    ///
+    /// `as_str` on the three atomic enums takes `self` by value (they are
+    /// `Copy`), so each is exercised through a closure that names the method.
+    #[test]
+    fn from_tag_and_as_str_round_trip_through_the_serde_oracle() {
+        use mnemosyne_atomic::{ConfirmMethod, ConfirmerKind, Verdict};
+
+        /// For every serde tag: `from_tag` parses it, and `as_str` of the parsed
+        /// variant returns the same tag. Fails if either mirror omits a variant.
+        fn round_trip<T>(from_tag: impl Fn(&str) -> Option<T>, as_str: impl Fn(T) -> &'static str)
+        where
+            T: Copy + for<'de> serde::Deserialize<'de>,
+        {
+            let tags = serde_variants::<T>();
+            assert!(!tags.is_empty(), "vacuous: the oracle reported no variants");
+            for tag in tags {
+                let parsed = from_tag(tag)
+                    .unwrap_or_else(|| panic!("from_tag rejects the published serde tag `{tag}`"));
+                assert_eq!(
+                    as_str(parsed),
+                    *tag,
+                    "as_str disagrees with the serde tag `{tag}` from_tag parsed it into",
+                );
+            }
+        }
+
+        round_trip(ConfirmerKind::from_tag, ConfirmerKind::as_str);
+        round_trip(ConfirmMethod::from_tag, ConfirmMethod::as_str);
+        round_trip(Verdict::from_tag, Verdict::as_str);
+        round_trip(PredicateObjectKind::from_tag, PredicateObjectKind::as_str);
+        round_trip(PayoffExpectation::from_tag, PayoffExpectation::as_str);
+        round_trip(DisclosureMode::from_tag, DisclosureMode::as_str);
     }
 
     /// The contract serializes to JSON (the machine-readable deliverable).
