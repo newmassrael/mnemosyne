@@ -869,8 +869,16 @@ struct IntervalBoundWire {
 /// The class tag, split from its leg so leg/class coherence is checked
 /// explicitly instead of by the lenient `flatten`. `pub(crate)` so the
 /// authoring-contract description (`schema::describe_schema`, R587) enumerates
-/// the rule classes from THIS enum — an added class breaks its exhaustive match
-/// (the single-source drift guard) instead of silently going undescribed.
+/// the rule classes from THIS enum.
+///
+/// Round 629 — this doc used to claim "an added class breaks its exhaustive
+/// match (the single-source drift guard) instead of silently going
+/// undescribed". Half of that was false and it was the load-bearing half: the
+/// match forced a DESCRIPTION, while the contract's hand-written array forced
+/// nothing, so an added class DID go silently undescribed (proven — a 4th
+/// variant compiled clean with 293 tests green and no mention in the
+/// contract). The enumeration is now derived from serde's own variant list
+/// (`schema::serde_variants`); the exhaustive match still forces the gloss.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RuleClass {

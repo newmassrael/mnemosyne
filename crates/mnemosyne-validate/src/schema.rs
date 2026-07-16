@@ -38,7 +38,8 @@ use mnemosyne_core::{DisclosureMode, PayoffExpectation, PredicateObjectKind};
 use serde::Serialize;
 
 use crate::continuity::{
-    RuleClass, QUEST_ENTITY_KIND, QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
+    ExclusiveKey, IntervalOp, RuleClass, QUEST_ENTITY_KIND, QUEST_PRED_COMPLETED_BY,
+    QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
 };
 
 /// The complete medium-neutral authoring contract (R587). Every field is a
@@ -682,6 +683,16 @@ fn typed_claim_spec() -> TypedClaimSpec {
 
 /// The fixed vocabularies, each built from the real core enum (drift-guarded by
 /// the exhaustive `match` in its `*_values` helper).
+/// Round 629 — WHICH enums the contract publishes is an editorial choice, so
+/// this list is hand-picked and is the ONE residual the variant oracle cannot
+/// close: there is no way to enumerate "every enum in the crate", and not every
+/// enum belongs in an authoring contract. What the oracle guarantees is that a
+/// vocabulary listed here can never be SHORT. A vocabulary that is missing
+/// ENTIRELY is still possible — that is a judgment, and R629 paid two of them
+/// (`interval_op` / `exclusive_key`, 7 variants that existed only as hand-typed
+/// strings inside a prose blob). Named here rather than left silent, because a
+/// list that looks complete is what taught a real consumer that seven present
+/// capabilities were absent (R620).
 fn vocabularies() -> Vec<Vocabulary> {
     vec![
         Vocabulary {
@@ -702,12 +713,163 @@ fn vocabularies() -> Vec<Vocabulary> {
             default: None,
             values: predicate_object_kind_values(),
         },
+        // Round 629 — these two existed ONLY as hand-typed strings inside the
+        // narrative-rules prose ("op": "ge"|"le"|…, "per": "subject"|"object").
+        // 7 variants the authority never published as vocabulary, in the class
+        // R620 convicted: an author reading the contract could not enumerate
+        // them, and nothing tied the prose to the enums.
+        Vocabulary {
+            name: "interval_op",
+            applies_to: "the `op` leg of an interval narrative rule \
+                (value(left) − value(right) ⋈op⋈ bound)",
+            default: None,
+            values: interval_op_values(),
+        },
+        Vocabulary {
+            name: "exclusive_key",
+            applies_to: "the `per` leg of an exclusive narrative rule \
+                (which typed leg the at-most-one rule keys on)",
+            default: None,
+            values: exclusive_key_values(),
+        },
     ]
 }
 
+fn interval_op_values() -> Vec<EnumValue> {
+    // Exhaustive `match` forces a gloss; the enumeration derives (R629).
+    fn gloss(o: IntervalOp) -> &'static str {
+        match o {
+            IntervalOp::Ge => "the difference must be at least the bound",
+            IntervalOp::Le => "the difference must be at most the bound",
+            IntervalOp::Eq => "the difference must equal the bound exactly",
+            IntervalOp::Gt => "the difference must exceed the bound",
+            IntervalOp::Lt => "the difference must fall short of the bound",
+        }
+    }
+    serde_variants::<IntervalOp>()
+        .iter()
+        .map(|tag| EnumValue {
+            value: tag,
+            description: gloss(variant_from_tag::<IntervalOp>(tag)),
+        })
+        .collect()
+}
+
+fn exclusive_key_values() -> Vec<EnumValue> {
+    fn gloss(k: ExclusiveKey) -> &'static str {
+        match k {
+            ExclusiveKey::Subject => {
+                "at most one co-holding value per SUBJECT (location exclusivity: \
+                one place per person)"
+            }
+            ExclusiveKey::Object => {
+                "at most one holder per OBJECT (conservation/custody: one \
+                holder per thing)"
+            }
+        }
+    }
+    serde_variants::<ExclusiveKey>()
+        .iter()
+        .map(|tag| EnumValue {
+            value: tag,
+            description: gloss(variant_from_tag::<ExclusiveKey>(tag)),
+        })
+        .collect()
+}
+
+/// Round 629 — THE variant oracle. `serde`'s derive ALREADY wrote every
+/// variant's published tag down, and hands the list over through the
+/// `Deserializer::deserialize_enum(name, variants, visitor)` **trait
+/// signature** — an API contract, not an error-message format we parse. So the
+/// contract's vocabulary is DERIVED from the same generator that produces the
+/// wire, in the wire's own spelling, with no second derive macro and no hand
+/// list to drift.
+///
+/// This replaces four hardcoded arrays whose comments claimed the compiler
+/// forced them. It did not (Round 629 proved it: a 4th `RuleClass` variant, its
+/// exhaustive matches satisfied, compiled clean with 293 tests green while
+/// `describe-schema` silently omitted it). The exhaustive `match` in each
+/// caller's `gloss`/`spec` forces a DESCRIPTION per variant — that part was
+/// always true; nothing forced the ENUMERATION, which is what this fixes.
+///
+/// Do not "simplify" this to `T::as_str()`: that is a hand-written mirror whose
+/// doc claims to match the serde representation and is enforced by nothing.
+fn serde_variants<T>() -> &'static [&'static str]
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    use serde::de::{Deserializer, Visitor};
+
+    struct Capture(Option<&'static [&'static str]>);
+
+    /// Deserialization is ABORTED the moment the list is captured — we want the
+    /// contract, never a value; this error is the abort signal, not a failure.
+    #[derive(Debug)]
+    struct Captured;
+    impl std::fmt::Display for Captured {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "variant list captured")
+        }
+    }
+    impl std::error::Error for Captured {}
+    impl serde::de::Error for Captured {
+        fn custom<M: std::fmt::Display>(_: M) -> Self {
+            Captured
+        }
+    }
+
+    impl<'de> Deserializer<'de> for &mut Capture {
+        type Error = Captured;
+        fn deserialize_enum<V: Visitor<'de>>(
+            self,
+            _name: &'static str,
+            variants: &'static [&'static str],
+            _visitor: V,
+        ) -> Result<V::Value, Captured> {
+            self.0 = Some(variants);
+            Err(Captured)
+        }
+        fn deserialize_any<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value, Captured> {
+            Err(Captured)
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+            byte_buf option unit unit_struct newtype_struct seq tuple
+            tuple_struct map struct identifier ignored_any
+        }
+    }
+
+    let mut capture = Capture(None);
+    let _ = T::deserialize(&mut capture);
+    let variants = capture
+        .0
+        .expect("serde reports the variant list for every derived enum (this type is not one)");
+    // F5 vacuity guard (R510): a capturer that silently returned an EMPTY list
+    // would make every vocabulary read as "no values" and every downstream
+    // check pass vacuously — the failure mode this oracle exists to prevent.
+    assert!(
+        !variants.is_empty(),
+        "variant oracle returned an empty list — a vacuous contract is worse than a stale one"
+    );
+    variants
+}
+
+/// Round 629 — the serde-reported tag back to its variant, so a caller can hand
+/// the variant to its exhaustive `gloss`/`spec` match without a hand-written
+/// tag-to-variant table (which would be the drift this oracle removes, moved).
+fn variant_from_tag<T>(tag: &'static str) -> T
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    use serde::de::IntoDeserializer;
+    let de: serde::de::value::StrDeserializer<'static, serde::de::value::Error> =
+        tag.into_deserializer();
+    T::deserialize(de).expect("a serde-reported tag always deserializes back to its variant")
+}
+
 fn disclosure_mode_values() -> Vec<EnumValue> {
-    // Exhaustive `match` — an added DisclosureMode variant fails to compile HERE
-    // (and in the variant array below), the single-source drift guard.
+    // The exhaustive `match` forces a DESCRIPTION for every variant; the
+    // ENUMERATION is derived (R629), not hand-listed as it was until R628.
     fn gloss(m: DisclosureMode) -> &'static str {
         match m {
             DisclosureMode::Withhold => {
@@ -722,18 +884,13 @@ fn disclosure_mode_values() -> Vec<EnumValue> {
             }
         }
     }
-    [
-        DisclosureMode::Withhold,
-        DisclosureMode::State,
-        DisclosureMode::Hint,
-        DisclosureMode::Imply,
-    ]
-    .into_iter()
-    .map(|m| EnumValue {
-        value: m.as_str(),
-        description: gloss(m),
-    })
-    .collect()
+    serde_variants::<DisclosureMode>()
+        .iter()
+        .map(|tag| EnumValue {
+            value: tag,
+            description: gloss(variant_from_tag::<DisclosureMode>(tag)),
+        })
+        .collect()
 }
 
 fn payoff_expectation_values() -> Vec<EnumValue> {
@@ -749,11 +906,11 @@ fn payoff_expectation_values() -> Vec<EnumValue> {
             }
         }
     }
-    [PayoffExpectation::Unmarked, PayoffExpectation::Expected]
-        .into_iter()
-        .map(|p| EnumValue {
-            value: p.as_str(),
-            description: gloss(p),
+    serde_variants::<PayoffExpectation>()
+        .iter()
+        .map(|tag| EnumValue {
+            value: tag,
+            description: gloss(variant_from_tag::<PayoffExpectation>(tag)),
         })
         .collect()
 }
@@ -771,18 +928,22 @@ fn predicate_object_kind_values() -> Vec<EnumValue> {
             }
         }
     }
-    [PredicateObjectKind::Entity, PredicateObjectKind::Scalar]
-        .into_iter()
-        .map(|k| EnumValue {
-            value: k.as_str(),
-            description: gloss(k),
+    serde_variants::<PredicateObjectKind>()
+        .iter()
+        .map(|tag| EnumValue {
+            value: tag,
+            description: gloss(variant_from_tag::<PredicateObjectKind>(tag)),
         })
         .collect()
 }
 
 fn rule_class_specs() -> Vec<RuleClassSpec> {
-    // Exhaustive `match` over the real RuleClass — an added class fails to
-    // compile HERE, so a new rule can never go undescribed.
+    // The exhaustive `match` forces a SPEC for every class; the ENUMERATION is
+    // derived (R629). Until R628 this carried a comment claiming the compiler
+    // forced the hand-written array below it — R629 disproved that by adding a
+    // 4th variant, satisfying the matches, and watching the contract omit it
+    // with 293 tests green. The `class` tag now comes from serde, so it cannot
+    // disagree with the wire either.
     fn spec(c: RuleClass) -> RuleClassSpec {
         match c {
             RuleClass::Exclusive => RuleClassSpec {
@@ -840,14 +1001,13 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
             },
         }
     }
-    [
-        RuleClass::Exclusive,
-        RuleClass::Transition,
-        RuleClass::Interval,
-    ]
-    .into_iter()
-    .map(spec)
-    .collect()
+    serde_variants::<RuleClass>()
+        .iter()
+        .map(|tag| RuleClassSpec {
+            class: tag,
+            ..spec(variant_from_tag::<RuleClass>(tag))
+        })
+        .collect()
 }
 
 fn quest_encoding() -> QuestEncoding {
@@ -1015,25 +1175,53 @@ mod tests {
                 .find(|v| v.name == name)
                 .unwrap_or_else(|| panic!("vocabulary `{name}` missing"))
         };
-        let dm: Vec<_> = vocab("disclosure_mode")
-            .values
-            .iter()
-            .map(|v| v.value)
-            .collect();
-        assert_eq!(dm, ["withhold", "state", "hint", "imply"]);
+        // Round 629 — these three vocabularies used to be pinned to hardcoded
+        // string arrays. That was a SECOND mirror of the producers' own
+        // hardcoded arrays: both sides agreed at the stale value, so adding an
+        // enum variant left the contract silently short AND the test green
+        // (proven — a 4th RuleClass compiled with 293 tests passing and no
+        // mention in the contract). The producers now DERIVE from serde, which
+        // makes a membership assertion here tautological; pinning it again
+        // would only move the hand-list into the test.
+        //
+        // What is NOT tautological, and is pinned instead: every vocabulary is
+        // non-empty (an oracle that silently returned `[]` would make every
+        // reader see "no values" and pass vacuously — the R510 F5 class), and
+        // the vocabulary agrees with the enum's own `as_str()`, whose doc
+        // CLAIMS "matches the serde representation" while nothing enforced it.
+        // `as_str` is live in production (receipts, CLI/MCP json), so that
+        // claim drifting is a real defect, not a hypothetical.
+        for name in [
+            "disclosure_mode",
+            "payoff_expectation",
+            "predicate_object_kind",
+        ] {
+            assert!(!vocab(name).values.is_empty(), "vocabulary `{name}` empty");
+        }
         assert_eq!(vocab("disclosure_mode").default, Some("withhold"));
-        let pe: Vec<_> = vocab("payoff_expectation")
-            .values
-            .iter()
-            .map(|v| v.value)
-            .collect();
-        assert_eq!(pe, ["unmarked", "expected"]);
-        let pok: Vec<_> = vocab("predicate_object_kind")
-            .values
-            .iter()
-            .map(|v| v.value)
-            .collect();
-        assert_eq!(pok, ["entity", "scalar"]);
+
+        fn as_str_matches_serde<T, F>(vocab_values: &[EnumValue], as_str: F)
+        where
+            T: for<'de> serde::Deserialize<'de> + Copy,
+            F: Fn(T) -> &'static str,
+        {
+            for v in vocab_values {
+                let variant = variant_from_tag::<T>(v.value);
+                assert_eq!(
+                    as_str(variant),
+                    v.value,
+                    "`as_str()` disagrees with the serde tag the contract publishes"
+                );
+            }
+        }
+        as_str_matches_serde::<DisclosureMode, _>(&vocab("disclosure_mode").values, |m| m.as_str());
+        as_str_matches_serde::<PayoffExpectation, _>(&vocab("payoff_expectation").values, |p| {
+            p.as_str()
+        });
+        as_str_matches_serde::<PredicateObjectKind, _>(
+            &vocab("predicate_object_kind").values,
+            |k| k.as_str(),
+        );
 
         // Every enum value carries a non-empty gloss.
         for v in &c.vocabularies {
@@ -1042,9 +1230,18 @@ mod tests {
             }
         }
 
-        // The three rule classes are described.
-        let classes: Vec<_> = c.narrative_rules.iter().map(|r| r.class).collect();
-        assert_eq!(classes, ["exclusive", "transition", "interval"]);
+        // Round 629 — the rule classes are DERIVED from the enum's serde tags,
+        // so a count/membership pin here would be the same second mirror. What
+        // is pinned: the set is non-empty (vacuity), and every class the
+        // contract publishes round-trips through serde — i.e. the `class` tag
+        // is the wire spelling, not a hand-typed lookalike.
+        assert!(
+            !c.narrative_rules.is_empty(),
+            "no rule classes described — a vacuous contract"
+        );
+        for r in &c.narrative_rules {
+            let _: RuleClass = variant_from_tag(r.class);
+        }
 
         // The quest ids are the real projection constants (single-sourced).
         assert_eq!(c.quest_encoding.entity_kind, QUEST_ENTITY_KIND);
