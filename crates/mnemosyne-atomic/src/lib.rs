@@ -1791,6 +1791,69 @@ pub fn add_section_example(
 /// caller asked to remove something specific). No referential-integrity
 /// check (cross_refs / impact_scope pointing at the removed id) — that's
 /// validate-workspace's job, not the atomic primitive's.
+/// Round 630 — every stored reference to `section_id`, walked over the REAL
+/// collections so the list cannot drift the way a hand-maintained one does
+/// (R629's lesson, applied to a referential scan rather than a vocabulary).
+/// Each `contains_key`/`get` site on the WRITE path that validates "this is a
+/// section" (canon coordinates, disclosure timing/surface, a child's parent)
+/// has its mirror here: what the write path refuses to CREATE dangling, the
+/// delete path must refuse to STRAND. A referrer class the write path does not
+/// check does not belong here either.
+///
+/// Returns human-readable `"<owner> (via <field>)"` clauses. Empty = the
+/// section is unreferenced and safe to remove.
+fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    // A fact's canon coordinates + evidence (add_fact / import_facts check
+    // these exist; continuity reads canon_from as the fact's position).
+    for (fid, fact) in &store.narrative_facts {
+        if fact.canon_from == section_id {
+            refs.push(format!("fact `{fid}` (via canon_from)"));
+        }
+        if fact.canon_to.as_deref() == Some(section_id) {
+            refs.push(format!("fact `{fid}` (via canon_to)"));
+        }
+        if fact.evidence.iter().any(|e| e == section_id) {
+            refs.push(format!("fact `{fid}` (via evidence)"));
+        }
+    }
+    // A disclosure decision's per-world timing pin + diegetic surface scene
+    // (set_disclosure checks both exist at write time).
+    for (telling, plan) in &store.disclosure_plans {
+        for (fid, ov) in &plan.overrides {
+            if ov.first_at.values().any(|coord| coord == section_id) {
+                refs.push(format!(
+                    "telling `{telling}` (via first_at pin on fact `{fid}`)"
+                ));
+            }
+            if ov.surface.as_ref().is_some_and(|s| s.scene == section_id) {
+                refs.push(format!(
+                    "telling `{telling}` (via surface scene on fact `{fid}`)"
+                ));
+            }
+        }
+    }
+    // A child section's parent pointer (set_section_parent_section /
+    // add_section check the parent exists; orphaning it strands the child's
+    // place in the outline — this is the SPEC half of the store).
+    for (sid, section) in &store.sections {
+        if section.skeleton.parent_section.as_deref() == Some(section_id) {
+            refs.push(format!("section `{sid}` (via parent_section)"));
+        }
+    }
+    refs
+}
+
+// Round 630 (DEBT-B) — sections are the ONLY store identity with a remover, so
+// this scan is the complete referential guard TODAY. Entities, branches,
+// frames, and predicates are referenced too — a disclosure `surface.object` is
+// an entity, a `first_at` key is a branch, a fact's `frame`/`predicate` are
+// registry ids — but nothing removes them, so those refs cannot dangle (safe by
+// ABSENCE, not by enforcement). That safety is invisible in the code, which is
+// exactly how it gets lost; the `every_remover_pairs_with_an_inbound_scan` test
+// is the tripwire that fails the day a new `remove_*` identity primitive lands
+// without a matching inbound-ref guard.
+
 pub fn remove_section(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -1802,12 +1865,27 @@ pub fn remove_section(
             "remove_section: --reason mandatory (audit-trail safeguard)".to_string(),
         ));
     }
-    if store.sections.remove(section_id).is_none() {
+    if !store.sections.contains_key(section_id) {
         return Err(AtomicMutateError::NotFound(format!(
             "section_id `{}` not present in atomic store",
             section_id
         )));
     }
+    // Round 630 — referential integrity: what the write path refuses to point
+    // at a missing section, the delete path must refuse to strand. Without
+    // this the removal silently orphaned canon coordinates, disclosure pins,
+    // and a child's parent link, all with validate-workspace still green.
+    let referrers = inbound_section_refs(store, section_id);
+    if !referrers.is_empty() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_section: section `{}` is referenced by {} — retract/amend those facts, \
+             clear those disclosure decisions (remove-disclosure), or re-parent those \
+             sections first (a recorded assertion never dangles)",
+            section_id,
+            referrers.join(", ")
+        )));
+    }
+    store.sections.remove(section_id);
     save_with_receipt(store, sidecar_path, "remove_section", "section", section_id)
 }
 
@@ -7561,6 +7639,127 @@ mod tests {
         assert!(store.section("doomed").is_none());
         let reloaded = AtomicStore::load(&path).unwrap();
         assert!(reloaded.section("doomed").is_none());
+    }
+
+    #[test]
+    fn every_remover_pairs_with_an_inbound_scan() {
+        // Round 630 (DEBT-B) — the tripwire that makes "safe by absence" loud.
+        // Store identities (section / entity / branch / frame / predicate) are
+        // referenced by other rows; a remover for one that skips an inbound-ref
+        // scan silently orphans those refs (the R630 defect). Only ONE such
+        // primitive exists today. This test scans the source for `pub fn
+        // remove_*` and fails the day a new one lands unacknowledged — so the
+        // author must decide, right here, whether it needs a scan like
+        // `inbound_section_refs`. Detection, not derivation (R622): future
+        // functions cannot be derived, so a source tripwire is the honest tool.
+        let src = include_str!("lib.rs");
+        let removers: std::collections::BTreeSet<&str> = src
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("pub fn remove_"))
+            .filter_map(|rest| rest.split(['(', '<', ' ']).next())
+            .collect();
+        // Each entry is annotated with WHY it is or is not an identity remover
+        // that can strand section refs. Update deliberately when this fails.
+        let acknowledged: std::collections::BTreeSet<&str> = [
+            "section",         // R630: guarded by inbound_section_refs.
+            "section_binding", // a code binding on a section, not an identity.
+            "inventory_entry", // inventory id, referenced by nothing.
+            "disclosure",      // removes a referrer (an override), not a target.
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            removers, acknowledged,
+            "a `remove_*` primitive appeared or vanished without acknowledgement — if it \
+             removes a store identity that other rows reference (like remove_section), it \
+             needs an inbound-ref guard first; then add it to this list"
+        );
+    }
+
+    #[test]
+    fn remove_section_refuses_to_strand_every_reference_class() {
+        // Round 630 — what the write path refuses to point at a missing
+        // section, remove_section must refuse to strand. One assertion per
+        // referring field, because a class left unscanned is a silent orphan
+        // (proven live this session: the pre-R630 removal returned exit 0 and
+        // validate-workspace stayed green over a dangling first_at pin).
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("pike".to_string(), Entity::default());
+        add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
+
+        let typed = |id: &str, canon: &str| FactImport {
+            entities: vec!["pike".to_string()],
+            typed: Some(TypedClaim {
+                subject: "pike".to_string(),
+                predicate: "did".to_string(),
+                object: TypedObject::Value {
+                    value: "climbed".to_string(),
+                },
+            }),
+            canon_from: canon.to_string(),
+            evidence: vec![canon.to_string()],
+            ..sample_fact(id, "gt")
+        };
+
+        // canon_from + evidence both land on ch-1.
+        add_fact(&mut store, &path, &typed("f-a", "ch-1")).unwrap();
+        // canon_to lands on ch-2.
+        let mut with_end = typed("f-b", "ch-1");
+        with_end.canon_to = Some("ch-2".to_string());
+        add_fact(&mut store, &path, &with_end).unwrap();
+        // A disclosure decision pins first_at + surface onto ch-3.
+        add_disclosure_plan(&mut store, &path, "t", "withhold", "").unwrap();
+        set_disc(
+            &mut store,
+            &path,
+            "t",
+            "f-a",
+            "state",
+            &[(mnemosyne_core::MAIN_BRANCH.to_string(), "ch-3".to_string())],
+            Some(("ch-3", None)),
+        )
+        .unwrap();
+        // A child section parents onto ch-1.
+        seed_section(&mut store, "child");
+        set_section_parent_section(&mut store, &path, "child", Some("ch-1")).unwrap();
+
+        // Each referenced section refuses removal, naming the class.
+        let err = remove_section(&mut store, &path, "ch-1", "x").unwrap_err();
+        let m = err.to_string();
+        assert!(m.contains("canon_from"), "{m}");
+        assert!(m.contains("evidence"), "{m}");
+        assert!(m.contains("parent_section"), "{m}");
+        assert!(store.section("ch-1").is_some(), "ch-1 removed despite refs");
+
+        assert!(remove_section(&mut store, &path, "ch-2", "x")
+            .unwrap_err()
+            .to_string()
+            .contains("canon_to"));
+        let m3 = remove_section(&mut store, &path, "ch-3", "x")
+            .unwrap_err()
+            .to_string();
+        assert!(m3.contains("first_at"), "{m3}");
+        assert!(m3.contains("surface scene"), "{m3}");
+
+        // The escape hatches actually clear each class (a guard with no hatch
+        // is a trap — the R626 lesson): retract the facts, clear the decision,
+        // re-parent the child, and ch-1 then removes cleanly.
+        remove_disclosure(&mut store, &path, "t", "f-a", "clearing").unwrap();
+        set_section_parent_section(&mut store, &path, "child", None).unwrap();
+        retract_fact(&mut store, &path, "f-a", "no longer asserted").unwrap();
+        retract_fact(&mut store, &path, "f-b", "no longer asserted").unwrap();
+        remove_section(&mut store, &path, "ch-1", "now unreferenced").unwrap();
+        assert!(store.section("ch-1").is_none());
+
+        // NEGATIVE CONTROL (not over-broad): a section nothing references
+        // removes without ceremony.
+        seed_section(&mut store, "lonely");
+        remove_section(&mut store, &path, "lonely", "unreferenced").unwrap();
+        assert!(store.section("lonely").is_none());
     }
 
     #[test]
