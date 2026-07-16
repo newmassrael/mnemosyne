@@ -210,7 +210,7 @@ as the historical record.
 
 - `docs/SCHEMA_GUIDE.md` §publishable-override-ledger — gate schema and
  enforcement details.
-- `docs/GETTING_STARTED.md` §code-citation-defense — `[code_refs]` and
+- `docs/GETTING_STARTED.md` §code-citation-defense — `[plugins.set_equality_validator]` and
  the bidirectional binding model.
 - `crates/mnemosyne-atomic/src/lib.rs` — the atomic mutate primitives.
 - `crates/mnemosyne-mcp/src/main.rs` — MCP tool descriptions for the

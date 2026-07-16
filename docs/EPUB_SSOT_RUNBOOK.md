@@ -113,7 +113,8 @@ Commit the revision-pinned EPUB under `docs/.atomic/epub/` and pin it in
 url = "https://www.w3.org/TR/scxml/"
 revision = "REC-scxml-20150901"
 epub_path = "docs/.atomic/epub/scxml-REC-20150901.epub"
-epub_sha256 = "<sha256 of the committed .epub>"   # 64-char lowercase hex
+epub_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# ^ replace with `sha256sum` of YOUR committed .epub (64-char lowercase hex)
 
 [content_drift]
 severity = "reject"   # default; the gate for CI

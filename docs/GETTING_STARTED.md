@@ -57,7 +57,7 @@ max_sentence_length = 250
 "OAuth" = ["oauth", "Oauth"]
 
 # Opt into the code-citation defense — see §7 below.
-[code_refs]
+[plugins.set_equality_validator]
 paths = ["src/"]
 severity_missing = "warn"
 severity_binding = "warn"
@@ -168,17 +168,21 @@ corruption of the audit trail. No compiler catches it; `git blame`
 chases the wrong rationale.
 
 Mnemosyne ships a **three-stage defense**, all active by default once
-`[code_refs]` is configured in `mnemosyne.toml`:
+`[plugins.set_equality_validator]` is configured in `mnemosyne.toml`:
 
 **Stage 1 — agent-side verification at write time** (MCP):
 
-- `list_sections` returns every section_id, including changelog entry
- ids like `round-254--<slug>`. The agent should call this once at
- session start and cache the set, then prefix-match `round-NNN--`
- before writing any `Round NNN` citation.
-- `query_section(section_id)` returns the SectionView with
- `decision_status`. Use this to distinguish Active from Superseded
- entries.
+- `query_changelog_entry` verifies ONE citation and returns its
+ decision: an error means the round does not exist and the citation
+ must not be written. Ask the machine — never hand-match round
+ numbers against a cached list. (`list_sections` returns SPEC
+ sections only; it has never held round ids, and prefix-matching
+ against it answers "hallucinated" for every real round — the
+ Round 620 defect.)
+- Changelog entries carry NO `decision_status` field; it exists only
+ on Sections. The ledger is append-only, so supersession is stated in
+ PROSE by a later entry — search with `query --term "<the claim>"
+ --scope changelog` and read the newest hit.
 
 **Stage 2 — `validate-code-refs` reject gate**:
 
@@ -186,17 +190,17 @@ Mnemosyne ships a **three-stage defense**, all active by default once
 cargo run -p mnemosyne-cli -- validate-code-refs
 ```
 
-Scans the paths listed in `[code_refs].paths`, extracts `Round NNN` /
+Scans the paths listed in `[plugins.set_equality_validator].paths`, extracts `Round NNN` /
 `§N` tokens from comments (`comment_only = true`), and rejects any
 citation whose target is missing from the atomic store. Wired into the
-pre-commit hook via `scripts/install-hooks.sh`. Promote `severity_*`
+pre-commit hook (`git config core.hooksPath .githooks`). Promote `severity_*`
 from `warn` to `reject` once your baseline is clean.
 
 **Stage 3 — cascade decay scan**:
 
 When a section transitions to `Superseded` or `Removed` via
 `set-section-decision-status`, the cascade trigger runs a
-`§<id>` scan over `[code_refs].paths` and prints citing locations
+`§<id>` scan over `[plugins.set_equality_validator].paths` and prints citing locations
 to stderr. `validate-workspace` reports the workspace-wide decay
 surface as an informational line. Stale citations surface immediately;
 the agent's next session can refresh them.

@@ -255,6 +255,7 @@ from = "src/dhcpv4_client.cpp"
 to = "3.1"
 kind = "code_citation"
 reason = "RFC 2131 §3.1 cited multi-line in DHCPv4 transition prose, retain"
+since = "v2.4"   # required — when this orphan was registered
 ```
 
 The same shape applies to the inventory citation axis (Round 285) —
@@ -269,6 +270,7 @@ from = "src/dissect/packet_pipeline.cpp"
 to = "IPv4_OPTIONS_01"
 kind = "inventory_citation"
 reason = "Historical: IPv4_OPTIONS_01..14 deleted V2->V3, documents why dissector skips IP options"
+since = "v3.0"   # required — when this orphan was registered
 ```
 
 Both axes are independent — a `code_citation` row does not suppress an

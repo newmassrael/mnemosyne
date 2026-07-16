@@ -118,6 +118,158 @@ fn invoked_verb_skips_placeholders_without_going_blind() {
     );
 }
 
+/// The config's section names, DERIVED from `WorkspaceConfig`'s serde shape at
+/// runtime — never a hand list, which would be one more copy of the thing these
+/// gates delete (Round 624's oracle; Round 629's rule).
+fn derived_config_sections() -> Vec<String> {
+    let cfg = mnemosyne_config::parse_config("[workspace]\n").expect("minimal config parses");
+    let value = serde_json::to_value(&cfg).expect("WorkspaceConfig is Serialize");
+    let sections: Vec<String> = value
+        .as_object()
+        .expect("WorkspaceConfig serializes to an object")
+        .keys()
+        .cloned()
+        .collect();
+    assert!(
+        sections.len() > 10,
+        "parser regression: only {} config sections derived — a gate keyed on \
+         this would pass vacuously. Got: {:?}",
+        sections.len(),
+        sections
+    );
+    sections
+}
+
+/// Round 641 — the MISSING DIRECTION. Round 624 gated "every real section is
+/// NAMED by the guides"; nothing gated the converse, "every section a doc names
+/// is REAL". That converse is the direction that catches a table renamed out of
+/// existence, and it went ungated for 335 rounds: `[code_refs]` was renamed to
+/// `[plugins.set_equality_validator]` at Round 306 and went on being taught as
+/// live config in the adopter's own onboarding doc.
+///
+/// Decidable, so gated: a `[section]` token is unambiguous, and the real set is
+/// derived. Scope is `tracked_markdown` — instructional docs only, so the
+/// frozen experiment records (whose `[state]` / `[main]` are disclosure modes
+/// and branch ids, not config) are out by construction, not by a carve-out.
+#[test]
+fn documented_config_sections_all_exist() {
+    let root = repo_root();
+    let real: BTreeSet<String> = derived_config_sections().into_iter().collect();
+    let mut bad = Vec::new();
+    let mut checked = 0usize;
+
+    for file in tracked_markdown(&root) {
+        let rel = file.strip_prefix(&root).unwrap_or(&file).to_path_buf();
+        let text = std::fs::read_to_string(&file).expect("read tracked md");
+        for (i, line) in text.lines().enumerate() {
+            // Only a BACKTICKED `[name]` / `[[name]]` / `[name.sub]` counts: a
+            // bare [x] in prose is a markdown link, and an un-backticked one in
+            // a code fence is covered by the parse gate.
+            for caps in line.match_indices('`').map(|(p, _)| &line[p + 1..]) {
+                let Some(end) = caps.find('`') else { continue };
+                let tok = &caps[..end];
+                let inner = tok
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .split('.')
+                    .next()
+                    .unwrap_or("");
+                let bracketed = tok.starts_with('[') && tok.ends_with(']');
+                let key_shaped = !inner.is_empty()
+                    && inner
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit());
+                if !bracketed || !key_shaped {
+                    continue;
+                }
+                checked += 1;
+                if !real.contains(inner) {
+                    bad.push(format!(
+                        "{}:{} names config section `{}` — no such section exists \
+                         (real: {:?})",
+                        rel.display(),
+                        i + 1,
+                        tok,
+                        real
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        checked >= 20,
+        "only {} `[section]` tokens found across tracked docs; the gate would \
+         pass vacuously",
+        checked
+    );
+    assert!(
+        bad.is_empty(),
+        "{} documented config section(s) do not exist:\n  {}",
+        bad.len(),
+        bad.join("\n  ")
+    );
+}
+
+/// Strip TOML `#` comments, leaving the code. Quote-aware in both TOML string
+/// flavours (basic `"` with `\` escapes, literal `'` without), because a `#`
+/// inside a value is data, not a comment.
+///
+/// Round 641 — this exists so the elision check reads CODE. An ellipsis in a
+/// comment is prose; an ellipsis in a value (`fetched_sha256 = "..."`,
+/// `changelog_titles = [...]`) marks a block the author deliberately left
+/// incomplete. Conflating the two skipped `docs/GETTING_STARTED.md`'s
+/// paste-able example over one comment reading "e.g. v1.0.0 / v1.1 ...", and
+/// that silence is how `[code_refs]` — renamed away in Round 306 — went on
+/// being taught to adopters as live config.
+fn toml_code_only(body: &str) -> String {
+    let mut out = String::new();
+    for line in body.lines() {
+        let mut basic = false;
+        let mut literal = false;
+        let mut escaped = false;
+        let mut cut = line.len();
+        for (i, c) in line.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match c {
+                '\\' if basic => escaped = true,
+                '"' if !literal => basic = !basic,
+                '\'' if !basic => literal = !literal,
+                '#' if !basic && !literal => {
+                    cut = i;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        out.push_str(&line[..cut]);
+        out.push('\n');
+    }
+    out
+}
+
+/// Round 641 — the stripper decides which blocks this gate can see, so its
+/// edges are pinned. The accept legs are the control: over-stripping would
+/// hide a real elision and make the gate parse a block it must skip.
+#[test]
+fn toml_code_only_separates_prose_ellipses_from_elisions() {
+    // The live defect: an ellipsis in a COMMENT is prose, not an elision.
+    assert!(!toml_code_only("entry_id_prefix = \"v\"  # e.g. v1.0.0 / v1.1 ...").contains("..."));
+    // Elisions in VALUES must survive — these blocks must keep skipping.
+    assert!(toml_code_only("fetched_sha256 = \"...\"   # optional 64-char hex").contains("..."));
+    assert!(
+        toml_code_only("changelog_titles = [...]  # which titles open a ledger").contains("...")
+    );
+    assert!(toml_code_only("sha = \"abcdef0123...64-hex...0123\"").contains("..."));
+    // A `#` inside a value is data, not a comment — do not cut there.
+    assert!(toml_code_only("entry_id_prefix = \"#\"  # a real comment").contains('#'));
+    assert!(toml_code_only("literal = '# not a comment'").contains("# not a comment"));
+    assert!(toml_code_only("escaped = \"a \\\" # still a string\"").contains("# still a string"));
+}
+
 /// Split a document into (prose, shell-fence lines).
 ///
 /// `prose` keeps every non-fenced line and BLANKS every fenced one, so line
@@ -267,14 +419,7 @@ fn documented_verbs_all_dispatch() {
 #[test]
 fn schema_guides_name_every_config_section() {
     let root = repo_root();
-    let cfg = mnemosyne_config::parse_config("[workspace]\n").expect("minimal config parses");
-    let value = serde_json::to_value(&cfg).expect("WorkspaceConfig is Serialize");
-    let sections: Vec<String> = value
-        .as_object()
-        .expect("WorkspaceConfig serializes to an object")
-        .keys()
-        .cloned()
-        .collect();
+    let sections = derived_config_sections();
     assert!(
         sections.len() > 10,
         "parser regression: only {} config sections derived — the gate would \
@@ -337,20 +482,35 @@ fn documented_configs_all_parse() {
                 body.push_str(l);
                 body.push('\n');
             }
-            // A whole mnemosyne.toml always carries `[workspace]` (the loader
-            // requires it). A block without one is a FRAGMENT showing a single
-            // override table — real documentation, but not a config a reader
-            // pastes whole, so parsing it would be a false positive.
-            if !body.contains("[workspace]") {
+            // An ELIDED block is illustrative, not paste-able: a literal `...`
+            // stands in for content the author left out (`changelog_titles =
+            // [...]`, `fetched_sha256 = "..."`). Round 641 — test the CODE
+            // only: an ellipsis inside a `#` comment is PROSE ("e.g. v1.0.0 /
+            // v1.1 ..."), and treating it as an elision silently dropped
+            // GETTING_STARTED's paste-able example from this gate.
+            if toml_code_only(&body).contains("...") {
                 continue;
             }
-            // Elided blocks (`docs = [...]`, `# ...`) are illustrative
-            // fragments too; a literal `...` marks them.
-            if body.contains("...") {
+            // A whole mnemosyne.toml carries `[workspace]` (the loader requires
+            // it); a block without one is a FRAGMENT showing an override table.
+            // Round 641 — a fragment is still CHECKABLE: give it the
+            // `[workspace]` the loader wants and parse it as what it is, so a
+            // fragment naming a dead section or key fails like any other
+            // config. Only a BARE-KEY fragment (no section header of its own)
+            // stays skipped — which table its keys belong to is undecidable
+            // from the block alone, and prepending would misfile them under
+            // `[workspace]` and reject a correct doc.
+            let owned;
+            let body = if body.contains("[workspace]") {
+                &body
+            } else if body.trim_start().starts_with('[') {
+                owned = format!("[workspace]\n{}", body);
+                &owned
+            } else {
                 continue;
-            }
+            };
             checked += 1;
-            if let Err(e) = mnemosyne_config::parse_config(&body) {
+            if let Err(e) = mnemosyne_config::parse_config(body) {
                 bad.push(format!(
                     "{}:{} does not parse — an adopter pasting this gets: {:#}",
                     rel.display(),

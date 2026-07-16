@@ -11,10 +11,12 @@ the workspace).
 
 Lookup priority (intra → workspace → atomic store):
 
-1. Self-doc: §N exists in the current document's section_id_set.
-2. Workspace default_doc: §N exists in `default_doc`.
-3. Atomic store: §N exists in `atomic_id_set`.
-4. None of the above → **reject**.
+1. Atomic store: §N exists in `atomic_id_set`.
+2. Not there → **reject**.
+
+(The multi-doc markdown model — `[workspace] docs` / `default_doc` and
+its cross-doc fallback — was removed in Round 400. The store is the
+sole section space, so the lookup has one step.)
 
 Recovery: either fix the §N reference, or add the target section
 first.
