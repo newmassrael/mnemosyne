@@ -3878,12 +3878,16 @@ pub struct MapLocator {
     /// The disclosed fact the locator carries (a `narrative_facts` key) — what
     /// pinion dereferences for content.
     pub fact_id: String,
-    /// The scene the disclosure surfaces in (the authored `surface.scene`, a
-    /// canon structure-section ref).
+    /// The scene the audience meets this fact in — the authored `surface.scene`
+    /// when one is given, else the fact's own `canon_from` (Round 643). Always a
+    /// canon structure-section ref. An authored surface is the OVERRIDE case: a
+    /// carrier that sits somewhere other than the fact's seat.
     pub scene: String,
     /// Index of `scene` in this world's manuscript walk (`scene_walk`); `None`
     /// when the surface scene is not a node of this world's walk (surfaced, not
-    /// silently dropped — the R466 idiom).
+    /// silently dropped — the R466 idiom). A DERIVED seat is on the walk by
+    /// construction (it is the scene the fact begins at), so a `None` here is
+    /// always an authored surface pointing off this world's road.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scene_ordinal: Option<usize>,
     /// The diegetic carrier object the disclosure rides on (the authored
@@ -3914,7 +3918,16 @@ pub struct PlayableWorld {
     /// the B-1 honesty surfaces. `MapLocator::scene_ordinal` indexes
     /// `manuscript.scenes`; pinion dereferences each scene's section id.
     pub manuscript: WorldManuscript,
-    /// The disclosure pointers for this world, in walk order.
+    /// The disclosure pointers for this world, emitted in the walk order of the
+    /// scene each fact BEGINS at.
+    ///
+    /// Round 643 — this said "in walk order" flat, and that was false whenever
+    /// it mattered: the emission walks `canon_from`, while a locator's `scene` /
+    /// `scene_ordinal` is the AUTHORED SURFACE's, so a carrier sitting away from
+    /// its fact's seat lands out of order (an injected one inverted 53 → 17).
+    /// The claim is true for a DERIVED seat, which is the common case now, and
+    /// stated as what it is for the override case. Sort by `scene_ordinal` if
+    /// you need the audience's encounter order.
     pub locators: Vec<MapLocator>,
 }
 
@@ -3971,15 +3984,40 @@ pub fn playable_world(
                 let Some(disclosure) = &event.disclosure else {
                     continue;
                 };
-                let Some(surface) = &disclosure.surface else {
+                // Round 643 — A WITHHELD FACT IS NOT ON THE MAP. This arm did
+                // not exist, so a `withhold` override carrying a surface emitted
+                // a locator stamped `mode: "withhold"`, and the first consumer
+                // read locators as the game's doors: the story's core truth
+                // would have printed to the screen through this seam, past the
+                // leak gate that never sees it. The mode is the authority on
+                // whether the audience gets the fact; the surface only says
+                // where. (Their engine had deleted its own withhold filter on
+                // the premise that "withheld facts emit no locator" — a premise
+                // this arm now makes true instead of accidental.)
+                if disclosure.mode == mnemosyne_core::DisclosureMode::Withhold {
                     continue;
+                }
+                // Round 643 — DERIVE THE SEAT. `surface` is documented as a
+                // SPARSE override for a diegetic carrier, but requiring it to
+                // get a locator made it mandatory: no surface, no locator, and
+                // the fact does not exist for the runtime at all. The first
+                // consumer therefore hand-copied `canon_from` into
+                // `surface.scene` 1,099 times out of 1,099 — a byte-exact copy
+                // of a value this store already holds — and it drifted twice.
+                // The seat now DERIVES from the fact's own canon coordinate, so
+                // that copy is unrepresentable rather than merely detectable
+                // (Round 622); an authored surface remains an override, for the
+                // case the field exists for — a carrier elsewhere than the seat.
+                let (seat, object) = match &disclosure.surface {
+                    Some(surface) => (surface.scene.as_str(), surface.object.clone()),
+                    None => (event.canon_from.as_str(), None),
                 };
                 locators.push(MapLocator {
                     world_line: world_id.clone(),
                     fact_id: event.fact_id.clone(),
-                    scene: surface.scene.clone(),
-                    scene_ordinal: ordinal.get(surface.scene.as_str()).copied(),
-                    object: surface.object.clone(),
+                    scene: seat.to_string(),
+                    scene_ordinal: ordinal.get(seat).copied(),
+                    object,
                     mode: disclosure.mode,
                     first_at: disclosure.first_at.clone(),
                 });
@@ -7449,6 +7487,110 @@ mod tests {
         assert_eq!(main.locators.len(), 1);
         assert_eq!(main.locators[0].scene, "ch-off");
         assert_eq!(main.locators[0].scene_ordinal, None);
+    }
+
+    /// Round 643 — a plan for the three cases the seat rule now distinguishes.
+    fn plan_with(
+        mode: mnemosyne_core::DisclosureMode,
+        surface: Option<mnemosyne_core::DisclosureSurface>,
+    ) -> mnemosyne_core::DisclosurePlan {
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "f-x".to_string(),
+            mnemosyne_core::DisclosureOverride {
+                mode,
+                first_at: BTreeMap::new(),
+                surface,
+            },
+        );
+        mnemosyne_core::DisclosurePlan {
+            description: String::new(),
+            default_mode: mnemosyne_core::DisclosureMode::Withhold,
+            overrides,
+        }
+    }
+
+    /// Round 643 — the seat DERIVES from `canon_from` when no surface is
+    /// authored. Before this, no surface meant no locator, so a fact simply did
+    /// not exist for the runtime: the first consumer hand-copied `canon_from`
+    /// into `surface.scene` 1,099 times out of 1,099 to keep its facts alive,
+    /// and that copy drifted twice. Deleting this arm resurrects the copy.
+    #[test]
+    fn playable_world_derives_the_seat_when_no_surface_is_authored() {
+        let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            plan_with(mnemosyne_core::DisclosureMode::State, None),
+        );
+        let order = chain(&["ch-1", "ch-2"]);
+
+        let report = playable_world(&store, &order, None, "t1").unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.locators.len(), 1, "a disclosed fact is on the map");
+        assert_eq!(main.locators[0].scene, "ch-1", "the seat is its canon_from");
+        assert_eq!(
+            main.locators[0].scene_ordinal,
+            Some(0),
+            "a derived seat is on the walk by construction"
+        );
+        assert_eq!(main.locators[0].object, None);
+    }
+
+    /// Round 643 — an authored surface still WINS. This is the control: the
+    /// derive arm must not swallow the case the field exists for, a diegetic
+    /// carrier sitting somewhere other than the fact's own seat.
+    #[test]
+    fn playable_world_lets_an_authored_surface_override_the_derived_seat() {
+        let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            plan_with(
+                mnemosyne_core::DisclosureMode::Imply,
+                Some(mnemosyne_core::DisclosureSurface {
+                    scene: "ch-2".to_string(),
+                    object: Some("e-relic".to_string()),
+                }),
+            ),
+        );
+        let order = chain(&["ch-1", "ch-2"]);
+
+        let report = playable_world(&store, &order, None, "t1").unwrap();
+        let main = &report.worlds[MAIN_BRANCH];
+        assert_eq!(main.locators.len(), 1);
+        assert_eq!(main.locators[0].scene, "ch-2", "the authored carrier wins");
+        assert_eq!(main.locators[0].scene_ordinal, Some(1));
+        assert_eq!(main.locators[0].object.as_deref(), Some("e-relic"));
+    }
+
+    /// Round 643 — A WITHHELD FACT IS NOT ON THE MAP, surface or no surface.
+    /// This arm did not exist: a `withhold` override carrying a surface emitted
+    /// a locator stamped `mode: "withhold"`, and the first consumer's engine
+    /// reads locators as the game's doors — so the story's core truth would have
+    /// printed to the screen through this seam, past the leak gate that cannot
+    /// see it. Their engine had deleted its own withhold filter on the premise
+    /// that "withheld facts emit no locator"; this makes that true.
+    #[test]
+    fn playable_world_keeps_a_withheld_fact_off_the_map() {
+        let order = chain(&["ch-1", "ch-2"]);
+        for surface in [
+            None,
+            Some(mnemosyne_core::DisclosureSurface {
+                scene: "ch-2".to_string(),
+                object: Some("e-relic".to_string()),
+            }),
+        ] {
+            let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+            store.disclosure_plans.insert(
+                "t1".to_string(),
+                plan_with(mnemosyne_core::DisclosureMode::Withhold, surface.clone()),
+            );
+            let report = playable_world(&store, &order, None, "t1").unwrap();
+            assert!(
+                report.worlds[MAIN_BRANCH].locators.is_empty(),
+                "a withheld fact must never reach the map (surface: {:?})",
+                surface
+            );
+        }
     }
 
     // ====================================================================
