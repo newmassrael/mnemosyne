@@ -215,8 +215,14 @@ pub struct RuleClassSpec {
 pub struct QuestPredicate {
     pub predicate: &'static str,
     pub role: &'static str,
-    /// The expected object shape of this predicate's typed leg.
+    /// The expected object shape of this predicate's typed leg, as prose.
     pub object_shape: &'static str,
+    /// Round 631 — the MACHINE-READABLE required object kind, the SSOT the
+    /// validate-layer quest-shape guard reads (`object_shape` is prose for the
+    /// contract's human reader; this is what enforcement derives from, so the
+    /// two cannot drift). `None` = both kinds are allowed (`completed_by`, whose
+    /// object is an entity actor OR a scalar discharger).
+    pub required_object_kind: Option<PredicateObjectKind>,
 }
 
 /// The quest authoring convention (R559) — a projection over existing
@@ -1010,6 +1016,20 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
         .collect()
 }
 
+/// Round 631 — the quest predicates and their REQUIRED object kind, read by the
+/// validate-layer quest-shape guard (`continuity::check_quest_predicate_shapes`)
+/// so a store cannot hold a `requires`/`pursues` fact with a scalar object where
+/// the contract declares an entity. Derived from the ONE contract in
+/// `quest_encoding` — the guard shares the SSOT with `describe-schema`, never a
+/// second hardcoded list (the R629 drift class). `None` = both kinds allowed.
+pub(crate) fn quest_predicate_object_kinds(
+) -> impl Iterator<Item = (&'static str, Option<PredicateObjectKind>)> {
+    quest_encoding()
+        .predicates
+        .into_iter()
+        .map(|p| (p.predicate, p.required_object_kind))
+}
+
 fn quest_encoding() -> QuestEncoding {
     QuestEncoding {
         description: "A quest is the NARRATIVE instance of the substrate's universal \
@@ -1022,18 +1042,21 @@ fn quest_encoding() -> QuestEncoding {
                 predicate: QUEST_PRED_PURSUES,
                 role: "an actor entity (subject) LEADS the quest (object) — the quest's actors.",
                 object_shape: "entity (the quest)",
+                required_object_kind: Some(PredicateObjectKind::Entity),
             },
             QuestPredicate {
                 predicate: QUEST_PRED_REQUIRES,
                 role: "a quest (subject) is gated by another quest (object) that must complete \
                     first — the declarative prerequisite; the canon order proves the timing.",
                 object_shape: "entity (the prerequisite quest)",
+                required_object_kind: Some(PredicateObjectKind::Entity),
             },
             QuestPredicate {
                 predicate: QUEST_PRED_COMPLETED_BY,
                 role: "a quest (subject) is DISCHARGED by an actor (object) on a road — the \
                     carrying fact also `pays_off` the quest's giving setup.",
                 object_shape: "entity or scalar value (the discharger)",
+                required_object_kind: None,
             },
         ],
         completion_rule: "A quest's GIVING setup is a `payoff_expectation: expected` fact that \

@@ -610,7 +610,8 @@ pub fn authoring_frontier_report(
     // (Round 618, MNEMO-GAP-005) is derived once — quest plumbing that a
     // coverage read subtracts (no stored marker: canon/invented stays
     // consumer-side, decision C).
-    let structural_ids = mnemosyne_validate::continuity::structural_fact_ids(&store);
+    let structural_ids =
+        mnemosyne_validate::continuity::structural_fact_ids(&store).map_err(OpError::Other)?;
     let mut counts: BTreeMap<String, usize> =
         store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
     let mut structural_counts: BTreeMap<String, usize> =

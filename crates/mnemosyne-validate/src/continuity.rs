@@ -2062,6 +2062,50 @@ fn scan_interval_rule(
 /// arriving here (a programmatic rule that skipped the loader) fails loud
 /// instead of passing a trimmed check while the evaluation compares exact and
 /// silently matches nothing.
+/// Round 631 — a reserved quest predicate (`pursues` / `requires`) whose object
+/// the contract declares an ENTITY must not carry a scalar object. Without this
+/// the malformed fact validated CLEAN and then vanished silently from
+/// `quest_graph` (an `if let Entity` with no else) while `structural_fact_ids`
+/// still counted it by predicate string — two readers disagreeing about one
+/// fact, exit 0. A read-time guard on quest_graph alone was a band-aid
+/// (`report-authoring-frontier` with no `--telling` calls structural_fact_ids
+/// but never quest_graph, so the miscount survived); the enforcement belongs at
+/// the STORE boundary so every reader is protected by construction. The
+/// required kind is DERIVED from the quest contract (schema), not a second list.
+fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
+    let required: BTreeMap<&'static str, mnemosyne_core::PredicateObjectKind> =
+        crate::schema::quest_predicate_object_kinds()
+            .filter_map(|(pred, kind)| kind.map(|k| (pred, k)))
+            .collect();
+    for (fid, fact) in &store.narrative_facts {
+        let Some(claim) = &fact.typed else { continue };
+        let Some(&want) = required.get(claim.predicate.as_str()) else {
+            continue;
+        };
+        let actual = match &claim.object {
+            mnemosyne_core::TypedObject::Entity { .. } => {
+                mnemosyne_core::PredicateObjectKind::Entity
+            }
+            mnemosyne_core::TypedObject::Value { .. } => {
+                mnemosyne_core::PredicateObjectKind::Scalar
+            }
+        };
+        if actual != want {
+            return Err(format!(
+                "quest-shape: fact `{fid}` uses reserved quest predicate `{}` with a {} \
+                 object, but the quest contract requires an {} — a scalar cannot name a \
+                 quest, so the edge would silently vanish from report-quest-graph while \
+                 still counting as structural. Declare the predicate `object_kind = entity` \
+                 and author the object as an entity id (add-predicate --object-kind entity).",
+                claim.predicate,
+                actual.as_str(),
+                want.as_str(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn check_rule_predicates(store: &AtomicStore, rules: &[NarrativeRule]) -> Result<(), String> {
     for rule in rules {
         for p in rule.referenced_predicates() {
@@ -2107,6 +2151,7 @@ pub fn timeline_gaps(
 ) -> Result<TimelineGapsReport, String> {
     check_store_boundary(store, order)?;
     check_rule_predicates(store, rules)?;
+    check_quest_predicate_shapes(store)?;
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
     let lineages = query_world_lineages(store)?;
@@ -2153,6 +2198,7 @@ pub fn scan_continuity(
 ) -> Result<ContinuityReport, String> {
     check_store_boundary(store, order)?;
     check_rule_predicates(store, rules)?;
+    check_quest_predicate_shapes(store)?;
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
     let lineages = query_world_lineages(store)?;
@@ -3987,10 +4033,17 @@ fn quest_giving_setups(store: &AtomicStore) -> BTreeMap<String, BTreeSet<String>
 /// which is why the store need carry no `structural` marker. Canon-vs-invented,
 /// by contrast, is NOT derived here — it is per-branch adaptation-fidelity
 /// metadata kept consumer-side (decision C).
-pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
+pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
+    // Round 631 — derive from the SAME validated invariant `quest_graph` reads,
+    // so the two classifiers cannot disagree about a malformed quest fact. A
+    // read-time guard on quest_graph alone was a band-aid: this function's own
+    // caller (`authoring_frontier_report` with no telling) never runs
+    // quest_graph, so the malformed fact was silently counted as structural.
+    // Now every reader of quest classification shares one enforcer.
+    check_quest_predicate_shapes(store)?;
     let give_setups: BTreeSet<String> =
         quest_giving_setups(store).into_values().flatten().collect();
-    store
+    Ok(store
         .narrative_facts
         .iter()
         .filter(|(fid, fact)| {
@@ -4003,7 +4056,7 @@ pub fn structural_fact_ids(store: &AtomicStore) -> BTreeSet<String> {
             typed_quest || give_setups.contains(fid.as_str())
         })
         .map(|(fid, _)| fid.clone())
-        .collect()
+        .collect())
 }
 
 /// A quest's DERIVED state in one world-line (R559: "quest state DERIVED per
@@ -4149,6 +4202,12 @@ pub fn quest_graph(
     world: Option<&str>,
     telling: &str,
 ) -> Result<QuestGraphReport, String> {
+    // Round 631 — the single validated invariant, shared with
+    // `structural_fact_ids`: a reserved quest predicate whose contract declares
+    // an entity object must not carry a scalar. Enforced HERE at entry, so the
+    // `if let Entity` indexers below never meet a malformed fact (that silent
+    // drop, against structural's raw-string count, was the R631 defect).
+    check_quest_predicate_shapes(store)?;
     // Reuse the existing projections VERBATIM (R558): playable-world gives the
     // fork topology + per-world giver-surface locators; payoff coverage gives
     // the per-world open/done of every giving setup (R442). No re-derivation.
@@ -7505,7 +7564,7 @@ mod tests {
         // Only q1 is a quest; hero/warden are actors (default kind).
         store.entities.get_mut("q1").unwrap().kind = "quest".to_string();
 
-        let structural = structural_fact_ids(&store);
+        let structural = structural_fact_ids(&store).unwrap();
         assert_eq!(
             structural,
             BTreeSet::from([
@@ -7593,6 +7652,89 @@ mod tests {
             .per_world
             .values()
             .all(|s| s.state == QuestState::Unknown));
+    }
+
+    /// Round 631 — a `requires`/`pursues` fact with a SCALAR object (the
+    /// contract declares entity) is refused by EVERY quest reader through ONE
+    /// shared invariant, not by a per-reader band-aid. Before: `quest_graph`
+    /// dropped it silently (`if let Entity`, no else) while `structural_fact_ids`
+    /// counted it by predicate string, and `report-authoring-frontier` with no
+    /// telling hit `structural_fact_ids` but never `quest_graph` — so the
+    /// miscount survived with exit 0. Now `check_quest_predicate_shapes` (derived
+    /// from the schema quest contract) gates both, and the store fails
+    /// `scan_continuity` too.
+    #[test]
+    fn malformed_quest_object_is_refused_by_every_reader() {
+        fn scalar_claim(subject: &str, predicate: &str, value: &str) -> mnemosyne_core::TypedClaim {
+            mnemosyne_core::TypedClaim {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                object: mnemosyne_core::TypedObject::Value {
+                    value: value.to_string(),
+                },
+            }
+        }
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let plan = |store: &mut AtomicStore| {
+            store.disclosure_plans.insert(
+                "t".to_string(),
+                mnemosyne_core::DisclosurePlan {
+                    description: String::new(),
+                    default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                    overrides: BTreeMap::new(),
+                },
+            );
+        };
+
+        for (pred, tag) in [
+            (QUEST_PRED_REQUIRES, "requires"),
+            (QUEST_PRED_PURSUES, "pursues"),
+        ] {
+            let mut store = store_with(vec![quest_fact(
+                "f-bad",
+                "ch-1",
+                None,
+                &["q-a", "q-b"],
+                scalar_claim("q-b", pred, "q-a"),
+                &[],
+            )]);
+            store.entities.get_mut("q-b").unwrap().kind = "quest".to_string();
+            plan(&mut store);
+
+            // Reader 1: the classifier itself refuses (its own caller,
+            // authoring-frontier-with-no-telling, is protected by construction).
+            let e1 = structural_fact_ids(&store).unwrap_err();
+            assert!(
+                e1.contains("f-bad") && e1.contains(pred) && e1.contains("entity"),
+                "{tag}: {e1}"
+            );
+            // Reader 2: the projection refuses at entry (no silent drop).
+            let e2 = quest_graph(&store, &order, None, "t").unwrap_err();
+            assert!(e2.contains("f-bad"), "{tag}: {e2}");
+            // Reader 3: the continuity scan (validate-continuity/frontier) refuses.
+            let e3 = scan_continuity(&store, &order, &[]).unwrap_err();
+            assert!(e3.contains("quest-shape"), "{tag}: {e3}");
+        }
+
+        // NEGATIVE CONTROL: a proper ENTITY object passes all three (not
+        // over-broad), and structural still counts the well-formed quest fact.
+        let mut ok = store_with(vec![quest_fact(
+            "f-ok",
+            "ch-1",
+            None,
+            &["q-a", "q-b"],
+            ent_claim("q-b", "requires", "q-a"),
+            &[],
+        )]);
+        for q in ["q-a", "q-b"] {
+            ok.entities.get_mut(q).unwrap().kind = "quest".to_string();
+        }
+        plan(&mut ok);
+        assert!(structural_fact_ids(&ok).unwrap().contains("f-ok"));
+        let report = quest_graph(&ok, &order, None, "t").unwrap();
+        let qb = report.quests.iter().find(|q| q.quest_id == "q-b").unwrap();
+        assert_eq!(qb.prerequisites, vec!["q-a".to_string()]);
+        scan_continuity(&ok, &order, &[]).unwrap();
     }
 
     /// `--world` scopes every `QuestNode.per_world` to the one road, but the
