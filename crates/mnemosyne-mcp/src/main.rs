@@ -373,6 +373,27 @@ pub struct AddPredicateArgs {
     pub description: String,
 }
 
+/// R658 — the repair half of the predicate registry. Full replace (PUT), so
+/// `description` is mandatory here unlike `add_predicate`: omitting it on an
+/// update path would wipe it silently.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetPredicateArgs {
+    /// Predicate id — must ALREADY be registered (`add_predicate` creates).
+    pub predicate_id: String,
+    /// New declared object shape: `entity` | `scalar`. A re-type rejects
+    /// while any existing use still holds an object of the old shape.
+    pub object_kind: String,
+    /// New description. Mandatory — this is a replace, not a merge.
+    pub description: String,
+}
+
+/// R658 — remove a predicate from the registry.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemovePredicateArgs {
+    /// Predicate id. Rejects while any typed leg still names it.
+    pub predicate_id: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddDisclosurePlanArgs {
     /// Telling id — the registry key for this named telling over the fact base.
@@ -1579,6 +1600,27 @@ impl MnemosyneServer {
         let outcome = self.run_mutate(|store, path| {
             atomic::add_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
         });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description too. A re-type REJECTS while any existing use holds an object of the old shape (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
+    )]
+    async fn set_predicate(&self, args: Parameters<SetPredicateArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove a predicate from the registry (R658). REJECTS while any typed leg still names it — removing it would orphan those refs, which the write path forbids. Absent predicate rejects (not an idempotent no-op)."
+    )]
+    async fn remove_predicate(&self, args: Parameters<RemovePredicateArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_predicate(store, path, &a.predicate_id));
         self.finish_mutate(outcome)
     }
 

@@ -4434,6 +4434,182 @@ pub fn add_predicate(
     )
 }
 
+/// Whether one stored object leg satisfies a declared [`PredicateObjectKind`]
+/// (Round 658). Exhaustive over both enums ON PURPOSE — no wildcard arm — so a
+/// new variant on either side breaks THIS build instead of silently answering
+/// "does not conform" (the R624 oracle-derived rule; the hand-listed
+/// `[Entity, Scalar]` array in `describe-schema` is the counter-example this
+/// avoids). [`build_typed_claim`] owns the same verdict on the write path; this
+/// is the read-side twin used to re-check EXISTING uses before a re-type.
+fn object_matches_kind(object: &TypedObject, kind: PredicateObjectKind) -> bool {
+    match (object, kind) {
+        (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
+        (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
+        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => false,
+        (TypedObject::Value { .. }, PredicateObjectKind::Entity) => false,
+    }
+}
+
+/// Every fact whose typed leg names `predicate_id`, in store order
+/// (`BTreeMap` iteration = deterministic, so the reject message is stable).
+fn predicate_uses<'a>(store: &'a AtomicStore, predicate_id: &str) -> Vec<&'a str> {
+    store
+        .narrative_facts
+        .iter()
+        .filter(|(_, fact)| {
+            fact.typed
+                .as_ref()
+                .is_some_and(|t| t.predicate == predicate_id)
+        })
+        .map(|(fid, _)| fid.as_str())
+        .collect()
+}
+
+/// Render at most `LIMIT` ids for a reject message, with a count when elided —
+/// a hundred-fact list is not a better error than a bounded one plus the total.
+fn sample_ids(ids: &[&str]) -> String {
+    const LIMIT: usize = 5;
+    if ids.len() <= LIMIT {
+        return ids.join(", ");
+    }
+    format!(
+        "{}, … (+{} more)",
+        ids[..LIMIT].join(", "),
+        ids.len() - LIMIT
+    )
+}
+
+/// Re-type or re-describe an EXISTING predicate (Round 658) — the missing
+/// half of the predicate registry, and precondition 1 of DEBT-G.
+///
+/// Until this existed, `add_predicate` could CREATE a registry state the
+/// mutate API could not UNDO: `stage_registry_entry` rejects a divergent
+/// re-declare, so a predicate registered with the wrong `object_kind` was
+/// reachable only through a `vN` predicate id or a hand-edit of the store —
+/// both `CLAUDE.md` hard bans. A write path that forbids what no path can
+/// repair is the same shape we charged the disclosure leg with.
+///
+/// Semantics are a full replace (PUT), never a merge: the caller states the
+/// whole declaration, so nothing is wiped by omission at this layer. Absent
+/// predicate REJECTS — `add_predicate` creates, `set_predicate` mutates, and a
+/// silent create here would put two creators on one registry with different
+/// invariants.
+///
+/// The re-type invariant: a declaration may only move to a kind EVERY existing
+/// use already satisfies. Otherwise the registry and the facts would disagree
+/// and `build_typed_claim` would reject on the next write to a store that
+/// already round-trips — a silent broken state. `add_predicate` enforces the
+/// same invariant vacuously (a fresh id has no uses; a use cannot precede its
+/// registration, `build_typed_claim` sees to that), so this is one invariant on
+/// two write paths, not two invariants.
+pub fn set_predicate(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    predicate_id: &str,
+    object_kind: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = predicate_id.trim().to_string();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "set_predicate: predicate_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    let candidate = build_predicate("set_predicate", object_kind, description)
+        .map_err(AtomicMutateError::Validation)?;
+    let Some(existing) = store.predicates.get(&id) else {
+        return Err(AtomicMutateError::Validation(format!(
+            "set_predicate: predicate `{id}` not present in the registry — \
+             add_predicate creates, set_predicate mutates (fail-loud; a silent \
+             create here would put two creators on one registry)"
+        )));
+    };
+    if *existing == candidate {
+        return registry_receipt(
+            store,
+            sidecar_path,
+            "set_predicate",
+            "predicate",
+            &id,
+            false,
+        );
+    }
+    if existing.object_kind != candidate.object_kind {
+        let offenders: Vec<&str> = predicate_uses(store, &id)
+            .into_iter()
+            .filter(|fid| {
+                store.narrative_facts[*fid]
+                    .typed
+                    .as_ref()
+                    .is_some_and(|t| !object_matches_kind(&t.object, candidate.object_kind))
+            })
+            .collect();
+        if !offenders.is_empty() {
+            let from = existing.object_kind.as_str();
+            let to = candidate.object_kind.as_str();
+            let n = offenders.len();
+            return Err(AtomicMutateError::Validation(format!(
+                "set_predicate: predicate `{id}` cannot be re-typed {from} → {to} — \
+                 {n} existing use(s) hold an object of the old shape: {} \
+                 (re-author or retract those typed legs first; a registry that \
+                 disagrees with its uses is a silent broken state)",
+                sample_ids(&offenders)
+            )));
+        }
+    }
+    store.predicates.insert(id.clone(), candidate);
+    registry_receipt(store, sidecar_path, "set_predicate", "predicate", &id, true)
+}
+
+/// Remove a predicate from the registry (Round 658) — the other half of the
+/// repair path, and the direct un-brick for a typo'd `add_predicate`.
+///
+/// Referential integrity is the whole contract: a predicate still named by a
+/// typed leg REJECTS. Removing it would leave `TypedClaim.predicate` pointing
+/// at nothing while the store still round-trips — precisely the orphan the
+/// write path (`build_typed_claim`, which rejects an unregistered predicate)
+/// exists to forbid. This is the rule the disclosure leg was convicted of
+/// missing (R625 CARRY-1: `retract-fact` orphans a 1000-ref override); it is
+/// not repeated here.
+///
+/// An absent predicate REJECTS rather than no-op'ing: "remove what is not
+/// there" is a caller mistake worth surfacing, not an idempotent success.
+pub fn remove_predicate(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    predicate_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = predicate_id.trim().to_string();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "remove_predicate: predicate_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    if !store.predicates.contains_key(&id) {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_predicate: predicate `{id}` not present in the registry (fail-loud)"
+        )));
+    }
+    let uses = predicate_uses(store, &id);
+    if !uses.is_empty() {
+        let n = uses.len();
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_predicate: predicate `{id}` is still named by {n} typed leg(s): {} \
+             — removing it would orphan them (retract or re-author those facts first)",
+            sample_ids(&uses)
+        )));
+    }
+    store.predicates.remove(&id);
+    registry_receipt(
+        store,
+        sidecar_path,
+        "remove_predicate",
+        "predicate",
+        &id,
+        true,
+    )
+}
+
 /// Register one disclosure (discourse) plan — a named telling over the fact
 /// base (Round 506, design sec 7.24): a default mode (policy) the per-fact
 /// overrides ([`set_disclosure`]) sit on top of. The registry symmetry
@@ -7674,12 +7850,13 @@ mod tests {
         // Round 630 (DEBT-B) — the tripwire that makes "safe by absence" loud.
         // Store identities (section / entity / branch / frame / predicate) are
         // referenced by other rows; a remover for one that skips an inbound-ref
-        // scan silently orphans those refs (the R630 defect). Only ONE such
-        // primitive exists today. This test scans the source for `pub fn
-        // remove_*` and fails the day a new one lands unacknowledged — so the
-        // author must decide, right here, whether it needs a scan like
-        // `inbound_section_refs`. Detection, not derivation (R622): future
-        // functions cannot be derived, so a source tripwire is the honest tool.
+        // scan silently orphans those refs (the R630 defect). This test scans
+        // the source for `pub fn remove_*` and fails the day a new one lands
+        // unacknowledged — so the author must decide, right here, whether it
+        // needs a scan like `inbound_section_refs`. Detection, not derivation
+        // (R622): future functions cannot be derived, so a source tripwire is
+        // the honest tool. It has fired once for real: R658's remove_predicate
+        // landed and this assert caught it before the commit.
         let src = include_str!("lib.rs");
         let removers: std::collections::BTreeSet<&str> = src
             .lines()
@@ -7693,6 +7870,9 @@ mod tests {
             "section_binding", // a code binding on a section, not an identity.
             "inventory_entry", // inventory id, referenced by nothing.
             "disclosure",      // removes a referrer (an override), not a target.
+            "predicate",       // R658: an identity (TypedClaim.predicate names
+                               // it), so it IS this test's target class — guarded by
+                               // predicate_uses, which rejects while any typed leg refers to it.
         ]
         .into_iter()
         .collect();
@@ -11126,6 +11306,173 @@ mod tests {
         );
         // Reloaded store carries the bumped schema version.
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// Round 658 — the brick R625 proved and this round repairs, end to end:
+    /// a predicate registered with the WRONG object_kind was unreachable by
+    /// every primitive (a divergent re-declare rejects), so the only exits
+    /// were a `vN` id or a hand-edit — both CLAUDE.md hard bans. The repair
+    /// must be the mutate API's own.
+    #[test]
+    fn wrongly_typed_predicate_is_repairable_not_bricked() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("kara".to_string(), Entity::default());
+
+        // The typo: meant scalar, wrote entity. NOTHING could reach it before.
+        add_predicate(&mut store, &path, "alive", "entity", "life state").unwrap();
+        let err = add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+
+        // set_predicate reaches it: 0 uses, so the re-type is vacuously safe.
+        set_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        assert_eq!(
+            store.predicates["alive"].object_kind,
+            PredicateObjectKind::Scalar
+        );
+        // Repaired for real: the fact builder now accepts the scalar leg.
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["kara".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "kara".to_string(),
+                    predicate: "alive".to_string(),
+                    object: TypedObject::Value {
+                        value: "operational".to_string(),
+                    },
+                }),
+                ..sample_fact("typed-1", "gt")
+            },
+        )
+        .unwrap();
+        assert!(AtomicStore::load(&path).unwrap().narrative_facts["typed-1"]
+            .typed
+            .is_some());
+    }
+
+    /// Round 658 — the invariant that keeps the repair from becoming the
+    /// damage: a declaration may only move to a kind EVERY existing use
+    /// already satisfies, and a predicate still named by a typed leg cannot
+    /// be removed. Both rejects are non-vacuous — proven by the accepts that
+    /// bracket them, not by the reject alone.
+    #[test]
+    fn set_and_remove_predicate_hold_referential_integrity() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("kara".to_string(), Entity::default());
+        add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["kara".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "kara".to_string(),
+                    predicate: "alive".to_string(),
+                    object: TypedObject::Value {
+                        value: "operational".to_string(),
+                    },
+                }),
+                ..sample_fact("typed-1", "gt")
+            },
+        )
+        .unwrap();
+
+        // Re-type with a use of the old shape REJECTS, and names the offender.
+        let err = set_predicate(&mut store, &path, "alive", "entity", "life state").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("cannot be re-typed"), "{msg}");
+        assert!(msg.contains("typed-1"), "offender not named: {msg}");
+        assert_eq!(
+            store.predicates["alive"].object_kind,
+            PredicateObjectKind::Scalar,
+            "a rejected re-type must not mutate the registry"
+        );
+        // The description alone still moves — the reject is about the SHAPE.
+        set_predicate(&mut store, &path, "alive", "scalar", "vital state").unwrap();
+        assert_eq!(store.predicates["alive"].description, "vital state");
+        // Identical content is an idempotent no-op (add_predicate's 3-way).
+        let receipt = set_predicate(&mut store, &path, "alive", "scalar", "vital state").unwrap();
+        assert!(receipt.target_id.ends_with("(no-op)"));
+
+        // Removal while used REJECTS (no orphaned TypedClaim.predicate) …
+        let err = remove_predicate(&mut store, &path, "alive").unwrap_err();
+        assert!(err.to_string().contains("typed-1"), "{err}");
+        assert!(store.predicates.contains_key("alive"));
+        // … and the SAME call succeeds once the use is gone: the reject was
+        // load-bearing, not a blanket refusal.
+        retract_fact(&mut store, &path, "typed-1", "R658 non-vacuity probe").unwrap();
+        remove_predicate(&mut store, &path, "alive").unwrap();
+        assert!(!AtomicStore::load(&path)
+            .unwrap()
+            .predicates
+            .contains_key("alive"));
+
+        // Absent predicate fails loud on BOTH repair paths (no silent create,
+        // no idempotent delete).
+        let err = set_predicate(&mut store, &path, "ghost", "scalar", "").unwrap_err();
+        assert!(err.to_string().contains("not present"), "{err}");
+        let err = remove_predicate(&mut store, &path, "ghost").unwrap_err();
+        assert!(err.to_string().contains("not present"), "{err}");
+    }
+
+    /// Round 658 — the field-invariant parity test CLAUDE.md requires the
+    /// moment a second write path reaches one field. `store.predicates[id]`
+    /// now has two writers (`add_predicate` creates, `set_predicate`
+    /// mutates); their create-vs-update guards differ BY DESIGN, but the
+    /// `Predicate` VALUE they admit must not. R295's paste-error (a setter
+    /// carrying a cap its sibling append path lacked) is the case this
+    /// catches.
+    #[test]
+    fn add_and_set_predicate_admit_the_same_predicate_value() {
+        let cases = [
+            ("unknown tag", "boolean", "d"),
+            ("empty tag", "", "d"),
+            ("tag whitespace", "  scalar  ", "d"),
+            ("tag case", "Scalar", "d"),
+            ("description whitespace", "scalar", "  spaced  "),
+            ("description empty", "scalar", ""),
+        ];
+        for (label, object_kind, description) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path_a = tmp.path().join("a.json");
+            let path_b = tmp.path().join("b.json");
+
+            // add: onto an empty registry.
+            let mut store_a = AtomicStore::new();
+            seed_chapters(&mut store_a);
+            let add_ok =
+                add_predicate(&mut store_a, &path_a, "p", object_kind, description).is_ok();
+
+            // set: onto a registry already holding `p`, so the SAME candidate
+            // value is what each path is judged on.
+            let mut store_b = AtomicStore::new();
+            seed_chapters(&mut store_b);
+            add_predicate(&mut store_b, &path_b, "p", "entity", "seed").unwrap();
+            let set_ok =
+                set_predicate(&mut store_b, &path_b, "p", object_kind, description).is_ok();
+
+            assert_eq!(
+                add_ok, set_ok,
+                "predicate write-path parity broken for `{label}`: add={add_ok} set={set_ok}"
+            );
+            // On accept, both must have stored the IDENTICAL value — parity of
+            // the result, not just of the verdict (the R592 discipline).
+            if add_ok {
+                assert_eq!(
+                    store_a.predicates["p"], store_b.predicates["p"],
+                    "predicate stored-result parity broken for `{label}`"
+                );
+            }
+        }
     }
 
     /// Round 446 — manifest path: predicates land before facts in ONE

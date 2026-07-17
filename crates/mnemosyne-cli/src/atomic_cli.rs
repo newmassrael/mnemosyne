@@ -598,6 +598,107 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Round 658 — re-type or re-describe an EXISTING predicate. Full replace
+/// (PUT), so BOTH `--object-kind` and `--description` are mandatory here even
+/// though `add-predicate` defaults the description: omitting one on an update
+/// path would wipe it silently, and this primitive exists precisely because
+/// silent registry damage had no repair.
+pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut predicate_id: Option<String> = None;
+    let mut object_kind: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--predicate" => {
+                predicate_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--predicate missing"))?
+                        .clone(),
+                )
+            }
+            "--object-kind" => {
+                object_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--object-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--description missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
+    let object_kind = object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?;
+    let description = description.ok_or_else(|| {
+        anyhow!("--description arg required (set-predicate is a full replace; state it explicitly)")
+    })?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_predicate(
+            &mut store,
+            &sidecar_path,
+            &predicate_id,
+            &object_kind,
+            &description,
+        ),
+        json,
+    )
+}
+
+/// Round 658 — remove a predicate from the registry. Rejects while any typed
+/// leg still names it.
+pub fn cmd_remove_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut predicate_id: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--predicate" => {
+                predicate_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--predicate missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_predicate(&mut store, &sidecar_path, &predicate_id),
+        json,
+    )
+}
+
 /// Round 506 — register one disclosure (discourse) plan: a named telling over
 /// the fact base. `--default-mode withhold|state|hint|imply` mandatory (no
 /// silent default for a load-bearing policy).
