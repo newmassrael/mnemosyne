@@ -207,6 +207,16 @@ pub struct MapSection {
     /// must be a registered `entity_kinds` id (fail-loud, the R669 machine-
     /// slot rule). A map node whose entity is not of this kind fails G1.
     pub place_kind: String,
+    /// CONTAINER entity ids — place entities that are deliberately NOT map
+    /// nodes (G2). A container is a place used as a fact search key but not a
+    /// POSITION: `exclusive(per:subject)` = one person in one place, so a
+    /// container-as-node would let someone be "in the village" AND "on the
+    /// island" at once. Data (specific entity ids), so config, never hardcoded
+    /// (the same discipline as `place_kind`). Each must be a registered place
+    /// entity — a typo'd container silently fails to exclude the real one.
+    /// Empty = no containers (G2 then checks every place is a node).
+    #[serde(default)]
+    pub containers: Vec<String>,
     /// `reject` | `warn` | `info`. Default `reject` — build-map.py files G1
     /// under "게이트(전부 하드)" (all hard).
     #[serde(default = "default_severity_reject")]

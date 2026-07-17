@@ -2726,6 +2726,7 @@ fn cmd_validate_map(args: &[String]) -> Result<()> {
     let place_kind = map_cfg
         .map(|m| m.place_kind.clone())
         .ok_or_else(|| anyhow!("--map requires a [map] table for place_kind"))?;
+    let containers: Vec<String> = map_cfg.map(|m| m.containers.clone()).unwrap_or_default();
 
     let map = mnemosyne_validate::map::load_map_file(&map_path, pin.as_deref())
         .map_err(|e| anyhow!("{e}"))?;
@@ -2733,7 +2734,7 @@ fn cmd_validate_map(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
-    let findings = mnemosyne_validate::map::check_map(&store, &map, &place_kind);
+    let findings = mnemosyne_validate::map::check_map(&store, &map, &place_kind, &containers);
 
     if json {
         println!(

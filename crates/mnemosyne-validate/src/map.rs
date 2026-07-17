@@ -192,11 +192,88 @@ pub fn check_map_g4(map: &MapFile) -> Vec<String> {
     findings
 }
 
-/// Run every IMPLEMENTED map gate and concatenate their findings (G1 + G4
-/// today; G2/G3/G5/G6 are still on `build-map.py` — see the module's carry).
-/// The gates are independent, so all run regardless of each other's findings.
-pub fn check_map(store: &AtomicStore, map: &MapFile, place_kind: &str) -> Vec<String> {
+/// G2 — every store PLACE is on the map (the owner's key gate: "소설이 장소를
+/// 발명하면 여기서 터진다"). G1 catches a map node with no store entity; G2 is
+/// the OTHER direction — a store place entity that no map node names is a place
+/// the novel invented without adding it to the map first.
+///
+/// CONTAINERS are the exception: place entities used as a fact search key but
+/// NOT a position (`exclusive(per:subject)` = one person one place), so they
+/// are deliberately not nodes. `containers` is the configured id list; a
+/// container must be a registered place entity (a typo'd one silently fails to
+/// exclude the real place), and a container that DID leak in as a node breaks
+/// exclusive and is its own finding.
+///
+/// Guarded on `place_kind` being registered — G1 owns that finding, so if it is
+/// unregistered G2 stays silent rather than double-reporting.
+pub fn check_map_g2(
+    store: &AtomicStore,
+    map: &MapFile,
+    place_kind: &str,
+    containers: &[String],
+) -> Vec<String> {
+    let mut findings = Vec::new();
+    if !store.entity_kinds.contains_key(place_kind) {
+        return findings; // G1 reports the unregistered place_kind.
+    }
+    let node_ids: std::collections::BTreeSet<&str> =
+        map.nodes.iter().map(|n| n.id.as_str()).collect();
+    let container_set: std::collections::BTreeSet<&str> =
+        containers.iter().map(String::as_str).collect();
+
+    // A configured container must be a registered place entity — else the typo
+    // does not exclude the place it names, and G2(1) below fires on the real
+    // container with a misleading message.
+    for &c in &container_set {
+        match store.entities.get(c) {
+            None => findings.push(format!(
+                "G2 [map].containers names `{c}`, which is not a store entity — fix the id"
+            )),
+            Some(e) if e.kind != place_kind => findings.push(format!(
+                "G2 [map].containers `{c}` is not a `{place_kind}` (kind = `{}`)",
+                e.kind
+            )),
+            Some(_) => {}
+        }
+    }
+
+    // G2(1): every store place, minus containers, is a map node. `store.entities`
+    // is a BTreeMap so iteration is sorted — stable findings.
+    for (id, entity) in &store.entities {
+        if entity.kind == place_kind
+            && !container_set.contains(id.as_str())
+            && !node_ids.contains(id.as_str())
+        {
+            findings.push(format!(
+                "G2 store place `{id}` is not on the map — the novel invented a place; \
+                 fix map.json first"
+            ));
+        }
+    }
+
+    // G2(2): no container leaked in as a node (that would break exclusive).
+    for &c in &container_set {
+        if node_ids.contains(c) {
+            findings.push(format!(
+                "G2 container `{c}` is a map node — exclusive breaks (one person in two places)"
+            ));
+        }
+    }
+
+    findings
+}
+
+/// Run every IMPLEMENTED map gate and concatenate their findings (G1 + G2 + G4
+/// today; G3/G5/G6 are still on `build-map.py` — see the module's carry). The
+/// gates are independent, so all run regardless of each other's findings.
+pub fn check_map(
+    store: &AtomicStore,
+    map: &MapFile,
+    place_kind: &str,
+    containers: &[String],
+) -> Vec<String> {
     let mut findings = check_map_g1(store, map, place_kind);
+    findings.extend(check_map_g2(store, map, place_kind, containers));
     findings.extend(check_map_g4(map));
     findings
 }
@@ -261,8 +338,8 @@ mod tests {
             &["ent-dike", "ent-village", "ent-well"],
             &[("ent-dike", "ent-village"), ("ent-village", "ent-well")],
         );
-        // Both gates: a clean map has no G1 finding AND no G4 finding.
-        assert!(check_map(&store(), &m, "place").is_empty());
+        // All gates: a clean map (every place is a node) has no finding.
+        assert!(check_map(&store(), &m, "place", &[]).is_empty());
     }
 
     /// NON-VACUITY: each fault class fires. The clean case above passing is not
@@ -375,18 +452,74 @@ mod tests {
         assert!(check_map_g4(&m).is_empty(), "{:?}", check_map_g4(&m));
     }
 
-    /// G1 and G4 are independent: a map can be internally connected yet
-    /// mis-reference the store (G1 fires, G4 does not), so `check_map` must
-    /// surface BOTH sets, not stop at the first gate.
+    /// The gates are independent: `check_map` runs all three and does not stop
+    /// at the first. This map is G2-clean (every store place is a node) and
+    /// G4-clean (connected), so only the G1 fault (ent-invented is not a store
+    /// entity) surfaces — proving a clean G2/G4 does not suppress G1.
     #[test]
-    fn check_map_runs_g1_and_g4_independently() {
-        // Connected graph (G4 clean) but ent-invented is not in the store (G1).
+    fn check_map_runs_all_gates_independently() {
         let m = map(
-            &["ent-dike", "ent-invented"],
-            &[("ent-dike", "ent-invented")],
+            &["ent-dike", "ent-village", "ent-well", "ent-invented"],
+            &[
+                ("ent-dike", "ent-village"),
+                ("ent-village", "ent-well"),
+                ("ent-well", "ent-invented"),
+            ],
         );
-        let f = check_map(&store(), &m, "place");
+        let f = check_map(&store(), &m, "place", &[]);
         assert_eq!(f.len(), 1, "{f:?}");
         assert!(f[0].contains("ent-invented") && f[0].contains("G1"));
+    }
+
+    /// G2 — a store place that no map node names is the novel inventing a place
+    /// (the owner's key gate). The store has ent-well; a map without it fires.
+    #[test]
+    fn g2_store_place_not_on_map_is_caught() {
+        let m = map(&["ent-dike", "ent-village"], &[("ent-dike", "ent-village")]);
+        // ent-well is a store place absent from the map.
+        let f = check_map_g2(&store(), &m, "place", &[]);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("ent-well") && f[0].contains("invented a place"));
+    }
+
+    /// G2 CONTAINER exception: a place deliberately excluded from the map (a
+    /// search key, not a position) does NOT fire G2(1) — but only when it is
+    /// actually declared a container.
+    #[test]
+    fn g2_container_is_excused_but_only_when_declared() {
+        let m = map(&["ent-dike", "ent-village"], &[("ent-dike", "ent-village")]);
+        // Undeclared: ent-well fires. Declared a container: it is excused.
+        assert_eq!(check_map_g2(&store(), &m, "place", &[]).len(), 1);
+        assert!(check_map_g2(&store(), &m, "place", &["ent-well".to_string()]).is_empty());
+    }
+
+    /// G2(2): a container that leaked in as a node breaks exclusive (one person
+    /// in two places), so it is a finding even though it is a declared place.
+    #[test]
+    fn g2_container_as_node_breaks_exclusive() {
+        let m = map(
+            &["ent-dike", "ent-village", "ent-well"],
+            &[("ent-dike", "ent-village"), ("ent-village", "ent-well")],
+        );
+        // ent-well is BOTH a declared container AND a node — the leak G2(2) names.
+        let f = check_map_g2(&store(), &m, "place", &["ent-well".to_string()]);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("ent-well") && f[0].contains("exclusive breaks"));
+    }
+
+    /// A configured container must be a registered place entity — a typo'd id
+    /// fails loud rather than silently failing to exclude the real place.
+    #[test]
+    fn g2_bogus_container_id_is_caught() {
+        let m = map(&["ent-dike", "ent-village", "ent-well"], &[]);
+        // "ent-typo" is not a store entity; "ent-jiun" is a character, not place.
+        let f_missing = check_map_g2(&store(), &m, "place", &["ent-typo".to_string()]);
+        assert!(f_missing
+            .iter()
+            .any(|x| x.contains("ent-typo") && x.contains("not a store entity")));
+        let f_wrongkind = check_map_g2(&store(), &m, "place", &["ent-jiun".to_string()]);
+        assert!(f_wrongkind
+            .iter()
+            .any(|x| x.contains("ent-jiun") && x.contains("not a `place`")));
     }
 }
