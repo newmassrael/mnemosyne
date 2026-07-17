@@ -19,7 +19,6 @@ pub mod confirmation;
 pub mod content_drift;
 pub mod continuity;
 pub mod disclosure;
-pub mod map;
 pub mod schema;
 pub mod spec_drift;
 pub mod t2;

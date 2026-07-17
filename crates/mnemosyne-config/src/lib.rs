@@ -176,56 +176,6 @@ pub struct WorkspaceConfig {
     /// pays no cost).
     #[serde(default)]
     pub continuity: Option<ContinuitySection>,
-    /// `[map]` table — the spatial-graph gate (`validate-map`). A declared
-    /// map (`map/v1`: nodes + edges) that the store's place entities are
-    /// checked against: a map node must be a registered entity of the
-    /// configured `place_kind`, and an edge endpoint must be a map node. The
-    /// port of the consumer's hand-built `build-map.py` G1 (the owner's
-    /// ruling: the map exists before the novel, and the novel cannot invent a
-    /// place). Absent → the gate is disabled (opt-in, the `[continuity]`
-    /// pattern).
-    #[serde(default)]
-    pub map: Option<MapSection>,
-}
-
-/// `[map]` table — the spatial-graph gate (`validate-map`), the port of the
-/// consumer's `build-map.py` G1 (the owner's 2026-07-17 ruling: the map
-/// exists before the novel is authored, the novel is authored on top, and the
-/// gate filters against it — "소설이 장소를 발명하지 못한다").
-///
-/// `deny_unknown_fields` (the R604 continuity-stress lesson): a misspelled key
-/// here fails loud at config load rather than silently disabling the gate.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct MapSection {
-    /// Workspace-relative path to the `map/v1` declaration (nodes + edges).
-    /// Required — a `[map]` table with no path is a config mistake.
-    pub path: String,
-    /// Which registered entity kind is a spatial place. NOT hardcoded to
-    /// `"place"` (ARCHITECTURE.md sec 6 invariant 4 — the substrate never
-    /// enumerates a consumer vocabulary): the consumer declares it, and it
-    /// must be a registered `entity_kinds` id (fail-loud, the R669 machine-
-    /// slot rule). A map node whose entity is not of this kind fails G1.
-    pub place_kind: String,
-    /// CONTAINER entity ids — place entities that are deliberately NOT map
-    /// nodes (G2). A container is a place used as a fact search key but not a
-    /// POSITION: `exclusive(per:subject)` = one person in one place, so a
-    /// container-as-node would let someone be "in the village" AND "on the
-    /// island" at once. Data (specific entity ids), so config, never hardcoded
-    /// (the same discipline as `place_kind`). Each must be a registered place
-    /// entity — a typo'd container silently fails to exclude the real one.
-    /// Empty = no containers (G2 then checks every place is a node).
-    #[serde(default)]
-    pub containers: Vec<String>,
-    /// `reject` | `warn` | `info`. Default `reject` — build-map.py files G1
-    /// under "게이트(전부 하드)" (all hard).
-    #[serde(default = "default_severity_reject")]
-    pub severity: Severity,
-    /// Optional sha256 pin of the map file (the R428 gate-authority-input
-    /// contract, shared with `[continuity].canon_order_sha256`). Requires
-    /// `path` — which `MapSection` always has, so the pin is unconditional.
-    #[serde(default)]
-    pub sha256: Option<String>,
 }
 
 /// `[atomic]` table — atomic store path override (Round 279).
@@ -1183,21 +1133,6 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             "rules_path",
         )?;
     }
-    if let Some(map) = &cfg.map {
-        if map.path.trim().is_empty() {
-            bail!("mnemosyne.toml: `map.path` must be non-empty (a [map] table needs a map file)");
-        }
-        if map.place_kind.trim().is_empty() {
-            bail!(
-                "mnemosyne.toml: `map.place_kind` must be non-empty — declare which registered \
-                 entity kind is a place (it is not hardcoded)"
-            );
-        }
-        // The pin always has a path to pin (`MapSection.path` is mandatory), so
-        // this only enforces the hex shape — the pattern the pin-pair helper
-        // shares with `[continuity]`.
-        check_authority_pin_pair(&map.sha256, true, "map.sha256", "path")?;
-    }
     // The `spec_drift` / `commit_ledger` / `content_drift` severities are now
     // the `Severity` enum: serde rejects any value outside `reject|warn|info`
     // at deserialization (the single validation point), so the former manual
@@ -1917,28 +1852,6 @@ canon_order_path = "canon-order.json"
         assert!(cont.canon_order_sha256.is_none());
         // interval_severity is OFF by default (surface-not-gate, Round 491).
         assert!(cont.interval_severity.is_none());
-    }
-
-    #[test]
-    fn map_section_parses_and_enforces_its_invariants() {
-        let cfg =
-            parse_config("[workspace]\n\n[map]\npath = \"map.json\"\nplace_kind = \"place\"\n")
-                .unwrap();
-        let map = cfg.map.unwrap();
-        assert_eq!(map.path, "map.json");
-        assert_eq!(map.place_kind, "place");
-        assert!(map.severity.is_reject()); // hard by default (build-map.py G1)
-        assert!(map.sha256.is_none());
-
-        // place_kind is mandatory — a [map] table without it is a config error.
-        assert!(parse_config("[workspace]\n\n[map]\npath = \"map.json\"\n").is_err());
-        // an unknown key fails loud (deny_unknown_fields, R604).
-        let unknown =
-            "[workspace]\n\n[map]\npath = \"m.json\"\nplace_kind = \"place\"\nplce_knd = \"x\"\n";
-        assert!(parse_config(unknown).is_err());
-        // a non-hex pin rejects (the shared authority-pin contract).
-        let badpin = "[workspace]\n\n[map]\npath = \"m.json\"\nplace_kind = \"place\"\nsha256 = \"nothex\"\n";
-        assert!(parse_config(badpin).is_err());
     }
 
     #[test]

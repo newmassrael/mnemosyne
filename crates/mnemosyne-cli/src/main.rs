@@ -1082,18 +1082,6 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_validate_continuity(c.rest()),
     },
     Command {
-        name: "validate-map",
-        aliases: &[],
-        group: Some(&GROUP_CODE_CITATION),
-        blank_before: false,
-        usage: &["validate-map [--map <map.json>] [--severity reject|warn|info] [--json]"],
-        notes: &[
-            "   spatial-graph gate (build-map.py G1 port): a map node must be a registered",
-            "   entity of [map].place_kind, and an edge endpoint must be a map node",
-        ],
-        run: |c| cmd_validate_map(c.rest()),
-    },
-    Command {
         name: "report-frame-view",
         aliases: &[],
         group: Some(&GROUP_CODE_CITATION),
@@ -2658,114 +2646,6 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         }
     }
     if gate.gates {
-        std::process::exit(1);
-    }
-    Ok(())
-}
-
-/// The spatial-graph gate (`validate-map`) — the port of the consumer's
-/// `build-map.py` G1 (the owner's ruling: the map exists before the novel, and
-/// the novel cannot invent a place). Reads the declared `[map]` file + the
-/// store and checks G1's three parts (node → registered entity, entity is
-/// `place_kind`, edge endpoint → node). `--map` overrides the file (bypassing
-/// the pin, the R428 `--catalog`/`--order` rule); `--severity` overrides the
-/// gate level. Disabled when the `[map]` table is absent (opt-in, the
-/// `[continuity]` pattern).
-fn cmd_validate_map(args: &[String]) -> Result<()> {
-    use mnemosyne_config::Severity;
-    let mut json = false;
-    let mut map_override: Option<String> = None;
-    let mut severity_override: Option<String> = None;
-    let mut iter = args.iter();
-    while let Some(a) = iter.next() {
-        match a.as_str() {
-            "--json" => json = true,
-            "--map" => {
-                map_override = Some(iter.next().ok_or_else(|| anyhow!("--map missing"))?.clone())
-            }
-            "--severity" => {
-                severity_override = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--severity missing"))?
-                        .clone(),
-                )
-            }
-            other => bail!("unknown flag `{}`", other),
-        }
-    }
-    let loaded = workspace_config()?;
-    let anchor = loaded
-        .config_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| loaded.workspace_root.clone());
-
-    let map_cfg = loaded.config.map.as_ref();
-    // Severity: --severity > [map].severity > disabled (table absent).
-    let severity = match &severity_override {
-        Some(s) => Some(
-            Severity::from_tag(s.trim())
-                .ok_or_else(|| anyhow!("--severity must be `reject`, `warn`, or `info`"))?,
-        ),
-        None => map_cfg.map(|m| m.severity),
-    };
-
-    // Resolve the map path: --map wins (and bypasses the pin); else [map].path.
-    let (map_path, pin): (std::path::PathBuf, Option<String>) = match (&map_override, map_cfg) {
-        (Some(p), _) => (anchor.join(p), None),
-        (None, Some(m)) => (anchor.join(&m.path), m.sha256.clone()),
-        (None, None) => {
-            if json {
-                println!("{}", serde_json::json!({"gate": "disabled"}));
-            } else {
-                println!("map gate: disabled ([map] table absent)");
-            }
-            return Ok(());
-        }
-    };
-    let place_kind = map_cfg
-        .map(|m| m.place_kind.clone())
-        .ok_or_else(|| anyhow!("--map requires a [map] table for place_kind"))?;
-    let containers: Vec<String> = map_cfg.map(|m| m.containers.clone()).unwrap_or_default();
-
-    let map = mnemosyne_validate::map::load_map_file(&map_path, pin.as_deref())
-        .map_err(|e| anyhow!("{e}"))?;
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
-    let store = AtomicStore::load(&atomic_path)
-        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-
-    let findings = mnemosyne_validate::map::check_map(&store, &map, &place_kind, &containers);
-
-    if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "gate": severity.map(|s| s.as_str()),
-                "nodes": map.nodes.len(),
-                "edges": map.edges.len(),
-                "place_kind": place_kind,
-                "findings": findings,
-            })
-        );
-    } else {
-        match severity {
-            None => println!("=== map gate (findings only; no [map].severity) ==="),
-            Some(s) => println!("=== map gate ({}) ===", s.as_str()),
-        }
-        println!(
-            "  nodes={} edges={} place_kind={} findings={}",
-            map.nodes.len(),
-            map.edges.len(),
-            place_kind,
-            findings.len()
-        );
-        for f in &findings {
-            println!("  {f}");
-        }
-    }
-    // G1 is hard by the owner's ruling; a finding gates the exit code when
-    // severity is `reject` (the [continuity] gating shape).
-    if matches!(severity, Some(s) if s.is_reject()) && !findings.is_empty() {
         std::process::exit(1);
     }
     Ok(())

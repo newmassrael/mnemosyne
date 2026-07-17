@@ -173,7 +173,6 @@ not the whole schema — `WorkspaceConfig` also carries these, and a gate
 |---|---|
 | `[atomic]` | `sidecar_path` — where the store lives, when not the default |
 | `[continuity]` | **the narrative gate's config**: `canon_order_path`, `rules_path` (+`rules_sha256`), `severity`, `interval_severity`. Without this, `validate-continuity` has no canon order and declared interval rules never gate |
-| `[map]` | **the spatial-graph gate's config** (`validate-map`): `path` (a `map/v1` nodes+edges file), `place_kind` (which registered `entity_kinds` id is spatial — not hardcoded), `containers` (place entities that are NOT map nodes — a search key, not a position), `severity`, optional `sha256`. G1: a map node is a registered place entity; G2: every store place is a map node (the story cannot invent a place); G4: the graph is connected from an `outside` entrance. Without this the gate is off |
 | `[plugins]` | the code-citation defense (`[plugins.set_equality_validator]`) |
 | `[spec_drift]` | external-spec revision drift (RFC-001 UC-1) |
 | `[content_drift]` | EPUB-as-content-SSOT integrity (R404) |
