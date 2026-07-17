@@ -38,8 +38,8 @@ use mnemosyne_core::{DisclosureMode, PayoffExpectation, PredicateObjectKind};
 use serde::Serialize;
 
 use crate::continuity::{
-    ExclusiveKey, IntervalOp, RuleClass, QUEST_ENTITY_KIND, QUEST_PRED_COMPLETED_BY,
-    QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
+    ExclusiveKey, IntervalOp, RuleClass, QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES,
+    QUEST_PRED_REQUIRES,
 };
 
 /// The complete medium-neutral authoring contract (R587). Every field is a
@@ -240,9 +240,11 @@ pub struct QuestPredicate {
 #[derive(Debug, Clone, Serialize)]
 pub struct QuestEncoding {
     pub description: &'static str,
-    /// The reserved `Entity.kind` value the quest-graph projection recognizes
-    /// (kind is otherwise consumer-defined per ARCHITECTURE sec 6 inv4).
-    pub entity_kind: &'static str,
+    /// How the quest-graph projection IDENTIFIES a quest (R676): a quest is any
+    /// entity in a quest predicate ROLE — the object of `pursues`, either
+    /// endpoint of `requires`, or the subject of `completed_by`. There is NO
+    /// `kind` marker; participation in the reserved relation is the sole signal.
+    pub derivation: &'static str,
     pub predicates: Vec<QuestPredicate>,
     pub completion_rule: &'static str,
     pub state_derivation: &'static str,
@@ -571,9 +573,10 @@ fn registries() -> Vec<RegistrySpec> {
             add_op: "add-entity",
             load_bearing: false,
             description: "The retrieval key for entity-scoped verification (all facts about X — \
-                a character, location, item, faction). `Entity.kind` is a FREE-FORM \
-                consumer-defined tag (nothing medium-shaped enforced, sec 6 inv4); the ONE \
-                reserved value is `quest` (see quest_encoding).",
+                a character, location, item, faction). `Entity.kind` is a consumer-defined tag \
+                (a registered entity-kind ref, sec 6 inv4); there is NO reserved kind value — \
+                quests are DERIVED from quest predicate roles, not a `kind` marker (R676, see \
+                quest_encoding).",
         },
         RegistrySpec {
             name: "predicates",
@@ -1071,7 +1074,10 @@ fn quest_encoding() -> QuestEncoding {
             tracked-obligation pattern, PROJECTED from existing primitives — no new substrate. \
             An author adopts these reserved ids so `report-quest-graph` can read the store; the \
             projection derives per-world open/done, prerequisites, and giver locators.",
-        entity_kind: QUEST_ENTITY_KIND,
+        derivation: "A quest is any entity occupying a quest predicate ROLE — the object of \
+            `pursues`, either endpoint of `requires`, or the subject of `completed_by`. There is \
+            NO `kind` marker (R676): the reserved predicates are the sole signal, and an entity \
+            used as both a quest and an actor is a fail-loud reversed/mis-typed slot.",
         predicates: vec![
             QuestPredicate {
                 predicate: QUEST_PRED_PURSUES,
@@ -1345,7 +1351,12 @@ mod tests {
         }
 
         // The quest ids are the real projection constants (single-sourced).
-        assert_eq!(c.quest_encoding.entity_kind, QUEST_ENTITY_KIND);
+        // R676 — no `entity_kind` marker; the contract advertises the derivation.
+        assert!(
+            c.quest_encoding.derivation.contains("predicate")
+                && !c.quest_encoding.derivation.contains("kind\":\"quest"),
+            "quest contract must advertise role-derivation, not a kind marker"
+        );
         let preds: Vec<_> = c
             .quest_encoding
             .predicates

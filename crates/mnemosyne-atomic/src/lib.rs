@@ -3681,9 +3681,10 @@ pub struct DisclosurePlanImport {
 /// branches + entities + predicates + facts + disclosure plans created in ONE
 /// atomic transaction. Ordered so later kinds reference earlier ones —
 /// registries first, then facts, then disclosure (whose overrides reference the
-/// facts). Quests need no dedicated kind: a quest is an `Entity{kind:"quest"}`
-/// (an `entities` entry) plus `pursues`/`requires`/`completed_by` typed
-/// `facts`, so it is authored through the existing kinds.
+/// facts). Quests need no dedicated kind: a quest is DERIVED from its
+/// `pursues`/`requires`/`completed_by` role (no kind marker, R676) — an
+/// `entities` entry plus the typed `facts`, so it is authored through the
+/// existing kinds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactsManifest {
     #[serde(default)]

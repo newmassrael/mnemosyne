@@ -4064,27 +4064,81 @@ pub fn playable_world(
     })
 }
 
-/// The R559 quest authoring-contract vocabulary (design sec 7.38). A quest is
-/// an `Entity{kind:"quest"}` plus three typed predicates: `pursues` (an actor
-/// LEADS a quest), `requires` (a quest is gated by another quest first), and
-/// `completed_by` (an actor DISCHARGES a quest on a road — the carrying fact
-/// `pays_off` the quest's giving setup). These ids ARE the contract a consumer
-/// adopts to author quests this projection can read, not arbitrary magic
-/// strings (the R547 authoring-contract-over-existing-primitives pattern);
-/// `Entity.kind` is consumer-defined per ARCHITECTURE sec 6 inv4.
-pub(crate) const QUEST_ENTITY_KIND: &str = "quest";
+/// The R559 quest authoring-contract vocabulary (design sec 7.38), narrowed by
+/// R676 to the three typed predicates ONLY — there is NO `kind:"quest"` marker.
+/// A quest is DERIVED from its role in the reserved quest relation: `pursues`
+/// (an actor subject LEADS a quest object), `requires` (a quest subject is
+/// gated by a quest object), `completed_by` (a quest subject is DISCHARGED by
+/// an actor object — the carrying fact `pays_off` the quest's giving setup).
+/// These predicate ids ARE the contract a consumer adopts (the R547 authoring-
+/// contract-over-existing-primitives pattern); quest-ness needs no separate
+/// marker because participation in the relation already identifies it, and a
+/// marker was a second signal that could silently disagree — it silently
+/// tolerated an actor mis-typed into a quest slot, where [`quest_ids`] fails
+/// loud (R676 removed the marker; the three predicates are the sole signal).
 pub(crate) const QUEST_PRED_PURSUES: &str = "pursues";
 pub(crate) const QUEST_PRED_REQUIRES: &str = "requires";
 pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 
+/// The DERIVED quest set + a fail-loud role-conflict check (R676) — the ONE
+/// definition of "what is a quest" both [`quest_graph`] and [`quest_giving_setups`]
+/// read (the R631 two-readers-must-agree lesson; a second copy is how they drift).
+/// A quest occupies a QUEST role: the object of `pursues`, either endpoint of
+/// `requires`, or the SUBJECT of `completed_by`. An ACTOR occupies the OPPOSITE
+/// roles: the subject of `pursues`, the object of `completed_by`. An entity used
+/// in BOTH is a reversed/mis-typed slot (an actor sitting in a quest position, or
+/// the reverse) — a fail-loud error, REPLACING the removed marker's silent
+/// tolerance with a louder, better verdict. Calls [`check_quest_predicate_shapes`]
+/// first, so a scalar object on a `pursues`/`requires` leg fails loud rather than
+/// dropping silently (the R631 `if let Entity` with no else); after it, those
+/// objects are entity-shaped.
+fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
+    check_quest_predicate_shapes(store)?;
+    let mut quests: BTreeSet<String> = BTreeSet::new();
+    let mut actors: BTreeSet<String> = BTreeSet::new();
+    for fact in store.narrative_facts.values() {
+        let Some(claim) = &fact.typed else { continue };
+        match claim.predicate.as_str() {
+            QUEST_PRED_PURSUES => {
+                actors.insert(claim.subject.clone());
+                if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+                    quests.insert(id.clone());
+                }
+            }
+            QUEST_PRED_REQUIRES => {
+                quests.insert(claim.subject.clone());
+                if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+                    quests.insert(id.clone());
+                }
+            }
+            QUEST_PRED_COMPLETED_BY => {
+                quests.insert(claim.subject.clone());
+                if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+                    actors.insert(id.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(id) = quests.intersection(&actors).next() {
+        return Err(format!(
+            "quest-role: entity `{id}` is used as BOTH a quest (object of pursues, \
+             endpoint of requires, or subject of completed_by) AND an actor (subject \
+             of pursues or object of completed_by) — a reversed/mis-typed quest slot. \
+             An entity is one or the other; fix the predicate direction."
+        ));
+    }
+    Ok(quests)
+}
+
 /// The GIVING setups of every quest (Round 619) — the SINGLE home of the rule
 /// "a quest's giving setup is an `Expected` fact its OWN `completed_by`-typed
-/// fact pays off" (R559 strict-combined, gated on `kind:quest` entities). Both
+/// fact pays off" (R559 strict-combined, over the DERIVED quest set). Both
 /// [`quest_graph`] (which indexes it per quest) and [`structural_fact_ids`]
 /// (which unions it) read THIS, so the two cannot disagree on which facts are
-/// quest givings — a `completed_by` fact whose subject is not a registered quest
-/// binds no giving in either. Returns quest_id -> its giving setup ids.
-fn quest_giving_setups(store: &AtomicStore) -> BTreeMap<String, BTreeSet<String>> {
+/// quest givings — both enumerate the same [`quest_ids`] set (R676), so a giving
+/// binds identically in either. Returns quest_id -> its giving setup ids.
+fn quest_giving_setups(store: &AtomicStore) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
     let facts = &store.narrative_facts;
     let expected: BTreeSet<&str> = facts
         .iter()
@@ -4103,11 +4157,12 @@ fn quest_giving_setups(store: &AtomicStore) -> BTreeMap<String, BTreeSet<String>
             }
         }
     }
-    store
-        .entities
-        .iter()
-        .filter(|(_, e)| e.kind == QUEST_ENTITY_KIND)
-        .map(|(quest_id, _)| {
+    // R676 — quests are the DERIVED set (the shared `quest_ids` kernel), not a
+    // `kind`-marked entity scan: the two readers cannot disagree about which
+    // entities are quests.
+    Ok(quest_ids(store)?
+        .into_iter()
+        .map(|quest_id| {
             let mut givings: BTreeSet<String> = BTreeSet::new();
             for fact in completions_of.get(quest_id.as_str()).into_iter().flatten() {
                 for target in &fact.pays_off {
@@ -4116,9 +4171,9 @@ fn quest_giving_setups(store: &AtomicStore) -> BTreeMap<String, BTreeSet<String>
                     }
                 }
             }
-            (quest_id.clone(), givings)
+            (quest_id, givings)
         })
-        .collect()
+        .collect())
 }
 
 /// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
@@ -4143,8 +4198,10 @@ pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, Stri
     // quest_graph, so the malformed fact was silently counted as structural.
     // Now every reader of quest classification shares one enforcer.
     check_quest_predicate_shapes(store)?;
-    let give_setups: BTreeSet<String> =
-        quest_giving_setups(store).into_values().flatten().collect();
+    let give_setups: BTreeSet<String> = quest_giving_setups(store)?
+        .into_values()
+        .flatten()
+        .collect();
     Ok(store
         .narrative_facts
         .iter()
@@ -4225,14 +4282,14 @@ pub struct QuestWorldState {
 /// One quest in the graph (R559 design sec 7.38, R568 build): the narrative
 /// instance of the substrate's universal tracked-obligation pattern, PROJECTED
 /// from existing primitives — no new authoritative state. `objective`/`actors`
-/// from the `Entity{kind:"quest"}` + its `pursues` claims; `prerequisites` from
+/// from the derived quest entity + its `pursues` claims; `prerequisites` from
 /// `requires` claims; `giving_facts` are the `PayoffExpectation::Expected`
 /// setups its `completed_by` facts pay off; `per_world` is the R442 open/done of
 /// those givings; `locators` are the giver surfaces (R557) resolved under the
 /// telling (where the quest is picked up).
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct QuestNode {
-    /// The quest entity id (an `Entity{kind:"quest"}` key).
+    /// The quest entity id (a derived quest — a pursues/requires/completed_by role).
     pub quest_id: String,
     /// The quest objective — the entity's `description`.
     pub objective: String,
@@ -4260,7 +4317,7 @@ pub struct QuestNode {
 /// — the single composing READ a pinion narrative runtime (or an authoring
 /// consumer) needs for the quest layer, the sibling of [`playable_world`]. A
 /// PURE JOIN over the existing projections (R558 verbatim reuse, no
-/// re-projection): the `Entity{kind:"quest"}` entities + their typed claims, the
+/// re-projection): the derived quest entities + their typed claims, the
 /// R442 [`payoff_coverage`] (per-world open/done), and [`playable_world`] (the
 /// R497 fork topology + the R557 giver-surface locators). Never gated — a quest
 /// graph is a reading surface, not a defect detector; quest STATE is DERIVED per
@@ -4278,7 +4335,7 @@ pub struct QuestGraphReport {
     /// The world-lines covered (every query world, or the single `world`
     /// filter), sorted — the per-world key set every `QuestNode.per_world` uses.
     pub worlds: Vec<String>,
-    /// One node per `Entity{kind:"quest"}`, sorted by quest id.
+    /// One node per derived quest (pursues/requires/completed_by role), sorted by id.
     pub quests: Vec<QuestNode>,
     /// Quest entities whose giving setup could not be bound — no `completed_by`
     /// fact, or its `completed_by` facts pay off no `Expected` setup (R559 strict
@@ -4304,12 +4361,11 @@ pub fn quest_graph(
     world: Option<&str>,
     telling: &str,
 ) -> Result<QuestGraphReport, String> {
-    // Round 631 — the single validated invariant, shared with
-    // `structural_fact_ids`: a reserved quest predicate whose contract declares
-    // an entity object must not carry a scalar. Enforced HERE at entry, so the
-    // `if let Entity` indexers below never meet a malformed fact (that silent
-    // drop, against structural's raw-string count, was the R631 defect).
-    check_quest_predicate_shapes(store)?;
+    // R676 — the DERIVED quest set, the shared `quest_ids` kernel (which also
+    // runs `check_quest_predicate_shapes` + the role-conflict guard at entry, so
+    // the `if let Entity` indexers below never meet a malformed fact — the R631
+    // silent-drop). The ONE definition of a quest, shared with `quest_giving_setups`.
+    let quest_set = quest_ids(store)?;
     // Reuse the existing projections VERBATIM (R558): playable-world gives the
     // fork topology + per-world giver-surface locators; payoff coverage gives
     // the per-world open/done of every giving setup (R442). No re-derivation.
@@ -4378,16 +4434,23 @@ pub fn quest_graph(
     // facts a quest's OWN `completed_by` fact pays off). Computed ONCE by the
     // shared kernel `quest_giving_setups`, the single home of this rule — so
     // `structural_fact_ids` (which unions it) and this per-quest index agree on
-    // which facts are quest givings (a `completed_by` fact whose subject is not a
-    // registered quest binds no giving in either).
-    let giving_map = quest_giving_setups(store);
+    // which facts are quest givings (both enumerate the same derived `quest_ids`
+    // set, R676, so a giving binds identically in either).
+    let giving_map = quest_giving_setups(store)?;
 
     let mut quests: Vec<QuestNode> = Vec::new();
     let mut unresolved_quests: Vec<String> = Vec::new();
-    for (quest_id, entity) in &store.entities {
-        if entity.kind != QUEST_ENTITY_KIND {
-            continue;
-        }
+    // R676 — iterate the DERIVED quest set (sorted, a BTreeSet), not a `kind`
+    // scan. Every id resolves to a registered entity: it came from a typed claim
+    // leg, whose entities the write path registers (R437) and the shape gate
+    // above confirmed entity-shaped — a missing one is a fail-loud store defect.
+    for quest_id in &quest_set {
+        let entity = store.entities.get(quest_id).ok_or_else(|| {
+            format!(
+                "quest `{quest_id}` is named by a quest predicate but is not a \
+                 registered entity (a typed claim leg must name a registered id)"
+            )
+        })?;
         let empty_completions = Vec::new();
         let q_completions = completions_of
             .get(quest_id.as_str())
@@ -7762,17 +7825,14 @@ mod tests {
             ],
             &[("win", MAIN_BRANCH, "ch-2")],
         );
-        store
-            .entity_kinds
-            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
+        // R676 — no `kind:"quest"` marker; quests are derived from their pursues/
+        // completed_by legs. Only the objective (description) is authored here.
         for (id, desc) in [
             ("q-main", "End the rising"),
             ("q-key", "Recover the warden's key"),
             ("q-orphan", "Find the lost ledger"),
         ] {
-            let e = store.entities.get_mut(id).unwrap();
-            e.kind = "quest".to_string();
-            e.description = desc.to_string();
+            store.entities.get_mut(id).unwrap().description = desc.to_string();
         }
         let mut overrides = BTreeMap::new();
         overrides.insert(
@@ -7799,15 +7859,14 @@ mod tests {
 
     /// Round 618 (MNEMO-GAP-005 part 3a) + Round 619 (SSOT): `structural_fact_ids`
     /// classifies quest plumbing — the typed quest legs AND the giving setups —
-    /// and locks the THREE guards a coverage read depends on to not undercount
-    /// real narrative setups: (1) `Expected` — an Unmarked fact a completion pays
-    /// off is NOT a giving; (2) `kind:quest` — a completed_by fact whose SUBJECT
-    /// is not a registered quest binds no giving (the shared `quest_giving_setups`
-    /// gate, so structural agrees with quest_graph); (3) a genuine Chekhov setup
-    /// (Expected, paid off by a plain fact) is not structural.
+    /// and locks the guards a coverage read depends on to not undercount real
+    /// narrative setups: (1) `Expected` — an Unmarked fact a completion pays off is
+    /// NOT a giving; (2) a genuine Chekhov setup (Expected, paid off by a plain
+    /// fact) is not structural. R676 — quests are DERIVED from predicate roles, so
+    /// `q1` (pursued AND completed) is a quest with no `kind` marker.
     #[test]
     fn structural_fact_ids_classifies_quest_plumbing_not_genuine_setups() {
-        let mut store = store_with(vec![
+        let store = store_with(vec![
             quest_fact(
                 "f-pursue",
                 "ch-1",
@@ -7828,28 +7887,13 @@ mod tests {
             ),
             setup_fact("f-give", "gt", "ch-1"),
             fact("f-unmarked", "gt", "ch-1", None),
-            // A completed_by fact whose SUBJECT (hero) is not a registered quest —
-            // itself structural (typed plumbing), but binds NO giving, so its
-            // Expected payoff target (f-nonquest-give) is NOT structural.
-            quest_fact(
-                "f-complete-nonquest",
-                "ch-2",
-                None,
-                &["hero", "warden"],
-                ent_claim("hero", "completed_by", "warden"),
-                &["f-nonquest-give"],
-            ),
-            setup_fact("f-nonquest-give", "gt", "ch-1"),
             // Genuine Chekhov: Expected, paid off by a PLAIN fact (not a completion).
             setup_fact("f-chekhov", "gt", "ch-1"),
             payoff_fact("f-payoff", "gt", "ch-3", &["f-chekhov"]),
             fact("f-plain", "gt", "ch-1", None),
         ]);
-        // Only q1 is a quest; hero/warden are actors (default kind).
-        store
-            .entity_kinds
-            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
-        store.entities.get_mut("q1").unwrap().kind = "quest".to_string();
+        // q1 is derived a quest (pursued object + completed_by subject); hero is an
+        // actor. No `kind` marker (R676).
 
         let structural = structural_fact_ids(&store).unwrap();
         assert_eq!(
@@ -7857,12 +7901,52 @@ mod tests {
             BTreeSet::from([
                 "f-pursue".to_string(),
                 "f-complete".to_string(),
-                "f-complete-nonquest".to_string(),
                 "f-give".to_string(),
             ]),
-            "typed quest legs (incl. a non-quest-subject completion) + q1's Expected \
-             giving are structural; the Unmarked payoff, the non-quest giving, the \
-             genuine Chekhov setup, its plain payoff, and a plain fact are not"
+            "q1's typed quest legs + its Expected giving are structural; the Unmarked \
+             payoff, the genuine Chekhov setup, its plain payoff, and a plain fact are not"
+        );
+    }
+
+    /// R676 — the role-conflict guard REPLACES the removed `kind:"quest"` marker's
+    /// silent tolerance. `hero` is an actor (pursues SUBJECT) yet also sits in a
+    /// completed_by SUBJECT (quest) slot — the reversed fact the marker used to
+    /// tolerate (binding no giving, so `f-nonquest-give` stayed non-structural).
+    /// The derived model has no marker to disambiguate an actor from a quest, so a
+    /// dual-role entity is a fail-loud contradiction in EVERY reader — a louder,
+    /// better verdict than silently mis-slotting the fact into a coverage read.
+    #[test]
+    fn quest_role_conflict_is_rejected_by_every_reader() {
+        let store = store_with(vec![
+            quest_fact(
+                "f-pursue",
+                "ch-1",
+                None,
+                &["hero", "q1"],
+                ent_claim("hero", "pursues", "q1"),
+                &[],
+            ),
+            quest_fact(
+                "f-reversed",
+                "ch-2",
+                None,
+                &["hero", "warden"],
+                ent_claim("hero", "completed_by", "warden"),
+                &[],
+            ),
+        ]);
+        let order = CanonOrder::empty();
+        // Reader 1: the classifier fails loud (its own no-telling caller too).
+        let e_struct = structural_fact_ids(&store).unwrap_err();
+        assert!(
+            e_struct.contains("quest-role") && e_struct.contains("hero"),
+            "{e_struct}"
+        );
+        // Reader 2: the projection fails loud at entry, before telling resolution.
+        let e_graph = quest_graph(&store, &order, None, "t").unwrap_err();
+        assert!(
+            e_graph.contains("quest-role") && e_graph.contains("hero"),
+            "{e_graph}"
         );
     }
 
@@ -7985,10 +8069,6 @@ mod tests {
                 scalar_claim("q-b", pred, "q-a"),
                 &[],
             )]);
-            store
-                .entity_kinds
-                .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
-            store.entities.get_mut("q-b").unwrap().kind = "quest".to_string();
             plan(&mut store);
 
             // Reader 1: the classifier itself refuses (its own caller,
@@ -8016,11 +8096,6 @@ mod tests {
             ent_claim("q-b", "requires", "q-a"),
             &[],
         )]);
-        ok.entity_kinds
-            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
-        for q in ["q-a", "q-b"] {
-            ok.entities.get_mut(q).unwrap().kind = "quest".to_string();
-        }
         plan(&mut ok);
         assert!(structural_fact_ids(&ok).unwrap().contains("f-ok"));
         let report = quest_graph(&ok, &order, None, "t").unwrap();
@@ -8088,11 +8163,7 @@ mod tests {
             ..fact("f-sibling", "gt", "ch-2", None)
         };
         let mut store = store_with_forks(vec![give, pursue, complete, sibling], &[]);
-        store
-            .entity_kinds
-            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
         let e = store.entities.get_mut("q-split").unwrap();
-        e.kind = "quest".to_string();
         e.description = "Split completion".to_string();
         store.disclosure_plans.insert(
             "t1".to_string(),

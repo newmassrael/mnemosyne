@@ -2011,7 +2011,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every Entity{kind:quest} projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
+        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
     )]
     async fn report_quest_graph(&self, args: Parameters<ReportQuestGraphArgs>) -> CallToolResult {
         match ops::quest_graph_report(
@@ -2027,7 +2027,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (Entity{kind:quest} + pursues/requires/completed_by, completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args."
+        description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (quests DERIVED from pursues/requires/completed_by roles, no kind marker; completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args."
     )]
     async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         self.tool_json(&ops::describe_schema())

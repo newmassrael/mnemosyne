@@ -557,7 +557,7 @@ static COMMANDS: &[Command] = &[
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
         usage: &["report-quest-graph --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
-        notes: &["   Round 559/568 — the fact->quest leg: per Entity{kind:quest}, objective + actor + per-world open/done + prerequisites + completion fact + giver locator"],
+        notes: &["   Round 559/568 — the fact->quest leg: per derived quest (pursues/requires/completed_by role), objective + actor + per-world open/done + prerequisites + completion fact + giver locator"],
         run: |c| cmd_report_quest_graph(c.rest()),
     },
     Command {
@@ -3340,7 +3340,7 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
 
 /// Round 559/568 — quest graph (`report-quest-graph`, design sec 7.38): the
 /// fact->quest leg, the sibling of `report-playable-world`. Per telling, every
-/// `Entity{kind:"quest"}` projected to a QuestNode — objective + actor
+/// derived quest (pursues/requires/completed_by role) projected to a QuestNode — objective + actor
 /// (`pursues`) + prerequisites (`requires`) + giving setups + per-world derived
 /// open/done (the R442 payoff coverage) + completion fact + giver-surface
 /// locator (R557). A pure JOIN, never gated; quest state DERIVED per world-line.
@@ -3504,11 +3504,9 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
             println!("    {} : {} — {}", p.name, p.ty, p.description);
         }
     }
-    println!(
-        "\n-- quest encoding (Entity{{kind:{}}}) --",
-        c.quest_encoding.entity_kind
-    );
+    println!("\n-- quest encoding (derived from predicate roles, no kind marker) --");
     println!("  {}", c.quest_encoding.description);
+    println!("  derivation: {}", c.quest_encoding.derivation);
     for p in &c.quest_encoding.predicates {
         println!("  {} [{}] — {}", p.predicate, p.object_shape, p.role);
     }

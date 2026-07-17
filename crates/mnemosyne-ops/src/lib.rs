@@ -1042,7 +1042,7 @@ pub fn playable_world_report(
 /// Project the quest graph (Round 559 design sec 7.38, Round 568 build) over the
 /// workspace store with the shared order resolution — the fact→quest leg a
 /// pinion narrative runtime (or an authoring consumer) consumes: per telling,
-/// each `Entity{kind:"quest"}` projected to a `QuestNode` (objective, actor,
+/// each derived quest (a pursues object / requires endpoint / completed_by subject) projected to a `QuestNode` (objective, actor,
 /// per-world derived open/done state, prerequisites, completion fact, giver
 /// surface locator). A pure JOIN over the existing payoff-coverage (R442) and
 /// playable-world (R557) projections; pure read, never gated. `world` filters
