@@ -1396,6 +1396,103 @@ mod tests {
         round_trip(DisclosureMode::from_tag, DisclosureMode::as_str);
     }
 
+    /// Round 660 — THE WRITE SURFACE GETS AN ORACLE, because R659 measured
+    /// "the compiler will catch a new variant" FALSE for the second time
+    /// (R625 was the first).
+    ///
+    /// The compiler forces every READER of [`TypedObject`] — an added variant
+    /// breaks every `match` over it — and forces ZERO WRITERS, because
+    /// `from_exclusive_args` matches `(Option<String>, Option<String>)`, NOT
+    /// `TypedObject`. Adding a variant cannot break a function that only
+    /// CONSTRUCTS the type: its input never changed, and its 2x2 match is
+    /// already exhaustive. So the arity `2` is a HAND COPY of the variant
+    /// count — the exact shape R448 consolidated ("both surfaces had
+    /// hand-rolled copies") without ever deriving. R659 proved the cost: a
+    /// variant wired into all 8 forced reader sites builds clean, clippy
+    /// clean, 975/975 green, and passes the pre-commit hook, while being
+    /// UNCONSTRUCTIBLE from the CLI, MCP, and the published JsonSchema — the
+    /// half that carries the whole value.
+    ///
+    /// This closes the loop, and every link is derived or compiler-forced:
+    /// 1. add a variant -> the DERIVED oracle grows, the surface does not,
+    ///    THIS TEST FAILS;
+    /// 2. the only fix is a new `from_exclusive_args` parameter -> its arity
+    ///    changes -> EVERY call site (CLI, MCP) breaks the build;
+    /// 3. so the author must reach the flag and the arg field to compile.
+    ///
+    /// The oracle is `PredicateObjectKind`, NOT `TypedObject`, and that is a
+    /// measured constraint rather than a preference: [`serde_variants`]
+    /// captures the list through `deserialize_enum`, which serde calls only
+    /// for EXTERNALLY-tagged enums. `TypedObject` is `#[serde(tag = "kind")]`
+    /// — internally tagged — so it routes `deserialize_any` and the capture
+    /// never fires (it panics "this type is not one"). Every type the oracle
+    /// feeds today is a plain unit enum for that reason. Read this before
+    /// trying to point it at a data-carrying enum.
+    ///
+    /// Pointing it at `PredicateObjectKind` catches the direction that was
+    /// actually UNGUARDED. The other direction is already compiler-forced: a
+    /// bare `TypedObject::Fact` breaks `build_typed_claim`'s (object, kind)
+    /// match. But a bare `PredicateObjectKind::Fact` breaks NOTHING — and
+    /// that is precisely R659's proof: `add-predicate --object-kind fact` was
+    /// ACCEPTED and PERSISTED while no fact could ever satisfy it, with the
+    /// whole suite green.
+    #[test]
+    fn every_declared_object_kind_is_satisfiable_from_the_arg_surface() {
+        use mnemosyne_core::TypedObject;
+
+        /// Does this object satisfy that declared kind? EXHAUSTIVE with no
+        /// wildcard on purpose (R624/R658): a new variant on either enum
+        /// breaks THIS match, so the author is stopped here rather than
+        /// shipping a green half-wire.
+        fn conforms(object: &TypedObject, kind: PredicateObjectKind) -> bool {
+            match (object, kind) {
+                (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
+                (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
+                (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => false,
+                (TypedObject::Value { .. }, PredicateObjectKind::Entity) => false,
+            }
+        }
+
+        // THE SURFACE, measured: every arg combination the CLI flags
+        // (`--typed-object-entity` / `--typed-object-value`) and the MCP
+        // fields (`object_entity` / `object_value`) can actually send.
+        let buildable: Vec<TypedObject> = [
+            TypedObject::from_exclusive_args(Some("e".to_string()), None),
+            TypedObject::from_exclusive_args(None, Some("v".to_string())),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        assert!(
+            !buildable.is_empty(),
+            "vacuous: the arg surface built no object at all"
+        );
+
+        // THE ORACLE, derived from the type — never a hand-list, because a
+        // hand-list here would be a copy of the class this test kills.
+        let declared = serde_variants::<PredicateObjectKind>();
+        assert!(
+            !declared.is_empty(),
+            "vacuous: the oracle reported no variants"
+        );
+
+        for tag in declared {
+            let kind = PredicateObjectKind::from_tag(tag)
+                .unwrap_or_else(|| panic!("from_tag rejects its own serde tag `{tag}`"));
+            assert!(
+                buildable.iter().any(|o| conforms(o, kind)),
+                "object_kind `{tag}` is DECLARED but NO arg combination can build an \
+                 object that satisfies it — `add-predicate --object-kind {tag}` would be \
+                 accepted and persisted, and no fact could ever use it (R659 measured \
+                 exactly this, green). The compiler cannot see it: `from_exclusive_args` \
+                 matches (Option, Option), not the enum, so it stays exhaustive while the \
+                 CLI flag, the MCP field, and the published JsonSchema go unwired. Give \
+                 the constructor a parameter for the new shape — the arity change then \
+                 forces every call site to be reached."
+            );
+        }
+    }
+
     /// The contract serializes to JSON (the machine-readable deliverable).
     #[test]
     fn contract_serializes_to_json() {
