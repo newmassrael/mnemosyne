@@ -44,11 +44,20 @@
 //! - `BindingUnbacked` — (file F, sym?) in
 //! §<id>.`bindings` but F has no §<id> citation (spec-side;
 //! code doesn't agree)
-//! - `ImplementationMissing` — §<id> exists with non-`Removed`
-//! `decision_status` but has zero `implements` bindings (spec-side
-//! coverage axiom: "Active = backed by code"). Third edge of the
+//! - `ImplementationMissing` — §<id> whose `decision_status` is NOT
+//! axiom-exempt (`DecisionStatus::is_axiom_exempt` = `Removed` |
+//! `Open`) but has zero `implements` bindings. Third edge of the
 //! Path B set-equality, complementing the two file-grained binding
 //! directions above.
+//!
+//! This said "non-`Removed`" and glossed the axiom as "Active = backed
+//! by code" until Round 666. The first went stale at Round 578, which
+//! added `Open` to the exemption set. The second was NEVER true: the
+//! axiom does not key on `Active` — `Superseded` and a `None` status
+//! trigger it too (Round 269). The gloss cost a design round: R666
+//! reasoned from it to a principle ("the axiom fires ON a ratified
+//! state") that inverts what the code does (it is EXEMPT during an
+//! unratified one), and was refuted. State the predicate, not a slogan.
 //!
 //! The binding directions are *asymmetric in shape*: code-side
 //! violations have a concrete (file, line, entry_id); the
