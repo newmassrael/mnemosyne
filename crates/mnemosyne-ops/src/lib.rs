@@ -248,6 +248,12 @@ pub struct ContinuityScanReport {
     pub interval_severity: Option<String>,
     pub facts: usize,
     pub order_nodes: usize,
+    /// Sections in the registry — `order_nodes`' denominator (Round 667). The
+    /// order's nodes are a subset (the store-boundary check rejects a node that
+    /// is not a section), so a surplus here means sections on no declared road:
+    /// the author's todo, named in a CLI notice, listed by
+    /// `report-authoring-frontier` (R596), never gated.
+    pub sections: usize,
     pub conflict_pairs_checked: usize,
     pub cross_scope_pairs: usize,
     pub unordered_pairs: usize,
@@ -321,6 +327,7 @@ pub fn continuity_scan(
         interval_severity,
         facts: report.facts,
         order_nodes: report.order_nodes,
+        sections: report.sections,
         conflict_pairs_checked: report.conflict_pairs_checked,
         cross_scope_pairs: report.cross_scope_pairs,
         unordered_pairs: report.unordered_pairs,
@@ -547,8 +554,38 @@ pub struct AuthoringFrontierReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub telling: Option<String>,
     /// Sections with NO fact anchored (no fact's `canon_from` names them) — the
-    /// empty scenes to author into, sorted.
+    /// empty scenes to author into, sorted. Carries NO placement axis: a placed
+    /// empty and an unplaced empty land here alike (see `unplaced_scenes`).
     pub zero_fact_scenes: Vec<String>,
+    /// EVERY section the declared canon order does not position (Round 667) —
+    /// `section ∈ registry ∧ ∉ order.nodes()`, sorted, content-independent.
+    ///
+    /// The PLACEMENT axis, which had no owner until this field: R596's
+    /// `unordered_scenes` filters to FACT-BEARING sections (its question is
+    /// renderability, so an empty unplaced scene is deliberately out of it), and
+    /// `zero_fact_scenes` filters on content with no placement predicate at all
+    /// — so an EMPTY unplaced section was computed NOWHERE, and sat in
+    /// `zero_fact_scenes` indistinguishable from a placed empty. Round 663
+    /// injected exactly that (a bare registered section) and read the silence as
+    /// proof the substrate could not make the comparison at all.
+    ///
+    /// NOT named for the ROAD, deliberately: this reads `order.nodes()`, the
+    /// PRECEDENCE union, and reading a road off that node set is the R611 defect
+    /// (`continuity.rs`, "Reading the ROAD off the PRECEDENCE node set"). `road`
+    /// is reserved for the bounded per-world axis (`names` / `linearize`). The
+    /// two coincide for the global union today; the name must not be what pins
+    /// that. `positioned` is the word the canon-coordinate check uses for this
+    /// same predicate.
+    ///
+    /// `unordered_scenes` is now derived from this set, so placement has ONE
+    /// resolver. Deliberately NOT in `total_gaps`: every member is already
+    /// counted there exactly once, via `zero_fact_scenes` (empty) or
+    /// `unordered_scenes` (fact-bearing) — two disjoint sets, partitioned on
+    /// `fact_count`, whose union covers this one. Never gated — an unplaced
+    /// section may simply be unplaced YET, the mode `FactCanonOffBranch`
+    /// already tolerates over the SAME predicate (a coordinate no order
+    /// positions is the orderless/forward-declared mode, tolerated not flagged).
+    pub unplaced_scenes: Vec<String>,
     /// Fact-bearing sections NOT placed in the resolved canon order (Round 596,
     /// unattended-loop-experiment/v1 Finding 4) — a scene carries facts but no
     /// declared order edge reaches it, so `report-playthrough-manuscript` /
@@ -631,15 +668,26 @@ pub fn authoring_frontier_report(
         .filter(|(_, n)| **n == 0)
         .map(|(s, _)| s.clone())
         .collect();
+    // Placement (Round 667), the ONE resolver: every section the order does not
+    // position, content-independent. The projection below is its consumer, so a
+    // section's placement is decided in exactly one place.
+    let ordered: BTreeSet<&str> = order.nodes().collect();
+    let unplaced_scenes: Vec<String> = counts
+        .keys()
+        .filter(|scene| !ordered.contains(scene.as_str()))
+        .cloned()
+        .collect();
     // Unordered fact-bearing scenes (Finding 4): a scene carries facts but is
     // not a node of the composed canon order, so no consumer can place it. With
     // no order declared, `nodes()` is empty and every fact-bearing scene lands
-    // here — the frontier surfacing the missing order artifact.
-    let ordered: BTreeSet<&str> = order.nodes().collect();
-    let unordered_scenes: Vec<String> = counts
+    // here — the frontier surfacing the missing order artifact. Now DERIVED from
+    // the placement set above rather than recomputing the predicate: this is the
+    // renderability projection (facts that can never be placed), which is why it
+    // excludes the empty ones — they have nothing to render yet.
+    let unordered_scenes: Vec<String> = unplaced_scenes
         .iter()
-        .filter(|(scene, n)| **n > 0 && !ordered.contains(scene.as_str()))
-        .map(|(s, _)| s.clone())
+        .filter(|scene| counts.get(scene.as_str()).is_some_and(|n| *n > 0))
+        .cloned()
         .collect();
     let scene_coverage: Vec<SceneCoverage> = counts
         .into_iter()
@@ -711,6 +759,7 @@ pub fn authoring_frontier_report(
     Ok(AuthoringFrontierReport {
         telling: telling.map(str::to_string),
         zero_fact_scenes,
+        unplaced_scenes,
         unordered_scenes,
         scene_coverage,
         branch_owned_density,
@@ -1554,6 +1603,119 @@ mod tests {
         // sc-2 is zero-fact (a distinct gap) but not fact-bearing, so not unordered.
         assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
         assert_eq!(r.total_gaps, 2); // one zero-fact + one unordered
+    }
+
+    /// Round 667 — placement is its own axis, and the EMPTY unplaced section is
+    /// the case that had no computation anywhere: `unordered_scenes` filters to
+    /// fact-bearing (R596, renderability), `zero_fact_scenes` filters on content
+    /// with no placement predicate, so an empty unplaced section sat in
+    /// `zero_fact_scenes` indistinguishable from a placed empty. R663 injected
+    /// exactly that and read the silence as "the substrate cannot compare".
+    ///
+    /// The fixture is built around that CONFOUND: `s2` (empty, PLACED) beside
+    /// `s4` (empty, UNPLACED). A store whose empties are all placed — which is
+    /// what the first cut of this round measured — cannot tell the two apart,
+    /// and every claim about the split looks true by accident.
+    #[test]
+    fn authoring_frontier_unplaced_scenes_are_content_independent() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        // The order positions s1 and s2 only; s3 and s4 are unplaced.
+        std::fs::write(
+            root.join("canon.json"),
+            r#"{"edges":[["s1","s2"]],"branches":{}}"#,
+        )
+        .unwrap();
+        // s1 fact/placed · s2 empty/PLACED · s3 fact/unplaced · s4 empty/unplaced.
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"s1":{},"s2":{},"s3":{},"s4":{}},
+               "frames":{"gt":{}},
+               "narrative_facts":{
+                 "f-1":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]},
+                 "f-3":{"frame":"gt","claim":"c","canon_from":"s3","evidence":["s3"]}}}"#,
+        )
+        .unwrap();
+        let r = authoring_frontier_report(root, None, None, None).unwrap();
+
+        // The placement axis, regardless of content — s4 is the half that used
+        // to be computed nowhere.
+        assert_eq!(r.unplaced_scenes, vec!["s3".to_string(), "s4".to_string()]);
+        // The PLACED empty is not unplaced: the confound, pinned.
+        assert!(!r.unplaced_scenes.contains(&"s2".to_string()));
+        // Content axis, blind to placement: both empties, placed or not.
+        assert_eq!(r.zero_fact_scenes, vec!["s2".to_string(), "s4".to_string()]);
+        // Renderability = the fact-bearing projection of the placement set (R596).
+        assert_eq!(r.unordered_scenes, vec!["s3".to_string()]);
+        assert!(
+            r.unordered_scenes
+                .iter()
+                .all(|s| r.unplaced_scenes.contains(s)),
+            "unordered must stay a subset of unplaced: {:?} vs {:?}",
+            r.unordered_scenes,
+            r.unplaced_scenes
+        );
+        // No double count: zero-fact {s2,s4} and unordered {s3} are disjoint and
+        // cover unplaced, so unplaced_scenes must NOT add to the total.
+        assert_eq!(r.total_gaps, 3);
+
+        // THE IDENTITY THE CLI NOTICE RESTS ON, pinned in the one crate that can
+        // see both sides: the notice prints `sections - order_nodes` and sends
+        // the reader to `unplaced scenes`, so those must be the SAME number or
+        // the pointer lies — which is exactly how this round's first cut shipped
+        // (it counted 3 at a list of 1).
+        let scan = continuity_scan(root, None, None, None).unwrap();
+        assert_eq!(scan.sections, 4);
+        assert_eq!(scan.order_nodes, 2);
+        assert_eq!(
+            scan.sections - scan.order_nodes,
+            r.unplaced_scenes.len(),
+            "the notice's count must equal the list it points at"
+        );
+    }
+
+    /// Round 667 — the notice is GUARDED on a declared order, because an order
+    /// with no nodes is not an incomplete order: it is a store that never
+    /// declared one. A SPEC store is that shape (sections, zero facts, no
+    /// `[continuity]`), and Mnemosyne's own reads `0/5` — unguarded, the notice
+    /// told it five spec sections were unrenderable scenes. The guard lives in
+    /// the CLI, so what is pinned here is the STATE it keys off: `order_nodes ==
+    /// 0` while sections stand, with the missing-order signal still carried by
+    /// R596's `unordered_scenes` (every fact-bearing scene) so nothing is lost.
+    #[test]
+    fn no_declared_order_is_not_an_incomplete_order() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("canon.json"), r#"{"edges":[],"branches":{}}"#).unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"s1":{},"s2":{}},"frames":{"gt":{}},
+               "narrative_facts":{
+                 "f-1":{"frame":"gt","claim":"c","canon_from":"s1","evidence":["s1"]}}}"#,
+        )
+        .unwrap();
+        let scan = continuity_scan(root, None, None, None).unwrap();
+        // The state the CLI guard reads: no order declared at all.
+        assert_eq!(scan.order_nodes, 0);
+        assert_eq!(scan.sections, 2);
+
+        // Nothing is lost by staying quiet: R596 already reports every
+        // fact-bearing scene when no order is declared.
+        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        assert_eq!(r.unordered_scenes, vec!["s1".to_string()]);
+        assert_eq!(r.unplaced_scenes, vec!["s1".to_string(), "s2".to_string()]);
     }
 
     /// Round 617 (density) corrected Round 619: branch-owned density = a

@@ -1362,6 +1362,18 @@ pub struct ContinuityReport {
     pub unordered_pairs: usize,
     pub facts: usize,
     pub order_nodes: usize,
+    /// Sections in the registry — `order_nodes`' DENOMINATOR (Round 667).
+    ///
+    /// `check_store_boundary` rejects an order node that is not a section, so
+    /// the order's nodes are always a SUBSET of these: `sections > order_nodes`
+    /// means some section sits on no declared road. The gate does not flag that
+    /// (road COMPLETENESS is the author's todo, reported by
+    /// `report-authoring-frontier` since Round 596) — but it printed
+    /// `order_nodes` with no denominator, and Round 663 read that lone number
+    /// beside a larger registry, saw no comparison, and concluded the substrate
+    /// COULD NOT make it. The number is carried so the comparison the reader
+    /// makes anyway is made here, correctly.
+    pub sections: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
     /// the gate's pre-Round-449 behavior exactly).
     pub rules: usize,
@@ -2243,6 +2255,7 @@ pub fn scan_continuity(
     let mut report = ContinuityReport {
         facts: facts.len(),
         order_nodes: order.node_count(),
+        sections: store.sections.len(),
         // Round 614 — name the world-lines whose road (and ending) is their lineage's,
         // because the substrate cannot tell "diverges in facts only" from "divergent
         // ending, road not yet declared" and the terminal gates mean different things
@@ -4913,6 +4926,32 @@ mod tests {
         assert!(load_canon_order(&path, None)
             .unwrap_err()
             .contains("unknown field `branchez`"));
+    }
+
+    /// Round 667 — `sections` carries the registry size so `order_nodes` has its
+    /// denominator. What this crate can honestly check is the two numbers and
+    /// the non-gating: the identity `sections - order_nodes == |unplaced|` is
+    /// pinned in `mnemosyne-ops`, where the `unplaced_scenes` set actually lives
+    /// (ops depends on validate, so this crate cannot see it — a test named for
+    /// that identity HERE could only ever restate its own arithmetic).
+    ///
+    /// Never a violation: an unplaced section is the orderless/forward-declared
+    /// mode `FactCanonOffBranch` tolerates over this same predicate.
+    #[test]
+    fn sections_counts_the_registry_and_an_unplaced_section_is_not_a_violation() {
+        let store = store_with(vec![fact("fa", "seward", "ch-1", None)]);
+        // Four sections in the registry; the order positions only two of them.
+        let partial = scan_continuity(&store, &chain(&["ch-1", "ch-2"]), &[]).unwrap();
+        assert_eq!(partial.sections, 4, "registry size, not the order's");
+        assert_eq!(partial.order_nodes, 2);
+        assert!(partial.violations.is_empty(), "unplaced is never gated");
+
+        // The order now positions every section: the two numbers meet.
+        let covering =
+            scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
+        assert_eq!(covering.sections, 4);
+        assert_eq!(covering.order_nodes, 4);
+        assert!(covering.violations.is_empty());
     }
 
     #[test]

@@ -86,7 +86,9 @@ pub struct SchemaContract {
     /// NOT part of the fact manifest, that the read projections require. Without
     /// it `report-playthrough-manuscript` / `report-fork-tree` place nothing and
     /// the store is not playable; `report-authoring-frontier` surfaces every
-    /// fact-bearing scene the order does not cover as an `unordered scenes` gap.
+    /// fact-bearing scene the order does not cover as an `unordered scenes` gap,
+    /// and every section it does not position at all — empty ones included (Round
+    /// 667) — as an `unplaced scenes` gap.
     pub canon_order: &'static str,
     /// How to encode a per-ROAD secret without leaking it (Round 601,
     /// unattended-loop-experiment/v2 gap B) — the `withhold` + `first_at` reveal
@@ -298,7 +300,13 @@ pub fn describe_schema() -> SchemaContract {
              `branches`, pinned via `[continuity].canon_order_path` (or passed with `--order`). \
              Authoring the facts is NOT enough: until the order covers every fact-bearing scene, \
              `report-authoring-frontier` reports those scenes as `unordered scenes` (with no \
-             order declared, ALL of them), and the store cannot be rendered.",
+             order declared, ALL of them), and the store cannot be rendered. THE ORDER IS ALSO \
+             THE ONLY PLACE A SECTION IS PLACED, so registering one does not put it on a road: \
+             the frontier's `unplaced scenes` is every section the order does not position \
+             (fact-bearing or empty), and `validate-continuity` prints `order_nodes=<n>/<total> \
+             sections` with a notice naming the shortfall when an order is declared. Being unplaced is NOT an error \
+             — a section may be unplaced YET, the same forward-declared mode the canon-coordinate \
+             checks tolerate — so it is reported and never gated.",
         disclosure_encoding:
             "Encoding a per-ROAD secret without leaking it — the `withhold` + `first_at` reveal \
              idiom. A telling's disclosure `mode` is world-INDEPENDENT (one decision per fact × \

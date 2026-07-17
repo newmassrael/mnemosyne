@@ -2508,9 +2508,11 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             Some(s) => println!("=== continuity gate ({}) ===", s.as_str()),
         }
         println!(
-            "  facts={} order_nodes={} conflict_pairs={} cross_scope(data)={} unordered={}",
+            "  facts={} order_nodes={}/{} sections conflict_pairs={} cross_scope(data)={} \
+             unordered={}",
             report.facts,
             report.order_nodes,
+            report.sections,
             report.conflict_pairs_checked,
             report.cross_scope_pairs,
             report.unordered_pairs
@@ -2580,6 +2582,51 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                  the trunk's.",
                 report.undeclared_roads.len(),
                 report.undeclared_roads.join(", ")
+            );
+        }
+        // Section-side road-completeness NOTICE (Round 667) — the sibling of the
+        // R614 branch-side one above: that names a WORLD-LINE with no road of its
+        // own, this names SECTIONS no road reaches. Not a gate: road completeness
+        // is the author's todo (R442/R596).
+        //
+        // It exists because the lone `order_nodes` this command printed MISLED a
+        // reader into a false census (R663): the number invited the comparison
+        // with the registry and did not make it, and the silence read as "the
+        // substrate CANNOT make it" — the R620/R638 class, where a probe that
+        // answers "absent" for something present is worse than no probe. The
+        // denominator is now on the line above; this states the subtraction.
+        //
+        // It reports the ARITHMETIC only and never re-derives the list:
+        // placement has one resolver, `report-authoring-frontier`'s
+        // `unplaced_scenes` (Round 667), and this count is exactly that set's
+        // size — the reader who follows the pointer finds the same number and
+        // the ids behind it (the identity is pinned in that crate's tests). The
+        // first cut of this notice pointed at `unordered_scenes` instead and
+        // told the reader its counts were "narrower"; on Round 663's own store
+        // that read "1 sit on no declared road" over `unordered scenes: none` +
+        // three zero-fact scenes, which is this notice's own disease. A pointer
+        // must land on the set it counts.
+        // GUARDED on a declared order, exactly as its two siblings are guarded
+        // (R614 needs a registered branch, R491 a declared interval rule): an
+        // order with NO nodes is not an incomplete order, it is a store that
+        // never declared one — a SPEC store (facts=0, no scenes, `[continuity]`
+        // absent) is the common shape, and Mnemosyne's own reads `0/5`. Unguarded
+        // this notice told that store its five spec sections were unrenderable
+        // scenes, under a gate the line above declares disabled; SCE's ~370
+        // sections are the same shape. A missing order is not this notice's
+        // business and is not lost — `report-authoring-frontier` already reports
+        // EVERY fact-bearing scene as unordered when no order is declared (R596).
+        if report.order_nodes > 0 && report.sections > report.order_nodes {
+            println!(
+                "  NOTICE: the canon order places {} of {} section(s) \u{2014} {} unplaced. A \
+                 store renders only where the order places it, so a fact anchored to an unplaced \
+                 section can never be rendered; the section may also be unplaced YET, which is \
+                 the author's todo and never gated. Run report-authoring-frontier: `unplaced \
+                 scenes` names these {}.",
+                report.order_nodes,
+                report.sections,
+                report.sections - report.order_nodes,
+                report.sections - report.order_nodes
             );
         }
     }
@@ -3662,6 +3709,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         }
     };
     list("zero-fact scenes", &report.zero_fact_scenes);
+    list("unplaced scenes", &report.unplaced_scenes);
     list("unordered scenes", &report.unordered_scenes);
     if report.dangling_setups.is_empty() {
         println!("dangling setups: none");
