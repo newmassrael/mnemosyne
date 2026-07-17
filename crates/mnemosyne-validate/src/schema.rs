@@ -324,7 +324,9 @@ pub fn describe_schema() -> SchemaContract {
              string (unique — it names the finding), \"predicate\": <predicate id> (the KEYED / \
              left typed leg, for every class), \"class\": \"exclusive\" | \"transition\" | \
              \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\"; \
-             transition → \"allowed\": [ [from, to], … ] (scalar value pairs); interval → \
+             transition → \"allowed\": [ [from, to], … ] (OBJECT-KEY pairs: a registered entity \
+             id when the predicate's `object_kind` is `entity` — this is how movement between \
+             PLACES is gated — else the scalar value); interval → \
              \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
              \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
              bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
@@ -339,7 +341,9 @@ pub fn describe_schema() -> SchemaContract {
              \"reject\"` to make an interval rule actually GATE, else it is reported but never \
              fails the gate. When interval rules are declared with the class OFF, \
              `validate-continuity` prints a NOTICE naming their count so the ungated state is \
-             loud, not silent.",
+             loud, not silent. And when ZERO rules are declared at all it prints a NOTICE saying \
+             exactly that: a gate that evaluated NOTHING must never read the same as a gate that \
+             PASSED.",
     }
 }
 
@@ -983,9 +987,14 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                     same-subject pairs are surfaced, never gated.",
                 parameters: vec![FieldSpec {
                     name: "allowed",
-                    ty: "[from, to][] (scalar value pairs)",
+                    ty: "[from, to][] (object-key pairs)",
                     required: true,
-                    description: "The permitted state transitions.",
+                    description: "The permitted state transitions. Each leg is an OBJECT KEY, \
+                        matched against the same string the gate compares: a registered ENTITY \
+                        ID when the predicate's `object_kind` is `entity` — which is how \
+                        movement between PLACES is gated — or the scalar value when it is \
+                        `scalar`. A predicate's object shape is fixed by its registration, so \
+                        one rule's legs are all one shape.",
                 }],
             },
             RuleClass::Interval => RuleClassSpec {

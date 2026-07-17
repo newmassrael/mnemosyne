@@ -2524,6 +2524,23 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 report.interval_unverifiable,
                 interval_severity.map_or("off", Severity::as_str)
             );
+        } else {
+            // Zero-rules NOTICE (Round 664). The count above printed only when
+            // NONZERO, so a run with no rules file wired — or a wired one that
+            // declares an empty `rules` array — reported a GREEN gate that never
+            // said the word `rules` at all. Exactly 0 is the one case where the
+            // author most needs to hear it, and it was the one case kept silent:
+            // an unmentioned leg reads as a leg that passed. Name the OFF state
+            // and hand over the lever, the R491 interval-NOTICE pattern applied
+            // to the rules leg itself (R663: a GREEN that measured nothing must
+            // say so — silence is what the consumer takes as coverage).
+            println!(
+                "  NOTICE: 0 narrative rules declared \u{2014} the exclusive / transition / \
+                 interval classes evaluated NOTHING; this run checked recorded conflict pairs \
+                 only. Declare a `narrative-rules/v1` file and wire it via \
+                 [continuity].rules_path (or pass --rules <file>) to turn them on; \
+                 `describe-schema` documents the classes and the wire."
+            );
         }
         println!(
             "  violations: {} (structural={} interval={})",

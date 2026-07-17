@@ -428,3 +428,48 @@ fn interval_severity_off_emits_notice_naming_the_rule_count() {
         "no ungated-interval notice when interval_severity = reject: {stdout}"
     );
 }
+
+/// Round 664 — the zero-rules NOTICE. The rules count printed only when
+/// NONZERO, so a run with no rules file wired went GREEN without the word
+/// `rules` appearing once: a gate that evaluated NOTHING read exactly like a
+/// gate that PASSED. Exactly 0 — the case where the author most needs to hear
+/// it — was the one case kept silent. The R663 census found our own consumer
+/// hand-building the non-vacuity guard we lacked. Pinned both ways: 0 names
+/// itself and hands over the lever, a wired file removes the notice.
+#[test]
+fn zero_rules_emits_notice_naming_the_off_state() {
+    let tmp = TempDir::new().unwrap();
+    // The rules file is on disk but NOT wired — the silent-GREEN case.
+    write_rules_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\n",
+    );
+    let out = run(tmp.path(), &["validate-continuity"]);
+    assert!(out.status.success(), "{out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("NOTICE") && stdout.contains("0 narrative rules declared"),
+        "a gate that evaluated no rules must say so, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("rules_path"),
+        "the notice must hand over the lever, got: {stdout}"
+    );
+    // Wire the same file: the rules now run, so the zero-rules notice is gone
+    // and the count line speaks instead.
+    write_rules_workspace(
+        tmp.path(),
+        "[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    );
+    let out = run(tmp.path(), &["validate-continuity"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("0 narrative rules declared"),
+        "no zero-rules notice once a rule is wired: {stdout}"
+    );
+    assert!(
+        stdout.contains("rules=1"),
+        "the count line prints: {stdout}"
+    );
+}
