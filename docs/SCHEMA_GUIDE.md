@@ -814,6 +814,31 @@ severity = "reject"            # default; warn | info
 # canon_order_sha256 = "<64-hex>"  # optional pin; loud mismatch on load
 ```
 
+### Spatial-graph gate (`[map]`)
+
+`validate-map` checks a declared spatial graph against the store: a map
+NODE must be a registered entity of the configured `place_kind`, and an
+edge ENDPOINT must be a map node. It is the port of a consumer's
+hand-built map gate (the map exists before the story is authored, and
+the story cannot invent a place — a new place is added to the map
+first). `place_kind` is **not** hardcoded to `"place"`: the consumer
+declares which registered `entity_kinds` id is spatial, and a typo'd or
+unregistered kind fails loud rather than passing every node vacuously
+(the entity-kind registry is a ref, not free text). Without the table
+the gate is off (opt-in).
+
+The map file (`map/v1`) is `{ "nodes": [{"id": …}], "edges": [{"a": …,
+"b": …}] }`; other keys (prose notes, cost/`modes`, `unit`) are the
+consumer's and tolerated unread by this gate.
+
+```toml
+[map]
+path = "map.json"
+place_kind = "place"          # a registered entity_kinds id
+severity = "reject"           # default; warn | info
+# sha256 = "<64-hex>"         # optional pin; loud mismatch on load
+```
+
 ## What stays fixed
 
 The store entity types — Section / CrossRef / ChangelogEntry /
