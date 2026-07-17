@@ -349,9 +349,25 @@ pub struct ConvergeEdgeArg {
 pub struct AddEntityArgs {
     /// Entity id — the registry key fact `entities` refs must name.
     pub entity_id: String,
-    /// Free-form kind tag (consumer-defined, e.g. character/location).
+    /// Kind — a REF into the entity-kind registry, not free text (R669):
+    /// register it first with `add_entity_kind`. Omitted = unspecified
+    /// (allowed); a non-empty typo fails loud (it would route the entity out
+    /// of every kind-scoped gate — the R436 write-side-typo lesson).
     #[serde(default)]
     pub kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// R669 — the entity-kind registry, the vocabulary `AddEntityArgs.kind` refs.
+/// The missing MCP half: `add_entity` gates on this registry, but without a
+/// register verb an MCP-only agent could never declare a kind (the Phase-0
+/// AI-first north star). Mirrors `add_predicate` / `add_entity_kind` (CLI).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddEntityKindArgs {
+    /// Entity-kind id — one member of the vocabulary `add_entity`'s `kind`
+    /// refs (e.g. character / place / item). Fail-loud, load-bearing.
+    pub kind_id: String,
     #[serde(default)]
     pub description: String,
 }
@@ -1582,7 +1598,18 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one narrative entity (R437) — the retrieval key for entity-scoped verification (a character's background, a location's lore). Fact `entities` refs must name a registered id (fail-loud). Idempotent on identical content; divergent rejects."
+        description = "Register one entity kind (R669) — the vocabulary `add_entity`'s `kind` refs name (character / place / item). The consumer declares the members; the substrate never enumerates them (ARCHITECTURE.md sec 6 invariant 4) and enforces only that a kind in use was declared. The extension path a closed set requires (R626: a guard without an escape hatch is a trap) — register a new kind the moment authoring needs one. Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a kind (the Phase-0 AI-first north star)."
+    )]
+    async fn add_entity_kind(&self, args: Parameters<AddEntityKindArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_entity_kind(store, path, &a.kind_id, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Register one narrative entity (R437) — the retrieval key for entity-scoped verification (a character's background, a location's lore). Fact `entities` refs must name a registered id (fail-loud). `kind` is a REF into the entity-kind registry (R669) — `add_entity_kind` first. Idempotent on identical content; divergent rejects."
     )]
     async fn add_entity(&self, args: Parameters<AddEntityArgs>) -> CallToolResult {
         let a = args.0;
