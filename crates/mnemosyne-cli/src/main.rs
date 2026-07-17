@@ -2733,7 +2733,7 @@ fn cmd_validate_map(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
-    let findings = mnemosyne_validate::map::check_map_g1(&store, &map, &place_kind);
+    let findings = mnemosyne_validate::map::check_map(&store, &map, &place_kind);
 
     if json {
         println!(

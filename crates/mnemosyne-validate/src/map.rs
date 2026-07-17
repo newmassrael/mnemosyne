@@ -27,12 +27,18 @@ use mnemosyne_atomic::AtomicStore;
 use serde::Deserialize;
 use std::path::Path;
 
-/// One node in a `map/v1` declaration. Only `id` is read (it must resolve to a
-/// registered place entity); `name`/`outside`/`note`/`tide_floods`/… are the
-/// consumer's and tolerated unread.
+/// One node in a `map/v1` declaration. `id` must resolve to a registered place
+/// entity (G1); `outside` marks the map's ENTRANCE — the BFS root G4 walks from
+/// (a node reachable from outside the island). The rest (`name`/`note`/
+/// `tide_floods`/…) is the consumer's and tolerated unread.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MapNode {
     pub id: String,
+    /// `true` = an entrance to the graph (the mainland end of the dyke). G4
+    /// requires at least one, and reaches every other node from it. Defaults
+    /// false (an interior node) when the key is absent.
+    #[serde(default)]
+    pub outside: bool,
 }
 
 /// One undirected edge. Only the endpoints are read here; `walk`/`tide_closes`
@@ -124,6 +130,77 @@ pub fn check_map_g1(store: &AtomicStore, map: &MapFile, place_kind: &str) -> Vec
     findings
 }
 
+/// G4 — the graph is CONNECTED from an entrance: there is at least one
+/// `outside: true` node, and every node is reachable from the entrances by
+/// walking the (undirected) edges. An unreachable node is a place the story
+/// can put a character but no one can walk to — `build-map.py`'s "갈 수 없는
+/// 자리다". Findings are in sorted id order (deterministic, mirroring the port).
+///
+/// Independent of G1 (needs no store, no place_kind): a map can be internally
+/// well-connected while mis-referencing the store, and vice versa.
+pub fn check_map_g4(map: &MapFile) -> Vec<String> {
+    let mut findings = Vec::new();
+    let node_ids: std::collections::BTreeSet<&str> =
+        map.nodes.iter().map(|n| n.id.as_str()).collect();
+
+    // Undirected adjacency, only between declared nodes (a dangling endpoint is
+    // G1's finding, not G4's — here it simply contributes no reachability).
+    let mut adj: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> = node_ids
+        .iter()
+        .map(|&n| (n, std::collections::BTreeSet::new()))
+        .collect();
+    for e in &map.edges {
+        let (a, b) = (e.a.as_str(), e.b.as_str());
+        if node_ids.contains(a) && node_ids.contains(b) {
+            adj.get_mut(a).unwrap().insert(b);
+            adj.get_mut(b).unwrap().insert(a);
+        }
+    }
+
+    let roots: Vec<&str> = map
+        .nodes
+        .iter()
+        .filter(|n| n.outside)
+        .map(|n| n.id.as_str())
+        .collect();
+    if roots.is_empty() {
+        findings.push(
+            "G4 the map has no entrance — at least one node must be `outside: true` \
+             (the BFS root; without it every node is unreachable)"
+                .to_string(),
+        );
+        return findings;
+    }
+
+    let mut seen: std::collections::BTreeSet<&str> = roots.iter().copied().collect();
+    let mut stack = roots;
+    while let Some(n) = stack.pop() {
+        for &nb in &adj[n] {
+            if seen.insert(nb) {
+                stack.push(nb);
+            }
+        }
+    }
+    // node_ids is sorted (BTreeSet), so the findings are stable.
+    for &n in &node_ids {
+        if !seen.contains(n) {
+            findings.push(format!(
+                "G4 `{n}` is unreachable from the entrance — a place you cannot get to"
+            ));
+        }
+    }
+    findings
+}
+
+/// Run every IMPLEMENTED map gate and concatenate their findings (G1 + G4
+/// today; G2/G3/G5/G6 are still on `build-map.py` — see the module's carry).
+/// The gates are independent, so all run regardless of each other's findings.
+pub fn check_map(store: &AtomicStore, map: &MapFile, place_kind: &str) -> Vec<String> {
+    let mut findings = check_map_g1(store, map, place_kind);
+    findings.extend(check_map_g4(map));
+    findings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,11 +233,17 @@ mod tests {
         s
     }
 
+    /// The FIRST node is the entrance (`outside: true`) so the map is a valid
+    /// G4 shape; the rest are interior. G1-only tests ignore `outside`.
     fn map(nodes: &[&str], edges: &[(&str, &str)]) -> MapFile {
         MapFile {
             nodes: nodes
                 .iter()
-                .map(|id| MapNode { id: id.to_string() })
+                .enumerate()
+                .map(|(i, id)| MapNode {
+                    id: id.to_string(),
+                    outside: i == 0,
+                })
                 .collect(),
             edges: edges
                 .iter()
@@ -178,7 +261,8 @@ mod tests {
             &["ent-dike", "ent-village", "ent-well"],
             &[("ent-dike", "ent-village"), ("ent-village", "ent-well")],
         );
-        assert!(check_map_g1(&store(), &m, "place").is_empty());
+        // Both gates: a clean map has no G1 finding AND no G4 finding.
+        assert!(check_map(&store(), &m, "place").is_empty());
     }
 
     /// NON-VACUITY: each fault class fires. The clean case above passing is not
@@ -239,5 +323,70 @@ mod tests {
         // empty node set.
         let missing = r#"{ "edges": [] }"#;
         assert!(serde_json::from_str::<MapFile>(missing).is_err());
+    }
+
+    #[test]
+    fn g4_no_entrance_is_caught() {
+        // No node is `outside: true` — `map()` marks index 0, so build inline.
+        let m = MapFile {
+            nodes: vec![
+                MapNode {
+                    id: "ent-dike".into(),
+                    outside: false,
+                },
+                MapNode {
+                    id: "ent-village".into(),
+                    outside: false,
+                },
+            ],
+            edges: vec![MapEdge {
+                a: "ent-dike".into(),
+                b: "ent-village".into(),
+            }],
+        };
+        let f = check_map_g4(&m);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("no entrance") && f[0].contains("outside"));
+    }
+
+    #[test]
+    fn g4_unreachable_node_is_caught() {
+        // ent-well has no edge to the connected {dike, village} component.
+        let m = map(
+            &["ent-dike", "ent-village", "ent-well"],
+            &[("ent-dike", "ent-village")],
+        );
+        let f = check_map_g4(&m);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("ent-well") && f[0].contains("unreachable"));
+    }
+
+    #[test]
+    fn g4_reaches_across_a_multi_hop_chain() {
+        // dike(entrance) -> village -> well -> shrine: BFS must reach the tail.
+        let m = map(
+            &["ent-dike", "ent-village", "ent-well", "ent-shrine"],
+            &[
+                ("ent-dike", "ent-village"),
+                ("ent-village", "ent-well"),
+                ("ent-well", "ent-shrine"),
+            ],
+        );
+        assert!(check_map_g4(&m).is_empty(), "{:?}", check_map_g4(&m));
+    }
+
+    /// G1 and G4 are independent: a map can be internally connected yet
+    /// mis-reference the store (G1 fires, G4 does not), so `check_map` must
+    /// surface BOTH sets, not stop at the first gate.
+    #[test]
+    fn check_map_runs_g1_and_g4_independently() {
+        // Connected graph (G4 clean) but ent-invented is not in the store (G1).
+        let m = map(
+            &["ent-dike", "ent-invented"],
+            &[("ent-dike", "ent-invented")],
+        );
+        let f = check_map(&store(), &m, "place");
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("ent-invented") && f[0].contains("G1"));
     }
 }
