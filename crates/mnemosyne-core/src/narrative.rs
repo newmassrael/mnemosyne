@@ -370,11 +370,41 @@ pub struct ConflictAssertion {
 /// `(branch_id, entity_id, valid_from)`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entity {
-    /// Free-form kind tag (consumer-defined values — e.g. a game medium
-    /// uses character/location/faction/item; nothing medium-shaped is
-    /// enforced here, ARCHITECTURE.md sec 6 invariant 4). Optional.
+    /// Registered kind ref — a key of `AtomicStore.entity_kinds`, NOT free
+    /// text. Optional (empty = unspecified); a NON-empty value must resolve,
+    /// fail-loud at the mutate primitive AND at the scan boundary. The
+    /// vocabulary itself stays the consumer's (a game medium registers
+    /// character/place/item; a spec medium registers something else):
+    /// the substrate enforces THAT the kind is registered, never WHICH kinds
+    /// exist (ARCHITECTURE.md sec 6 invariant 4 — routing, not prohibition).
+    ///
+    /// This was a free-text `String` until the machine-slot rule (Round 661)
+    /// reached it: every other identity here — frames, branches, entities,
+    /// predicates, sections — is registered and fail-loud, and Round 661
+    /// counted the entity's ID as registered while missing the kind INSIDE
+    /// the record. Measured on the live corpus before closing: 5 distinct
+    /// kinds over 109 entities, every one filled, zero typos — the set was
+    /// already closed in practice, so registration costs the author nothing
+    /// and buys the spatial gate a question it can actually ask.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub kind: String,
+    /// Free-form description. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
+/// One registered entity kind (registry entry). Keyed by kind id in
+/// `AtomicStore.entity_kinds`; every non-empty [`Entity::kind`] must name a
+/// key here — the frames/branches/entities/predicates registry symmetry
+/// (Round 436's write-side-typo lesson applied to the last slot that lacked
+/// it: a typo'd kind would silently answer "not a place" and route the
+/// entity out of every kind-scoped gate).
+///
+/// The registry holds the vocabulary the CONSUMER declares. Core never
+/// enumerates the members — there is no `Place` variant here and there must
+/// never be one (invariant 4).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityKind {
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,

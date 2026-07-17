@@ -37,9 +37,9 @@ pub use redact::*;
 
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
-    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, Entity, Frame,
-    InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
-    TypedObject,
+    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, Entity, EntityKind,
+    Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind,
+    TypedClaim, TypedObject,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -640,6 +640,19 @@ pub struct AtomicStore {
     /// Empty on pre-v15 stores via `#[serde(default)]`.
     #[serde(default)]
     pub entities: BTreeMap<String, Entity>,
+    /// Entity-kind registry — keyed by kind id. Every non-empty
+    /// `Entity.kind` must name a key here (fail-loud at the mutate
+    /// primitives AND at the scan boundary; the frames/branches/entities/
+    /// predicates symmetry). Round 661 ruled the machine slot holds no free
+    /// text and counted `TypedObject::Value` as the only offender — it
+    /// checked the entity REGISTRY and not the kind INSIDE the record, so
+    /// this slot was the second one. Empty on pre-v24 stores via
+    /// `#[serde(default)]`, which is NOT a compat carry: an empty registry
+    /// plus a non-empty kind is a boundary REJECT, so a pre-v24 store with
+    /// kinds must register them (measured migration cost on the live corpus:
+    /// 5 kinds over 109 entities).
+    #[serde(default)]
+    pub entity_kinds: BTreeMap<String, EntityKind>,
     /// Predicate registry (Round 446) — the FOURTH registry, keyed by
     /// predicate id. Every `TypedClaim.predicate` must name a key here
     /// (fail-loud at the mutate primitives). Predicates are load-bearing
@@ -1142,11 +1155,24 @@ pub enum AtomicStoreError {
 // render-acceptance gates run, and those are out-of-band render-loop tools, not
 // validate-workspace). So there is deliberately NO `schema_version < 22` arm in
 // `load`, and no migration report is needed.
+// v23→v24 adds `AtomicStore.entity_kinds` and turns `Entity.kind` from FREE
+// TEXT into a registry ref (Round 661's machine-slot rule reaching the slot
+// that round missed: it counted the entity ID as registered and never looked
+// at the kind INSIDE the record). This one IS breaking, unlike the bumps
+// above: a pre-v24 store whose entities carry kinds has NO registry, and a
+// non-empty kind that does not resolve is a boundary REJECT. That is
+// deliberate and is not a compat carry — an unregistered kind is exactly the
+// defect being closed, so it fails loud rather than passing on a default.
+// Migration is one `add-entity-kind` per distinct kind, measured at 5 for the
+// live 109-entity corpus and 2 for the tracked experiment store. There is no
+// `schema_version < 24` arm in `load` for the same reason: silently
+// back-filling the registry from the kinds already in the file would
+// "migrate" a typo into a registered vocabulary and defeat the gate.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 23;
+pub const CURRENT_SCHEMA_VERSION: u32 = 24;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3575,12 +3601,25 @@ pub struct FactImport {
 }
 
 /// One entity entry in the [`FactsManifest`] (and the `add_entity` shape,
-/// Round 437).
+/// Round 437). `kind` is a REF into the entity-kind registry, not free text —
+/// declare it in `entity_kinds` (this manifest stages those FIRST) or with
+/// `add_entity_kind` before it is named here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityImport {
     pub entity_id: String,
     #[serde(default)]
     pub kind: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// One entity-kind entry in the [`FactsManifest`] (and the `add_entity_kind`
+/// shape) — the consumer's vocabulary declaration. Staged BEFORE `entities`
+/// so one manifest can declare a kind and use it (the frames-before-facts
+/// ordering this manifest already relies on).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityKindImport {
+    pub kind_id: String,
     #[serde(default)]
     pub description: String,
 }
@@ -3651,6 +3690,8 @@ pub struct FactsManifest {
     pub frames: Vec<FrameImport>,
     #[serde(default)]
     pub branches: Vec<BranchImport>,
+    #[serde(default)]
+    pub entity_kinds: Vec<EntityKindImport>,
     #[serde(default)]
     pub entities: Vec<EntityImport>,
     #[serde(default)]
@@ -4358,11 +4399,66 @@ pub fn add_branch(
     registry_receipt(store, sidecar_path, "add_branch", "branch", &id, created)
 }
 
+/// Register one entity kind — the vocabulary [`Entity::kind`] refs. The
+/// members are the CONSUMER's (a game registers character/place/item; core
+/// never enumerates them, ARCHITECTURE.md sec 6 invariant 4); the substrate
+/// enforces only that a kind in use was declared. A2-consistent verdicts via
+/// the shared staging path.
+///
+/// This is the extension path a closed set requires (Round 626: "a guard
+/// without an escape hatch is a trap") — the author registers a new kind the
+/// moment authoring needs one, exactly as Round 658's `set-predicate` does
+/// for the predicate vocabulary.
+pub fn add_entity_kind(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    kind_id: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = kind_id.trim().to_string();
+    let candidate = EntityKind {
+        description: description.trim().to_string(),
+    };
+    let created = stage_registry_entry(
+        &mut store.entity_kinds,
+        "add_entity_kind",
+        "entity_kind",
+        &id,
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_entity_kind",
+        "entity_kind",
+        &id,
+        created,
+    )
+}
+
+/// Whether a stored [`Entity::kind`] is acceptable against the registry —
+/// the ONE verdict, shared by the write path here and the scan boundary in
+/// `mnemosyne-validate` (the two-copies rule: a second hand-rolled copy is
+/// how the two paths drift into a half-enforced invariant).
+///
+/// Empty = unspecified, and it PASSES: absence is not free text. A non-empty
+/// kind must resolve.
+pub fn entity_kind_registered(store: &AtomicStore, kind: &str) -> bool {
+    kind.is_empty() || store.entity_kinds.contains_key(kind)
+}
+
 /// Register one narrative entity (Round 437 — the third registry, after
 /// frames and branches: every `NarrativeFact.entities` ref must name a
 /// registered id, so a typo'd entity fails loud instead of silently
 /// splitting a dossier). A2-consistent verdicts: absent → create,
 /// byte-identical → idempotent no-op, divergent → reject.
+///
+/// `kind` is a REGISTRY REF, not free text (Round 661's machine-slot rule
+/// applied to the slot that round missed): a non-empty kind must already be
+/// declared via [`add_entity_kind`], so a typo'd kind fails loud here instead
+/// of silently routing the entity out of every kind-scoped gate — the Round
+/// 436 write-side-typo lesson, which predicates got and this slot did not.
 pub fn add_entity(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -4371,8 +4467,27 @@ pub fn add_entity(
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = entity_id.trim().to_string();
+    let kind = kind.trim();
+    if !entity_kind_registered(store, kind) {
+        let known = store
+            .entity_kinds
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let known = if known.is_empty() {
+            "none registered yet".to_string()
+        } else {
+            known
+        };
+        return Err(AtomicMutateError::Validation(format!(
+            "add_entity: entity `{id}` names kind `{kind}`, which is not a registered \
+             entity kind — register it (add_entity_kind) or fix the spelling \
+             (known: {known})"
+        )));
+    }
     let candidate = Entity {
-        kind: kind.trim().to_string(),
+        kind: kind.to_string(),
         description: description.trim().to_string(),
     };
     let created = stage_registry_entry(&mut store.entities, "add_entity", "entity", &id, candidate)
@@ -5080,10 +5195,44 @@ pub fn apply_facts_manifest(
             no_op += 1;
         }
     }
+    // Entity KINDS before entities: a manifest may declare a kind and use it
+    // (the frames-before-facts ordering this manifest already relies on).
+    let mut entity_kinds_created = 0usize;
+    for (idx, k) in manifest.entity_kinds.iter().enumerate() {
+        let candidate = EntityKind {
+            description: k.description.trim().to_string(),
+        };
+        let created = stage_registry_entry(
+            &mut store.entity_kinds,
+            &format!("import_facts: manifest entity_kind {idx}"),
+            "entity_kind",
+            k.kind_id.trim(),
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            entity_kinds_created += 1;
+        } else {
+            no_op += 1;
+        }
+    }
     let mut entities_created = 0usize;
     for (idx, e) in manifest.entities.iter().enumerate() {
+        let kind = e.kind.trim();
+        // The SAME verdict the standalone `add_entity` write path enforces —
+        // a second copy is how two write paths drift into a half-enforced
+        // invariant (CLAUDE.md multi-write-path rule; the R295/R305 paste-error
+        // class). The manifest is the second authority on `Entity.kind`.
+        if !entity_kind_registered(store, kind) {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest entity {idx} (`{}`) names kind `{kind}`, which is \
+                 not a registered entity kind — declare it in the manifest's `entity_kinds` \
+                 (staged first) or with add_entity_kind",
+                e.entity_id.trim()
+            )));
+        }
         let candidate = Entity {
-            kind: e.kind.trim().to_string(),
+            kind: kind.to_string(),
             description: e.description.trim().to_string(),
         };
         let created = stage_registry_entry(
@@ -5214,12 +5363,14 @@ pub fn apply_facts_manifest(
         }
     }
     let summary = format!(
-        "{frames_created} frames + {branches_created} branches + {entities_created} entities \
-         + {predicates_created} predicates + {facts_created} facts + {disclosure_plans_created} \
-         disclosure-plans + {disclosure_overrides_set} disclosure-overrides created, {no_op} no-op"
+        "{frames_created} frames + {branches_created} branches + {entity_kinds_created} \
+         entity-kinds + {entities_created} entities + {predicates_created} predicates + \
+         {facts_created} facts + {disclosure_plans_created} disclosure-plans + \
+         {disclosure_overrides_set} disclosure-overrides created, {no_op} no-op"
     );
     let changed = frames_created != 0
         || branches_created != 0
+        || entity_kinds_created != 0
         || entities_created != 0
         || predicates_created != 0
         || facts_created != 0
@@ -9832,6 +9983,7 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -10155,6 +10307,7 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 frames: vec![
                     FrameImport {
@@ -10281,6 +10434,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -10608,6 +10762,7 @@ mod tests {
         let mut f_old = sample_fact("f-old", "jonathan");
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
+            entity_kinds: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -10627,8 +10782,8 @@ mod tests {
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(
             receipt.target_id,
-            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts + 0 disclosure-plans \
-             + 0 disclosure-overrides created, 0 no-op"
+            "2 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 2 facts \
+             + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -10649,8 +10804,8 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         assert_eq!(
             again.target_id,
-            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts + 0 disclosure-plans \
-             + 0 disclosure-overrides created, 4 no-op"
+            "0 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 0 facts \
+             + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
         );
     }
 
@@ -10662,6 +10817,7 @@ mod tests {
         seed_chapters(&mut store);
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
+            entity_kinds: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -10682,6 +10838,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 frames: frames.clone(),
@@ -10702,6 +10859,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -10719,6 +10877,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -10742,6 +10901,7 @@ mod tests {
         let mut successor = sample_fact("f2", "seward");
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
+            entity_kinds: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -10780,6 +10940,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -10796,6 +10957,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -10923,6 +11085,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    entity_kinds: vec![],
                     disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
@@ -11097,6 +11260,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    entity_kinds: vec![],
                     disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
@@ -11215,6 +11379,7 @@ mod tests {
                 &FactsManifest {
                     frames: vec![],
                     branches: vec![],
+                    entity_kinds: vec![],
                     entities: vec![],
                     predicates: vec![],
                     facts: vec![],
@@ -11489,6 +11654,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -11565,6 +11731,7 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 frames: vec![],
                 branches: vec![],
@@ -11666,6 +11833,7 @@ mod tests {
             &mut store_b,
             &path_b,
             &FactsManifest {
+                entity_kinds: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 frames: vec![],
@@ -12005,6 +12173,7 @@ mod tests {
             ..sample_fact("f-b", "gt")
         };
         let manifest = FactsManifest {
+            entity_kinds: vec![],
             disclosure_plans: vec![],
             frames: vec![FrameImport {
                 frame_id: "gt".to_string(),
@@ -12071,6 +12240,8 @@ mod tests {
         };
         let err = add_fact(&mut store, &path, &about_count).unwrap_err();
         assert!(err.to_string().contains("entity registry"), "{err}");
+        add_entity_kind(&mut store, &path, "character", "a person in the story").unwrap();
+        add_entity_kind(&mut store, &path, "location", "a place").unwrap();
         add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
         add_fact(&mut store, &path, &about_count).unwrap();
         assert_eq!(
@@ -12096,6 +12267,46 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         let err = add_entity(&mut store, &path, "dracula", "location", "").unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
+    }
+
+    /// The kind is a registry REF, not free text: a kind nobody declared is a
+    /// write-time reject, and the typo that motivates it (`palce` for `place`)
+    /// is caught rather than silently routing the entity out of every
+    /// kind-scoped gate. NON-VACUITY: the accept arms below fail if the check
+    /// rejects everything, and the empty arm pins that ABSENCE is not free text.
+    #[test]
+    fn add_entity_kind_must_be_registered() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+
+        // Unregistered kind rejects, and the message hands over the lever.
+        let err = add_entity(&mut store, &path, "ent-village", "place", "").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not a registered entity kind"), "{msg}");
+        assert!(msg.contains("add_entity_kind"), "{msg}");
+        assert!(msg.contains("none registered yet"), "{msg}");
+        assert!(!store.entities.contains_key("ent-village"), "wrote anyway");
+
+        // Registered kind is accepted — the gate is not rejecting everything.
+        add_entity_kind(&mut store, &path, "place", "somewhere a person can be").unwrap();
+        add_entity(&mut store, &path, "ent-village", "place", "the lane").unwrap();
+        assert_eq!(store.entities["ent-village"].kind, "place");
+
+        // The motivating typo rejects, and names the vocabulary it missed.
+        let err = add_entity(&mut store, &path, "ent-well", "palce", "").unwrap_err();
+        assert!(err.to_string().contains("known: place"), "{err}");
+
+        // Empty = unspecified, and PASSES: absence is not free text.
+        add_entity(&mut store, &path, "ent-nameless", "", "").unwrap();
+        assert_eq!(store.entities["ent-nameless"].kind, "");
+
+        // The registry round-trips, and an unkinded entity writes no `kind` key.
+        let reloaded = AtomicStore::load(&path).unwrap();
+        assert!(reloaded.entity_kinds.contains_key("place"));
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(raw["entities"]["ent-nameless"].get("kind").is_none());
     }
 
     #[test]

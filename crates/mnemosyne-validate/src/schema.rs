@@ -363,11 +363,12 @@ pub fn describe_schema() -> SchemaContract {
 fn manifest_wire() -> ManifestWireSpec {
     ManifestWireSpec {
         add_op: "import-facts (apply) / propose-verdict (dry-run gate) — both read this manifest",
-        overview: "A JSON object with six optional arrays applied in this order in ONE atomic \
-             transaction: frames, branches, entities, predicates, facts, disclosure_plans. Later \
-             kinds may reference earlier ones (a fact names a frame/branch/entity/section; a \
-             disclosure override names a fact), so order matters — registries first, then facts, \
-             then disclosure. Any array may be omitted (defaults to empty).",
+        overview: "A JSON object with seven optional arrays applied in this order in ONE atomic \
+             transaction: frames, branches, entity_kinds, entities, predicates, facts, \
+             disclosure_plans. Later kinds may reference earlier ones (an entity names an \
+             entity_kind; a fact names a frame/branch/entity/section; a disclosure override names \
+             a fact), so order matters — registries first, then facts, then disclosure. Any array \
+             may be omitted (defaults to empty).",
         kinds: vec![
             KindWire {
                 kind: "frames",
@@ -382,9 +383,16 @@ fn manifest_wire() -> ManifestWireSpec {
                     XOR a confluence (converges_from)",
             },
             KindWire {
+                kind: "entity_kinds",
+                json_keys: "{ \"kind_id\": string, \"description\"?: string } — the consumer's \
+                    entity-kind vocabulary (character/place/item/quest/…); members are the \
+                    consumer's, never core's",
+            },
+            KindWire {
                 kind: "entities",
-                json_keys: "{ \"entity_id\": string, \"kind\"?: string (free-form; the one \
-                    reserved value is \"quest\"), \"description\"?: string }",
+                json_keys: "{ \"entity_id\": string, \"kind\"?: string (a REGISTERED entity_kind \
+                    id, not free text — declare it in entity_kinds first; omit = unspecified), \
+                    \"description\"?: string }",
             },
             KindWire {
                 kind: "predicates",
@@ -1798,6 +1806,10 @@ mod tests {
                     branch: "b".into(),
                     at: "s".into(),
                 }],
+            }],
+            entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
+                kind_id: "character".into(),
+                description: "d".into(),
             }],
             entities: vec![mnemosyne_atomic::EntityImport {
                 entity_id: "e".into(),

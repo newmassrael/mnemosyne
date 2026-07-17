@@ -540,6 +540,50 @@ pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
     )
 }
 
+/// Register one entity kind — the vocabulary `--kind` refs on `add-entity`.
+/// The members are the consumer's; the substrate only enforces that a kind in
+/// use was declared (Round 661's machine-slot rule, invariant 4 routing).
+pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<()> {
+    let mut kind_id: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--kind" => {
+                kind_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let kind_id = kind_id.ok_or_else(|| anyhow!("--kind arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_entity_kind(&mut store, &sidecar_path, &kind_id, &description),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|scalar` mandatory.
 pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {

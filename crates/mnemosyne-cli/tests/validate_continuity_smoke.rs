@@ -184,6 +184,7 @@ fn write_rules_workspace(workspace: &Path, continuity_table: &str) {
         "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
         "changelog_entries": {},
         "frames": { "gt": {} },
+        "entity_kinds": { "character": {} },
         "entities": { "dracula": { "kind": "character" } },
         "predicates": { "at-location": { "object_kind": "scalar" } },
         "narrative_facts": {

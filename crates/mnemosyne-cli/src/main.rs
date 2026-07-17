@@ -420,9 +420,24 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["add-entity --entity <id> [--kind <tag>] [--description <text>] [--sidecar <path>] [--json]"],
-        notes: &[],
+        usage: &["add-entity --entity <id> [--kind <registered-kind>] [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   --kind is a REF into the entity-kind registry, not free text: register it first",
+            "   with add-entity-kind. Omitted = unspecified (allowed); a typo = reject",
+        ],
         run: |c| atomic_cli::cmd_add_entity(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-entity-kind",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-entity-kind --kind <id> [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   declares one member of the entity-kind vocabulary add-entity's --kind refs;",
+            "   the members are the consumer's (character/place/item/…), never core's",
+        ],
+        run: |c| atomic_cli::cmd_add_entity_kind(&c.anchor()?, c.rest()),
     },
     Command {
         name: "add-predicate",

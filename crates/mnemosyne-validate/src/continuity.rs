@@ -1658,6 +1658,21 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
             ));
         }
     }
+    for (id, entity) in &store.entities {
+        // The kind is a registry ref, not free text (Round 661's machine-slot
+        // rule). The write path (`add_entity`) enforces this too; this is the
+        // out-of-band-edit half — enforcing on ONE side only is the
+        // half-enforced invariant, i.e. no invariant. Both sides call the SAME
+        // verdict so they cannot drift apart.
+        if !mnemosyne_atomic::entity_kind_registered(store, &entity.kind) {
+            return Err(format!(
+                "entity `{id}`: kind `{}` is not in the entity-kind registry \
+                 (out-of-band edit, or a pre-v24 store whose kinds were never \
+                 registered — declare it with add-entity-kind)",
+                entity.kind
+            ));
+        }
+    }
     for (id, fact) in &store.narrative_facts {
         if !store.frames.contains_key(&fact.frame) {
             return Err(format!(
@@ -4880,6 +4895,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 entities,
                 frames,
                 branches,
@@ -5310,6 +5326,10 @@ mod tests {
                 &path,
                 &FactsManifest {
                     disclosure_plans: vec![],
+                    entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
+                        kind_id: "character".to_string(),
+                        description: String::new(),
+                    }],
                     frames: vec![mnemosyne_atomic::FrameImport {
                         frame_id: "seward".to_string(),
                         description: String::new(),
@@ -5411,6 +5431,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames,
                 branches,
                 entities,
@@ -7743,6 +7764,9 @@ mod tests {
             ],
             &[("win", MAIN_BRANCH, "ch-2")],
         );
+        store
+            .entity_kinds
+            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
         for (id, desc) in [
             ("q-main", "End the rising"),
             ("q-key", "Recover the warden's key"),
@@ -7824,6 +7848,9 @@ mod tests {
             fact("f-plain", "gt", "ch-1", None),
         ]);
         // Only q1 is a quest; hero/warden are actors (default kind).
+        store
+            .entity_kinds
+            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
         store.entities.get_mut("q1").unwrap().kind = "quest".to_string();
 
         let structural = structural_fact_ids(&store).unwrap();
@@ -7960,6 +7987,9 @@ mod tests {
                 scalar_claim("q-b", pred, "q-a"),
                 &[],
             )]);
+            store
+                .entity_kinds
+                .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
             store.entities.get_mut("q-b").unwrap().kind = "quest".to_string();
             plan(&mut store);
 
@@ -7988,6 +8018,8 @@ mod tests {
             ent_claim("q-b", "requires", "q-a"),
             &[],
         )]);
+        ok.entity_kinds
+            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
         for q in ["q-a", "q-b"] {
             ok.entities.get_mut(q).unwrap().kind = "quest".to_string();
         }
@@ -8058,6 +8090,9 @@ mod tests {
             ..fact("f-sibling", "gt", "ch-2", None)
         };
         let mut store = store_with_forks(vec![give, pursue, complete, sibling], &[]);
+        store
+            .entity_kinds
+            .insert("quest".to_string(), mnemosyne_core::EntityKind::default());
         let e = store.entities.get_mut("q-split").unwrap();
         e.kind = "quest".to_string();
         e.description = "Split completion".to_string();
@@ -8317,6 +8352,79 @@ mod tests {
         assert!(report.unplaced_fork_points.is_empty());
     }
 
+    /// `Entity.kind` is a registry ref, and the scan boundary is the
+    /// out-of-band-edit half of that (the write path `add_entity` is the
+    /// other). NON-VACUITY BY INJECTION: the store passes with the kind
+    /// registered and fails the moment the registry row is removed WITHOUT
+    /// touching the entity — so the check reads the registry, not the spelling.
+    #[test]
+    fn store_boundary_rejects_unregistered_entity_kind() {
+        let mut store = AtomicStore::new();
+        store
+            .entity_kinds
+            .insert("place".to_string(), mnemosyne_core::EntityKind::default());
+        store.entities.insert(
+            "ent-village".to_string(),
+            mnemosyne_core::Entity {
+                kind: "place".to_string(),
+                description: String::new(),
+            },
+        );
+        // An unkinded entity is legal — absence is not free text.
+        store.entities.insert(
+            "ent-nameless".to_string(),
+            mnemosyne_core::Entity::default(),
+        );
+        check_store_boundary(&store, &CanonOrder::empty())
+            .expect("a registered kind + an unkinded entity must both pass");
+
+        // Injection: drop ONLY the registry row. The entity is untouched.
+        store.entity_kinds.remove("place");
+        let err = check_store_boundary(&store, &CanonOrder::empty())
+            .expect_err("an unregistered kind must fail the boundary");
+        assert!(err.contains("ent-village"), "{err}");
+        assert!(err.contains("entity-kind registry"), "{err}");
+    }
+
+    /// The field-invariant parity test CLAUDE.md requires for any field with
+    /// more than one write/check authority: `Entity.kind` is enforced by
+    /// `add_entity` (write path, mnemosyne-atomic) AND by `check_store_boundary`
+    /// (scan boundary, here). Half-enforced = not enforced, so the SAME
+    /// edge-case inputs must get the SAME verdict from both. This is the test
+    /// that catches a future paste-error tightening one side only.
+    #[test]
+    fn entity_kind_write_path_and_boundary_agree() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+
+        for (kind, want_accept) in [("place", true), ("", true), ("palce", false)] {
+            // Write path.
+            let mut w = AtomicStore::new();
+            mnemosyne_atomic::add_entity_kind(&mut w, &path, "place", "").unwrap();
+            let write_accepts =
+                mnemosyne_atomic::add_entity(&mut w, &path, "ent-x", kind, "").is_ok();
+
+            // Scan boundary, given the same store shape reached out-of-band.
+            let mut b = AtomicStore::new();
+            mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", "").unwrap();
+            b.entities.insert(
+                "ent-x".to_string(),
+                mnemosyne_core::Entity {
+                    kind: kind.to_string(),
+                    description: String::new(),
+                },
+            );
+            let boundary_accepts = check_store_boundary(&b, &CanonOrder::empty()).is_ok();
+
+            assert_eq!(
+                write_accepts, boundary_accepts,
+                "kind {kind:?}: write path accepts={write_accepts} but boundary \
+                 accepts={boundary_accepts} — a half-enforced invariant is no invariant"
+            );
+            assert_eq!(write_accepts, want_accept, "kind {kind:?}: wrong verdict");
+        }
+    }
+
     /// Round 533 — the Harlow Mill diamond fixture: `sluice` and `ride` fork at
     /// `tr`, run EXCLUSIVE middles (`sl` / `rd`), and CONVERGE into `dawn` — the
     /// shared `rk -> rv` suffix authored ONCE on the confluence (the R531 2x
@@ -8359,6 +8467,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -8592,6 +8701,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -8687,6 +8797,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -8832,6 +8943,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9045,6 +9157,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9181,6 +9294,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9285,6 +9399,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9556,6 +9671,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9665,6 +9781,7 @@ mod tests {
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
+                entity_kinds: vec![],
                 frames: vec![],
                 branches: vec![],
                 entities: vec![],

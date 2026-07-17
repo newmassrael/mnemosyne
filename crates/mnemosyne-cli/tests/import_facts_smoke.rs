@@ -85,14 +85,18 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains(
-            "2 frames + 0 branches + 0 entities + 0 predicates + 2 facts + 0 disclosure-plans \
-             + 0 disclosure-overrides created"
+            "2 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 2 facts \
+             + 0 disclosure-plans + 0 disclosure-overrides created"
         ),
         "{stdout}"
     );
     let store = read_store(tmp.path());
-    // CURRENT_SCHEMA_VERSION — bumped to 23 by R532 (Branch.converges_from).
-    assert_eq!(store["schema_version"], 23);
+    // Derived from the constant, never hand-copied: a literal here goes stale
+    // on every bump and pins the wrong generation (the R624 oracle rule).
+    assert_eq!(
+        store["schema_version"],
+        mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+    );
     assert_eq!(
         store["narrative_facts"]["f-new"]["supersedes_in_frame"],
         "f-old"
@@ -114,8 +118,8 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     let stdout = String::from_utf8_lossy(&again.stdout);
     assert!(
         stdout.contains(
-            "0 frames + 0 branches + 0 entities + 0 predicates + 0 facts + 0 disclosure-plans \
-             + 0 disclosure-overrides created, 4 no-op"
+            "0 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 0 facts \
+             + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
         ),
         "{stdout}"
     );

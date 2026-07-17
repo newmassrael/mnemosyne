@@ -62,7 +62,34 @@ fn entity_axis_end_to_end() {
     );
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("entity registry"));
-    // Register, then the write lands.
+    // The kind is a registry ref too: naming one nobody declared rejects, and
+    // says so, before the entity exists.
+    let out = run(
+        tmp.path(),
+        &[
+            "add-entity",
+            "--entity",
+            "dracula",
+            "--kind",
+            "character",
+            "--description",
+            "the count",
+        ],
+    );
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not a registered entity kind"));
+    // Declare the vocabulary, then the write lands.
+    let out = run(
+        tmp.path(),
+        &[
+            "add-entity-kind",
+            "--kind",
+            "character",
+            "--description",
+            "a person in the story",
+        ],
+    );
+    assert!(out.status.success(), "{:?}", out);
     let out = run(
         tmp.path(),
         &[

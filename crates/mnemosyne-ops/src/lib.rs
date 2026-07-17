@@ -1437,6 +1437,7 @@ mod tests {
         mnemosyne_atomic::FactsManifest {
             frames: vec![],
             branches: vec![],
+            entity_kinds: vec![],
             entities: vec![],
             predicates: vec![],
             facts,
