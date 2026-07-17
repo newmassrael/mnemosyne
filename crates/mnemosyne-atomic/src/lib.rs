@@ -4448,6 +4448,24 @@ pub fn entity_kind_registered(store: &AtomicStore, kind: &str) -> bool {
     kind.is_empty() || store.entity_kinds.contains_key(kind)
 }
 
+/// Every stored entity whose `kind` does not resolve in the registry — the
+/// ONE detector both the narrative boundary (`check_store_boundary`) and the
+/// baseline gate (`validate_workspace`, Round 675) call, so the two cannot
+/// enforce different sets (the half-enforced-invariant anti-pattern:
+/// enforcing on one gate only is no invariant). A write path (`add_entity`)
+/// cannot produce this state — only an out-of-band edit or a pre-v24 store
+/// whose kinds were never registered can. Returns `(entity_id, kind)` pairs
+/// in id order (`entities` is a BTreeMap), empty = clean; callers fail on the
+/// first (boundary) or list all (baseline gate).
+pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
+    store
+        .entities
+        .iter()
+        .filter(|(_, e)| !entity_kind_registered(store, &e.kind))
+        .map(|(id, e)| (id.clone(), e.kind.clone()))
+        .collect()
+}
+
 /// Register one narrative entity (Round 437 — the third registry, after
 /// frames and branches: every `NarrativeFact.entities` ref must name a
 /// registered id, so a typo'd entity fails loud instead of silently
@@ -12307,6 +12325,61 @@ mod tests {
         let raw: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(raw["entities"]["ent-nameless"].get("kind").is_none());
+    }
+
+    /// R675 — the shared detector `unregistered_entity_kinds` is the ONE verdict
+    /// the boundary and the baseline gate both read, so they cannot drift. The
+    /// write path cannot produce a dangling kind, so this pins the OUT-OF-BAND
+    /// state directly. NON-VACUITY: a clean store returns empty, an unregistered
+    /// kind is returned, and an empty kind stays clean (absence is not free
+    /// text); multiple offenders come back in id order.
+    #[test]
+    fn unregistered_entity_kinds_detects_out_of_band_drift() {
+        let mut store = AtomicStore::new();
+        store
+            .entity_kinds
+            .insert("place".to_string(), EntityKind::default());
+        store.entities.insert(
+            "ent-b".to_string(),
+            Entity {
+                kind: "place".to_string(),
+                description: String::new(),
+            },
+        );
+        store.entities.insert(
+            "ent-nameless".to_string(),
+            Entity {
+                kind: String::new(),
+                description: String::new(),
+            },
+        );
+        // Clean: registered kind + unspecified kind both pass.
+        assert!(unregistered_entity_kinds(&store).is_empty());
+
+        // Out-of-band inserts naming kinds nobody registered.
+        store.entities.insert(
+            "ent-a".to_string(),
+            Entity {
+                kind: "island".to_string(),
+                description: String::new(),
+            },
+        );
+        store.entities.insert(
+            "ent-c".to_string(),
+            Entity {
+                kind: "flat".to_string(),
+                description: String::new(),
+            },
+        );
+        let found = unregistered_entity_kinds(&store);
+        // id order (BTreeMap): ent-a(island), ent-c(flat); ent-b/ent-nameless clean.
+        assert_eq!(
+            found,
+            vec![
+                ("ent-a".to_string(), "island".to_string()),
+                ("ent-c".to_string(), "flat".to_string()),
+            ]
+        );
     }
 
     #[test]

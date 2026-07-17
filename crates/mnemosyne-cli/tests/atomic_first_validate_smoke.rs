@@ -178,6 +178,102 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
 }
 
 #[test]
+fn validate_workspace_rejects_unregistered_entity_kind() {
+    // R675 — entity-kind integrity is a baseline-gate invariant, not only a
+    // validate-continuity boundary check. The write path (`add_entity`) cannot
+    // produce an unregistered kind, so the defect state is reached OUT OF BAND:
+    // a pre-v24 store whose kinds were never registered, or a hand edit. Here
+    // we build a valid store then drop the kind registration from the sidecar,
+    // leaving `ent-x`'s kind `place` dangling — validate-workspace must fail.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+
+    // Valid store: register `place`, then an entity of that kind.
+    Command::new(cli_binary())
+        .args(["add-entity-kind", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity-kind");
+    Command::new(cli_binary())
+        .args(["add-entity", "--entity", "ent-x", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity");
+
+    // Out-of-band drift: remove `place` from the entity_kinds registry, leaving
+    // the entity's kind dangling (the half-migration a map adopter could hit).
+    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    let mut store: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&sidecar).unwrap()).unwrap();
+    store["entity_kinds"]
+        .as_object_mut()
+        .unwrap()
+        .remove("place");
+    fs::write(&sidecar, serde_json::to_string_pretty(&store).unwrap()).unwrap();
+
+    let out = Command::new(cli_binary())
+        .arg("validate-workspace")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run validate-workspace");
+    assert!(
+        !out.status.success(),
+        "validate-workspace must reject an unregistered entity kind; stdout={}, stderr={}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("entity-kind integrity")
+            && combined.contains("ent-x")
+            && combined.contains("place"),
+        "expected entity-kind integrity diagnostic naming ent-x/place; got: {}",
+        combined
+    );
+}
+
+#[test]
+fn validate_workspace_passes_with_registered_entity_kind() {
+    // The clean counterpart: a registered kind + an entity of that kind must
+    // pass, so the R675 gate is not a blanket reject (non-vacuous both ways).
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+
+    Command::new(cli_binary())
+        .args(["add-entity-kind", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity-kind");
+    Command::new(cli_binary())
+        .args(["add-entity", "--entity", "ent-x", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity");
+
+    let out = Command::new(cli_binary())
+        .arg("validate-workspace")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run validate-workspace");
+    assert!(
+        out.status.success(),
+        "validate-workspace must pass with a registered kind; stdout={}, stderr={}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("entity-kind integrity: 0 unregistered"),
+        "expected clean entity-kind integrity line; got: {}",
+        stdout
+    );
+}
+
+#[test]
 fn validate_workspace_rejects_superseded_by_orphan() {
     // R344: a Superseded section's superseded_by forward-pointer is a section
     // cross-ref whose target must resolve. §1 superseded by a non-existent §99

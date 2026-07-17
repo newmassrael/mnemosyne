@@ -1658,20 +1658,18 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
             ));
         }
     }
-    for (id, entity) in &store.entities {
-        // The kind is a registry ref, not free text (Round 661's machine-slot
-        // rule). The write path (`add_entity`) enforces this too; this is the
-        // out-of-band-edit half — enforcing on ONE side only is the
-        // half-enforced invariant, i.e. no invariant. Both sides call the SAME
-        // verdict so they cannot drift apart.
-        if !mnemosyne_atomic::entity_kind_registered(store, &entity.kind) {
-            return Err(format!(
-                "entity `{id}`: kind `{}` is not in the entity-kind registry \
-                 (out-of-band edit, or a pre-v24 store whose kinds were never \
-                 registered — declare it with add-entity-kind)",
-                entity.kind
-            ));
-        }
+    // The kind is a registry ref, not free text (Round 661's machine-slot
+    // rule). Three authorities enforce it: the write path (`add_entity`), this
+    // boundary, and the baseline gate (`validate_workspace`, Round 675) —
+    // enforcing on one only is the half-enforced invariant, i.e. no invariant.
+    // The boundary and the baseline gate call the SAME detector so they cannot
+    // drift; the boundary fails on the first offender, the gate lists all.
+    if let Some((id, kind)) = mnemosyne_atomic::unregistered_entity_kinds(store).first() {
+        return Err(format!(
+            "entity `{id}`: kind `{kind}` is not in the entity-kind registry \
+             (out-of-band edit, or a pre-v24 store whose kinds were never \
+             registered — declare it with add-entity-kind)"
+        ));
     }
     for (id, fact) in &store.narrative_facts {
         if !store.frames.contains_key(&fact.frame) {

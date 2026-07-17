@@ -39,6 +39,7 @@ pub struct ValidateWorkspaceReport {
     pub publishable_divergence: usize,
     pub publishable_ledger_rows: usize,
     pub publishable_unmatched: Vec<String>,
+    pub entity_kind_unregistered: usize,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -215,8 +216,30 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         }
     }
 
+    // Entity-kind integrity (R675): every stored entity's kind must resolve in
+    // the registry. Enforced HERE in the baseline gate — not only in
+    // validate-continuity's boundary — so a half-migrated store (a pre-v24
+    // store whose kinds were never registered, or an out-of-band JSON edit)
+    // fails the gate a map adopter actually runs. Same detector as the
+    // boundary, so the two cannot enforce different sets.
+    let unregistered_kinds = mnemosyne_atomic::unregistered_entity_kinds(&atomic_store);
+
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
+    if !unregistered_kinds.is_empty() {
+        let sample = unregistered_kinds
+            .iter()
+            .take(3)
+            .map(|(id, k)| format!("`{id}`->`{k}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        failure_reasons.push(format!(
+            "entity-kind integrity: {} entity(ies) name an unregistered kind — \
+             declare with add-entity-kind ({})",
+            unregistered_kinds.len(),
+            sample
+        ));
+    }
     if !orphan_new.is_empty() {
         failure_reasons.push(format!(
             "new orphan {} cases — register in [[orphan_ledger]] or fix",
@@ -284,6 +307,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         publishable_divergence,
         publishable_ledger_rows,
         publishable_unmatched,
+        entity_kind_unregistered: unregistered_kinds.len(),
         failed,
         failure_reasons,
     })
@@ -352,6 +376,11 @@ impl ValidateWorkspaceReport {
         for v in &self.supersede_violations {
             let _ = writeln!(out, "  T1 rule 4 (atomic axis): {}", v);
         }
+        let _ = writeln!(
+            out,
+            "entity-kind integrity: {} unregistered (Round 675)",
+            self.entity_kind_unregistered
+        );
         let _ = writeln!(
             out,
             "publishable / audit divergence: entries={} ledger_rows={}",
