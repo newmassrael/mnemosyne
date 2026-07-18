@@ -2679,3 +2679,40 @@ fn parse_workspace_arg() -> anyhow::Result<PathBuf> {
     }
     Ok(workspace.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// R680 — the MCP-surface smoke the cost-audit found missing (#4). The R669
+    /// blind spot was that a green unit suite NEVER verified a tool was actually
+    /// EXPOSED on the MCP router: `add_entity` gated on a registry while
+    /// `add_entity_kind` was CLI-only for a whole round, invisible to every
+    /// test. This asserts the router routes the authoring tools an AI-first
+    /// agent needs — the four added this session plus pre-existing anchors — so
+    /// a tool that compiles but is never routed fails HERE, not in an adopter's
+    /// hands. A full stdio/JSON-RPC round-trip is deliberately not built: the
+    /// tools are thin `run_mutate` wrappers over CLI-exercised atomic paths, so
+    /// routing presence is the proportionate surface check (the blind spot was
+    /// presence, not protocol).
+    #[test]
+    fn mcp_router_exposes_the_authoring_tools() {
+        let router = MnemosyneServer::tool_router();
+        for name in [
+            "add_entity_kind",              // R674
+            "remove_section",               // R678
+            "set_section_decision_status",  // R678
+            "report_entity_kind_migration", // R679
+            "add_entity",                   // pre-existing anchors (non-vacuity)
+            "add_fact",
+            "report_quest_graph",
+        ] {
+            assert!(
+                router.has_route(name),
+                "MCP router does not expose tool `{name}` — an agent cannot call it"
+            );
+        }
+        // Non-vacuity: a non-tool must NOT route, so the check can actually fail.
+        assert!(!router.has_route("definitely_not_a_tool"));
+    }
+}
