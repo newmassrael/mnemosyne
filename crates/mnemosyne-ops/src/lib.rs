@@ -1168,6 +1168,46 @@ pub struct EntityFactRow {
     pub typed: Option<mnemosyne_core::TypedClaim>,
 }
 
+/// R679 — one unregistered entity kind and the entities that name it, the unit
+/// of the migration worklist a pre-registry (v23-) or out-of-band store needs.
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityKindMigrationRow {
+    pub kind: String,
+    pub entities: Vec<String>,
+}
+
+/// R679 — the entity-kind migration worklist: the distinct unregistered kinds a
+/// store uses, each with the entities using it, so an adopter knows the exact
+/// `add-entity-kind` calls to make. The complete worklist the R675 gate's
+/// first-batch failure message only samples; reuses the shared
+/// [`mnemosyne_atomic::unregistered_entity_kinds`] detector, so the report and
+/// the gate cannot disagree about what is unregistered.
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityKindMigration {
+    pub unregistered_kinds: Vec<EntityKindMigrationRow>,
+    pub total_entities: usize,
+}
+
+pub fn entity_kind_migration(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<EntityKindMigration, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let mut by_kind: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (id, kind) in mnemosyne_atomic::unregistered_entity_kinds(&store) {
+        by_kind.entry(kind).or_default().push(id);
+    }
+    let total_entities = by_kind.values().map(Vec::len).sum();
+    let unregistered_kinds = by_kind
+        .into_iter()
+        .map(|(kind, entities)| EntityKindMigrationRow { kind, entities })
+        .collect();
+    Ok(EntityKindMigration {
+        unregistered_kinds,
+        total_entities,
+    })
+}
+
 /// "All facts about X" (Round 437, design sec 7.10 gap 4) — every fact
 /// referencing the entity, across all frames and branches, with the
 /// registry row. Fail-loud on an unregistered entity.

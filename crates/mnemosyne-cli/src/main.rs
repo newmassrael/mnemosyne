@@ -504,6 +504,15 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_report_entity(c.rest()),
     },
     Command {
+        name: "report-entity-kind-migration",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-entity-kind-migration [--sidecar <path>] [--json]"],
+        notes: &["   R679 — the worklist for a pre-registry (v23-) or out-of-band store: the distinct unregistered entity kinds in use, each with the add-entity-kind call to make"],
+        run: |c| cmd_report_entity_kind_migration(c.rest()),
+    },
+    Command {
         name: "report-payoff-coverage",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -2826,6 +2835,59 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
             println!(
                 "  [{}{}] {} (frame {} / branch {}): {}",
                 f.canon_from, to, f.fact_id, f.frame, f.branch, f.claim
+            );
+        }
+    }
+    Ok(())
+}
+
+/// R679 — the entity-kind migration worklist (read-only): the distinct
+/// unregistered kinds a store uses, each with the `add-entity-kind` call to
+/// make. The complete list the R675 gate failure only samples.
+fn cmd_report_entity_kind_migration(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::entity_kind_migration(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else if report.unregistered_kinds.is_empty() {
+        println!("entity-kind migration: 0 unregistered kinds — every in-use kind is registered");
+    } else {
+        println!(
+            "entity-kind migration: {} entity(ies) name {} unregistered kind(s) — register each:",
+            report.total_entities,
+            report.unregistered_kinds.len()
+        );
+        for row in &report.unregistered_kinds {
+            println!(
+                "  add-entity-kind --kind {}   # {} entity(ies): {}",
+                row.kind,
+                row.entities.len(),
+                row.entities.join(", ")
             );
         }
     }

@@ -274,6 +274,61 @@ fn validate_workspace_passes_with_registered_entity_kind() {
 }
 
 #[test]
+fn report_entity_kind_migration_lists_the_worklist() {
+    // R679 — the migration verb the cost-audit found missing: the complete
+    // worklist of unregistered kinds a pre-registry / out-of-band store needs.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+
+    Command::new(cli_binary())
+        .args(["add-entity-kind", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity-kind");
+    Command::new(cli_binary())
+        .args(["add-entity", "--entity", "ent-x", "--kind", "place"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("add-entity");
+
+    // Clean: every in-use kind is registered.
+    let clean = Command::new(cli_binary())
+        .arg("report-entity-kind-migration")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run report-entity-kind-migration");
+    assert!(clean.status.success());
+    assert!(
+        String::from_utf8_lossy(&clean.stdout).contains("0 unregistered kinds"),
+        "expected clean worklist; got: {}",
+        String::from_utf8_lossy(&clean.stdout)
+    );
+
+    // Out-of-band drift: drop `place` from the registry, leaving ent-x dangling.
+    let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
+    let mut store: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&sidecar).unwrap()).unwrap();
+    store["entity_kinds"]
+        .as_object_mut()
+        .unwrap()
+        .remove("place");
+    fs::write(&sidecar, serde_json::to_string_pretty(&store).unwrap()).unwrap();
+
+    let out = Command::new(cli_binary())
+        .args(["report-entity-kind-migration", "--json"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run report-entity-kind-migration");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"kind\":\"place\"") && stdout.contains("ent-x"),
+        "expected place/ent-x in the worklist; got: {}",
+        stdout
+    );
+}
+
+#[test]
 fn validate_workspace_rejects_superseded_by_orphan() {
     // R344: a Superseded section's superseded_by forward-pointer is a section
     // cross-ref whose target must resolve. §1 superseded by a non-existent §99
