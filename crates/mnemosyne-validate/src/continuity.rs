@@ -1350,11 +1350,13 @@ pub enum ContinuityViolation {
         place: String,
     },
     /// An UNDIRECTED transition rule's `adjacency` predicate holds BOTH
-    /// `adjacent(a, b)` and `adjacent(b, a)` (Round 698). Undirected means one
-    /// fact per edge is the SSOT — the eval symmetrizes, so the reverse fact is
-    /// a second home for one datum that can drift (delete one, the map goes
-    /// one-way). Reported once per unordered pair. Not a violation for a
-    /// DIRECTED rule, where the two are distinct one-way edges.
+    /// `adjacent(a, b)` and `adjacent(b, a)` (Round 698). The eval symmetrizes,
+    /// so the REVERSE fact is a second home for one datum that can drift (delete
+    /// one, the map goes one-way). Reported once per unordered pair. Not a
+    /// violation for a DIRECTED rule, where the two are distinct one-way edges.
+    /// Catches the REVERSE twin only — a same-DIRECTION duplicate is the
+    /// store-wide no-triple-uniqueness gap (deferred), so the finding is scoped
+    /// to "both directions", not "one fact per edge".
     AdjacencyReverseDuplicate {
         rule: String,
         predicate: String,
@@ -2651,36 +2653,22 @@ pub fn scan_continuity(
                 adjacency,
                 undirected,
             } => {
-                // Round 697 (store-native map): the allowed step set is DERIVED
-                // from the store's `adjacency`-predicate facts, not a file list.
-                // An `adjacent(a,b)` fact admits (a,b); when `undirected` (the
-                // MAP) it also admits (b,a), so one fact per edge is the SSOT.
-                // Directed by default — a one-way state machine (`alive → dead`)
-                // must NOT admit the reverse. One source for the edge set: the
-                // store. Flat, un-scoped (as the file `allowed` was) — the
-                // present single-map ground-truth case; branch-scoped adjacency
-                // is deferred (R696 review finding #6, not future-proofed here).
-                let allowed: BTreeSet<(&str, &str)> = facts
-                    .values()
-                    .filter_map(|f| f.typed.as_ref())
-                    .filter(|t| t.predicate == *adjacency)
-                    .flat_map(|t| {
-                        let a = t.subject.as_str();
-                        let b = typed_object_key(&t.object);
-                        if *undirected {
-                            vec![(a, b), (b, a)]
-                        } else {
-                            vec![(a, b)]
-                        }
-                    })
-                    .collect();
-                // Round 698 — adjacency integrity: the edges this rule reads
-                // must be well-formed. A self-loop `adjacent(a,a)` is degenerate
-                // (a road that never moves); for an UNDIRECTED rule, holding both
-                // `adjacent(a,b)` and `adjacent(b,a)` is a second home for one
-                // datum (the eval symmetrizes) that can drift. Directional facts
-                // stay two distinct one-way edges. A derivation over the
-                // adjacency facts, re-evaluated each scan.
+                // Round 697/698/699 (store-native map): ONE edge model from the
+                // store's `adjacency`-predicate facts, consumed by BOTH the
+                // integrity check and the allowed step set — they cannot disagree
+                // on what an edge IS (R699 session-review SSOT fix: the eval used
+                // to admit a self-loop that the detector rejected; the two now
+                // read one `edges` map). A self-loop `adjacent(a,a)` is a
+                // degenerate edge — flagged AND excluded from `edges`, so the
+                // eval never admits an a→a step the detector rejects. For an
+                // UNDIRECTED rule, holding both `adjacent(a,b)` and `adjacent(b,a)`
+                // is a second home for one datum (the eval symmetrizes) — flagged;
+                // a DIRECTED rule keeps both as two distinct one-way edges. (A
+                // same-DIRECTION duplicate collapses in this map, uncaught — the
+                // store-wide no-triple-uniqueness gap, deferred; the message is
+                // scoped to "not both directions".) Flat, un-scoped (as the file
+                // `allowed` was) — the present single-map ground-truth case;
+                // branch-scoped adjacency deferred (R696 review finding #6).
                 let mut edges: BTreeMap<(&str, &str), &str> = BTreeMap::new();
                 for (fid, t) in facts
                     .iter()
@@ -2703,26 +2691,39 @@ pub fn scan_continuity(
                     }
                 }
                 if *undirected {
-                    let mut reported: BTreeSet<(&str, &str)> = BTreeSet::new();
+                    // Canonical walk: each unordered pair visited once at a < b,
+                    // so the reverse twin (b, a) reports exactly once. `fact_a`
+                    // is the forward (a, b) fact, `fact_b` the reverse (b, a).
                     for (&(a, b), &fwd) in &edges {
-                        let key = if a <= b { (a, b) } else { (b, a) };
-                        if let Some(&rev) = edges.get(&(b, a)) {
-                            if reported.insert(key) {
-                                let (fa, fb) = if a <= b { (fwd, rev) } else { (rev, fwd) };
+                        if a < b {
+                            if let Some(&rev) = edges.get(&(b, a)) {
                                 report.violations.push(
                                     ContinuityViolation::AdjacencyReverseDuplicate {
                                         rule: rule.id.clone(),
                                         predicate: adjacency.clone(),
-                                        fact_a: fa.to_string(),
-                                        fact_b: fb.to_string(),
-                                        a: key.0.to_string(),
-                                        b: key.1.to_string(),
+                                        fact_a: fwd.to_string(),
+                                        fact_b: rev.to_string(),
+                                        a: a.to_string(),
+                                        b: b.to_string(),
                                     },
                                 );
                             }
                         }
                     }
                 }
+                // The allowed step set: the SAME validated edges (self-loops
+                // excluded), symmetrized when undirected. Derived from `edges`,
+                // not re-scanned — one edge model, no divergence.
+                let allowed: BTreeSet<(&str, &str)> = edges
+                    .keys()
+                    .flat_map(|&(a, b)| {
+                        if *undirected {
+                            vec![(a, b), (b, a)]
+                        } else {
+                            vec![(a, b)]
+                        }
+                    })
+                    .collect();
                 // The gated half: every typed succession edge with this
                 // predicate and one subject must step inside `allowed`.
                 // The edge itself is the scope — the write path already
@@ -6772,10 +6773,21 @@ mod tests {
             ("ent-dike", "ent-village")
         );
 
-        // Directed: the same reverse pair is two legit one-way edges — no dup.
+        // Directed: the same reverse pair is two legit one-way edges — no dup;
+        // but a self-loop is still flagged (self-loop check is rule-agnostic).
         let directed = [transition_rule("gate", "pred-at", "adjacent", false)];
+        let mut d_self = typed_fact(
+            "e-self2",
+            "gt",
+            "ch-1",
+            "ent-well",
+            "adjacent",
+            holds("ent-well"),
+        );
+        d_self.entities = vec!["ent-well".to_string()];
         let store2 = store_with(vec![
             anchor(),
+            d_self,
             typed_fact(
                 "e-fwd",
                 "gt",
@@ -6800,6 +6812,16 @@ mod tests {
                 .iter()
                 .any(|v| matches!(v, ContinuityViolation::AdjacencyReverseDuplicate { .. })),
             "directed keeps both one-way edges: {:?}",
+            report2.violations
+        );
+        assert_eq!(
+            report2
+                .violations
+                .iter()
+                .filter(|v| matches!(v, ContinuityViolation::AdjacencySelfLoop { .. }))
+                .count(),
+            1,
+            "self-loop flagged under a DIRECTED rule too: {:?}",
             report2.violations
         );
     }

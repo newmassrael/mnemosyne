@@ -474,3 +474,215 @@ fn zero_rules_emits_notice_naming_the_off_state() {
         "the count line prints: {stdout}"
     );
 }
+
+/// Round 699 (session-review cleanup) — the COMMITTED CLI proof the R697/R698
+/// dogfood only had ephemerally: the store-native map transition gates movement
+/// end-to-end through the `validate-continuity` verb. A forward walk over
+/// `adjacent` facts passes; a non-adjacent jump gates (exit 1); `undirected`
+/// flips whether the reverse of an edge is admitted; the R698 self-loop /
+/// reverse-dup integrity fires (exit 1); and a scalar-subject `adjacent` fact
+/// is rejected by the REAL write path (the entity-subject requirement the R697
+/// changelog named). Places a—b—c, hero walking `at`.
+#[test]
+fn store_native_map_transition_gates_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]] }).to_string(),
+    )
+    .unwrap();
+
+    let write_store = |facts: serde_json::Value| {
+        let atomic = serde_json::json!({
+            "schema_version": 24,
+            "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+            "changelog_entries": {},
+            "frames": { "gt": {} },
+            "entity_kinds": { "place": {}, "character": {} },
+            "entities": {
+                "p-a": { "kind": "place" }, "p-b": { "kind": "place" },
+                "p-c": { "kind": "place" }, "hero": { "kind": "character" }
+            },
+            "predicates": {
+                "adjacent": { "object_kind": "entity" },
+                "at": { "object_kind": "entity" }
+            },
+            "narrative_facts": facts
+        });
+        fs::write(
+            ws.join("docs/.atomic/workspace.atomic.json"),
+            serde_json::to_string_pretty(&atomic).unwrap(),
+        )
+        .unwrap();
+    };
+    let write_rules = |undirected: bool| {
+        fs::write(
+            ws.join("narrative-rules.json"),
+            serde_json::json!({
+                "schema": "narrative-rules/v1",
+                "rules": [ { "id": "roads", "class": "transition", "predicate": "at",
+                             "adjacency": "adjacent", "undirected": undirected } ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+    };
+    let edge = |a: &str, b: &str| {
+        serde_json::json!({
+            "frame": "gt", "entities": [a, b], "claim": format!("{a} borders {b}"),
+            "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": a, "predicate": "adjacent", "object": { "kind": "entity", "id": b } }
+        })
+    };
+    let at = |ch: &str, place: &str, prev: Option<&str>| {
+        let mut f = serde_json::json!({
+            "frame": "gt", "entities": ["hero", place], "claim": format!("hero at {place}"),
+            "canon_from": ch, "evidence": [ch],
+            "typed": { "subject": "hero", "predicate": "at", "object": { "kind": "entity", "id": place } }
+        });
+        if let Some(p) = prev {
+            f["supersedes_in_frame"] = serde_json::json!(p);
+        }
+        f
+    };
+    let kinds = |v: &serde_json::Value| -> Vec<String> {
+        v["violations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["kind"].as_str().unwrap().to_string())
+            .collect()
+    };
+
+    // A — good walk a→b→c along undirected edges: no violation, exit 0.
+    write_rules(true);
+    write_store(serde_json::json!({
+        "e-ab": edge("p-a", "p-b"), "e-bc": edge("p-b", "p-c"),
+        "at-1": at("ch-1", "p-a", None),
+        "at-2": at("ch-2", "p-b", Some("at-1")),
+        "at-3": at("ch-3", "p-c", Some("at-2")),
+    }));
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(out.status.success(), "adjacent walk passes: {v}");
+    assert_eq!(v["violation_count"], 0);
+
+    // B — a non-adjacent jump a→c (no a-c edge): gated, exit 1.
+    write_store(serde_json::json!({
+        "e-ab": edge("p-a", "p-b"), "e-bc": edge("p-b", "p-c"),
+        "at-1": at("ch-1", "p-a", None),
+        "at-2": at("ch-2", "p-c", Some("at-1")),
+    }));
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(!out.status.success(), "non-adjacent jump gates: {v}");
+    assert!(
+        kinds(&v).contains(&"rule_transition_invalid".to_string()),
+        "{v}"
+    );
+
+    // C — the reverse of an edge: directed REJECTS, undirected ADMITS.
+    let reverse_store = serde_json::json!({
+        "e-ab": edge("p-a", "p-b"),
+        "at-1": at("ch-1", "p-b", None),
+        "at-2": at("ch-2", "p-a", Some("at-1")),
+    });
+    write_store(reverse_store);
+    write_rules(false); // directed
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(
+        !out.status.success(),
+        "directed rejects the reverse step: {v}"
+    );
+    assert!(kinds(&v).contains(&"rule_transition_invalid".to_string()));
+    write_rules(true); // undirected
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(
+        out.status.success(),
+        "undirected admits the reverse step: {v}"
+    );
+
+    // D — a self-loop + a reverse-duplicate edge: both integrity gates fire.
+    write_rules(true);
+    let mut selfloop = edge("p-a", "p-a");
+    selfloop["entities"] = serde_json::json!(["p-a"]); // one place, listed once
+    write_store(serde_json::json!({
+        "e-self": selfloop,
+        "e-ab": edge("p-a", "p-b"),
+        "e-ba": edge("p-b", "p-a"), // reverse dup of e-ab
+        "at-1": at("ch-1", "p-a", None),
+    }));
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(!out.status.success(), "malformed edges gate: {v}");
+    let ks = kinds(&v);
+    assert!(ks.contains(&"adjacency_self_loop".to_string()), "{v}");
+    assert!(
+        ks.contains(&"adjacency_reverse_duplicate".to_string()),
+        "{v}"
+    );
+
+    // E — a scalar-subject `adjacent` fact is rejected by the REAL write path
+    // (its subject "alive" is not a registered entity): store-native adjacency
+    // needs entity endpoints, the entity-subject requirement (R697 finding A).
+    write_store(serde_json::json!({ "at-1": at("ch-1", "p-a", None) }));
+    let manifest = ws.join("scalar-edge.json");
+    fs::write(
+        &manifest,
+        serde_json::json!({
+            "predicates": [ { "predicate_id": "life-adjacent", "object_kind": "entity" } ],
+            "facts": [ {
+                "fact_id": "f-scalar-edge", "frame": "gt", "entities": ["alive", "dead"],
+                "claim": "alive borders dead", "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "alive", "predicate": "life-adjacent",
+                           "object": { "kind": "entity", "id": "dead" } }
+            } ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let out = run(
+        ws,
+        &[
+            "import-facts",
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--sidecar",
+            "docs/.atomic/workspace.atomic.json",
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "scalar subject must be rejected: {out:?}"
+    );
+    assert!(
+        stderr.contains("alive") && stderr.contains("entity registry"),
+        "the reject names the unregistered scalar subject: {stderr}"
+    );
+}
