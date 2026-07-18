@@ -4555,8 +4555,49 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
                 ));
             }
         }
+        // The typed leg's registry refs (Round 681) — the facet R677 named ("the
+        // whole store registry") but did not cover: `predicate` is a first-class
+        // registry (the write path fails loud on it, the R436 "a typo must not
+        // silently escape its rule" lesson), and the subject/object entity refs
+        // must resolve. Mirrors the write path's `build_typed_claim`. (Scalar
+        // objects are opaque consumer vocabulary — no registry ref to dangle.)
+        if let Some(claim) = &fact.typed {
+            if !store.predicates.contains_key(&claim.predicate) {
+                out.push(format!(
+                    "fact `{id}`: typed predicate `{}` not in the predicate registry \
+                     (out-of-band edit; the write path enforces this — a typo'd predicate \
+                     silently escapes its rule)",
+                    claim.predicate
+                ));
+            }
+            for (leg, ent) in typed_entity_refs(claim) {
+                if !store.entities.contains_key(ent) {
+                    out.push(format!(
+                        "fact `{id}`: typed {leg} `{ent}` not in the entity registry \
+                         (out-of-band edit; the write path enforces this)"
+                    ));
+                } else if !fact.entities.iter().any(|e| e == ent) {
+                    out.push(format!(
+                        "fact `{id}`: typed {leg} `{ent}` is not a member of the fact's \
+                         entities list (the entities list stays THE retrieval key)"
+                    ));
+                }
+            }
+        }
     }
     out
+}
+
+/// The entity-shaped refs of a typed leg — subject (always an entity) and an
+/// entity-shaped object (a scalar object is opaque, no ref). One list so the
+/// out-of-band detector checks the same refs the write path's `build_typed_claim`
+/// validates.
+fn typed_entity_refs(claim: &TypedClaim) -> Vec<(&'static str, &str)> {
+    let mut refs: Vec<(&'static str, &str)> = vec![("subject", claim.subject.as_str())];
+    if let TypedObject::Entity { id } = &claim.object {
+        refs.push(("object", id.as_str()));
+    }
+    refs
 }
 
 /// Register one narrative entity (Round 437 — the third registry, after
@@ -12536,42 +12577,90 @@ mod tests {
         );
     }
 
-    /// R677 — the broadened detector `store_registry_violations` catches the
-    /// facets R675 left out of the baseline gate: a fact's frame / branch /
-    /// entities / canon / evidence, not only the entity kind. A write path
-    /// cannot produce these, so the out-of-band state is pinned directly.
-    /// NON-VACUITY: a clean store returns empty, and two corrupted facets are
-    /// both reported.
+    /// R681 — the FULL-facet table the R677 2-facet test should have been (the
+    /// gap the cost-audit found): `store_registry_violations` must catch EVERY
+    /// out-of-band registry dangle a write path forbids — frame / branch /
+    /// entities-list / canon_from / canon_to / evidence-empty / evidence-section
+    /// AND the typed leg R677 omitted (predicate / typed subject / typed object).
+    /// Build one valid TYPED fact, then corrupt each facet on a clone and assert
+    /// the detector names it. NON-VACUITY: the valid store is clean.
     #[test]
-    fn store_registry_violations_catches_frame_and_entity_out_of_band() {
+    fn store_registry_violations_covers_every_registry_facet() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
-        let mut store = AtomicStore::new();
-        seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
-        add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
-        // Clean: a well-formed fact yields no violation.
-        assert!(store_registry_violations(&store).is_empty());
+        let mut base = AtomicStore::new();
+        seed_chapters(&mut base); // ch-1, ch-2, ch-3 sections
+        base.frames.insert("gt".to_string(), Frame::default());
+        add_entity(&mut base, &path, "a", "", "").unwrap();
+        add_entity(&mut base, &path, "b", "", "").unwrap();
+        add_predicate(&mut base, &path, "rel", "entity", "").unwrap();
+        let mut valid = sample_fact("f1", "gt");
+        valid.entities = vec!["a".to_string(), "b".to_string()];
+        valid.typed = Some(TypedClaim {
+            subject: "a".to_string(),
+            predicate: "rel".to_string(),
+            object: TypedObject::Entity {
+                id: "b".to_string(),
+            },
+        });
+        add_fact(&mut base, &path, &valid).unwrap();
+        assert!(
+            store_registry_violations(&base).is_empty(),
+            "a valid typed fact must be clean: {:?}",
+            store_registry_violations(&base)
+        );
 
-        // Out-of-band: point the fact at an unregistered frame AND an
-        // unregistered entity (the write path forbids both).
-        {
-            let f = store.narrative_facts.get_mut("f1").unwrap();
-            f.frame = "ghost".to_string();
-            f.entities.push("ghost-ent".to_string());
+        // Each corruption is applied to a clone; the detector must name it.
+        type Facet = (&'static str, fn(&mut NarrativeFact), &'static str);
+        let cases: Vec<Facet> = vec![
+            ("frame", |f| f.frame = "ghost".into(), "frame `ghost`"),
+            ("branch", |f| f.branch = "ghost".into(), "branch `ghost`"),
+            (
+                "entities",
+                |f| f.entities.push("ghost".into()),
+                "entity `ghost`",
+            ),
+            (
+                "canon_from",
+                |f| f.canon_from = "ghost".into(),
+                "canon_from `ghost`",
+            ),
+            (
+                "canon_to",
+                |f| f.canon_to = Some("ghost".into()),
+                "canon_to `ghost`",
+            ),
+            ("evidence-empty", |f| f.evidence.clear(), "evidence emptied"),
+            (
+                "evidence-section",
+                |f| f.evidence = vec!["ghost".into()],
+                "evidence `ghost`",
+            ),
+            (
+                "typed-predicate",
+                |f| f.typed.as_mut().unwrap().predicate = "ghost".into(),
+                "typed predicate `ghost`",
+            ),
+            (
+                "typed-subject",
+                |f| f.typed.as_mut().unwrap().subject = "ghost".into(),
+                "typed subject `ghost`",
+            ),
+            (
+                "typed-object",
+                |f| f.typed.as_mut().unwrap().object = TypedObject::Entity { id: "ghost".into() },
+                "typed object `ghost`",
+            ),
+        ];
+        for (label, mutate, want) in cases {
+            let mut s = base.clone();
+            mutate(s.narrative_facts.get_mut("f1").unwrap());
+            let v = store_registry_violations(&s);
+            assert!(
+                v.iter().any(|m| m.contains(want)),
+                "{label}: expected `{want}` in {v:?}"
+            );
         }
-        let v = store_registry_violations(&store);
-        assert_eq!(v.len(), 2, "{v:?}");
-        assert!(
-            v.iter()
-                .any(|m| m.contains("f1") && m.contains("frame `ghost`")),
-            "{v:?}"
-        );
-        assert!(
-            v.iter()
-                .any(|m| m.contains("f1") && m.contains("entity `ghost-ent`")),
-            "{v:?}"
-        );
     }
 
     #[test]
