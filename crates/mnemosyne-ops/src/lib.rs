@@ -1212,14 +1212,15 @@ pub fn entity_kind_migration(
 
 /// One binding that inherited `kind = implements` from a pre-v5 store, pending
 /// Stage-B reclassification (implements vs references). `defaulted_kind` is the
-/// canonical tag ([`mnemosyne_atomic::BindingKind::as_str`]), so the CLI table
-/// and the MCP json read the same vocabulary.
+/// typed `BindingKind` (Round 694 — DEBT-MIGRATION-PROJECTION; it was needlessly
+/// downgraded to `String`). It serialises `rename_all = "lowercase"`, so the CLI
+/// json is byte-identical to the prior hand-stringified form.
 #[derive(Debug, Clone, Serialize)]
 pub struct BindingKindMigrationRow {
     pub section_id: String,
     pub file: String,
     pub symbol: Option<String>,
-    pub defaulted_kind: String,
+    pub defaulted_kind: mnemosyne_core::BindingKind,
 }
 
 /// The v4→v5 binding-kind migration worklist — the shared shape the CLI
@@ -1259,7 +1260,7 @@ pub fn binding_kind_migration(
                     section_id: r.section_id,
                     file: r.file,
                     symbol: r.symbol,
-                    defaulted_kind: r.defaulted_kind.as_str().to_string(),
+                    defaulted_kind: r.defaulted_kind,
                 })
                 .collect(),
         },

@@ -4508,7 +4508,13 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
 /// message — author guidance vs out-of-band). Structural invariants that are not
 /// ref resolution (evidence non-empty, a typed entity leg listed in `entities`)
 /// stay separate.
+// `EnumIter` (test-only, Round 694) makes the variant set compiler-complete:
+// the completeness tests iterate `FactRefFacet::iter()`, so a new variant is
+// automatically required in `fact_registry_refs` + both parity case lists, with
+// no hand-maintained `ALL` array to forget (DEBT-FACET-ALL-UNFORCED). The two
+// exhaustive `match`es (resolver + message) already force those two arms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(strum::EnumIter))]
 pub enum FactRefFacet {
     Frame,
     Branch,
@@ -4519,27 +4525,6 @@ pub enum FactRefFacet {
     TypedPredicate,
     TypedSubject,
     TypedObject,
-}
-
-impl FactRefFacet {
-    /// Every facet, once — the authority the parity tests measure their case
-    /// coverage against (Round 688). A new variant here forces a resolver arm
-    /// and a message arm (both `match`es are exhaustive), a push in
-    /// [`fact_registry_refs`] (the `fact_registry_refs_enumerates_every_facet`
-    /// test), and a corruption case in BOTH parity tests (their completeness
-    /// assertions) — so a ref cannot be added to one path and silently skipped
-    /// on the other.
-    pub const ALL: [FactRefFacet; 9] = [
-        FactRefFacet::Frame,
-        FactRefFacet::Branch,
-        FactRefFacet::Entity,
-        FactRefFacet::CanonFrom,
-        FactRefFacet::CanonTo,
-        FactRefFacet::Evidence,
-        FactRefFacet::TypedPredicate,
-        FactRefFacet::TypedSubject,
-        FactRefFacet::TypedObject,
-    ];
 }
 
 /// Every registry ref a built fact carries, as `(facet, value)` — the ONE
@@ -6477,6 +6462,7 @@ pub fn import_edge_proposals(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
     use tempfile::TempDir;
 
     #[test]
@@ -12796,9 +12782,7 @@ mod tests {
             cases.iter().filter_map(|(_, facet, _, _)| *facet).collect();
         assert_eq!(
             covered,
-            FactRefFacet::ALL
-                .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
+            FactRefFacet::iter().collect::<std::collections::HashSet<_>>(),
             "every FactRefFacet must have a detector corruption case"
         );
         for (label, _facet, mutate, want) in cases {
@@ -12815,7 +12799,7 @@ mod tests {
     // The WRITE-PATH twin of the detector parity test above (Round 688 —
     // DEBT-DUP-REGISTRY). Both resolve refs through the shared `fact_ref_resolves`
     // and both prove they cover EVERY `FactRefFacet` via a completeness assertion
-    // against `FactRefFacet::ALL`. So a facet added to `fact_registry_refs`
+    // against `FactRefFacet::iter()`. So a facet added to `fact_registry_refs`
     // (which the `..._enumerates_every_facet` test forces onto ALL) has no case
     // in EITHER list until a human adds one, and until then BOTH tests fail —
     // the drift is caught structurally, not by discipline. The write path does
@@ -12938,9 +12922,7 @@ mod tests {
             cases.iter().filter_map(|(_, facet, _, _)| *facet).collect();
         assert_eq!(
             covered,
-            FactRefFacet::ALL
-                .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
+            FactRefFacet::iter().collect::<std::collections::HashSet<_>>(),
             "every FactRefFacet must have a write-path corruption case"
         );
         for (label, _facet, mutate, want) in cases {
@@ -12954,7 +12936,7 @@ mod tests {
         }
     }
 
-    // Binds the enumeration to FactRefFacet::ALL: a fully-populated fact must
+    // Binds the enumeration to FactRefFacet::iter(): a fully-populated fact must
     // enumerate EVERY facet (Round 688). A variant added to the enum but never
     // pushed in fact_registry_refs (a dead resolver/message arm, a silent
     // detector gap) fails here.
@@ -12988,9 +12970,7 @@ mod tests {
             .collect();
         assert_eq!(
             seen,
-            FactRefFacet::ALL
-                .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
+            FactRefFacet::iter().collect::<std::collections::HashSet<_>>(),
             "fact_registry_refs must emit every FactRefFacet for a fully-populated fact"
         );
     }

@@ -26,6 +26,11 @@ schemars = ["dep:schemars", "mnemosyne-core/schemars"]
 
 [dev-dependencies]
 tempfile.workspace = true
+# Round 694 — TEST-ONLY. `EnumIter` makes `FactRefFacet` compiler-complete: the
+# completeness tests iterate every variant, so a new variant that is not added
+# to `fact_registry_refs` + both parity case lists fails, with no hand-list to
+# forget (DEBT-FACET-ALL-UNFORCED). Not in the production dependency graph.
+strum = { version = "0.26", features = ["derive"] }
 
 [lints]
 workspace = true
