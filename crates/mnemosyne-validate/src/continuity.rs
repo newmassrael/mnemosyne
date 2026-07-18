@@ -5005,6 +5005,8 @@ mod tests {
                 |(predicate_id, object_kind)| mnemosyne_atomic::PredicateImport {
                     predicate_id,
                     object_kind: object_kind.to_string(),
+                    subject_kind: None,
+                    object_entity_kind: None,
                     description: String::new(),
                 },
             )

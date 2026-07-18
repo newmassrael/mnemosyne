@@ -450,12 +450,29 @@ impl PredicateObjectKind {
 /// LOAD-BEARING refs — narrative rules key off them, so a typo'd predicate
 /// would silently escape its rule (the R436 write-side-typo lesson) —
 /// hence the same fail-loud registry contract as frames/branches/entities.
-/// Contrast: [`Entity::kind`] stays free-form BECAUSE it is not
-/// load-bearing.
+/// [`Entity::kind`] is a registered ref (Round 661); when a predicate names a
+/// `subject_kind` / `object_entity_kind` (Round 701) it becomes load-bearing —
+/// the write-path endpoint gate matches an endpoint entity's kind against it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Predicate {
     /// Declared object shape; the builder enforces it on every typed leg.
     pub object_kind: PredicateObjectKind,
+    /// Round 701 — required entity-KIND for the SUBJECT leg (a registered
+    /// `entity_kinds` ref; `None` = any entity). The subject is always an
+    /// entity ([`TypedClaim::subject`]), so there is no shape combination to
+    /// guard. When `Some`, the write path (`build_typed_claim`) rejects a fact
+    /// whose subject entity is not that kind — the spatial-map G1 gate lives
+    /// here (an `adjacent` predicate declares `subject_kind = place`), enforced
+    /// at write time rather than by a scan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_kind: Option<String>,
+    /// Round 701 — required entity-KIND for an ENTITY-shaped OBJECT leg (a
+    /// registered `entity_kinds` ref; `None` = any). Only meaningful when
+    /// `object_kind = Entity`; the builder REJECTS `Some` under
+    /// `object_kind = Scalar` (a scalar object has no entity kind), so the
+    /// nonsensical pairing is unreachable through the mutate API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_entity_kind: Option<String>,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,

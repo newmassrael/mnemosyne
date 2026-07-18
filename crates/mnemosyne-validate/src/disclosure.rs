@@ -365,6 +365,8 @@ mod tests {
             "did".to_string(),
             Predicate {
                 object_kind: PredicateObjectKind::Scalar,
+                subject_kind: None,
+                object_entity_kind: None,
                 description: String::new(),
             },
         );

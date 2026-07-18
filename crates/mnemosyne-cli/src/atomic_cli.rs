@@ -574,9 +574,14 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(),
 
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|scalar` mandatory.
+/// Round 701 — optional `--subject-kind` / `--object-entity-kind` declare the
+/// required endpoint entity-kind (registered `entity_kinds`); the write path
+/// then rejects a fact whose endpoint is not that kind (the spatial-map gate).
 pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut predicate_id: Option<String> = None;
     let mut object_kind: Option<String> = None;
+    let mut subject_kind: Option<String> = None;
+    let mut object_entity_kind: Option<String> = None;
     let mut description = String::new();
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -594,6 +599,20 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
                 object_kind = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--object-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--subject-kind" => {
+                subject_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--subject-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--object-entity-kind" => {
+                object_entity_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--object-entity-kind missing"))?
                         .clone(),
                 )
             }
@@ -624,6 +643,8 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &sidecar_path,
             &predicate_id,
             &object_kind,
+            subject_kind.as_deref(),
+            object_entity_kind.as_deref(),
             &description,
         ),
         json,
@@ -638,6 +659,8 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
 pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut predicate_id: Option<String> = None;
     let mut object_kind: Option<String> = None;
+    let mut subject_kind: Option<String> = None;
+    let mut object_entity_kind: Option<String> = None;
     let mut description: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -655,6 +678,20 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
                 object_kind = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--object-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--subject-kind" => {
+                subject_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--subject-kind missing"))?
+                        .clone(),
+                )
+            }
+            "--object-entity-kind" => {
+                object_entity_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--object-entity-kind missing"))?
                         .clone(),
                 )
             }
@@ -689,6 +726,8 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &sidecar_path,
             &predicate_id,
             &object_kind,
+            subject_kind.as_deref(),
+            object_entity_kind.as_deref(),
             &description,
         ),
         json,

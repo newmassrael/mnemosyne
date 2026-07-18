@@ -396,7 +396,7 @@ static COMMANDS: &[Command] = &[
         usage: &["import-facts --manifest <path.json> [--sidecar <path>] [--json]"],
         notes: &[
             "   bulk narrative registries + facts (Round 430/446): manifest = {frames:[{frame_id,description?}], branches:[...],",
-            "   entities:[...], predicates:[{predicate_id,object_kind,description?}],",
+            "   entities:[...], predicates:[{predicate_id,object_kind,subject_kind?,object_entity_kind?,description?}],",
             "   facts:[{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}],",
             "   disclosure_plans:[{telling_id,default_mode?,description?,overrides:[{fact_id,mode,first_at?,surface?}]}] (Round 590 all-primitive)};",
             "   one atomic transaction (registries -> facts -> disclosure); quote_sha256 computed at write, never caller-supplied;",
@@ -451,8 +451,9 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["add-predicate --predicate <id> --object-kind entity|scalar [--description <text>] [--sidecar <path>] [--json]"],
-        notes: &["   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud"],
+        usage: &["add-predicate --predicate <id> --object-kind entity|scalar [--subject-kind <entity_kind>] [--object-entity-kind <entity_kind>] [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 446 — 4th registry; TypedClaim predicates are load-bearing (rules key off them), fail-loud",
+                 "   Round 701 — optional --subject-kind / --object-entity-kind require the endpoint entity's kind at write time (the spatial-map gate)"],
         run: |c| atomic_cli::cmd_add_predicate(&c.anchor()?, c.rest()),
     },
     Command {
@@ -460,8 +461,8 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["set-predicate --predicate <id> --object-kind entity|scalar --description <text> [--sidecar <path>] [--json]"],
-        notes: &["   Round 658 — re-type/re-describe an EXISTING predicate (full replace); re-type rejects while any use holds the old shape"],
+        usage: &["set-predicate --predicate <id> --object-kind entity|scalar [--subject-kind <entity_kind>] [--object-entity-kind <entity_kind>] --description <text> [--sidecar <path>] [--json]"],
+        notes: &["   Round 658 — re-type/re-describe an EXISTING predicate (full replace); a re-declare rejects while any use fails the new shape or endpoint kinds (R701)"],
         run: |c| atomic_cli::cmd_set_predicate(&c.anchor()?, c.rest()),
     },
     Command {

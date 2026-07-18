@@ -401,6 +401,7 @@ fn manifest_wire() -> ManifestWireSpec {
             KindWire {
                 kind: "predicates",
                 json_keys: "{ \"predicate_id\": string, \"object_kind\": \"entity\"|\"scalar\", \
+                    \"subject_kind\"?: entity_kind, \"object_entity_kind\"?: entity_kind, \
                     \"description\"?: string }",
             },
             KindWire {
@@ -1843,6 +1844,8 @@ mod tests {
             predicates: vec![mnemosyne_atomic::PredicateImport {
                 predicate_id: "p".into(),
                 object_kind: "scalar".into(),
+                subject_kind: None,
+                object_entity_kind: None,
                 description: "d".into(),
             }],
             facts: vec![mnemosyne_atomic::FactImport {

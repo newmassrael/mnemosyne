@@ -1169,11 +1169,23 @@ pub enum AtomicStoreError {
 // `schema_version < 24` arm in `load` for the same reason: silently
 // back-filling the registry from the kinds already in the file would
 // "migrate" a typo into a registered vocabulary and defeat the gate.
+// v24→v25 adds `Predicate.subject_kind` / `Predicate.object_entity_kind` (Round
+// 701 — the spatial-map G1 endpoint-kind gate declared on the predicate,
+// enforced at the fact write path). Same declarative new-field-default pattern
+// as v21→v22: both fields are `Option`, `#[serde(default, skip_serializing_if =
+// Option::is_none)]`, so a pre-v25 predicate has neither key and loads as `None`
+// (= no constraint = the prior behavior), and a constraint-free predicate
+// serializes byte-identically. The gate is a WRITE-path check only — no fact is
+// re-validated on load — so there is deliberately NO `schema_version < 25` arm
+// and no migration report. The monotonic bump is the guard against a STALE older
+// binary reading a v25 store, silently dropping the two unknown fields on save,
+// and erasing the map gate: `schema_version > CURRENT_SCHEMA_VERSION` rejects
+// that newer store loudly instead.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 24;
+pub const CURRENT_SCHEMA_VERSION: u32 = 25;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3659,6 +3671,13 @@ pub struct EntityKindImport {
 pub struct PredicateImport {
     pub predicate_id: String,
     pub object_kind: String,
+    /// Round 701 — optional required entity-kind for the subject / entity-object
+    /// legs (registered `entity_kinds` refs; omitted = any). Same guard as the
+    /// primitive: an `object_entity_kind` under `object_kind=scalar` rejects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_entity_kind: Option<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -4010,10 +4029,36 @@ fn build_typed_claim(
              off predicate ids, a typo must not silently escape its rule)"
         ));
     };
+    // Round 701 — endpoint-kind gate (subject leg). When the predicate declares
+    // a `subject_kind`, the subject entity must BE that registered kind; an
+    // off-kind or unspecified subject rejects at write time (the spatial-map G1
+    // enforced here, not by a scan).
+    if let Some(req) = &decl.subject_kind {
+        if entity_kind(store, &subject) != Some(req.as_str()) {
+            return Err(format!(
+                "fact `{fact_id}`: predicate `{predicate}` requires subject kind `{req}`, \
+                 but entity `{subject}` is kind `{}` (declare the entity's kind via \
+                 add_entity, or use a subject of the required kind)",
+                entity_kind(store, &subject).unwrap_or("<unspecified>")
+            ));
+        }
+    }
     let object = match (&t.object, decl.object_kind) {
-        (TypedObject::Entity { id }, PredicateObjectKind::Entity) => TypedObject::Entity {
-            id: check_entity_leg("object", id)?,
-        },
+        (TypedObject::Entity { id }, PredicateObjectKind::Entity) => {
+            let id = check_entity_leg("object", id)?;
+            // Round 701 — endpoint-kind gate (object leg), entity objects only.
+            if let Some(req) = &decl.object_entity_kind {
+                if entity_kind(store, &id) != Some(req.as_str()) {
+                    return Err(format!(
+                        "fact `{fact_id}`: predicate `{predicate}` requires object kind `{req}`, \
+                         but entity `{id}` is kind `{}` (declare the entity's kind, or use an \
+                         object of the required kind)",
+                        entity_kind(store, &id).unwrap_or("<unspecified>")
+                    ));
+                }
+            }
+            TypedObject::Entity { id }
+        }
         (TypedObject::Value { value }, PredicateObjectKind::Scalar) => {
             let value = value.trim();
             if value.is_empty() {
@@ -4747,14 +4792,36 @@ pub fn add_entity(
 fn build_predicate(
     context: &str,
     object_kind: &str,
+    subject_kind: Option<&str>,
+    object_entity_kind: Option<&str>,
     description: &str,
 ) -> Result<Predicate, String> {
     let tag = object_kind.trim();
     let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
         format!("{context}: unknown object_kind `{tag}` (expected one of: entity, scalar)")
     })?;
+    let norm = |s: Option<&str>| {
+        s.map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let subject_kind = norm(subject_kind);
+    let object_entity_kind = norm(object_entity_kind);
+    // Round 701 (R700 review #5): a scalar object has no entity kind, so an
+    // object-entity-kind constraint on it is nonsensical — reject at the ONE
+    // place the declaration is interpreted, so the pairing never reaches the
+    // store (it would be a dead field a later reader must reason about).
+    if object_kind == PredicateObjectKind::Scalar && object_entity_kind.is_some() {
+        return Err(format!(
+            "{context}: object_kind=scalar cannot carry an object-entity-kind \
+             constraint — a scalar object has no entity kind (drop the \
+             object-entity-kind, or declare object_kind=entity)"
+        ));
+    }
     Ok(Predicate {
         object_kind,
+        subject_kind,
+        object_entity_kind,
         description: description.trim().to_string(),
     })
 }
@@ -4771,10 +4838,20 @@ pub fn add_predicate(
     sidecar_path: &Path,
     predicate_id: &str,
     object_kind: &str,
+    subject_kind: Option<&str>,
+    object_entity_kind: Option<&str>,
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = predicate_id.trim().to_string();
-    let candidate = build_predicate("add_predicate", object_kind, description)
+    let candidate = build_predicate(
+        "add_predicate",
+        object_kind,
+        subject_kind,
+        object_entity_kind,
+        description,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    validate_predicate_kind_refs(store, "add_predicate", &candidate)
         .map_err(AtomicMutateError::Validation)?;
     let created = stage_registry_entry(
         &mut store.predicates,
@@ -4792,6 +4869,75 @@ pub fn add_predicate(
         &id,
         created,
     )
+}
+
+/// The registered kind of an entity (Round 701), or `None` when the entity is
+/// absent or its kind is unspecified (empty). A predicate's endpoint-kind
+/// constraint is matched against this: the leg satisfies iff `Some(k)` equals
+/// the required kind — an unspecified kind never satisfies a `Some` constraint.
+fn entity_kind<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a str> {
+    store
+        .entities
+        .get(id)
+        .map(|e| e.kind.as_str())
+        .filter(|k| !k.is_empty())
+}
+
+/// Whether an existing typed use satisfies a predicate declaration IN FULL
+/// (Round 701) — object SHAPE (`object_kind`) AND endpoint KINDS
+/// (`subject_kind` / `object_entity_kind`). The read-side twin of
+/// [`build_typed_claim`]'s write-path verdict, used by [`set_predicate`] to
+/// re-check EXISTING uses before a re-declare. The two are kept in lockstep by
+/// the Round 701 field-invariant parity test — they must accept/reject the same
+/// `(store, claim, decl)`, or the invariant is half-enforced across two write
+/// paths (the R295/R699 trap).
+fn use_satisfies_declaration(store: &AtomicStore, t: &TypedClaim, decl: &Predicate) -> bool {
+    if !object_matches_kind(&t.object, decl.object_kind) {
+        return false;
+    }
+    if let Some(req) = &decl.subject_kind {
+        if entity_kind(store, &t.subject) != Some(req.as_str()) {
+            return false;
+        }
+    }
+    if let Some(req) = &decl.object_entity_kind {
+        // A scalar object with `object_entity_kind` is unrepresentable
+        // (`build_predicate` rejects it), so a scalar object here means the
+        // constraint does not apply; only an entity object is gated.
+        if let TypedObject::Entity { id } = &t.object {
+            if entity_kind(store, id) != Some(req.as_str()) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Fail-loud that a predicate's endpoint-kind constraints name REGISTERED
+/// `entity_kinds` (Round 701) — the R436/R661 write-side-typo rule applied to
+/// the two new refs. Store-aware, so it lives beside the mutate primitives that
+/// hold the store rather than in the store-free [`build_predicate`]. A typo'd
+/// kind would otherwise route every fact out of the endpoint gate silently.
+fn validate_predicate_kind_refs(
+    store: &AtomicStore,
+    context: &str,
+    p: &Predicate,
+) -> Result<(), String> {
+    for (leg, k) in [
+        ("subject_kind", p.subject_kind.as_deref()),
+        ("object_entity_kind", p.object_entity_kind.as_deref()),
+    ] {
+        if let Some(k) = k {
+            if !store.entity_kinds.contains_key(k) {
+                return Err(format!(
+                    "{context}: {leg} `{k}` is not a registered entity_kind \
+                     (add_entity_kind first; fail-loud — a typo'd kind would route \
+                     every fact out of the endpoint gate)"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether one stored object leg satisfies a declared [`PredicateObjectKind`]
@@ -4867,6 +5013,8 @@ pub fn set_predicate(
     sidecar_path: &Path,
     predicate_id: &str,
     object_kind: &str,
+    subject_kind: Option<&str>,
+    object_entity_kind: Option<&str>,
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = predicate_id.trim().to_string();
@@ -4875,7 +5023,15 @@ pub fn set_predicate(
             "set_predicate: predicate_id mandatory (non-empty after trim)".to_string(),
         ));
     }
-    let candidate = build_predicate("set_predicate", object_kind, description)
+    let candidate = build_predicate(
+        "set_predicate",
+        object_kind,
+        subject_kind,
+        object_entity_kind,
+        description,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    validate_predicate_kind_refs(store, "set_predicate", &candidate)
         .map_err(AtomicMutateError::Validation)?;
     let Some(existing) = store.predicates.get(&id) else {
         return Err(AtomicMutateError::Validation(format!(
@@ -4894,28 +5050,32 @@ pub fn set_predicate(
             false,
         );
     }
-    if existing.object_kind != candidate.object_kind {
-        let offenders: Vec<&str> = predicate_uses(store, &id)
-            .into_iter()
-            .filter(|fid| {
-                store.narrative_facts[*fid]
-                    .typed
-                    .as_ref()
-                    .is_some_and(|t| !object_matches_kind(&t.object, candidate.object_kind))
-            })
-            .collect();
-        if !offenders.is_empty() {
-            let from = existing.object_kind.as_str();
-            let to = candidate.object_kind.as_str();
-            let n = offenders.len();
-            return Err(AtomicMutateError::Validation(format!(
-                "set_predicate: predicate `{id}` cannot be re-typed {from} → {to} — \
-                 {n} existing use(s) hold an object of the old shape: {} \
-                 (re-author or retract those typed legs first; a registry that \
-                 disagrees with its uses is a silent broken state)",
-                sample_ids(&offenders)
-            )));
-        }
+    // Round 701 (R700 review #1): a re-declare may only move to a declaration
+    // EVERY existing use already satisfies — object SHAPE *and* endpoint KINDS.
+    // Before R701 this guarded `object_kind` shape only, so a `set_predicate`
+    // TIGHTENING an endpoint kind onto a predicate with off-kind uses would slip
+    // past into a silent broken state (a registry disagreeing with its facts) —
+    // the half-enforced invariant across two write paths. Runs on every change
+    // (the no-op re-declare returned above); a description-only change finds no
+    // offenders because the constraints are unchanged.
+    let offenders: Vec<&str> = predicate_uses(store, &id)
+        .into_iter()
+        .filter(|fid| {
+            store.narrative_facts[*fid]
+                .typed
+                .as_ref()
+                .is_some_and(|t| !use_satisfies_declaration(store, t, &candidate))
+        })
+        .collect();
+    if !offenders.is_empty() {
+        let n = offenders.len();
+        return Err(AtomicMutateError::Validation(format!(
+            "set_predicate: predicate `{id}` cannot be re-declared — {n} existing \
+             use(s) do not satisfy the new object shape / endpoint kinds: {} \
+             (re-author or retract those typed legs first; a registry that \
+             disagrees with its uses is a silent broken state)",
+            sample_ids(&offenders)
+        )));
     }
     store.predicates.insert(id.clone(), candidate);
     registry_receipt(store, sidecar_path, "set_predicate", "predicate", &id, true)
@@ -5497,7 +5657,15 @@ pub fn apply_facts_manifest(
     let mut predicates_created = 0usize;
     for (idx, p) in manifest.predicates.iter().enumerate() {
         let context = format!("import_facts: manifest predicate {idx}");
-        let candidate = build_predicate(&context, &p.object_kind, &p.description)
+        let candidate = build_predicate(
+            &context,
+            &p.object_kind,
+            p.subject_kind.as_deref(),
+            p.object_entity_kind.as_deref(),
+            &p.description,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        validate_predicate_kind_refs(store, &context, &candidate)
             .map_err(AtomicMutateError::Validation)?;
         let created = stage_registry_entry(
             &mut store.predicates,
@@ -8294,7 +8462,7 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
 
         let typed = |id: &str, canon: &str| FactImport {
             entities: vec!["pike".to_string()],
@@ -10110,7 +10278,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-untyped", "gt")).unwrap();
         let typed_fact = FactImport {
             entities: vec!["pike".to_string()],
@@ -10305,6 +10473,8 @@ mod tests {
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
                     object_kind: "scalar".to_string(),
+                    subject_kind: None,
+                    object_entity_kind: None,
                     description: String::new(),
                 }],
                 facts: vec![
@@ -10363,7 +10533,7 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
         let typed_leg = Some(TypedClaim {
             subject: "pike".to_string(),
             predicate: "did".to_string(),
@@ -11551,6 +11721,8 @@ mod tests {
                     "alive".to_string(),
                     Predicate {
                         object_kind: PredicateObjectKind::Scalar,
+                        subject_kind: None,
+                        object_entity_kind: None,
                         description: String::new(),
                     },
                 );
@@ -11558,6 +11730,8 @@ mod tests {
                     "holds".to_string(),
                     Predicate {
                         object_kind: PredicateObjectKind::Entity,
+                        subject_kind: None,
+                        object_entity_kind: None,
                         description: String::new(),
                     },
                 );
@@ -11580,6 +11754,243 @@ mod tests {
             assert_eq!(
                 add_ok, import_ok,
                 "typed write-path parity broken for case `{label}`: add={add_ok} import={import_ok}"
+            );
+        }
+    }
+
+    /// Round 701 — the endpoint-KIND write-path gate (the spatial-map G1
+    /// enforced at write time, not by a scan). A predicate declaring
+    /// `subject_kind` / `object_entity_kind` rejects a fact whose endpoint
+    /// entity is not that registered kind — so `adjacent(place, object)` (a road
+    /// to a non-place) is unrepresentable through the mutate API.
+    #[test]
+    fn predicate_endpoint_kind_gate_rejects_off_kind_facts() {
+        // A fresh store with the map vocabulary: two kinds, three entities (two
+        // places, one thing), and an `adjacent` predicate constrained place↔place.
+        let setup = || {
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join("s.json");
+            let mut store = AtomicStore::new();
+            seed_chapters(&mut store);
+            store.frames.insert("gt".to_string(), Frame::default());
+            add_entity_kind(&mut store, &path, "place", "").unwrap();
+            add_entity_kind(&mut store, &path, "thing", "").unwrap();
+            add_entity(&mut store, &path, "cove", "place", "").unwrap();
+            add_entity(&mut store, &path, "dike", "place", "").unwrap();
+            add_entity(&mut store, &path, "stake", "thing", "").unwrap();
+            add_predicate(
+                &mut store,
+                &path,
+                "adjacent",
+                "entity",
+                Some("place"),
+                Some("place"),
+                "spatial map edge",
+            )
+            .unwrap();
+            (tmp, path, store)
+        };
+        let adjacent = |subject: &str, object: &str, id: &str| FactImport {
+            entities: vec![subject.to_string(), object.to_string()],
+            typed: Some(TypedClaim {
+                subject: subject.to_string(),
+                predicate: "adjacent".to_string(),
+                object: TypedObject::Entity {
+                    id: object.to_string(),
+                },
+            }),
+            ..sample_fact(id, "gt")
+        };
+        // place ↔ place: accepted.
+        {
+            let (_tmp, path, mut store) = setup();
+            add_fact(&mut store, &path, &adjacent("cove", "dike", "e1")).unwrap();
+        }
+        // place → thing (off-kind OBJECT): rejected, naming the object kind.
+        {
+            let (_tmp, path, mut store) = setup();
+            let err = add_fact(&mut store, &path, &adjacent("cove", "stake", "e2"))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("object kind `place`"), "unexpected: {err}");
+        }
+        // thing → place (off-kind SUBJECT): rejected, naming the subject kind.
+        {
+            let (_tmp, path, mut store) = setup();
+            let err = add_fact(&mut store, &path, &adjacent("stake", "dike", "e3"))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("subject kind `place`"), "unexpected: {err}");
+        }
+    }
+
+    /// Round 701 (R700 review #1, the load-bearing fix) — `set_predicate` may
+    /// not TIGHTEN an endpoint kind onto a predicate that already has an
+    /// off-kind use; that would leave the registry disagreeing with its facts (a
+    /// silent broken state the next write would surface). The re-type guard
+    /// re-checks endpoint KINDS, not just object shape (the pre-R701 gap).
+    #[test]
+    fn set_predicate_rejects_endpoint_kind_tighten_over_off_kind_use() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_entity_kind(&mut store, &path, "place", "").unwrap();
+        add_entity_kind(&mut store, &path, "thing", "").unwrap();
+        add_entity(&mut store, &path, "cove", "place", "").unwrap();
+        add_entity(&mut store, &path, "stake", "thing", "").unwrap();
+        // Unconstrained predicate + a use whose object is a `thing`.
+        add_predicate(&mut store, &path, "near", "entity", None, None, "").unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["cove".to_string(), "stake".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "cove".to_string(),
+                    predicate: "near".to_string(),
+                    object: TypedObject::Entity {
+                        id: "stake".to_string(),
+                    },
+                }),
+                ..sample_fact("u1", "gt")
+            },
+        )
+        .unwrap();
+        // Tightening the object to kind=place must REJECT (the existing use's
+        // object is a thing) — before R701 this guarded object shape only.
+        let err = set_predicate(&mut store, &path, "near", "entity", None, Some("place"), "")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("do not satisfy"), "unexpected: {err}");
+    }
+
+    /// Round 701 — declaration guards on the predicate write path: a scalar
+    /// object cannot carry an object-entity-kind constraint, and both kind refs
+    /// must be registered `entity_kinds`. Proven on BOTH creators
+    /// (`add_predicate` / `set_predicate`) so the invariant is not half-enforced
+    /// (the R295 two-write-paths rule; R700 review #1).
+    #[test]
+    fn predicate_kind_declaration_guards_parity_add_vs_set() {
+        // (label, object_kind, subject_kind, object_entity_kind, accepts)
+        type DeclCase = (
+            &'static str,
+            &'static str,
+            Option<&'static str>,
+            Option<&'static str>,
+            bool,
+        );
+        let cases: Vec<DeclCase> = vec![
+            (
+                "place map (valid)",
+                "entity",
+                Some("place"),
+                Some("place"),
+                true,
+            ),
+            ("scalar, no constraint (valid)", "scalar", None, None, true),
+            (
+                "scalar + object-entity-kind (combo)",
+                "scalar",
+                None,
+                Some("place"),
+                false,
+            ),
+            (
+                "unregistered subject_kind",
+                "entity",
+                Some("nope"),
+                None,
+                false,
+            ),
+            (
+                "unregistered object_entity_kind",
+                "entity",
+                None,
+                Some("nope"),
+                false,
+            ),
+        ];
+        for (label, ok, sk, oek, accepts) in cases {
+            // add_predicate on a fresh store.
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join("a.json");
+            let mut store = AtomicStore::new();
+            add_entity_kind(&mut store, &path, "place", "").unwrap();
+            let add_ok = add_predicate(&mut store, &path, "p", ok, sk, oek, "").is_ok();
+            // set_predicate on a store where `p` already exists (benign, no uses).
+            let tmp2 = TempDir::new().unwrap();
+            let path2 = tmp2.path().join("b.json");
+            let mut store2 = AtomicStore::new();
+            add_entity_kind(&mut store2, &path2, "place", "").unwrap();
+            add_predicate(&mut store2, &path2, "p", "entity", None, None, "").unwrap();
+            let set_ok = set_predicate(&mut store2, &path2, "p", ok, sk, oek, "").is_ok();
+            assert_eq!(add_ok, accepts, "add_predicate `{label}`");
+            assert_eq!(
+                add_ok, set_ok,
+                "declaration guard divergence for `{label}`: add={add_ok} set={set_ok}"
+            );
+        }
+    }
+
+    /// Round 701 — the field-invariant parity that keeps the write path
+    /// (`build_typed_claim`, via `add_fact`) and its read-side twin
+    /// (`use_satisfies_declaration`, which `set_predicate` re-runs before a
+    /// re-type) from drifting: for the same fact they must agree accept/reject,
+    /// or the endpoint-kind invariant is half-enforced across two write paths
+    /// (the R699 eval/detector divergence, prevented here by construction).
+    #[test]
+    fn endpoint_kind_write_path_and_retype_twin_agree() {
+        let cases: [(&str, &str, &str); 3] = [
+            ("place↔place", "cove", "dike"),
+            ("off-kind object", "cove", "stake"),
+            ("off-kind subject", "stake", "dike"),
+        ];
+        for (label, subject, object) in cases {
+            let tmp = TempDir::new().unwrap();
+            let path = tmp.path().join("s.json");
+            let mut store = AtomicStore::new();
+            seed_chapters(&mut store);
+            store.frames.insert("gt".to_string(), Frame::default());
+            add_entity_kind(&mut store, &path, "place", "").unwrap();
+            add_entity_kind(&mut store, &path, "thing", "").unwrap();
+            add_entity(&mut store, &path, "cove", "place", "").unwrap();
+            add_entity(&mut store, &path, "dike", "place", "").unwrap();
+            add_entity(&mut store, &path, "stake", "thing", "").unwrap();
+            add_predicate(
+                &mut store,
+                &path,
+                "adjacent",
+                "entity",
+                Some("place"),
+                Some("place"),
+                "",
+            )
+            .unwrap();
+            let claim = TypedClaim {
+                subject: subject.to_string(),
+                predicate: "adjacent".to_string(),
+                object: TypedObject::Entity {
+                    id: object.to_string(),
+                },
+            };
+            let decl = resolve_predicate(&store, "adjacent").unwrap().clone();
+            // Read-side twin, computed on the pristine store before the write.
+            let twin_ok = use_satisfies_declaration(&store, &claim, &decl);
+            let write_ok = add_fact(
+                &mut store,
+                &path,
+                &FactImport {
+                    entities: vec![subject.to_string(), object.to_string()],
+                    typed: Some(claim),
+                    ..sample_fact("f", "gt")
+                },
+            )
+            .is_ok();
+            assert_eq!(
+                write_ok, twin_ok,
+                "write/retype-twin divergence for `{label}`: write={write_ok} twin={twin_ok}"
             );
         }
     }
@@ -11638,6 +12049,8 @@ mod tests {
                     "alive".to_string(),
                     Predicate {
                         object_kind: PredicateObjectKind::Scalar,
+                        subject_kind: None,
+                        object_entity_kind: None,
                         description: String::new(),
                     },
                 );
@@ -11733,13 +12146,40 @@ mod tests {
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
         // Unknown object_kind tag rejects (no silent default).
-        let err = add_predicate(&mut store, &path, "alive", "boolean", "").unwrap_err();
+        let err = add_predicate(&mut store, &path, "alive", "boolean", None, None, "").unwrap_err();
         assert!(err.to_string().contains("unknown object_kind"), "{err}");
         // Create, then byte-identical no-op, then divergent reject.
-        add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
-        let receipt = add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap();
+        let receipt = add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap();
         assert!(receipt.target_id.ends_with("(no-op)"));
-        let err = add_predicate(&mut store, &path, "alive", "entity", "life state").unwrap_err();
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "entity",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
         // Typed fact round-trips; prose-only fact never serializes `typed`.
         add_fact(
@@ -11795,12 +12235,39 @@ mod tests {
         store.entities.insert("kara".to_string(), Entity::default());
 
         // The typo: meant scalar, wrote entity. NOTHING could reach it before.
-        add_predicate(&mut store, &path, "alive", "entity", "life state").unwrap();
-        let err = add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap_err();
+        add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "entity",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap();
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
 
         // set_predicate reaches it: 0 uses, so the re-type is vacuously safe.
-        set_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        set_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap();
         assert_eq!(
             store.predicates["alive"].object_kind,
             PredicateObjectKind::Scalar
@@ -11840,7 +12307,16 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "alive", "scalar", "life state").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap();
         add_fact(
             &mut store,
             &path,
@@ -11859,9 +12335,20 @@ mod tests {
         .unwrap();
 
         // Re-type with a use of the old shape REJECTS, and names the offender.
-        let err = set_predicate(&mut store, &path, "alive", "entity", "life state").unwrap_err();
+        // (R701 generalised the guard from object-shape-only to the full
+        // declaration — shape + endpoint kinds — hence "cannot be re-declared".)
+        let err = set_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "entity",
+            None,
+            None,
+            "life state",
+        )
+        .unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("cannot be re-typed"), "{msg}");
+        assert!(msg.contains("cannot be re-declared"), "{msg}");
         assert!(msg.contains("typed-1"), "offender not named: {msg}");
         assert_eq!(
             store.predicates["alive"].object_kind,
@@ -11869,10 +12356,28 @@ mod tests {
             "a rejected re-type must not mutate the registry"
         );
         // The description alone still moves — the reject is about the SHAPE.
-        set_predicate(&mut store, &path, "alive", "scalar", "vital state").unwrap();
+        set_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "vital state",
+        )
+        .unwrap();
         assert_eq!(store.predicates["alive"].description, "vital state");
         // Identical content is an idempotent no-op (add_predicate's 3-way).
-        let receipt = set_predicate(&mut store, &path, "alive", "scalar", "vital state").unwrap();
+        let receipt = set_predicate(
+            &mut store,
+            &path,
+            "alive",
+            "scalar",
+            None,
+            None,
+            "vital state",
+        )
+        .unwrap();
         assert!(receipt.target_id.ends_with("(no-op)"));
 
         // Removal while used REJECTS (no orphaned TypedClaim.predicate) …
@@ -11890,7 +12395,7 @@ mod tests {
 
         // Absent predicate fails loud on BOTH repair paths (no silent create,
         // no idempotent delete).
-        let err = set_predicate(&mut store, &path, "ghost", "scalar", "").unwrap_err();
+        let err = set_predicate(&mut store, &path, "ghost", "scalar", None, None, "").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
         let err = remove_predicate(&mut store, &path, "ghost").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
@@ -11921,16 +12426,32 @@ mod tests {
             // add: onto an empty registry.
             let mut store_a = AtomicStore::new();
             seed_chapters(&mut store_a);
-            let add_ok =
-                add_predicate(&mut store_a, &path_a, "p", object_kind, description).is_ok();
+            let add_ok = add_predicate(
+                &mut store_a,
+                &path_a,
+                "p",
+                object_kind,
+                None,
+                None,
+                description,
+            )
+            .is_ok();
 
             // set: onto a registry already holding `p`, so the SAME candidate
             // value is what each path is judged on.
             let mut store_b = AtomicStore::new();
             seed_chapters(&mut store_b);
-            add_predicate(&mut store_b, &path_b, "p", "entity", "seed").unwrap();
-            let set_ok =
-                set_predicate(&mut store_b, &path_b, "p", object_kind, description).is_ok();
+            add_predicate(&mut store_b, &path_b, "p", "entity", None, None, "seed").unwrap();
+            let set_ok = set_predicate(
+                &mut store_b,
+                &path_b,
+                "p",
+                object_kind,
+                None,
+                None,
+                description,
+            )
+            .is_ok();
 
             assert_eq!(
                 add_ok, set_ok,
@@ -11976,6 +12497,8 @@ mod tests {
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
                     object_kind: "scalar".to_string(),
+                    subject_kind: None,
+                    object_entity_kind: None,
                     description: String::new(),
                 }],
                 facts: vec![FactImport {
@@ -12687,7 +13210,7 @@ mod tests {
         base.frames.insert("gt".to_string(), Frame::default());
         add_entity(&mut base, &path, "a", "", "").unwrap();
         add_entity(&mut base, &path, "b", "", "").unwrap();
-        add_predicate(&mut base, &path, "rel", "entity", "").unwrap();
+        add_predicate(&mut base, &path, "rel", "entity", None, None, "").unwrap();
         let mut valid = sample_fact("f1", "gt");
         valid.entities = vec!["a".to_string(), "b".to_string()];
         valid.typed = Some(TypedClaim {
@@ -12817,7 +13340,7 @@ mod tests {
             s.frames.insert("gt".to_string(), Frame::default());
             add_entity(&mut s, &path, "a", "", "").unwrap();
             add_entity(&mut s, &path, "b", "", "").unwrap();
-            add_predicate(&mut s, &path, "rel", "entity", "").unwrap();
+            add_predicate(&mut s, &path, "rel", "entity", None, None, "").unwrap();
             s
         };
         let valid = || FactImport {

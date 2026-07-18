@@ -410,6 +410,15 @@ pub struct AddPredicateArgs {
     pub predicate_id: String,
     /// Declared object shape: `entity` | `scalar`. Unknown tags reject.
     pub object_kind: String,
+    /// R701 — required entity-KIND for the subject leg (a registered
+    /// `entity_kinds` ref; omit = any). The write path rejects a fact whose
+    /// subject entity is not this kind (the spatial-map G1 gate).
+    #[serde(default)]
+    pub subject_kind: Option<String>,
+    /// R701 — required entity-KIND for an entity-shaped object leg (omit =
+    /// any). Rejects under `object_kind=scalar` (a scalar object has no kind).
+    #[serde(default)]
+    pub object_entity_kind: Option<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -424,6 +433,14 @@ pub struct SetPredicateArgs {
     /// New declared object shape: `entity` | `scalar`. A re-type rejects
     /// while any existing use still holds an object of the old shape.
     pub object_kind: String,
+    /// R701 — new required subject entity-KIND (omit = clear; full replace).
+    /// A tighten rejects while any existing use's subject is off-kind.
+    #[serde(default)]
+    pub subject_kind: Option<String>,
+    /// R701 — new required object entity-KIND (omit = clear; full replace).
+    /// A tighten rejects while any existing use's object is off-kind.
+    #[serde(default)]
+    pub object_entity_kind: Option<String>,
     /// New description. Mandatory — this is a replace, not a merge.
     pub description: String,
 }
@@ -1620,23 +1637,39 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape (entity | scalar); the fact builder enforces it. Idempotent on identical content; divergent rejects."
+        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape (entity | scalar); the fact builder enforces it. R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects under object_kind=scalar. Idempotent on identical content; divergent rejects."
     )]
     async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
-            atomic::add_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
+            atomic::add_predicate(
+                store,
+                path,
+                &a.predicate_id,
+                &a.object_kind,
+                a.subject_kind.as_deref(),
+                a.object_entity_kind.as_deref(),
+                &a.description,
+            )
         });
         self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description too. A re-type REJECTS while any existing use holds an object of the old shape (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
+        description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description AND any subject_kind / object_entity_kind (R701; omit = clear). A re-declare REJECTS while any existing use fails the new object shape OR the new endpoint kinds (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
     )]
     async fn set_predicate(&self, args: Parameters<SetPredicateArgs>) -> CallToolResult {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
-            atomic::set_predicate(store, path, &a.predicate_id, &a.object_kind, &a.description)
+            atomic::set_predicate(
+                store,
+                path,
+                &a.predicate_id,
+                &a.object_kind,
+                a.subject_kind.as_deref(),
+                a.object_entity_kind.as_deref(),
+                &a.description,
+            )
         });
         self.finish_mutate(outcome)
     }
