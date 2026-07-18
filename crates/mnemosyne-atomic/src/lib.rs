@@ -42,7 +42,7 @@ use mnemosyne_core::{
     TypedClaim, TypedObject,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1181,11 +1181,22 @@ pub enum AtomicStoreError {
 // binary reading a v25 store, silently dropping the two unknown fields on save,
 // and erasing the map gate: `schema_version > CURRENT_SCHEMA_VERSION` rejects
 // that newer store loudly instead.
+// v25→v26 adds `Predicate.object_tokens` (Round 705 — the closed token
+// vocabulary for `object_kind=token`). Same declarative pattern: `BTreeSet`,
+// `#[serde(default, skip_serializing_if = BTreeSet::is_empty)]`, so a non-token
+// predicate has no key and serializes byte-identically, and no fact is
+// re-validated on load. The stale-binary silent-drop risk that motivated the
+// v24→v25 bump is even weaker here — `object_tokens` only ever accompanies the
+// NEW `object_kind=token` / `TypedObject::Token` variants, which a pre-R705
+// binary already rejects loudly (serde unknown variant `token`), so it cannot
+// reach the drop-on-save path — but the bump is kept for audit consistency (the
+// codebase notes every on-disk shape change) and to keep the `> CURRENT` guard
+// monotone.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 25;
+pub const CURRENT_SCHEMA_VERSION: u32 = 26;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3678,6 +3689,10 @@ pub struct PredicateImport {
     pub subject_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_entity_kind: Option<String>,
+    /// Round 705 — the closed object vocabulary (required non-empty under
+    /// `object_kind=token`, rejected otherwise; `build_predicate` enforces).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_tokens: Vec<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -4070,16 +4085,51 @@ fn build_typed_claim(
                 value: value.to_string(),
             }
         }
-        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => {
-            return Err(format!(
-                "fact `{fact_id}`: predicate `{predicate}` declares object_kind=scalar but \
-                 the typed object is an entity — shape mismatch (fix the leg or the declaration)"
-            ));
+        (TypedObject::Token { token }, PredicateObjectKind::Token) => {
+            // Round 705 — the token must be a member of the predicate's CLOSED
+            // declared vocabulary; a token outside it is a typo escaping the set
+            // (the R436 write-side-typo guard, one level down). Extend the set
+            // via set_predicate, never widen it here.
+            let token = token.trim();
+            if token.is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: typed object token mandatory (non-empty)"
+                ));
+            }
+            if !decl.object_tokens.contains(token) {
+                return Err(format!(
+                    "fact `{fact_id}`: predicate `{predicate}` token `{token}` is not in its \
+                     declared vocabulary ({}) — fix the token, or extend the vocabulary via \
+                     set_predicate",
+                    decl.object_tokens
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            TypedObject::Token {
+                token: token.to_string(),
+            }
         }
-        (TypedObject::Value { .. }, PredicateObjectKind::Entity) => {
+        // Every cross pair is a shape mismatch — enumerated explicitly (no
+        // wildcard, the R624/R658 discipline) so a new object OR object_kind
+        // variant breaks this build rather than silently rejecting.
+        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => {
+            let actual = match &t.object {
+                TypedObject::Entity { .. } => "an entity",
+                TypedObject::Value { .. } => "a scalar value",
+                TypedObject::Token { .. } => "a token",
+            };
             return Err(format!(
-                "fact `{fact_id}`: predicate `{predicate}` declares object_kind=entity but \
-                 the typed object is a scalar value — shape mismatch (fix the leg or the declaration)"
+                "fact `{fact_id}`: predicate `{predicate}` declares object_kind={} but the \
+                 typed object is {actual} — shape mismatch (fix the leg or the declaration)",
+                decl.object_kind.as_str()
             ));
         }
     };
@@ -4794,11 +4844,12 @@ fn build_predicate(
     object_kind: &str,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
+    object_tokens: &[String],
     description: &str,
 ) -> Result<Predicate, String> {
     let tag = object_kind.trim();
     let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
-        format!("{context}: unknown object_kind `{tag}` (expected one of: entity, scalar)")
+        format!("{context}: unknown object_kind `{tag}` (expected one of: entity, scalar, token)")
     })?;
     let norm = |s: Option<&str>| {
         s.map(str::trim)
@@ -4807,21 +4858,59 @@ fn build_predicate(
     };
     let subject_kind = norm(subject_kind);
     let object_entity_kind = norm(object_entity_kind);
-    // Round 701 (R700 review #5): a scalar object has no entity kind, so an
-    // object-entity-kind constraint on it is nonsensical — reject at the ONE
-    // place the declaration is interpreted, so the pairing never reaches the
-    // store (it would be a dead field a later reader must reason about).
-    if object_kind == PredicateObjectKind::Scalar && object_entity_kind.is_some() {
+    // Round 701 (R700 review #5), generalized Round 705: only an ENTITY object
+    // has an entity kind, so an object-entity-kind constraint on a scalar OR a
+    // token object is nonsensical — reject at the ONE place the declaration is
+    // interpreted, so the pairing never reaches the store (a dead field a later
+    // reader must reason about).
+    if object_entity_kind.is_some() && object_kind != PredicateObjectKind::Entity {
         return Err(format!(
-            "{context}: object_kind=scalar cannot carry an object-entity-kind \
-             constraint — a scalar object has no entity kind (drop the \
-             object-entity-kind, or declare object_kind=entity)"
+            "{context}: object_kind={} cannot carry an object-entity-kind \
+             constraint — only an entity object has an entity kind (drop the \
+             object-entity-kind, or declare object_kind=entity)",
+            object_kind.as_str()
         ));
+    }
+    // Round 705 — the CLOSED vocabulary. REQUIRED non-empty for a token
+    // predicate (an empty set would re-open the free-text hole the token shape
+    // closes); REJECTED for any other kind (a dead field). Trimmed + de-duped
+    // into the BTreeSet; a blank member rejects (a token is a non-empty value).
+    let mut tokens = BTreeSet::new();
+    for t in object_tokens {
+        let t = t.trim();
+        if t.is_empty() {
+            return Err(format!(
+                "{context}: object_tokens has a blank entry — a token is a non-empty \
+                 vocabulary member"
+            ));
+        }
+        tokens.insert(t.to_string());
+    }
+    match object_kind {
+        PredicateObjectKind::Token => {
+            if tokens.is_empty() {
+                return Err(format!(
+                    "{context}: object_kind=token needs a non-empty object_tokens vocabulary \
+                     — an empty closed set would re-open the free-text hole (declare the \
+                     allowed tokens, extend later via set_predicate)"
+                ));
+            }
+        }
+        PredicateObjectKind::Entity | PredicateObjectKind::Scalar => {
+            if !tokens.is_empty() {
+                return Err(format!(
+                    "{context}: object_kind={} cannot carry an object_tokens vocabulary \
+                     (only object_kind=token declares a closed set)",
+                    object_kind.as_str()
+                ));
+            }
+        }
     }
     Ok(Predicate {
         object_kind,
         subject_kind,
         object_entity_kind,
+        object_tokens: tokens,
         description: description.trim().to_string(),
     })
 }
@@ -4833,6 +4922,11 @@ fn build_predicate(
 /// lesson), hence the same fail-loud registry contract as
 /// frames/branches/entities. A2-consistent verdicts via the shared
 /// staging path.
+// Round 705 — the predicate declaration crossed clippy's 7-arg line as the
+// object-shape-closure arc adds vocabulary (Token now; Quantity/Fact next). Bundle
+// the declaration into a `PredicateDecl` struct when the next field lands; until
+// then the flat args mirror the CLI/MCP wire one-to-one.
+#[allow(clippy::too_many_arguments)]
 pub fn add_predicate(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -4840,6 +4934,7 @@ pub fn add_predicate(
     object_kind: &str,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
+    object_tokens: &[String],
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = predicate_id.trim().to_string();
@@ -4848,6 +4943,7 @@ pub fn add_predicate(
         object_kind,
         subject_kind,
         object_entity_kind,
+        object_tokens,
         description,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -4910,6 +5006,17 @@ fn use_satisfies_declaration(store: &AtomicStore, t: &TypedClaim, decl: &Predica
             }
         }
     }
+    // Round 705 — the token-vocabulary membership, the read-side twin of
+    // `build_typed_claim`'s check (kept in lockstep by the parity test): a
+    // `set_predicate` that TIGHTENS the vocabulary (drops a token an existing
+    // fact uses) must re-reject that use, or the invariant is half-enforced.
+    if decl.object_kind == PredicateObjectKind::Token {
+        if let TypedObject::Token { token } = &t.object {
+            if !decl.object_tokens.contains(token.trim()) {
+                return false;
+            }
+        }
+    }
     true
 }
 
@@ -4951,8 +5058,13 @@ fn object_matches_kind(object: &TypedObject, kind: PredicateObjectKind) -> bool 
     match (object, kind) {
         (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
         (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
-        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => false,
-        (TypedObject::Value { .. }, PredicateObjectKind::Entity) => false,
+        (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
+        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => false,
     }
 }
 
@@ -5008,6 +5120,9 @@ fn sample_ids(ids: &[&str]) -> String {
 /// same invariant vacuously (a fresh id has no uses; a use cannot precede its
 /// registration, `build_typed_claim` sees to that), so this is one invariant on
 /// two write paths, not two invariants.
+// Round 705 — see `add_predicate`: bundle into `PredicateDecl` when the arg count
+// grows again (the Quantity/Fact rounds).
+#[allow(clippy::too_many_arguments)]
 pub fn set_predicate(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -5015,6 +5130,7 @@ pub fn set_predicate(
     object_kind: &str,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
+    object_tokens: &[String],
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = predicate_id.trim().to_string();
@@ -5028,6 +5144,7 @@ pub fn set_predicate(
         object_kind,
         subject_kind,
         object_entity_kind,
+        object_tokens,
         description,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -5662,6 +5779,7 @@ pub fn apply_facts_manifest(
             &p.object_kind,
             p.subject_kind.as_deref(),
             p.object_entity_kind.as_deref(),
+            &p.object_tokens,
             &p.description,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -8462,7 +8580,7 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
 
         let typed = |id: &str, canon: &str| FactImport {
             entities: vec!["pike".to_string()],
@@ -10278,7 +10396,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-untyped", "gt")).unwrap();
         let typed_fact = FactImport {
             entities: vec!["pike".to_string()],
@@ -10475,6 +10593,7 @@ mod tests {
                     object_kind: "scalar".to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
+                    object_tokens: vec![],
                     description: String::new(),
                 }],
                 facts: vec![
@@ -10533,7 +10652,7 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", None, None, "").unwrap();
+        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
         let typed_leg = Some(TypedClaim {
             subject: "pike".to_string(),
             predicate: "did".to_string(),
@@ -11723,6 +11842,7 @@ mod tests {
                         object_kind: PredicateObjectKind::Scalar,
                         subject_kind: None,
                         object_entity_kind: None,
+                        object_tokens: BTreeSet::new(),
                         description: String::new(),
                     },
                 );
@@ -11732,6 +11852,7 @@ mod tests {
                         object_kind: PredicateObjectKind::Entity,
                         subject_kind: None,
                         object_entity_kind: None,
+                        object_tokens: BTreeSet::new(),
                         description: String::new(),
                     },
                 );
@@ -11785,6 +11906,7 @@ mod tests {
                 "entity",
                 Some("place"),
                 Some("place"),
+                &[],
                 "spatial map edge",
             )
             .unwrap();
@@ -11841,7 +11963,7 @@ mod tests {
         add_entity(&mut store, &path, "cove", "place", "").unwrap();
         add_entity(&mut store, &path, "stake", "thing", "").unwrap();
         // Unconstrained predicate + a use whose object is a `thing`.
-        add_predicate(&mut store, &path, "near", "entity", None, None, "").unwrap();
+        add_predicate(&mut store, &path, "near", "entity", None, None, &[], "").unwrap();
         add_fact(
             &mut store,
             &path,
@@ -11860,10 +11982,198 @@ mod tests {
         .unwrap();
         // Tightening the object to kind=place must REJECT (the existing use's
         // object is a thing) — before R701 this guarded object shape only.
-        let err = set_predicate(&mut store, &path, "near", "entity", None, Some("place"), "")
+        let err = set_predicate(
+            &mut store,
+            &path,
+            "near",
+            "entity",
+            None,
+            Some("place"),
+            &[],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("do not satisfy"), "unexpected: {err}");
+    }
+
+    /// Round 705 — a `token` predicate gates its object against a CLOSED declared
+    /// vocabulary. In-set is accepted; a token OUTSIDE the set is rejected (a typo
+    /// escaping the closed set, the R436 guard one level down); a free-text
+    /// `Value` under a token predicate is a shape mismatch. NON-VACUITY BY
+    /// INJECTION: the same store accepts `alive` and rejects `undead` — the check
+    /// reads the declared set, not the spelling.
+    #[test]
+    fn token_predicate_gates_vocabulary_membership() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("lucy".to_string(), Entity::default());
+        add_predicate(
+            &mut store,
+            &path,
+            "life",
+            "token",
+            None,
+            None,
+            &["alive".to_string(), "dead".to_string()],
+            "",
+        )
+        .unwrap();
+        let tok = |token: &str, id: &str| FactImport {
+            entities: vec!["lucy".to_string()],
+            typed: Some(TypedClaim {
+                subject: "lucy".to_string(),
+                predicate: "life".to_string(),
+                object: TypedObject::Token {
+                    token: token.to_string(),
+                },
+            }),
+            ..sample_fact(id, "gt")
+        };
+        add_fact(&mut store, &path, &tok("alive", "f1")).unwrap();
+        let err = add_fact(&mut store, &path, &tok("undead", "f2"))
             .unwrap_err()
             .to_string();
-        assert!(err.contains("do not satisfy"), "unexpected: {err}");
+        assert!(
+            err.contains("not in its declared vocabulary"),
+            "out-of-vocab token must reject: {err}"
+        );
+        // A free-text scalar Value under the token predicate: shape mismatch.
+        let mismatch = FactImport {
+            entities: vec!["lucy".to_string()],
+            typed: Some(TypedClaim {
+                subject: "lucy".to_string(),
+                predicate: "life".to_string(),
+                object: TypedObject::Value {
+                    value: "alive".to_string(),
+                },
+            }),
+            ..sample_fact("f3", "gt")
+        };
+        let err = add_fact(&mut store, &path, &mismatch)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("shape mismatch"), "unexpected: {err}");
+    }
+
+    /// Round 705 — the token-vocabulary declaration guards (shared `build_predicate`,
+    /// so add/set parity is automatic): `object_kind=token` needs a NON-EMPTY set
+    /// (an empty one re-opens the free-text hole), `object_tokens` on a non-token
+    /// kind is a dead field, and a blank member is not a token.
+    #[test]
+    fn build_predicate_token_vocabulary_shape_guards() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let err = add_predicate(&mut store, &path, "life", "token", None, None, &[], "")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("non-empty object_tokens"), "unexpected: {err}");
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "at",
+            "entity",
+            None,
+            None,
+            &["x".to_string()],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("cannot carry an object_tokens"),
+            "unexpected: {err}"
+        );
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "life",
+            "token",
+            None,
+            None,
+            &["alive".to_string(), "  ".to_string()],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("blank entry"), "unexpected: {err}");
+    }
+
+    /// Round 705 — `set_predicate` may not TIGHTEN a token vocabulary by dropping a
+    /// token an existing fact holds (the registry would disagree with its uses —
+    /// the R701 endpoint-tighten guard, now for tokens; the field-invariant parity
+    /// with `build_typed_claim`). Widening (keeping the used tokens) is accepted —
+    /// the R658 escape hatch for a closed set.
+    #[test]
+    fn set_predicate_token_tighten_rejects_dropping_a_used_token() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("lucy".to_string(), Entity::default());
+        add_predicate(
+            &mut store,
+            &path,
+            "life",
+            "token",
+            None,
+            None,
+            &["alive".to_string(), "dead".to_string()],
+            "",
+        )
+        .unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["lucy".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "lucy".to_string(),
+                    predicate: "life".to_string(),
+                    object: TypedObject::Token {
+                        token: "dead".to_string(),
+                    },
+                }),
+                ..sample_fact("f1", "gt")
+            },
+        )
+        .unwrap();
+        // Tighten: drop `dead`, which an existing use holds → REJECT.
+        let err = set_predicate(
+            &mut store,
+            &path,
+            "life",
+            "token",
+            None,
+            None,
+            &["alive".to_string()],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("do not satisfy"), "tighten must reject: {err}");
+        // Widen: keep `dead`, add `undead` → ACCEPT.
+        set_predicate(
+            &mut store,
+            &path,
+            "life",
+            "token",
+            None,
+            None,
+            &[
+                "alive".to_string(),
+                "dead".to_string(),
+                "undead".to_string(),
+            ],
+            "",
+        )
+        .unwrap();
     }
 
     /// Round 701 — declaration guards on the predicate write path: a scalar
@@ -11918,14 +12228,14 @@ mod tests {
             let path = tmp.path().join("a.json");
             let mut store = AtomicStore::new();
             add_entity_kind(&mut store, &path, "place", "").unwrap();
-            let add_ok = add_predicate(&mut store, &path, "p", ok, sk, oek, "").is_ok();
+            let add_ok = add_predicate(&mut store, &path, "p", ok, sk, oek, &[], "").is_ok();
             // set_predicate on a store where `p` already exists (benign, no uses).
             let tmp2 = TempDir::new().unwrap();
             let path2 = tmp2.path().join("b.json");
             let mut store2 = AtomicStore::new();
             add_entity_kind(&mut store2, &path2, "place", "").unwrap();
-            add_predicate(&mut store2, &path2, "p", "entity", None, None, "").unwrap();
-            let set_ok = set_predicate(&mut store2, &path2, "p", ok, sk, oek, "").is_ok();
+            add_predicate(&mut store2, &path2, "p", "entity", None, None, &[], "").unwrap();
+            let set_ok = set_predicate(&mut store2, &path2, "p", ok, sk, oek, &[], "").is_ok();
             assert_eq!(add_ok, accepts, "add_predicate `{label}`");
             assert_eq!(
                 add_ok, set_ok,
@@ -11965,6 +12275,7 @@ mod tests {
                 "entity",
                 Some("place"),
                 Some("place"),
+                &[],
                 "",
             )
             .unwrap();
@@ -12051,6 +12362,7 @@ mod tests {
                         object_kind: PredicateObjectKind::Scalar,
                         subject_kind: None,
                         object_entity_kind: None,
+                        object_tokens: BTreeSet::new(),
                         description: String::new(),
                     },
                 );
@@ -12146,7 +12458,8 @@ mod tests {
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
         // Unknown object_kind tag rejects (no silent default).
-        let err = add_predicate(&mut store, &path, "alive", "boolean", None, None, "").unwrap_err();
+        let err =
+            add_predicate(&mut store, &path, "alive", "boolean", None, None, &[], "").unwrap_err();
         assert!(err.to_string().contains("unknown object_kind"), "{err}");
         // Create, then byte-identical no-op, then divergent reject.
         add_predicate(
@@ -12156,6 +12469,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap();
@@ -12166,6 +12480,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap();
@@ -12177,6 +12492,7 @@ mod tests {
             "entity",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap_err();
@@ -12242,6 +12558,7 @@ mod tests {
             "entity",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap();
@@ -12252,6 +12569,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap_err();
@@ -12265,6 +12583,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap();
@@ -12314,6 +12633,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap();
@@ -12344,6 +12664,7 @@ mod tests {
             "entity",
             None,
             None,
+            &[],
             "life state",
         )
         .unwrap_err();
@@ -12363,6 +12684,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "vital state",
         )
         .unwrap();
@@ -12375,6 +12697,7 @@ mod tests {
             "scalar",
             None,
             None,
+            &[],
             "vital state",
         )
         .unwrap();
@@ -12395,7 +12718,8 @@ mod tests {
 
         // Absent predicate fails loud on BOTH repair paths (no silent create,
         // no idempotent delete).
-        let err = set_predicate(&mut store, &path, "ghost", "scalar", None, None, "").unwrap_err();
+        let err =
+            set_predicate(&mut store, &path, "ghost", "scalar", None, None, &[], "").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
         let err = remove_predicate(&mut store, &path, "ghost").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
@@ -12433,6 +12757,7 @@ mod tests {
                 object_kind,
                 None,
                 None,
+                &[],
                 description,
             )
             .is_ok();
@@ -12441,7 +12766,17 @@ mod tests {
             // value is what each path is judged on.
             let mut store_b = AtomicStore::new();
             seed_chapters(&mut store_b);
-            add_predicate(&mut store_b, &path_b, "p", "entity", None, None, "seed").unwrap();
+            add_predicate(
+                &mut store_b,
+                &path_b,
+                "p",
+                "entity",
+                None,
+                None,
+                &[],
+                "seed",
+            )
+            .unwrap();
             let set_ok = set_predicate(
                 &mut store_b,
                 &path_b,
@@ -12449,6 +12784,7 @@ mod tests {
                 object_kind,
                 None,
                 None,
+                &[],
                 description,
             )
             .is_ok();
@@ -12499,6 +12835,7 @@ mod tests {
                     object_kind: "scalar".to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
+                    object_tokens: vec![],
                     description: String::new(),
                 }],
                 facts: vec![FactImport {
@@ -13210,7 +13547,7 @@ mod tests {
         base.frames.insert("gt".to_string(), Frame::default());
         add_entity(&mut base, &path, "a", "", "").unwrap();
         add_entity(&mut base, &path, "b", "", "").unwrap();
-        add_predicate(&mut base, &path, "rel", "entity", None, None, "").unwrap();
+        add_predicate(&mut base, &path, "rel", "entity", None, None, &[], "").unwrap();
         let mut valid = sample_fact("f1", "gt");
         valid.entities = vec!["a".to_string(), "b".to_string()];
         valid.typed = Some(TypedClaim {
@@ -13340,7 +13677,7 @@ mod tests {
             s.frames.insert("gt".to_string(), Frame::default());
             add_entity(&mut s, &path, "a", "", "").unwrap();
             add_entity(&mut s, &path, "b", "", "").unwrap();
-            add_predicate(&mut s, &path, "rel", "entity", None, None, "").unwrap();
+            add_predicate(&mut s, &path, "rel", "entity", None, None, &[], "").unwrap();
             s
         };
         let valid = || FactImport {

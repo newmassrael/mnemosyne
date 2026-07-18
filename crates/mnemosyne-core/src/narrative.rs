@@ -412,16 +412,22 @@ pub struct EntityKind {
 
 /// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
 /// `Entity` = the object leg names a registered entity (locations, custody
-/// targets); `Scalar` = the object leg is a consumer-vocabulary value
-/// string (`alive`, `undead` — opaque data, never enumerated here:
-/// ARCHITECTURE.md sec 6 invariant 4). The builder checks the typed leg's
-/// object against this declaration — a shape mismatch is a write-time
-/// reject, not a scan finding.
+/// targets); `Scalar` = the object leg is a free-text consumer-vocabulary value
+/// string (`alive`, `undead` — the pre-Round-705 opaque slot, being closed by
+/// the object-shape-closure arc); `Token` = the object leg is a member of a
+/// CLOSED vocabulary DECLARED on the predicate ([`Predicate::object_tokens`],
+/// Round 705) — the enumerable replacement for a free-text scalar, so the
+/// substrate can answer "what values does this predicate take" (the machine slot
+/// stops being blind). The vocabulary itself stays the consumer's (invariant 4);
+/// the substrate enforces only THAT a token is in the declared set. The builder
+/// checks the typed leg's object against this declaration — a shape or
+/// vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PredicateObjectKind {
     Entity,
     Scalar,
+    Token,
 }
 
 impl PredicateObjectKind {
@@ -430,6 +436,7 @@ impl PredicateObjectKind {
         match self {
             PredicateObjectKind::Entity => "entity",
             PredicateObjectKind::Scalar => "scalar",
+            PredicateObjectKind::Token => "token",
         }
     }
 
@@ -439,6 +446,7 @@ impl PredicateObjectKind {
         match s {
             "entity" => Some(PredicateObjectKind::Entity),
             "scalar" => Some(PredicateObjectKind::Scalar),
+            "token" => Some(PredicateObjectKind::Token),
             _ => None,
         }
     }
@@ -473,14 +481,26 @@ pub struct Predicate {
     /// nonsensical pairing is unreachable through the mutate API.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_entity_kind: Option<String>,
+    /// Round 705 — the CLOSED object vocabulary, meaningful ONLY when
+    /// `object_kind = Token`. Every [`TypedObject::Token`] under this predicate
+    /// must be a member (the write path rejects a token outside the set — the
+    /// R436 typo guard one level down). Non-empty is REQUIRED for a `Token`
+    /// predicate and REJECTED for any other kind (`build_predicate`), so an
+    /// empty-vocab token slot — the free-text hole re-opened — is unrepresentable.
+    /// A `BTreeSet` so membership is O(log n), duplicates collapse, and the
+    /// serialized order is deterministic. Extended mid-authoring via
+    /// `set_predicate` (R658 — a closed set with an escape hatch, not a trap).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub object_tokens: BTreeSet<String>,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
 }
 
-/// The object leg of a [`TypedClaim`] — two-shaped by real data (design
-/// sec 7.12): locations/custody objects are entities; state values are
-/// consumer-vocabulary scalars. Serde-tagged, no stringly union.
+/// The object leg of a [`TypedClaim`] — shaped by real data (design sec 7.12):
+/// locations/custody objects are entities; state values are consumer-vocabulary
+/// tokens (a closed declared set, Round 705) or the legacy free-text scalar.
+/// Serde-tagged, no stringly union.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -488,32 +508,54 @@ pub enum TypedObject {
     /// A registered entity id (must also be a member of the owning fact's
     /// `entities` list — the entities list stays THE retrieval key).
     Entity { id: String },
-    /// An opaque consumer-vocabulary value (`alive`, `undead`, …). Never
-    /// enumerated by the substrate.
+    /// A free-text consumer-vocabulary value (`alive`, `undead`, …). The
+    /// pre-Round-705 opaque slot the substrate cannot enumerate — being closed by
+    /// the object-shape-closure arc (`Token` is its enumerable replacement).
     Value { value: String },
+    /// A member of the predicate's CLOSED, declared vocabulary
+    /// ([`Predicate::object_tokens`], Round 705). Distinct from `Value`: the
+    /// substrate CAN enumerate the legal set, so self-extraction is not blind
+    /// here. The write path rejects a token outside the declared set.
+    Token { token: String },
 }
 
 impl TypedObject {
-    /// Resolve the flattened two-field arg surface (CLI `--typed-object-*`
-    /// flags, MCP `object_entity`/`object_value` args) into the object
-    /// leg — the ONE place the exactly-one rule lives (Round 448 session
-    /// review: both surfaces had hand-rolled copies). Shape-vs-predicate
-    /// validation stays in the store builder; this is pure arg resolution.
+    /// Resolve the flattened CLI arg surface (`--typed-object-entity` /
+    /// `--typed-object-value` / `--typed-object-token`) into the object leg — the
+    /// exactly-one rule lives here (Round 448). The MCP surface does NOT route
+    /// here: since Round 692 it accepts the `TypedObject` enum directly through its
+    /// JsonSchema (a new variant is auto-exposed), so the enum's own shape is the
+    /// forcing function there. Shape-vs-predicate validation stays in the store
+    /// builder; this is pure arg resolution.
+    ///
+    /// Round 705 — the `token` parameter is the arity change the R660 oracle
+    /// (`every_declared_object_kind_is_satisfiable_from_the_arg_surface`) forced
+    /// when `PredicateObjectKind::Token` was added: without it that test fails,
+    /// and adding it breaks every CLI call site so the flag cannot
+    /// be left unwired — the R625/R659 half-wired-green defense.
     pub fn from_exclusive_args(
         entity: Option<String>,
         value: Option<String>,
+        token: Option<String>,
     ) -> Result<Self, String> {
-        match (entity, value) {
-            (Some(id), None) => Ok(TypedObject::Entity { id }),
-            (None, Some(value)) => Ok(TypedObject::Value { value }),
-            (Some(_), Some(_)) => Err(
-                "typed leg: the entity-shaped and value-shaped object args are mutually \
-                 exclusive (give exactly one)"
+        let candidates: Vec<TypedObject> = [
+            entity.map(|id| TypedObject::Entity { id }),
+            value.map(|value| TypedObject::Value { value }),
+            token.map(|token| TypedObject::Token { token }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        match candidates.len() {
+            1 => Ok(candidates.into_iter().next().unwrap()),
+            0 => Err(
+                "typed leg needs an object: give exactly one of the entity / value / token \
+                 object args"
                     .to_string(),
             ),
-            (None, None) => Err(
-                "typed leg needs an object: give the entity-shaped or the value-shaped \
-                 object arg"
+            _ => Err(
+                "typed leg: the entity / value / token object args are mutually exclusive \
+                 (give exactly one)"
                     .to_string(),
             ),
         }
@@ -968,21 +1010,32 @@ mod tests {
     #[test]
     fn typed_object_exclusive_args_resolution() {
         assert_eq!(
-            TypedObject::from_exclusive_args(Some("gun".into()), None).unwrap(),
+            TypedObject::from_exclusive_args(Some("gun".into()), None, None).unwrap(),
             TypedObject::Entity { id: "gun".into() }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, Some("alive".into())).unwrap(),
+            TypedObject::from_exclusive_args(None, Some("alive".into()), None).unwrap(),
             TypedObject::Value {
                 value: "alive".into()
             }
         );
+        assert_eq!(
+            TypedObject::from_exclusive_args(None, None, Some("dead".into())).unwrap(),
+            TypedObject::Token {
+                token: "dead".into()
+            }
+        );
         assert!(
-            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()))
+            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()), None)
                 .unwrap_err()
                 .contains("mutually exclusive")
         );
-        assert!(TypedObject::from_exclusive_args(None, None)
+        assert!(
+            TypedObject::from_exclusive_args(Some("a".into()), None, Some("c".into()))
+                .unwrap_err()
+                .contains("mutually exclusive")
+        );
+        assert!(TypedObject::from_exclusive_args(None, None, None)
             .unwrap_err()
             .contains("needs an object"));
     }

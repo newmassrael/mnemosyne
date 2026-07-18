@@ -419,6 +419,11 @@ pub struct AddPredicateArgs {
     /// any). Rejects under `object_kind=scalar` (a scalar object has no kind).
     #[serde(default)]
     pub object_entity_kind: Option<String>,
+    /// R705 — the CLOSED object vocabulary. REQUIRED (non-empty) under
+    /// `object_kind=token`, REJECTED otherwise. Every `TypedObject::Token`
+    /// under this predicate must be a member; a token outside it rejects.
+    #[serde(default)]
+    pub object_tokens: Vec<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -441,6 +446,11 @@ pub struct SetPredicateArgs {
     /// A tighten rejects while any existing use's object is off-kind.
     #[serde(default)]
     pub object_entity_kind: Option<String>,
+    /// R705 — new closed object vocabulary (full replace). REQUIRED non-empty
+    /// under `object_kind=token`. A tighten (dropping a token an existing use
+    /// holds) rejects — extend, never silently narrow.
+    #[serde(default)]
+    pub object_tokens: Vec<String>,
     /// New description. Mandatory — this is a replace, not a merge.
     pub description: String,
 }
@@ -509,9 +519,10 @@ pub struct ImportSectionsArgs {
 // Round 692 — `add_fact` / `amend_fact` take `atomic::FactImport` directly
 // (the ONE fact DTO, JsonSchema via the schemars feature), so the AddFactArgs
 // mirror + `fact_import_from` are gone. The typed leg is now the tagged
-// `TypedObject` enum ({kind:"entity"|"value", …}) — stricter than the old
-// object_entity/object_value pair (cannot set both or neither) and identical to
-// what `import_facts` already exposes (DEBT-… option-1→option-2 sweep).
+// `TypedObject` enum ({kind:"entity"|"value"|"token", …}, Round 705) — stricter
+// than the old object_entity/object_value pair (cannot set both or neither) and
+// identical to what `import_facts` already exposes (DEBT-… option-1→option-2
+// sweep). A new variant is auto-exposed here via the enum's JsonSchema.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AmendFactArgs {
@@ -1637,7 +1648,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape (entity | scalar); the fact builder enforces it. R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects under object_kind=scalar. Idempotent on identical content; divergent rejects."
+        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | scalar | token. R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set — prefer it over free-text `scalar` so the substrate can answer what values this predicate takes. R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
     )]
     async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
         let a = args.0;
@@ -1649,6 +1660,7 @@ impl MnemosyneServer {
                 &a.object_kind,
                 a.subject_kind.as_deref(),
                 a.object_entity_kind.as_deref(),
+                &a.object_tokens,
                 &a.description,
             )
         });
@@ -1656,7 +1668,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description AND any subject_kind / object_entity_kind (R701; omit = clear). A re-declare REJECTS while any existing use fails the new object shape OR the new endpoint kinds (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
+        description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description AND any subject_kind / object_entity_kind (R701; omit = clear) AND object_tokens (R705 — the closed vocabulary; required non-empty under object_kind=token, and the extension path: a re-declare that DROPS a token an existing use holds REJECTS, so widen the set, never silently narrow it). A re-declare REJECTS while any existing use fails the new object shape OR the new endpoint kinds OR the new vocabulary (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
     )]
     async fn set_predicate(&self, args: Parameters<SetPredicateArgs>) -> CallToolResult {
         let a = args.0;
@@ -1668,6 +1680,7 @@ impl MnemosyneServer {
                 &a.object_kind,
                 a.subject_kind.as_deref(),
                 a.object_entity_kind.as_deref(),
+                &a.object_tokens,
                 &a.description,
             )
         });

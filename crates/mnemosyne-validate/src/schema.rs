@@ -182,7 +182,7 @@ pub struct TypedClaimSpec {
     pub description: &'static str,
     pub subject: &'static str,
     pub predicate: &'static str,
-    /// The two object shapes (from [`PredicateObjectKind`]), each with its rule.
+    /// The object shapes (from [`PredicateObjectKind`]), each with its rule.
     pub object_shapes: Vec<EnumValue>,
 }
 
@@ -428,10 +428,12 @@ fn manifest_wire() -> ManifestWireSpec {
         ],
         typed_object_wire:
             "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
-             id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with two \
-             variants: for a predicate whose object_kind is `entity`, write { \"kind\": \
-             \"entity\", \"id\": entity id }; for a predicate whose object_kind is `scalar`, \
-             write { \"kind\": \"value\", \"value\": string }. NOTE the deliberate naming: the \
+             id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with three \
+             variants matching the predicate's object_kind: for `entity`, write { \"kind\": \
+             \"entity\", \"id\": entity id }; for `scalar`, write { \"kind\": \"value\", \
+             \"value\": string }; for `token` (R705), write { \"kind\": \"token\", \"token\": \
+             string } where the token MUST be a member of the predicate's declared object_tokens \
+             (a token outside the closed set rejects). NOTE the deliberate naming: the \
              predicate's object_kind is spelled `scalar`, but the object's wire tag for that \
              shape is `value` (the object_KIND vs the runtime object shape) — write `value`, not \
              `scalar`. The subject and any entity-shaped object must ALSO appear in the fact's \
@@ -592,7 +594,8 @@ fn registries() -> Vec<RegistrySpec> {
             description: "Typed-claim predicates. LOAD-BEARING: narrative rules key off a \
                 predicate id, so a typo would silently escape its rule — hence a strict \
                 registry (unlike the free-form entity kind). Each predicate declares its object \
-                shape (entity | scalar), enforced on every typed leg.",
+                shape (entity | scalar | token), enforced on every typed leg; a `token` predicate \
+                also declares a closed `object_tokens` vocabulary the object must be a member of.",
         },
         RegistrySpec {
             name: "disclosure_plans",
@@ -967,8 +970,14 @@ fn predicate_object_kind_values() -> Vec<EnumValue> {
                 also a member of the fact's entities list (locations, custody targets)"
             }
             PredicateObjectKind::Scalar => {
-                "the object leg is an opaque consumer-vocabulary \
-                value string (`alive`, `undead`) — never enumerated by the substrate"
+                "the object leg is a FREE-TEXT consumer-vocabulary value string \
+                (`alive`, `undead`) — not enumerable; the pre-Round-705 slot being \
+                closed by the object-shape-closure arc (prefer `token`)"
+            }
+            PredicateObjectKind::Token => {
+                "the object leg is a member of the predicate's CLOSED, declared \
+                vocabulary (`object_tokens`) — enumerable, so the substrate can answer \
+                what values this predicate takes; a token outside the set is rejected"
             }
         }
     }
@@ -1511,17 +1520,23 @@ mod tests {
             match (object, kind) {
                 (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
                 (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
-                (TypedObject::Entity { .. }, PredicateObjectKind::Scalar) => false,
-                (TypedObject::Value { .. }, PredicateObjectKind::Entity) => false,
+                (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
+                (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
+                | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
+                | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
+                | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => false,
             }
         }
 
         // THE SURFACE, measured: every arg combination the CLI flags
-        // (`--typed-object-entity` / `--typed-object-value`) and the MCP
-        // fields (`object_entity` / `object_value`) can actually send.
+        // (`--typed-object-entity` / `--typed-object-value` / `--typed-object-token`)
+        // and the MCP fields can actually send.
         let buildable: Vec<TypedObject> = [
-            TypedObject::from_exclusive_args(Some("e".to_string()), None),
-            TypedObject::from_exclusive_args(None, Some("v".to_string())),
+            TypedObject::from_exclusive_args(Some("e".to_string()), None, None),
+            TypedObject::from_exclusive_args(None, Some("v".to_string()), None),
+            TypedObject::from_exclusive_args(None, None, Some("t".to_string())),
         ]
         .into_iter()
         .flatten()
@@ -1859,6 +1874,7 @@ mod tests {
                 object_kind: "scalar".into(),
                 subject_kind: None,
                 object_entity_kind: None,
+                object_tokens: vec![],
                 description: "d".into(),
             }],
             facts: vec![mnemosyne_atomic::FactImport {

@@ -868,6 +868,7 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     match o {
         mnemosyne_core::TypedObject::Entity { id } => id,
         mnemosyne_core::TypedObject::Value { value } => value,
+        mnemosyne_core::TypedObject::Token { token } => token,
     }
 }
 
@@ -2280,14 +2281,16 @@ fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
             mnemosyne_core::TypedObject::Value { .. } => {
                 mnemosyne_core::PredicateObjectKind::Scalar
             }
+            mnemosyne_core::TypedObject::Token { .. } => mnemosyne_core::PredicateObjectKind::Token,
         };
         if actual != want {
             return Err(format!(
                 "quest-shape: fact `{fid}` uses reserved quest predicate `{}` with a {} \
-                 object, but the quest contract requires an {} — a scalar cannot name a \
-                 quest, so the edge would silently vanish from report-quest-graph while \
-                 still counting as structural. Declare the predicate `object_kind = entity` \
-                 and author the object as an entity id (add-predicate --object-kind entity).",
+                 object, but the quest contract requires an {} — a non-entity object (scalar \
+                 or token) cannot name a quest, so the edge would silently vanish from \
+                 report-quest-graph while still counting as structural. Declare the predicate \
+                 `object_kind = entity` and author the object as an entity id (add-predicate \
+                 --object-kind entity).",
                 claim.predicate,
                 actual.as_str(),
                 want.as_str(),
@@ -4774,6 +4777,7 @@ pub fn quest_graph(
                 let actor = match &claim.object {
                     mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
                     mnemosyne_core::TypedObject::Value { value } => Some(value.clone()),
+                    mnemosyne_core::TypedObject::Token { token } => Some(token.clone()),
                 };
                 completions_of
                     .entry(claim.subject.as_str())
@@ -5252,6 +5256,7 @@ mod tests {
                     match t.object {
                         mnemosyne_core::TypedObject::Entity { .. } => "entity",
                         mnemosyne_core::TypedObject::Value { .. } => "scalar",
+                        mnemosyne_core::TypedObject::Token { .. } => "token",
                     },
                 )
             })
@@ -5263,6 +5268,7 @@ mod tests {
                     object_kind: object_kind.to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
+                    object_tokens: vec![],
                     description: String::new(),
                 },
             )

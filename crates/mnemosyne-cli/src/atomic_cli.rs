@@ -582,6 +582,7 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
     let mut object_kind: Option<String> = None;
     let mut subject_kind: Option<String> = None;
     let mut object_entity_kind: Option<String> = None;
+    let mut object_tokens: Vec<String> = Vec::new();
     let mut description = String::new();
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -616,6 +617,17 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
                         .clone(),
                 )
             }
+            "--object-tokens" => {
+                // Comma-separated closed vocabulary (Round 705); required under
+                // `--object-kind token`, rejected otherwise (build_predicate).
+                object_tokens = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--object-tokens missing"))?
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             "--description" => {
                 description = iter
                     .next()
@@ -645,6 +657,7 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &object_kind,
             subject_kind.as_deref(),
             object_entity_kind.as_deref(),
+            &object_tokens,
             &description,
         ),
         json,
@@ -661,6 +674,7 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
     let mut object_kind: Option<String> = None;
     let mut subject_kind: Option<String> = None;
     let mut object_entity_kind: Option<String> = None;
+    let mut object_tokens: Vec<String> = Vec::new();
     let mut description: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -695,6 +709,15 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
                         .clone(),
                 )
             }
+            "--object-tokens" => {
+                object_tokens = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--object-tokens missing"))?
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             "--description" => {
                 description = Some(
                     iter.next()
@@ -728,6 +751,7 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &object_kind,
             subject_kind.as_deref(),
             object_entity_kind.as_deref(),
+            &object_tokens,
             &description,
         ),
         json,
@@ -1023,6 +1047,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     let mut typed_predicate: Option<String> = None;
     let mut typed_object_entity: Option<String> = None;
     let mut typed_object_value: Option<String> = None;
+    let mut typed_object_token: Option<String> = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1129,6 +1154,13 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .clone(),
                 )
             }
+            "--typed-object-token" => {
+                typed_object_token = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-token missing"))?
+                        .clone(),
+                )
+            }
             "--reason" if accept_reason => {
                 out.reason = Some(
                     iter.next()
@@ -1155,12 +1187,16 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         typed_predicate,
         typed_object_entity,
         typed_object_value,
+        typed_object_token,
     ) {
-        (None, None, None, None) => None,
-        (Some(subject), Some(predicate), object_entity, object_value) => {
-            let object =
-                mnemosyne_core::TypedObject::from_exclusive_args(object_entity, object_value)
-                    .map_err(|e| anyhow!("{e}"))?;
+        (None, None, None, None, None) => None,
+        (Some(subject), Some(predicate), object_entity, object_value, object_token) => {
+            let object = mnemosyne_core::TypedObject::from_exclusive_args(
+                object_entity,
+                object_value,
+                object_token,
+            )
+            .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
                 subject,
                 predicate,
@@ -1169,7 +1205,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         }
         _ => bail!(
             "typed leg is all-or-nothing: --typed-subject + --typed-predicate + one of \
-             --typed-object-entity | --typed-object-value"
+             --typed-object-entity | --typed-object-value | --typed-object-token"
         ),
     };
     Ok(out)

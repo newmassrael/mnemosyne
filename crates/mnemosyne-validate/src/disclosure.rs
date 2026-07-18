@@ -367,6 +367,7 @@ mod tests {
                 object_kind: PredicateObjectKind::Scalar,
                 subject_kind: None,
                 object_entity_kind: None,
+                object_tokens: Default::default(),
                 description: String::new(),
             },
         );
