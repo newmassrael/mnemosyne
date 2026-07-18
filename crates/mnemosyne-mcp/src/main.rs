@@ -475,24 +475,6 @@ pub struct RemoveDisclosureArgs {
     pub reason: String,
 }
 
-/// The optional typed leg of a fact (R446): the machine-readable
-/// subject–predicate–object reading of the prose claim, authored in the
-/// same act (never NLP-derived). Give exactly ONE of `object_entity` /
-/// `object_value`, matching the predicate's declared `object_kind`.
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct TypedClaimArgs {
-    /// Subject entity id (registered AND listed in the fact's `entities`).
-    pub subject: String,
-    /// Registered predicate id (`add_predicate` first).
-    pub predicate: String,
-    /// Entity-shaped object (predicate `object_kind = entity`).
-    #[serde(default)]
-    pub object_entity: Option<String>,
-    /// Scalar object value, consumer vocabulary (`object_kind = scalar`).
-    #[serde(default)]
-    pub object_value: Option<String>,
-}
-
 /// Transactional batch section authoring (Round 687, retyped Round 690 —
 /// DEBT-MCP-MANIFEST-SCHEMA). The R687 form took an opaque `manifest_json`
 /// String, so the agent got no schema; Round 690 exposes the ONE atomic DTO
@@ -507,55 +489,19 @@ pub struct ImportSectionsArgs {
     pub sections: Vec<atomic::SectionImport>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct AddFactArgs {
-    pub fact_id: String,
-    /// Epistemic frame id (must already be registered — `add_frame` first).
-    pub frame: String,
-    /// World-line branch. Omit for the default branch (`main`).
-    #[serde(default)]
-    pub branch: Option<String>,
-    /// The claim, per-claim granularity (one atomic assertion).
-    pub claim: String,
-    /// Structure-section id where the claim starts holding.
-    pub canon_from: String,
-    /// Explicit canon end for a belief that ends WITHOUT a successor.
-    #[serde(default)]
-    pub canon_to: Option<String>,
-    /// Evidencing structure-section ids (>= 1).
-    pub evidence: Vec<String>,
-    /// Recorded conflict assertions (existing fact ids).
-    #[serde(default)]
-    pub conflicts_with: Vec<String>,
-    /// In-frame predecessor this claim replaces (same frame + branch).
-    #[serde(default)]
-    pub supersedes_in_frame: Option<String>,
-    /// Optional verbatim quote (sha256 stamped by the primitive).
-    #[serde(default)]
-    pub quote: Option<String>,
-    /// Entity refs (each must be registered — `add_entity` first).
-    #[serde(default)]
-    pub entities: Vec<String>,
-    /// Setup marking: `expected` declares this fact a setup whose payoff
-    /// coverage `report_payoff_coverage` classifies. Omit for `unmarked`.
-    #[serde(default)]
-    pub payoff_expectation: Option<String>,
-    /// Setup fact ids this fact pays off (existing facts; unpinned
-    /// identity refs).
-    #[serde(default)]
-    pub pays_off: Vec<String>,
-    /// Optional typed leg (R446): subject–predicate–object reading of the
-    /// claim. Omit for a prose-only fact (partial coverage is the design).
-    #[serde(default)]
-    pub typed: Option<TypedClaimArgs>,
-}
+// Round 692 — `add_fact` / `amend_fact` take `atomic::FactImport` directly
+// (the ONE fact DTO, JsonSchema via the schemars feature), so the AddFactArgs
+// mirror + `fact_import_from` are gone. The typed leg is now the tagged
+// `TypedObject` enum ({kind:"entity"|"value", …}) — stricter than the old
+// object_entity/object_value pair (cannot set both or neither) and identical to
+// what `import_facts` already exposes (DEBT-… option-1→option-2 sweep).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AmendFactArgs {
     /// The revised fact content (same shape as `add_fact`; `fact_id` names
     /// the existing fact to revise — the id never changes).
     #[serde(flatten)]
-    pub fact: AddFactArgs,
+    pub fact: atomic::FactImport,
     /// Mandatory rationale (audit safeguard).
     pub reason: String,
 }
@@ -1072,41 +1018,6 @@ fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, St
 fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
     raw.parse::<InventoryStatus>()
         .map_err(|e| format!("status {}", e))
-}
-
-/// Map the MCP fact-shaped args onto the atomic `FactImport` (Round 435).
-/// All registry/shape invariants live in the shared `build_candidate_fact`
-/// path; the flattened typed-object pair resolves through the ONE shared
-/// constructor (`TypedObject::from_exclusive_args`, Round 448) — pure
-/// shape translation here.
-fn fact_import_from(a: &AddFactArgs) -> Result<atomic::FactImport, String> {
-    let typed = match &a.typed {
-        None => None,
-        Some(t) => Some(mnemosyne_core::TypedClaim {
-            subject: t.subject.clone(),
-            predicate: t.predicate.clone(),
-            object: mnemosyne_core::TypedObject::from_exclusive_args(
-                t.object_entity.clone(),
-                t.object_value.clone(),
-            )?,
-        }),
-    };
-    Ok(atomic::FactImport {
-        fact_id: a.fact_id.clone(),
-        frame: a.frame.clone(),
-        branch: a.branch.clone(),
-        claim: a.claim.clone(),
-        canon_from: a.canon_from.clone(),
-        canon_to: a.canon_to.clone(),
-        evidence: a.evidence.clone(),
-        conflicts_with: a.conflicts_with.clone(),
-        supersedes_in_frame: a.supersedes_in_frame.clone(),
-        payoff_expectation: a.payoff_expectation.clone(),
-        pays_off: a.pays_off.clone(),
-        typed,
-        quote: a.quote.clone(),
-        entities: a.entities.clone(),
-    })
 }
 
 #[tool_router]
@@ -1825,11 +1736,9 @@ impl MnemosyneServer {
     #[tool(
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
-    async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
-        let outcome = self.run_mutate(|store, path| {
-            let entry = fact_import_from(&args.0).map_err(atomic::AtomicMutateError::Validation)?;
-            atomic::add_fact(store, path, &entry)
-        });
+    async fn add_fact(&self, args: Parameters<atomic::FactImport>) -> CallToolResult {
+        let fact = args.0;
+        let outcome = self.run_mutate(|store, path| atomic::add_fact(store, path, &fact));
         self.finish_mutate(outcome)
     }
 
@@ -1867,12 +1776,9 @@ impl MnemosyneServer {
         description = "Authorial in-place revision of an existing fact, keeping its id (R434, axis-4 correction: a typo or wrong coordinate; in-world belief change is supersedes_in_frame instead). Same invariants as add_fact; inbound successors must stay same-(frame, branch). Mandatory reason."
     )]
     async fn amend_fact(&self, args: Parameters<AmendFactArgs>) -> CallToolResult {
-        let reason = args.0.reason.clone();
-        let outcome = self.run_mutate(|store, path| {
-            let entry =
-                fact_import_from(&args.0.fact).map_err(atomic::AtomicMutateError::Validation)?;
-            atomic::amend_fact(store, path, &entry, &reason)
-        });
+        let AmendFactArgs { fact, reason } = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::amend_fact(store, path, &fact, &reason));
         self.finish_mutate(outcome)
     }
 
@@ -2793,6 +2699,25 @@ mod tests {
         assert!(
             !props.contains_key("manifest_json"),
             "the opaque manifest_json string arg must no longer exist"
+        );
+    }
+
+    /// Round 692 — add_fact/amend_fact take atomic::FactImport directly (the
+    /// AddFactArgs/TypedClaimArgs mirror is gone), so the typed leg is the tagged
+    /// TypedObject enum, not the flattened object_entity/object_value pair. PROVE
+    /// it at the schema layer.
+    #[test]
+    fn fact_import_schema_uses_the_typed_object_enum_not_the_flattened_pair() {
+        let schema = schemars::schema_for!(atomic::FactImport);
+        let json = serde_json::to_string(&schema).expect("schema serializes");
+        assert!(
+            !json.contains("object_entity") && !json.contains("object_value"),
+            "the flattened typed-object pair must be gone from the schema"
+        );
+        // The TypedObject enum's discriminant tag is present instead.
+        assert!(
+            json.contains("\"kind\""),
+            "the TypedObject `kind` tag must appear in the schema"
         );
     }
 
