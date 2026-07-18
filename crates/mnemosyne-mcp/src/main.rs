@@ -2795,4 +2795,99 @@ mod tests {
             "the opaque manifest_json string arg must no longer exist"
         );
     }
+
+    /// Round 691 (DEBT-MCP-INVOKE-SMOKE) — the coverage the "MCP is the store's
+    /// real authoring surface" thesis requires and the router test cannot give:
+    /// DRIVE the mutate tools through a real MnemosyneServer and assert the store
+    /// actually changed, plus the all-or-nothing property AT the wrapper layer
+    /// (a divergent import rejects and leaves the store byte-unchanged). This
+    /// exercises arg extraction, run_mutate's lock, the atomic primitive, and
+    /// finish_mutate's read-model resync — none of which router presence sees.
+    #[tokio::test]
+    async fn mcp_import_tools_author_the_store_and_reject_divergent() {
+        use std::fs;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = tmp.path();
+        fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+        fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").unwrap();
+        let sidecar = ws.join("docs/.atomic/workspace.atomic.json");
+        atomic::AtomicStore::new().save(&sidecar).unwrap();
+        let read_store = || atomic::AtomicStore::load(&sidecar).unwrap();
+
+        let server = MnemosyneServer::new(ws.to_path_buf()).expect("server construct");
+
+        let section = |title: &str| atomic::SectionImport {
+            section_id: "sec-a".to_string(),
+            parent_doc: "docs/DESIGN.md".to_string(),
+            title: title.to_string(),
+            parent_section: None,
+            normative_excerpt: None,
+            coverage_expectation: Default::default(),
+        };
+
+        // 1) import_sections creates the section a fact will evidence against.
+        let r = server
+            .import_sections(Parameters(ImportSectionsArgs {
+                sections: vec![section("A")],
+            }))
+            .await;
+        assert!(r.is_error != Some(true), "import_sections failed: {r:?}");
+        assert!(
+            read_store().sections.contains_key("sec-a"),
+            "sec-a not created"
+        );
+
+        // 2) import_facts creates a frame + a fact referencing sec-a, atomically.
+        let manifest = atomic::FactsManifest {
+            frames: vec![atomic::FrameImport {
+                frame_id: "gt".to_string(),
+                description: String::new(),
+            }],
+            branches: vec![],
+            entity_kinds: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts: vec![atomic::FactImport {
+                fact_id: "f1".to_string(),
+                frame: "gt".to_string(),
+                branch: None,
+                entities: vec![],
+                claim: "the count is an eccentric nobleman".to_string(),
+                canon_from: "sec-a".to_string(),
+                canon_to: None,
+                evidence: vec!["sec-a".to_string()],
+                conflicts_with: vec![],
+                supersedes_in_frame: None,
+                payoff_expectation: None,
+                pays_off: vec![],
+                typed: None,
+                quote: None,
+            }],
+            disclosure_plans: vec![],
+        };
+        let r = server.import_facts(Parameters(manifest)).await;
+        assert!(r.is_error != Some(true), "import_facts failed: {r:?}");
+        assert!(
+            read_store().narrative_facts.contains_key("f1"),
+            "f1 not created"
+        );
+
+        // 3) A divergent section (same id, different title) rejects the WHOLE
+        //    import and writes NOTHING — all-or-nothing at the wrapper layer.
+        let before = fs::read(&sidecar).unwrap();
+        let r = server
+            .import_sections(Parameters(ImportSectionsArgs {
+                sections: vec![section("DIFFERENT")],
+            }))
+            .await;
+        assert!(
+            r.is_error == Some(true),
+            "divergent import must be rejected"
+        );
+        assert_eq!(
+            before,
+            fs::read(&sidecar).unwrap(),
+            "a rejected import must leave the store byte-unchanged"
+        );
+    }
 }
