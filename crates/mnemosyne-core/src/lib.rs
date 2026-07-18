@@ -352,6 +352,20 @@ impl DecisionStatus {
         }
     }
 
+    /// Parse the canonical lowercase tag back to a value — the ONE resolver both
+    /// the CLI (`set-section-decision-status`) and the MCP tool share (R678), so
+    /// the two surfaces cannot accept different vocabularies. `None` for any
+    /// other string (fail-loud at the caller; no silent default).
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s {
+            "active" => Some(DecisionStatus::Active),
+            "superseded" => Some(DecisionStatus::Superseded),
+            "removed" => Some(DecisionStatus::Removed),
+            "open" => Some(DecisionStatus::Open),
+            _ => None,
+        }
+    }
+
     /// Lifecycle states that carry no in-force, backable decision — `Removed`
     /// (tombstone) and `Open` (question not yet decided). Such sections are
     /// EXEMPT from the decision-backing axioms (coverage / verification /

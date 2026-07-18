@@ -2348,6 +2348,24 @@ pub fn set_section_decision_status(
  "(T1 rule 4, atomic axis): superseding section_id mandatory for active → superseded transition".to_string(),
  ));
     }
+    // R678 — these two guards used to live ONLY in the CLI, so the MCP write
+    // path (added R678) would have silently DROPPED a meaningless pointer where
+    // the CLI rejected it (the two-write-paths-different-invariants anti-pattern).
+    // Homed here, both surfaces enforce them. A forward-pointer is only
+    // meaningful for the state that carries it: `superseding` for Superseded,
+    // `resolving` for Open.
+    if new_status != DecisionStatus::Superseded && superseding.is_some() {
+        return Err(AtomicMutateError::Validation(format!(
+            "superseding is only valid with status `superseded` (got `{}`)",
+            new_status.as_str()
+        )));
+    }
+    if new_status != DecisionStatus::Open && resolving.is_some() {
+        return Err(AtomicMutateError::Validation(format!(
+            "resolving is only valid with status `open` (got `{}`)",
+            new_status.as_str()
+        )));
+    }
     {
         let section = section_mut_strict(store, section_id)?;
         section.skeleton.decision_status = Some(new_status);
@@ -8634,6 +8652,67 @@ mod tests {
             store.section("2").unwrap().skeleton.decision_status,
             Some(DecisionStatus::Removed)
         );
+    }
+
+    /// R678 — the two forward-pointer guards moved from the CLI into the atomic
+    /// write path, so the CLI AND the new MCP tool enforce the identical set (a
+    /// CLI-only guard would let the MCP path silently drop a meaningless pointer
+    /// — the two-write-paths-different-invariants anti-pattern). `superseding` is
+    /// valid only for Superseded; `resolving` only for Open. NON-VACUITY: the
+    /// matching-status accept cases below prove the guard is not a blanket reject.
+    #[test]
+    fn set_section_decision_status_pointer_guards_are_status_scoped() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "1");
+
+        // superseding on a non-Superseded status rejects.
+        for status in [
+            DecisionStatus::Active,
+            DecisionStatus::Removed,
+            DecisionStatus::Open,
+        ] {
+            let err = set_section_decision_status(&mut store, &path, "1", status, Some("2"), None)
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("superseding is only valid"),
+                "{status:?}: {err}"
+            );
+        }
+        // resolving on a non-Open status rejects.
+        for status in [
+            DecisionStatus::Active,
+            DecisionStatus::Removed,
+            DecisionStatus::Superseded,
+        ] {
+            let sup = (status == DecisionStatus::Superseded).then_some("2");
+            let err = set_section_decision_status(&mut store, &path, "1", status, sup, Some("3"))
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("resolving is only valid"),
+                "{status:?}: {err}"
+            );
+        }
+        // Accept: the pointer matches its status (not a blanket reject).
+        set_section_decision_status(
+            &mut store,
+            &path,
+            "1",
+            DecisionStatus::Superseded,
+            Some("2"),
+            None,
+        )
+        .unwrap();
+        set_section_decision_status(
+            &mut store,
+            &path,
+            "1",
+            DecisionStatus::Open,
+            None,
+            Some("3"),
+        )
+        .unwrap();
     }
 
     #[test]

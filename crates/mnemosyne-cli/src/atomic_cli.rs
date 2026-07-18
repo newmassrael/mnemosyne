@@ -2696,33 +2696,17 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let status_raw = status_str
         .ok_or_else(|| anyhow!("--status arg required (active|superseded|removed|open)"))?;
-    let new_status = match status_raw.to_ascii_lowercase().as_str() {
-        "active" => DecisionStatus::Active,
-        "superseded" => DecisionStatus::Superseded,
-        "removed" => DecisionStatus::Removed,
-        "open" => DecisionStatus::Open,
-        other => bail!(
-            "--status `{}` invalid (expected active|superseded|removed|open)",
-            other
-        ),
-    };
-    // T1 rule 4: --superseding is mandatory for `--status superseded`
-    // and rejected for active|removed (forward-pointer is only meaningful
-    // when the section asserts replacement).
-    if new_status != DecisionStatus::Superseded && superseding.is_some() {
-        bail!(
-            "--superseding is only valid with `--status superseded` (got `--status {}`)",
-            status_raw
-        );
-    }
-    // Symmetric guard: the resolution forward-pointer is only meaningful for an
-    // Open question (Open → its expected resolver). Optional even then.
-    if new_status != DecisionStatus::Open && resolving.is_some() {
-        bail!(
-            "--resolving is only valid with `--status open` (got `--status {}`)",
-            status_raw
-        );
-    }
+    let new_status =
+        DecisionStatus::from_tag(&status_raw.to_ascii_lowercase()).ok_or_else(|| {
+            anyhow!(
+                "--status `{}` invalid (expected active|superseded|removed|open)",
+                status_raw
+            )
+        })?;
+    // T1 rule 4 + the superseding/resolving pointer guards are homed in
+    // `atomic::set_section_decision_status` (R678), so the CLI and MCP write
+    // paths enforce the identical invariant set — no CLI-only guard for the MCP
+    // path to undercut.
     let superseding_strip = superseding.as_deref().map(strip_section_prefix);
     let resolving_strip = resolving.as_deref().map(strip_section_prefix);
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;

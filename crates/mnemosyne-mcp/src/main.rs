@@ -217,6 +217,31 @@ pub struct SetSectionParentSectionArgs {
     pub parent_section: Option<String>,
 }
 
+/// R678 — the section-mutate parity gap the cost-audit found: an MCP agent
+/// could add/edit a section but not REMOVE one, nor transition its lifecycle.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveSectionArgs {
+    /// Section ID (the `§` prefix is stripped if present).
+    pub section_id: String,
+    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    pub reason: String,
+}
+
+/// R678 — the section lifecycle transition (Active/Superseded/Removed/Open).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionDecisionStatusArgs {
+    /// Section ID (the `§` prefix is stripped if present).
+    pub section_id: String,
+    /// New status: `active` | `superseded` | `removed` | `open`. Unknown rejects.
+    pub status: String,
+    /// Superseding section id — MANDATORY for `superseded`, rejected otherwise.
+    #[serde(default)]
+    pub superseding: Option<String>,
+    /// Resolving section id — valid only for `open`, rejected otherwise.
+    #[serde(default)]
+    pub resolving: Option<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveSectionBindingArgs {
     /// Section ID without the `§` prefix.
@@ -1378,6 +1403,56 @@ impl MnemosyneServer {
                 ))
             })?;
             atomic::add_section_binding(store, path, &section, &file, symbol.as_deref(), kind)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove one section from the store (R267). `reason` mandatory — recorded on the receipt. Rejects if any live cross-ref still points at it (orphan guard); NotFound if absent (no silent no-op). The MCP parity for the CLI `remove-section` (R678): an MCP agent could create/edit sections but not remove one. Don't edit the sidecar JSON directly."
+    )]
+    async fn remove_section(&self, args: Parameters<RemoveSectionArgs>) -> CallToolResult {
+        let section = strip_section_marker(&args.0.section_id).to_string();
+        let reason = args.0.reason.clone();
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_section(store, path, &section, &reason));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Transition a section's decision lifecycle (R678 parity for CLI set-section-decision-status): `active` | `superseded` | `removed` | `open`. `superseding` is MANDATORY for `superseded` (T1 rule 4 — a replaced decision must name its replacer) and rejected for any other status; `resolving` is valid only for `open` (the expected resolver). All guards are homed in the atomic write path, so this and the CLI enforce the identical invariant set. Absent section NotFound."
+    )]
+    async fn set_section_decision_status(
+        &self,
+        args: Parameters<SetSectionDecisionStatusArgs>,
+    ) -> CallToolResult {
+        let section = strip_section_marker(&args.0.section_id).to_string();
+        let status_raw = args.0.status.clone();
+        let superseding = args
+            .0
+            .superseding
+            .as_deref()
+            .map(|s| strip_section_marker(s).to_string());
+        let resolving = args
+            .0
+            .resolving
+            .as_deref()
+            .map(|s| strip_section_marker(s).to_string());
+        let outcome = self.run_mutate(|store, path| {
+            let status = mnemosyne_core::DecisionStatus::from_tag(&status_raw.to_ascii_lowercase())
+                .ok_or_else(|| {
+                    atomic::AtomicMutateError::Validation(format!(
+                        "status must be `active`, `superseded`, `removed`, or `open` (got `{}`)",
+                        status_raw
+                    ))
+                })?;
+            atomic::set_section_decision_status(
+                store,
+                path,
+                &section,
+                status,
+                superseding.as_deref(),
+                resolving.as_deref(),
+            )
         });
         self.finish_mutate(outcome)
     }
