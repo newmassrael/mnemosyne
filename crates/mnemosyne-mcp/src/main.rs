@@ -1799,6 +1799,16 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Binding-kind migration worklist (Round 686, read-only): every code binding that inherited kind=implements by default from a pre-v5 store, pending review as implements vs references. `from_schema_version` is null when the store is already current (no migration; rows empty). Shares the ops report the CLI `report-binding-migration` renders, so the two surfaces cannot disagree. The sibling of report_entity_kind_migration, which was CLI-only until now (DEBT-BINDING-MIGRATION-MCP)."
+    )]
+    async fn report_binding_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::binding_kind_migration(&self.workspace, None) {
+            Ok(r) => self.tool_json(&r),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
     async fn add_fact(&self, args: Parameters<AddFactArgs>) -> CallToolResult {
@@ -2703,6 +2713,7 @@ mod tests {
             "remove_section",               // R678
             "set_section_decision_status",  // R678
             "report_entity_kind_migration", // R679
+            "report_binding_migration",     // R686
             "add_entity",                   // pre-existing anchors (non-vacuity)
             "add_fact",
             "report_quest_graph",

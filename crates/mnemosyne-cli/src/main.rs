@@ -2078,61 +2078,34 @@ fn cmd_report_binding_migration(args: &[String]) -> Result<()> {
         }
     }
     let loaded = workspace_config()?;
-    let root = loaded.workspace_root.clone();
     let anchor = loaded
         .config_path
         .parent()
         .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| root.clone());
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
-    let store = AtomicStore::load(&atomic_path)
-        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-    match store.kind_migration_report() {
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    // Shared path with the MCP tool of the same name (Round 686) — one report
+    // shape, so the two surfaces cannot drift on what the migration lists.
+    let report =
+        mnemosyne_ops::binding_kind_migration(&anchor, None).map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    match report.from_schema_version {
         None => {
-            if json {
-                println!("{{\"from_schema_version\":null,\"rows\":[]}}");
-            } else {
-                println!(
-                    "store already at current schema (>= v5); no binding-kind migration pending"
-                );
-            }
+            println!("store already at current schema (>= v5); no binding-kind migration pending");
         }
-        Some(report) => {
-            if json {
-                let rows: Vec<_> = report
-                    .rows
-                    .iter()
-                    .map(|r| {
-                        serde_json::json!({
-                            "section_id": r.section_id,
-                            "file": r.file,
-                            "symbol": r.symbol,
-                            "defaulted_kind": r.defaulted_kind.as_str(),
-                        })
-                    })
-                    .collect();
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "from_schema_version": report.from_schema_version,
-                        "rows": rows,
-                    })
-                );
-            } else {
-                println!(
-                    "=== binding-kind migration report (store schema v{} → v5) ===",
-                    report.from_schema_version
-                );
-                println!(
-                    "{} binding(s) inherited kind=implements by default — review and reclassify",
-                    report.rows.len()
-                );
-                println!("(flip data/DTO fields to references: set-section-binding-kind --kind references --reason …)");
-                for r in &report.rows {
-                    match &r.symbol {
-                        Some(s) => println!("  §{}  {}:{}", r.section_id, r.file, s),
-                        None => println!("  §{}  {}", r.section_id, r.file),
-                    }
+        Some(from) => {
+            println!("=== binding-kind migration report (store schema v{from} → v5) ===");
+            println!(
+                "{} binding(s) inherited kind=implements by default — review and reclassify",
+                report.rows.len()
+            );
+            println!("(flip data/DTO fields to references: set-section-binding-kind --kind references --reason …)");
+            for r in &report.rows {
+                match &r.symbol {
+                    Some(s) => println!("  §{}  {}:{}", r.section_id, r.file, s),
+                    None => println!("  §{}  {}", r.section_id, r.file),
                 }
             }
         }

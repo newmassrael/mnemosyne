@@ -1210,6 +1210,62 @@ pub fn entity_kind_migration(
     })
 }
 
+/// One binding that inherited `kind = implements` from a pre-v5 store, pending
+/// Stage-B reclassification (implements vs references). `defaulted_kind` is the
+/// canonical tag ([`mnemosyne_atomic::BindingKind::as_str`]), so the CLI table
+/// and the MCP json read the same vocabulary.
+#[derive(Debug, Clone, Serialize)]
+pub struct BindingKindMigrationRow {
+    pub section_id: String,
+    pub file: String,
+    pub symbol: Option<String>,
+    pub defaulted_kind: String,
+}
+
+/// The v4→v5 binding-kind migration worklist — the shared shape the CLI
+/// (`report-binding-migration`) and the MCP tool both render, so the two
+/// surfaces cannot drift on what the report contains (the R679 pattern applied
+/// to the sibling report DEBT-BINDING-MIGRATION-MCP named). `from_schema_version`
+/// is `None` when the store is already at the current schema — no migration
+/// pending, `rows` empty.
+#[derive(Debug, Clone, Serialize)]
+pub struct BindingKindMigration {
+    pub from_schema_version: Option<u32>,
+    pub rows: Vec<BindingKindMigrationRow>,
+}
+
+/// The v4→v5 binding-kind migration worklist (Round 686 — the shared path
+/// behind CLI `report-binding-migration` and the MCP tool of the same name).
+/// Loads the store and normalises [`mnemosyne_atomic::AtomicStore::kind_migration_report`]
+/// — whose `KindMigrationReport` is not `Serialize` and whose `None` (already
+/// current schema) both surfaces must render identically — into the one
+/// serializable [`BindingKindMigration`].
+pub fn binding_kind_migration(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<BindingKindMigration, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    Ok(match store.kind_migration_report() {
+        None => BindingKindMigration {
+            from_schema_version: None,
+            rows: Vec::new(),
+        },
+        Some(report) => BindingKindMigration {
+            from_schema_version: Some(report.from_schema_version),
+            rows: report
+                .rows
+                .into_iter()
+                .map(|r| BindingKindMigrationRow {
+                    section_id: r.section_id,
+                    file: r.file,
+                    symbol: r.symbol,
+                    defaulted_kind: r.defaulted_kind.as_str().to_string(),
+                })
+                .collect(),
+        },
+    })
+}
+
 /// "All facts about X" (Round 437, design sec 7.10 gap 4) — every fact
 /// referencing the entity, across all frames and branches, with the
 /// registry row. Fail-loud on an unregistered entity.
