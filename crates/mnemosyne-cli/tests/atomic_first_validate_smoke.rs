@@ -228,10 +228,10 @@ fn validate_workspace_rejects_unregistered_entity_kind() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        combined.contains("entity-kind integrity")
+        combined.contains("store registry integrity")
             && combined.contains("ent-x")
             && combined.contains("place"),
-        "expected entity-kind integrity diagnostic naming ent-x/place; got: {}",
+        "expected store registry integrity diagnostic naming ent-x/place; got: {}",
         combined
     );
 }
@@ -267,8 +267,8 @@ fn validate_workspace_passes_with_registered_entity_kind() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("entity-kind integrity: 0 unregistered"),
-        "expected clean entity-kind integrity line; got: {}",
+        stdout.contains("store registry integrity: 0 out-of-band violation(s)"),
+        "expected clean store registry integrity line; got: {}",
         stdout
     );
 }

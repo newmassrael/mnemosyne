@@ -4467,6 +4467,80 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Every out-of-band store-registry integrity violation — the ONE detector the
+/// narrative boundary (`check_store_boundary`, mnemosyne-validate) and the
+/// baseline gate (`validate_workspace`, mnemosyne-ops) both call (Round 677),
+/// so the two enforce the SAME set. R675 shared only the entity-kind facet; a
+/// half-migrated store with an unregistered FRAME, BRANCH, or fact-entity — or
+/// a fact whose canon/evidence coordinates were emptied out-of-band — still
+/// passed the baseline gate. A write path cannot produce any of these; only an
+/// out-of-band edit or a pre-registry store can. Messages are byte-identical to
+/// the boundary's former inline checks (moved here, not re-worded), in a
+/// deterministic order (kinds, then per-fact in id order), empty = clean.
+/// ORDER-dependent checks (canon-order nodes/branches) stay in the boundary —
+/// they need the `CanonOrder`, which the baseline gate does not hold.
+pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (id, kind) in unregistered_entity_kinds(store) {
+        out.push(format!(
+            "entity `{id}`: kind `{kind}` is not in the entity-kind registry \
+             (out-of-band edit, or a pre-v24 store whose kinds were never \
+             registered — declare it with add-entity-kind)"
+        ));
+    }
+    for (id, fact) in &store.narrative_facts {
+        if !store.frames.contains_key(&fact.frame) {
+            out.push(format!(
+                "fact `{id}`: frame `{}` not in the frames registry (out-of-band edit; \
+                 the write path enforces this)",
+                fact.frame
+            ));
+        }
+        if !mnemosyne_core::is_known_world(&store.branches, &fact.branch) {
+            out.push(format!(
+                "fact `{id}`: branch `{}` not in the branch registry (out-of-band edit; \
+                 the write path enforces this)",
+                fact.branch
+            ));
+        }
+        for e in &fact.entities {
+            if !store.entities.contains_key(e) {
+                out.push(format!(
+                    "fact `{id}`: entity `{e}` not in the entity registry (out-of-band \
+                     edit; the write path enforces this)"
+                ));
+            }
+        }
+        if !store.sections.contains_key(&fact.canon_from) {
+            out.push(format!(
+                "fact `{id}`: canon_from `{}` is not a section (out-of-band edit)",
+                fact.canon_from
+            ));
+        }
+        if let Some(to) = &fact.canon_to {
+            if !store.sections.contains_key(to) {
+                out.push(format!(
+                    "fact `{id}`: canon_to `{to}` is not a section (out-of-band edit)"
+                ));
+            }
+        }
+        if fact.evidence.is_empty() {
+            out.push(format!(
+                "fact `{id}`: evidence emptied out-of-band (a claim without provenance \
+                 is unauditable)"
+            ));
+        }
+        for e in &fact.evidence {
+            if !store.sections.contains_key(e) {
+                out.push(format!(
+                    "fact `{id}`: evidence `{e}` is not a section (out-of-band edit)"
+                ));
+            }
+        }
+    }
+    out
+}
+
 /// Register one narrative entity (Round 437 — the third registry, after
 /// frames and branches: every `NarrativeFact.entities` ref must name a
 /// registered id, so a typo'd entity fails loud instead of silently
@@ -12380,6 +12454,44 @@ mod tests {
                 ("ent-a".to_string(), "island".to_string()),
                 ("ent-c".to_string(), "flat".to_string()),
             ]
+        );
+    }
+
+    /// R677 — the broadened detector `store_registry_violations` catches the
+    /// facets R675 left out of the baseline gate: a fact's frame / branch /
+    /// entities / canon / evidence, not only the entity kind. A write path
+    /// cannot produce these, so the out-of-band state is pinned directly.
+    /// NON-VACUITY: a clean store returns empty, and two corrupted facets are
+    /// both reported.
+    #[test]
+    fn store_registry_violations_catches_frame_and_entity_out_of_band() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
+        // Clean: a well-formed fact yields no violation.
+        assert!(store_registry_violations(&store).is_empty());
+
+        // Out-of-band: point the fact at an unregistered frame AND an
+        // unregistered entity (the write path forbids both).
+        {
+            let f = store.narrative_facts.get_mut("f1").unwrap();
+            f.frame = "ghost".to_string();
+            f.entities.push("ghost-ent".to_string());
+        }
+        let v = store_registry_violations(&store);
+        assert_eq!(v.len(), 2, "{v:?}");
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f1") && m.contains("frame `ghost`")),
+            "{v:?}"
+        );
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f1") && m.contains("entity `ghost-ent`")),
+            "{v:?}"
         );
     }
 

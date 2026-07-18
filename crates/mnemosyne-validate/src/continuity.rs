@@ -1658,68 +1658,18 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
             ));
         }
     }
-    // The kind is a registry ref, not free text (Round 661's machine-slot
-    // rule). Three authorities enforce it: the write path (`add_entity`), this
-    // boundary, and the baseline gate (`validate_workspace`, Round 675) —
-    // enforcing on one only is the half-enforced invariant, i.e. no invariant.
-    // The boundary and the baseline gate call the SAME detector so they cannot
-    // drift; the boundary fails on the first offender, the gate lists all.
-    if let Some((id, kind)) = mnemosyne_atomic::unregistered_entity_kinds(store).first() {
-        return Err(format!(
-            "entity `{id}`: kind `{kind}` is not in the entity-kind registry \
-             (out-of-band edit, or a pre-v24 store whose kinds were never \
-             registered — declare it with add-entity-kind)"
-        ));
-    }
-    for (id, fact) in &store.narrative_facts {
-        if !store.frames.contains_key(&fact.frame) {
-            return Err(format!(
-                "fact `{id}`: frame `{}` not in the frames registry (out-of-band edit; \
-                 the write path enforces this)",
-                fact.frame
-            ));
-        }
-        if !mnemosyne_core::is_known_world(&store.branches, &fact.branch) {
-            return Err(format!(
-                "fact `{id}`: branch `{}` not in the branch registry (out-of-band edit; \
-                 the write path enforces this)",
-                fact.branch
-            ));
-        }
-        for e in &fact.entities {
-            if !store.entities.contains_key(e) {
-                return Err(format!(
-                    "fact `{id}`: entity `{e}` not in the entity registry (out-of-band \
-                     edit; the write path enforces this)"
-                ));
-            }
-        }
-        if !store.sections.contains_key(&fact.canon_from) {
-            return Err(format!(
-                "fact `{id}`: canon_from `{}` is not a section (out-of-band edit)",
-                fact.canon_from
-            ));
-        }
-        if let Some(to) = &fact.canon_to {
-            if !store.sections.contains_key(to) {
-                return Err(format!(
-                    "fact `{id}`: canon_to `{to}` is not a section (out-of-band edit)"
-                ));
-            }
-        }
-        if fact.evidence.is_empty() {
-            return Err(format!(
-                "fact `{id}`: evidence emptied out-of-band (a claim without provenance \
-                 is unauditable)"
-            ));
-        }
-        for e in &fact.evidence {
-            if !store.sections.contains_key(e) {
-                return Err(format!(
-                    "fact `{id}`: evidence `{e}` is not a section (out-of-band edit)"
-                ));
-            }
-        }
+    // The store-registry integrity (entity kind, and per fact: frame / branch /
+    // entities / canon coordinates / evidence) is the ONE shared detector both
+    // this boundary and the baseline gate (`validate_workspace`, Round 677) call
+    // — enforcing on one only is the half-enforced invariant (R675 shared just
+    // the kind facet; R677 extended it to the whole registry). The boundary
+    // fails on the FIRST violation; the gate lists all. Order-dependent checks
+    // (canon-order nodes/branches above) stay here — they need the CanonOrder.
+    if let Some(msg) = mnemosyne_atomic::store_registry_violations(store)
+        .into_iter()
+        .next()
+    {
+        return Err(msg);
     }
     Ok(())
 }
