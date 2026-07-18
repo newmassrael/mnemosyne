@@ -4088,7 +4088,15 @@ fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
 /// (which unions it) read THIS, so the two cannot disagree on which facts are
 /// quest givings — both enumerate the same [`quest_ids`] set (R676), so a giving
 /// binds identically in either. Returns quest_id -> its giving setup ids.
-fn quest_giving_setups(store: &AtomicStore) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
+// R681 — takes the caller's already-derived `quests` set instead of re-running
+// `quest_ids` (which the caller ran to reach here): the kernel is computed ONCE
+// per read, not two-to-three times (the R680 review's LOW-1 double-work smell).
+// Infallible now — the only fallible step was `quest_ids`, now hoisted to the
+// caller, so both readers share the one derivation + its shape/role-conflict gate.
+fn quest_giving_setups(
+    store: &AtomicStore,
+    quests: &BTreeSet<String>,
+) -> BTreeMap<String, BTreeSet<String>> {
     let facts = &store.narrative_facts;
     let expected: BTreeSet<&str> = facts
         .iter()
@@ -4107,11 +4115,9 @@ fn quest_giving_setups(store: &AtomicStore) -> Result<BTreeMap<String, BTreeSet<
             }
         }
     }
-    // R676 — quests are the DERIVED set (the shared `quest_ids` kernel), not a
-    // `kind`-marked entity scan: the two readers cannot disagree about which
-    // entities are quests.
-    Ok(quest_ids(store)?
-        .into_iter()
+    quests
+        .iter()
+        .cloned()
         .map(|quest_id| {
             let mut givings: BTreeSet<String> = BTreeSet::new();
             for fact in completions_of.get(quest_id.as_str()).into_iter().flatten() {
@@ -4123,7 +4129,7 @@ fn quest_giving_setups(store: &AtomicStore) -> Result<BTreeMap<String, BTreeSet<
             }
             (quest_id, givings)
         })
-        .collect())
+        .collect()
 }
 
 /// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
@@ -4146,9 +4152,11 @@ pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, Stri
     // read-time guard on quest_graph alone was a band-aid: this function's own
     // caller (`authoring_frontier_report` with no telling) never runs
     // quest_graph, so the malformed fact was silently counted as structural.
-    // Now every reader of quest classification shares one enforcer.
-    check_quest_predicate_shapes(store)?;
-    let give_setups: BTreeSet<String> = quest_giving_setups(store)?
+    // Now every reader of quest classification shares one enforcer. R681 —
+    // `quest_ids` runs the shape + role-conflict gate, so the separate
+    // `check_quest_predicate_shapes` call it used to make is subsumed.
+    let quests = quest_ids(store)?;
+    let give_setups: BTreeSet<String> = quest_giving_setups(store, &quests)
         .into_values()
         .flatten()
         .collect();
@@ -4269,12 +4277,16 @@ pub struct QuestNode {
 /// PURE JOIN over the existing projections (R558 verbatim reuse, no
 /// re-projection): the derived quest entities + their typed claims, the
 /// R442 [`payoff_coverage`] (per-world open/done), and [`playable_world`] (the
-/// R497 fork topology + the R557 giver-surface locators). Never gated — a quest
-/// graph is a reading surface, not a defect detector; quest STATE is DERIVED per
-/// world-line, never stored (R559). Executable quest LOGIC (the runtime
-/// lifecycle available/active/done/failed, completion guards, the state machine)
-/// is SCE/pinion's, NOT modeled here (the R546/R559 declarative-vs-executable
-/// line). Fails loud through the sub-projections (a typo'd telling / world).
+/// R497 fork topology + the R557 giver-surface locators). Not a CONTENT gate — a
+/// quest graph is a reading surface, not a defect detector; quest STATE is
+/// DERIVED per world-line, never stored (R559). It does fail loud on a MALFORMED
+/// store, though: `quest_ids` runs `check_quest_predicate_shapes` + the R676
+/// role-conflict guard at entry, so a scalar-object quest predicate or an entity
+/// used as both quest and actor rejects the whole read (a contradiction is not a
+/// content judgement). Executable quest LOGIC (the runtime lifecycle
+/// available/active/done/failed, completion guards, the state machine) is
+/// SCE/pinion's, NOT modeled here (the R546/R559 declarative-vs-executable line).
+/// Fails loud through the sub-projections (a typo'd telling / world).
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct QuestGraphReport {
     /// The telling whose disclosure plan resolved the giver locators.
@@ -4386,7 +4398,7 @@ pub fn quest_graph(
     // `structural_fact_ids` (which unions it) and this per-quest index agree on
     // which facts are quest givings (both enumerate the same derived `quest_ids`
     // set, R676, so a giving binds identically in either).
-    let giving_map = quest_giving_setups(store)?;
+    let giving_map = quest_giving_setups(store, &quest_set);
 
     let mut quests: Vec<QuestNode> = Vec::new();
     let mut unresolved_quests: Vec<String> = Vec::new();

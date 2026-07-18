@@ -1789,7 +1789,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Entity-kind migration worklist (R679, read-only): the distinct unregistered entity kinds a store uses, each with the entities naming it — the exact add_entity_kind calls a pre-registry (v23-) or out-of-band store needs. The COMPLETE list the validate-workspace failure only samples; shares the detector the gate uses, so the two cannot disagree. Empty = every in-use kind is registered."
+        description = "Entity-kind migration worklist (R679, read-only): the distinct unregistered entity kinds a store uses, each with the entities naming it — the exact add_entity_kind calls a pre-registry (v23-) or out-of-band store needs. The complete list of the KIND facet, which the validate-workspace failure only samples (R681: the gate covers more than kinds); shares the kind detector the gate uses, so the two cannot disagree on kinds. Empty = every in-use kind is registered."
     )]
     async fn report_entity_kind_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::entity_kind_migration(&self.workspace, None) {

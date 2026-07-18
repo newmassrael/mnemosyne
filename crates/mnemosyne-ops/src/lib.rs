@@ -1176,12 +1176,14 @@ pub struct EntityKindMigrationRow {
     pub entities: Vec<String>,
 }
 
-/// R679 — the entity-kind migration worklist: the distinct unregistered kinds a
+/// R679 — the entity-kind migration worklist: the distinct unregistered KINDS a
 /// store uses, each with the entities using it, so an adopter knows the exact
-/// `add-entity-kind` calls to make. The complete worklist the R675 gate's
-/// first-batch failure message only samples; reuses the shared
+/// `add-entity-kind` calls to make. The complete list of the KIND facet, which
+/// the validate-workspace failure only samples (R681: the gate covers more than
+/// kinds — frame/branch/entity/canon/evidence/typed refs — so this report is the
+/// kind worklist, not the whole gate's). Reuses the shared
 /// [`mnemosyne_atomic::unregistered_entity_kinds`] detector, so the report and
-/// the gate cannot disagree about what is unregistered.
+/// the gate's kind facet cannot disagree.
 #[derive(Debug, Clone, Serialize)]
 pub struct EntityKindMigration {
     pub unregistered_kinds: Vec<EntityKindMigrationRow>,
