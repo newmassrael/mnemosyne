@@ -9,7 +9,7 @@
 
 // atomic_cli is exposed via the package library (src/lib.rs); the bin
 // reaches it through the lib so both targets share one module instance.
-use mnemosyne_cli::atomic_cli;
+use mnemosyne_cli::{atomic_cli, CliError};
 
 use std::collections::BTreeSet;
 use std::env;
@@ -139,14 +139,15 @@ fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            // The atomic-mutate path is the ONE owner of its own error print
-            // (json blob / FAILED header via `print_error`); it signals that
-            // with `AlreadyReported` so the detail is not printed twice
-            // (Round 684 — DEBT-DOUBLE-STDERR). Every other error prints here.
-            if e.downcast_ref::<atomic_cli::AlreadyReported>().is_none() {
-                eprintln!("error: {:#}", e);
-            }
+        // The atomic-mutate path already wrote its own formatted error (the
+        // json blob / `FAILED` header), so `main` only sets the exit code —
+        // the detail is not printed twice (Round 684 — DEBT-DOUBLE-STDERR).
+        // Every other failure is printed here, exactly once. The disposition
+        // is a typed variant threaded up from the command, not a marker
+        // recovered by `downcast`.
+        Err(CliError::AlreadyReported) => ExitCode::FAILURE,
+        Err(CliError::Message(e)) => {
+            eprintln!("error: {:#}", e);
             ExitCode::FAILURE
         }
     }
@@ -212,7 +213,7 @@ struct Command {
     /// Continuation/annotation lines, printed verbatim under the usage forms.
     notes: &'static [&'static str],
     /// The command's behavior.
-    run: fn(&Ctx) -> Result<()>,
+    run: fn(&Ctx) -> Result<(), CliError>,
 }
 
 impl Command {
@@ -222,7 +223,7 @@ impl Command {
     }
 }
 
-fn run(args: &[String]) -> Result<()> {
+fn run(args: &[String]) -> Result<(), CliError> {
     let prog = args.first().map(String::as_str).unwrap_or("mnemosyne-cli");
     // A bare invocation is the discovery act — answer it from [`COMMANDS`], the
     // same table dispatch reads. The hand-maintained list that used to live at
@@ -240,7 +241,7 @@ fn run(args: &[String]) -> Result<()> {
     let ctx = Ctx { prog, args };
     match COMMANDS.iter().find(|c| c.matches(cmd)) {
         Some(command) => (command.run)(&ctx),
-        None => bail!("unknown command: {} (run `{} --help`)", cmd, prog),
+        None => Err(anyhow!("unknown command: {} (run `{} --help`)", cmd, prog).into()),
     }
 }
 
@@ -329,7 +330,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["validate-workspace 7 markdown doc full validation"],
         notes: &[],
-        run: |_| cmd_validate_workspace(),
+        run: |_| cmd_validate_workspace().map_err(CliError::from),
     },
     Command {
         name: "query",
@@ -346,7 +347,7 @@ static COMMANDS: &[Command] = &[
             "query --term <pattern> [--regex] [--case-insensitive|-i] [--scope all|sections|changelog|inventory] [--field name,name,...] [--json]",
         ],
         notes: &["   Round 292 — literal/regex search across atomic Section + ChangelogEntry + Inventory fields; identifier keys section_id/entry_id/inventory_id included (Round 467); unknown --field names reject loudly (Round 468)"],
-        run: |c| cmd_query(c.prog, c.rest()),
+        run: |c| cmd_query(c.prog, c.rest()).map_err(CliError::from),
     },
     Command {
         name: "style-check",
@@ -355,7 +356,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["style-check [--doc <path>] [--severity t3|t4|all] [--json]"],
         notes: &["   T3/T4 style rule layer check (Round 129 production wire)"],
-        run: |c| cmd_style_check(c.prog, c.rest()),
+        run: |c| cmd_style_check(c.prog, c.rest()).map_err(CliError::from),
     },
     Command {
         name: "add-section",
@@ -507,7 +508,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-entity --entity <id> [--sidecar <path>] [--json]"],
         notes: &[],
-        run: |c| cmd_report_entity(c.rest()),
+        run: |c| cmd_report_entity(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-entity-kind-migration",
@@ -516,7 +517,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-entity-kind-migration [--sidecar <path>] [--json]"],
         notes: &["   R679 — the worklist for a pre-registry (v23-) or out-of-band store: the distinct unregistered entity kinds in use, each with the add-entity-kind call to make"],
-        run: |c| cmd_report_entity_kind_migration(c.rest()),
+        run: |c| cmd_report_entity_kind_migration(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-payoff-coverage",
@@ -525,7 +526,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-payoff-coverage [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &[],
-        run: |c| cmd_report_payoff_coverage(c.rest()),
+        run: |c| cmd_report_payoff_coverage(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-irony-intervals",
@@ -534,7 +535,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-irony-intervals [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &["   Round 455 — cross-frame divergence windows per query world (craft signal, never gated)"],
-        run: |c| cmd_report_irony_intervals(c.rest()),
+        run: |c| cmd_report_irony_intervals(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-playthrough-manuscript",
@@ -546,7 +547,7 @@ static COMMANDS: &[Command] = &[
             "   --telling (Round 506): annotate each begins-event with its disclosure decision (mode/first_at/surface) = the render-brief carrier",
             "   --reading-walk (Round 509): prune each world to its content scenes (begins>0) = the deterministic reading-copy walk (no hand prune)",
         ],
-        run: |c| cmd_report_playthrough_manuscript(c.rest()),
+        run: |c| cmd_report_playthrough_manuscript(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-fork-tree",
@@ -555,7 +556,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-fork-tree [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &[],
-        run: |c| cmd_report_fork_tree(c.rest()),
+        run: |c| cmd_report_fork_tree(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-playable-world",
@@ -564,7 +565,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-playable-world --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &["   Round 556/557 — the map_locator seam: fork topology + per-world scene walk + per-scene disclosure pointers a pinion runtime consumes"],
-        run: |c| cmd_report_playable_world(c.rest()),
+        run: |c| cmd_report_playable_world(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-quest-graph",
@@ -573,7 +574,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-quest-graph --telling <id> [--world <branch>] [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &["   Round 559/568 — the fact->quest leg: per derived quest (pursues/requires/completed_by role), objective + actor + per-world open/done + prerequisites + completion fact + giver locator"],
-        run: |c| cmd_report_quest_graph(c.rest()),
+        run: |c| cmd_report_quest_graph(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "describe-schema",
@@ -582,7 +583,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["describe-schema [--json]"],
         notes: &["   Round 587 — the medium-neutral authoring contract (static): registries + fact shape + fixed vocabularies + rule classes + quest encoding + write-time invariants"],
-        run: |c| cmd_describe_schema(c.rest()),
+        run: |c| cmd_describe_schema(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "propose-verdict",
@@ -591,7 +592,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["propose-verdict --manifest <path.json> [--order <path>] [--rules <path>] [--sidecar <path>] [--json]"],
         notes: &["   Round 588 — dry-run gate: apply a candidate batch to a throwaway clone, run shape + continuity gates, emit commit/rollback + actionable violations (exit 1 on rollback; store never written)"],
-        run: |c| cmd_propose_verdict(c.rest()),
+        run: |c| cmd_propose_verdict(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-authoring-frontier",
@@ -600,7 +601,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-authoring-frontier [--telling <id>] [--order <path>] [--sidecar <path>] [--json]"],
         notes: &["   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures"],
-        run: |c| cmd_report_authoring_frontier(c.rest()),
+        run: |c| cmd_report_authoring_frontier(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-disclosure-coverage",
@@ -609,7 +610,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-disclosure-coverage --telling <id> [--sidecar <path>] [--json]"],
         notes: &[],
-        run: |c| cmd_report_disclosure_coverage(c.rest()),
+        run: |c| cmd_report_disclosure_coverage(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-disclosure-leak",
@@ -618,7 +619,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["validate-disclosure-leak --telling <id> --against <reextracted.json> --world <branch> --truth-frame <frame> [--order <path>] [--sidecar <path>] [--json]"],
         notes: &[],
-        run: |c| cmd_validate_disclosure_leak(c.rest()),
+        run: |c| cmd_validate_disclosure_leak(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-render-fidelity",
@@ -630,7 +631,7 @@ static COMMANDS: &[Command] = &[
             "   Round 507 — disclosure render-acceptance gates over a blind re-extracted prose store; leak/fidelity exit non-zero on violation",
             "   Round 466 — per-world linear scene walk with declared fact events (reading surface, never gated)",
         ],
-        run: |c| cmd_validate_render_fidelity(c.rest()),
+        run: |c| cmd_validate_render_fidelity(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-typing-candidates",
@@ -639,7 +640,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-typing-candidates [--sidecar <path>] [--json]"],
         notes: &["   Round 458 — typing-discovery input package: untyped facts + claim sha256 + registered vocabulary"],
-        run: |c| cmd_report_typing_candidates(c.rest()),
+        run: |c| cmd_report_typing_candidates(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "import-typing-proposals",
@@ -648,7 +649,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["import-typing-proposals --proposals <typing-proposals.json> [--dry-run] [--sidecar <path>] [--json]"],
         notes: &["   Round 459 — all-or-nothing reviewed import of proposed typed legs (claim-sha staleness re-checked, fill-blanks only)"],
-        run: |c| cmd_import_typing_proposals(c.rest()),
+        run: |c| cmd_import_typing_proposals(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-edge-candidates",
@@ -657,7 +658,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-edge-candidates [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &["   Round 462 — edge-discovery input package: every fact row (claim sha256 + recorded edges) + succession-gap hints"],
-        run: |c| cmd_report_edge_candidates(c.rest()),
+        run: |c| cmd_report_edge_candidates(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "import-edge-proposals",
@@ -666,7 +667,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["import-edge-proposals --proposals <edge-proposals.json> [--dry-run] [--sidecar <path>] [--json]"],
         notes: &["   Round 463 — all-or-nothing reviewed import of proposed succession/conflict edges (two-sided claim-sha staleness, fill-blanks, cycle-guarded)"],
-        run: |c| cmd_import_edge_proposals(c.rest()),
+        run: |c| cmd_import_edge_proposals(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-payoff-substantiation",
@@ -675,7 +676,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-payoff-substantiation [--order <canon-order.json>] [--sidecar <path>] [--json]"],
         notes: &["   Round 485 — deterministic payoff substantiation: each credited setup is substantiated (a typed state-change discharges it) / unsubstantiated (typed setup, hollow payoff) / unverifiable (untyped — type it); no LLM"],
-        run: |c| cmd_report_payoff_substantiation(c.rest()),
+        run: |c| cmd_report_payoff_substantiation(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-timeline-gaps",
@@ -684,7 +685,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-timeline-gaps [--order <canon-order.json>] [--rules <narrative-rules.json>] [--world <branch>] [--sidecar <path>] [--json]"],
         notes: &["   Round 490 — timeline-gap projection (read, never gated): the interval-rule evaluator per world — violated / unverifiable / satisfied scalar relations (value(left) - value(right) op bound)"],
-        run: |c| cmd_report_timeline_gaps(c.rest()),
+        run: |c| cmd_report_timeline_gaps(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "add-fact",
@@ -1031,7 +1032,7 @@ static COMMANDS: &[Command] = &[
             "   --severity-coverage (Round 385): ImplementationMissing (Active section uncited); inherits --severity-binding when unset",
             "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)",
         ],
-        run: |c| cmd_validate_code_refs(c.rest()),
+        run: |c| cmd_validate_code_refs(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "propose-implementations",
@@ -1043,7 +1044,7 @@ static COMMANDS: &[Command] = &[
             "   Path B curation: per (section,file) cite, resolve the enclosing/documented symbol and",
             "   emit proposed §<id> binding sets + add-section-binding commands (read-only)",
         ],
-        run: |c| cmd_propose_implementations(c.rest()),
+        run: |c| cmd_propose_implementations(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-binding-migration",
@@ -1055,7 +1056,7 @@ static COMMANDS: &[Command] = &[
             "   v4→v5 surface: list bindings that inherited kind=implements by default (read-only;",
             "   empty once the store is at v5 — run before upgrading a pre-v5 store)",
         ],
-        run: |c| cmd_report_binding_migration(c.rest()),
+        run: |c| cmd_report_binding_migration(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-coverage",
@@ -1064,7 +1065,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-coverage [--json]"],
         notes: &[],
-        run: |c| cmd_report_coverage(c.rest()),
+        run: |c| cmd_report_coverage(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-confirmation",
@@ -1073,7 +1074,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-confirmation [--json]"],
         notes: &[],
-        run: |c| cmd_report_confirmation(c.rest()),
+        run: |c| cmd_report_confirmation(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-confirmation",
@@ -1082,7 +1083,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["validate-confirmation [--severity reject|warn|info] [--json]"],
         notes: &[],
-        run: |c| cmd_validate_confirmation(c.rest()),
+        run: |c| cmd_validate_confirmation(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-continuity",
@@ -1094,7 +1095,7 @@ static COMMANDS: &[Command] = &[
             "   frame-scoped narrative continuity (Round 431): same-frame overlapping conflict = violation,",
             "   cross-frame conflict = data; canon order is a DECLARED partial order, never inferred",
         ],
-        run: |c| cmd_validate_continuity(c.rest()),
+        run: |c| cmd_validate_continuity(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-frame-view",
@@ -1106,7 +1107,7 @@ static COMMANDS: &[Command] = &[
             "   read-only frame-at-T projection (Round 432): the facts frame F holds at canon point T,",
             "   same holds-semantics as the gate; incomparable coordinates surface as `unknown`",
         ],
-        run: |c| cmd_report_frame_view(c.rest()),
+        run: |c| cmd_report_frame_view(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-verifies-linkage",
@@ -1115,7 +1116,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["validate-verifies-linkage [--catalog <path>] [--severity reject|warn|info] [--json]"],
         notes: &[],
-        run: |c| cmd_validate_verifies_linkage(c.rest()),
+        run: |c| cmd_validate_verifies_linkage(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-excerpt-hash-backfill",
@@ -1124,7 +1125,7 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["report-excerpt-hash-backfill [--json]"],
         notes: &["   coverage breakdown: implemented / normative-gap / informative-exempt + ratio (read-only)"],
-        run: |c| cmd_report_excerpt_hash_backfill(c.rest()),
+        run: |c| cmd_report_excerpt_hash_backfill(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-spec-map",
@@ -1136,7 +1137,7 @@ static COMMANDS: &[Command] = &[
             "   unified spec<->fact<->code projection per section: coverage class + spec provenance",
             "   (anchor_url/revision) + bindings + drift flag + reverse citation count (read-only L3 view)",
         ],
-        run: |c| cmd_report_spec_map(c.rest()),
+        run: |c| cmd_report_spec_map(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-spec-drift",
@@ -1150,7 +1151,7 @@ static COMMANDS: &[Command] = &[
             "   --severity overrides [spec_drift].severity (default warn); reject => exit 1 on drift.",
             "   no-op (exit 0) when [workspace.spec_source] is absent.",
         ],
-        run: |c| cmd_validate_spec_drift(c.rest()),
+        run: |c| cmd_validate_spec_drift(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "validate-content-drift",
@@ -1165,7 +1166,7 @@ static COMMANDS: &[Command] = &[
             "   empty-hash excerpts are unrevalidatable (counted, not drift).",
             "   also re-hashes the committed EPUB vs [workspace.spec_source].epub_sha256 when pinned (R405).",
         ],
-        run: |c| cmd_validate_content_drift(c.rest()),
+        run: |c| cmd_validate_content_drift(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "--version",

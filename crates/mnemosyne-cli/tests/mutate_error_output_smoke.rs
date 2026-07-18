@@ -1,11 +1,13 @@
 //! Round 691 (DEBT-DOUBLE-STDERR regression) — the atomic-mutate error prints
 //! exactly once, and the `--json` error output stays pure json.
 //!
-//! R684 fixed the double-print structurally (an `AlreadyReported` marker the
-//! top-level handler suppresses via `downcast_ref`), but shipped no test — the
+//! R684 fixed the double-print structurally but shipped no test — the
 //! cost-no-object review flagged that the CLI crate already has an
 //! stderr-asserting subprocess harness. This pins the fix at that layer: a
-//! revert to the double-print reddens CI here.
+//! revert to the double-print reddens CI here. The suppression signal is now a
+//! typed `CliError` variant `main` matches, not a marker recovered by
+//! `downcast_ref`; the behavior this test asserts is invariant across that
+//! rework, which is exactly why the test guards it.
 
 use std::fs;
 use std::path::Path;

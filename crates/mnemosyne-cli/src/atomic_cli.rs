@@ -33,6 +33,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 
+use crate::CliError;
 use mnemosyne_atomic::{
     add_inventory_entry, add_section_binding, add_section_caveat, add_section_example,
     append_changelog_entry, append_confirmation_event, remove_inventory_entry, remove_section,
@@ -52,38 +53,6 @@ use mnemosyne_core::{
 };
 use mnemosyne_ops::cascade::resolve_sidecar;
 use mnemosyne_validate::code_refs::{scan_inventory_decay, scan_section_decay};
-
-/// Marker error: the atomic-mutate path (`print_error`) already emitted a
-/// fully formatted error — the json blob, or the `FAILED` header plus detail —
-/// so the top-level handler in `main` must NOT print it a second time. It is
-/// the ONE owner of the mutate error print; `main` owns every OTHER error.
-/// Carries no message: its only job is to be recognised by `downcast_ref` so
-/// `main` suppresses its generic reprint while still exiting non-zero (Round
-/// 684 — DEBT-DOUBLE-STDERR, previously the detail printed here AND in `main`).
-#[derive(Debug)]
-pub struct AlreadyReported;
-
-impl std::fmt::Display for AlreadyReported {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Never surfaced (main suppresses it) — a stable label for a log chain.
-        write!(f, "error already reported")
-    }
-}
-
-impl std::error::Error for AlreadyReported {}
-
-fn handle_result(result: Result<AtomicMutateReceipt, AtomicMutateError>, json: bool) -> Result<()> {
-    match result {
-        Ok(r) => {
-            print_receipt(&r, json);
-            Ok(())
-        }
-        Err(e) => {
-            print_error(&e, json);
-            Err(AlreadyReported.into())
-        }
-    }
-}
 
 fn print_receipt(r: &AtomicMutateReceipt, json: bool) {
     if json {
@@ -167,7 +136,7 @@ fn strip_section_prefix(s: &str) -> String {
 // CLI subcommand entry points (each takes args slice = post-subcommand args)
 // ============================================================================
 
-pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut intent: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -197,7 +166,7 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -218,7 +187,7 @@ pub fn cmd_set_section_intent(workspace_root: &Path, args: &[String]) -> Result<
 /// fields (intent / rationale / etc.) populate via subsequent `set-section-*`
 /// calls. The legacy `--body-file` and `--numbered-id` flags are retired —
 /// atomic mode has no monolithic body, and section_id is explicit.
-pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut parent_doc: Option<String> = None;
     let mut title: Option<String> = None;
@@ -264,7 +233,7 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -293,7 +262,7 @@ pub fn cmd_add_section(workspace_root: &Path, args: &[String]) -> Result<()> {
 /// reject the WHOLE manifest. One save for the batch (no-op
 /// entries don't count; an all-no-op manifest writes nothing). Reuses
 /// `add_section`'s in-memory core — the same single section-create write-path.
-pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut manifest: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -315,7 +284,7 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let manifest_path = manifest.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
@@ -338,7 +307,7 @@ pub fn cmd_import_sections(workspace_root: &Path, args: &[String]) -> Result<()>
 
 /// Round 430 — bulk frames + narrative facts from a manifest (one atomic
 /// transaction; forward succession refs within the manifest are legal).
-pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut manifest: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -360,7 +329,7 @@ pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let manifest_path = manifest.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
@@ -383,7 +352,7 @@ pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<()> {
 }
 
 /// Round 430 — register one epistemic frame.
-pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut frame_id: Option<String> = None;
     let mut description = String::new();
     let mut sidecar: Option<String> = None;
@@ -412,7 +381,7 @@ pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let frame_id = frame_id.ok_or_else(|| anyhow!("--frame arg required"))?;
@@ -426,7 +395,7 @@ pub fn cmd_add_frame(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 436 — register one world-line branch (the frames-registry
 /// symmetry; `main` is known by construction and never registered).
-pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut branch_id: Option<String> = None;
     let mut description = String::new();
     let mut forks_from: Option<String> = None;
@@ -481,14 +450,14 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let branch_id = branch_id.ok_or_else(|| anyhow!("--branch arg required"))?;
     let fork = match (&forks_from, &forks_at) {
         (None, None) => None,
         (Some(p), Some(a)) => Some((p.as_str(), a.as_str())),
-        _ => bail!("--forks-from and --forks-at must be given together"),
+        _ => return Err(anyhow!("--forks-from and --forks-at must be given together").into()),
     };
     let converges_from: Vec<(&str, &str)> = converges
         .iter()
@@ -511,7 +480,7 @@ pub fn cmd_add_branch(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 437 — register one narrative entity (third registry; the
 /// retrieval key for "all facts about X").
-pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut entity_id: Option<String> = None;
     let mut kind = String::new();
     let mut description = String::new();
@@ -547,7 +516,7 @@ pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let entity_id = entity_id.ok_or_else(|| anyhow!("--entity arg required"))?;
@@ -562,7 +531,7 @@ pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<()> {
 /// Register one entity kind — the vocabulary `--kind` refs on `add-entity`.
 /// The members are the consumer's; the substrate only enforces that a kind in
 /// use was declared (Round 661's machine-slot rule, invariant 4 routing).
-pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut kind_id: Option<String> = None;
     let mut description = String::new();
     let mut sidecar: Option<String> = None;
@@ -591,7 +560,7 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<()>
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let kind_id = kind_id.ok_or_else(|| anyhow!("--kind arg required"))?;
@@ -605,7 +574,7 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<()>
 
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|scalar` mandatory.
-pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut predicate_id: Option<String> = None;
     let mut object_kind: Option<String> = None;
     let mut description = String::new();
@@ -642,7 +611,7 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
@@ -666,7 +635,7 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
 /// though `add-predicate` defaults the description: omitting one on an update
 /// path would wipe it silently, and this primitive exists precisely because
 /// silent registry damage had no repair.
-pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut predicate_id: Option<String> = None;
     let mut object_kind: Option<String> = None;
     let mut description: Option<String> = None;
@@ -704,7 +673,7 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
@@ -728,7 +697,7 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 658 — remove a predicate from the registry. Rejects while any typed
 /// leg still names it.
-pub fn cmd_remove_predicate(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_remove_predicate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut predicate_id: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -750,7 +719,7 @@ pub fn cmd_remove_predicate(workspace_root: &Path, args: &[String]) -> Result<()
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
@@ -765,7 +734,7 @@ pub fn cmd_remove_predicate(workspace_root: &Path, args: &[String]) -> Result<()
 /// Round 506 — register one disclosure (discourse) plan: a named telling over
 /// the fact base. `--default-mode withhold|state|hint|imply` mandatory (no
 /// silent default for a load-bearing policy).
-pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut telling_id: Option<String> = None;
     let mut default_mode: Option<String> = None;
     let mut description = String::new();
@@ -802,7 +771,7 @@ pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
@@ -824,7 +793,7 @@ pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result
 /// Round 506 — set one per-fact disclosure override within a telling.
 /// `--first-at <branch>=<coord>` is repeatable (per world-line timing);
 /// `--surface <scene>[,<object>]` is optional (the diegetic carrier).
-pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut telling_id: Option<String> = None;
     let mut fact_id: Option<String> = None;
     let mut mode: Option<String> = None;
@@ -882,7 +851,7 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> 
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
@@ -913,7 +882,7 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> 
 /// escape hatch the R626 retract/amend guards require (a guard that says
 /// "clear the decision first" with no way to clear it is a trap, not an
 /// invariant).
-pub fn cmd_remove_disclosure(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_remove_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut telling_id: Option<String> = None;
     let mut fact_id: Option<String> = None;
     let mut reason: Option<String> = None;
@@ -951,7 +920,7 @@ pub fn cmd_remove_disclosure(workspace_root: &Path, args: &[String]) -> Result<(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
@@ -1167,7 +1136,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     Ok(out)
 }
 
-pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let parsed = parse_fact_verb_args(args, false)?;
     let sidecar_path = resolve_sidecar(workspace_root, parsed.sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
@@ -1179,7 +1148,7 @@ pub fn cmd_add_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 434 — authorial in-place revision of an existing fact (the
 /// author-correction path; in-world belief change stays `--supersedes`).
-pub fn cmd_amend_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_amend_fact(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let parsed = parse_fact_verb_args(args, true)?;
     let reason = parsed
         .reason
@@ -1194,7 +1163,7 @@ pub fn cmd_amend_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
 
 /// Round 434 — authorial retract of an unreferenced fact (fail-loud on
 /// inbound refs; the retraction's transaction-time audit is git history).
-pub fn cmd_retract_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_retract_fact(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut fact_id: Option<String> = None;
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1224,7 +1193,7 @@ pub fn cmd_retract_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
@@ -1238,7 +1207,7 @@ pub fn cmd_retract_fact(workspace_root: &Path, args: &[String]) -> Result<()> {
 }
 
 /// Round 430 — record one conflict assertion edge between two existing facts.
-pub fn cmd_add_fact_conflict(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_fact_conflict(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut fact_id: Option<String> = None;
     let mut other: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1268,7 +1237,7 @@ pub fn cmd_add_fact_conflict(workspace_root: &Path, args: &[String]) -> Result<(
                 )
             }
             "--json" => json = true,
-            other_flag => bail!("unknown flag `{}`", other_flag),
+            other_flag => return Err(anyhow!("unknown flag `{}`", other_flag).into()),
         }
     }
     let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
@@ -1284,7 +1253,7 @@ pub fn cmd_add_fact_conflict(workspace_root: &Path, args: &[String]) -> Result<(
 /// R393 — ingest a medium-forge `epub-anchor-map/v1` file, setting each
 /// matching Section's `epub_locator` (EPUB-SSOT pointer). One save; ids absent
 /// from the store are reported as a note, not an error.
-pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
     struct AnchorEntry {
         id: String,
@@ -1315,7 +1284,7 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let path = anchors_path.ok_or_else(|| anyhow!("--anchors <path> arg required"))?;
@@ -1340,7 +1309,7 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
 
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
-pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut title: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1370,7 +1339,7 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1384,7 +1353,7 @@ pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(
 }
 
 /// Round 287 — set Section.parent_doc (doc binding).
-pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut parent_doc: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1414,7 +1383,7 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1430,7 +1399,10 @@ pub fn cmd_set_section_parent_doc(workspace_root: &Path, args: &[String]) -> Res
 /// Round 287 — set Section.parent_section (hierarchy binding). Use `--parent
 /// <section_id>` to re-parent; use `--no-parent` to promote to top-level.
 /// The two flags are mutually exclusive; exactly one is required.
-pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_parent_section(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut parent: Option<String> = None;
     let mut clear_parent = false;
@@ -1462,15 +1434,15 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     if parent.is_some() && clear_parent {
-        bail!("--parent and --no-parent are mutually exclusive");
+        return Err(anyhow!("--parent and --no-parent are mutually exclusive").into());
     }
     if parent.is_none() && !clear_parent {
-        bail!("exactly one of --parent <id> or --no-parent required");
+        return Err(anyhow!("exactly one of --parent <id> or --no-parent required").into());
     }
     let parent_stripped = parent.as_deref().map(strip_section_prefix);
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
@@ -1486,19 +1458,19 @@ pub fn cmd_set_section_parent_section(workspace_root: &Path, args: &[String]) ->
     )
 }
 
-pub fn cmd_set_section_rationale(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_rationale(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     cmd_set_section_bullets(workspace_root, args, "rationale", |s, p, id, b| {
         set_section_rationale(s, p, id, b)
     })
 }
 
-pub fn cmd_set_section_inputs(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_inputs(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     cmd_set_section_bullets(workspace_root, args, "inputs", |s, p, id, b| {
         set_section_inputs(s, p, id, b)
     })
 }
 
-pub fn cmd_set_section_outputs(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_outputs(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     cmd_set_section_bullets(workspace_root, args, "outputs", |s, p, id, b| {
         set_section_outputs(s, p, id, b)
     })
@@ -1512,7 +1484,7 @@ pub fn cmd_set_section_outputs(workspace_root: &Path, args: &[String]) -> Result
 pub fn cmd_set_changelog_publishable_decision_summary(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     cmd_set_changelog_publishable_string(
         workspace_root,
         args,
@@ -1521,7 +1493,10 @@ pub fn cmd_set_changelog_publishable_decision_summary(
     )
 }
 
-pub fn cmd_set_changelog_publishable_changes(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_changelog_publishable_changes(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     cmd_set_changelog_publishable_bullets(
         workspace_root,
         args,
@@ -1533,7 +1508,7 @@ pub fn cmd_set_changelog_publishable_changes(workspace_root: &Path, args: &[Stri
 pub fn cmd_set_changelog_publishable_verification(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     cmd_set_changelog_publishable_bullets(
         workspace_root,
         args,
@@ -1545,7 +1520,7 @@ pub fn cmd_set_changelog_publishable_verification(
 pub fn cmd_set_changelog_publishable_impact_refs(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     cmd_set_changelog_publishable_bullets(
         workspace_root,
         args,
@@ -1557,7 +1532,7 @@ pub fn cmd_set_changelog_publishable_impact_refs(
 pub fn cmd_set_changelog_publishable_carry_forward(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     cmd_set_changelog_publishable_bullets(
         workspace_root,
         args,
@@ -1574,7 +1549,7 @@ pub fn cmd_set_changelog_publishable_carry_forward(
 pub fn cmd_emit_publishable_override_ledger_draft(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     let mut entry: Option<String> = None;
     let mut reason: Option<String> = None;
     let mut applied_in: Option<String> = None;
@@ -1619,7 +1594,7 @@ pub fn cmd_emit_publishable_override_ledger_draft(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let entry = entry.ok_or_else(|| anyhow!("--entry arg required"))?;
@@ -1670,7 +1645,7 @@ fn cmd_set_changelog_publishable_string(
         &str,
         &str,
     ) -> Result<AtomicMutateReceipt, AtomicMutateError>,
-) -> Result<()> {
+) -> Result<(), CliError> {
     let mut entry: Option<String> = None;
     let mut value: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1700,7 +1675,7 @@ fn cmd_set_changelog_publishable_string(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let entry = entry.ok_or_else(|| anyhow!("--entry arg required ({} scope)", field))?;
@@ -1720,7 +1695,7 @@ fn cmd_set_changelog_publishable_bullets(
         &str,
         &[String],
     ) -> Result<AtomicMutateReceipt, AtomicMutateError>,
-) -> Result<()> {
+) -> Result<(), CliError> {
     let mut entry: Option<String> = None;
     let mut bullets_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1750,7 +1725,7 @@ fn cmd_set_changelog_publishable_bullets(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let entry = entry.ok_or_else(|| anyhow!("--entry arg required ({} scope)", field))?;
@@ -1772,7 +1747,7 @@ fn cmd_set_section_bullets(
         &str,
         &[String],
     ) -> Result<AtomicMutateReceipt, AtomicMutateError>,
-) -> Result<()> {
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut bullets_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1802,7 +1777,7 @@ fn cmd_set_section_bullets(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1817,7 +1792,7 @@ fn cmd_set_section_bullets(
     )
 }
 
-pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut bullet: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1847,7 +1822,7 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1860,7 +1835,10 @@ pub fn cmd_add_section_caveat(workspace_root: &Path, args: &[String]) -> Result<
     )
 }
 
-pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_alternatives(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut alternatives_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1890,7 +1868,7 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1904,7 +1882,10 @@ pub fn cmd_set_section_alternatives(workspace_root: &Path, args: &[String]) -> R
     )
 }
 
-pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_impact_scope(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut refs_csv: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1934,7 +1915,7 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -1953,7 +1934,7 @@ pub fn cmd_set_section_impact_scope(workspace_root: &Path, args: &[String]) -> R
     )
 }
 
-pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut language: Option<String> = None;
     let mut code_file: Option<String> = None;
@@ -1991,7 +1972,7 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2045,7 +2026,7 @@ fn parse_verification_expectation(raw: &str) -> Result<VerificationExpectation> 
 /// (`implements` = «satisfy» / `references` = «trace»). Set semantics:
 /// duplicate `(file, symbol)` rejected at write time regardless of kind
 /// (use `set-section-binding-kind` to change an existing binding's kind).
-pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
@@ -2091,7 +2072,7 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2124,7 +2105,7 @@ pub fn cmd_add_section_binding(workspace_root: &Path, args: &[String]) -> Result
 /// section or the specific binding is absent. `--reason` mandatory —
 /// recorded on the mutate receipt for audit symmetry with `remove-section`
 /// (R267) / `remove-inventory-entry` (R274).
-pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
@@ -2170,7 +2151,7 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2200,7 +2181,10 @@ pub fn cmd_remove_section_binding(workspace_root: &Path, args: &[String]) -> Res
 /// --kind`); the binding must already exist. `--reason` mandatory
 /// (auditable reclassification). This is the Stage-B reclassification verb
 /// (`implements → references` for data/DTO fields).
-pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_binding_kind(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
@@ -2254,7 +2238,7 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2280,7 +2264,10 @@ pub fn cmd_set_section_binding_kind(workspace_root: &Path, args: &[String]) -> R
     )
 }
 
-pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_coverage_expectation(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut expectation: Option<String> = None;
     let mut reason: Option<String> = None;
@@ -2318,7 +2305,7 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2343,7 +2330,7 @@ pub fn cmd_set_section_coverage_expectation(workspace_root: &Path, args: &[Strin
 pub fn cmd_set_section_verification_expectation(
     workspace_root: &Path,
     args: &[String],
-) -> Result<()> {
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut expectation: Option<String> = None;
     let mut reason: Option<String> = None;
@@ -2381,7 +2368,7 @@ pub fn cmd_set_section_verification_expectation(
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2407,7 +2394,7 @@ pub fn cmd_set_section_verification_expectation(
 /// flags and appends it; the `event_id` is derived in-core (never supplied).
 /// A `--file` present makes it a `VerifiesBinding` claim, else a
 /// `SectionCompleteness` claim. Enum flags take the snake_case tag.
-pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut file: Option<String> = None;
     let mut symbol: Option<String> = None;
@@ -2537,7 +2524,7 @@ pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2549,7 +2536,7 @@ pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Res
         },
         None => {
             if symbol.is_some() {
-                bail!("--symbol requires --file (a VerifiesBinding claim)");
+                return Err(anyhow!("--symbol requires --file (a VerifiesBinding claim)").into());
             }
             ConfirmationClaim::SectionCompleteness {
                 section_id: section,
@@ -2613,7 +2600,7 @@ pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Res
 /// Removes a section from the atomic store. Requires `--reason` (audit
 /// safeguard). Errors with NotFound when the section_id is absent — no
 /// silent no-op, the caller asked for a specific removal.
-pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -2643,7 +2630,7 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2663,7 +2650,10 @@ pub fn cmd_remove_section(workspace_root: &Path, args: &[String]) -> Result<()> 
 /// Sets `AtomicSection.decision_status` on the atomic store. Stage B
 /// freshness substrate — once the atomic store carries non-Active status,
 /// downstream tooling (auto-cascade trigger, decay scan) becomes wireable.
-pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_section_decision_status(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut section: Option<String> = None;
     let mut status_str: Option<String> = None;
     let mut superseding: Option<String> = None;
@@ -2709,7 +2699,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
@@ -2772,7 +2762,7 @@ pub fn cmd_set_section_decision_status(workspace_root: &Path, args: &[String]) -
 /// excerpt (a section must already carry one to be refreshable). Ids that match
 /// no refreshable excerpt are reported as a note, not an error. Replaces the
 /// deleted hand-authoring `set-section-normative-excerpt` verb.
-pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
     struct ExcerptEntry {
         id: String,
@@ -2806,7 +2796,7 @@ pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Resul
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let path = anchors_path.ok_or_else(|| anyhow!("--anchors <path> arg required"))?;
@@ -2962,16 +2952,32 @@ fn print_inventory_decay_trigger(
     }
 }
 
-/// Wrap a mutate primitive call: print the receipt (or error). The atomic
-/// store is the only artifact, so there is nothing to regenerate.
+/// Complete a mutate primitive call: on success print the receipt; on failure
+/// print the formatted error (the `--json` blob or the `FAILED` header +
+/// detail) and return [`CliError::AlreadyReported`] so `main` exits non-zero
+/// without reprinting. The atomic store is the only artifact, so there is
+/// nothing to regenerate.
+///
+/// This is the ONE place the atomic-mutate path emits an error to stderr; the
+/// returned variant — not a marker recovered by `downcast` — is what keeps
+/// `main` from printing it a second time.
 fn finalize_mutate(
     result: Result<AtomicMutateReceipt, AtomicMutateError>,
     json: bool,
-) -> Result<()> {
-    handle_result(result, json)
+) -> Result<(), CliError> {
+    match result {
+        Ok(receipt) => {
+            print_receipt(&receipt, json);
+            Ok(())
+        }
+        Err(error) => {
+            print_error(&error, json);
+            Err(CliError::AlreadyReported)
+        }
+    }
 }
 
-pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut entry_id: Option<String> = None;
     let mut decision_summary: Option<String> = None;
     let mut changes_file: Option<String> = None;
@@ -3033,7 +3039,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let entry_id = entry_id.ok_or_else(|| anyhow!("--entry-id arg required"))?;
@@ -3097,7 +3103,7 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus> {
 /// `add-inventory-entry --id <ID> --status active|deprecated|reserved \
 ///   [--section §<N>] [--source <text>] [--reason <text>] \
 ///   [--sidecar <path>] [--json]`
-pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut inventory_id: Option<String> = None;
     let mut status_str: Option<String> = None;
     let mut section_ref: Option<String> = None;
@@ -3147,7 +3153,7 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
@@ -3185,7 +3191,7 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
 ///
 /// `--reason` semantics: omitted = preserve existing; supplied = overwrite
 /// (empty string clears).
-pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut inventory_id: Option<String> = None;
     let mut status_str: Option<String> = None;
     let mut reason: Option<String> = None;
@@ -3219,7 +3225,7 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
@@ -3253,7 +3259,10 @@ pub fn cmd_set_inventory_status(workspace_root: &Path, args: &[String]) -> Resul
 ///   [--sidecar <path>] [--json]`
 ///
 /// Exactly one of `--section` or `--clear` is required.
-pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_set_inventory_section_ref(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
     let mut inventory_id: Option<String> = None;
     let mut section_ref: Option<String> = None;
     let mut clear = false;
@@ -3281,12 +3290,12 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
     if section_ref.is_some() == clear {
-        bail!("exactly one of --section or --clear must be supplied");
+        return Err(anyhow!("exactly one of --section or --clear must be supplied").into());
     }
     let cleaned: Option<String> = section_ref.as_deref().map(strip_section_prefix);
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
@@ -3298,7 +3307,7 @@ pub fn cmd_set_inventory_section_ref(workspace_root: &Path, args: &[String]) -> 
 }
 
 /// `remove-inventory-entry --id <ID> --reason <text> [--sidecar <path>] [--json]`
-pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut inventory_id: Option<String> = None;
     let mut reason: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -3324,7 +3333,7 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
@@ -3351,7 +3360,7 @@ pub fn cmd_remove_inventory_entry(workspace_root: &Path, args: &[String]) -> Res
 /// mutates publishable_* in place. The output prints both the per-hit
 /// summary and the ready-to-paste `[[publishable_override_ledger]]` draft
 /// blocks so authors do not hand-author SHA256 anchors.
-pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
+pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut pattern: Option<String> = None;
     let mut replacement: Option<String> = None;
     let mut mode = mnemosyne_atomic::RedactMode::Literal;
@@ -3404,11 +3413,15 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
                     "carry_forward_bullets" | "publishable_carry_forward_bullets" => {
                         mnemosyne_atomic::RedactScope::CarryForwardBullets
                     }
-                    other => bail!(
-  "unknown --scope `{}` — expected: all | decision_summary | changes_bullets \
-   | verification_bullets | impact_refs | carry_forward_bullets",
-  other
-  ),
+                    other => {
+                        return Err(anyhow!(
+                            "unknown --scope `{}` — expected: all | decision_summary \
+                             | changes_bullets | verification_bullets | impact_refs \
+                             | carry_forward_bullets",
+                            other
+                        )
+                        .into())
+                    }
                 };
             }
             "--dry-run" => dry_run = true,
@@ -3440,7 +3453,7 @@ pub fn cmd_redact_term(workspace_root: &Path, args: &[String]) -> Result<()> {
                 )
             }
             "--json" => json = true,
-            other => bail!("unknown flag `{}`", other),
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
     }
     let req = mnemosyne_atomic::RedactRequest {
