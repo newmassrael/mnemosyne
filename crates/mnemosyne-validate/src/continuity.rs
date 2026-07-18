@@ -687,16 +687,22 @@ pub struct NarrativeRule {
 impl NarrativeRule {
     /// Every predicate id this rule references: the primary `predicate` (the
     /// left operand for an interval rule) plus an interval rule's `right`
-    /// operand and predicate-bound (Round 489). The existence check (one site)
-    /// fail-louds on any that is not registered, so no ref escapes the typo
-    /// guard.
+    /// operand and predicate-bound (Round 489) and a transition rule's
+    /// `adjacency` edge-source predicate (Round 697). The existence check (one
+    /// site) fail-louds on any that is not registered, so no ref escapes the
+    /// typo guard — a transition naming a missing `adjacency` predicate would
+    /// otherwise derive an EMPTY allowed set and silently reject every step.
     fn referenced_predicates(&self) -> Vec<&str> {
         let mut refs = vec![self.predicate.as_str()];
-        if let NarrativeRuleSpec::Interval { right, bound, .. } = &self.spec {
-            refs.push(right.as_str());
-            if let IntervalBound::Predicate(p) = bound {
-                refs.push(p.as_str());
+        match &self.spec {
+            NarrativeRuleSpec::Interval { right, bound, .. } => {
+                refs.push(right.as_str());
+                if let IntervalBound::Predicate(p) = bound {
+                    refs.push(p.as_str());
+                }
             }
+            NarrativeRuleSpec::Transition { adjacency, .. } => refs.push(adjacency.as_str()),
+            NarrativeRuleSpec::Exclusive { .. } => {}
         }
         refs
     }
@@ -716,12 +722,26 @@ pub enum NarrativeRuleSpec {
     /// holder restated ≠ two holders).
     Exclusive { per: ExclusiveKey },
     /// Rides the in-frame SUCCESSION edge: successor and predecessor both
-    /// typed with the same subject + predicate → `(from, to)` must be a
-    /// declared transition. Succession IS the declared adjacency —
-    /// "adjacent" over a partial canon order is ill-defined, so the rule
-    /// deliberately sees ONLY chained pairs; unchained same-subject pairs
-    /// surface as `unchained_state_pairs`, never gated.
-    Transition { allowed: Vec<[String; 2]> },
+    /// typed with the same subject + predicate → `(from, to)` must be an
+    /// adjacent step. Succession IS the declared adjacency — "adjacent" over
+    /// a partial canon order is ill-defined, so the rule deliberately sees
+    /// ONLY chained pairs; unchained same-subject pairs surface as
+    /// `unchained_state_pairs`, never gated.
+    ///
+    /// Round 697 (store-native map, DESIGN R696 sec 3) — the allowed step set
+    /// is no longer a file-carried `[[from,to],…]` list; `adjacency` names the
+    /// PREDICATE whose facts ARE the edges (e.g. `adjacent`), read from the
+    /// store. The map's edges are store facts, the rule is the declaration —
+    /// "룰로 박아". One source for the edge set: the store.
+    ///
+    /// `undirected` is the edge SYMMETRY, made explicit (Round 697 build —
+    /// most real transition rules are one-way STATE MACHINES: `alive → dead`,
+    /// `operational → destroyed`, `machine → deviant` are irreversible, and a
+    /// blanket symmetrize would silently admit the reverse — resurrection). So
+    /// directed by default: an `adjacent(a,b)` fact admits ONLY (a,b). When
+    /// `undirected` (the MAP), it admits BOTH (a,b) and (b,a), so one fact per
+    /// edge is the SSOT (no reverse duplicate to drift).
+    Transition { adjacency: String, undirected: bool },
     /// Scalar/arithmetic relation over numeric typed legs (Round 489, design
     /// sec 7.20 — depth-ladder rung 1). The rule's `predicate` is the LEFT
     /// operand; `right` is the second operand; both are scalar predicates
@@ -856,10 +876,10 @@ struct NarrativeRulesWire {
     rules: Vec<NarrativeRuleWire>,
 }
 
-/// Wire form of one rule — flat, `deny_unknown_fields`. `per` and `allowed`
+/// Wire form of one rule — flat, `deny_unknown_fields`. `per` and `adjacency`
 /// are optional here and checked against `class` in
 /// [`narrative_rule_from_wire`], so a transition carrying `per` (the S7
-/// miss) or an exclusive carrying `allowed` rejects rather than silently
+/// miss) or an exclusive carrying `adjacency` rejects rather than silently
 /// dropping the stray leg, and a missing leg is named.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -869,8 +889,17 @@ struct NarrativeRuleWire {
     class: RuleClass,
     #[serde(default)]
     per: Option<ExclusiveKey>,
+    /// The edge-source predicate for a transition rule (Round 697): its facts
+    /// ARE the adjacency. Replaced the file-carried `allowed` pair list when
+    /// the map went store-native.
     #[serde(default)]
-    allowed: Option<Vec<[String; 2]>>,
+    adjacency: Option<String>,
+    /// Transition edge symmetry (Round 697): `true` = undirected (an
+    /// `adjacent(a,b)` fact admits both directions — the map); absent/`false`
+    /// = directed one-way (a state machine). Belongs to a transition rule; a
+    /// stray one on exclusive/interval rejects.
+    #[serde(default)]
+    undirected: Option<bool>,
     /// Interval legs (Round 489) — present only for `class: interval`; a
     /// stray one on exclusive/transition rejects (the leg/class coherence
     /// matrix, the R443 lesson).
@@ -931,7 +960,8 @@ pub(crate) fn narrative_rules_wire_sample_json() -> serde_json::Value {
             predicate: "p".into(),
             class: RuleClass::Interval,
             per: Some(ExclusiveKey::Object),
-            allowed: Some(vec![["a".into(), "b".into()]]),
+            adjacency: Some("adjacent".into()),
+            undirected: Some(true),
             right: Some("q".into()),
             op: Some(IntervalOp::Ge),
             bound: Some(IntervalBoundWire {
@@ -1008,12 +1038,7 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
     }
     let spec = match w.class {
         RuleClass::Exclusive => {
-            if w.allowed.is_some() {
-                return Err(format!(
-                    "narrative-rules: exclusive rule `{id}` carries an `allowed` leg \
-                     (that field belongs to a transition rule)"
-                ));
-            }
+            forbid_transition_legs(&id, "exclusive", &w)?;
             forbid_interval_legs(&id, "exclusive", &w)?;
             let per = w.per.ok_or_else(|| {
                 format!("narrative-rules: exclusive rule `{id}` is missing its `per` leg")
@@ -1028,22 +1053,26 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
                 ));
             }
             forbid_interval_legs(&id, "transition", &w)?;
-            let raw = w.allowed.ok_or_else(|| {
-                format!("narrative-rules: transition rule `{id}` is missing its `allowed` legs")
-            })?;
-            let mut allowed: Vec<[String; 2]> = Vec::with_capacity(raw.len());
-            for pair in raw {
-                let from = pair[0].trim().to_string();
-                let to = pair[1].trim().to_string();
-                if from.is_empty() || to.is_empty() {
-                    return Err(format!(
-                        "narrative-rules: rule `{id}` has a blank leg in an allowed \
-                         transition pair"
-                    ));
-                }
-                allowed.push([from, to]);
+            let adjacency = w
+                .adjacency
+                .ok_or_else(|| {
+                    format!(
+                        "narrative-rules: transition rule `{id}` is missing its `adjacency` \
+                         edge-source predicate (Round 697 store-native map)"
+                    )
+                })?
+                .trim()
+                .to_string();
+            if adjacency.is_empty() {
+                return Err(format!(
+                    "narrative-rules: transition rule `{id}` has a blank `adjacency` predicate"
+                ));
             }
-            NarrativeRuleSpec::Transition { allowed }
+            let undirected = w.undirected.unwrap_or(false);
+            NarrativeRuleSpec::Transition {
+                adjacency,
+                undirected,
+            }
         }
         RuleClass::Interval => {
             if w.per.is_some() {
@@ -1052,12 +1081,7 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
                      (that leg belongs to an exclusive rule)"
                 ));
             }
-            if w.allowed.is_some() {
-                return Err(format!(
-                    "narrative-rules: interval rule `{id}` carries an `allowed` leg \
-                     (that field belongs to a transition rule)"
-                ));
-            }
+            forbid_transition_legs(&id, "interval", &w)?;
             let right = w
                 .right
                 .ok_or_else(|| {
@@ -1089,12 +1113,26 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
 
 /// Reject a stray interval leg on a non-interval rule (Round 489) — the
 /// leg/class coherence matrix extended to `right` / `op` / `bound`, symmetric
-/// to how `per` and `allowed` already reject on the wrong class (R443 lesson).
+/// to how `per` and `adjacency` already reject on the wrong class (R443 lesson).
 fn forbid_interval_legs(id: &str, class: &str, w: &NarrativeRuleWire) -> Result<(), String> {
     if w.right.is_some() || w.op.is_some() || w.bound.is_some() {
         return Err(format!(
             "narrative-rules: {class} rule `{id}` carries an interval leg \
              (`right` / `op` / `bound` belong to an interval rule)"
+        ));
+    }
+    Ok(())
+}
+
+/// Reject a stray transition leg on a non-transition rule (Round 697) — the
+/// leg/class coherence matrix for `adjacency` / `undirected`, symmetric to
+/// `forbid_interval_legs` (the R443 lesson: a stray leg rejects, never
+/// silently drops).
+fn forbid_transition_legs(id: &str, class: &str, w: &NarrativeRuleWire) -> Result<(), String> {
+    if w.adjacency.is_some() || w.undirected.is_some() {
+        return Err(format!(
+            "narrative-rules: {class} rule `{id}` carries a transition leg \
+             (`adjacency` / `undirected` belong to a transition rule)"
         ));
     }
     Ok(())
@@ -2584,10 +2622,32 @@ pub fn scan_continuity(
                 );
                 report.rule_unordered_pairs += unordered.len();
             }
-            NarrativeRuleSpec::Transition { allowed } => {
-                let allowed: BTreeSet<(&str, &str)> = allowed
-                    .iter()
-                    .map(|pair| (pair[0].as_str(), pair[1].as_str()))
+            NarrativeRuleSpec::Transition {
+                adjacency,
+                undirected,
+            } => {
+                // Round 697 (store-native map): the allowed step set is DERIVED
+                // from the store's `adjacency`-predicate facts, not a file list.
+                // An `adjacent(a,b)` fact admits (a,b); when `undirected` (the
+                // MAP) it also admits (b,a), so one fact per edge is the SSOT.
+                // Directed by default — a one-way state machine (`alive → dead`)
+                // must NOT admit the reverse. One source for the edge set: the
+                // store. Flat, un-scoped (as the file `allowed` was) — the
+                // present single-map ground-truth case; branch-scoped adjacency
+                // is deferred (R696 review finding #6, not future-proofed here).
+                let allowed: BTreeSet<(&str, &str)> = facts
+                    .values()
+                    .filter_map(|f| f.typed.as_ref())
+                    .filter(|t| t.predicate == *adjacency)
+                    .flat_map(|t| {
+                        let a = t.subject.as_str();
+                        let b = typed_object_key(&t.object);
+                        if *undirected {
+                            vec![(a, b), (b, a)]
+                        } else {
+                            vec![(a, b)]
+                        }
+                    })
                     .collect();
                 // The gated half: every typed succession edge with this
                 // predicate and one subject must step inside `allowed`.
@@ -6228,17 +6288,42 @@ mod tests {
         }
     }
 
-    fn transition_rule(id: &str, predicate: &str, allowed: &[(&str, &str)]) -> NarrativeRule {
+    fn transition_rule(
+        id: &str,
+        predicate: &str,
+        adjacency: &str,
+        undirected: bool,
+    ) -> NarrativeRule {
         NarrativeRule {
             id: id.to_string(),
             predicate: predicate.to_string(),
             spec: NarrativeRuleSpec::Transition {
-                allowed: allowed
-                    .iter()
-                    .map(|(a, b)| [a.to_string(), b.to_string()])
-                    .collect(),
+                adjacency: adjacency.to_string(),
+                undirected,
             },
         }
+    }
+
+    /// Author the undirected edges a transition rule reads (Round 697): one
+    /// `adjacency(a, b)` fact per pair, under the `adjacency` predicate. The
+    /// eval symmetrizes, so only the forward direction need be authored. The
+    /// object leg is a scalar VALUE (matching the `at()` state fixtures);
+    /// `derived_registries` registers the predicate as `scalar` from it.
+    fn adjacency_facts(adjacency: &str, pairs: &[(&str, &str)]) -> Vec<FactImport> {
+        pairs
+            .iter()
+            .enumerate()
+            .map(|(i, (a, b))| {
+                typed_fact(
+                    &format!("{adjacency}-edge-{i}"),
+                    "gt",
+                    "ch-1",
+                    a,
+                    adjacency,
+                    at(b),
+                )
+            })
+            .collect()
     }
 
     /// A correctly chained location arc — including an A→B→A revisit shape —
@@ -6420,16 +6505,25 @@ mod tests {
         s2.supersedes_in_frame = Some("s1".to_string());
         let mut bad = typed_fact("bad", "gt", "ch-3", "lucy", "life-status", at("alive"));
         bad.supersedes_in_frame = Some("s2".to_string());
-        let store = store_with(vec![
+        let mut facts = vec![
             typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
             s2,
             bad,
-        ]);
+        ];
+        // Directed one-way arc (alive → dead → undead): the edges are store
+        // facts under `life-adjacent`, read directed (undirected = false), so
+        // the reverse dead → alive is NOT admitted (death is one-way).
+        facts.extend(adjacency_facts(
+            "life-adjacent",
+            &[("alive", "dead"), ("dead", "undead")],
+        ));
+        let store = store_with(facts);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let rules = [transition_rule(
             "life",
             "life-status",
-            &[("alive", "dead"), ("dead", "undead")],
+            "life-adjacent",
+            false,
         )];
         let report = scan_continuity(&store, &order, &rules).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
@@ -6456,6 +6550,81 @@ mod tests {
         assert_eq!(report.unchained_state_pairs, 0);
     }
 
+    /// Round 697 (store-native map): an UNDIRECTED transition derives its
+    /// allowed steps from `adjacent` STORE FACTS — one entity fact per edge,
+    /// symmetrized. A step along a stored edge passes in BOTH directions; a
+    /// step to a non-adjacent place is caught. The map's roads are facts, not
+    /// a file `allowed` list — the 룰로 박아 core.
+    #[test]
+    fn transition_undirected_reads_adjacent_facts_both_ways() {
+        // The map is a line: village — dike — dyke-mouth. ONE fact per edge,
+        // entity objects (the real place-to-place shape).
+        let edges = [("ent-village", "ent-dike"), ("ent-dike", "ent-dyke-mouth")];
+        let adjacent: Vec<FactImport> = edges
+            .iter()
+            .enumerate()
+            .map(|(i, (a, b))| {
+                typed_fact(
+                    &format!("adjacent-edge-{i}"),
+                    "gt",
+                    "ch-1",
+                    a,
+                    "adjacent",
+                    holds(b),
+                )
+            })
+            .collect();
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true)];
+
+        // jiun walks village -> dike (forward along the edge), then dike ->
+        // village (the REVERSE of the same one fact). Undirected admits both.
+        let mut step1 = typed_fact("p1", "gt", "ch-2", "jiun", "pred-at", holds("ent-dike"));
+        step1.supersedes_in_frame = Some("p0".to_string());
+        let mut back = typed_fact("p2", "gt", "ch-3", "jiun", "pred-at", holds("ent-village"));
+        back.supersedes_in_frame = Some("p1".to_string());
+        let mut facts = vec![
+            typed_fact("p0", "gt", "ch-1", "jiun", "pred-at", holds("ent-village")),
+            step1,
+            back,
+        ];
+        facts.extend(adjacent.clone());
+        let store = store_with(facts);
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.is_empty(),
+            "an undirected edge admits both ways: {:?}",
+            report.violations
+        );
+
+        // A jump to a non-adjacent place (village -> dyke-mouth, no direct
+        // edge) is caught — the roads gate movement.
+        let mut jump = typed_fact(
+            "j1",
+            "gt",
+            "ch-2",
+            "jiun",
+            "pred-at",
+            holds("ent-dyke-mouth"),
+        );
+        jump.supersedes_in_frame = Some("j0".to_string());
+        let mut facts2 = vec![
+            typed_fact("j0", "gt", "ch-1", "jiun", "pred-at", holds("ent-village")),
+            jump,
+        ];
+        facts2.extend(adjacent);
+        let store2 = store_with(facts2);
+        let report2 = scan_continuity(&store2, &order, &rules).unwrap();
+        assert_eq!(report2.violations.len(), 1, "{:?}", report2.violations);
+        match &report2.violations[0] {
+            ContinuityViolation::RuleTransitionInvalid { from, to, .. } => {
+                assert_eq!(from, "ent-village");
+                assert_eq!(to, "ent-dyke-mouth");
+            }
+            v => panic!("wrong violation: {v:?}"),
+        }
+    }
+
     /// Fork world (R441 probe 6): a what-if branch keeps its own state
     /// without colliding with main's post-fork facts, and the unchained
     /// honesty count is WORLD-scoped — the inherited-vs-fork pair (s1 on
@@ -6465,21 +6634,25 @@ mod tests {
     fn rule_fork_world_scoping_and_unchained_count() {
         let mut w1 = typed_fact("w1", "gt", "ch-2", "lucy", "life-status", at("alive"));
         w1.branch = Some("lucy-lives".to_string());
-        let store = store_with_forks(
-            vec![
-                typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
-                // Main continues without the fork: lucy dies at ch-2.
-                {
-                    let mut s2 = typed_fact("s2", "gt", "ch-2", "lucy", "life-status", at("dead"));
-                    s2.supersedes_in_frame = Some("s1".to_string());
-                    s2
-                },
-                w1,
-            ],
-            &[("lucy-lives", MAIN_BRANCH, "ch-1")],
-        );
+        let mut facts = vec![
+            typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
+            // Main continues without the fork: lucy dies at ch-2.
+            {
+                let mut s2 = typed_fact("s2", "gt", "ch-2", "lucy", "life-status", at("dead"));
+                s2.supersedes_in_frame = Some("s1".to_string());
+                s2
+            },
+            w1,
+        ];
+        facts.extend(adjacency_facts("life-adjacent", &[("alive", "dead")]));
+        let store = store_with_forks(facts, &[("lucy-lives", MAIN_BRANCH, "ch-1")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let rules = [transition_rule("life", "life-status", &[("alive", "dead")])];
+        let rules = [transition_rule(
+            "life",
+            "life-status",
+            "life-adjacent",
+            false,
+        )];
         let report = scan_continuity(&store, &order, &rules).unwrap();
         // No violation: w1 has no succession edge (fork-vs-main is never a
         // transition), and main's own chain is allowed.
@@ -6559,7 +6732,7 @@ mod tests {
             r#"{"schema":"narrative-rules/v1","comment":"dogfood shape","rules":[
                 {"id":"loc","class":"exclusive","predicate":"at-location","per":"subject"},
                 {"id":"life","class":"transition","predicate":"life-status",
-                 "allowed":[["alive","dead"]]}
+                 "adjacency":"life-adjacent","undirected":true}
             ]}"#,
         );
         let file = load_narrative_rules(&ok, None).unwrap();
@@ -6575,12 +6748,12 @@ mod tests {
             "dup.json",
             r#"{"rules":[
                 {"id":"r","class":"exclusive","predicate":"p","per":"subject"},
-                {"id":"r","class":"transition","predicate":"q","allowed":[]}
+                {"id":"r","class":"transition","predicate":"q","adjacency":"q-adj"}
             ]}"#,
         );
         let err = load_narrative_rules(&dup, None).unwrap_err();
         assert!(err.contains("duplicate rule id"), "{err}");
-        // Blank id / blank predicate / blank transition leg reject.
+        // Blank id / blank predicate / blank `adjacency` reject.
         let blank_id = write(
             "blank-id.json",
             r#"{"rules":[{"id":" ","class":"exclusive","predicate":"p","per":"subject"}]}"#,
@@ -6595,13 +6768,12 @@ mod tests {
         assert!(load_narrative_rules(&blank_pred, None)
             .unwrap_err()
             .contains("blank predicate"));
-        let blank_leg = write(
-            "blank-leg.json",
-            r#"{"rules":[{"id":"r","class":"transition","predicate":"p","allowed":[["a",""]]}]}"#,
+        let blank_adjacency = write(
+            "blank-adjacency.json",
+            r#"{"rules":[{"id":"r","class":"transition","predicate":"p","adjacency":"  "}]}"#,
         );
-        assert!(load_narrative_rules(&blank_leg, None)
-            .unwrap_err()
-            .contains("blank leg"));
+        let err = load_narrative_rules(&blank_adjacency, None).unwrap_err();
+        assert!(err.contains("blank") && err.contains("adjacency"), "{err}");
         // An unknown class tag is a parse error (serde-tagged, fail-loud).
         let bad_class = write(
             "bad-class.json",
@@ -6638,19 +6810,19 @@ mod tests {
         let s7 = write(
             "s7.json",
             r#"{"rules":[{"id":"r","class":"transition","predicate":"p",
-                "per":"subject","allowed":[["a","b"]]}]}"#,
+                "per":"subject","adjacency":"a"}]}"#,
         );
         let err = load_narrative_rules(&s7, None).unwrap_err();
         assert!(err.contains("transition") && err.contains("per"), "{err}");
-        // Symmetric: an `allowed` leg on an EXCLUSIVE rule.
-        let stray_allowed = write(
-            "stray-allowed.json",
+        // Symmetric: an `adjacency` leg on an EXCLUSIVE rule (Round 697).
+        let stray_adjacency = write(
+            "stray-adjacency.json",
             r#"{"rules":[{"id":"r","class":"exclusive","predicate":"p",
-                "per":"subject","allowed":[["a","b"]]}]}"#,
+                "per":"subject","adjacency":"a"}]}"#,
         );
-        let err = load_narrative_rules(&stray_allowed, None).unwrap_err();
+        let err = load_narrative_rules(&stray_adjacency, None).unwrap_err();
         assert!(
-            err.contains("exclusive") && err.contains("allowed"),
+            err.contains("exclusive") && err.contains("adjacency"),
             "{err}"
         );
         // An unknown RULE-level key (not just a misplaced known one).
@@ -6686,11 +6858,11 @@ mod tests {
         assert!(load_narrative_rules(&no_per, None)
             .unwrap_err()
             .contains("missing"));
-        let no_allowed = write(
-            "no-allowed.json",
+        let no_adjacency = write(
+            "no-adjacency.json",
             r#"{"rules":[{"id":"r","class":"transition","predicate":"p"}]}"#,
         );
-        assert!(load_narrative_rules(&no_allowed, None)
+        assert!(load_narrative_rules(&no_adjacency, None)
             .unwrap_err()
             .contains("missing"));
     }
@@ -6724,11 +6896,14 @@ mod tests {
     }
 
     /// R450 session review — whitespace normalization: the loader trims
-    /// id/predicate/transition legs INTO the stored values, so a padded
+    /// id/predicate/`adjacency` INTO the stored values, so a padded
     /// declaration still arms its rule (pre-fix it passed the trimmed
     /// boundary check yet matched no typed fact — silently disarmed); a
     /// programmatic rule that skipped the loader fails the EXACT registry
-    /// compare loud.
+    /// compare loud. Round 697 — the trimmed transition leg is now the
+    /// `adjacency` predicate name (the file `allowed` pairs are gone); an
+    /// untrimmed one would compare against no edge fact and derive an empty
+    /// allowed set.
     #[test]
     fn rules_whitespace_normalizes_at_load_and_padded_programmatic_fails_loud() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -6736,21 +6911,33 @@ mod tests {
         std::fs::write(
             &padded,
             r#"{"rules":[{"id":" life ","class":"transition","predicate":" life-status",
-                "allowed":[[" alive","dead "]]}]}"#,
+                "adjacency":" life-adjacent "}]}"#,
         )
         .unwrap();
         let file = load_narrative_rules(&padded, None).unwrap();
         assert_eq!(file.rules[0].id, "life");
         assert_eq!(file.rules[0].predicate, "life-status");
+        match &file.rules[0].spec {
+            NarrativeRuleSpec::Transition {
+                adjacency,
+                undirected,
+            } => {
+                assert_eq!(adjacency, "life-adjacent");
+                assert!(!undirected);
+            }
+            s => panic!("wrong spec: {s:?}"),
+        }
         let mut s2 = typed_fact("s2", "gt", "ch-3", "lucy", "life-status", at("undead"));
         s2.supersedes_in_frame = Some("s1".to_string());
-        let store = store_with(vec![
+        let mut facts = vec![
             typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
             s2,
-        ]);
+        ];
+        facts.extend(adjacency_facts("life-adjacent", &[("alive", "dead")]));
+        let store = store_with(facts);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        // The normalized rule is ARMED: alive->undead is outside the
-        // normalized allowed set [["alive","dead"]] and must fire.
+        // The normalized rule is ARMED: alive->undead is outside the derived
+        // allowed set {(alive,dead)} and must fire.
         let report = scan_continuity(&store, &order, &file.rules).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
         // A padded predicate that bypassed the loader: exact compare, loud.
@@ -6760,7 +6947,8 @@ mod tests {
             &[transition_rule(
                 "life",
                 " life-status",
-                &[("alive", "dead")],
+                "life-adjacent",
+                false,
             )],
         )
         .unwrap_err();
@@ -6821,17 +7009,21 @@ mod tests {
                 .collect()
         };
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let edges = [
+            ("alive", "dead"),
+            ("dead", "undead"),
+            ("undead", "destroyed"),
+        ];
         let rules = [transition_rule(
             "life",
             "life-status",
-            &[
-                ("alive", "dead"),
-                ("dead", "undead"),
-                ("undead", "destroyed"),
-            ],
+            "life-adjacent",
+            false,
         )];
         // Fully chained correct arc: zero unchained, zero violations.
-        let store = store_with(chain4(["alive", "dead", "undead", "destroyed"]));
+        let mut arc = chain4(["alive", "dead", "undead", "destroyed"]);
+        arc.extend(adjacency_facts("life-adjacent", &edges));
+        let store = store_with(arc);
         let report = scan_continuity(&store, &order, &rules).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         assert_eq!(report.unchained_state_pairs, 0);
@@ -6843,14 +7035,16 @@ mod tests {
         middle.supersedes_in_frame = Some("s1".to_string());
         let mut s3 = typed_fact("s3", "gt", "ch-3", "lucy", "life-status", at("dead"));
         s3.supersedes_in_frame = Some("m".to_string());
-        let store = store_with(vec![
+        let mut facts = vec![
             typed_fact("s1", "gt", "ch-1", "lucy", "life-status", at("alive")),
             middle,
             s3,
             // Genuinely unconnected same-subject state fact: the only pair
             // class that counts.
             typed_fact("loose", "gt", "ch-4", "lucy", "life-status", at("undead")),
-        ]);
+        ];
+        facts.extend(adjacency_facts("life-adjacent", &edges));
+        let store = store_with(facts);
         let report = scan_continuity(&store, &order, &rules).unwrap();
         // (s1,s3) path-connected through m -> not counted; (s1,loose),
         // (s3,loose) disconnected -> 2.

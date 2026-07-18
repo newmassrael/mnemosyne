@@ -334,9 +334,11 @@ pub fn describe_schema() -> SchemaContract {
              string (unique — it names the finding), \"predicate\": <predicate id> (the KEYED / \
              left typed leg, for every class), \"class\": \"exclusive\" | \"transition\" | \
              \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\"; \
-             transition → \"allowed\": [ [from, to], … ] (OBJECT-KEY pairs: a registered entity \
-             id when the predicate's `object_kind` is `entity` — this is how movement between \
-             PLACES is gated — else the scalar value); interval → \
+             transition → \"adjacency\": <predicate id> (Round 697: its facts ARE the edges \
+             — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
+             store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
+             (true = an edge admits both directions, the map; absent/false = one-way, a state \
+             machine like `alive → dead`); interval → \
              \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
              \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
              bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
@@ -1001,20 +1003,31 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
             RuleClass::Transition => RuleClassSpec {
                 class: "transition",
                 description: "Rides the in-frame succession edge: a successor and predecessor \
-                    both typed with the same subject+predicate must form a declared `(from, \
-                    to)` transition. Succession IS the declared adjacency; unchained \
+                    both typed with the same subject+predicate must form an adjacent `(from, \
+                    to)` step. Succession IS the declared adjacency; unchained \
                     same-subject pairs are surfaced, never gated.",
-                parameters: vec![FieldSpec {
-                    name: "allowed",
-                    ty: "[from, to][] (object-key pairs)",
-                    required: true,
-                    description: "The permitted state transitions. Each leg is an OBJECT KEY, \
-                        matched against the same string the gate compares: a registered ENTITY \
-                        ID when the predicate's `object_kind` is `entity` — which is how \
-                        movement between PLACES is gated — or the scalar value when it is \
-                        `scalar`. A predicate's object shape is fixed by its registration, so \
-                        one rule's legs are all one shape.",
-                }],
+                parameters: vec![
+                    FieldSpec {
+                        name: "adjacency",
+                        ty: "predicate id (the edge source)",
+                        required: true,
+                        description: "Round 697 (store-native map): the predicate whose FACTS \
+                            are the edges — `adjacent(a, b)`, read from the store. This is how \
+                            movement between PLACES is gated; the edges are store facts, not a \
+                            file list. Each edge's legs are OBJECT KEYS (a registered entity id \
+                            when the adjacency predicate's `object_kind` is `entity`, else the \
+                            scalar value).",
+                    },
+                    FieldSpec {
+                        name: "undirected",
+                        ty: "bool (default false)",
+                        required: false,
+                        description: "Round 697: edge symmetry. true = an `adjacent(a, b)` fact \
+                            admits BOTH (a, b) and (b, a) — the undirected MAP, so one fact per \
+                            edge is the SSOT. Absent/false = one-way, a state machine (`alive → \
+                            dead` must not admit the reverse).",
+                    },
+                ],
             },
             RuleClass::Interval => RuleClassSpec {
                 class: "interval",
