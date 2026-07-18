@@ -509,7 +509,8 @@ fn store_native_map_transition_gates_end_to_end() {
             "entity_kinds": { "place": {}, "character": {} },
             "entities": {
                 "p-a": { "kind": "place" }, "p-b": { "kind": "place" },
-                "p-c": { "kind": "place" }, "hero": { "kind": "character" }
+                "p-c": { "kind": "place" }, "p-d": { "kind": "place" },
+                "hero": { "kind": "character" }
             },
             "predicates": {
                 "adjacent": { "object_kind": "entity" },
@@ -577,6 +578,24 @@ fn store_native_map_transition_gates_end_to_end() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
     assert!(out.status.success(), "adjacent walk passes: {v}");
     assert_eq!(v["violation_count"], 0);
+
+    // F — a disconnected map: the island {p-c, p-d} is unreachable from
+    // {p-a, p-b}. The undirected connectivity gate (G4, R702) flags
+    // map_disconnected and exits 1.
+    write_rules(true);
+    write_store(serde_json::json!({
+        "e-ab": edge("p-a", "p-b"), "e-cd": edge("p-c", "p-d"),
+    }));
+    let out = run(
+        ws,
+        &["validate-continuity", "--severity", "reject", "--json"],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert!(!out.status.success(), "disconnected map gates: {v}");
+    assert!(
+        kinds(&v).contains(&"map_disconnected".to_string()),
+        "connectivity gate fires: {v}"
+    );
 
     // B — a non-adjacent jump a→c (no a-c edge): gated, exit 1.
     write_store(serde_json::json!({

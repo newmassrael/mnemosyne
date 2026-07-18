@@ -28,6 +28,11 @@ use crate::continuity::ContinuityViolation;
 pub struct ViolationLocus {
     /// The fact id(s) at fault — the primary one first.
     pub facts: Vec<String>,
+    /// The entity id(s) at fault, when the violation is anchored on entities
+    /// rather than a single fact (Round 702) — e.g. a graph-level map violation
+    /// naming the unreachable places. Empty for fact-anchored violations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entities: Vec<String>,
     /// The fact FIELD implicated, when a single field is (`evidence`,
     /// `supersedes_in_frame`, `pays_off`, `branch`, `canon_to`, `typed`, …).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -344,6 +349,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             "rule_exclusive_overlap",
             ViolationLocus {
                 facts: vec![fact_a.clone(), fact_b.clone()],
+                entities: Vec::new(),
                 field: Some("typed".to_string()),
                 frame: Some(frame.clone()),
                 branch: Some(branch.clone()),
@@ -408,6 +414,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             "rule_interval_violation",
             ViolationLocus {
                 facts: vec![left_fact.clone(), right_fact.clone()],
+                entities: Vec::new(),
                 field: Some("typed".to_string()),
                 frame: Some(frame.clone()),
                 branch: Some(branch.clone()),
@@ -465,6 +472,32 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             format!(
                 "undirected transition rule `{rule}`: `{predicate}` holds both directions of edge \
                  `{a}` <-> `{b}` (facts `{fact_a}`, `{fact_b}`)"
+            ),
+        ),
+        ContinuityViolation::MapDisconnected {
+            rule,
+            predicate,
+            reached,
+            total,
+            unreached,
+        } => action(
+            "map_disconnected",
+            ViolationLocus {
+                entities: unreached.clone(),
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "undirected transition rule `{rule}`: the `{predicate}` map must be a single \
+                 connected component — every place reachable from every other"
+            ),
+            "add an `adjacent` fact linking the unreachable place(s) to the rest of the map, or \
+             remove them if they are not part of it"
+                .to_string(),
+            format!(
+                "undirected transition rule `{rule}`: `{predicate}` map is disconnected — \
+                 {reached}/{total} places reachable, unreachable: {}",
+                unreached.join(", ")
             ),
         ),
     }
@@ -529,6 +562,13 @@ mod tests {
                 a: "ent-dike".into(),
                 b: "ent-village".into(),
             },
+            ContinuityViolation::MapDisconnected {
+                rule: "roads".into(),
+                predicate: "adjacent".into(),
+                reached: 3,
+                total: 5,
+                unreached: vec!["ent-island-cove".into(), "ent-lighthouse".into()],
+            },
         ];
         for v in &samples {
             let a = continuity_actionable(v);
@@ -537,7 +577,12 @@ mod tests {
             assert!(!a.expected.is_empty(), "empty expected for {v:?}");
             assert!(!a.repair_hint.is_empty(), "empty repair for {v:?}");
             assert!(!a.message.is_empty(), "empty message for {v:?}");
-            assert!(!a.locus.facts.is_empty(), "no anchored fact for {v:?}");
+            // A graph-level violation (e.g. MapDisconnected) anchors on entities,
+            // not a single fact — accept either.
+            assert!(
+                !a.locus.facts.is_empty() || !a.locus.entities.is_empty(),
+                "no anchored fact or entity for {v:?}"
+            );
         }
     }
 

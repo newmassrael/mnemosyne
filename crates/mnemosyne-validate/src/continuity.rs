@@ -1365,6 +1365,23 @@ pub enum ContinuityViolation {
         a: String,
         b: String,
     },
+    /// An UNDIRECTED transition rule's `adjacency` graph is NOT a single
+    /// connected component (Round 702, design sec 4.G4) — one or more places are
+    /// unreachable from the rest by any walk (an island off the map). Structural
+    /// (rides `severity`); a derivation over the adjacency facts, re-evaluated
+    /// each scan. Connectivity of an undirected graph is root-independent, so no
+    /// entrance/`outside` node is needed to decide it. Only for an undirected
+    /// (spatial) rule — a directed state machine's reachability is out of scope.
+    MapDisconnected {
+        rule: String,
+        predicate: String,
+        /// Nodes reached from the walk's arbitrary start.
+        reached: usize,
+        /// Total distinct endpoints in the adjacency graph.
+        total: usize,
+        /// The endpoints NOT reached (the island), in store order.
+        unreached: Vec<String>,
+    },
 }
 
 impl ContinuityViolation {
@@ -2708,6 +2725,44 @@ pub fn scan_continuity(
                                     },
                                 );
                             }
+                        }
+                    }
+                    // G4 (Round 702, design sec 4.G4) — the undirected map must
+                    // be a SINGLE connected component; an unreachable place is an
+                    // island off the map. Root-independent for an undirected
+                    // graph, so a walk from ANY one node must reach them all.
+                    // Symmetrize `edges.keys()` (one fact per undirected edge is
+                    // the SSOT, so the reverse leg may be absent) into an
+                    // adjacency list, then DFS from an arbitrary start.
+                    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+                    for &(a, b) in edges.keys() {
+                        adj.entry(a).or_default().push(b);
+                        adj.entry(b).or_default().push(a);
+                    }
+                    if adj.len() > 1 {
+                        let start = *adj.keys().next().unwrap();
+                        let mut seen: BTreeSet<&str> = BTreeSet::new();
+                        let mut stack = vec![start];
+                        while let Some(n) = stack.pop() {
+                            if seen.insert(n) {
+                                stack.extend(adj.get(n).into_iter().flatten().copied());
+                            }
+                        }
+                        if seen.len() < adj.len() {
+                            let unreached: Vec<String> = adj
+                                .keys()
+                                .filter(|n| !seen.contains(*n))
+                                .map(|n| n.to_string())
+                                .collect();
+                            report
+                                .violations
+                                .push(ContinuityViolation::MapDisconnected {
+                                    rule: rule.id.clone(),
+                                    predicate: adjacency.clone(),
+                                    reached: seen.len(),
+                                    total: adj.len(),
+                                    unreached,
+                                });
                         }
                     }
                 }
@@ -6826,6 +6881,61 @@ mod tests {
             "self-loop flagged under a DIRECTED rule too: {:?}",
             report2.violations
         );
+    }
+
+    /// Round 702 (G4) — an undirected map must be a single connected component;
+    /// an island of places unreachable from the rest is flagged, naming the
+    /// unreached nodes. A connected map is clean.
+    #[test]
+    fn adjacency_connectivity_flags_disconnected_map() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // pred-at is the constrained predicate — one inert fact registers it.
+        let anchor = || typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-a"));
+        let undirected = [transition_rule("roads", "pred-at", "adjacent", true)];
+
+        // Connected chain a-b-c: one component, no MapDisconnected.
+        let mut connected = vec![anchor()];
+        connected.extend(adjacency_facts(
+            "adjacent",
+            &[("ent-a", "ent-b"), ("ent-b", "ent-c")],
+        ));
+        let report = scan_continuity(&store_with(connected), &order, &undirected).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapDisconnected { .. })),
+            "connected map must not flag: {:?}",
+            report.violations
+        );
+
+        // Disconnected: a-b PLUS an isolated island c-d.
+        let mut split = vec![anchor()];
+        split.extend(adjacency_facts(
+            "adjacent",
+            &[("ent-a", "ent-b"), ("ent-c", "ent-d")],
+        ));
+        let report = scan_continuity(&store_with(split), &order, &undirected).unwrap();
+        let disc: Vec<_> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::MapDisconnected {
+                    reached,
+                    total,
+                    unreached,
+                    ..
+                } => Some((*reached, *total, unreached.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(disc.len(), 1, "{:?}", report.violations);
+        let (reached, total, unreached) = &disc[0];
+        assert_eq!(*total, 4, "four distinct places in the graph");
+        // DFS starts from the BTreeMap's smallest key (ent-a), reaching {a, b};
+        // the island {ent-c, ent-d} is unreached (deterministic, sorted).
+        assert_eq!(*reached, 2);
+        assert_eq!(unreached, &vec!["ent-c".to_string(), "ent-d".to_string()]);
     }
 
     /// Fork world (R441 probe 6): a what-if branch keeps its own state
