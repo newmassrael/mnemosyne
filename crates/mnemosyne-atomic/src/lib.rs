@@ -227,6 +227,7 @@ fn is_dedicated_verification(v: &mnemosyne_core::VerificationExpectation) -> boo
 /// [`AtomicSection`] so reviewers can verify code citations without
 /// fetching the upstream HTML.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct NormativeExcerpt {
     /// The normative text as it appeared at `source_revision`. Preserved
     /// verbatim — leading/trailing whitespace and newline-only edits are
@@ -2096,6 +2097,7 @@ pub fn add_section(
 /// inline at create — the bulk path's reason to exist (a section's
 /// frozen-anchor moment IS its creation, per RFC-002 FR-1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SectionImport {
     pub section_id: String,
     pub parent_doc: String,
@@ -3536,6 +3538,7 @@ pub fn remove_inventory_entry(
 
 /// One frame entry in the [`FactsManifest`] (and the `add_frame` shape).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FrameImport {
     pub frame_id: String,
     #[serde(default)]
@@ -3545,6 +3548,7 @@ pub struct FrameImport {
 /// One branch entry in the [`FactsManifest`] (and the `add_branch` shape,
 /// Round 436).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BranchImport {
     pub branch_id: String,
     #[serde(default)]
@@ -3569,6 +3573,7 @@ pub struct BranchImport {
 /// face of a confluence parent edge: the parent world-line + the parent's
 /// merge coordinate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BranchConvergeImport {
     pub branch: String,
     pub at: String,
@@ -3580,6 +3585,7 @@ pub struct BranchConvergeImport {
 /// time, so a stored hash can never start out wrong (offline drift detection
 /// then owns divergence — the R404 content-drift pattern).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FactImport {
     pub fact_id: String,
     pub frame: String,
@@ -3623,6 +3629,7 @@ pub struct FactImport {
 /// declare it in `entity_kinds` (this manifest stages those FIRST) or with
 /// `add_entity_kind` before it is named here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityImport {
     pub entity_id: String,
     #[serde(default)]
@@ -3636,6 +3643,7 @@ pub struct EntityImport {
 /// so one manifest can declare a kind and use it (the frames-before-facts
 /// ordering this manifest already relies on).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityKindImport {
     pub kind_id: String,
     #[serde(default)]
@@ -3647,6 +3655,7 @@ pub struct EntityKindImport {
 /// (`entity` | `scalar`) — unknown tags reject (fail-loud, no silent
 /// default).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PredicateImport {
     pub predicate_id: String,
     pub object_kind: String,
@@ -3657,6 +3666,7 @@ pub struct PredicateImport {
 /// One diegetic surface in a [`DisclosureOverrideImport`] (Round 590) — the
 /// flat manifest form of [`DisclosureSurface`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureSurfaceImport {
     pub scene: String,
     #[serde(default)]
@@ -3667,6 +3677,7 @@ pub struct DisclosureSurfaceImport {
 /// the manifest form of a `set-disclosure` decision. Applied through the SAME
 /// [`apply_disclosure_override`] the standalone setter uses (write-path parity).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureOverrideImport {
     pub fact_id: String,
     /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed fail-loud.
@@ -3684,6 +3695,7 @@ pub struct DisclosureOverrideImport {
 /// the typed-fact invariant. Uses the SAME `apply_disclosure_plan` /
 /// `apply_disclosure_override` cores as the standalone primitives.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosurePlanImport {
     pub telling_id: String,
     /// Default disclosure mode tag; omitted = `withhold` (the plan default).
@@ -3704,6 +3716,7 @@ pub struct DisclosurePlanImport {
 /// `entities` entry plus the typed `facts`, so it is authored through the
 /// existing kinds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FactsManifest {
     #[serde(default)]
     pub frames: Vec<FrameImport>,
@@ -3724,8 +3737,8 @@ pub struct FactsManifest {
 /// The one-line human description of a [`FactsManifest`]'s shape (Round 592) —
 /// single-sourced so the CLI/MCP parse hints cannot drift apart (they had, at
 /// R590: some still said "frames + facts", one omitted `disclosure_plans`).
-pub const FACTS_MANIFEST_SHAPE: &str =
-    "a JSON object with frames / branches / entities / predicates / facts / disclosure_plans arrays";
+pub const FACTS_MANIFEST_SHAPE: &str = "a JSON object with frames / branches / \
+     entity_kinds / entities / predicates / facts / disclosure_plans arrays";
 
 /// Single shared fact builder/validator — both write paths route here
 /// (R305 parity). Enforces the scalar invariants:
@@ -12972,6 +12985,24 @@ mod tests {
                 .collect::<std::collections::HashSet<_>>(),
             "fact_registry_refs must emit every FactRefFacet for a fully-populated fact"
         );
+    }
+
+    // FACTS_MANIFEST_SHAPE is the single-source hint the CLI + MCP parse errors
+    // cite (Round 590); it went stale (omitted `entity_kinds`, Round 690 fix).
+    // This binds it to the type: a field added to FactsManifest that the const
+    // does not name fails here — the const cannot silently drift again.
+    #[test]
+    fn facts_manifest_shape_names_every_field() {
+        // Every field is #[serde(default)], so `{}` deserializes to an all-empty
+        // manifest whose re-serialization carries every key.
+        let empty: FactsManifest = serde_json::from_str("{}").unwrap();
+        let value = serde_json::to_value(&empty).unwrap();
+        for key in value.as_object().unwrap().keys() {
+            assert!(
+                FACTS_MANIFEST_SHAPE.contains(key.as_str()),
+                "FACTS_MANIFEST_SHAPE omits the `{key}` field"
+            );
+        }
     }
 
     #[test]

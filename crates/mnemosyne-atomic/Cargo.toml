@@ -16,6 +16,13 @@ serde_json.workspace = true
 thiserror.workspace = true
 regex.workspace = true
 sha2.workspace = true
+# Round 690 — OPTIONAL, off by default (see mnemosyne-core). The `schemars`
+# feature derives JsonSchema on the manifest / import DTOs and forwards to
+# core's, so the MCP surface types the whole FactsManifest from the one source.
+schemars = { workspace = true, optional = true }
+
+[features]
+schemars = ["dep:schemars", "mnemosyne-core/schemars"]
 
 [dev-dependencies]
 tempfile.workspace = true

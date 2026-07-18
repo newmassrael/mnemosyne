@@ -33,6 +33,12 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Round 690 — JSON Schema derive for the atomic manifest / import DTOs, so the
+# MCP authoring surface hands an agent a real typed schema from the ONE type
+# (no mirror). OPTIONAL + feature-gated everywhere: the default build of every
+# crate stays schemars-free; only mnemosyne-mcp turns the feature on.
+schemars = "1"
 # Round 142 — workspace config abstraction (mnemosyne.toml).
 # Phase 0e generic library extraction: replaces hardcoded WORKSPACE_DOC_PATHS
 # + MNEMOSYNE_DEFAULT_DOC with TOML-driven config (workspace.docs +

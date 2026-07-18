@@ -231,6 +231,7 @@ pub struct BindingRef {
 /// (every section expects coverage), so a store with no classification gates
 /// identically to before.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CoverageExpectation {
     #[default]

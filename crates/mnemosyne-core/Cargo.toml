@@ -15,6 +15,14 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+# Round 690 — OPTIONAL, off by default. `schemars` is serde's schema sibling
+# (the same category as serde, already mandatory here); L0 core stays zero
+# MANDATORY-dep. Only the `schemars` feature — enabled solely by mnemosyne-mcp —
+# pulls it, so a fact/typed-claim DTO exposes a real JSON Schema from the one type.
+schemars = { workspace = true, optional = true }
+
+[features]
+schemars = ["dep:schemars"]
 
 [dev-dependencies]
 toml.workspace = true

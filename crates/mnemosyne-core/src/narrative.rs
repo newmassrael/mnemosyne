@@ -465,6 +465,7 @@ pub struct Predicate {
 /// sec 7.12): locations/custody objects are entities; state values are
 /// consumer-vocabulary scalars. Serde-tagged, no stringly union.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TypedObject {
     /// A registered entity id (must also be a member of the owning fact's
@@ -510,6 +511,7 @@ impl TypedObject {
 /// deterministic rule gate (Round B) covers the typed subset, recorded
 /// conflict edges and the future LLM-discovery adapter cover the rest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypedClaim {
     /// Registered entity id; must be a member of the owning fact's
     /// `entities` list (a typed leg never silently widens the retrieval

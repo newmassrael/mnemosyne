@@ -493,27 +493,18 @@ pub struct TypedClaimArgs {
     pub object_value: Option<String>,
 }
 
-/// Transactional batch authoring (Round 687 — DEBT-MCP-BATCH). The manifest is
-/// passed as a JSON STRING rather than a typed field so the atomic crate keeps
-/// its serde-only manifest types without taking a schemars dependency; the tool
-/// parses it into the same `FactsManifest` / `Vec<SectionImport>` the CLI
-/// `import-facts` / `import-sections` read, then runs the ONE atomic primitive,
-/// so an MCP-only agent authors a whole scene all-or-nothing (a mid-sequence
-/// failure over N single `add_*` calls would leave a partial store).
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ImportFactsArgs {
-    /// A FactsManifest as a JSON string: an object with optional
-    /// `frames` / `branches` / `entity_kinds` / `entities` / `predicates`
-    /// arrays and a `facts` array. One atomic transaction; forward succession
-    /// refs within the manifest are legal.
-    pub manifest_json: String,
-}
-
+/// Transactional batch section authoring (Round 687, retyped Round 690 —
+/// DEBT-MCP-MANIFEST-SCHEMA). The R687 form took an opaque `manifest_json`
+/// String, so the agent got no schema; Round 690 exposes the ONE atomic DTO
+/// (`SectionImport`) directly, giving a real JSON Schema from the single source.
+/// `import_facts` takes the `FactsManifest` type itself and needs no wrapper;
+/// this wrapper exists only because a JSON-RPC tool arg must be an object, not a
+/// bare array.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportSectionsArgs {
-    /// A JSON array of SectionImport objects (the same shape `import-sections`
-    /// reads). One atomic transaction.
-    pub manifest_json: String,
+    /// The sections to create in one atomic transaction (the typed `SectionImport`
+    /// shape the CLI `import-sections` manifest also reads).
+    pub sections: Vec<atomic::SectionImport>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1843,34 +1834,21 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Transactional batch fact authoring (Round 687): import a whole FactsManifest — optional frames/branches/entity_kinds/entities/predicates plus the facts — in ONE atomic write. The AI-first way to author a scene: N separate add_* calls are non-atomic, so a mid-sequence failure leaves a partial store; this is all-or-nothing. `manifest_json` is the manifest as a JSON string. Same invariants as add_fact per row; forward succession refs within the manifest are legal."
+        description = "Transactional batch fact authoring (Round 687, typed Round 690): import a whole FactsManifest — optional frames/branches/entity_kinds/entities/predicates plus the facts — in ONE atomic write. The AI-first way to author a scene: N separate add_* calls are non-atomic, so a mid-sequence failure leaves a partial store; this is all-or-nothing. The manifest is a TYPED argument (real JSON Schema), not an opaque string. Same invariants as add_fact per row; forward succession refs within the manifest are legal."
     )]
-    async fn import_facts(&self, args: Parameters<ImportFactsArgs>) -> CallToolResult {
-        let manifest_json = args.0.manifest_json;
-        let outcome = self.run_mutate(|store, path| {
-            let parsed: atomic::FactsManifest =
-                serde_json::from_str(&manifest_json).map_err(|e| {
-                    atomic::AtomicMutateError::Validation(format!("parse FactsManifest: {e}"))
-                })?;
-            atomic::import_facts(store, path, &parsed)
-        });
+    async fn import_facts(&self, args: Parameters<atomic::FactsManifest>) -> CallToolResult {
+        let manifest = args.0;
+        let outcome = self.run_mutate(|store, path| atomic::import_facts(store, path, &manifest));
         self.finish_mutate(outcome)
     }
 
     #[tool(
-        description = "Transactional batch section authoring (Round 687): import a JSON array of SectionImport objects in ONE atomic write — the structure sections facts evidence against. All-or-nothing, same as import_facts. `manifest_json` is the array as a JSON string."
+        description = "Transactional batch section authoring (Round 687, typed Round 690): create a batch of structure sections — what facts evidence against — in ONE atomic write. All-or-nothing, same as import_facts. `sections` is a TYPED array of SectionImport (real JSON Schema), not an opaque string."
     )]
     async fn import_sections(&self, args: Parameters<ImportSectionsArgs>) -> CallToolResult {
-        let manifest_json = args.0.manifest_json;
-        let outcome = self.run_mutate(|store, path| {
-            let entries: Vec<atomic::SectionImport> = serde_json::from_str(&manifest_json)
-                .map_err(|e| {
-                    atomic::AtomicMutateError::Validation(format!(
-                        "parse section imports (JSON array): {e}"
-                    ))
-                })?;
-            atomic::import_sections(store, path, &entries)
-        });
+        let sections = args.0.sections;
+        let outcome =
+            self.run_mutate(|store, path| atomic::import_sections(store, path, &sections));
         self.finish_mutate(outcome)
     }
 
@@ -2782,5 +2760,39 @@ mod tests {
         }
         // Non-vacuity: a non-tool must NOT route, so the check can actually fail.
         assert!(!router.has_route("definitely_not_a_tool"));
+    }
+
+    /// Round 690 (DEBT-MCP-MANIFEST-SCHEMA) — PROVE the manifest tool arg is a
+    /// TYPED schema, not the R687 opaque `{manifest_json: string}`. Generated
+    /// from the ONE atomic type via the feature-gated JsonSchema derive, so the
+    /// agent sees every manifest field. This is the layer-correct check the
+    /// verification-frame lesson demands (prove the claim, don't assert it).
+    #[test]
+    fn import_facts_arg_schema_is_typed_not_opaque() {
+        let schema = schemars::schema_for!(atomic::FactsManifest);
+        let json = serde_json::to_value(&schema).expect("schema serializes");
+        let props = json
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .expect("FactsManifest schema exposes object properties, not a bare string");
+        for field in [
+            "frames",
+            "branches",
+            "entity_kinds",
+            "entities",
+            "predicates",
+            "facts",
+            "disclosure_plans",
+        ] {
+            assert!(
+                props.contains_key(field),
+                "manifest schema is missing the `{field}` property"
+            );
+        }
+        // The R687 opaque single-string arg is gone.
+        assert!(
+            !props.contains_key("manifest_json"),
+            "the opaque manifest_json string arg must no longer exist"
+        );
     }
 }
