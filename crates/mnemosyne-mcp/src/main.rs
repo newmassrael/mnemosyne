@@ -493,6 +493,29 @@ pub struct TypedClaimArgs {
     pub object_value: Option<String>,
 }
 
+/// Transactional batch authoring (Round 687 — DEBT-MCP-BATCH). The manifest is
+/// passed as a JSON STRING rather than a typed field so the atomic crate keeps
+/// its serde-only manifest types without taking a schemars dependency; the tool
+/// parses it into the same `FactsManifest` / `Vec<SectionImport>` the CLI
+/// `import-facts` / `import-sections` read, then runs the ONE atomic primitive,
+/// so an MCP-only agent authors a whole scene all-or-nothing (a mid-sequence
+/// failure over N single `add_*` calls would leave a partial store).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportFactsArgs {
+    /// A FactsManifest as a JSON string: an object with optional
+    /// `frames` / `branches` / `entity_kinds` / `entities` / `predicates`
+    /// arrays and a `facts` array. One atomic transaction; forward succession
+    /// refs within the manifest are legal.
+    pub manifest_json: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportSectionsArgs {
+    /// A JSON array of SectionImport objects (the same shape `import-sections`
+    /// reads). One atomic transaction.
+    pub manifest_json: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactArgs {
     pub fact_id: String,
@@ -1820,6 +1843,38 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Transactional batch fact authoring (Round 687): import a whole FactsManifest — optional frames/branches/entity_kinds/entities/predicates plus the facts — in ONE atomic write. The AI-first way to author a scene: N separate add_* calls are non-atomic, so a mid-sequence failure leaves a partial store; this is all-or-nothing. `manifest_json` is the manifest as a JSON string. Same invariants as add_fact per row; forward succession refs within the manifest are legal."
+    )]
+    async fn import_facts(&self, args: Parameters<ImportFactsArgs>) -> CallToolResult {
+        let manifest_json = args.0.manifest_json;
+        let outcome = self.run_mutate(|store, path| {
+            let parsed: atomic::FactsManifest =
+                serde_json::from_str(&manifest_json).map_err(|e| {
+                    atomic::AtomicMutateError::Validation(format!("parse FactsManifest: {e}"))
+                })?;
+            atomic::import_facts(store, path, &parsed)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Transactional batch section authoring (Round 687): import a JSON array of SectionImport objects in ONE atomic write — the structure sections facts evidence against. All-or-nothing, same as import_facts. `manifest_json` is the array as a JSON string."
+    )]
+    async fn import_sections(&self, args: Parameters<ImportSectionsArgs>) -> CallToolResult {
+        let manifest_json = args.0.manifest_json;
+        let outcome = self.run_mutate(|store, path| {
+            let entries: Vec<atomic::SectionImport> = serde_json::from_str(&manifest_json)
+                .map_err(|e| {
+                    atomic::AtomicMutateError::Validation(format!(
+                        "parse section imports (JSON array): {e}"
+                    ))
+                })?;
+            atomic::import_sections(store, path, &entries)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
         description = "Record one conflict assertion edge between two existing facts (R430). Contradiction is a recorded semantic judgment, never derived from claim text; the continuity gate evaluates it (frame, branch)-scoped — cross-scope edges are data, never gated."
     )]
     async fn add_fact_conflict(&self, args: Parameters<AddFactConflictArgs>) -> CallToolResult {
@@ -2714,6 +2769,8 @@ mod tests {
             "set_section_decision_status",  // R678
             "report_entity_kind_migration", // R679
             "report_binding_migration",     // R686
+            "import_facts",                 // R687
+            "import_sections",              // R687
             "add_entity",                   // pre-existing anchors (non-vacuity)
             "add_fact",
             "report_quest_graph",
