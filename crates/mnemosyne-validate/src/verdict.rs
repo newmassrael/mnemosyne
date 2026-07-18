@@ -500,6 +500,80 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 unreached.join(", ")
             ),
         ),
+        ContinuityViolation::MapInventedPlace {
+            rule,
+            predicate,
+            place_kind,
+            place,
+        } => action(
+            "map_invented_place",
+            ViolationLocus {
+                entities: vec![place.clone()],
+                ..Default::default()
+            },
+            format!(
+                "transition rule `{rule}`: every `{place_kind}` entity must be a node (in a \
+                 `{predicate}` fact) or a container (a containment subject)"
+            ),
+            format!(
+                "add a `{predicate}` fact linking this place to the map, mark it a container, or \
+                 remove it if it is not a place"
+            ),
+            format!(
+                "transition rule `{rule}`: `{place_kind}` entity `{place}` is off the `{predicate}` \
+                 map — neither a node nor a container"
+            ),
+        ),
+        ContinuityViolation::MapContainerAsNode {
+            rule,
+            adjacency,
+            containment,
+            container,
+        } => action(
+            "map_container_as_node",
+            ViolationLocus {
+                entities: vec![container.clone()],
+                ..Default::default()
+            },
+            format!(
+                "transition rule `{rule}`: a `{containment}` container is a search-key, not a \
+                 position — it must not appear in an `{adjacency}` fact"
+            ),
+            "remove the container from the adjacency edges, or stop declaring it a container"
+                .to_string(),
+            format!(
+                "transition rule `{rule}`: container `{container}` (a `{containment}` subject) is \
+                 also walked on as an `{adjacency}` node"
+            ),
+        ),
+        ContinuityViolation::MapContainedOffMap {
+            rule,
+            adjacency,
+            containment,
+            fact,
+            container,
+            contained,
+        } => action(
+            "map_contained_off_map",
+            ViolationLocus {
+                facts: vec![fact.clone()],
+                entities: vec![contained.clone()],
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "transition rule `{rule}`: a `{containment}` object must be a node (appear in an \
+                 `{adjacency}` fact)"
+            ),
+            format!(
+                "add an `{adjacency}` fact placing the contained place on the map, or remove the \
+                 `{containment}` fact"
+            ),
+            format!(
+                "transition rule `{rule}`: `{containment}` fact `{fact}` has container \
+                 `{container}` holding `{contained}`, which is off the `{adjacency}` map"
+            ),
+        ),
     }
 }
 
@@ -568,6 +642,26 @@ mod tests {
                 reached: 3,
                 total: 5,
                 unreached: vec!["ent-island-cove".into(), "ent-lighthouse".into()],
+            },
+            ContinuityViolation::MapInventedPlace {
+                rule: "roads".into(),
+                predicate: "adjacent".into(),
+                place_kind: "place".into(),
+                place: "ent-ghost-town".into(),
+            },
+            ContinuityViolation::MapContainerAsNode {
+                rule: "roads".into(),
+                adjacency: "adjacent".into(),
+                containment: "contains".into(),
+                container: "ent-island".into(),
+            },
+            ContinuityViolation::MapContainedOffMap {
+                rule: "roads".into(),
+                adjacency: "adjacent".into(),
+                containment: "contains".into(),
+                fact: "f-c1".into(),
+                container: "ent-island".into(),
+                contained: "ent-nowhere".into(),
             },
         ];
         for v in &samples {

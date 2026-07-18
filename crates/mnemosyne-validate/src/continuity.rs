@@ -688,10 +688,13 @@ impl NarrativeRule {
     /// Every predicate id this rule references: the primary `predicate` (the
     /// left operand for an interval rule) plus an interval rule's `right`
     /// operand and predicate-bound (Round 489) and a transition rule's
-    /// `adjacency` edge-source predicate (Round 697). The existence check (one
-    /// site) fail-louds on any that is not registered, so no ref escapes the
-    /// typo guard — a transition naming a missing `adjacency` predicate would
-    /// otherwise derive an EMPTY allowed set and silently reject every step.
+    /// `adjacency` edge-source predicate (Round 697) and its optional
+    /// `containment` predicate (Round 703). The existence check (one site)
+    /// fail-louds on any that is not registered, so no ref escapes the typo
+    /// guard — a transition naming a missing `adjacency` predicate would
+    /// otherwise derive an EMPTY allowed set and silently reject every step, and
+    /// a missing `containment` predicate would silently disarm the G2 container
+    /// checks.
     fn referenced_predicates(&self) -> Vec<&str> {
         let mut refs = vec![self.predicate.as_str()];
         match &self.spec {
@@ -701,7 +704,16 @@ impl NarrativeRule {
                     refs.push(p.as_str());
                 }
             }
-            NarrativeRuleSpec::Transition { adjacency, .. } => refs.push(adjacency.as_str()),
+            NarrativeRuleSpec::Transition {
+                adjacency,
+                containment,
+                ..
+            } => {
+                refs.push(adjacency.as_str());
+                if let Some(c) = containment {
+                    refs.push(c.as_str());
+                }
+            }
             NarrativeRuleSpec::Exclusive { .. } => {}
         }
         refs
@@ -741,7 +753,18 @@ pub enum NarrativeRuleSpec {
     /// directed by default: an `adjacent(a,b)` fact admits ONLY (a,b). When
     /// `undirected` (the MAP), it admits BOTH (a,b) and (b,a), so one fact per
     /// edge is the SSOT (no reverse duplicate to drift).
-    Transition { adjacency: String, undirected: bool },
+    ///
+    /// Round 703 (store-native map, DESIGN R696 sec 2) — `containment` names the
+    /// predicate whose facts are `contains(region, node)`: a region (a container
+    /// place, a search-key not a position) and the map nodes it holds. The SAME
+    /// map's rule declares both its `adjacency` and its `containment` predicate,
+    /// so the G2 completeness/leak invariant knows both legs of the map from one
+    /// declaration. `None` = a map with no containers.
+    Transition {
+        adjacency: String,
+        undirected: bool,
+        containment: Option<String>,
+    },
     /// Scalar/arithmetic relation over numeric typed legs (Round 489, design
     /// sec 7.20 — depth-ladder rung 1). The rule's `predicate` is the LEFT
     /// operand; `right` is the second operand; both are scalar predicates
@@ -900,6 +923,12 @@ struct NarrativeRuleWire {
     /// stray one on exclusive/interval rejects.
     #[serde(default)]
     undirected: Option<bool>,
+    /// The containment-source predicate for a transition rule (Round 703): its
+    /// facts are `contains(region, node)`. Optional (a map with no containers
+    /// omits it). Belongs to a transition rule; a stray one on
+    /// exclusive/interval rejects.
+    #[serde(default)]
+    containment: Option<String>,
     /// Interval legs (Round 489) — present only for `class: interval`; a
     /// stray one on exclusive/transition rejects (the leg/class coherence
     /// matrix, the R443 lesson).
@@ -962,6 +991,7 @@ pub(crate) fn narrative_rules_wire_sample_json() -> serde_json::Value {
             per: Some(ExclusiveKey::Object),
             adjacency: Some("adjacent".into()),
             undirected: Some(true),
+            containment: Some("contains".into()),
             right: Some("q".into()),
             op: Some(IntervalOp::Ge),
             bound: Some(IntervalBoundWire {
@@ -1069,9 +1099,26 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
                 ));
             }
             let undirected = w.undirected.unwrap_or(false);
+            // `containment` is optional (a map with no containers); a present
+            // one is trimmed (R450 boundary/eval-compare parity) and a blank
+            // rejects rather than silently disarming the G2 checks.
+            let containment = match w.containment {
+                Some(c) => {
+                    let c = c.trim().to_string();
+                    if c.is_empty() {
+                        return Err(format!(
+                            "narrative-rules: transition rule `{id}` has a blank `containment` \
+                             predicate (omit the field for a map with no containers)"
+                        ));
+                    }
+                    Some(c)
+                }
+                None => None,
+            };
             NarrativeRuleSpec::Transition {
                 adjacency,
                 undirected,
+                containment,
             }
         }
         RuleClass::Interval => {
@@ -1124,15 +1171,15 @@ fn forbid_interval_legs(id: &str, class: &str, w: &NarrativeRuleWire) -> Result<
     Ok(())
 }
 
-/// Reject a stray transition leg on a non-transition rule (Round 697) — the
-/// leg/class coherence matrix for `adjacency` / `undirected`, symmetric to
-/// `forbid_interval_legs` (the R443 lesson: a stray leg rejects, never
-/// silently drops).
+/// Reject a stray transition leg on a non-transition rule (Round 697/703) — the
+/// leg/class coherence matrix for `adjacency` / `undirected` / `containment`,
+/// symmetric to `forbid_interval_legs` (the R443 lesson: a stray leg rejects,
+/// never silently drops).
 fn forbid_transition_legs(id: &str, class: &str, w: &NarrativeRuleWire) -> Result<(), String> {
-    if w.adjacency.is_some() || w.undirected.is_some() {
+    if w.adjacency.is_some() || w.undirected.is_some() || w.containment.is_some() {
         return Err(format!(
             "narrative-rules: {class} rule `{id}` carries a transition leg \
-             (`adjacency` / `undirected` belong to a transition rule)"
+             (`adjacency` / `undirected` / `containment` belong to a transition rule)"
         ));
     }
     Ok(())
@@ -1381,6 +1428,55 @@ pub enum ContinuityViolation {
         total: usize,
         /// The endpoints NOT reached (the island), in store order.
         unreached: Vec<String>,
+    },
+    /// A `subject_kind`-declared entity is neither a NODE (in some `adjacency`
+    /// fact) nor a CONTAINER (the subject of a `containment` fact) — an invented
+    /// place off the map (Round 703, design sec 4.G2 check 1). The place kind is
+    /// DERIVED from the adjacency predicate's Round 701 `subject_kind`, so core
+    /// never hardcodes "place" (ARCHITECTURE invariant 4); the check is inert
+    /// when the adjacency predicate declares no `subject_kind`. Structural
+    /// (rides `severity`); a derivation over the fact set, re-evaluated each
+    /// scan. Anchors on the ENTITY (a place with no fact), not a single fact.
+    MapInventedPlace {
+        rule: String,
+        /// The adjacency predicate whose declared `subject_kind` names the map's
+        /// place kind (the map identity).
+        predicate: String,
+        /// The derived place kind (the adjacency `subject_kind`).
+        place_kind: String,
+        /// The entity that is a place but is off the map.
+        place: String,
+    },
+    /// A `containment` subject (a container/region) also appears as an endpoint
+    /// of an `adjacency` fact — a container used as a POSITION (Round 703,
+    /// design sec 4.G2 check 2). A region is a search-key, not a step you can
+    /// stand on; it must stay out of the walk graph. Structural (rides
+    /// `severity`); anchors on the container ENTITY.
+    MapContainerAsNode {
+        rule: String,
+        /// The adjacency predicate the container leaked into.
+        adjacency: String,
+        /// The containment predicate that declared the entity a container.
+        containment: String,
+        /// The container entity used as a node.
+        container: String,
+    },
+    /// A `containment` fact's OBJECT is not a node — the region contains a place
+    /// that is off the map (Round 703, design sec 4.G2 check 3). A region may
+    /// only contain real map nodes. Structural (rides `severity`); anchors on
+    /// the offending `containment` FACT.
+    MapContainedOffMap {
+        rule: String,
+        /// The adjacency predicate whose facts define the map's nodes.
+        adjacency: String,
+        /// The containment predicate holding the off-map member.
+        containment: String,
+        /// The `containment` fact whose object is off the map.
+        fact: String,
+        /// The container (the fact's subject).
+        container: String,
+        /// The contained place that is not a node.
+        contained: String,
     },
 }
 
@@ -2669,6 +2765,7 @@ pub fn scan_continuity(
             NarrativeRuleSpec::Transition {
                 adjacency,
                 undirected,
+                containment,
             } => {
                 // Round 697/698/699 (store-native map): ONE edge model from the
                 // store's `adjacency`-predicate facts, consumed by BOTH the
@@ -2687,6 +2784,12 @@ pub fn scan_continuity(
                 // `allowed` was) — the present single-map ground-truth case;
                 // branch-scoped adjacency deferred (R696 review finding #6).
                 let mut edges: BTreeMap<(&str, &str), &str> = BTreeMap::new();
+                // Every endpoint that appears in an `adjacency` fact is a NODE
+                // (G2, Round 703): "on the map". Collected from the RAW facts
+                // (both legs, self-loops included) — a self-loop place is still
+                // named on the map (it is separately flagged as a self-loop, so
+                // G2 must not ALSO call it an invented place).
+                let mut nodes: BTreeSet<&str> = BTreeSet::new();
                 for (fid, t) in facts
                     .iter()
                     .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
@@ -2694,6 +2797,8 @@ pub fn scan_continuity(
                 {
                     let a = t.subject.as_str();
                     let b = typed_object_key(&t.object);
+                    nodes.insert(a);
+                    nodes.insert(b);
                     if a == b {
                         report
                             .violations
@@ -2762,6 +2867,102 @@ pub fn scan_continuity(
                                     reached: seen.len(),
                                     total: adj.len(),
                                     unreached,
+                                });
+                        }
+                    }
+                }
+                // G2 (Round 703, design sec 2/4.G2) — completeness + container
+                // leaks over the `adjacency` + `containment` facts. Direction-
+                // agnostic (place structure, unlike G4's connectivity): runs for
+                // both directed and undirected rules. Two derived inputs:
+                //   place_kind — the adjacency predicate's declared node kind
+                //     (Round 701). Core never hardcodes "place" (ARCHITECTURE
+                //     invariant 4), so the check is INERT when the map declares no
+                //     kind on EITHER leg. Read `subject_kind` OR `object_entity_kind`:
+                //     both legs of an undirected map are the same place kind, and
+                //     R701 gates the two legs INDEPENDENTLY — so an author who
+                //     declares only one leg's kind must not silently disarm the
+                //     completeness gate (the R295/R699 half-enforced-invariant trap).
+                //   container_subjects — the subjects of `containment`-predicate
+                //     facts (a region → its member nodes). Absent `containment` =
+                //     no containers, so checks 2/3 are vacuous.
+                let place_kind = store.predicates.get(adjacency).and_then(|p| {
+                    p.subject_kind
+                        .as_deref()
+                        .or(p.object_entity_kind.as_deref())
+                });
+                let mut container_subjects: BTreeSet<&str> = BTreeSet::new();
+                if let Some(containment_pred) = containment {
+                    for (fid, t) in facts
+                        .iter()
+                        .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
+                        .filter(|(_, t)| t.predicate == *containment_pred)
+                    {
+                        let container = t.subject.as_str();
+                        let contained = typed_object_key(&t.object);
+                        container_subjects.insert(container);
+                        // Check 3: a region contains only real map nodes. The
+                        // containment predicate's object KIND is R701's write-path
+                        // concern, not re-checked here — a `containment` mis-declared
+                        // with a SCALAR object would over-flag every value (symmetric
+                        // with `adjacency`, which R697 likewise reads without a kind
+                        // guard). Garbage-in mis-declaration, not a store the mutate
+                        // API produces for an entity-object `contains`.
+                        if !nodes.contains(contained) {
+                            report
+                                .violations
+                                .push(ContinuityViolation::MapContainedOffMap {
+                                    rule: rule.id.clone(),
+                                    adjacency: adjacency.clone(),
+                                    containment: containment_pred.clone(),
+                                    fact: fid.to_string(),
+                                    container: container.to_string(),
+                                    contained: contained.to_string(),
+                                });
+                        }
+                    }
+                    // Check 2: a container is a search-key, not a position — it
+                    // must stay OUT of the adjacency graph (never walked on).
+                    for &container in &container_subjects {
+                        if nodes.contains(container) {
+                            report
+                                .violations
+                                .push(ContinuityViolation::MapContainerAsNode {
+                                    rule: rule.id.clone(),
+                                    adjacency: adjacency.clone(),
+                                    containment: containment_pred.clone(),
+                                    container: container.to_string(),
+                                });
+                        }
+                    }
+                }
+                // Check 1 (completeness): every place-kind entity is a NODE or a
+                // CONTAINER — else an invented place off the map. Inert when the
+                // map is not kind-constrained (no declared node kind on `adjacency`).
+                // SCOPE (design sec 1, R696 review finding #6): the entity
+                // enumeration is store-wide but the node set is THIS rule's — the
+                // present single-map-per-kind ground-truth case. Two DISTINCT maps
+                // sharing one place kind would each flag the other's places as
+                // invented (the flat, un-scoped edge graph); branch/second-map
+                // scoping is deferred substrate with no consumer yet
+                // (DEBT-MAP-G2-SINGLEMAP). A `containment`-object place that is off
+                // the map is intentionally reported by BOTH check 3 (as an off-map
+                // containment) AND check 1 (as an invented place) when it is kinded —
+                // two true statements anchored differently, the R698 cosmetic-minor
+                // precedent.
+                if let Some(place_kind) = place_kind {
+                    for (eid, ent) in &store.entities {
+                        if ent.kind.as_str() == place_kind
+                            && !nodes.contains(eid.as_str())
+                            && !container_subjects.contains(eid.as_str())
+                        {
+                            report
+                                .violations
+                                .push(ContinuityViolation::MapInventedPlace {
+                                    rule: rule.id.clone(),
+                                    predicate: adjacency.clone(),
+                                    place_kind: place_kind.to_string(),
+                                    place: eid.clone(),
                                 });
                         }
                     }
@@ -6425,6 +6626,7 @@ mod tests {
         predicate: &str,
         adjacency: &str,
         undirected: bool,
+        containment: Option<&str>,
     ) -> NarrativeRule {
         NarrativeRule {
             id: id.to_string(),
@@ -6432,6 +6634,7 @@ mod tests {
             spec: NarrativeRuleSpec::Transition {
                 adjacency: adjacency.to_string(),
                 undirected,
+                containment: containment.map(str::to_string),
             },
         }
     }
@@ -6656,6 +6859,7 @@ mod tests {
             "life-status",
             "life-adjacent",
             false,
+            None,
         )];
         let report = scan_continuity(&store, &order, &rules).unwrap();
         assert_eq!(report.violations.len(), 1, "{:?}", report.violations);
@@ -6707,7 +6911,7 @@ mod tests {
             })
             .collect();
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let rules = [transition_rule("roads", "pred-at", "adjacent", true)];
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true, None)];
 
         // jiun walks village -> dike (forward along the edge), then dike ->
         // village (the REVERSE of the same one fact). Undirected admits both.
@@ -6788,7 +6992,7 @@ mod tests {
         );
         e_self.entities = vec!["ent-well".to_string()];
         // Undirected map: a self-loop + a reverse-duplicated edge.
-        let undirected = [transition_rule("roads", "pred-at", "adjacent", true)];
+        let undirected = [transition_rule("roads", "pred-at", "adjacent", true, None)];
         let store = store_with(vec![
             anchor(),
             e_self,
@@ -6832,7 +7036,7 @@ mod tests {
 
         // Directed: the same reverse pair is two legit one-way edges — no dup;
         // but a self-loop is still flagged (self-loop check is rule-agnostic).
-        let directed = [transition_rule("gate", "pred-at", "adjacent", false)];
+        let directed = [transition_rule("gate", "pred-at", "adjacent", false, None)];
         let mut d_self = typed_fact(
             "e-self2",
             "gt",
@@ -6891,7 +7095,7 @@ mod tests {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         // pred-at is the constrained predicate — one inert fact registers it.
         let anchor = || typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-a"));
-        let undirected = [transition_rule("roads", "pred-at", "adjacent", true)];
+        let undirected = [transition_rule("roads", "pred-at", "adjacent", true, None)];
 
         // Connected chain a-b-c: one component, no MapDisconnected.
         let mut connected = vec![anchor()];
@@ -6938,6 +7142,272 @@ mod tests {
         assert_eq!(unreached, &vec!["ent-c".to_string(), "ent-d".to_string()]);
     }
 
+    /// A `contains(region, node)` fact under the given containment predicate,
+    /// entity endpoints (Round 703 G2 fixtures). Distinct from `adjacency_facts`,
+    /// whose object leg is a scalar VALUE — G2 completeness enumerates ENTITIES,
+    /// so both legs must be real registered entities (`holds`).
+    fn map_edge(a: &str, b: &str) -> FactImport {
+        typed_fact(&format!("e-{a}-{b}"), "gt", "ch-1", a, "adjacent", holds(b))
+    }
+    fn contains_fact(region: &str, node: &str) -> FactImport {
+        typed_fact(
+            &format!("c-{region}-{node}"),
+            "gt",
+            "ch-1",
+            region,
+            "contains",
+            holds(node),
+        )
+    }
+
+    /// Build a store for the G2 map checks: the given facts plus a `pred-at`
+    /// anchor (so the rule's own predicate registers), then register the `place`
+    /// kind, tag `place_entities` `kind:place`, insert `floating` places (in the
+    /// registry, in NO fact), and declare `adjacent`'s `subject_kind`
+    /// (`None` = the map is not kind-constrained → completeness is inert).
+    fn map_g2_store(
+        facts: Vec<FactImport>,
+        place_entities: &[&str],
+        floating: &[&str],
+        subject_kind: Option<&str>,
+    ) -> AtomicStore {
+        let mut all = vec![typed_fact(
+            "p0",
+            "gt",
+            "ch-1",
+            "ent-hero",
+            "pred-at",
+            holds("ent-a"),
+        )];
+        all.extend(facts);
+        let mut store = store_with(all);
+        store
+            .entity_kinds
+            .insert("place".to_string(), mnemosyne_core::EntityKind::default());
+        for p in place_entities {
+            store
+                .entities
+                .get_mut(*p)
+                .expect("place entity present in the store")
+                .kind = "place".to_string();
+        }
+        for p in floating {
+            store.entities.insert(
+                p.to_string(),
+                mnemosyne_core::Entity {
+                    kind: "place".to_string(),
+                    description: String::new(),
+                },
+            );
+        }
+        if let Some(sk) = subject_kind {
+            store
+                .predicates
+                .get_mut("adjacent")
+                .expect("adjacent predicate present")
+                .subject_kind = Some(sk.to_string());
+        }
+        store
+    }
+
+    /// Round 703 (G2 check 1, completeness) — every `place`-kind entity must be a
+    /// node (in an `adjacent` fact) or a container; a place off the map is flagged
+    /// as an invented place. The place kind is DERIVED from the adjacency
+    /// predicate's declared node kind (`subject_kind` OR `object_entity_kind`,
+    /// Round 701), never hardcoded. NON-VACUITY + negative control: the same store
+    /// passes when the map declares no kind on EITHER leg (the check reads the
+    /// declaration, not a baked-in "place"); the object-leg-only and directed-rule
+    /// cases pin the review-hardened derivation + the direction-agnostic scope.
+    #[test]
+    fn map_g2_completeness_flags_invented_place_off_the_map() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        // A connected a-b-c map; a, b, c are the only places.
+        let edges = || vec![map_edge("ent-a", "ent-b"), map_edge("ent-b", "ent-c")];
+        let invented = |v: &[ContinuityViolation]| -> Vec<String> {
+            v.iter()
+                .filter_map(|x| match x {
+                    ContinuityViolation::MapInventedPlace { place, .. } => Some(place.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+
+        // Clean: every place is a node. No invented place.
+        let store = map_g2_store(edges(), &["ent-a", "ent-b", "ent-c"], &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            invented(&report.violations).is_empty(),
+            "a complete map is clean: {:?}",
+            report.violations
+        );
+
+        // Injection: ent-ghost is `kind:place` but in NO adjacent fact and no
+        // container — an invented place off the map.
+        let store = map_g2_store(
+            edges(),
+            &["ent-a", "ent-b", "ent-c"],
+            &["ent-ghost"],
+            Some("place"),
+        );
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert_eq!(
+            invented(&report.violations),
+            vec!["ent-ghost".to_string()],
+            "the off-map place is flagged: {:?}",
+            report.violations
+        );
+
+        // Negative control (inertness): drop the adjacency `subject_kind`. The
+        // SAME floating ent-ghost is now NOT flagged — the check reads the
+        // predicate's declaration, not a hardcoded kind (invariant 4).
+        let store = map_g2_store(edges(), &["ent-a", "ent-b", "ent-c"], &["ent-ghost"], None);
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            invented(&report.violations).is_empty(),
+            "no subject_kind => completeness inert: {:?}",
+            report.violations
+        );
+
+        // The kind may be declared on the OBJECT leg alone (R701 gates the two
+        // legs independently). Declaring only `object_entity_kind` must NOT
+        // silently disarm the completeness gate (the review-#1 half-enforced
+        // hole): ent-ghost is flagged with the kind read off the object leg.
+        let mut store = map_g2_store(edges(), &["ent-a", "ent-b", "ent-c"], &["ent-ghost"], None);
+        store
+            .predicates
+            .get_mut("adjacent")
+            .expect("adjacent predicate present")
+            .object_entity_kind = Some("place".to_string());
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert_eq!(
+            invented(&report.violations),
+            vec!["ent-ghost".to_string()],
+            "object_entity_kind alone still arms completeness: {:?}",
+            report.violations
+        );
+
+        // Direction-agnostic (design sec 4.G2, unlike G4): a DIRECTED rule fires
+        // check 1 too — the off-map place is flagged the same way.
+        let directed = [transition_rule("gate", "pred-at", "adjacent", false, None)];
+        let store = map_g2_store(
+            edges(),
+            &["ent-a", "ent-b", "ent-c"],
+            &["ent-ghost"],
+            Some("place"),
+        );
+        let report = scan_continuity(&store, &order, &directed).unwrap();
+        assert_eq!(
+            invented(&report.violations),
+            vec!["ent-ghost".to_string()],
+            "completeness is direction-agnostic: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 703 (G2 checks 2 + 3, containers) — a container (`contains` subject)
+    /// must not be walked on as an adjacency node (check 2), and a region may only
+    /// contain real map nodes (check 3). NON-VACUITY + negative control: the SAME
+    /// leaking/off-map facts fire NOTHING when the rule declares no `containment`
+    /// predicate (the checks are gated on the declaration).
+    #[test]
+    fn map_g2_container_leak_and_contained_off_map() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let with_containment = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let places = ["ent-a", "ent-b", "ent-c", "ent-region"];
+        let leaked = |v: &[ContinuityViolation]| -> Vec<String> {
+            v.iter()
+                .filter_map(|x| match x {
+                    ContinuityViolation::MapContainerAsNode { container, .. } => {
+                        Some(container.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let off_map = |v: &[ContinuityViolation]| -> Vec<String> {
+            v.iter()
+                .filter_map(|x| match x {
+                    ContinuityViolation::MapContainedOffMap { contained, .. } => {
+                        Some(contained.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+
+        // Clean: ent-region contains nodes a, b and is NOT itself in adjacency.
+        let clean = || {
+            vec![
+                map_edge("ent-a", "ent-b"),
+                map_edge("ent-b", "ent-c"),
+                contains_fact("ent-region", "ent-a"),
+                contains_fact("ent-region", "ent-b"),
+            ]
+        };
+        let invented = |v: &[ContinuityViolation]| -> usize {
+            v.iter()
+                .filter(|x| matches!(x, ContinuityViolation::MapInventedPlace { .. }))
+                .count()
+        };
+        let store = map_g2_store(clean(), &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &with_containment).unwrap();
+        assert!(
+            leaked(&report.violations).is_empty()
+                && off_map(&report.violations).is_empty()
+                && invented(&report.violations) == 0,
+            "a well-formed map + container is clean of G2 findings: {:?}",
+            report.violations
+        );
+
+        // Injection 1 (leak): ent-region is a container AND appears in an
+        // adjacent fact — a container walked on as a position.
+        let mut leak = clean();
+        leak.push(map_edge("ent-region", "ent-c"));
+        let store = map_g2_store(leak, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &with_containment).unwrap();
+        assert_eq!(
+            leaked(&report.violations),
+            vec!["ent-region".to_string()],
+            "the container-as-node leak fires: {:?}",
+            report.violations
+        );
+
+        // Injection 2 (off-map): ent-region contains ent-far, which is in no
+        // adjacent fact. `ent-far` is unkinded, so it is NOT also flagged as an
+        // invented place — isolating check 3.
+        let mut off = clean();
+        off.push(contains_fact("ent-region", "ent-far"));
+        let store = map_g2_store(off, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &with_containment).unwrap();
+        assert_eq!(
+            off_map(&report.violations),
+            vec!["ent-far".to_string()],
+            "the contained-off-map place fires: {:?}",
+            report.violations
+        );
+
+        // Negative control (inertness): the leak + off-map facts, but the rule
+        // declares NO containment predicate — checks 2/3 do not run.
+        let no_containment = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let mut both = clean();
+        both.push(map_edge("ent-region", "ent-c"));
+        both.push(contains_fact("ent-region", "ent-far"));
+        let store = map_g2_store(both, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &no_containment).unwrap();
+        assert!(
+            leaked(&report.violations).is_empty() && off_map(&report.violations).is_empty(),
+            "no containment declared => container checks inert: {:?}",
+            report.violations
+        );
+    }
+
     /// Fork world (R441 probe 6): a what-if branch keeps its own state
     /// without colliding with main's post-fork facts, and the unchained
     /// honesty count is WORLD-scoped — the inherited-vs-fork pair (s1 on
@@ -6965,6 +7435,7 @@ mod tests {
             "life-status",
             "life-adjacent",
             false,
+            None,
         )];
         let report = scan_continuity(&store, &order, &rules).unwrap();
         // No violation: w1 has no succession edge (fork-vs-main is never a
@@ -7234,9 +7705,11 @@ mod tests {
             NarrativeRuleSpec::Transition {
                 adjacency,
                 undirected,
+                containment,
             } => {
                 assert_eq!(adjacency, "life-adjacent");
                 assert!(!undirected);
+                assert!(containment.is_none(), "no containment declared");
             }
             s => panic!("wrong spec: {s:?}"),
         }
@@ -7262,6 +7735,7 @@ mod tests {
                 " life-status",
                 "life-adjacent",
                 false,
+                None,
             )],
         )
         .unwrap_err();
@@ -7332,6 +7806,7 @@ mod tests {
             "life-status",
             "life-adjacent",
             false,
+            None,
         )];
         // Fully chained correct arc: zero unchained, zero violations.
         let mut arc = chain4(["alive", "dead", "undead", "destroyed"]);

@@ -338,7 +338,9 @@ pub fn describe_schema() -> SchemaContract {
              — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
              store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
              (true = an edge admits both directions, the map; absent/false = one-way, a state \
-             machine like `alive → dead`); interval → \
+             machine like `alive → dead`) + \"containment\"?: <predicate id> (Round 703: its \
+             facts are `contains(region, node)` — turns on the G2 completeness/leak checks over \
+             containers; omit for a map with no containers); interval → \
              \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
              \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
              bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
@@ -1027,6 +1029,17 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             admits BOTH (a, b) and (b, a) — the undirected MAP, so one fact per \
                             edge is the SSOT. Absent/false = one-way, a state machine (`alive → \
                             dead` must not admit the reverse).",
+                    },
+                    FieldSpec {
+                        name: "containment",
+                        ty: "predicate id (optional)",
+                        required: false,
+                        description: "Round 703 (store-native map): the predicate whose facts are \
+                            `contains(region, node)` — a region (a container: a search-key, not a \
+                            position) and the map nodes it holds. Wiring it turns on the G2 \
+                            completeness/leak invariant: every place-kind entity must be a node or \
+                            a container; a container must not be walked on; a region contains only \
+                            real nodes. Omit for a map with no containers.",
                     },
                 ],
             },

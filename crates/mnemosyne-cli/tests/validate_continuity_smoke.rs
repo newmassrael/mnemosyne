@@ -705,3 +705,168 @@ fn store_native_map_transition_gates_end_to_end() {
         "the reject names the unregistered scalar subject: {stderr}"
     );
 }
+
+/// Round 703 (G2) — the store-native map completeness + container invariants
+/// gate movement through the REAL `validate-continuity` binary (the R689-twin
+/// discipline: a COMMITTED CLI proof, not an ephemeral dogfood). A complete map
+/// whose every `place` entity is a node or a container passes (exit 0); adding
+/// a `place` entity off the map fires `map_invented_place`, a container walked on
+/// as a node fires `map_container_as_node`, and a region holding an off-map place
+/// fires `map_contained_off_map` (each exit 1). Places a—b—c with a container
+/// `p-region`; `p-a`'s `subject_kind` derives the place kind from the predicate.
+#[test]
+fn store_native_map_g2_completeness_and_containers_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"]] }).to_string(),
+    )
+    .unwrap();
+    // The rule declares BOTH map legs: `adjacency` = adjacent, `containment` =
+    // contains (Round 703). `adjacent` declares `subject_kind = place`, so the
+    // completeness check derives the place kind from the predicate (Round 701).
+    fs::write(
+        ws.join("narrative-rules.json"),
+        serde_json::json!({
+            "schema": "narrative-rules/v1",
+            "rules": [ { "id": "roads", "class": "transition", "predicate": "at",
+                         "adjacency": "adjacent", "undirected": true,
+                         "containment": "contains" } ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    // `extra_entities` / `extra_facts` splice in the per-case defect.
+    let write_store = |extra_entities: serde_json::Value, extra_facts: serde_json::Value| {
+        let mut entities = serde_json::json!({
+            "p-a": { "kind": "place" }, "p-b": { "kind": "place" },
+            "p-c": { "kind": "place" }, "p-region": { "kind": "place" },
+            "hero": { "kind": "character" }
+        });
+        for (k, v) in extra_entities.as_object().unwrap() {
+            entities[k] = v.clone();
+        }
+        let mut facts = serde_json::json!({
+            "e-ab": { "frame": "gt", "entities": ["p-a", "p-b"], "claim": "a borders b",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-a", "predicate": "adjacent",
+                                 "object": { "kind": "entity", "id": "p-b" } } },
+            "e-bc": { "frame": "gt", "entities": ["p-b", "p-c"], "claim": "b borders c",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-b", "predicate": "adjacent",
+                                 "object": { "kind": "entity", "id": "p-c" } } },
+            "c-ra": { "frame": "gt", "entities": ["p-region", "p-a"], "claim": "region holds a",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-region", "predicate": "contains",
+                                 "object": { "kind": "entity", "id": "p-a" } } },
+            "at-1": { "frame": "gt", "entities": ["hero", "p-a"], "claim": "hero at a",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "hero", "predicate": "at",
+                                 "object": { "kind": "entity", "id": "p-a" } } }
+        });
+        for (k, v) in extra_facts.as_object().unwrap() {
+            facts[k] = v.clone();
+        }
+        let atomic = serde_json::json!({
+            "schema_version": 25,
+            "sections": { "ch-1": {}, "ch-2": {} },
+            "changelog_entries": {},
+            "frames": { "gt": {} },
+            "entity_kinds": { "place": {}, "character": {} },
+            "entities": entities,
+            "predicates": {
+                "adjacent": { "object_kind": "entity", "subject_kind": "place",
+                              "object_entity_kind": "place" },
+                "contains": { "object_kind": "entity" },
+                "at": { "object_kind": "entity" }
+            },
+            "narrative_facts": facts
+        });
+        fs::write(
+            ws.join("docs/.atomic/workspace.atomic.json"),
+            serde_json::to_string_pretty(&atomic).unwrap(),
+        )
+        .unwrap();
+    };
+    let none = || serde_json::json!({});
+    let kinds = |v: &serde_json::Value| -> Vec<String> {
+        v["violations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["kind"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let scan = || {
+        let out = run(
+            ws,
+            &["validate-continuity", "--severity", "reject", "--json"],
+        );
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+        (out.status.success(), v)
+    };
+
+    // Clean: p-a/p-b/p-c nodes, p-region a container of p-a; every place covered.
+    write_store(none(), none());
+    let (ok, v) = scan();
+    assert!(ok, "a complete map + container passes: {v}");
+    assert_eq!(v["violation_count"], 0);
+
+    // Invented place: p-ghost is `kind:place` but off the map.
+    write_store(
+        serde_json::json!({ "p-ghost": { "kind": "place" } }),
+        none(),
+    );
+    let (ok, v) = scan();
+    assert!(!ok, "an off-map place gates: {v}");
+    assert!(
+        kinds(&v).contains(&"map_invented_place".to_string()),
+        "completeness fires: {v}"
+    );
+
+    // Container leak: p-region (a `contains` subject) also appears in adjacency.
+    write_store(
+        none(),
+        serde_json::json!({
+            "e-rc": { "frame": "gt", "entities": ["p-region", "p-c"], "claim": "region borders c",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-region", "predicate": "adjacent",
+                                 "object": { "kind": "entity", "id": "p-c" } } }
+        }),
+    );
+    let (ok, v) = scan();
+    assert!(!ok, "a container-as-node leak gates: {v}");
+    assert!(
+        kinds(&v).contains(&"map_container_as_node".to_string()),
+        "container leak fires: {v}"
+    );
+
+    // Contained off-map: p-region contains p-far, which is in no adjacent fact.
+    // p-far is unkinded so it is not ALSO flagged as an invented place.
+    write_store(
+        serde_json::json!({ "p-far": {} }),
+        serde_json::json!({
+            "c-rf": { "frame": "gt", "entities": ["p-region", "p-far"], "claim": "region holds far",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-region", "predicate": "contains",
+                                 "object": { "kind": "entity", "id": "p-far" } } }
+        }),
+    );
+    let (ok, v) = scan();
+    assert!(!ok, "a contained off-map place gates: {v}");
+    let ks = kinds(&v);
+    assert!(ks.contains(&"map_contained_off_map".to_string()), "{v}");
+    assert!(
+        !ks.contains(&"map_invented_place".to_string()),
+        "an unkinded contained place is not also an invented place: {v}"
+    );
+}
