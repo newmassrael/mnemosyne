@@ -53,6 +53,25 @@ use mnemosyne_core::{
 use mnemosyne_ops::cascade::resolve_sidecar;
 use mnemosyne_validate::code_refs::{scan_inventory_decay, scan_section_decay};
 
+/// Marker error: the atomic-mutate path (`print_error`) already emitted a
+/// fully formatted error — the json blob, or the `FAILED` header plus detail —
+/// so the top-level handler in `main` must NOT print it a second time. It is
+/// the ONE owner of the mutate error print; `main` owns every OTHER error.
+/// Carries no message: its only job is to be recognised by `downcast_ref` so
+/// `main` suppresses its generic reprint while still exiting non-zero (Round
+/// 684 — DEBT-DOUBLE-STDERR, previously the detail printed here AND in `main`).
+#[derive(Debug)]
+pub struct AlreadyReported;
+
+impl std::fmt::Display for AlreadyReported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never surfaced (main suppresses it) — a stable label for a log chain.
+        write!(f, "error already reported")
+    }
+}
+
+impl std::error::Error for AlreadyReported {}
+
 fn handle_result(result: Result<AtomicMutateReceipt, AtomicMutateError>, json: bool) -> Result<()> {
     match result {
         Ok(r) => {
@@ -61,7 +80,7 @@ fn handle_result(result: Result<AtomicMutateReceipt, AtomicMutateError>, json: b
         }
         Err(e) => {
             print_error(&e, json);
-            Err(anyhow!("{}", e))
+            Err(AlreadyReported.into())
         }
     }
 }

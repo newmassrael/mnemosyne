@@ -140,7 +140,13 @@ fn main() -> ExitCode {
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("error: {:#}", e);
+            // The atomic-mutate path is the ONE owner of its own error print
+            // (json blob / FAILED header via `print_error`); it signals that
+            // with `AlreadyReported` so the detail is not printed twice
+            // (Round 684 — DEBT-DOUBLE-STDERR). Every other error prints here.
+            if e.downcast_ref::<atomic_cli::AlreadyReported>().is_none() {
+                eprintln!("error: {:#}", e);
+            }
             ExitCode::FAILURE
         }
     }
