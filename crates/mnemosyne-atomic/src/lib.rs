@@ -3760,7 +3760,7 @@ fn build_candidate_fact(
     if frame.is_empty() {
         return Err(format!("fact `{fact_id}`: frame mandatory (non-empty)"));
     }
-    if !store.frames.contains_key(frame) {
+    if !fact_ref_resolves(store, FactRefFacet::Frame, frame) {
         return Err(format!(
             "fact `{fact_id}`: frame `{frame}` not present in the frames registry \
              (add_frame / manifest frames[] first; fail-loud)"
@@ -3775,7 +3775,7 @@ fn build_candidate_fact(
             ));
         }
         Some(b) => {
-            if !mnemosyne_core::is_known_world(&store.branches, b) {
+            if !fact_ref_resolves(store, FactRefFacet::Branch, b) {
                 return Err(format!(
                     "fact `{fact_id}`: branch `{b}` not present in the branch registry \
                      (add_branch / manifest branches[] first; fail-loud — a typo'd branch \
@@ -3791,7 +3791,7 @@ fn build_candidate_fact(
         if e.is_empty() {
             return Err(format!("fact `{fact_id}`: blank entity ref"));
         }
-        if !store.entities.contains_key(e) {
+        if !fact_ref_resolves(store, FactRefFacet::Entity, e) {
             return Err(format!(
                 "fact `{fact_id}`: entity `{e}` not present in the entity registry \
                  (add_entity / manifest entities[] first; fail-loud)"
@@ -3812,7 +3812,7 @@ fn build_candidate_fact(
             "fact `{fact_id}`: canon_from mandatory (non-empty)"
         ));
     }
-    if !store.sections.contains_key(canon_from) {
+    if !fact_ref_resolves(store, FactRefFacet::CanonFrom, canon_from) {
         return Err(format!(
             "fact `{fact_id}`: canon_from `{canon_from}` not present as a section \
              (canon coordinates are structure-section refs)"
@@ -3826,7 +3826,7 @@ fn build_candidate_fact(
             ));
         }
         Some(c) => {
-            if !store.sections.contains_key(c) {
+            if !fact_ref_resolves(store, FactRefFacet::CanonTo, c) {
                 return Err(format!(
                     "fact `{fact_id}`: canon_to `{c}` not present as a section"
                 ));
@@ -3846,7 +3846,7 @@ fn build_candidate_fact(
         if e.is_empty() {
             return Err(format!("fact `{fact_id}`: blank evidence ref"));
         }
-        if !store.sections.contains_key(e) {
+        if !fact_ref_resolves(store, FactRefFacet::Evidence, e) {
             return Err(format!(
                 "fact `{fact_id}`: evidence `{e}` not present as a section"
             ));
@@ -3969,7 +3969,7 @@ fn build_typed_claim(
                 "fact `{fact_id}`: typed {leg} mandatory (non-empty)"
             ));
         }
-        if !store.entities.contains_key(id) {
+        if !fact_ref_resolves(store, FactRefFacet::Entity, id) {
             return Err(format!(
                 "fact `{fact_id}`: typed {leg} `{id}` not present in the entity registry \
                  (add_entity / manifest entities[] first; fail-loud)"
@@ -4485,6 +4485,139 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Which registry a fact-level ref resolves against — one variant per ref slot
+/// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
+/// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
+/// (`store_registry_violations`) used to be two hand-maintained copies of BOTH
+/// "which refs a fact has" and "how each resolves"; the enumeration
+/// [`fact_registry_refs`] and the resolver [`fact_ref_resolves`] are now the one
+/// copy each, so a new ref reaches both paths (each still formats its own
+/// message — author guidance vs out-of-band). Structural invariants that are not
+/// ref resolution (evidence non-empty, a typed entity leg listed in `entities`)
+/// stay separate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FactRefFacet {
+    Frame,
+    Branch,
+    Entity,
+    CanonFrom,
+    CanonTo,
+    Evidence,
+    TypedPredicate,
+    TypedSubject,
+    TypedObject,
+}
+
+impl FactRefFacet {
+    /// Every facet, once — the authority the parity tests measure their case
+    /// coverage against (Round 688). A new variant here forces a resolver arm
+    /// and a message arm (both `match`es are exhaustive), a push in
+    /// [`fact_registry_refs`] (the `fact_registry_refs_enumerates_every_facet`
+    /// test), and a corruption case in BOTH parity tests (their completeness
+    /// assertions) — so a ref cannot be added to one path and silently skipped
+    /// on the other.
+    pub const ALL: [FactRefFacet; 9] = [
+        FactRefFacet::Frame,
+        FactRefFacet::Branch,
+        FactRefFacet::Entity,
+        FactRefFacet::CanonFrom,
+        FactRefFacet::CanonTo,
+        FactRefFacet::Evidence,
+        FactRefFacet::TypedPredicate,
+        FactRefFacet::TypedSubject,
+        FactRefFacet::TypedObject,
+    ];
+}
+
+/// Every registry ref a built fact carries, as `(facet, value)` — the ONE
+/// enumeration the detector reads. Order matches the pre-Round-688 detector
+/// (frame, branch, entities, canon_from, canon_to, evidence, then the typed
+/// legs) so the FIRST-violation slice `check_store_boundary` surfaces is
+/// unchanged for a single-corruption fact.
+pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, String)> {
+    let mut refs = vec![
+        (FactRefFacet::Frame, fact.frame.clone()),
+        (FactRefFacet::Branch, fact.branch.clone()),
+    ];
+    for e in &fact.entities {
+        refs.push((FactRefFacet::Entity, e.clone()));
+    }
+    refs.push((FactRefFacet::CanonFrom, fact.canon_from.clone()));
+    if let Some(to) = &fact.canon_to {
+        refs.push((FactRefFacet::CanonTo, to.clone()));
+    }
+    for e in &fact.evidence {
+        refs.push((FactRefFacet::Evidence, e.clone()));
+    }
+    if let Some(claim) = &fact.typed {
+        refs.push((FactRefFacet::TypedPredicate, claim.predicate.clone()));
+        refs.push((FactRefFacet::TypedSubject, claim.subject.clone()));
+        if let TypedObject::Entity { id } = &claim.object {
+            refs.push((FactRefFacet::TypedObject, id.clone()));
+        }
+    }
+    refs
+}
+
+/// Whether one fact-level ref resolves in the store — the ONE place that knows
+/// how each facet resolves (branch via `is_known_world`, canon/evidence against
+/// sections, and so on). Both the write path and the detector call this, so
+/// they cannot disagree on what "resolves" means for a slot.
+pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) -> bool {
+    match facet {
+        FactRefFacet::Frame => store.frames.contains_key(value),
+        FactRefFacet::Branch => mnemosyne_core::is_known_world(&store.branches, value),
+        FactRefFacet::Entity | FactRefFacet::TypedSubject | FactRefFacet::TypedObject => {
+            store.entities.contains_key(value)
+        }
+        FactRefFacet::CanonFrom | FactRefFacet::CanonTo | FactRefFacet::Evidence => {
+            store.sections.contains_key(value)
+        }
+        FactRefFacet::TypedPredicate => store.predicates.contains_key(value),
+    }
+}
+
+/// The out-of-band detector's message for one unresolved ref — kept byte-stable
+/// with the pre-Round-688 inline messages (moved, not re-worded).
+fn store_registry_ref_message(id: &str, facet: FactRefFacet, value: &str) -> String {
+    match facet {
+        FactRefFacet::Frame => format!(
+            "fact `{id}`: frame `{value}` not in the frames registry (out-of-band edit; \
+             the write path enforces this)"
+        ),
+        FactRefFacet::Branch => format!(
+            "fact `{id}`: branch `{value}` not in the branch registry (out-of-band edit; \
+             the write path enforces this)"
+        ),
+        FactRefFacet::Entity => format!(
+            "fact `{id}`: entity `{value}` not in the entity registry (out-of-band \
+             edit; the write path enforces this)"
+        ),
+        FactRefFacet::CanonFrom => {
+            format!("fact `{id}`: canon_from `{value}` is not a section (out-of-band edit)")
+        }
+        FactRefFacet::CanonTo => {
+            format!("fact `{id}`: canon_to `{value}` is not a section (out-of-band edit)")
+        }
+        FactRefFacet::Evidence => {
+            format!("fact `{id}`: evidence `{value}` is not a section (out-of-band edit)")
+        }
+        FactRefFacet::TypedPredicate => format!(
+            "fact `{id}`: typed predicate `{value}` not in the predicate registry \
+             (out-of-band edit; the write path enforces this — a typo'd predicate \
+             silently escapes its rule)"
+        ),
+        FactRefFacet::TypedSubject => format!(
+            "fact `{id}`: typed subject `{value}` not in the entity registry \
+             (out-of-band edit; the write path enforces this)"
+        ),
+        FactRefFacet::TypedObject => format!(
+            "fact `{id}`: typed object `{value}` not in the entity registry \
+             (out-of-band edit; the write path enforces this)"
+        ),
+    }
+}
+
 /// Every out-of-band store-registry integrity violation — the ONE detector the
 /// narrative boundary (`check_store_boundary`, mnemosyne-validate) and the
 /// baseline gate (`validate_workspace`, mnemosyne-ops) both call (Round 677),
@@ -4507,76 +4640,30 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
         ));
     }
     for (id, fact) in &store.narrative_facts {
-        if !store.frames.contains_key(&fact.frame) {
-            out.push(format!(
-                "fact `{id}`: frame `{}` not in the frames registry (out-of-band edit; \
-                 the write path enforces this)",
-                fact.frame
-            ));
-        }
-        if !mnemosyne_core::is_known_world(&store.branches, &fact.branch) {
-            out.push(format!(
-                "fact `{id}`: branch `{}` not in the branch registry (out-of-band edit; \
-                 the write path enforces this)",
-                fact.branch
-            ));
-        }
-        for e in &fact.entities {
-            if !store.entities.contains_key(e) {
-                out.push(format!(
-                    "fact `{id}`: entity `{e}` not in the entity registry (out-of-band \
-                     edit; the write path enforces this)"
-                ));
+        // Ref resolution: the ONE enumeration + resolver, shared with the write
+        // path (Round 688 — DEBT-DUP-REGISTRY). The typed leg's predicate and
+        // entity refs (Round 681, the facet R677's "whole store registry"
+        // missed) are enumerated too, so a typo'd predicate — off which rules
+        // key — cannot silently escape here.
+        for (facet, value) in fact_registry_refs(fact) {
+            if !fact_ref_resolves(store, facet, &value) {
+                out.push(store_registry_ref_message(id, facet, &value));
             }
         }
-        if !store.sections.contains_key(&fact.canon_from) {
-            out.push(format!(
-                "fact `{id}`: canon_from `{}` is not a section (out-of-band edit)",
-                fact.canon_from
-            ));
-        }
-        if let Some(to) = &fact.canon_to {
-            if !store.sections.contains_key(to) {
-                out.push(format!(
-                    "fact `{id}`: canon_to `{to}` is not a section (out-of-band edit)"
-                ));
-            }
-        }
+        // Structural invariants that are not ref resolution.
         if fact.evidence.is_empty() {
             out.push(format!(
                 "fact `{id}`: evidence emptied out-of-band (a claim without provenance \
                  is unauditable)"
             ));
         }
-        for e in &fact.evidence {
-            if !store.sections.contains_key(e) {
-                out.push(format!(
-                    "fact `{id}`: evidence `{e}` is not a section (out-of-band edit)"
-                ));
-            }
-        }
-        // The typed leg's registry refs (Round 681) — the facet R677 named ("the
-        // whole store registry") but did not cover: `predicate` is a first-class
-        // registry (the write path fails loud on it, the R436 "a typo must not
-        // silently escape its rule" lesson), and the subject/object entity refs
-        // must resolve. Mirrors the write path's `build_typed_claim`. (Scalar
-        // objects are opaque consumer vocabulary — no registry ref to dangle.)
+        // A typed entity leg must be LISTED in the fact's `entities` (the
+        // entities list stays THE retrieval key). Resolution is covered by the
+        // enumeration above; this is the separate membership check, fired only
+        // when the ref resolves (a dangling ref is already reported).
         if let Some(claim) = &fact.typed {
-            if !store.predicates.contains_key(&claim.predicate) {
-                out.push(format!(
-                    "fact `{id}`: typed predicate `{}` not in the predicate registry \
-                     (out-of-band edit; the write path enforces this — a typo'd predicate \
-                     silently escapes its rule)",
-                    claim.predicate
-                ));
-            }
             for (leg, ent) in typed_entity_refs(claim) {
-                if !store.entities.contains_key(ent) {
-                    out.push(format!(
-                        "fact `{id}`: typed {leg} `{ent}` not in the entity registry \
-                         (out-of-band edit; the write path enforces this)"
-                    ));
-                } else if !fact.entities.iter().any(|e| e == ent) {
+                if store.entities.contains_key(ent) && !fact.entities.iter().any(|e| e == ent) {
                     out.push(format!(
                         "fact `{id}`: typed {leg} `{ent}` is not a member of the fact's \
                          entities list (the entities list stays THE retrieval key)"
@@ -12610,49 +12697,90 @@ mod tests {
             store_registry_violations(&base)
         );
 
-        // Each corruption is applied to a clone; the detector must name it.
-        type Facet = (&'static str, fn(&mut NarrativeFact), &'static str);
+        // Each corruption is applied to a clone; the detector must name it. The
+        // second tuple element is the facet the case exercises (`None` = a
+        // structural check, not a registry ref); the completeness assertion below
+        // uses it to prove every `FactRefFacet` has a case.
+        type Facet = (
+            &'static str,
+            Option<FactRefFacet>,
+            fn(&mut NarrativeFact),
+            &'static str,
+        );
         let cases: Vec<Facet> = vec![
-            ("frame", |f| f.frame = "ghost".into(), "frame `ghost`"),
-            ("branch", |f| f.branch = "ghost".into(), "branch `ghost`"),
+            (
+                "frame",
+                Some(FactRefFacet::Frame),
+                |f| f.frame = "ghost".into(),
+                "frame `ghost`",
+            ),
+            (
+                "branch",
+                Some(FactRefFacet::Branch),
+                |f| f.branch = "ghost".into(),
+                "branch `ghost`",
+            ),
             (
                 "entities",
+                Some(FactRefFacet::Entity),
                 |f| f.entities.push("ghost".into()),
                 "entity `ghost`",
             ),
             (
                 "canon_from",
+                Some(FactRefFacet::CanonFrom),
                 |f| f.canon_from = "ghost".into(),
                 "canon_from `ghost`",
             ),
             (
                 "canon_to",
+                Some(FactRefFacet::CanonTo),
                 |f| f.canon_to = Some("ghost".into()),
                 "canon_to `ghost`",
             ),
-            ("evidence-empty", |f| f.evidence.clear(), "evidence emptied"),
+            (
+                "evidence-empty",
+                None,
+                |f| f.evidence.clear(),
+                "evidence emptied",
+            ),
             (
                 "evidence-section",
+                Some(FactRefFacet::Evidence),
                 |f| f.evidence = vec!["ghost".into()],
                 "evidence `ghost`",
             ),
             (
                 "typed-predicate",
+                Some(FactRefFacet::TypedPredicate),
                 |f| f.typed.as_mut().unwrap().predicate = "ghost".into(),
                 "typed predicate `ghost`",
             ),
             (
                 "typed-subject",
+                Some(FactRefFacet::TypedSubject),
                 |f| f.typed.as_mut().unwrap().subject = "ghost".into(),
                 "typed subject `ghost`",
             ),
             (
                 "typed-object",
+                Some(FactRefFacet::TypedObject),
                 |f| f.typed.as_mut().unwrap().object = TypedObject::Entity { id: "ghost".into() },
                 "typed object `ghost`",
             ),
         ];
-        for (label, mutate, want) in cases {
+        // Completeness: every FactRefFacet is exercised by a case, so a facet
+        // added to fact_registry_refs cannot land without a detector case here.
+        let covered: std::collections::HashSet<FactRefFacet> =
+            cases.iter().filter_map(|(_, facet, _, _)| *facet).collect();
+        assert_eq!(
+            covered,
+            FactRefFacet::ALL
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+            "every FactRefFacet must have a detector corruption case"
+        );
+        for (label, _facet, mutate, want) in cases {
             let mut s = base.clone();
             mutate(s.narrative_facts.get_mut("f1").unwrap());
             let v = store_registry_violations(&s);
@@ -12661,6 +12789,189 @@ mod tests {
                 "{label}: expected `{want}` in {v:?}"
             );
         }
+    }
+
+    // The WRITE-PATH twin of the detector parity test above (Round 688 —
+    // DEBT-DUP-REGISTRY). Both resolve refs through the shared `fact_ref_resolves`
+    // and both prove they cover EVERY `FactRefFacet` via a completeness assertion
+    // against `FactRefFacet::ALL`. So a facet added to `fact_registry_refs`
+    // (which the `..._enumerates_every_facet` test forces onto ALL) has no case
+    // in EITHER list until a human adds one, and until then BOTH tests fail —
+    // the drift is caught structurally, not by discipline. The write path does
+    // NOT itself iterate `fact_registry_refs` (it hand-enumerates each facet, so
+    // it can build the fact with author-guiding messages); this test is what
+    // binds its hand-list to the enumeration. Messages differ (author guidance
+    // here, out-of-band there) by design.
+    #[test]
+    fn build_fact_rejects_every_registry_facet_like_the_detector() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let base = {
+            let mut s = AtomicStore::new();
+            seed_chapters(&mut s); // ch-1, ch-2, ch-3
+            s.frames.insert("gt".to_string(), Frame::default());
+            add_entity(&mut s, &path, "a", "", "").unwrap();
+            add_entity(&mut s, &path, "b", "", "").unwrap();
+            add_predicate(&mut s, &path, "rel", "entity", "").unwrap();
+            s
+        };
+        let valid = || FactImport {
+            entities: vec!["a".to_string(), "b".to_string()],
+            fact_id: "wp".to_string(),
+            frame: "gt".to_string(),
+            branch: None,
+            claim: "c".to_string(),
+            canon_from: "ch-1".to_string(),
+            canon_to: None,
+            evidence: vec!["ch-1".to_string()],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
+            typed: Some(TypedClaim {
+                subject: "a".to_string(),
+                predicate: "rel".to_string(),
+                object: TypedObject::Entity {
+                    id: "b".to_string(),
+                },
+            }),
+            quote: None,
+        };
+        // The clean fact is accepted (non-vacuity: the corruptions below fail
+        // for the facet, not because the shape was broken to begin with).
+        add_fact(&mut base.clone(), &path, &valid()).unwrap();
+
+        type Case = (
+            &'static str,
+            Option<FactRefFacet>,
+            fn(&mut FactImport),
+            &'static str,
+        );
+        let cases: Vec<Case> = vec![
+            (
+                "frame",
+                Some(FactRefFacet::Frame),
+                |f| f.frame = "ghost".into(),
+                "frames registry",
+            ),
+            (
+                "branch",
+                Some(FactRefFacet::Branch),
+                |f| f.branch = Some("ghost".into()),
+                "branch registry",
+            ),
+            (
+                "entities",
+                Some(FactRefFacet::Entity),
+                |f| f.entities.push("ghost".into()),
+                "entity registry",
+            ),
+            (
+                "canon_from",
+                Some(FactRefFacet::CanonFrom),
+                |f| f.canon_from = "ghost".into(),
+                "canon_from `ghost`",
+            ),
+            (
+                "canon_to",
+                Some(FactRefFacet::CanonTo),
+                |f| f.canon_to = Some("ghost".into()),
+                "canon_to `ghost`",
+            ),
+            (
+                "evidence-empty",
+                None,
+                |f| f.evidence.clear(),
+                "evidence mandatory",
+            ),
+            (
+                "evidence-section",
+                Some(FactRefFacet::Evidence),
+                |f| f.evidence = vec!["ghost".into()],
+                "evidence `ghost`",
+            ),
+            (
+                "typed-predicate",
+                Some(FactRefFacet::TypedPredicate),
+                |f| f.typed.as_mut().unwrap().predicate = "ghost".into(),
+                "predicate registry",
+            ),
+            (
+                "typed-subject",
+                Some(FactRefFacet::TypedSubject),
+                |f| f.typed.as_mut().unwrap().subject = "ghost".into(),
+                "typed subject `ghost`",
+            ),
+            (
+                "typed-object",
+                Some(FactRefFacet::TypedObject),
+                |f| f.typed.as_mut().unwrap().object = TypedObject::Entity { id: "ghost".into() },
+                "typed object `ghost`",
+            ),
+        ];
+        // Completeness: every FactRefFacet is exercised, so a new enumerated ref
+        // the write path forgets to reject fails HERE (the case corrupts it and
+        // add_fact must reject) — binding the write path's hand-list to the
+        // enumeration despite it not iterating fact_registry_refs directly.
+        let covered: std::collections::HashSet<FactRefFacet> =
+            cases.iter().filter_map(|(_, facet, _, _)| *facet).collect();
+        assert_eq!(
+            covered,
+            FactRefFacet::ALL
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+            "every FactRefFacet must have a write-path corruption case"
+        );
+        for (label, _facet, mutate, want) in cases {
+            let mut f = valid();
+            mutate(&mut f);
+            let err = add_fact(&mut base.clone(), &path, &f).unwrap_err();
+            assert!(
+                err.to_string().contains(want),
+                "{label}: expected `{want}` in {err}"
+            );
+        }
+    }
+
+    // Binds the enumeration to FactRefFacet::ALL: a fully-populated fact must
+    // enumerate EVERY facet (Round 688). A variant added to the enum but never
+    // pushed in fact_registry_refs (a dead resolver/message arm, a silent
+    // detector gap) fails here.
+    #[test]
+    fn fact_registry_refs_enumerates_every_facet() {
+        let full = NarrativeFact {
+            frame: "gt".to_string(),
+            branch: mnemosyne_core::MAIN_BRANCH.to_string(),
+            entities: vec!["a".to_string()],
+            claim: "c".to_string(),
+            canon_from: "ch-1".to_string(),
+            canon_to: Some("ch-2".to_string()),
+            evidence: vec!["ch-1".to_string()],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            payoff_expectation: PayoffExpectation::default(),
+            pays_off: vec![],
+            typed: Some(TypedClaim {
+                subject: "a".to_string(),
+                predicate: "rel".to_string(),
+                object: TypedObject::Entity {
+                    id: "b".to_string(),
+                },
+            }),
+            quote: None,
+            quote_sha256: None,
+        };
+        let seen: std::collections::HashSet<FactRefFacet> = fact_registry_refs(&full)
+            .into_iter()
+            .map(|(f, _)| f)
+            .collect();
+        assert_eq!(
+            seen,
+            FactRefFacet::ALL
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+            "fact_registry_refs must emit every FactRefFacet for a fully-populated fact"
+        );
     }
 
     #[test]
