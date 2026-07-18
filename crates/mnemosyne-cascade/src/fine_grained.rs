@@ -754,11 +754,15 @@ mod tests {
     use mnemosyne_core::{DecisionStatus, FactKey, SectionFact, SectionSkeleton};
 
     fn make_section(branch: u64, entity: u64, status: &str) -> SectionFact {
-        let decision_status = match status.to_ascii_lowercase().as_str() {
-            "superseded" => Some(DecisionStatus::Superseded),
-            "removed" => Some(DecisionStatus::Removed),
-            _ => Some(DecisionStatus::Active),
-        };
+        // Route through the ONE canonical resolver (Round 678) instead of a
+        // partial hand-rolled match that silently defaulted every unknown tag to
+        // Active (DEBT-CASCADE-PARSE). A typo'd status now fails loud, as the
+        // `from_tag` contract intends ("no silent default").
+        let decision_status = Some(
+            DecisionStatus::from_tag(&status.to_ascii_lowercase()).unwrap_or_else(|| {
+                panic!("make_section: unknown decision status `{status}` (active/superseded/removed/open)")
+            }),
+        );
         SectionFact {
             key: FactKey {
                 branch_id: branch,
