@@ -1338,6 +1338,31 @@ pub enum ContinuityViolation {
         bound: String,
         at: String,
     },
+    /// A transition rule's `adjacency` predicate holds a SELF-LOOP fact —
+    /// `adjacent(a, a)` (Round 698). A place adjacent to itself is a degenerate
+    /// edge (a zero-length road / a step that never moves); the map's edges must
+    /// have distinct endpoints. Structural (rides `severity`); a derivation over
+    /// the adjacency facts, re-evaluated each scan.
+    AdjacencySelfLoop {
+        rule: String,
+        predicate: String,
+        fact: String,
+        place: String,
+    },
+    /// An UNDIRECTED transition rule's `adjacency` predicate holds BOTH
+    /// `adjacent(a, b)` and `adjacent(b, a)` (Round 698). Undirected means one
+    /// fact per edge is the SSOT — the eval symmetrizes, so the reverse fact is
+    /// a second home for one datum that can drift (delete one, the map goes
+    /// one-way). Reported once per unordered pair. Not a violation for a
+    /// DIRECTED rule, where the two are distinct one-way edges.
+    AdjacencyReverseDuplicate {
+        rule: String,
+        predicate: String,
+        fact_a: String,
+        fact_b: String,
+        a: String,
+        b: String,
+    },
 }
 
 impl ContinuityViolation {
@@ -2649,6 +2674,55 @@ pub fn scan_continuity(
                         }
                     })
                     .collect();
+                // Round 698 — adjacency integrity: the edges this rule reads
+                // must be well-formed. A self-loop `adjacent(a,a)` is degenerate
+                // (a road that never moves); for an UNDIRECTED rule, holding both
+                // `adjacent(a,b)` and `adjacent(b,a)` is a second home for one
+                // datum (the eval symmetrizes) that can drift. Directional facts
+                // stay two distinct one-way edges. A derivation over the
+                // adjacency facts, re-evaluated each scan.
+                let mut edges: BTreeMap<(&str, &str), &str> = BTreeMap::new();
+                for (fid, t) in facts
+                    .iter()
+                    .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
+                    .filter(|(_, t)| t.predicate == *adjacency)
+                {
+                    let a = t.subject.as_str();
+                    let b = typed_object_key(&t.object);
+                    if a == b {
+                        report
+                            .violations
+                            .push(ContinuityViolation::AdjacencySelfLoop {
+                                rule: rule.id.clone(),
+                                predicate: adjacency.clone(),
+                                fact: fid.to_string(),
+                                place: a.to_string(),
+                            });
+                    } else {
+                        edges.insert((a, b), fid);
+                    }
+                }
+                if *undirected {
+                    let mut reported: BTreeSet<(&str, &str)> = BTreeSet::new();
+                    for (&(a, b), &fwd) in &edges {
+                        let key = if a <= b { (a, b) } else { (b, a) };
+                        if let Some(&rev) = edges.get(&(b, a)) {
+                            if reported.insert(key) {
+                                let (fa, fb) = if a <= b { (fwd, rev) } else { (rev, fwd) };
+                                report.violations.push(
+                                    ContinuityViolation::AdjacencyReverseDuplicate {
+                                        rule: rule.id.clone(),
+                                        predicate: adjacency.clone(),
+                                        fact_a: fa.to_string(),
+                                        fact_b: fb.to_string(),
+                                        a: key.0.to_string(),
+                                        b: key.1.to_string(),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
                 // The gated half: every typed succession edge with this
                 // predicate and one subject must step inside `allowed`.
                 // The edge itself is the scope — the write path already
@@ -6623,6 +6697,111 @@ mod tests {
             }
             v => panic!("wrong violation: {v:?}"),
         }
+    }
+
+    /// Round 698 — adjacency integrity: a self-loop `adjacent(a,a)` is flagged
+    /// under ANY transition rule; an undirected rule holding BOTH directions of
+    /// one edge is flagged (one fact per edge is the SSOT); a DIRECTED rule
+    /// keeps both as two distinct one-way edges (no dup).
+    #[test]
+    fn adjacency_integrity_flags_self_loop_and_undirected_reverse_dup() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // pred-at is the constrained predicate — one inert fact registers it.
+        let anchor = || {
+            typed_fact(
+                "p0",
+                "gt",
+                "ch-1",
+                "ent-jiun",
+                "pred-at",
+                holds("ent-village"),
+            )
+        };
+
+        // A self-loop lists its one place ONCE in entities (subject==object; a
+        // duplicate entities ref is rejected by the write path).
+        let mut e_self = typed_fact(
+            "e-self",
+            "gt",
+            "ch-1",
+            "ent-well",
+            "adjacent",
+            holds("ent-well"),
+        );
+        e_self.entities = vec!["ent-well".to_string()];
+        // Undirected map: a self-loop + a reverse-duplicated edge.
+        let undirected = [transition_rule("roads", "pred-at", "adjacent", true)];
+        let store = store_with(vec![
+            anchor(),
+            e_self,
+            typed_fact(
+                "e-fwd",
+                "gt",
+                "ch-1",
+                "ent-dike",
+                "adjacent",
+                holds("ent-village"),
+            ),
+            typed_fact(
+                "e-rev",
+                "gt",
+                "ch-1",
+                "ent-village",
+                "adjacent",
+                holds("ent-dike"),
+            ),
+        ]);
+        let report = scan_continuity(&store, &order, &undirected).unwrap();
+        let self_loops = report
+            .violations
+            .iter()
+            .filter(|v| matches!(v, ContinuityViolation::AdjacencySelfLoop { .. }))
+            .count();
+        let rev_dups: Vec<_> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::AdjacencyReverseDuplicate { a, b, .. } => Some((a, b)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(self_loops, 1, "{:?}", report.violations);
+        assert_eq!(rev_dups.len(), 1, "reported once per unordered pair");
+        assert_eq!(
+            (rev_dups[0].0.as_str(), rev_dups[0].1.as_str()),
+            ("ent-dike", "ent-village")
+        );
+
+        // Directed: the same reverse pair is two legit one-way edges — no dup.
+        let directed = [transition_rule("gate", "pred-at", "adjacent", false)];
+        let store2 = store_with(vec![
+            anchor(),
+            typed_fact(
+                "e-fwd",
+                "gt",
+                "ch-1",
+                "ent-dike",
+                "adjacent",
+                holds("ent-village"),
+            ),
+            typed_fact(
+                "e-rev",
+                "gt",
+                "ch-1",
+                "ent-village",
+                "adjacent",
+                holds("ent-dike"),
+            ),
+        ]);
+        let report2 = scan_continuity(&store2, &order, &directed).unwrap();
+        assert!(
+            !report2
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::AdjacencyReverseDuplicate { .. })),
+            "directed keeps both one-way edges: {:?}",
+            report2.violations
+        );
     }
 
     /// Fork world (R441 probe 6): a what-if branch keeps its own state

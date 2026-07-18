@@ -421,6 +421,52 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                  {op} {bound} at `{at}` (frame `{frame}`, branch `{branch}`)"
             ),
         ),
+        ContinuityViolation::AdjacencySelfLoop {
+            rule,
+            predicate,
+            fact,
+            place,
+        } => action(
+            "adjacency_self_loop",
+            ViolationLocus {
+                facts: vec![fact.clone()],
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "transition rule `{rule}`: an edge in `{predicate}` must have distinct endpoints"
+            ),
+            "remove the self-adjacency fact, or correct its endpoints to two different places"
+                .to_string(),
+            format!(
+                "transition rule `{rule}`: `{predicate}` fact `{fact}` is a self-loop \
+                 `{place}` -> `{place}`"
+            ),
+        ),
+        ContinuityViolation::AdjacencyReverseDuplicate {
+            rule,
+            predicate,
+            fact_a,
+            fact_b,
+            a,
+            b,
+        } => action(
+            "adjacency_reverse_duplicate",
+            ViolationLocus {
+                facts: vec![fact_a.clone(), fact_b.clone()],
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "undirected transition rule `{rule}`: `{predicate}` must not hold BOTH directions \
+                 of an edge (the eval symmetrizes; store the undirected edge once)"
+            ),
+            "delete one of the two facts — an undirected edge is stored once".to_string(),
+            format!(
+                "undirected transition rule `{rule}`: `{predicate}` holds both directions of edge \
+                 `{a}` <-> `{b}` (facts `{fact_a}`, `{fact_b}`)"
+            ),
+        ),
     }
 }
 
@@ -468,6 +514,20 @@ mod tests {
                 right_value: "1".into(),
                 bound: "5".into(),
                 at: "sc-7".into(),
+            },
+            ContinuityViolation::AdjacencySelfLoop {
+                rule: "roads".into(),
+                predicate: "adjacent".into(),
+                fact: "f-7".into(),
+                place: "ent-village".into(),
+            },
+            ContinuityViolation::AdjacencyReverseDuplicate {
+                rule: "roads".into(),
+                predicate: "adjacent".into(),
+                fact_a: "f-8".into(),
+                fact_b: "f-9".into(),
+                a: "ent-dike".into(),
+                b: "ent-village".into(),
             },
         ];
         for v in &samples {
