@@ -4003,7 +4003,7 @@ fn build_typed_claim(
             "fact `{fact_id}`: typed predicate mandatory (non-empty)"
         ));
     }
-    let Some(decl) = store.predicates.get(predicate) else {
+    let Some(decl) = resolve_predicate(store, predicate) else {
         return Err(format!(
             "fact `{fact_id}`: typed predicate `{predicate}` not present in the predicate \
              registry (add_predicate / manifest predicates[] first; fail-loud — rules key \
@@ -4547,26 +4547,26 @@ impl FactRefFacet {
 /// (frame, branch, entities, canon_from, canon_to, evidence, then the typed
 /// legs) so the FIRST-violation slice `check_store_boundary` surfaces is
 /// unchanged for a single-corruption fact.
-pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, String)> {
+pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
     let mut refs = vec![
-        (FactRefFacet::Frame, fact.frame.clone()),
-        (FactRefFacet::Branch, fact.branch.clone()),
+        (FactRefFacet::Frame, fact.frame.as_str()),
+        (FactRefFacet::Branch, fact.branch.as_str()),
     ];
     for e in &fact.entities {
-        refs.push((FactRefFacet::Entity, e.clone()));
+        refs.push((FactRefFacet::Entity, e.as_str()));
     }
-    refs.push((FactRefFacet::CanonFrom, fact.canon_from.clone()));
+    refs.push((FactRefFacet::CanonFrom, fact.canon_from.as_str()));
     if let Some(to) = &fact.canon_to {
-        refs.push((FactRefFacet::CanonTo, to.clone()));
+        refs.push((FactRefFacet::CanonTo, to.as_str()));
     }
     for e in &fact.evidence {
-        refs.push((FactRefFacet::Evidence, e.clone()));
+        refs.push((FactRefFacet::Evidence, e.as_str()));
     }
     if let Some(claim) = &fact.typed {
-        refs.push((FactRefFacet::TypedPredicate, claim.predicate.clone()));
-        refs.push((FactRefFacet::TypedSubject, claim.subject.clone()));
+        refs.push((FactRefFacet::TypedPredicate, claim.predicate.as_str()));
+        refs.push((FactRefFacet::TypedSubject, claim.subject.as_str()));
         if let TypedObject::Entity { id } = &claim.object {
-            refs.push((FactRefFacet::TypedObject, id.clone()));
+            refs.push((FactRefFacet::TypedObject, id.as_str()));
         }
     }
     refs
@@ -4586,8 +4586,16 @@ pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) 
         FactRefFacet::CanonFrom | FactRefFacet::CanonTo | FactRefFacet::Evidence => {
             store.sections.contains_key(value)
         }
-        FactRefFacet::TypedPredicate => store.predicates.contains_key(value),
+        FactRefFacet::TypedPredicate => resolve_predicate(store, value).is_some(),
     }
+}
+
+/// Resolve a predicate id to its declaration — the ONE predicate lookup both the
+/// resolver (via `.is_some()`) and the write path (`build_typed_claim`, which
+/// needs the declaration for the object-shape check) call, so predicate
+/// resolution is single-copy (Round 693 — DEBT-PREDICATE-RESOLVE-SPLIT).
+pub fn resolve_predicate<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a Predicate> {
+    store.predicates.get(id)
 }
 
 /// The out-of-band detector's message for one unresolved ref — kept byte-stable
@@ -4659,8 +4667,8 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
         // missed) are enumerated too, so a typo'd predicate — off which rules
         // key — cannot silently escape here.
         for (facet, value) in fact_registry_refs(fact) {
-            if !fact_ref_resolves(store, facet, &value) {
-                out.push(store_registry_ref_message(id, facet, &value));
+            if !fact_ref_resolves(store, facet, value) {
+                out.push(store_registry_ref_message(id, facet, value));
             }
         }
         // Structural invariants that are not ref resolution.
