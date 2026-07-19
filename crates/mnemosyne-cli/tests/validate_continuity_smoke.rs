@@ -946,6 +946,14 @@ fn store_native_map_g2_completeness_and_containers_end_to_end() {
                       "canon_from": "ch-1", "evidence": ["ch-1"],
                       "typed": { "subject": "p-region", "predicate": "contains",
                                  "object": { "kind": "entity", "id": "p-a" } } },
+            "c-rb": { "frame": "gt", "entities": ["p-region", "p-b"], "claim": "region holds b",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-region", "predicate": "contains",
+                                 "object": { "kind": "entity", "id": "p-b" } } },
+            "c-rc": { "frame": "gt", "entities": ["p-region", "p-c"], "claim": "region holds c",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-region", "predicate": "contains",
+                                 "object": { "kind": "entity", "id": "p-c" } } },
             "at-1": { "frame": "gt", "entities": ["hero", "p-a"], "claim": "hero at a",
                       "canon_from": "ch-1", "evidence": ["ch-1"],
                       "typed": { "subject": "hero", "predicate": "at",
@@ -1011,7 +1019,9 @@ fn store_native_map_g2_completeness_and_containers_end_to_end() {
         "completeness fires: {v}"
     );
 
-    // Container leak: p-region (a `contains` subject) also appears in adjacency.
+    // Cross-scope: p-region (root scope) is adjacent to p-c, which is its OWN
+    // child (region contains c) — a parent<->child edge crosses the scope boundary
+    // (the R716 replacement for the repealed R703 container-as-node leak).
     write_store(
         none(),
         serde_json::json!({
@@ -1022,10 +1032,10 @@ fn store_native_map_g2_completeness_and_containers_end_to_end() {
         }),
     );
     let (ok, v) = scan();
-    assert!(!ok, "a container-as-node leak gates: {v}");
+    assert!(!ok, "a container adjacent to its own child gates: {v}");
     assert!(
-        kinds(&v).contains(&"map_container_as_node".to_string()),
-        "container leak fires: {v}"
+        kinds(&v).contains(&"adjacency_cross_scope".to_string()),
+        "the cross-scope edge fires: {v}"
     );
 
     // Contained off-map: p-region contains p-far, which is in no adjacent fact.

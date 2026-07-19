@@ -1564,59 +1564,90 @@ pub enum ContinuityViolation {
         a: String,
         b: String,
     },
-    /// An UNDIRECTED transition rule's `adjacency` graph is NOT a single
-    /// connected component (Round 702, design sec 4.G4) — one or more places are
-    /// unreachable from the rest by any walk (an island off the map). Structural
-    /// (rides `severity`); a derivation over the adjacency facts, re-evaluated
-    /// each scan. Connectivity of an undirected graph is root-independent, so no
-    /// entrance/`outside` node is needed to decide it. Only for an undirected
-    /// (spatial) rule — a directed state machine's reachability is out of scope.
+    /// An `adjacency` SCOPE's sub-graph is NOT a single connected component
+    /// (Round 702, generalized PER SCOPE in Round 716). Within one containment
+    /// scope (a container's direct children, or the root scope of un-contained
+    /// places), the sibling edges must connect all the scope's nodes; an
+    /// unreachable one is an island off that sub-map. UNION-over-canon-points
+    /// within the (frame, world) (Round 716 review Finding 2): a scope is
+    /// disconnected only if an island is NEVER connected AT ANY point, so an
+    /// incrementally-authored bridge (an edge appearing in a later chapter) does
+    /// not retro-flag an earlier transiently-disconnected point — this is the ∀
+    /// "dead content = unreachable at every point" semantic, and it restores the
+    /// R702 flat behavior for a static container-less map (backward-compatible).
+    /// Undirected (spatial) rules only; root-independent. Structural (rides
+    /// `severity`).
     MapDisconnected {
         rule: String,
         predicate: String,
+        /// The containment scope: a container id, or empty for the ROOT scope
+        /// (un-contained top-level places).
+        scope: String,
         /// Nodes reached from the walk's arbitrary start.
         reached: usize,
-        /// Total distinct endpoints in the adjacency graph.
+        /// Total distinct endpoints in the scope's adjacency graph.
         total: usize,
         /// The endpoints NOT reached (the island), in store order.
         unreached: Vec<String>,
+        frame: String,
+        branch: String,
     },
-    /// A `subject_kind`-declared entity is neither a NODE (in some `adjacency`
-    /// fact) nor a CONTAINER (the subject of a `containment` fact) — an invented
-    /// place off the map (Round 703, design sec 4.G2 check 1). The place kind is
-    /// DERIVED from the adjacency predicate's Round 701 `subject_kind`, so core
-    /// never hardcodes "place" (ARCHITECTURE invariant 4); the check is inert
-    /// when the adjacency predicate declares no `subject_kind`. Structural
-    /// (rides `severity`); a derivation over the fact set, re-evaluated each
-    /// scan. Anchors on the ENTITY (a place with no fact), not a single fact.
+    /// A `subject_kind`-declared entity is neither a NODE (in some scope's
+    /// `adjacency` graph) nor a CONTAINER (a `containment` subject) at ANY canon
+    /// point — an invented place off the map (Round 703, generalized per scope in
+    /// Round 716). Place kind DERIVED from the adjacency predicate's Round 701
+    /// `subject_kind`/`object_entity_kind`, so core never hardcodes "place"
+    /// (ARCHITECTURE invariant 4); inert when neither leg declares a kind. UNION-
+    /// over-points within the (frame, world): a place placed on the map at any
+    /// point is not invented, so a later-appearing place is not false-flagged
+    /// (review Finding 1). Structural (rides `severity`); anchors on the ENTITY.
     MapInventedPlace {
         rule: String,
-        /// The adjacency predicate whose declared `subject_kind` names the map's
-        /// place kind (the map identity).
+        /// The adjacency predicate whose declared kind names the map's place kind.
         predicate: String,
-        /// The derived place kind (the adjacency `subject_kind`).
+        /// The derived place kind.
         place_kind: String,
         /// The entity that is a place but is off the map.
         place: String,
+        frame: String,
+        branch: String,
     },
-    /// A `containment` subject (a container/region) also appears as an endpoint
-    /// of an `adjacency` fact — a container used as a POSITION (Round 703,
-    /// design sec 4.G2 check 2). A region is a search-key, not a step you can
-    /// stand on; it must stay out of the walk graph. Structural (rides
-    /// `severity`); anchors on the container ENTITY.
-    MapContainerAsNode {
+    /// An `adjacency` edge crosses a containment SCOPE boundary — its two
+    /// endpoints have DIFFERENT direct containers at canon point `at`, so they are
+    /// not siblings and cannot be directly adjacent (Round 716, design R713.2). A
+    /// room is not directly adjacent to a place in a different building; you leave
+    /// via the container's own edges (a portal = the container participating as a
+    /// node in its parent's scope). This SUBSUMES the Round 703 `MapContainerAsNode`
+    /// (a container adjacent to its own child is a parent<->child edge, caught
+    /// here, kind-independently). Evaluated per canon point (a MOVED place makes an
+    /// edge sibling early + cross-scope late). Structural (rides `severity`);
+    /// anchors on the offending adjacency FACT.
+    AdjacencyCrossScope {
         rule: String,
-        /// The adjacency predicate the container leaked into.
         adjacency: String,
-        /// The containment predicate that declared the entity a container.
-        containment: String,
-        /// The container entity used as a node.
-        container: String,
+        /// The offending adjacency fact.
+        fact: String,
+        /// The two endpoints.
+        a: String,
+        b: String,
+        /// Each endpoint's direct container at `at` (empty = the root scope).
+        scope_a: String,
+        scope_b: String,
+        frame: String,
+        branch: String,
+        at: String,
     },
-    /// A `containment` fact's OBJECT is not a node — the region contains a place
-    /// that is off the map (Round 703, design sec 4.G2 check 3). A region may
-    /// only contain real map nodes. Structural (rides `severity`); anchors on
-    /// the offending `containment` FACT.
+    /// A `containment` fact's OBJECT is neither a NODE in its parent's scope nor a
+    /// CONTAINER — the region contains a place that is off the map (Round 703
+    /// check 3, generalized per scope + per canon point in Round 716). KIND-
+    /// INDEPENDENT (the R713 review's Finding 1: a container may only hold a real
+    /// map node or a sub-container, regardless of any declared kind — so this
+    /// catches an UNKINDED map's off-map member that the kind-gated
+    /// `MapInventedPlace` would miss). UNION-over-points within the (frame, world)
+    /// (review Finding 1): the contained thing must be a node or a container at
+    /// SOME point, so a member whose own map edge appears in a later chapter is
+    /// not false-flagged. Structural (rides `severity`); anchors on the
+    /// `containment` FACT.
     MapContainedOffMap {
         rule: String,
         /// The adjacency predicate whose facts define the map's nodes.
@@ -1627,8 +1658,10 @@ pub enum ContinuityViolation {
         fact: String,
         /// The container (the fact's subject).
         container: String,
-        /// The contained place that is not a node.
+        /// The contained place that is not a node in its parent's scope.
         contained: String,
+        frame: String,
+        branch: String,
     },
     /// An `edge_costs` side-table entry (Round 710) is keyed by a fact that is
     /// NOT an `adjacency` fact of any transition rule — a walk-cost attached to
@@ -3104,141 +3137,27 @@ pub fn scan_continuity(
                             }
                         }
                     }
-                    // G4 (Round 702, design sec 4.G4) — the undirected map must
-                    // be a SINGLE connected component; an unreachable place is an
-                    // island off the map. Root-independent for an undirected
-                    // graph, so a walk from ANY one node must reach them all.
-                    // Symmetrize `edges.keys()` (one fact per undirected edge is
-                    // the SSOT, so the reverse leg may be absent) into an
-                    // adjacency list, then DFS from an arbitrary start.
-                    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-                    for &(a, b) in edges.keys() {
-                        adj.entry(a).or_default().push(b);
-                        adj.entry(b).or_default().push(a);
-                    }
-                    if adj.len() > 1 {
-                        let start = *adj.keys().next().unwrap();
-                        let mut seen: BTreeSet<&str> = BTreeSet::new();
-                        let mut stack = vec![start];
-                        while let Some(n) = stack.pop() {
-                            if seen.insert(n) {
-                                stack.extend(adj.get(n).into_iter().flatten().copied());
-                            }
-                        }
-                        if seen.len() < adj.len() {
-                            let unreached: Vec<String> = adj
-                                .keys()
-                                .filter(|n| !seen.contains(*n))
-                                .map(|n| n.to_string())
-                                .collect();
-                            report
-                                .violations
-                                .push(ContinuityViolation::MapDisconnected {
-                                    rule: rule.id.clone(),
-                                    predicate: adjacency.clone(),
-                                    reached: seen.len(),
-                                    total: adj.len(),
-                                    unreached,
-                                });
-                        }
-                    }
+                    // G4 connectivity moved to `scan_spatial_map` (Round 716):
+                    // it is now PER SCOPE + per canon point, not one flat graph.
                 }
-                // G2 (Round 703, design sec 2/4.G2) — completeness + container
-                // leaks over the `adjacency` + `containment` facts. Direction-
-                // agnostic (place structure, unlike G4's connectivity): runs for
-                // both directed and undirected rules. Two derived inputs:
-                //   place_kind — the adjacency predicate's declared node kind
-                //     (Round 701). Core never hardcodes "place" (ARCHITECTURE
-                //     invariant 4), so the check is INERT when the map declares no
-                //     kind on EITHER leg. Read `subject_kind` OR `object_entity_kind`:
-                //     both legs of an undirected map are the same place kind, and
-                //     R701 gates the two legs INDEPENDENTLY — so an author who
-                //     declares only one leg's kind must not silently disarm the
-                //     completeness gate (the R295/R699 half-enforced-invariant trap).
-                //   container_subjects — the subjects of `containment`-predicate
-                //     facts (a region → its member nodes). Absent `containment` =
-                //     no containers, so checks 2/3 are vacuous.
-                let place_kind = store.predicates.get(adjacency).and_then(|p| {
-                    p.subject_kind
-                        .as_deref()
-                        .or(p.object_entity_kind.as_deref())
-                });
-                let mut container_subjects: BTreeSet<&str> = BTreeSet::new();
-                if let Some(containment_pred) = containment {
-                    for (fid, t) in facts
-                        .iter()
-                        .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
-                        .filter(|(_, t)| t.predicate == *containment_pred)
-                    {
-                        let container = t.subject.as_str();
-                        let contained = typed_object_key(&t.object);
-                        container_subjects.insert(container);
-                        // Check 3: a region contains only real map nodes. The
-                        // containment predicate's object KIND is R701's write-path
-                        // concern, not re-checked here — a `containment` mis-declared
-                        // with a SCALAR object would over-flag every value (symmetric
-                        // with `adjacency`, which R697 likewise reads without a kind
-                        // guard). Garbage-in mis-declaration, not a store the mutate
-                        // API produces for an entity-object `contains`.
-                        if !nodes.contains(contained) {
-                            report
-                                .violations
-                                .push(ContinuityViolation::MapContainedOffMap {
-                                    rule: rule.id.clone(),
-                                    adjacency: adjacency.clone(),
-                                    containment: containment_pred.clone(),
-                                    fact: fid.to_string(),
-                                    container: container.to_string(),
-                                    contained: contained.to_string(),
-                                });
-                        }
-                    }
-                    // Check 2: a container is a search-key, not a position — it
-                    // must stay OUT of the adjacency graph (never walked on).
-                    for &container in &container_subjects {
-                        if nodes.contains(container) {
-                            report
-                                .violations
-                                .push(ContinuityViolation::MapContainerAsNode {
-                                    rule: rule.id.clone(),
-                                    adjacency: adjacency.clone(),
-                                    containment: containment_pred.clone(),
-                                    container: container.to_string(),
-                                });
-                        }
-                    }
-                }
-                // Check 1 (completeness): every place-kind entity is a NODE or a
-                // CONTAINER — else an invented place off the map. Inert when the
-                // map is not kind-constrained (no declared node kind on `adjacency`).
-                // SCOPE (design sec 1, R696 review finding #6): the entity
-                // enumeration is store-wide but the node set is THIS rule's — the
-                // present single-map-per-kind ground-truth case. Two DISTINCT maps
-                // sharing one place kind would each flag the other's places as
-                // invented (the flat, un-scoped edge graph); branch/second-map
-                // scoping is deferred substrate with no consumer yet
-                // (DEBT-MAP-G2-SINGLEMAP). A `containment`-object place that is off
-                // the map is intentionally reported by BOTH check 3 (as an off-map
-                // containment) AND check 1 (as an invented place) when it is kinded —
-                // two true statements anchored differently, the R698 cosmetic-minor
-                // precedent.
-                if let Some(place_kind) = place_kind {
-                    for (eid, ent) in &store.entities {
-                        if ent.kind.as_str() == place_kind
-                            && !nodes.contains(eid.as_str())
-                            && !container_subjects.contains(eid.as_str())
-                        {
-                            report
-                                .violations
-                                .push(ContinuityViolation::MapInventedPlace {
-                                    rule: rule.id.clone(),
-                                    predicate: adjacency.clone(),
-                                    place_kind: place_kind.to_string(),
-                                    place: eid.clone(),
-                                });
-                        }
-                    }
-                }
+                // G2 (completeness / container leaks) + the per-scope partition +
+                // connectivity moved to `scan_spatial_map` (Round 716): the whole
+                // spatial map is now a PER-SCOPE, per-canon-point projection, not a
+                // flat single-graph pass. Called once per transition rule; it
+                // iterates worlds/frames/points internally and degenerates to the
+                // Round 702/703 flat behavior for a container-less map.
+                scan_spatial_map(
+                    rule,
+                    adjacency,
+                    *undirected,
+                    containment.as_deref(),
+                    store,
+                    &worlds,
+                    &lineages,
+                    order,
+                    &successors,
+                    &mut report,
+                );
                 // The allowed step set: the SAME validated edges (self-loops
                 // excluded), symmetrized when undirected. Derived from `edges`,
                 // not re-scanned — one edge model, no divergence.
@@ -3466,37 +3385,12 @@ fn scan_containment_tree(
             order,
             successors,
         };
-        // This world's `contains` facts of the predicate, grouped by frame (kept
-        // whole so each point's snapshot can read their `holds_at`).
-        let mut by_frame: BTreeMap<&str, Vec<(&str, &NarrativeFact)>> = BTreeMap::new();
-        for (fid, f) in &store.narrative_facts {
-            let Some(t) = f.typed.as_ref() else {
-                continue;
-            };
-            if t.predicate != cont_pred || ctx.visibility(f) != Vis::In {
-                continue;
-            }
-            by_frame
-                .entry(f.frame.as_str())
-                .or_default()
-                .push((fid.as_str(), f));
-        }
-        for (frame, group) in &by_frame {
+        for frame in containment_frames(&ctx, store, cont_pred) {
             // Report each place / cycle once per (frame, world) across all points.
             let mut multi_seen: BTreeSet<String> = BTreeSet::new();
             let mut cycle_seen: BTreeSet<String> = BTreeSet::new();
             for p in store.sections.keys() {
-                // The point's SNAPSHOT: only `contains` facts co-holding at `p`.
-                let mut snap: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-                for &(fid, f) in group {
-                    if !ctx.holds_at(fid, f, p) {
-                        continue;
-                    }
-                    let t = f.typed.as_ref().unwrap();
-                    snap.entry(typed_object_display(&t.object))
-                        .or_default()
-                        .insert(t.subject.clone());
-                }
+                let snap = containment_snapshot(&ctx, store, cont_pred, frame, p);
                 // Two containers co-holding at `p` = not a tree here.
                 for (place, containers) in &snap {
                     if containers.len() > 1 && multi_seen.insert(place.clone()) {
@@ -3519,10 +3413,7 @@ fn scan_containment_tree(
                 // accept: the store is gated regardless). Reported once per cycle,
                 // rotated to start at the minimum member (mirror SuccessionCycle
                 // R463).
-                let parent: BTreeMap<&str, &str> = snap
-                    .iter()
-                    .map(|(c, conts)| (c.as_str(), conts.iter().next().unwrap().as_str()))
-                    .collect();
+                let parent = snapshot_parent(&snap);
                 for &start in parent.keys() {
                     let mut path: Vec<&str> = Vec::new();
                     let mut cur = start;
@@ -3552,6 +3443,304 @@ fn scan_containment_tree(
                             None => break, // reached a root — no cycle on this chain
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Round 715/716 — the frames that carry a `pred` fact VISIBLE in this world
+/// (the set the per-frame containment / map scans iterate).
+fn containment_frames<'a>(
+    ctx: &WorldCtx<'_>,
+    store: &'a AtomicStore,
+    pred: &str,
+) -> BTreeSet<&'a str> {
+    let mut frames: BTreeSet<&str> = BTreeSet::new();
+    for f in store.narrative_facts.values() {
+        if let Some(t) = f.typed.as_ref() {
+            if t.predicate == pred && ctx.visibility(f) == Vis::In {
+                frames.insert(f.frame.as_str());
+            }
+        }
+    }
+    frames
+}
+
+/// Round 715/716 — the containment SNAPSHOT at one canon point in one (frame,
+/// world): contained-display -> the set of its direct containers, over the
+/// `cont_pred` facts that hold at `p` in `ctx.world` and match `frame`. The
+/// SINGLE source both the tree-integrity gate (R715) and the map partition
+/// (R716) read, so they cannot disagree on the tree. Node identity is the
+/// collision-free [`typed_object_display`] (R714).
+fn containment_snapshot(
+    ctx: &WorldCtx<'_>,
+    store: &AtomicStore,
+    cont_pred: &str,
+    frame: &str,
+    p: &str,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut snap: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (fid, f) in &store.narrative_facts {
+        let Some(t) = f.typed.as_ref() else {
+            continue;
+        };
+        if t.predicate != cont_pred || f.frame != frame || !ctx.holds_at(fid, f, p) {
+            continue;
+        }
+        snap.entry(typed_object_display(&t.object))
+            .or_default()
+            .insert(t.subject.clone());
+    }
+    snap
+}
+
+/// Round 716 — the functional direct-parent map from a containment snapshot:
+/// contained -> its (first) container. A place with >1 container is R715's
+/// multiple-parents finding; here the first is taken so the partition has a
+/// single parent to scope by.
+fn snapshot_parent(snap: &BTreeMap<String, BTreeSet<String>>) -> BTreeMap<&str, &str> {
+    snap.iter()
+        .map(|(c, conts)| (c.as_str(), conts.iter().next().unwrap().as_str()))
+        .collect()
+}
+
+/// Round 716 — the per-canon-point PER-SCOPE spatial-map checks for ONE
+/// transition rule. Adjacency edges are partitioned by the endpoints' shared
+/// direct container (the containment snapshot), and each scope's sub-graph is
+/// validated. Evaluated at EVERY canon point in EVERY (frame, world) because a
+/// place's container and an edge's existence both vary over authored canon
+/// (`holds_at`) — the map is a per-point projection (design R716), consistent
+/// with R715's tree gate and every other continuity check. For a container-less
+/// map this degenerates to ONE root scope = the Round 702 whole-map connectivity
+/// + the Round 703 completeness (backward-compatible). Emits: AdjacencyCrossScope
+/// (a non-sibling edge — subsumes the Round 703 MapContainerAsNode), MapDisconnected
+/// (a scope's sub-graph disconnected, undirected only), MapInventedPlace (a
+/// place-kind entity off every scope, kind-gated), MapContainedOffMap (a contained
+/// thing that is neither a node nor a container, KIND-INDEPENDENT — R713 F1).
+/// Each finding deduped per identity across points within a (frame, world).
+#[allow(clippy::too_many_arguments)]
+fn scan_spatial_map(
+    rule: &NarrativeRule,
+    adjacency: &str,
+    undirected: bool,
+    containment: Option<&str>,
+    store: &AtomicStore,
+    worlds: &[&str],
+    lineages: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    order: &CanonOrder,
+    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+    report: &mut ContinuityReport,
+) {
+    // The place kind (R701): core never hardcodes "place" (invariant 4). Read
+    // either leg (R699 half-enforced trap). Inert (completeness off) when neither.
+    let place_kind = store.predicates.get(adjacency).and_then(|p| {
+        p.subject_kind
+            .as_deref()
+            .or(p.object_entity_kind.as_deref())
+    });
+    for world in worlds {
+        let ctx = WorldCtx {
+            world,
+            membership: &lineages[*world],
+            order,
+            successors,
+        };
+        // Frames carrying a map fact (adjacency OR containment) in this world.
+        let mut frames = containment_frames(&ctx, store, adjacency);
+        if let Some(c) = containment {
+            frames.extend(containment_frames(&ctx, store, c));
+        }
+        for &frame in &frames {
+            // Two evaluation axes, deliberately different (review Findings 1+2):
+            //  - AdjacencyCrossScope is PER CANON POINT — an edge crosses a scope
+            //    boundary at the point it holds; a MOVED place makes an edge
+            //    sibling early + cross-scope late (the map is a per-point
+            //    projection). Deduped by fact across points.
+            //  - Connectivity + completeness + off-map are UNION-OVER-POINTS. A
+            //    place is "invented / off-map / an island" only if it is off the
+            //    map at EVERY point (∀), not at some point — entities are TIMELESS
+            //    (no canon_from), and an incrementally-authored map (a bridge or a
+            //    place that appears in a later chapter) legitimately has a
+            //    transiently-incomplete/disconnected earlier point. Per-point
+            //    gating there would false-reject exactly the evolving-map content
+            //    this arc exists to support (e.g. the tide changing the map). The
+            //    union is the R702/R703 flat behavior restored, scoped to (frame,
+            //    world) — so a static container-less map degenerates to R702/R703
+            //    exactly (backward-compatible).
+            let mut cross_seen: BTreeSet<String> = BTreeSet::new();
+            // Union accumulators across the point loop:
+            let mut union_nodes: BTreeSet<String> = BTreeSet::new();
+            let mut union_containers: BTreeSet<String> = BTreeSet::new();
+            // scope -> the union of sibling edges ever seen in that scope.
+            let mut scope_union_edges: BTreeMap<String, BTreeSet<(String, String)>> =
+                BTreeMap::new();
+            // containment fact id -> (container, contained), union across points.
+            let mut offmap_candidates: BTreeMap<String, (String, String)> = BTreeMap::new();
+            for p in store.sections.keys() {
+                let snap = containment
+                    .map(|c| containment_snapshot(&ctx, store, c, frame, p))
+                    .unwrap_or_default();
+                let parent = snapshot_parent(&snap);
+                let scope_of = |x: &str| -> &str { parent.get(x).copied().unwrap_or("") };
+                // A container id = any `contains` subject at `p`.
+                for c in snap.values().flatten() {
+                    union_containers.insert(c.clone());
+                }
+                // Adjacency snapshot at `p`: edges (self-loops excluded — flagged
+                // flat by R698) + the node set.
+                let mut edges: Vec<(&str, &str, &str)> = Vec::new();
+                for (fid, f) in &store.narrative_facts {
+                    let Some(t) = f.typed.as_ref() else {
+                        continue;
+                    };
+                    if t.predicate != adjacency || f.frame != frame || !ctx.holds_at(fid, f, p) {
+                        continue;
+                    }
+                    let a = t.subject.as_str();
+                    let b = typed_object_key(&t.object);
+                    union_nodes.insert(a.to_string());
+                    union_nodes.insert(b.to_string());
+                    if a != b {
+                        edges.push((a, b, fid.as_str()));
+                    }
+                }
+                // Partition this point's edges by shared direct container:
+                // cross-scope (PER-POINT finding) vs sibling (accumulated).
+                for &(a, b, fid) in &edges {
+                    let (sa, sb) = (scope_of(a), scope_of(b));
+                    if sa != sb {
+                        if cross_seen.insert(fid.to_string()) {
+                            report
+                                .violations
+                                .push(ContinuityViolation::AdjacencyCrossScope {
+                                    rule: rule.id.clone(),
+                                    adjacency: adjacency.to_string(),
+                                    fact: fid.to_string(),
+                                    a: a.to_string(),
+                                    b: b.to_string(),
+                                    scope_a: sa.to_string(),
+                                    scope_b: sb.to_string(),
+                                    frame: frame.to_string(),
+                                    branch: world.to_string(),
+                                    at: p.clone(),
+                                });
+                        }
+                    } else {
+                        scope_union_edges
+                            .entry(sa.to_string())
+                            .or_default()
+                            .insert((a.to_string(), b.to_string()));
+                    }
+                }
+                // Off-map candidates: the containment facts holding at `p` (union).
+                if let Some(cont_pred) = containment {
+                    for (fid, f) in &store.narrative_facts {
+                        let Some(t) = f.typed.as_ref() else {
+                            continue;
+                        };
+                        if t.predicate != cont_pred || f.frame != frame || !ctx.holds_at(fid, f, p)
+                        {
+                            continue;
+                        }
+                        offmap_candidates.entry(fid.clone()).or_insert_with(|| {
+                            (t.subject.clone(), typed_object_key(&t.object).to_string())
+                        });
+                    }
+                }
+            }
+            // --- UNION checks (once per frame/world) ---
+            // Per-scope connectivity (undirected/spatial only): each scope's UNION
+            // graph must be one component — an island never connected AT ANY point
+            // is dead content. Root-independent; DFS from an arbitrary node.
+            // NAMED LIMITATION (review Finding 3, weaker than R702's whole-map
+            // guarantee, not a backward-compat claim): this checks EACH scope
+            // internally; two internally-connected but mutually-unreachable
+            // top-level containers (a genuinely disjoint world with no portal edge
+            // linking their parent-scope nodes) produce NO finding — the
+            // DEBT-MAP-G2-SINGLEMAP / disjoint-top-level-map tail R713 explicitly
+            // declined to close. A portal edge (a container as a node in its
+            // parent's scope) is what would connect them and bring them under one
+            // scope's connectivity check.
+            if undirected {
+                for (scope, sedges) in &scope_union_edges {
+                    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+                    for (a, b) in sedges {
+                        adj.entry(a.as_str()).or_default().push(b.as_str());
+                        adj.entry(b.as_str()).or_default().push(a.as_str());
+                    }
+                    if adj.len() > 1 {
+                        let start = *adj.keys().next().unwrap();
+                        let mut seen: BTreeSet<&str> = BTreeSet::new();
+                        let mut stack = vec![start];
+                        while let Some(n) = stack.pop() {
+                            if seen.insert(n) {
+                                stack.extend(adj.get(n).into_iter().flatten().copied());
+                            }
+                        }
+                        if seen.len() < adj.len() {
+                            let unreached: Vec<String> = adj
+                                .keys()
+                                .filter(|n| !seen.contains(*n))
+                                .map(|n| n.to_string())
+                                .collect();
+                            report
+                                .violations
+                                .push(ContinuityViolation::MapDisconnected {
+                                    rule: rule.id.clone(),
+                                    predicate: adjacency.to_string(),
+                                    scope: scope.clone(),
+                                    reached: seen.len(),
+                                    total: adj.len(),
+                                    unreached,
+                                    frame: frame.to_string(),
+                                    branch: world.to_string(),
+                                });
+                        }
+                    }
+                }
+            }
+            // Completeness (kind-gated): a place-kind entity must be a node OR a
+            // container at SOME point (union) — else it is declared but never
+            // placed on the map (R703's "invented place", the ∀ semantic).
+            if let Some(pk) = place_kind {
+                for (eid, ent) in &store.entities {
+                    if ent.kind.as_str() == pk
+                        && !union_nodes.contains(eid.as_str())
+                        && !union_containers.contains(eid.as_str())
+                    {
+                        report
+                            .violations
+                            .push(ContinuityViolation::MapInventedPlace {
+                                rule: rule.id.clone(),
+                                predicate: adjacency.to_string(),
+                                place_kind: pk.to_string(),
+                                place: eid.clone(),
+                                frame: frame.to_string(),
+                                branch: world.to_string(),
+                            });
+                    }
+                }
+            }
+            // MapContainedOffMap (KIND-INDEPENDENT, R713 F1): a contained thing must
+            // be a node OR a container at SOME point (union) — else the region holds
+            // a place that is never on the map.
+            for (fid, (container, contained)) in &offmap_candidates {
+                if !union_nodes.contains(contained.as_str())
+                    && !union_containers.contains(contained.as_str())
+                {
+                    report
+                        .violations
+                        .push(ContinuityViolation::MapContainedOffMap {
+                            rule: rule.id.clone(),
+                            adjacency: adjacency.to_string(),
+                            containment: containment.unwrap_or_default().to_string(),
+                            fact: fid.clone(),
+                            container: container.clone(),
+                            contained: contained.clone(),
+                            frame: frame.to_string(),
+                            branch: world.to_string(),
+                        });
                 }
             }
         }
@@ -8396,13 +8585,16 @@ mod tests {
         );
     }
 
-    /// Round 703 (G2 checks 2 + 3, containers) — a container (`contains` subject)
-    /// must not be walked on as an adjacency node (check 2), and a region may only
-    /// contain real map nodes (check 3). NON-VACUITY + negative control: the SAME
-    /// leaking/off-map facts fire NOTHING when the rule declares no `containment`
-    /// predicate (the checks are gated on the declaration).
+    /// Round 716 (generalizes the R703 G2 container checks to the per-scope
+    /// partition) — an adjacency edge must connect SIBLINGS (AdjacencyCrossScope),
+    /// and a contained thing must be a node in its scope OR a container
+    /// (MapContainedOffMap, KIND-INDEPENDENT — R713 F1). The R703 container-as-node
+    /// "leak" is REPEALED: a container is legitimately a node in its PARENT's scope;
+    /// its only illegal residue — a container adjacent to its OWN child — is a
+    /// cross-scope edge, caught here kind-independently. NON-VACUITY + negative
+    /// control: the SAME cross/off-map facts fire NOTHING with no `containment`.
     #[test]
-    fn map_g2_container_leak_and_contained_off_map() {
+    fn map_g2_per_scope_partition_and_off_map() {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let with_containment = [transition_rule(
             "roads",
@@ -8412,12 +8604,10 @@ mod tests {
             Some("contains"),
         )];
         let places = ["ent-a", "ent-b", "ent-c", "ent-region"];
-        let leaked = |v: &[ContinuityViolation]| -> Vec<String> {
+        let cross_scope = |v: &[ContinuityViolation]| -> Vec<String> {
             v.iter()
                 .filter_map(|x| match x {
-                    ContinuityViolation::MapContainerAsNode { container, .. } => {
-                        Some(container.clone())
-                    }
+                    ContinuityViolation::AdjacencyCrossScope { fact, .. } => Some(fact.clone()),
                     _ => None,
                 })
                 .collect()
@@ -8432,47 +8622,63 @@ mod tests {
                 })
                 .collect()
         };
+        let invented = |v: &[ContinuityViolation]| -> usize {
+            v.iter()
+                .filter(|x| matches!(x, ContinuityViolation::MapInventedPlace { .. }))
+                .count()
+        };
 
-        // Clean: ent-region contains nodes a, b and is NOT itself in adjacency.
+        // Clean: region contains a, b, c (all siblings); edges a-b, b-c stay
+        // within the region scope; region is a container (not invented).
         let clean = || {
             vec![
                 map_edge("ent-a", "ent-b"),
                 map_edge("ent-b", "ent-c"),
                 contains_fact("ent-region", "ent-a"),
                 contains_fact("ent-region", "ent-b"),
+                contains_fact("ent-region", "ent-c"),
             ]
-        };
-        let invented = |v: &[ContinuityViolation]| -> usize {
-            v.iter()
-                .filter(|x| matches!(x, ContinuityViolation::MapInventedPlace { .. }))
-                .count()
         };
         let store = map_g2_store(clean(), &places, &[], Some("place"));
         let report = scan_continuity(&store, &order, &with_containment).unwrap();
         assert!(
-            leaked(&report.violations).is_empty()
+            cross_scope(&report.violations).is_empty()
                 && off_map(&report.violations).is_empty()
                 && invented(&report.violations) == 0,
-            "a well-formed map + container is clean of G2 findings: {:?}",
+            "a well-formed nested map is clean of G2 findings: {:?}",
             report.violations
         );
 
-        // Injection 1 (leak): ent-region is a container AND appears in an
-        // adjacent fact — a container walked on as a position.
-        let mut leak = clean();
-        leak.push(map_edge("ent-region", "ent-c"));
-        let store = map_g2_store(leak, &places, &[], Some("place"));
+        // Cross-scope: c is NOT in the region, but b (in region) is adjacent to
+        // it — an edge across a scope boundary.
+        let cross = vec![
+            map_edge("ent-a", "ent-b"),
+            map_edge("ent-b", "ent-c"),
+            contains_fact("ent-region", "ent-a"),
+            contains_fact("ent-region", "ent-b"),
+        ];
+        let store = map_g2_store(cross.clone(), &places, &[], Some("place"));
         let report = scan_continuity(&store, &order, &with_containment).unwrap();
-        assert_eq!(
-            leaked(&report.violations),
-            vec!["ent-region".to_string()],
-            "the container-as-node leak fires: {:?}",
+        assert!(
+            !cross_scope(&report.violations).is_empty(),
+            "b (in region) adjacent to c (root) is a cross-scope edge: {:?}",
             report.violations
         );
 
-        // Injection 2 (off-map): ent-region contains ent-far, which is in no
-        // adjacent fact. `ent-far` is unkinded, so it is NOT also flagged as an
-        // invented place — isolating check 3.
+        // The repealed leak's RESIDUE: a container adjacent to its OWN child.
+        let mut residue = clean();
+        residue.push(map_edge("ent-region", "ent-a"));
+        let store = map_g2_store(residue, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &with_containment).unwrap();
+        assert!(
+            !cross_scope(&report.violations).is_empty(),
+            "a container adjacent to its own child is cross-scope: {:?}",
+            report.violations
+        );
+
+        // Off-map (KIND-INDEPENDENT, R713 F1): region contains ent-far, which is
+        // in no adjacent fact. `ent-far` is unkinded, so MapInventedPlace does NOT
+        // also fire — isolating the kind-independent off-map check.
         let mut off = clean();
         off.push(contains_fact("ent-region", "ent-far"));
         let store = map_g2_store(off, &places, &[], Some("place"));
@@ -8480,21 +8686,231 @@ mod tests {
         assert_eq!(
             off_map(&report.violations),
             vec!["ent-far".to_string()],
-            "the contained-off-map place fires: {:?}",
+            "the contained-off-map place fires kind-independently: {:?}",
             report.violations
         );
 
-        // Negative control (inertness): the leak + off-map facts, but the rule
-        // declares NO containment predicate — checks 2/3 do not run.
+        // Negative control (inertness): the cross + off-map facts, but the rule
+        // declares NO containment predicate — the partition + off-map do not run.
         let no_containment = [transition_rule("roads", "pred-at", "adjacent", true, None)];
-        let mut both = clean();
-        both.push(map_edge("ent-region", "ent-c"));
+        let mut both = cross;
         both.push(contains_fact("ent-region", "ent-far"));
         let store = map_g2_store(both, &places, &[], Some("place"));
         let report = scan_continuity(&store, &order, &no_containment).unwrap();
         assert!(
-            leaked(&report.violations).is_empty() && off_map(&report.violations).is_empty(),
-            "no containment declared => container checks inert: {:?}",
+            cross_scope(&report.violations).is_empty() && off_map(&report.violations).is_empty(),
+            "no containment declared => partition + off-map inert: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 — a valid 3-level nest is clean: siblings-only edges within each
+    /// scope, and a container that is ALSO a node in its parent's scope (school =
+    /// a node in campus + a container of hall/classroom, the dissolved dichotomy /
+    /// portal) is legitimate.
+    #[test]
+    fn map_nested_siblings_and_portal_are_clean() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let facts = vec![
+            contains_fact("campus", "school"),
+            contains_fact("campus", "library"),
+            contains_fact("school", "hall"),
+            contains_fact("school", "classroom"),
+            map_edge("school", "library"), // siblings in campus (school is a portal node)
+            map_edge("hall", "classroom"), // siblings in school
+        ];
+        let places = ["campus", "school", "library", "hall", "classroom"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            !report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::AdjacencyCrossScope { .. }
+                    | ContinuityViolation::MapDisconnected { .. }
+                    | ContinuityViolation::MapInventedPlace { .. }
+                    | ContinuityViolation::MapContainedOffMap { .. }
+            )),
+            "a valid 3-level nest with a portal is clean: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 — an edge between NON-siblings (different direct containers) is a
+    /// cross-scope violation: hall (in school) directly adjacent to library (in
+    /// campus).
+    #[test]
+    fn map_adjacency_cross_scope_flags_non_siblings() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let facts = vec![
+            contains_fact("campus", "school"),
+            contains_fact("campus", "library"),
+            contains_fact("school", "hall"),
+            map_edge("hall", "library"), // hall in school, library in campus → cross
+        ];
+        let places = ["campus", "school", "library", "hall"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::AdjacencyCrossScope { a, b, .. }
+                    if (a == "hall" && b == "library") || (a == "library" && b == "hall")
+            )),
+            "hall (school) adjacent to library (campus) is cross-scope: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 — connectivity is PER SCOPE: a container whose direct children
+    /// form two components is a disconnected scope (campus holds a-b and c-d, two
+    /// islands), even though the flat graph would look like two components of one
+    /// map.
+    #[test]
+    fn map_disconnected_is_per_scope() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let facts = vec![
+            contains_fact("campus", "p-a"),
+            contains_fact("campus", "p-b"),
+            contains_fact("campus", "p-c"),
+            contains_fact("campus", "p-d"),
+            map_edge("p-a", "p-b"),
+            map_edge("p-c", "p-d"),
+        ];
+        let places = ["campus", "p-a", "p-b", "p-c", "p-d"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::MapDisconnected { scope, .. } if scope == "campus"
+            )),
+            "the campus scope has two components — disconnected: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 — the partition is PER CANON POINT: `kid` moves from school1
+    /// (ch-1 only) to school2 (ch-2 on); `mate` stays in school1. The edge
+    /// kid-mate is siblings at ch-1 (both in school1) but cross-scope at ch-2
+    /// (kid in school2, mate in school1) — flagged only at the LATER point, which
+    /// a flat partition could never determine.
+    #[test]
+    fn map_partition_is_per_canon_point_when_a_place_moves() {
+        let mut c_kid1 = contains_fact("school1", "kid");
+        c_kid1.canon_to = Some("ch-1".to_string()); // kid in school1 only at ch-1
+        let mut c_kid2 = contains_fact("school2", "kid");
+        c_kid2.canon_from = "ch-2".to_string(); // kid in school2 from ch-2
+        let facts = vec![
+            contains_fact("campus", "school1"),
+            contains_fact("campus", "school2"),
+            c_kid1,
+            c_kid2,
+            contains_fact("school1", "mate"),
+            map_edge("kid", "mate"),
+        ];
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let places = ["campus", "school1", "school2", "kid", "mate"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::AdjacencyCrossScope { at, .. } if at != "ch-1"
+            )),
+            "kid-mate is cross-scope after kid moves (a later point, not ch-1): {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 (review Finding 1) — completeness is UNION-over-points: a
+    /// place-kind entity whose only map edge appears in a LATER chapter must NOT
+    /// be flagged "invented" at earlier points (entities are timeless; a later-
+    /// appearing place is normal incremental authoring, not an orphan).
+    #[test]
+    fn map_later_appearing_place_is_not_invented() {
+        let mut late = map_edge("p-a", "p-late");
+        late.canon_from = "ch-3".to_string(); // p-late joins the map only at ch-3
+        let facts = vec![map_edge("p-a", "p-b"), late];
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let places = ["p-a", "p-b", "p-late"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapInventedPlace { .. })),
+            "p-late appears at ch-3 — not invented (union completeness): {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 716 (review Finding 2) — connectivity is UNION-over-points: a bridge
+    /// authored to appear in a later chapter connects two early-separate halves,
+    /// so NO MapDisconnected fires (the ∀ "never connected = dead content"
+    /// semantic; a transiently-disconnected early point is legal time-varying map).
+    #[test]
+    fn map_bridge_appearing_later_is_not_disconnected() {
+        let mut bridge = map_edge("p-b", "p-c");
+        bridge.canon_from = "ch-3".to_string(); // the bridge is built at ch-3
+        let facts = vec![
+            map_edge("p-a", "p-b"),
+            map_edge("p-c", "p-d"),
+            bridge, // connects the two halves from ch-3
+        ];
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let places = ["p-a", "p-b", "p-c", "p-d"];
+        let store = map_g2_store(facts, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapDisconnected { .. })),
+            "the ch-3 bridge connects the halves in the union — not disconnected: {:?}",
+            report.violations
+        );
+
+        // Negative control: WITHOUT the bridge, the union IS two components.
+        let no_bridge = vec![map_edge("p-a", "p-b"), map_edge("p-c", "p-d")];
+        let store = map_g2_store(no_bridge, &places, &[], Some("place"));
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapDisconnected { .. })),
+            "with no bridge ever, the two halves are a real disconnection: {:?}",
             report.violations
         );
     }

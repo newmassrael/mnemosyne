@@ -477,26 +477,33 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
         ContinuityViolation::MapDisconnected {
             rule,
             predicate,
+            scope,
             reached,
             total,
             unreached,
+            frame,
+            branch,
         } => action(
             "map_disconnected",
             ViolationLocus {
                 entities: unreached.clone(),
                 field: Some("typed".to_string()),
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
                 ..Default::default()
             },
             format!(
-                "undirected transition rule `{rule}`: the `{predicate}` map must be a single \
-                 connected component — every place reachable from every other"
+                "undirected transition rule `{rule}`: every `{predicate}` SCOPE must be a single \
+                 connected component — every place reachable from every other within its container"
             ),
-            "add an `adjacent` fact linking the unreachable place(s) to the rest of the map, or \
-             remove them if they are not part of it"
+            "add an `adjacent` fact linking the unreachable place(s) to the rest of the scope, or \
+             move them into the container they belong to"
                 .to_string(),
             format!(
-                "undirected transition rule `{rule}`: `{predicate}` map is disconnected — \
-                 {reached}/{total} places reachable, unreachable: {}",
+                "undirected transition rule `{rule}`: `{predicate}` scope `{}` is disconnected \
+                 across the timeline (frame `{frame}` world `{branch}`) — {reached}/{total} \
+                 reachable, unreachable: {}",
+                if scope.is_empty() { "<root>" } else { scope },
                 unreached.join(", ")
             ),
         ),
@@ -505,10 +512,14 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             predicate,
             place_kind,
             place,
+            frame,
+            branch,
         } => action(
             "map_invented_place",
             ViolationLocus {
                 entities: vec![place.clone()],
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
                 ..Default::default()
             },
             format!(
@@ -521,29 +532,44 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             ),
             format!(
                 "transition rule `{rule}`: `{place_kind}` entity `{place}` is off the `{predicate}` \
-                 map — neither a node nor a container"
+                 map at every canon point (frame `{frame}` world `{branch}`) — neither a node nor \
+                 a container"
             ),
         ),
-        ContinuityViolation::MapContainerAsNode {
+        ContinuityViolation::AdjacencyCrossScope {
             rule,
             adjacency,
-            containment,
-            container,
+            fact,
+            a,
+            b,
+            scope_a,
+            scope_b,
+            frame,
+            branch,
+            at,
         } => action(
-            "map_container_as_node",
+            "adjacency_cross_scope",
             ViolationLocus {
-                entities: vec![container.clone()],
-                ..Default::default()
+                facts: vec![fact.clone()],
+                entities: vec![a.clone(), b.clone()],
+                field: Some("typed".to_string()),
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
+                at: Some(at.clone()),
             },
             format!(
-                "transition rule `{rule}`: a `{containment}` container is a search-key, not a \
-                 position — it must not appear in an `{adjacency}` fact"
+                "transition rule `{rule}`: an `{adjacency}` edge must connect SIBLINGS (same \
+                 direct container) — a place is not directly adjacent to one in a different \
+                 container; leave via the container's own edges"
             ),
-            "remove the container from the adjacency edges, or stop declaring it a container"
+            "put the edge between siblings, or model the boundary as the container itself being a \
+             node in its parent's scope (a portal), not a cross-container edge"
                 .to_string(),
             format!(
-                "transition rule `{rule}`: container `{container}` (a `{containment}` subject) is \
-                 also walked on as an `{adjacency}` node"
+                "transition rule `{rule}`: `{adjacency}` fact `{fact}` links `{a}` (in `{}`) and \
+                 `{b}` (in `{}`) — different containers at `{at}` (frame `{frame}` world `{branch}`)",
+                if scope_a.is_empty() { "<root>" } else { scope_a },
+                if scope_b.is_empty() { "<root>" } else { scope_b }
             ),
         ),
         ContinuityViolation::MapContainedOffMap {
@@ -553,25 +579,30 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             fact,
             container,
             contained,
+            frame,
+            branch,
         } => action(
             "map_contained_off_map",
             ViolationLocus {
                 facts: vec![fact.clone()],
                 entities: vec![contained.clone()],
                 field: Some("typed".to_string()),
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
                 ..Default::default()
             },
             format!(
                 "transition rule `{rule}`: a `{containment}` object must be a node (appear in an \
-                 `{adjacency}` fact)"
+                 `{adjacency}` fact) or itself a container"
             ),
             format!(
-                "add an `{adjacency}` fact placing the contained place on the map, or remove the \
-                 `{containment}` fact"
+                "add an `{adjacency}` fact placing the contained place on the map, give it its own \
+                 contained members, or remove the `{containment}` fact"
             ),
             format!(
                 "transition rule `{rule}`: `{containment}` fact `{fact}` has container \
-                 `{container}` holding `{contained}`, which is off the `{adjacency}` map"
+                 `{container}` holding `{contained}`, which is off the `{adjacency}` map at every \
+                 canon point (frame `{frame}` world `{branch}`) — neither a node nor a container"
             ),
         ),
         ContinuityViolation::EdgeCostNotAnEdge {
@@ -728,21 +759,32 @@ mod tests {
             ContinuityViolation::MapDisconnected {
                 rule: "roads".into(),
                 predicate: "adjacent".into(),
+                scope: "ent-island".into(),
                 reached: 3,
                 total: 5,
                 unreached: vec!["ent-island-cove".into(), "ent-lighthouse".into()],
+                frame: "gt".into(),
+                branch: "main".into(),
             },
             ContinuityViolation::MapInventedPlace {
                 rule: "roads".into(),
                 predicate: "adjacent".into(),
                 place_kind: "place".into(),
                 place: "ent-ghost-town".into(),
+                frame: "gt".into(),
+                branch: "main".into(),
             },
-            ContinuityViolation::MapContainerAsNode {
+            ContinuityViolation::AdjacencyCrossScope {
                 rule: "roads".into(),
                 adjacency: "adjacent".into(),
-                containment: "contains".into(),
-                container: "ent-island".into(),
+                fact: "f-cs".into(),
+                a: "ent-hall".into(),
+                b: "ent-quad".into(),
+                scope_a: "ent-school".into(),
+                scope_b: "".into(),
+                frame: "gt".into(),
+                branch: "main".into(),
+                at: "ch-2".into(),
             },
             ContinuityViolation::MapContainedOffMap {
                 rule: "roads".into(),
@@ -751,6 +793,8 @@ mod tests {
                 fact: "f-c1".into(),
                 container: "ent-island".into(),
                 contained: "ent-nowhere".into(),
+                frame: "gt".into(),
+                branch: "main".into(),
             },
             ContinuityViolation::EdgeCostNotAnEdge {
                 fact: "f-loves".into(),
