@@ -435,7 +435,10 @@ fn manifest_wire() -> ManifestWireSpec {
              string } where the token MUST be a member of the predicate's declared object_tokens \
              (a token outside the closed set rejects); for `quantity` (R706), write { \"kind\": \
              \"quantity\", \"n\": integer, \"unit\": unit id } where `unit` MUST be a registered \
-             unit (add-unit first; an unregistered unit rejects). NOTE the deliberate naming: the \
+             unit (add-unit first; an unregistered unit rejects); for `fact` (R707), write \
+             { \"kind\": \"fact\", \"id\": fact id } referencing another fact of this store \
+             (existence checked in phase 2 against store + same-manifest staged; self-reference \
+             rejects; the fact cannot be retracted while referenced). NOTE the deliberate naming: the \
              predicate's object_kind is spelled `scalar`, but the object's wire tag for that \
              shape is `value` (the object_KIND vs the runtime object shape) — write `value`, not \
              `scalar`. The subject and any entity-shaped object must ALSO appear in the fact's \
@@ -596,9 +599,10 @@ fn registries() -> Vec<RegistrySpec> {
             description: "Typed-claim predicates. LOAD-BEARING: narrative rules key off a \
                 predicate id, so a typo would silently escape its rule — hence a strict \
                 registry (unlike the free-form entity kind). Each predicate declares its object \
-                shape (entity | scalar | token | quantity), enforced on every typed leg; a \
+                shape (entity | scalar | token | quantity | fact), enforced on every typed leg; a \
                 `token` predicate also declares a closed `object_tokens` vocabulary the object \
-                must be a member of, and a `quantity` object's unit must be a registered unit.",
+                must be a member of, a `quantity` object's unit must be a registered unit, and a \
+                `fact` object references another fact (phase-2 existence + delete-guard).",
         },
         RegistrySpec {
             name: "units",
@@ -999,6 +1003,12 @@ fn predicate_object_kind_values() -> Vec<EnumValue> {
                 (`{kind:quantity, n, unit}`) — the amount slot for timeline/measurement \
                 facts; `n` is an exact integer, `unit` a ref into the units registry \
                 (add-unit first, invariant 4), an unregistered unit is rejected"
+            }
+            PredicateObjectKind::Fact => {
+                "the object leg REFERENCES another fact of this store \
+                (`{kind:fact, id}`) — a typed fact-ref (e.g. `opened_by`); existence is \
+                checked in PHASE 2 against store + staged (a same-manifest forward ref is \
+                legal), self-reference is rejected, and the delete path refuses to orphan it"
             }
         }
     }
@@ -1543,30 +1553,40 @@ mod tests {
                 (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
                 (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
                 (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
+                (TypedObject::Fact { .. }, PredicateObjectKind::Fact) => true,
                 (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
                 | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
+                | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
                 | (TypedObject::Value { .. }, PredicateObjectKind::Token)
                 | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
+                | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+                | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
                 | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
-                | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => false,
+                | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
+                | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
+                | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
+                | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => false,
             }
         }
 
         // THE SURFACE, measured: every arg combination the CLI flags
         // (`--typed-object-entity` / `--typed-object-value` / `--typed-object-token`
-        // / `--typed-object-quantity-n` + `--typed-object-quantity-unit`) and the
-        // MCP fields can actually send.
+        // / `--typed-object-quantity-n` + `--typed-object-quantity-unit` /
+        // `--typed-object-fact`) and the MCP fields can actually send.
         let buildable: Vec<TypedObject> = [
-            TypedObject::from_exclusive_args(Some("e".to_string()), None, None, None),
-            TypedObject::from_exclusive_args(None, Some("v".to_string()), None, None),
-            TypedObject::from_exclusive_args(None, None, Some("t".to_string()), None),
-            TypedObject::from_exclusive_args(None, None, None, Some((1, "u".to_string()))),
+            TypedObject::from_exclusive_args(Some("e".to_string()), None, None, None, None),
+            TypedObject::from_exclusive_args(None, Some("v".to_string()), None, None, None),
+            TypedObject::from_exclusive_args(None, None, Some("t".to_string()), None, None),
+            TypedObject::from_exclusive_args(None, None, None, Some((1, "u".to_string())), None),
+            TypedObject::from_exclusive_args(None, None, None, None, Some("f".to_string())),
         ]
         .into_iter()
         .flatten()

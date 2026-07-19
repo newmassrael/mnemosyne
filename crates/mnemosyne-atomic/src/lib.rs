@@ -1210,11 +1210,17 @@ pub enum AtomicStoreError {
 // variant `quantity`), so a quantity store cannot reach the drop-on-save path
 // of an old binary. The bump keeps the `> CURRENT` guard monotone and the
 // audit trail of on-disk shape changes complete.
+// v27→v28 adds the `TypedObject::Fact { id }` object shape (`object_kind=fact`).
+// No new top-level field — a Fact object is a fact-identity ref (like
+// conflicts_with / pays_off), validated in phase 2 and delete-guarded, not a
+// registry. A pre-R707 binary rejects a `fact` object loudly (serde unknown
+// variant), so no silent drop; the bump keeps the `> CURRENT` guard monotone
+// and the shape-change audit complete.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 27;
+pub const CURRENT_SCHEMA_VERSION: u32 = 28;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -4169,26 +4175,50 @@ fn build_typed_claim(
                 unit: unit.to_string(),
             }
         }
+        (TypedObject::Fact { id }, PredicateObjectKind::Fact) => {
+            // Round 707 — SHAPE + non-empty only. The EXISTENCE and self-ref
+            // checks are NOT here: a fact-ref has staging semantics (a legal
+            // same-manifest forward ref must not reject), so it is resolved in
+            // PHASE 2 (`validate_and_stamp_fact_refs` against store ∪ staged),
+            // beside conflicts_with / pays_off — NOT via the phase-1 registry
+            // facets (R659: the entity-leg analogy is FALSE for fact refs).
+            let id = id.trim();
+            if id.is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: typed object fact id mandatory (non-empty)"
+                ));
+            }
+            TypedObject::Fact { id: id.to_string() }
+        }
         // Every cross pair is a shape mismatch — enumerated explicitly (no
         // wildcard, the R624/R658 discipline) so a new object OR object_kind
         // variant breaks this build rather than silently rejecting.
         (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Token)
         | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
-        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => {
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => {
             let actual = match &t.object {
                 TypedObject::Entity { .. } => "an entity",
                 TypedObject::Value { .. } => "a scalar value",
                 TypedObject::Token { .. } => "a token",
                 TypedObject::Quantity { .. } => "a quantity",
+                TypedObject::Fact { .. } => "a fact ref",
             };
             return Err(format!(
                 "fact `{fact_id}`: predicate `{predicate}` declares object_kind={} but the \
@@ -4348,6 +4378,39 @@ fn validate_and_stamp_fact_refs(
             branches,
             &BTreeMap::new(),
         )?;
+    }
+    check_typed_fact_ref(fact_id, fact.typed.as_ref(), visible)?;
+    Ok(())
+}
+
+/// Round 707 — the PHASE 2 referential check for a `TypedObject::Fact` object:
+/// the referent must resolve in `visible` (store ∪ staged, so a legal
+/// same-manifest FORWARD ref is not rejected — the reason this is NOT a
+/// phase-1 registry facet, R659) and a fact may not reference itself. Shared by
+/// the three build_candidate_fact write paths (via `validate_and_stamp_fact_refs`)
+/// AND `import_typing_proposals` (which fills a leg without the rest of phase 2),
+/// so the fourth write path is guarded by the same verdict — the R659 gap the
+/// design named. A no-op for every non-`Fact` object.
+fn check_typed_fact_ref(
+    fact_id: &str,
+    typed: Option<&TypedClaim>,
+    visible: &BTreeMap<String, NarrativeFact>,
+) -> Result<(), String> {
+    let Some(TypedObject::Fact { id }) = typed.map(|t| &t.object) else {
+        return Ok(());
+    };
+    let id = id.trim();
+    if id == fact_id {
+        return Err(format!(
+            "fact `{fact_id}`: typed object fact references itself — a fact cannot be its \
+             own object (the conflicts_with/pays_off self-ref rule)"
+        ));
+    }
+    if !visible.contains_key(id) {
+        return Err(format!(
+            "fact `{fact_id}`: typed object fact `{id}` not present (a fact-ref object \
+             resolves an existing fact; fail-loud — like pays_off, an identity ref)"
+        ));
     }
     Ok(())
 }
@@ -4749,7 +4812,12 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
             TypedObject::Quantity { unit, .. } => {
                 refs.push((FactRefFacet::TypedUnit, unit.as_str()))
             }
-            TypedObject::Value { .. } | TypedObject::Token { .. } => {}
+            // Round 707 — a `Fact` object is NOT a phase-1 registry facet: it has
+            // staging/forward-ref semantics, so it is resolved in PHASE 2
+            // (`validate_and_stamp_fact_refs`) against store ∪ staged and
+            // delete-guarded via `inbound_fact_refs`, exactly like
+            // conflicts_with / pays_off (which are also absent here).
+            TypedObject::Value { .. } | TypedObject::Token { .. } | TypedObject::Fact { .. } => {}
         }
     }
     refs
@@ -4959,7 +5027,7 @@ fn build_predicate(
     let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
         format!(
             "{context}: unknown object_kind `{tag}` (expected one of: entity, scalar, token, \
-             quantity)"
+             quantity, fact)"
         )
     })?;
     let norm = |s: Option<&str>| {
@@ -5009,7 +5077,8 @@ fn build_predicate(
         }
         PredicateObjectKind::Entity
         | PredicateObjectKind::Scalar
-        | PredicateObjectKind::Quantity => {
+        | PredicateObjectKind::Quantity
+        | PredicateObjectKind::Fact => {
             if !tokens.is_empty() {
                 return Err(format!(
                     "{context}: object_kind={} cannot carry an object_tokens vocabulary \
@@ -5173,18 +5242,27 @@ fn object_matches_kind(object: &TypedObject, kind: PredicateObjectKind) -> bool 
         (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
         (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
         (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
+        (TypedObject::Fact { .. }, PredicateObjectKind::Fact) => true,
         (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Token)
         | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
-        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => false,
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => false,
     }
 }
 
@@ -6164,6 +6242,16 @@ fn inbound_fact_refs<'a>(
         if other.pays_off.iter().any(|t| t == fact_id) {
             refs.push((other_id, other, "pays_off"));
         }
+        // Round 707 — a typed `Fact` object is an inbound fact-identity ref too;
+        // without this leg `retract_fact` would ORPHAN it silently (the write
+        // path forbids a dangling Fact-ref but the delete path would create one
+        // — the exact R625 half-enforced-invariant this shape was built to close).
+        if matches!(
+            other.typed.as_ref().map(|t| &t.object),
+            Some(TypedObject::Fact { id }) if id == fact_id
+        ) {
+            refs.push((other_id, other, "typed object (fact)"));
+        }
     }
     refs
 }
@@ -6510,7 +6598,14 @@ pub fn import_typing_proposals(
                     "fact `{fact_id}`: rationale mandatory (the reviewable substance)"
                 ));
             }
-            build_typed_claim(store, fact_id, &p.typed, &fact.entities)
+            let leg = build_typed_claim(store, fact_id, &p.typed, &fact.entities)?;
+            // Round 707 — the fourth write path: build_typed_claim does NOT
+            // check a Fact-ref (that is PHASE 2), and this path skips the rest of
+            // phase 2, so run the SHARED referential check here or a Fact{id}
+            // object escapes unguarded (the R659 gap). Targets are existing facts
+            // (proposals fill existing facts), so `visible = store`.
+            check_typed_fact_ref(fact_id, Some(&leg), &store.narrative_facts)?;
+            Ok(leg)
         })();
         match verdict {
             Ok(leg) => {
@@ -11000,6 +11095,65 @@ mod tests {
         assert!(report.verdicts[3].verdict.contains("duplicate proposal"));
     }
 
+    /// Round 707 (review MED-1) — the FOURTH write path: `import_typing_proposals`
+    /// fills a typed leg WITHOUT the rest of phase 2, so it calls the SHARED
+    /// `check_typed_fact_ref` itself, or a Fact-ref escapes unguarded (the exact
+    /// R659 gap). NON-VACUITY: a missing target and a self-ref are REJECTED (drop
+    /// the check → both would be accepted, the suite would go green with a
+    /// dangling/self Fact-ref persisted), a present target is ACCEPTED + applied.
+    #[test]
+    fn typing_proposal_fact_ref_is_phase2_guarded() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = typing_substrate(&path);
+        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        // f-1's claim (sample_fact default) — the staleness pin must match so the
+        // ONLY defect exercised is the Fact-ref itself.
+        let f1_claim = "the count is an eccentric nobleman";
+        let fact_prop = |fact: &str, target: &str| {
+            proposals_file(vec![TypingProposal {
+                fact: fact.to_string(),
+                typed: TypedClaim {
+                    subject: "kara".to_string(),
+                    predicate: "opened-by".to_string(),
+                    object: TypedObject::Fact {
+                        id: target.to_string(),
+                    },
+                },
+                claim_sha256: sha256_hex(f1_claim.as_bytes()),
+                rationale: "state claim".to_string(),
+            }])
+        };
+        // Missing target → rejected.
+        let report =
+            import_typing_proposals(&mut store, &path, &fact_prop("f-1", "f-gone"), "sha", false)
+                .unwrap();
+        assert_eq!((report.accepted, report.rejected), (0, 1));
+        assert!(
+            report.verdicts[0].verdict.contains("not present"),
+            "{:?}",
+            report.verdicts
+        );
+        // Self-ref → rejected.
+        let report =
+            import_typing_proposals(&mut store, &path, &fact_prop("f-1", "f-1"), "sha", false)
+                .unwrap();
+        assert!(
+            report.verdicts[0].verdict.contains("references itself"),
+            "{:?}",
+            report.verdicts
+        );
+        // Present target (f-2) → accepted + applied.
+        let report =
+            import_typing_proposals(&mut store, &path, &fact_prop("f-1", "f-2"), "sha", false)
+                .unwrap();
+        assert!(report.applied, "{:?}", report.verdicts);
+        assert!(matches!(
+            store.narrative_facts["f-1"].typed.as_ref().unwrap().object,
+            TypedObject::Fact { .. }
+        ));
+    }
+
     /// Loader boundary: schema tag mismatch, unknown fields
     /// (deny_unknown_fields — no lenient-parse legacy on a new artifact),
     /// and an empty proposals list all fail loud.
@@ -12400,6 +12554,141 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("shape mismatch"), "unexpected: {err}");
+    }
+
+    /// Round 707 — a `fact` object is resolved in PHASE 2 against store ∪ staged:
+    /// a same-manifest FORWARD ref (A → B where B is declared LATER in the same
+    /// import) is ACCEPTED (the reason it is not a phase-1 facet); a ref to a
+    /// missing fact is REJECTED; a self-reference is REJECTED. NON-VACUITY: the
+    /// same manifest accepts the forward ref and rejects the missing/self ones.
+    #[test]
+    fn fact_ref_object_phase2_resolution_forward_missing_self() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("mina".to_string(), Entity::default());
+        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        let fact_ref = |id: &str, target: &str| FactImport {
+            entities: vec!["mina".to_string()],
+            typed: Some(TypedClaim {
+                subject: "mina".to_string(),
+                predicate: "opened-by".to_string(),
+                object: TypedObject::Fact {
+                    id: target.to_string(),
+                },
+            }),
+            ..sample_fact(id, "gt")
+        };
+        // FORWARD ref within ONE manifest: f-a's object points at f-b, declared
+        // after it — must be ACCEPTED (visible = store ∪ staged).
+        let manifest = FactsManifest {
+            frames: vec![],
+            branches: vec![],
+            entity_kinds: vec![],
+            units: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts: vec![fact_ref("f-a", "f-b"), sample_fact("f-b", "gt")],
+            disclosure_plans: vec![],
+        };
+        import_facts(&mut store, &path, &manifest).unwrap();
+        assert!(matches!(
+            store.narrative_facts["f-a"].typed.as_ref().unwrap().object,
+            TypedObject::Fact { .. }
+        ));
+        // Missing target: rejected in phase 2.
+        let err = add_fact(&mut store, &path, &fact_ref("f-c", "f-gone"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not present"), "missing must reject: {err}");
+        // Self-reference: rejected.
+        let err = add_fact(&mut store, &path, &fact_ref("f-self", "f-self"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("references itself"),
+            "self-ref must reject: {err}"
+        );
+        // MANIFEST self-ref (R707 review LOW-3): a fact whose object is ITSELF,
+        // inside one manifest, is STAGED — so `visible` DOES contain it and the
+        // existence check would pass; only the self-ref check (which runs FIRST)
+        // rejects it. This pins that the self-ref guard is load-bearing, not
+        // masked by existence.
+        let self_manifest = FactsManifest {
+            frames: vec![],
+            branches: vec![],
+            entity_kinds: vec![],
+            units: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts: vec![fact_ref("f-loop", "f-loop")],
+            disclosure_plans: vec![],
+        };
+        let err = import_facts(&mut store, &path, &self_manifest)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("references itself"),
+            "staged self-ref must reject even though visible contains it: {err}"
+        );
+        // amend (R707 review LOW-2): amend an existing fact to point its Fact-ref
+        // at a now-missing target → phase-2 rejects (amend routes through the same
+        // check as add_fact, the R305 parity).
+        add_fact(&mut store, &path, &sample_fact("f-plain", "gt")).unwrap();
+        let err = amend_fact(&mut store, &path, &fact_ref("f-plain", "f-gone"), "repoint")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not present"),
+            "amend to missing must reject: {err}"
+        );
+    }
+
+    /// Round 707 — the DELETE-path guard (the R625 killer): a fact referenced as
+    /// another fact's `Fact` typed object cannot be retracted (the write path
+    /// forbids a dangling fact-ref, so the delete path must too — symmetric with
+    /// conflicts_with / pays_off). Retract the referrer first, then the target
+    /// goes cleanly.
+    #[test]
+    fn retract_blocks_fact_referenced_as_typed_object() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("mina".to_string(), Entity::default());
+        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-sluice", "gt")).unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["mina".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "mina".to_string(),
+                    predicate: "opened-by".to_string(),
+                    object: TypedObject::Fact {
+                        id: "f-sluice".to_string(),
+                    },
+                }),
+                ..sample_fact("f-open", "gt")
+            },
+        )
+        .unwrap();
+        // The referenced fact cannot be retracted (would orphan f-open's ref).
+        let err = retract_fact(&mut store, &path, "f-sluice", "authorial slip")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("f-open") && err.contains("typed object (fact)"),
+            "referenced fact must be blocked, naming the referrer: {err}"
+        );
+        // Retract the referrer first, then the target goes cleanly.
+        retract_fact(&mut store, &path, "f-open", "drop the ref holder").unwrap();
+        retract_fact(&mut store, &path, "f-sluice", "authorial slip").unwrap();
+        assert!(!store.narrative_facts.contains_key("f-sluice"));
     }
 
     /// Round 701 — declaration guards on the predicate write path: a scalar

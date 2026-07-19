@@ -532,11 +532,11 @@ pub struct ImportSectionsArgs {
 // Round 692 — `add_fact` / `amend_fact` take `atomic::FactImport` directly
 // (the ONE fact DTO, JsonSchema via the schemars feature), so the AddFactArgs
 // mirror + `fact_import_from` are gone. The typed leg is now the tagged
-// `TypedObject` enum ({kind:"entity"|"value"|"token"|"quantity", …}, Round
-// 705/706) — stricter than the old object_entity/object_value pair (cannot set
-// both or neither) and identical to what `import_facts` already exposes
-// (DEBT-… option-1→option-2 sweep). A new variant is auto-exposed here via the
-// enum's JsonSchema (the Quantity variant needed no MCP arg change).
+// `TypedObject` enum ({kind:"entity"|"value"|"token"|"quantity"|"fact", …},
+// Round 705/706/707) — stricter than the old object_entity/object_value pair
+// (cannot set both or neither) and identical to what `import_facts` already
+// exposes (DEBT-… option-1→option-2 sweep). A new variant is auto-exposed here
+// via the enum's JsonSchema (the Quantity/Fact variants needed no MCP arg change).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AmendFactArgs {
@@ -1672,7 +1672,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | scalar | token. R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set — prefer it over free-text `scalar` so the substrate can answer what values this predicate takes. R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
+        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | scalar | token | quantity | fact. R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set — prefer it over free-text `scalar` so the substrate can answer what values this predicate takes. R706 — `quantity` is a number + a registered unit (units registry, add_unit first). R707 — `fact` references another fact of this store (phase-2 existence check, self-ref rejected, delete-guarded). R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
     )]
     async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
         let a = args.0;

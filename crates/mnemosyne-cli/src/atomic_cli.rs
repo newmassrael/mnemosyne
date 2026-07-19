@@ -1094,6 +1094,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     let mut typed_object_token: Option<String> = None;
     let mut typed_object_quantity_n: Option<String> = None;
     let mut typed_object_quantity_unit: Option<String> = None;
+    let mut typed_object_fact: Option<String> = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1221,6 +1222,13 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .clone(),
                 )
             }
+            "--typed-object-fact" => {
+                typed_object_fact = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-fact missing"))?
+                        .clone(),
+                )
+            }
             "--reason" if accept_reason => {
                 out.reason = Some(
                     iter.next()
@@ -1266,8 +1274,9 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         typed_object_value,
         typed_object_token,
         typed_object_quantity,
+        typed_object_fact,
     ) {
-        (None, None, None, None, None, None) => None,
+        (None, None, None, None, None, None, None) => None,
         (
             Some(subject),
             Some(predicate),
@@ -1275,12 +1284,14 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             object_value,
             object_token,
             object_quantity,
+            object_fact,
         ) => {
             let object = mnemosyne_core::TypedObject::from_exclusive_args(
                 object_entity,
                 object_value,
                 object_token,
                 object_quantity,
+                object_fact,
             )
             .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
@@ -1292,7 +1303,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         _ => bail!(
             "typed leg is all-or-nothing: --typed-subject + --typed-predicate + one of \
              --typed-object-entity | --typed-object-value | --typed-object-token | \
-             (--typed-object-quantity-n + --typed-object-quantity-unit)"
+             (--typed-object-quantity-n + --typed-object-quantity-unit) | --typed-object-fact"
         ),
     };
     Ok(out)

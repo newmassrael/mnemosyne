@@ -442,9 +442,13 @@ pub struct Unit {
 /// ([`TypedObject::Quantity`]): the amount slot for timeline/measurement facts,
 /// with the unit a ref into the store's `units` registry (fail-loud, never free
 /// text — the entity_kinds/invariant-4 lesson applied to units, since a game
-/// measures `minute`, a legal store `day`; core must not enumerate them). The
-/// builder checks the typed leg's object against this declaration — a shape or
-/// vocabulary mismatch is a write-time reject, not a scan finding.
+/// measures `minute`, a legal store `day`; core must not enumerate them).
+/// `Fact` (Round 707) = the object leg references another FACT of this store
+/// ([`TypedObject::Fact`]) — a typed fact-ref with two-way referential
+/// integrity (existence checked in PHASE 2 against store ∪ staged, so a legal
+/// same-manifest forward ref is not rejected; the delete path refuses to orphan
+/// it). The builder checks the typed leg's object against this declaration — a
+/// shape or vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PredicateObjectKind {
@@ -452,6 +456,7 @@ pub enum PredicateObjectKind {
     Scalar,
     Token,
     Quantity,
+    Fact,
 }
 
 impl PredicateObjectKind {
@@ -462,6 +467,7 @@ impl PredicateObjectKind {
             PredicateObjectKind::Scalar => "scalar",
             PredicateObjectKind::Token => "token",
             PredicateObjectKind::Quantity => "quantity",
+            PredicateObjectKind::Fact => "fact",
         }
     }
 
@@ -473,6 +479,7 @@ impl PredicateObjectKind {
             "scalar" => Some(PredicateObjectKind::Scalar),
             "token" => Some(PredicateObjectKind::Token),
             "quantity" => Some(PredicateObjectKind::Quantity),
+            "fact" => Some(PredicateObjectKind::Fact),
             _ => None,
         }
     }
@@ -552,6 +559,14 @@ pub enum TypedObject {
     /// invariant 4); the write path rejects an unregistered unit. The interval
     /// evaluator (R489) reads `n` for its arithmetic.
     Quantity { n: i64, unit: String },
+    /// A reference to another FACT of this store (Round 707 — `opened_by = f-*`
+    /// and the reification class). Distinct from `Entity`: the referent is a
+    /// fact, not an entity, so existence is checked in PHASE 2 against
+    /// store ∪ staged (a legal same-manifest forward ref must not reject), and
+    /// the delete path refuses to orphan it — symmetric with
+    /// `conflicts_with` / `pays_off`, NOT the phase-1 registry facets. A fact
+    /// may not reference itself.
+    Fact { id: String },
 }
 
 impl TypedObject {
@@ -575,17 +590,25 @@ impl TypedObject {
     /// `--typed-object-quantity-n` / `--typed-object-quantity-unit` flags into
     /// this `Some((n, unit))` (both-or-neither) before resolution, so the
     /// exactly-one-shape rule counts a quantity as a single candidate.
+    ///
+    /// Round 707 — the `fact` parameter is the same oracle-forced arity change
+    /// for `PredicateObjectKind::Fact` (`--typed-object-fact`). The existence /
+    /// self-ref check is NOT here (nor in the store builder) — it is a PHASE 2
+    /// referential check, because a fact-ref has staging semantics; this stays
+    /// pure arg resolution.
     pub fn from_exclusive_args(
         entity: Option<String>,
         value: Option<String>,
         token: Option<String>,
         quantity: Option<(i64, String)>,
+        fact: Option<String>,
     ) -> Result<Self, String> {
         let candidates: Vec<TypedObject> = [
             entity.map(|id| TypedObject::Entity { id }),
             value.map(|value| TypedObject::Value { value }),
             token.map(|token| TypedObject::Token { token }),
             quantity.map(|(n, unit)| TypedObject::Quantity { n, unit }),
+            fact.map(|id| TypedObject::Fact { id }),
         ]
         .into_iter()
         .flatten()
@@ -594,12 +617,12 @@ impl TypedObject {
             1 => Ok(candidates.into_iter().next().unwrap()),
             0 => Err(
                 "typed leg needs an object: give exactly one of the entity / value / token / \
-                 quantity object args"
+                 quantity / fact object args"
                     .to_string(),
             ),
             _ => Err(
-                "typed leg: the entity / value / token / quantity object args are mutually \
-                 exclusive (give exactly one)"
+                "typed leg: the entity / value / token / quantity / fact object args are \
+                 mutually exclusive (give exactly one)"
                     .to_string(),
             ),
         }
@@ -1054,49 +1077,65 @@ mod tests {
     #[test]
     fn typed_object_exclusive_args_resolution() {
         assert_eq!(
-            TypedObject::from_exclusive_args(Some("gun".into()), None, None, None).unwrap(),
+            TypedObject::from_exclusive_args(Some("gun".into()), None, None, None, None).unwrap(),
             TypedObject::Entity { id: "gun".into() }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, Some("alive".into()), None, None).unwrap(),
+            TypedObject::from_exclusive_args(None, Some("alive".into()), None, None, None).unwrap(),
             TypedObject::Value {
                 value: "alive".into()
             }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, None, Some("dead".into()), None).unwrap(),
+            TypedObject::from_exclusive_args(None, None, Some("dead".into()), None, None).unwrap(),
             TypedObject::Token {
                 token: "dead".into()
             }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, None, None, Some((10, "day".into()))).unwrap(),
+            TypedObject::from_exclusive_args(None, None, None, Some((10, "day".into())), None)
+                .unwrap(),
             TypedObject::Quantity {
                 n: 10,
                 unit: "day".into()
             }
         );
-        assert!(
-            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()), None, None)
-                .unwrap_err()
-                .contains("mutually exclusive")
-        );
-        assert!(
-            TypedObject::from_exclusive_args(Some("a".into()), None, Some("c".into()), None)
-                .unwrap_err()
-                .contains("mutually exclusive")
+        assert_eq!(
+            TypedObject::from_exclusive_args(None, None, None, None, Some("f-1".into())).unwrap(),
+            TypedObject::Fact { id: "f-1".into() }
         );
         assert!(TypedObject::from_exclusive_args(
+            Some("a".into()),
+            Some("b".into()),
             None,
             None,
-            Some("c".into()),
-            Some((1, "u".into()))
+            None
         )
         .unwrap_err()
         .contains("mutually exclusive"));
-        assert!(TypedObject::from_exclusive_args(None, None, None, None)
-            .unwrap_err()
-            .contains("needs an object"));
+        assert!(TypedObject::from_exclusive_args(
+            Some("a".into()),
+            None,
+            Some("c".into()),
+            None,
+            None
+        )
+        .unwrap_err()
+        .contains("mutually exclusive"));
+        assert!(TypedObject::from_exclusive_args(
+            None,
+            None,
+            None,
+            Some((1, "u".into())),
+            Some("f-1".into())
+        )
+        .unwrap_err()
+        .contains("mutually exclusive"));
+        assert!(
+            TypedObject::from_exclusive_args(None, None, None, None, None)
+                .unwrap_err()
+                .contains("needs an object")
+        );
     }
 
     /// A subway-braid trunk: `main` + `braid1` (fork at s1) reconverge into the

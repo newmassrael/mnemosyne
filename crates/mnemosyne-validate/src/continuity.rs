@@ -882,6 +882,10 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
         mnemosyne_core::TypedObject::Value { value } => value,
         mnemosyne_core::TypedObject::Token { token } => token,
         mnemosyne_core::TypedObject::Quantity { unit, .. } => unit,
+        // A `Fact` object's key is the referenced fact id (a single string,
+        // unlike Quantity) — reachable only via a map/keying rule mis-declared
+        // on a fact-kind predicate (garbage-in, as above).
+        mnemosyne_core::TypedObject::Fact { id } => id,
     }
 }
 
@@ -897,6 +901,7 @@ fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
         mnemosyne_core::TypedObject::Value { value } => value.clone(),
         mnemosyne_core::TypedObject::Token { token } => token.clone(),
         mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
+        mnemosyne_core::TypedObject::Fact { id } => id.clone(),
     }
 }
 
@@ -911,6 +916,9 @@ fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
         mnemosyne_core::TypedObject::Entity { id } => parse_scalar(id),
         mnemosyne_core::TypedObject::Value { value } => parse_scalar(value),
         mnemosyne_core::TypedObject::Token { token } => parse_scalar(token),
+        // A fact id (`f-*`) is not a number → non-numeric operand (Unverifiable),
+        // never a silent skip.
+        mnemosyne_core::TypedObject::Fact { id } => parse_scalar(id),
     }
 }
 
@@ -2336,6 +2344,7 @@ fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
             mnemosyne_core::TypedObject::Quantity { .. } => {
                 mnemosyne_core::PredicateObjectKind::Quantity
             }
+            mnemosyne_core::TypedObject::Fact { .. } => mnemosyne_core::PredicateObjectKind::Fact,
         };
         if actual != want {
             return Err(format!(
@@ -4833,7 +4842,8 @@ pub fn quest_graph(
                 // A validated store only reaches the Entity arm — the quest
                 // contract gate (`check_quest_predicate_shapes`) rejects a
                 // non-entity quest object; the other arms are the pre-gate
-                // defensive fallback (Round 706 adds Quantity for totality).
+                // defensive fallback (Round 706 adds Quantity, 707 adds Fact for
+                // totality).
                 let actor = match &claim.object {
                     mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
                     mnemosyne_core::TypedObject::Value { value } => Some(value.clone()),
@@ -4841,6 +4851,7 @@ pub fn quest_graph(
                     mnemosyne_core::TypedObject::Quantity { n, unit } => {
                         Some(format!("{n} {unit}"))
                     }
+                    mnemosyne_core::TypedObject::Fact { id } => Some(id.clone()),
                 };
                 completions_of
                     .entry(claim.subject.as_str())
@@ -5338,6 +5349,7 @@ mod tests {
                         mnemosyne_core::TypedObject::Value { .. } => "scalar",
                         mnemosyne_core::TypedObject::Token { .. } => "token",
                         mnemosyne_core::TypedObject::Quantity { .. } => "quantity",
+                        mnemosyne_core::TypedObject::Fact { .. } => "fact",
                     },
                 )
             })
