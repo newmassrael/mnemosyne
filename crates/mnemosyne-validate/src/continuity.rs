@@ -1703,6 +1703,29 @@ pub enum ContinuityViolation {
         /// be one of, in sorted order.
         expected: Vec<String>,
     },
+    /// An `edge_guards` side-table entry (Round 720) is keyed by a fact that is
+    /// NOT an `adjacency` fact of any transition rule — a place-access guard
+    /// attached to something that is not a map edge (the peer of
+    /// `EdgeCostNotAnEdge`, R711). A guard is edge metadata, so it belongs only on
+    /// a map edge; the store-layer `add_edge_guard` gate cannot enforce this (it
+    /// does not know which predicate is the map's adjacency without rules config —
+    /// invariant 4), so the check is a validate-continuity concern, INERT when no
+    /// transition rule is configured. A key/value whose fact is GONE is the
+    /// store-layer orphan detector's job (`edge_guard_violations`), not re-reported
+    /// here — only a PRESENT edge fact with a non-adjacency predicate is a
+    /// map-semantic error. Checked against the UNION of every transition rule's
+    /// adjacency predicate. Reads ONLY the keyed edge fact's predicate, NEVER the
+    /// condition fact — so it cannot evaluate the guard (the R712 layering line).
+    /// Structural (rides `severity`); anchors on the offending edge-guard FACT.
+    EdgeGuardNotAnEdge {
+        /// The edge-guard fact whose predicate is not an adjacency predicate.
+        fact: String,
+        /// The fact's actual predicate, or `None` if it carries no typed claim.
+        found: Option<String>,
+        /// The transition rules' declared adjacency predicate(s) the fact must
+        /// be one of, in sorted order.
+        expected: Vec<String>,
+    },
     /// Round 715 — a place is CONTAINED by two different containers within one
     /// (frame, branch) world, so the `containment` relation is not a tree there
     /// (design R713.1). Cross-FRAME parents are both-true (a belief-frame
@@ -3377,6 +3400,29 @@ pub fn scan_continuity(
                     .violations
                     .push(ContinuityViolation::EdgeCostNotAnEdge {
                         fact: fid.clone(),
+                        found,
+                        expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
+                    });
+            }
+        }
+        // Round 720 — the edge-GUARD semantic (peer of the edge-cost one above):
+        // an `edge_guards` KEY must be a map edge. Keyed by the edge fact, so it
+        // reads only that fact's predicate (never the condition value — the
+        // layering line). The out-of-band orphan (gone edge/condition fact) is the
+        // store-layer `edge_guard_violations`, already Err'd at the boundary.
+        for edge_fid in store.edge_guards.keys() {
+            let Some(fact) = facts.get(edge_fid) else {
+                continue; // unreachable post-boundary; the orphan detector named it
+            };
+            let found = fact.typed.as_ref().map(|t| t.predicate.clone());
+            let is_edge = found
+                .as_deref()
+                .is_some_and(|p| adjacency_predicates.contains(p));
+            if !is_edge {
+                report
+                    .violations
+                    .push(ContinuityViolation::EdgeGuardNotAnEdge {
+                        fact: edge_fid.clone(),
                         found,
                         expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
                     });

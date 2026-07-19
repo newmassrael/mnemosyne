@@ -643,6 +643,27 @@ fn registries() -> Vec<RegistrySpec> {
                 registered. retract-fact cascade-drops the cost, so it never dangles.",
         },
         RegistrySpec {
+            name: "edge_guards",
+            key: "adjacent (edge) fact id",
+            referenced_by: "keyed BY the adjacent (edge) fact; VALUE = the condition fact it \
+                requires — read by the consumer (pinion runtime) which evaluates whether the \
+                condition holds and picks the branch, never by Mnemosyne",
+            add_op: "add-edge-guard",
+            load_bearing: false,
+            description: "Map EDGE GUARDS (R717 design → R720) — a PLACE-ACCESS condition on an \
+                adjacency edge, keyed by the edge fact id, value = the CONDITION fact id the edge \
+                REQUIRES (\"this passage requires the key / low tide\"). A SIDE-TABLE like \
+                edge_costs: the LINK is frame-invariant edge metadata, the CONDITION is a real \
+                fact. Mnemosyne holds the DECLARATION and integrity-checks ONLY that both the edge \
+                and the condition resolve (a dangling-ref check) — it NEVER evaluates whether the \
+                guard holds now (the consumer's playthrough job, the layering line). So the AUTHOR \
+                puts BOTH branches in the store (the got-condition world-line and the without one, \
+                as forked branches); the game only evaluates the boolean and follows the branch. \
+                Fail-loud: both facts must exist, an edge cannot guard itself. retract-fact \
+                cascade-drops the guard with its edge and REFUSES to retract a referenced \
+                condition; validate-continuity flags a guard on a non-edge (edge_guard_not_an_edge).",
+        },
+        RegistrySpec {
             name: "disclosure_plans",
             key: "telling id",
             referenced_by: "the `--telling` carrier + the render-acceptance gates",

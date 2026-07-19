@@ -631,6 +631,32 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 expected.join(", ")
             ),
         ),
+        ContinuityViolation::EdgeGuardNotAnEdge {
+            fact,
+            found,
+            expected,
+        } => action(
+            "edge_guard_not_an_edge",
+            ViolationLocus {
+                facts: vec![fact.clone()],
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "an edge guard belongs only on a map edge — its keyed fact must use an adjacency \
+                 predicate ({})",
+                expected.join(", ")
+            ),
+            "drop the stray guard with `remove-edge-guard --fact <id>` (the fact stays), or if \
+             the fact IS a map edge, declare its predicate as a transition rule's `adjacency`"
+                .to_string(),
+            format!(
+                "edge-guard fact `{fact}` is not a map edge — its predicate `{}` is not one of \
+                 the adjacency predicate(s) {}",
+                found.as_deref().unwrap_or("<untyped>"),
+                expected.join(", ")
+            ),
+        ),
         ContinuityViolation::ContainmentMultipleParents {
             predicate,
             frame,
@@ -799,6 +825,11 @@ mod tests {
             ContinuityViolation::EdgeCostNotAnEdge {
                 fact: "f-loves".into(),
                 found: Some("loves".into()),
+                expected: vec!["adjacent".into()],
+            },
+            ContinuityViolation::EdgeGuardNotAnEdge {
+                fact: "f-hates".into(),
+                found: Some("hates".into()),
                 expected: vec!["adjacent".into()],
             },
             ContinuityViolation::ContainmentMultipleParents {

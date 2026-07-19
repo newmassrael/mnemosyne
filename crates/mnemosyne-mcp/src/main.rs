@@ -432,6 +432,25 @@ pub struct RemoveEdgeCostArgs {
     pub fact_id: String,
 }
 
+/// Attach a place-access guard to one map edge (Round 717 design → Round 720).
+/// Keyed by the edge fact id, value = the condition fact id; both must exist.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddEdgeGuardArgs {
+    /// The ADJACENT (edge) FACT ID the guard attaches to (must already exist).
+    pub fact_id: String,
+    /// The CONDITION FACT ID the edge requires (must already exist; a dangling-
+    /// ref is rejected). Distinct from the edge — an edge cannot guard itself.
+    pub condition: String,
+}
+
+/// Remove a map edge's guard (Round 720) — the peer of `add_edge_guard`. Drops a
+/// stray guard off a non-edge fact without retracting the fact.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveEdgeGuardArgs {
+    /// The fact id whose edge guard to drop (fail-loud if it has none).
+    pub fact_id: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
@@ -1701,6 +1720,27 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_edge_cost(store, path, &a.fact_id));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Attach a place-access GUARD to one map EDGE (R717 design → R720) — a side-table entry keyed by the ADJACENT (edge) FACT ID, value = the CONDITION fact id the edge REQUIRES (\"this passage requires the key / low tide\"). Both facts must EXIST (a dangling-ref check); an edge cannot guard itself. Mnemosyne holds the DECLARATION and integrity-checks only that both resolve — it NEVER evaluates whether the guard holds now (the consumer's playthrough job, the layering line). retract_fact cascade-drops the guard when its EDGE goes and REFUSES to retract a CONDITION a guard still references. At most one guard per edge in v1. Idempotent on identical content; divergent rejects."
+    )]
+    async fn add_edge_guard(&self, args: Parameters<AddEdgeGuardArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_edge_guard(store, path, &a.fact_id, &a.condition)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove a map EDGE's guard (R720) — the peer of add_edge_guard. A guard is subordinate metadata that retract_fact cascade-drops with its edge, but a guard mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_guard_not_an_edge) must be removable WITHOUT retracting the fact. Also cleans an out-of-band orphan guard. Fail-loud if the fact has no edge guard."
+    )]
+    async fn remove_edge_guard(&self, args: Parameters<RemoveEdgeGuardArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_edge_guard(store, path, &a.fact_id));
         self.finish_mutate(outcome)
     }
 

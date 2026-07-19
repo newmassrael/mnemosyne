@@ -696,6 +696,21 @@ pub struct AtomicStore {
     /// the store can never hold a dangling cost. Empty on pre-v30 stores.
     #[serde(default)]
     pub edge_costs: BTreeMap<String, EdgeCost>,
+    /// Map edge-GUARD side-table (Round 717 design → Round 720 build) — keyed by
+    /// the ADJACENT FACT ID (the R698 `adjacent(a,b)` edge), value = the CONDITION
+    /// FACT ID the edge REQUIRES (a place-access guard: "this passage requires the
+    /// key / low tide"). A SIDE-TABLE like [`edge_costs`], not a reified fact: the
+    /// LINK (edge → condition) is frame-invariant edge metadata; the CONDITION is
+    /// a real fact carrying its own frame/branch/evidence. Mnemosyne holds the
+    /// DECLARATION and integrity-checks only that both the edge and the condition
+    /// RESOLVE (a dangling-ref check, R707) — it NEVER evaluates whether the guard
+    /// holds now (the consumer's playthrough job; the R712 layering line). Both
+    /// delete sides are enforced: `retract_fact` CASCADE-DROPS the guard when its
+    /// EDGE fact goes (metadata follows the edge), and REFUSES to retract a
+    /// CONDITION fact a guard still references (a peer, the R707 block). Empty on
+    /// pre-v31 stores.
+    #[serde(default)]
+    pub edge_guards: BTreeMap<String, String>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1258,11 +1273,16 @@ pub enum AtomicStoreError {
 // v24→v25 silent-drop class), which the monotone `> CURRENT` guard rejects
 // loudly instead. No migration arm needed (the field is new, not a shape change
 // to existing data).
+// v30→v31 adds `AtomicStore.edge_guards` (Round 717 design → Round 720 build —
+// the map edge-GUARD side-table: a place-access condition on an adjacency edge,
+// keyed by the edge fact id, value = the CONDITION fact id it requires).
+// Additive, same class as edge_costs (a top-level `BTreeMap` under
+// `#[serde(default)]`, empty on older stores); no migration arm.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 30;
+pub const CURRENT_SCHEMA_VERSION: u32 = 31;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -4955,6 +4975,117 @@ pub fn edge_cost_violations(store: &AtomicStore) -> Vec<String> {
     out
 }
 
+/// Attach a place-access GUARD to a map edge (Round 717 design → Round 720
+/// build) — the edge fact `edge_fact_id` REQUIRES the condition fact
+/// `condition_fact_id`. Gates BOTH facts EXIST (the edge to attach to, and the
+/// condition to require — the dangling-ref check, mirroring R707's existence
+/// verdict). Per invariant-4 it does NOT check the keyed fact is a map EDGE (the
+/// store cannot know which predicate is `adjacency` without rules config — the
+/// same reason `add_edge_cost` accepts a cost on any fact); `validate-continuity`
+/// `EdgeGuardNotAnEdge` (Round 720) is the map-semantic check. Self-guard (an edge
+/// requiring itself) is rejected (mirrors R707 self-ref). At most ONE guard per
+/// edge in v1 (a multi-condition edge = one composite condition fact; the
+/// cardinality axis named-deferred in the R717 design). NEVER evaluates whether
+/// the guard holds now — the consumer's job (the R712 layering line).
+pub fn add_edge_guard(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    edge_fact_id: &str,
+    condition_fact_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let edge = edge_fact_id.trim().to_string();
+    let condition = condition_fact_id.trim().to_string();
+    if !store.narrative_facts.contains_key(&edge) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_guard: edge fact `{edge}` not present (a guard attaches to an existing \
+             edge fact; add the adjacent fact first)"
+        )));
+    }
+    if !store.narrative_facts.contains_key(&condition) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_guard: condition fact `{condition}` not present (a guard requires an \
+             existing fact; add the condition fact first — the dangling-ref check)"
+        )));
+    }
+    if edge == condition {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_guard: edge `{edge}` cannot guard itself (a guard references a distinct \
+             condition fact)"
+        )));
+    }
+    let created = stage_registry_entry(
+        &mut store.edge_guards,
+        "add_edge_guard",
+        "edge_guard",
+        &edge,
+        condition,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_edge_guard",
+        "edge_guard",
+        &edge,
+        created,
+    )
+}
+
+/// Remove a map edge's guard (Round 720) — the symmetric peer of
+/// [`add_edge_guard`] (mirrors R711 `remove_edge_cost`). A guard is subordinate
+/// edge metadata, so `retract_fact` cascade-drops it WITH the edge; but a guard
+/// mistakenly attached to a NON-edge fact (which `validate-continuity` flags as
+/// `EdgeGuardNotAnEdge`) must be removable WITHOUT retracting the fact (the fact
+/// may be a legitimate claim, or referenced so `retract_fact` REFUSES it). Also
+/// cleans an out-of-band orphan guard. Does NOT touch either fact — only the
+/// side-table entry. Fail-loud: there must be a guard to remove.
+pub fn remove_edge_guard(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    edge_fact_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let edge = edge_fact_id.trim().to_string();
+    if store.edge_guards.remove(&edge).is_none() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_edge_guard: no edge guard on fact `{edge}` to remove (a guard is added by \
+             add_edge_guard and cascade-dropped by retract_fact)"
+        )));
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_edge_guard",
+        "edge_guard",
+        &edge,
+    )
+}
+
+/// Every out-of-band `edge_guards` violation (Round 720): a key whose EDGE fact
+/// is GONE, or a value whose CONDITION fact is GONE (a dangling guard-ref). A
+/// write path cannot produce either (`add_edge_guard` checks both exist,
+/// `retract_fact` cascade-drops the guard when its edge goes AND refuses to
+/// retract a referenced condition) — only an out-of-band edit can. The ONE
+/// detector `store_registry_violations` calls (peer of `edge_cost_violations`).
+/// Messages in key order (BTreeMap), empty = clean.
+pub fn edge_guard_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (edge, condition) in &store.edge_guards {
+        if !store.narrative_facts.contains_key(edge) {
+            out.push(format!(
+                "edge_guard `{edge}`: no such edge fact (out-of-band edit; retract_fact \
+                 cascade-drops the guard, so a live store never holds this)"
+            ));
+        }
+        if !store.narrative_facts.contains_key(condition) {
+            out.push(format!(
+                "edge_guard `{edge}`: condition fact `{condition}` is gone (a dangling guard-ref; \
+                 out-of-band edit — retract_fact refuses to remove a referenced condition)"
+            ));
+        }
+    }
+    out
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -5157,6 +5288,11 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // entry whose fact is gone or whose unit is unregistered). The write path
     // (`add_edge_cost`) + the cascade-drop (`retract_fact`) cannot produce these.
     out.extend(edge_cost_violations(store));
+    // Round 720 — the edge-GUARD side-table's out-of-band integrity (a key whose
+    // edge fact is gone, or a value whose condition fact is gone). The write path
+    // (`add_edge_guard`) + the cascade-drop / condition-refuse (`retract_fact`)
+    // cannot produce these.
+    out.extend(edge_guard_violations(store));
     out
 }
 
@@ -6545,7 +6681,20 @@ pub fn retract_fact(
         .iter()
         .map(|(telling, _)| format!("`{telling}`"))
         .collect::<Vec<_>>();
-    if !fact_referrers.is_empty() || !disclosure_referrers.is_empty() {
+    // Round 720 — a fact used as an edge GUARD's CONDITION is a referenced peer
+    // (like conflicts_with / pays_off / the R707 Fact-object): retracting it would
+    // leave a dangling guard-ref. NEW machinery, NOT an `inbound_fact_refs` mirror
+    // (that reads narrative_facts; the guard ref lives in the `edge_guards`
+    // side-table — the R717-review F7 correction). The escape hatch is
+    // `remove_edge_guard` (drop the guard first, then retract the condition).
+    let guard_referrers = store
+        .edge_guards
+        .iter()
+        .filter(|(_, condition)| condition.as_str() == id)
+        .map(|(edge, _)| format!("`{edge}`"))
+        .collect::<Vec<_>>();
+    if !fact_referrers.is_empty() || !disclosure_referrers.is_empty() || !guard_referrers.is_empty()
+    {
         let mut clauses = Vec::new();
         if !fact_referrers.is_empty() {
             clauses.push(format!(
@@ -6561,6 +6710,13 @@ pub fn retract_fact(
                 disclosure_referrers.join(", ")
             ));
         }
+        if !guard_referrers.is_empty() {
+            clauses.push(format!(
+                "is the guard CONDITION of edge(s) {} — clear each with `remove_edge_guard` \
+                 (CLI: remove-edge-guard --fact <edge-id>) first",
+                guard_referrers.join(", ")
+            ));
+        }
         return Err(AtomicMutateError::Validation(format!(
             "retract_fact: fact `{id}` {} (a recorded assertion never dangles)",
             clauses.join("; and it ")
@@ -6573,6 +6729,11 @@ pub fn retract_fact(
     // required — the store can never hold an `edge_costs` entry whose fact is gone
     // (distinct from the R707 fact-ref BLOCK, which fits a peer, not metadata).
     store.edge_costs.remove(id);
+    // Round 720 — CASCADE-DROP the edge GUARD keyed by this fact (the EDGE side):
+    // a guard is subordinate edge metadata, so it goes WITH the edge. The CONDITION
+    // side is the REFUSE above (a referenced condition can't be retracted), so no
+    // dangling guard is possible from either direction.
+    store.edge_guards.remove(id);
     save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
 }
 
@@ -9082,6 +9243,12 @@ mod tests {
             // by nothing (a leaf); removing it strands no ref. The
             // inverse hazard (a fact removed under a live cost) is
             // the retract_fact cascade-drop, not this remover.
+            "edge_guard", // R720: a side-table entry keyed by an edge fact; removing
+            // it strands no ref (it IS a referrer of its condition, not
+            // a referenced identity). The inverse hazards — a fact
+            // removed under a live guard (its edge) / a referenced
+            // condition — are the retract_fact cascade-drop + the
+            // guard-referrer REFUSE, not this remover.
             "predicate", // R658: an identity (TypedClaim.predicate names
                          // it), so it IS this test's target class — guarded by
                          // predicate_uses, which rejects while any typed leg refers to it.
@@ -12958,6 +13125,93 @@ mod tests {
         assert!(
             !store.edge_costs.contains_key("f-orphan"),
             "orphan cost cleaned"
+        );
+    }
+
+    /// Round 720 — `add_edge_guard` gates BOTH facts exist (edge + condition, a
+    /// dangling-ref check) and rejects a self-guard; the value is the condition
+    /// fact id. NON-VACUITY: each rejection asserts its loud message.
+    #[test]
+    fn add_edge_guard_gates_both_facts_and_self() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
+        // Valid: both facts exist.
+        add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
+        assert_eq!(store.edge_guards["f-edge"], "f-key");
+        // Missing edge rejects.
+        let err = add_edge_guard(&mut store, &path, "f-gone", "f-key")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("edge fact") && err.contains("not present"),
+            "{err}"
+        );
+        // Missing condition (dangling-ref) rejects.
+        let err = add_edge_guard(&mut store, &path, "f-edge", "f-nokey")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("condition fact") && err.contains("not present"),
+            "{err}"
+        );
+        // Self-guard rejects.
+        let err = add_edge_guard(&mut store, &path, "f-edge", "f-edge")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot guard itself"), "{err}");
+    }
+
+    /// Round 720 — the DELETE rule, BOTH sides: retract the EDGE fact cascade-drops
+    /// its guard (metadata follows the edge); retract the CONDITION fact is REFUSED
+    /// while a guard references it (the R707-block peer, NEW machinery since the
+    /// ref is in the side-table); `remove_edge_guard` is the escape hatch and the
+    /// out-of-band orphan cleaner. NON-VACUITY: the refuse names the referring edge.
+    #[test]
+    fn edge_guard_delete_cascade_and_condition_refuse() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
+        add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
+
+        // Retracting the CONDITION is refused while the guard references it.
+        let err = retract_fact(&mut store, &path, "f-key", "test")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("guard CONDITION") && err.contains("f-edge"),
+            "the referring edge is named: {err}"
+        );
+        // remove_edge_guard is the escape hatch; then the condition retracts.
+        remove_edge_guard(&mut store, &path, "f-edge").unwrap();
+        assert!(!store.edge_guards.contains_key("f-edge"), "guard removed");
+        retract_fact(&mut store, &path, "f-key", "test").unwrap();
+
+        // Re-attach, then retract the EDGE → the guard cascade-drops with it.
+        add_fact(&mut store, &path, &sample_fact("f-key2", "gt")).unwrap();
+        add_edge_guard(&mut store, &path, "f-edge", "f-key2").unwrap();
+        retract_fact(&mut store, &path, "f-edge", "test").unwrap();
+        assert!(
+            !store.edge_guards.contains_key("f-edge"),
+            "the guard cascade-drops with its edge — no dangling guard"
+        );
+
+        // An out-of-band orphan guard is removable without re-adding the fact.
+        store
+            .edge_guards
+            .insert("f-orphan".to_string(), "f-key2".to_string());
+        remove_edge_guard(&mut store, &path, "f-orphan").unwrap();
+        assert!(
+            !store.edge_guards.contains_key("f-orphan"),
+            "orphan cleaned"
         );
     }
 

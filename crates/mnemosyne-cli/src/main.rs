@@ -483,6 +483,30 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_remove_edge_cost(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "add-edge-guard",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-edge-guard --fact <adjacent-fact-id> --condition <condition-fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 717/720 — attach a place-access guard: the edge fact REQUIRES the",
+            "   condition fact (both must exist, dangling-ref check); never evaluated (consumer's)",
+        ],
+        run: |c| atomic_cli::cmd_add_edge_guard(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-edge-guard",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-edge-guard --fact <fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 720 — the peer of add-edge-guard: drop a stray guard off a non-edge",
+            "   fact (validate-continuity flags it) without retracting the fact; fail-loud if none",
+        ],
+        run: |c| atomic_cli::cmd_remove_edge_guard(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-predicate",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

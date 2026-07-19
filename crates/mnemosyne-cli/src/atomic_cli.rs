@@ -707,6 +707,90 @@ pub fn cmd_remove_edge_cost(workspace_root: &Path, args: &[String]) -> Result<()
     )
 }
 
+/// Round 717 design → Round 720 — attach a place-access GUARD to one map edge:
+/// `--fact` (the adjacent edge fact) REQUIRES `--condition` (the condition fact).
+/// Both must exist (a dangling-ref check); the guard is edge metadata (a
+/// side-table entry), NEVER evaluated by Mnemosyne (the consumer's job).
+pub fn cmd_add_edge_guard(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut condition: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--condition" => {
+                condition = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--condition missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let condition = condition.ok_or_else(|| anyhow!("--condition arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_edge_guard(&mut store, &sidecar_path, &fact_id, &condition),
+        json,
+    )
+}
+
+/// Round 720 — remove a map edge's guard (the peer of `add-edge-guard`). Drops a
+/// stray guard off a NON-edge fact (which `validate-continuity` flags) without
+/// retracting the fact, and cleans an out-of-band orphan guard.
+pub fn cmd_remove_edge_guard(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_edge_guard(&mut store, &sidecar_path, &fact_id),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|token|quantity|fact`
 /// mandatory (Round 708 removed free-text `scalar`).
