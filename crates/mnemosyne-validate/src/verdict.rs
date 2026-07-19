@@ -574,6 +574,32 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                  `{container}` holding `{contained}`, which is off the `{adjacency}` map"
             ),
         ),
+        ContinuityViolation::EdgeCostNotAnEdge {
+            fact,
+            found,
+            expected,
+        } => action(
+            "edge_cost_not_an_edge",
+            ViolationLocus {
+                facts: vec![fact.clone()],
+                field: Some("typed".to_string()),
+                ..Default::default()
+            },
+            format!(
+                "an edge cost belongs only on a map edge — its keyed fact must use an adjacency \
+                 predicate ({})",
+                expected.join(", ")
+            ),
+            "drop the stray cost with `remove-edge-cost --fact <id>` (the fact stays), or if the \
+             fact IS a map edge, declare its predicate as a transition rule's `adjacency`"
+                .to_string(),
+            format!(
+                "edge-cost fact `{fact}` is not a map edge — its predicate `{}` is not one of \
+                 the adjacency predicate(s) {}",
+                found.as_deref().unwrap_or("<untyped>"),
+                expected.join(", ")
+            ),
+        ),
     }
 }
 
@@ -662,6 +688,11 @@ mod tests {
                 fact: "f-c1".into(),
                 container: "ent-island".into(),
                 contained: "ent-nowhere".into(),
+            },
+            ContinuityViolation::EdgeCostNotAnEdge {
+                fact: "f-loves".into(),
+                found: Some("loves".into()),
+                expected: vec!["adjacent".into()],
             },
         ];
         for v in &samples {

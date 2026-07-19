@@ -1527,6 +1527,30 @@ pub enum ContinuityViolation {
         /// The contained place that is not a node.
         contained: String,
     },
+    /// An `edge_costs` side-table entry (Round 710) is keyed by a fact that is
+    /// NOT an `adjacency` fact of any transition rule — a walk-cost attached to
+    /// something that is not a map edge (Round 711, the R710 LOW-3 deferral). A
+    /// cost is edge metadata, so it belongs only on a map edge; the store-layer
+    /// `add_edge_cost` gate cannot enforce this (it does not know which
+    /// predicate is the map's adjacency without rules config — the same reason
+    /// G1/G2 live here, invariant 4), so the check is a validate-continuity
+    /// concern, INERT when no transition rule is configured. A key whose fact is
+    /// GONE is the store-layer orphan detector's job (`edge_cost_violations`),
+    /// not re-reported here — only a PRESENT fact with a non-adjacency predicate
+    /// is a map-semantic error. Checked against the UNION of every transition
+    /// rule's adjacency predicate (not per-rule), so a second map's edge cost is
+    /// not falsely flagged (unlike the per-rule `MapInventedPlace` /
+    /// DEBT-MAP-G2-SINGLEMAP scope). Structural (rides `severity`); anchors on
+    /// the offending edge-cost FACT.
+    EdgeCostNotAnEdge {
+        /// The edge-cost fact whose predicate is not an adjacency predicate.
+        fact: String,
+        /// The fact's actual predicate, or `None` if it carries no typed claim.
+        found: Option<String>,
+        /// The transition rules' declared adjacency predicate(s) the fact must
+        /// be one of, in sorted order.
+        expected: Vec<String>,
+    },
 }
 
 impl ContinuityViolation {
@@ -2766,6 +2790,10 @@ pub fn scan_continuity(
         .filter(|r| matches!(r.spec, NarrativeRuleSpec::Interval { .. }))
         .count();
     let worlds = query_worlds(store);
+    // Round 711 — every transition rule's adjacency predicate, unioned as the
+    // loop runs, so the post-loop `edge_costs` semantic check knows which
+    // predicates name a map edge (the union across maps, not any single rule).
+    let mut adjacency_predicates: BTreeSet<&str> = BTreeSet::new();
     for rule in rules {
         let typed: Vec<(&String, &NarrativeFact)> = facts
             .iter()
@@ -2828,6 +2856,7 @@ pub fn scan_continuity(
                 undirected,
                 containment,
             } => {
+                adjacency_predicates.insert(adjacency.as_str());
                 // Round 697/698/699 (store-native map): ONE edge model from the
                 // store's `adjacency`-predicate facts, consumed by BOTH the
                 // integrity check and the allowed step set — they cannot disagree
@@ -3157,6 +3186,39 @@ pub fn scan_continuity(
                     }
                 }
                 report.interval_unverifiable += unverifiable.len();
+            }
+        }
+    }
+    // Round 711 (the R710 LOW-3 deferral) — an `edge_costs` side-table entry is
+    // a map-EDGE cost, so its keyed fact must be an `adjacency` fact of some
+    // transition rule. The adjacency predicate(s) live in the rules, so the
+    // store's `add_edge_cost` gate cannot enforce this (it only checks
+    // fact-exists / positive / unit-registered); the semantic check is here.
+    // INERT when no transition rule is configured (no adjacency predicate to
+    // check against — the store genuinely cannot know which predicate is the
+    // map's adjacency, invariant 4). The store-layer `edge_cost_violations`
+    // (Round 710), run by `check_store_boundary` at the TOP of this function,
+    // already rejected any edge cost on a GONE fact or an unregistered unit — so
+    // here every key resolves to a present, unit-valid fact; the `else` is
+    // belt-and-suspenders, not a live branch. Union across all transition rules,
+    // so a second map's edge cost is not falsely flagged.
+    if !adjacency_predicates.is_empty() {
+        for fid in store.edge_costs.keys() {
+            let Some(fact) = facts.get(fid) else {
+                continue; // unreachable post-boundary; the orphan detector named it
+            };
+            let found = fact.typed.as_ref().map(|t| t.predicate.clone());
+            let is_edge = found
+                .as_deref()
+                .is_some_and(|p| adjacency_predicates.contains(p));
+            if !is_edge {
+                report
+                    .violations
+                    .push(ContinuityViolation::EdgeCostNotAnEdge {
+                        fact: fid.clone(),
+                        found,
+                        expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
+                    });
             }
         }
     }
@@ -7258,6 +7320,107 @@ mod tests {
         // the island {ent-c, ent-d} is unreached (deterministic, sorted).
         assert_eq!(*reached, 2);
         assert_eq!(unreached, &vec!["ent-c".to_string(), "ent-d".to_string()]);
+    }
+
+    /// Round 711 (the R710 LOW-3 deferral) — an `edge_costs` entry is a map-edge
+    /// cost, so its keyed fact must be an `adjacency` fact of some transition
+    /// rule. A cost on a real edge is clean; a cost on a non-adjacency fact (or
+    /// an untyped fact) is flagged naming that fact; with NO transition rule the
+    /// check is inert; and a cost on a MISSING fact is caught EARLIER by the
+    /// store boundary (`edge_cost_violations`, Round 710), which errors before
+    /// this semantic check runs — proven here so the layering is not assumed.
+    #[test]
+    fn edge_cost_must_key_an_adjacency_fact() {
+        use mnemosyne_core::{EdgeCost, Unit};
+        let order = chain(&["ch-1", "ch-2"]);
+        let undirected = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let cost = || EdgeCost {
+            n: 4,
+            unit: "minute".into(),
+        };
+
+        // A place anchor + two real edges + a non-adjacency `loves` fact + an
+        // untyped bare fact.
+        let mut facts = vec![typed_fact(
+            "p0",
+            "gt",
+            "ch-1",
+            "ent-jiun",
+            "pred-at",
+            holds("ent-a"),
+        )];
+        facts.extend(adjacency_facts(
+            "adjacent",
+            &[("ent-a", "ent-b"), ("ent-b", "ent-c")],
+        ));
+        facts.push(typed_fact(
+            "f-loves",
+            "gt",
+            "ch-1",
+            "ent-a",
+            "loves",
+            holds("ent-b"),
+        ));
+        facts.push(fact("f-bare", "gt", "ch-1", None)); // untyped: `typed: None`
+
+        let mut store = store_with(facts);
+        store.units.insert(
+            "minute".into(),
+            Unit {
+                description: String::new(),
+            },
+        ); // the boundary rejects an unregistered unit before the semantic check
+           // (1) real edge — clean; (2) wrong predicate; (3) untyped fact.
+        store.edge_costs.insert("adjacent-edge-0".into(), cost());
+        store.edge_costs.insert("f-loves".into(), cost());
+        store.edge_costs.insert("f-bare".into(), cost());
+
+        let report = scan_continuity(&store, &order, &undirected).unwrap();
+        let flagged: Vec<&String> = report
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::EdgeCostNotAnEdge { fact, .. } => Some(fact),
+                _ => None,
+            })
+            .collect();
+        // BTreeMap key order: only the non-edge facts, sorted; the real edge is
+        // clean.
+        assert_eq!(
+            flagged,
+            vec![&"f-bare".to_string(), &"f-loves".to_string()],
+            "only non-edge facts, sorted: {:?}",
+            report.violations
+        );
+
+        // Inert with NO transition rule — the store cannot know which predicate
+        // is adjacency (invariant 4), so no edge cost is flagged even though
+        // `f-loves` is a non-edge.
+        let no_map = [exclusive_rule(
+            "one-place",
+            "pred-at",
+            ExclusiveKey::Subject,
+        )];
+        let inert = scan_continuity(&store, &order, &no_map).unwrap();
+        assert!(
+            !inert
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::EdgeCostNotAnEdge { .. })),
+            "inert without a transition rule: {:?}",
+            inert.violations
+        );
+
+        // A cost on a GONE fact is caught by the store BOUNDARY (Round 710),
+        // which errors before this semantic check ever runs — so R711 never
+        // needs to (and never does) re-report an orphan.
+        let mut orphaned = store.clone();
+        orphaned.edge_costs.insert("f-gone".into(), cost());
+        let err = scan_continuity(&orphaned, &order, &undirected).unwrap_err();
+        assert!(
+            err.contains("f-gone") && err.contains("no such narrative fact"),
+            "the boundary names the orphan before the R711 check: {err}"
+        );
     }
 
     /// A `contains(region, node)` fact under the given containment predicate,

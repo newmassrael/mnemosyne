@@ -872,3 +872,137 @@ fn store_native_map_g2_completeness_and_containers_end_to_end() {
         "an unkinded contained place is not also an invented place: {v}"
     );
 }
+
+/// Round 711 (the R710 LOW-3 deferral) — the edge-cost adjacency SEMANTIC through
+/// the REAL binary (the R689/R699 committed-proof discipline). The two layers,
+/// end-to-end: the store-layer `add-edge-cost` write path ACCEPTS a cost on ANY
+/// existing fact (it cannot know which predicate is the map's adjacency without
+/// rules config), and `validate-continuity` — which DOES have the rules — then
+/// catches a cost keyed to a non-adjacency fact as `edge_cost_not_an_edge`. A
+/// cost on a real `adjacent` edge is clean. Places a—b—c, a stray `loves` fact.
+#[test]
+fn store_native_map_edge_cost_semantic_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"]] }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        ws.join("narrative-rules.json"),
+        serde_json::json!({
+            "schema": "narrative-rules/v1",
+            "rules": [ { "id": "roads", "class": "transition", "predicate": "at",
+                         "adjacency": "adjacent", "undirected": true } ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    // A complete connected map a—b—c + a stray non-map `loves` fact. `minute`
+    // is registered so `add-edge-cost` (which requires a registered unit) can run.
+    let atomic = serde_json::json!({
+        "schema_version": 30,
+        "sections": { "ch-1": {}, "ch-2": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "place": {} },
+        "entities": { "p-a": { "kind": "place" }, "p-b": { "kind": "place" }, "p-c": { "kind": "place" } },
+        "units": { "minute": {} },
+        "predicates": {
+            "adjacent": { "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place" },
+            "at": { "object_kind": "entity" },
+            "loves": { "object_kind": "entity" }
+        },
+        "narrative_facts": {
+            "e-ab": { "frame": "gt", "entities": ["p-a", "p-b"], "claim": "a borders b",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-a", "predicate": "adjacent",
+                                 "object": { "kind": "entity", "id": "p-b" } } },
+            "e-bc": { "frame": "gt", "entities": ["p-b", "p-c"], "claim": "b borders c",
+                      "canon_from": "ch-1", "evidence": ["ch-1"],
+                      "typed": { "subject": "p-b", "predicate": "adjacent",
+                                 "object": { "kind": "entity", "id": "p-c" } } },
+            "f-loves": { "frame": "gt", "entities": ["p-a", "p-b"], "claim": "a loves b",
+                         "canon_from": "ch-1", "evidence": ["ch-1"],
+                         "typed": { "subject": "p-a", "predicate": "loves",
+                                    "object": { "kind": "entity", "id": "p-b" } } }
+        }
+    });
+    fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+
+    let add_cost = |fact: &str| {
+        run(
+            ws,
+            &[
+                "add-edge-cost",
+                "--fact",
+                fact,
+                "--n",
+                "4",
+                "--unit",
+                "minute",
+            ],
+        )
+    };
+    let kinds = |v: &serde_json::Value| -> Vec<String> {
+        v["violations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["kind"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let scan = || {
+        let out = run(
+            ws,
+            &["validate-continuity", "--severity", "reject", "--json"],
+        );
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+        (out.status.success(), v)
+    };
+
+    // A cost on a real `adjacent` edge: the write path lands it and the map is
+    // clean — no edge-cost violation.
+    assert!(
+        add_cost("e-ab").status.success(),
+        "a cost on a real edge lands"
+    );
+    let (ok, v) = scan();
+    assert!(ok, "a cost on a real edge is clean: {v}");
+    assert!(!kinds(&v).contains(&"edge_cost_not_an_edge".to_string()));
+
+    // A cost on the non-adjacency `loves` fact: the store-layer write path
+    // ACCEPTS it (it cannot know `loves` is not the map's adjacency) — the gap
+    // R711 closes at the read layer.
+    assert!(
+        add_cost("f-loves").status.success(),
+        "the write path accepts a cost on any existing fact (the R710 LOW-3 gap)"
+    );
+    // `validate-continuity`, holding the rules, catches it and gates.
+    let (ok, v) = scan();
+    assert!(!ok, "a cost on a non-edge gates: {v}");
+    assert!(
+        kinds(&v).contains(&"edge_cost_not_an_edge".to_string()),
+        "the adjacency-semantic gate fires: {v}"
+    );
+    let hit = v["violations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["kind"] == "edge_cost_not_an_edge")
+        .unwrap();
+    assert_eq!(hit["fact"], "f-loves", "it names the offending fact: {v}");
+    assert_eq!(hit["found"], "loves", "and its actual predicate: {v}");
+}

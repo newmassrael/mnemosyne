@@ -169,3 +169,55 @@ fn edge_cost_gate_end_to_end() {
         store["edge_costs"]
     );
 }
+
+/// Round 711 — `remove-edge-cost` through the REAL binary: it drops a stray cost
+/// off a fact WITHOUT retracting the fact (the exit `retract-fact` cannot give a
+/// referenced or legitimate non-edge fact), and a remove with no cost to drop
+/// fails loud.
+#[test]
+fn remove_edge_cost_drops_the_cost_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+
+    assert!(
+        run(ws, &["add-unit", "--unit", "minute", "--description", ""])
+            .status
+            .success()
+    );
+    assert!(add_edge_fact(ws, "f-edge").status.success());
+    assert!(run(
+        ws,
+        &[
+            "add-edge-cost",
+            "--fact",
+            "f-edge",
+            "--n",
+            "4",
+            "--unit",
+            "minute"
+        ],
+    )
+    .status
+    .success());
+    assert_eq!(read_store(ws)["edge_costs"]["f-edge"]["n"], 4);
+
+    // Remove the cost: it goes, but the FACT stays.
+    let out = run(ws, &["remove-edge-cost", "--fact", "f-edge"]);
+    assert!(out.status.success(), "remove should land: {out:?}");
+    let store = read_store(ws);
+    assert!(
+        store["edge_costs"].get("f-edge").is_none(),
+        "the stray cost is dropped: {}",
+        store["edge_costs"]
+    );
+    assert!(
+        store["narrative_facts"].get("f-edge").is_some(),
+        "the fact is untouched (the exit retract-fact could not give)"
+    );
+
+    // Removing a cost that is not there fails loud.
+    let out = run(ws, &["remove-edge-cost", "--fact", "f-edge"]);
+    assert!(!out.status.success(), "remove-absent must fail loud");
+    assert!(stderr(&out).contains("no edge cost"), "{}", stderr(&out));
+}

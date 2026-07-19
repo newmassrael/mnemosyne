@@ -471,6 +471,18 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_add_edge_cost(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "remove-edge-cost",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-edge-cost --fact <fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 711 — the peer of add-edge-cost: drop a stray cost off a non-edge",
+            "   fact (validate-continuity flags it) without retracting the fact; fail-loud if none",
+        ],
+        run: |c| atomic_cli::cmd_remove_edge_cost(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-predicate",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

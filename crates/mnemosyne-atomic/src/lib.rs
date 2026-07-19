@@ -4904,6 +4904,31 @@ pub fn add_edge_cost(
     )
 }
 
+/// Remove a map edge's cost (Round 711) — the symmetric peer of [`add_edge_cost`].
+/// A cost is subordinate metadata, so `retract_fact` cascade-drops it WITH the
+/// edge; but a cost mistakenly attached to a NON-edge fact (which
+/// `validate-continuity` flags as `EdgeCostNotAnEdge`, Round 711) must be
+/// removable WITHOUT retracting the fact — the fact may be a legitimate claim, or
+/// referenced by another fact / disclosure plan so `retract_fact` REFUSES it,
+/// leaving no other way to drop the stray cost. Also cleans up an out-of-band
+/// orphan cost (a key whose fact is gone) without re-materializing the fact. It
+/// does NOT touch the fact — only the side-table entry. Fail-loud: there must be
+/// a cost to remove (a no-op remove would hide a typo'd fact id).
+pub fn remove_edge_cost(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim().to_string();
+    if store.edge_costs.remove(&id).is_none() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_edge_cost: no edge cost on fact `{id}` to remove (a cost is added by \
+             add_edge_cost and cascade-dropped by retract_fact)"
+        )));
+    }
+    save_with_receipt(store, sidecar_path, "remove_edge_cost", "edge_cost", &id)
+}
+
 /// Every out-of-band `edge_costs` violation (Round 709 → DEBT-J): a key whose
 /// fact is GONE, or an entry whose unit is UNregistered. A write path cannot
 /// produce either (`add_edge_cost` checks both, and `retract_fact` cascade-drops
@@ -9053,9 +9078,13 @@ mod tests {
             "section_binding", // a code binding on a section, not an identity.
             "inventory_entry", // inventory id, referenced by nothing.
             "disclosure",      // removes a referrer (an override), not a target.
-            "predicate",       // R658: an identity (TypedClaim.predicate names
-                               // it), so it IS this test's target class — guarded by
-                               // predicate_uses, which rejects while any typed leg refers to it.
+            "edge_cost",       // R711: a side-table VALUE keyed BY a fact, referenced
+            // by nothing (a leaf); removing it strands no ref. The
+            // inverse hazard (a fact removed under a live cost) is
+            // the retract_fact cascade-drop, not this remover.
+            "predicate", // R658: an identity (TypedClaim.predicate names
+                         // it), so it IS this test's target class — guarded by
+                         // predicate_uses, which rejects while any typed leg refers to it.
         ]
         .into_iter()
         .collect();
@@ -12868,6 +12897,67 @@ mod tests {
         assert!(
             err.contains("not a registered unit"),
             "unregistered unit must reject: {err}"
+        );
+    }
+
+    /// Round 711 — `remove_edge_cost` is the peer of `add_edge_cost`: it drops a
+    /// stray cost off a fact WITHOUT retracting the fact (the fact stays); a
+    /// remove with no cost to drop fails loud (no silent no-op that would hide a
+    /// typo'd id); and an out-of-band ORPHAN cost is removable without
+    /// re-materializing its fact. NON-VACUITY: the fact is asserted still present
+    /// after removal, and both the absent and double-remove cases assert the
+    /// loud error.
+    #[test]
+    fn remove_edge_cost_drops_the_cost_and_keeps_the_fact() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_unit(&mut store, &path, "minute", "").unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
+        add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
+
+        // Remove with nothing to drop fails loud.
+        let err = remove_edge_cost(&mut store, &path, "f-none")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("no edge cost"),
+            "remove-absent fails loud: {err}"
+        );
+
+        // Remove the cost: it goes, the FACT stays (the whole point — a stray
+        // cost on a kept fact has an exit that retract_fact could not give).
+        remove_edge_cost(&mut store, &path, "f-edge").unwrap();
+        assert!(!store.edge_costs.contains_key("f-edge"), "cost removed");
+        assert!(
+            store.narrative_facts.contains_key("f-edge"),
+            "the fact is untouched"
+        );
+
+        // A second remove now fails loud (the cost is gone).
+        let err = remove_edge_cost(&mut store, &path, "f-edge")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("no edge cost"),
+            "double-remove fails loud: {err}"
+        );
+
+        // An out-of-band ORPHAN cost (its fact gone) is removable without
+        // re-adding the fact.
+        store.edge_costs.insert(
+            "f-orphan".to_string(),
+            EdgeCost {
+                n: 3,
+                unit: "minute".to_string(),
+            },
+        );
+        remove_edge_cost(&mut store, &path, "f-orphan").unwrap();
+        assert!(
+            !store.edge_costs.contains_key("f-orphan"),
+            "orphan cost cleaned"
         );
     }
 

@@ -424,6 +424,14 @@ pub struct AddEdgeCostArgs {
     pub unit: String,
 }
 
+/// Remove a map edge's cost (Round 711) — the peer of `add_edge_cost`. Drops a
+/// stray cost off a non-edge fact without retracting the fact.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveEdgeCostArgs {
+    /// The fact id whose edge cost to drop (fail-loud if it has none).
+    pub fact_id: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
@@ -1683,6 +1691,16 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_edge_cost(store, path, &a.fact_id, a.n, &a.unit));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove a map EDGE's cost (R711) — the peer of add_edge_cost. A cost is subordinate metadata that retract_fact cascade-drops with its edge, but a cost mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_cost_not_an_edge) must be removable WITHOUT retracting the fact (the fact may be legitimate, or referenced so retract refuses it). Also cleans an out-of-band orphan cost. Fail-loud if the fact has no edge cost."
+    )]
+    async fn remove_edge_cost(&self, args: Parameters<RemoveEdgeCostArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_edge_cost(store, path, &a.fact_id));
         self.finish_mutate(outcome)
     }
 
