@@ -714,7 +714,15 @@ impl NarrativeRule {
                     refs.push(c.as_str());
                 }
             }
-            NarrativeRuleSpec::Exclusive { .. } => {}
+            NarrativeRuleSpec::Exclusive { containment, .. } => {
+                // Round 714 — the optional refinement `containment` predicate is a
+                // ref too, so it rides the same existence/typo guard as a
+                // transition rule's (a missing predicate would silently disarm the
+                // refinement skip).
+                if let Some(c) = containment {
+                    refs.push(c.as_str());
+                }
+            }
         }
         refs
     }
@@ -732,7 +740,19 @@ pub enum NarrativeRuleSpec {
     /// `per: subject` skips pairs with equal objects (one value restated ≠
     /// two values), `per: object` skips pairs with equal subjects (one
     /// holder restated ≠ two holders).
-    Exclusive { per: ExclusiveKey },
+    /// Round 714 — an optional `containment` predicate makes exclusivity
+    /// REFINEMENT-AWARE: two co-holding non-keyed values that are comparable in
+    /// the containment order (one transitively contains the other) REFINE a
+    /// single location (a finer + a coarser statement of the same place) rather
+    /// than conflict, so the overlap is NOT flagged. `None` = today's literal-
+    /// value exclusivity. The comparability is evaluated holds_at-scoped in the
+    /// pair's frame-world at the co-hold point (the containment-tree INTEGRITY —
+    /// multiple-parents / cycle — is the transition arm's later map-scan nesting
+    /// round; this walk is cycle-safe on its own).
+    Exclusive {
+        per: ExclusiveKey,
+        containment: Option<String>,
+    },
     /// Rides the in-frame SUCCESSION edge: successor and predecessor both
     /// typed with the same subject + predicate → `(from, to)` must be an
     /// adjacent step. Succession IS the declared adjacency — "adjacent" over
@@ -901,6 +921,67 @@ fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
         mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
         mnemosyne_core::TypedObject::Fact { id } => id.clone(),
     }
+}
+
+/// Round 714 — the containment-order comparability twin of
+/// [`CanonOrder::comparable`], for refinement-aware exclusivity. Two co-holding
+/// non-keyed values REFINE one location (a finer + a coarser statement of the
+/// same place) rather than conflict when one transitively CONTAINS the other.
+/// Built per co-hold point + world + frame (R713.7: frame/branch scoped via
+/// `holds_at`, NOT the flat map — the map scan's per-scope containment is Round
+/// 715's): the `contains(container, contained)` facts of `containment_pred` that
+/// hold at `p` in `ctx.world` and match `frame` give `parent(contained) =
+/// container`; `a` and `b` are comparable iff one is a transitive containment-
+/// ancestor of the other. Cycle-safe by its OWN visited set — the tree-integrity
+/// gate (multiple-parents / cycle) is the later map-scan nesting round's, so this
+/// walk must terminate on any store (R440 out-of-band), and it takes the FIRST
+/// container per contained (a second parent is the nesting round's finding, not
+/// this walk's concern).
+fn contains_comparable(
+    containment_pred: &str,
+    a: &str,
+    b: &str,
+    ctx: &WorldCtx<'_>,
+    facts: &BTreeMap<String, NarrativeFact>,
+    p: &str,
+    frame: &str,
+) -> bool {
+    if a == b {
+        return true; // one value restated — trivially comparable
+    }
+    // Node identity = the COLLISION-FREE display, the SAME identity the exclusive
+    // gate compares (`claim_leg` -> `typed_object_display`), NOT the coarse
+    // `typed_object_key` (a Quantity's `unit`-only borrow): two distinct
+    // quantities must not collapse to one node and falsely refine (review
+    // Finding 1). Owned strings because `typed_object_display` allocates for a
+    // Quantity.
+    let mut parent: BTreeMap<String, String> = BTreeMap::new();
+    for (fid, f) in facts {
+        let Some(t) = f.typed.as_ref() else {
+            continue;
+        };
+        if t.predicate != containment_pred || f.frame != frame || !ctx.holds_at(fid, f, p) {
+            continue;
+        }
+        parent
+            .entry(typed_object_display(&t.object))
+            .or_insert_with(|| t.subject.clone());
+    }
+    let reaches = |from: &str, to: &str| -> bool {
+        let mut cur = from;
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        while let Some(up) = parent.get(cur) {
+            if up == to {
+                return true;
+            }
+            if !seen.insert(up.as_str()) {
+                break; // cycle — terminate (the nesting round rejects it; walk stops)
+            }
+            cur = up.as_str();
+        }
+        false
+    };
+    reaches(a, b) || reaches(b, a)
 }
 
 /// The object leg as a number for the interval evaluator (Round 489/706). A
@@ -1117,12 +1198,34 @@ fn narrative_rule_from_wire(w: NarrativeRuleWire) -> Result<NarrativeRule, Strin
     }
     let spec = match w.class {
         RuleClass::Exclusive => {
-            forbid_transition_legs(&id, "exclusive", &w)?;
+            // Round 714 — `containment` is now SHARED with the exclusive rule (the
+            // refinement-aware exclusivity source), so only the EDGE legs
+            // (`adjacency` / `undirected`) stay transition-exclusive here; the
+            // interval arm still forbids all three via `forbid_transition_legs`.
+            if w.adjacency.is_some() || w.undirected.is_some() {
+                return Err(format!(
+                    "narrative-rules: exclusive rule `{id}` carries a transition edge leg \
+                     (`adjacency` / `undirected` belong to a transition rule)"
+                ));
+            }
             forbid_interval_legs(&id, "exclusive", &w)?;
             let per = w.per.ok_or_else(|| {
                 format!("narrative-rules: exclusive rule `{id}` is missing its `per` leg")
             })?;
-            NarrativeRuleSpec::Exclusive { per }
+            let containment = match w.containment {
+                Some(c) => {
+                    let c = c.trim().to_string();
+                    if c.is_empty() {
+                        return Err(format!(
+                            "narrative-rules: exclusive rule `{id}` has a blank `containment` \
+                             predicate (omit the field for literal-value exclusivity)"
+                        ));
+                    }
+                    Some(c)
+                }
+                None => None,
+            };
+            NarrativeRuleSpec::Exclusive { per, containment }
         }
         RuleClass::Transition => {
             if w.per.is_some() {
@@ -2804,7 +2907,7 @@ pub fn scan_continuity(
             })
             .collect();
         match &rule.spec {
-            NarrativeRuleSpec::Exclusive { per } => {
+            NarrativeRuleSpec::Exclusive { per, containment } => {
                 let mut unordered: BTreeSet<(&str, &str)> = BTreeSet::new();
                 for_each_world_pair(
                     &worlds,
@@ -2823,11 +2926,41 @@ pub fn scan_continuity(
                             // both `per` directions).
                             return;
                         }
-                        let co_hold = store
-                            .sections
-                            .keys()
-                            .find(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
-                        match co_hold {
+                        // Round 714 refinement-aware exclusivity: the FIRST co-hold
+                        // point that is a genuine CONFLICT, not a refinement. When
+                        // the rule declares a `containment` predicate, a co-hold
+                        // point where the two non-keyed values are COMPARABLE in the
+                        // containment order (one transitively contains the other)
+                        // REFINES one location (a finer + a coarser statement) and is
+                        // NOT a conflict; only a co-hold point that is NOT such a
+                        // refinement gates. Searching EVERY co-hold point (not just
+                        // the first) is what keeps this sound once containment is
+                        // time-scoped — a conflict at a later point where the
+                        // containment has lapsed still surfaces (review Finding 2).
+                        // The non-keyed value uses the SAME identity as the gate
+                        // (`claim_leg`, collision-free); inert without a `containment`
+                        // field (today's behavior), and inert for values the
+                        // containment tree does not name (per:object custody holders
+                        // are not `contains` nodes — invariant-4, no "at = location"
+                        // hardcode).
+                        let is_conflict = |p: &str| -> bool {
+                            match containment {
+                                Some(cont) => !contains_comparable(
+                                    cont,
+                                    &claim_leg(ta, per.other()),
+                                    &claim_leg(tb, per.other()),
+                                    ctx,
+                                    facts,
+                                    p,
+                                    &a.frame,
+                                ),
+                                None => true,
+                            }
+                        };
+                        let conflict = store.sections.keys().find(|p| {
+                            ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p) && is_conflict(p)
+                        });
+                        match conflict {
                             Some(p) => {
                                 report
                                     .violations
@@ -2842,7 +2975,18 @@ pub fn scan_continuity(
                                     })
                             }
                             None => {
-                                if !order.comparable(ctx.world, &a.canon_from, &b.canon_from) {
+                                // No conflicting co-hold. Distinguish "never co-held"
+                                // (the canon-unordered accounting) from "co-held but
+                                // every co-hold refines" (compatible — nothing): a
+                                // refining pair DID co-hold, so it must not be counted
+                                // as unordered.
+                                let co_held = store
+                                    .sections
+                                    .keys()
+                                    .any(|p| ctx.holds_at(aid, a, p) && ctx.holds_at(bid, b, p));
+                                if !co_held
+                                    && !order.comparable(ctx.world, &a.canon_from, &b.canon_from)
+                                {
                                     unordered.insert((aid, bid));
                                 }
                             }
@@ -6796,7 +6940,29 @@ mod tests {
         NarrativeRule {
             id: id.to_string(),
             predicate: predicate.to_string(),
-            spec: NarrativeRuleSpec::Exclusive { per },
+            spec: NarrativeRuleSpec::Exclusive {
+                per,
+                containment: None,
+            },
+        }
+    }
+
+    /// Round 714 — an exclusive rule that declares a `containment` predicate, so
+    /// exclusivity is REFINEMENT-AWARE (ancestor/descendant co-holding values are
+    /// compatible).
+    fn refining_exclusive_rule(
+        id: &str,
+        predicate: &str,
+        per: ExclusiveKey,
+        containment: &str,
+    ) -> NarrativeRule {
+        NarrativeRule {
+            id: id.to_string(),
+            predicate: predicate.to_string(),
+            spec: NarrativeRuleSpec::Exclusive {
+                per,
+                containment: Some(containment.to_string()),
+            },
         }
     }
 
@@ -6887,6 +7053,275 @@ mod tests {
             )),
             "{:?}",
             report.violations
+        );
+    }
+
+    /// Round 714 — refinement-aware exclusivity: two co-holding at-values where
+    /// one transitively CONTAINS the other REFINE one location (a finer + a
+    /// coarser statement of the same place), so the overlap is NOT flagged.
+    #[test]
+    fn rule_exclusive_refinement_skips_ancestor_descendant() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("hall")),
+            typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleExclusiveOverlap { .. })),
+            "castle contains hall — a refinement, not a conflict: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 — two co-holding at-values that are SIBLINGS in the containment
+    /// order (neither contains the other) still conflict: refinement does not
+    /// weaken the gate for disjoint places.
+    #[test]
+    fn rule_exclusive_refinement_flags_siblings() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("hall")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("cellar")),
+            typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall")),
+            typed_fact("c2", "gt", "ch-1", "castle", "contains", at("cellar")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "loc"
+            )),
+            "hall and cellar are siblings — a real conflict: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 — the refinement is OPT-IN: an exclusive rule with no
+    /// containment field is unchanged, so the same ancestor/descendant pair that
+    /// refinement would skip is still flagged (inert by default).
+    #[test]
+    fn rule_exclusive_refinement_inert_without_containment_field() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("hall")),
+            typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "loc"
+            )),
+            "without a containment field, castle+hall is a literal conflict: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 — the refinement ancestry walk is cycle-safe on its own (the
+    /// containment-tree integrity gate is a later round's): a containment cycle
+    /// must not hang the scan, and an unrelated place still conflicts.
+    #[test]
+    fn rule_exclusive_refinement_cycle_safe() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("a")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("c")),
+            // A containment cycle a -> b -> a (a later round rejects it; here the
+            // walk must merely terminate).
+            typed_fact("c1", "gt", "ch-1", "a", "contains", at("b")),
+            typed_fact("c2", "gt", "ch-1", "b", "contains", at("a")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "loc"
+            )),
+            "a and c are not containment-comparable — a conflict, and the scan \
+             terminated to report it: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 (review Finding 1) — the refinement keys on the COLLISION-FREE
+    /// display, not the coarse `typed_object_key`, so two distinct Quantity values
+    /// with the SAME unit are NOT falsely comparable: altitude 5 and 3 conflict.
+    #[test]
+    fn rule_exclusive_refinement_quantity_values_are_not_falsely_comparable() {
+        let store = store_with(vec![
+            typed_fact(
+                "a1",
+                "gt",
+                "ch-1",
+                "dracula",
+                "altitude",
+                TypedObject::Quantity {
+                    n: 5,
+                    unit: "floor".to_string(),
+                },
+            ),
+            typed_fact(
+                "a2",
+                "gt",
+                "ch-2",
+                "dracula",
+                "altitude",
+                TypedObject::Quantity {
+                    n: 3,
+                    unit: "floor".to_string(),
+                },
+            ),
+            // A `contains` fact only so the predicate is registered (unrelated to
+            // the quantities).
+            typed_fact("c1", "gt", "ch-1", "wing", "contains", at("hall")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "alt",
+            "altitude",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, .. } if rule == "alt"
+            )),
+            "altitude 5 and 3 are distinct quantities — a real conflict, not a \
+             refinement (unit-only collapse would hide it): {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 (review Finding 2) — the refinement checks EVERY co-hold point,
+    /// not just the first: containment that lapses while the two locations still
+    /// co-hold leaves a real conflict that must still flag.
+    #[test]
+    fn rule_exclusive_refinement_flags_conflict_after_containment_lapses() {
+        // `castle contains hall` holds ONLY at ch-1 (canon_to ch-1); both
+        // locations hold from ch-1 open, so they still co-hold at ch-2 where the
+        // containment no longer holds.
+        let mut c1 = typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall"));
+        c1.canon_to = Some("ch-1".to_string());
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("castle")),
+            typed_fact("l2", "gt", "ch-1", "dracula", "at-location", at("hall")),
+            c1,
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::RuleExclusiveOverlap { rule, at, .. }
+                    if rule == "loc" && at != "ch-1"
+            )),
+            "at ch-2 the containment has lapsed but both locations hold — a \
+             conflict at a point past the first co-hold: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 — refinement follows a TRANSITIVE containment chain (multi-hop):
+    /// at(campus) and at(room) refine when campus contains school contains room.
+    #[test]
+    fn rule_exclusive_refinement_follows_transitive_chain() {
+        let store = store_with(vec![
+            typed_fact("l1", "gt", "ch-1", "dracula", "at-location", at("campus")),
+            typed_fact("l2", "gt", "ch-2", "dracula", "at-location", at("room")),
+            typed_fact("c1", "gt", "ch-1", "campus", "contains", at("school")),
+            typed_fact("c2", "gt", "ch-1", "school", "contains", at("room")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleExclusiveOverlap { .. })),
+            "campus transitively contains room — a refinement across two hops: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 714 — an exclusive rule may carry a `containment` predicate (the
+    /// refinement source); a blank one rejects, and the EDGE legs
+    /// (adjacency/undirected) stay transition-only.
+    #[test]
+    fn rules_loader_exclusive_accepts_containment_rejects_edge_legs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let write = |name: &str, body: &str| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        let ok = write(
+            "ok.json",
+            r#"{"rules":[{"id":"loc","class":"exclusive","predicate":"at",
+                "per":"subject","containment":"contains"}]}"#,
+        );
+        let file = load_narrative_rules(&ok, None).unwrap();
+        assert!(matches!(
+            &file.rules[0].spec,
+            NarrativeRuleSpec::Exclusive { containment: Some(c), .. } if c == "contains"
+        ));
+        let blank = write(
+            "blank.json",
+            r#"{"rules":[{"id":"loc","class":"exclusive","predicate":"at",
+                "per":"subject","containment":"  "}]}"#,
+        );
+        let err = load_narrative_rules(&blank, None).unwrap_err();
+        assert!(
+            err.contains("blank") && err.contains("containment"),
+            "{err}"
+        );
+        let stray = write(
+            "stray.json",
+            r#"{"rules":[{"id":"loc","class":"exclusive","predicate":"at",
+                "per":"subject","undirected":true}]}"#,
+        );
+        let err = load_narrative_rules(&stray, None).unwrap_err();
+        assert!(
+            err.contains("exclusive") && err.contains("undirected"),
+            "{err}"
         );
     }
 

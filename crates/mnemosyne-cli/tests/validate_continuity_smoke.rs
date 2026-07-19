@@ -297,6 +297,96 @@ fn rules_pin_mismatch_fails_loud_and_override_bypasses() {
     assert_eq!(v["violations"][0]["kind"], "rule_exclusive_overlap");
 }
 
+/// Round 714 — refinement-aware exclusivity end-to-end through the real binary:
+/// an exclusive rule declaring a `containment` predicate treats two co-holding
+/// at-values one of which transitively contains the other as a REFINEMENT (not a
+/// conflict), so the same store that gates WITHOUT the field passes WITH it. The
+/// contrast proves the field is load-bearing, and the rules-file wire carries it.
+fn write_refinement_workspace(workspace: &Path, containment: bool) {
+    fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
+    fs::write(
+        workspace.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    let atomic = serde_json::json!({
+        "schema_version": 19,
+        "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "character": {}, "place": {} },
+        "entities": { "dracula": { "kind": "character" }, "castle": { "kind": "place" } },
+        "predicates": {
+            "at-location": { "object_kind": "token", "object_tokens": ["castle", "hall"] },
+            "contains": { "object_kind": "token", "object_tokens": ["hall"] }
+        },
+        "narrative_facts": {
+            "l1": {
+                "frame": "gt", "entities": ["dracula"], "claim": "Dracula is at the castle",
+                "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "dracula", "predicate": "at-location",
+                           "object": { "kind": "token", "token": "castle" } }
+            },
+            "l2": {
+                "frame": "gt", "entities": ["dracula"], "claim": "Dracula is in the hall",
+                "canon_from": "ch-2", "evidence": ["ch-2"],
+                "typed": { "subject": "dracula", "predicate": "at-location",
+                           "object": { "kind": "token", "token": "hall" } }
+            },
+            "c1": {
+                "frame": "gt", "entities": ["castle"], "claim": "The castle contains the hall",
+                "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "castle", "predicate": "contains",
+                           "object": { "kind": "token", "token": "hall" } }
+            }
+        }
+    });
+    fs::write(
+        workspace.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]] }).to_string(),
+    )
+    .unwrap();
+    let mut rule = serde_json::json!({
+        "id": "loc", "class": "exclusive", "predicate": "at-location", "per": "subject"
+    });
+    if containment {
+        rule["containment"] = serde_json::json!("contains");
+    }
+    fs::write(
+        workspace.join("narrative-rules.json"),
+        serde_json::json!({ "schema": "narrative-rules/v1", "rules": [rule] }).to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn refinement_aware_exclusivity_end_to_end() {
+    // WITH `containment`: castle contains hall — a refinement, not a conflict.
+    let tmp = TempDir::new().unwrap();
+    write_refinement_workspace(tmp.path(), true);
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(out.status.success(), "refinement must not gate: {out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["rules"], 1);
+    assert_eq!(v["violation_count"], 0, "castle contains hall refines: {v}");
+    // WITHOUT `containment`: the SAME castle+hall co-hold is a literal conflict.
+    write_refinement_workspace(tmp.path(), false);
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(
+        !out.status.success(),
+        "literal exclusivity must gate: {out:?}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(v["violations"][0]["kind"], "rule_exclusive_overlap");
+    assert_eq!(v["violations"][0]["rule"], "loc");
+}
+
 /// Round 491 — a single-world store with one INTERVAL violation (a codicil
 /// ratified 5 days after signing against a 42-day rule) and no structural
 /// violations. The per-class gating: `severity` (reject) does NOT gate the

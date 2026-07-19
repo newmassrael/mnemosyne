@@ -333,7 +333,10 @@ pub fn describe_schema() -> SchemaContract {
              slot), \"rules\": [ … ] } where each rule is { \"id\": \
              string (unique — it names the finding), \"predicate\": <predicate id> (the KEYED / \
              left typed leg, for every class), \"class\": \"exclusive\" | \"transition\" | \
-             \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\"; \
+             \"interval\", plus that class's legs: exclusive → \"per\": \"subject\" | \"object\" \
+             + \"containment\"?: <predicate id> (Round 714: makes exclusivity REFINEMENT-AWARE \
+             — two co-holding values one of which transitively `contains` the other refine one \
+             location, not conflict; omit for literal-value exclusivity); \
              transition → \"adjacency\": <predicate id> (Round 697: its facts ARE the edges \
              — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
              store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
@@ -1046,12 +1049,27 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                     location exclusivity) or one holder per object (`per: object` — \
                     conservation/custody) within one (frame x world). Overlapping typed legs \
                     that violate this are a continuity-gate reject.",
-                parameters: vec![FieldSpec {
-                    name: "per",
-                    ty: "`subject` | `object`",
-                    required: true,
-                    description: "Which typed leg the rule keys on.",
-                }],
+                parameters: vec![
+                    FieldSpec {
+                        name: "per",
+                        ty: "`subject` | `object`",
+                        required: true,
+                        description: "Which typed leg the rule keys on.",
+                    },
+                    FieldSpec {
+                        name: "containment",
+                        ty: "predicate id (optional)",
+                        required: false,
+                        description: "Round 714: makes exclusivity REFINEMENT-AWARE. The \
+                            predicate whose facts are `contains(container, contained)`. Two \
+                            co-holding non-keyed values that are COMPARABLE in this containment \
+                            order (one transitively contains the other, e.g. `at(p, classroom)` \
+                            and `at(p, school)` with classroom in school) REFINE one location — \
+                            a finer + a coarser statement of the same place — so the overlap is \
+                            NOT flagged. Evaluated holds_at-scoped at the co-hold point in the \
+                            pair's frame-world. Omit for literal-value exclusivity.",
+                    },
+                ],
             },
             RuleClass::Transition => RuleClassSpec {
                 class: "transition",
