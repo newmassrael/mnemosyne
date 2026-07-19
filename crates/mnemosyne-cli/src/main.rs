@@ -489,8 +489,9 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["add-edge-guard --fact <adjacent-fact-id> --condition <condition-fact-id> [--sidecar <path>] [--json]"],
         notes: &[
-            "   Round 717/720 — attach a place-access guard: the edge fact REQUIRES the",
-            "   condition fact (both must exist, dangling-ref check); never evaluated (consumer's)",
+            "   Round 717/720/722 — add a place-access guard condition: the edge fact REQUIRES",
+            "   the condition (both must exist). A guard is a SET (AND); call N times for N",
+            "   conditions; OR = multiple guarded edges. Never evaluated (the consumer's)",
         ],
         run: |c| atomic_cli::cmd_add_edge_guard(&c.anchor()?, c.rest()),
     },
@@ -501,10 +502,22 @@ static COMMANDS: &[Command] = &[
         blank_before: false,
         usage: &["remove-edge-guard --fact <fact-id> [--sidecar <path>] [--json]"],
         notes: &[
-            "   Round 720 — the peer of add-edge-guard: drop a stray guard off a non-edge",
-            "   fact (validate-continuity flags it) without retracting the fact; fail-loud if none",
+            "   Round 720 — the peer of add-edge-guard: drop a stray guard (the WHOLE set)",
+            "   off a non-edge fact without retracting the fact; fail-loud if none",
         ],
         run: |c| atomic_cli::cmd_remove_edge_guard(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-edge-guard-condition",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-edge-guard-condition --fact <edge-fact-id> --condition <condition-fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 722 — drop ONE condition from an edge guard's set; the edge key is",
+            "   removed when the set empties (no vacuous empty guard); fail-loud if absent",
+        ],
+        run: |c| atomic_cli::cmd_remove_edge_guard_condition(&c.anchor()?, c.rest()),
     },
     Command {
         name: "add-predicate",

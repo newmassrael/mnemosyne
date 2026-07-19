@@ -47,7 +47,7 @@ fn write_workspace(ws: &Path) {
     )
     .unwrap();
     let atomic = serde_json::json!({
-        "schema_version": 31,
+        "schema_version": 32,
         "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
         "changelog_entries": {},
         "frames": { "gt": {} },
@@ -410,4 +410,150 @@ fn edge_guard_on_a_non_edge_fact_is_flagged() {
         .map(|x| x["kind"].as_str().unwrap())
         .collect();
     assert!(kinds.contains(&"edge_guard_not_an_edge"), "{v}");
+}
+
+/// Round 722 — a MULTI-CONDITION guard (AND set), through the real binary: a door
+/// requires BOTH the iron key AND low tide; add-edge-guard twice accumulates the
+/// set; retracting EITHER condition is refused; remove-edge-guard-condition drops
+/// one and the door still validates clean (the guard is never evaluated). This is
+/// the owner's "증거들이 있을 경우에만" — a choice gated on SEVERAL conditions.
+#[test]
+fn multi_condition_guard_set_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws);
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-door",
+            "--frame",
+            "gt",
+            "--claim",
+            "a door joins the hall and the vault",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "hall,vault",
+            "--typed-subject",
+            "hall",
+            "--typed-predicate",
+            "adjacent",
+            "--typed-object-entity",
+            "vault",
+        ],
+    );
+    // Two conditions: the key and low tide.
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-key",
+            "--frame",
+            "gt",
+            "--claim",
+            "the hero holds the key",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "hero,iron-key",
+            "--typed-subject",
+            "hero",
+            "--typed-predicate",
+            "holds",
+            "--typed-object-entity",
+            "iron-key",
+        ],
+    );
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-tide",
+            "--frame",
+            "gt",
+            "--claim",
+            "the tide is low",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+        ],
+    );
+    // Accumulate the AND set: the door requires BOTH.
+    ok(
+        ws,
+        &["add-edge-guard", "--fact", "f-door", "--condition", "f-key"],
+    );
+    ok(
+        ws,
+        &[
+            "add-edge-guard",
+            "--fact",
+            "f-door",
+            "--condition",
+            "f-tide",
+        ],
+    );
+    // Clean: the guard is on a real edge, never evaluated.
+    let out = run(
+        ws,
+        &[
+            "validate-continuity",
+            "--rules",
+            "narrative-rules.json",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "a multi-condition guard on a real edge is clean: {out:?}"
+    );
+
+    // Retracting EITHER condition is refused (both are in the set).
+    for cond in ["f-key", "f-tide"] {
+        let out = run(ws, &["retract-fact", "--fact", cond, "--reason", "test"]);
+        assert!(
+            !out.status.success(),
+            "{cond} is referenced by the guard set"
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("guard CONDITION"),
+            "the refusal names the guard: {cond}"
+        );
+    }
+    // Drop ONE condition via the granular remover; the door still validates.
+    ok(
+        ws,
+        &[
+            "remove-edge-guard-condition",
+            "--fact",
+            "f-door",
+            "--condition",
+            "f-key",
+        ],
+    );
+    let out = run(
+        ws,
+        &[
+            "validate-continuity",
+            "--rules",
+            "narrative-rules.json",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "still clean after dropping one condition: {out:?}"
+    );
+    // f-key is now retractable (no longer in any guard set).
+    let out = run(ws, &["retract-fact", "--fact", "f-key", "--reason", "test"]);
+    assert!(
+        out.status.success(),
+        "the dropped condition retracts: {out:?}"
+    );
 }

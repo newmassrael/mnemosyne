@@ -791,6 +791,60 @@ pub fn cmd_remove_edge_guard(workspace_root: &Path, args: &[String]) -> Result<(
     )
 }
 
+/// Round 722 — remove ONE condition from a map edge's guard SET (the granular
+/// peer of `add-edge-guard`). Drops `--condition` from `--fact`'s set; the edge's
+/// key is deleted when the set empties. Fail-loud if the edge lacks that condition.
+pub fn cmd_remove_edge_guard_condition(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut condition: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--condition" => {
+                condition = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--condition missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let condition = condition.ok_or_else(|| anyhow!("--condition arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_edge_guard_condition(
+            &mut store,
+            &sidecar_path,
+            &fact_id,
+            &condition,
+        ),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|token|quantity|fact`
 /// mandatory (Round 708 removed free-text `scalar`).

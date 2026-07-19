@@ -443,12 +443,22 @@ pub struct AddEdgeGuardArgs {
     pub condition: String,
 }
 
-/// Remove a map edge's guard (Round 720) — the peer of `add_edge_guard`. Drops a
-/// stray guard off a non-edge fact without retracting the fact.
+/// Remove a map edge's whole guard set (Round 720) — the peer of `add_edge_guard`.
+/// Drops a stray guard off a non-edge fact without retracting the fact.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveEdgeGuardArgs {
-    /// The fact id whose edge guard to drop (fail-loud if it has none).
+    /// The fact id whose edge guard set to drop (fail-loud if it has none).
     pub fact_id: String,
+}
+
+/// Remove ONE condition from a map edge's guard set (Round 722).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveEdgeGuardConditionArgs {
+    /// The edge fact id whose guard set to edit.
+    pub fact_id: String,
+    /// The condition to drop from the set (fail-loud if absent; the edge key is
+    /// deleted when the set empties).
+    pub condition: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1724,7 +1734,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Attach a place-access GUARD to one map EDGE (R717 design → R720) — a side-table entry keyed by the ADJACENT (edge) FACT ID, value = the CONDITION fact id the edge REQUIRES (\"this passage requires the key / low tide\"). Both facts must EXIST (a dangling-ref check); an edge cannot guard itself. Mnemosyne holds the DECLARATION and integrity-checks only that both resolve — it NEVER evaluates whether the guard holds now (the consumer's playthrough job, the layering line). retract_fact cascade-drops the guard when its EDGE goes and REFUSES to retract a CONDITION a guard still references. At most one guard per edge in v1. Idempotent on identical content; divergent rejects."
+        description = "Add a place-access GUARD condition to one map EDGE (R717/721 design → R720/722) — a side-table entry keyed by the ADJACENT (edge) FACT ID, value = the SET of CONDITION fact ids the edge REQUIRES (\"this passage requires the key AND low tide\"). A guard is a SET (AND-semantics): call this N times to add N conditions; OR is authored as MULTIPLE guarded edges to the same target (never a stored boolean expression tree — the layering line). Both facts must EXIST (a per-member dangling-ref check); an edge cannot guard itself. Mnemosyne holds the DECLARATION and integrity-checks only that each resolves — it NEVER evaluates whether the guard holds now (the consumer's playthrough job). retract_fact cascade-drops the whole set when its EDGE goes and REFUSES to retract a CONDITION any guard's set still references. Idempotent on an already-present condition."
     )]
     async fn add_edge_guard(&self, args: Parameters<AddEdgeGuardArgs>) -> CallToolResult {
         let a = args.0;
@@ -1735,12 +1745,26 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Remove a map EDGE's guard (R720) — the peer of add_edge_guard. A guard is subordinate metadata that retract_fact cascade-drops with its edge, but a guard mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_guard_not_an_edge) must be removable WITHOUT retracting the fact. Also cleans an out-of-band orphan guard. Fail-loud if the fact has no edge guard."
+        description = "Remove a map EDGE's WHOLE guard set (R720) — the peer of add_edge_guard. A guard is subordinate metadata that retract_fact cascade-drops with its edge, but a guard mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_guard_not_an_edge) must be removable WITHOUT retracting the fact. Also cleans an out-of-band orphan guard. Fail-loud if the fact has no edge guard. To drop just ONE condition, use remove_edge_guard_condition."
     )]
     async fn remove_edge_guard(&self, args: Parameters<RemoveEdgeGuardArgs>) -> CallToolResult {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_edge_guard(store, path, &a.fact_id));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove ONE condition from a map EDGE's guard SET (R722) — the granular peer of add_edge_guard. Drops the named condition from the edge's set; the edge's key is deleted when the set empties (never a vacuous empty guard). Fail-loud if the edge has no such guard condition."
+    )]
+    async fn remove_edge_guard_condition(
+        &self,
+        args: Parameters<RemoveEdgeGuardConditionArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::remove_edge_guard_condition(store, path, &a.fact_id, &a.condition)
+        });
         self.finish_mutate(outcome)
     }
 
