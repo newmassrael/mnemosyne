@@ -520,6 +520,19 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_remove_edge_guard_condition(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "set-edge-guard-threshold",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-edge-guard-threshold --fact <edge-fact-id> (--threshold <k> | --clear) [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 723 — set a K-of-N threshold on an edge guard: --threshold k = at least",
+            "   k of the conditions (1<=k<len; k==len is AND); --clear reverts to AND (all).",
+            "   Never evaluated (the consumer counts >=k); OR is still multiple guarded edges",
+        ],
+        run: |c| atomic_cli::cmd_set_edge_guard_threshold(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-predicate",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

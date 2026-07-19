@@ -461,6 +461,17 @@ pub struct RemoveEdgeGuardConditionArgs {
     pub condition: String,
 }
 
+/// Set (or clear) a map edge guard's K-of-N threshold (Round 723).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetEdgeGuardThresholdArgs {
+    /// The edge fact id whose guard threshold to set (must already have a guard).
+    pub fact_id: String,
+    /// The K-of-N threshold: `Some(k)` = at least k of the conditions (1 <= k <=
+    /// len; k == len normalizes to AND); `None` (omit) = clear to AND (require all).
+    #[serde(default)]
+    pub threshold: Option<usize>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
@@ -1764,6 +1775,20 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_edge_guard_condition(store, path, &a.fact_id, &a.condition)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Set (or clear) a map EDGE guard's K-of-N THRESHOLD (R723). threshold=k makes the guard \"at least k of its conditions\" (1<=k<=len; k==len normalizes to AND); omit/null clears to AND (require all). Fail-loud: the edge must have a guard, and k must be in 1..=len (0 is vacuous, >len unsatisfiable). Mnemosyne stores k and checks the range — it NEVER counts how many hold now (the consumer's playthrough job; the layering line). OR is still multiple guarded edges to the same target."
+    )]
+    async fn set_edge_guard_threshold(
+        &self,
+        args: Parameters<SetEdgeGuardThresholdArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_edge_guard_threshold(store, path, &a.fact_id, a.threshold)
         });
         self.finish_mutate(outcome)
     }

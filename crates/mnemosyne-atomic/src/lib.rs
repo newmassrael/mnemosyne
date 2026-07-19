@@ -712,10 +712,12 @@ pub struct AtomicStore {
     /// line). Both delete sides are enforced: `retract_fact` CASCADE-DROPS the
     /// whole set when its EDGE fact goes, and REFUSES to retract a CONDITION fact
     /// any guard's set still references (a peer, the R707 block). An emptied set
-    /// drops its map KEY (never a vacuous empty-set entry). Empty on pre-v31
-    /// stores; a v31 single-`String` value predates any populated store.
+    /// drops its map KEY (never a vacuous empty-set entry). Round 723 gave the
+    /// value a K-of-N `threshold` (see [`EdgeGuard`]): `None` = require ALL (AND),
+    /// `Some(k)` = at least k. Empty on pre-v31 stores; a v31 single-`String` and a
+    /// v32 bare-set value predate any populated store (object-form only from v33).
     #[serde(default)]
-    pub edge_guards: BTreeMap<String, BTreeSet<String>>,
+    pub edge_guards: BTreeMap<String, EdgeGuard>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -723,6 +725,29 @@ pub struct AtomicStore {
 
 fn default_schema_version() -> u32 {
     1
+}
+
+/// Round 723 — a map edge's place-access GUARD: the condition facts the edge
+/// REQUIRES plus an optional K-of-N threshold. The value type of
+/// [`AtomicStore::edge_guards`] (a bare `BTreeSet<String>` in R722). `threshold ==
+/// None` means require ALL the conditions (AND — the CANONICAL AND; the write path
+/// never stores `Some(len)`, it normalizes to `None`); `threshold == Some(k)` means
+/// at least k of them (`1 <= k < conditions.len()`). The consumer counts how many
+/// hold and compares to k (or ANDs when `None`); Mnemosyne stores the DECLARATION
+/// and checks `1 <= k <= len`, and NEVER evaluates whether the guard holds now (the
+/// R712 layering line). OR is still MULTIPLE guarded edges to the same target — no
+/// stored boolean expression tree. Storing `k` does NOT store the author-intended
+/// N, so a dropped condition still yields a well-formed smaller guard (the
+/// threshold-INVISIBILITY half is closed, N-completeness is not — R723 review F2).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdgeGuard {
+    /// The condition fact ids the edge requires (each a per-member dangling-ref
+    /// check). An emptied set drops the whole `edge_guards` key.
+    pub conditions: BTreeSet<String>,
+    /// K-of-N threshold: `None` = require ALL (AND); `Some(k)` = at least k
+    /// (`1 <= k < len`). Omitted from the wire form when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<usize>,
 }
 
 // ============================================================================
@@ -1291,11 +1316,19 @@ pub enum AtomicStoreError {
 // exists (edge_guards landed empty in R720), so serde's refusal to coerce a bare
 // `"c"` into `["c"]` is moot; the monotone `> CURRENT` guard stops an old binary
 // misreading a populated set.
+// v32→v33 changes `edge_guards`' VALUE from a bare `BTreeSet<String>` to the
+// `EdgeGuard` struct — a condition set PLUS an optional K-of-N `threshold` (Round
+// 723). A SHAPE change; the bump is real. NO bare-array back-fill adapter (review
+// F1 — YAGNI by the same "no populated store" reasoning as v32: edge_guards is `{}`
+// in Mnemosyne, no game/tide store carries store-native guards). The wire form is
+// the OBJECT shape only; an old v32 bare-array value would fail the struct parse
+// LOUD (no silent guess), and the monotone `> CURRENT` guard stops an old binary
+// misreading a threshold guard's object as `Some(len)` AND.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 32;
+pub const CURRENT_SCHEMA_VERSION: u32 = 33;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -5027,11 +5060,15 @@ pub fn add_edge_guard(
     }
     // Insert into the edge's condition SET (Round 722). `created` = a genuinely
     // new member (a re-add of an existing condition is a no-op, like the other
-    // registry adds).
+    // registry adds). Round 723 — the threshold is carried unchanged (a `None`/AND
+    // guard stays AND over the bigger set; a `Some(k)` keeps k, now k-of-(n+1) — the
+    // author's k intent is never silently mutated; `set_edge_guard_threshold` is the
+    // one place k changes).
     let created = store
         .edge_guards
         .entry(edge.clone())
         .or_default()
+        .conditions
         .insert(condition);
     registry_receipt(
         store,
@@ -5055,24 +5092,100 @@ pub fn remove_edge_guard_condition(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let edge = edge_fact_id.trim().to_string();
     let condition = condition_fact_id.trim().to_string();
-    let removed = match store.edge_guards.get_mut(&edge) {
-        Some(set) => set.remove(&condition),
-        None => false,
+    let guard = match store.edge_guards.get_mut(&edge) {
+        Some(g) if g.conditions.contains(&condition) => g,
+        _ => {
+            return Err(AtomicMutateError::Validation(format!(
+                "remove_edge_guard_condition: edge `{edge}` has no guard condition `{condition}` to \
+                 remove (add_edge_guard adds one; remove_edge_guard drops the whole set)"
+            )));
+        }
     };
-    if !removed {
-        return Err(AtomicMutateError::Validation(format!(
-            "remove_edge_guard_condition: edge `{edge}` has no guard condition `{condition}` to \
-             remove (add_edge_guard adds one; remove_edge_guard drops the whole set)"
-        )));
+    // Round 723 — REFUSE a removal that would drop the condition count below a
+    // K-of-N threshold (leaving an unsatisfiable `Some(k)` with k > len): lower the
+    // threshold first, or drop the whole guard. Refuse over clamp — never silently
+    // rewrite the author's k.
+    if let Some(k) = guard.threshold {
+        if guard.conditions.len() - 1 < k {
+            return Err(AtomicMutateError::Validation(format!(
+                "remove_edge_guard_condition: edge `{edge}` guard is {k}-of-{len} — removing \
+                 `{condition}` would leave {rem} condition(s), below the threshold {k}; lower it \
+                 first with set_edge_guard_threshold (CLI: set-edge-guard-threshold), or drop the \
+                 whole guard with remove_edge_guard",
+                len = guard.conditions.len(),
+                rem = guard.conditions.len() - 1
+            )));
+        }
+    }
+    guard.conditions.remove(&condition);
+    // Round 723 — a `Some(k)` that now equals the set size is a redundant AND;
+    // normalize to `None` so there is ONE canonical AND representation (review F3).
+    if guard.threshold == Some(guard.conditions.len()) {
+        guard.threshold = None;
     }
     // Emptied set → drop the key: an empty guard is a vacuous AND, never stored.
-    if store.edge_guards.get(&edge).is_some_and(BTreeSet::is_empty) {
+    if store
+        .edge_guards
+        .get(&edge)
+        .is_some_and(|g| g.conditions.is_empty())
+    {
         store.edge_guards.remove(&edge);
     }
     save_with_receipt(
         store,
         sidecar_path,
         "remove_edge_guard_condition",
+        "edge_guard",
+        &edge,
+    )
+}
+
+/// Round 723 — set (or clear) a map edge guard's K-of-N THRESHOLD, the ONE place
+/// `k` changes. `threshold = Some(k)` makes the guard "at least k of the
+/// conditions" (`1 <= k <= len`; `k == len` is a redundant AND and normalizes to
+/// the canonical `None`); `threshold = None` clears back to AND (require all).
+/// Fail-loud: the edge must have a guard, and `k` must be in `1..=len` (`k == 0` is
+/// a vacuous guard, `k > len` is unsatisfiable). Mnemosyne stores `k` and checks
+/// this range on the DECLARATION — it NEVER evaluates whether `>= k` hold now (the
+/// consumer's playthrough job; the R712 layering line, exactly as it never
+/// evaluates the AND).
+pub fn set_edge_guard_threshold(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    edge_fact_id: &str,
+    threshold: Option<usize>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let edge = edge_fact_id.trim().to_string();
+    let guard = store.edge_guards.get_mut(&edge).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "set_edge_guard_threshold: edge `{edge}` has no guard (add a condition with \
+             add_edge_guard first; a threshold is a property of an existing guard set)"
+        ))
+    })?;
+    let len = guard.conditions.len();
+    let normalized = match threshold {
+        None => None,
+        Some(0) => {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_edge_guard_threshold: edge `{edge}` threshold 0 is vacuous (a guard that \
+                 requires none of its conditions guards nothing); use 1..={len}, or clear to AND"
+            )));
+        }
+        Some(k) if k > len => {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_edge_guard_threshold: edge `{edge}` threshold {k} exceeds its {len} \
+                 condition(s) (unsatisfiable); use 1..={len}"
+            )));
+        }
+        // k == len is a redundant AND → the canonical None (review F3).
+        Some(k) if k == len => None,
+        Some(k) => Some(k),
+    };
+    guard.threshold = normalized;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_edge_guard_threshold",
         "edge_guard",
         &edge,
     )
@@ -5117,7 +5230,7 @@ pub fn remove_edge_guard(
 /// Messages in key order (BTreeMap), empty = clean.
 pub fn edge_guard_violations(store: &AtomicStore) -> Vec<String> {
     let mut out = Vec::new();
-    for (edge, conditions) in &store.edge_guards {
+    for (edge, guard) in &store.edge_guards {
         if !store.narrative_facts.contains_key(edge) {
             out.push(format!(
                 "edge_guard `{edge}`: no such edge fact (out-of-band edit; retract_fact \
@@ -5129,13 +5242,26 @@ pub fn edge_guard_violations(store: &AtomicStore) -> Vec<String> {
         // (`remove_edge_guard_condition` drops the key when the last member goes),
         // so this catches only an out-of-band edit, but it names it rather than
         // passing a meaningless guard silently.
-        if conditions.is_empty() {
+        if guard.conditions.is_empty() {
             out.push(format!(
                 "edge_guard `{edge}`: empty condition set (a vacuous guard; out-of-band edit — \
                  remove_edge_guard_condition drops the key when the last member goes)"
             ));
         }
-        for condition in conditions {
+        // Round 723 (belt-and-suspenders, the R722 empty-set precedent) — a
+        // threshold outside `1..=len` is only reachable by an out-of-band edit
+        // (`set_edge_guard_threshold` gates it); name a vacuous (k==0) or
+        // unsatisfiable (k>len) K-of-N rather than pass it silently.
+        if let Some(k) = guard.threshold {
+            if k == 0 || k > guard.conditions.len() {
+                out.push(format!(
+                    "edge_guard `{edge}`: threshold {k} out of range 1..={} (out-of-band edit — \
+                     set_edge_guard_threshold gates 1..=len; k==0 is vacuous, k>len unsatisfiable)",
+                    guard.conditions.len()
+                ));
+            }
+        }
+        for condition in &guard.conditions {
             if !store.narrative_facts.contains_key(condition) {
                 out.push(format!(
                     "edge_guard `{edge}`: condition fact `{condition}` is gone (a dangling \
@@ -6753,7 +6879,7 @@ pub fn retract_fact(
     let guard_referrers = store
         .edge_guards
         .iter()
-        .filter(|(_, conditions)| conditions.contains(id))
+        .filter(|(_, guard)| guard.conditions.contains(id))
         .map(|(edge, _)| format!("`{edge}`"))
         .collect::<Vec<_>>();
     if !fact_referrers.is_empty() || !disclosure_referrers.is_empty() || !guard_referrers.is_empty()
@@ -13210,7 +13336,7 @@ mod tests {
         add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
         // Valid: both facts exist. The value is a SET (Round 722).
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
-        assert!(store.edge_guards["f-edge"].contains("f-key"));
+        assert!(store.edge_guards["f-edge"].conditions.contains("f-key"));
         // Missing edge rejects.
         let err = add_edge_guard(&mut store, &path, "f-gone", "f-key")
             .unwrap_err()
@@ -13275,7 +13401,10 @@ mod tests {
         // An out-of-band orphan guard is removable without re-adding the fact.
         store.edge_guards.insert(
             "f-orphan".to_string(),
-            std::iter::once("f-key2".to_string()).collect(),
+            EdgeGuard {
+                conditions: std::iter::once("f-key2".to_string()).collect(),
+                threshold: None,
+            },
         );
         remove_edge_guard(&mut store, &path, "f-orphan").unwrap();
         assert!(
@@ -13302,10 +13431,18 @@ mod tests {
         // Accumulate TWO conditions on one edge (AND).
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
         add_edge_guard(&mut store, &path, "f-edge", "f-tide").unwrap();
-        assert_eq!(store.edge_guards["f-edge"].len(), 2, "both conditions held");
+        assert_eq!(
+            store.edge_guards["f-edge"].conditions.len(),
+            2,
+            "both conditions held"
+        );
         // Idempotent on an already-present condition (no-op, still 2).
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
-        assert_eq!(store.edge_guards["f-edge"].len(), 2, "re-add is a no-op");
+        assert_eq!(
+            store.edge_guards["f-edge"].conditions.len(),
+            2,
+            "re-add is a no-op"
+        );
         // Retracting EITHER member is refused while the set references it.
         for cond in ["f-key", "f-tide"] {
             let err = retract_fact(&mut store, &path, cond, "test")
@@ -13318,8 +13455,12 @@ mod tests {
         }
         // Drop ONE condition; the guard survives with the other.
         remove_edge_guard_condition(&mut store, &path, "f-edge", "f-key").unwrap();
-        assert_eq!(store.edge_guards["f-edge"].len(), 1, "one condition left");
-        assert!(store.edge_guards["f-edge"].contains("f-tide"));
+        assert_eq!(
+            store.edge_guards["f-edge"].conditions.len(),
+            1,
+            "one condition left"
+        );
+        assert!(store.edge_guards["f-edge"].conditions.contains("f-tide"));
         // f-key is now retractable (no longer referenced).
         retract_fact(&mut store, &path, "f-key", "test").unwrap();
         // Removing a condition the edge lacks fails loud.
@@ -13359,7 +13500,9 @@ mod tests {
             "the refusal names both referring edges: {err}"
         );
         // The F1 belt-and-suspenders: an out-of-band empty set is flagged.
-        store.edge_guards.insert("e-3".to_string(), BTreeSet::new());
+        store
+            .edge_guards
+            .insert("e-3".to_string(), EdgeGuard::default());
         add_fact(&mut store, &path, &sample_fact("e-3", "gt")).unwrap();
         let v = store_registry_violations(&store);
         assert!(
@@ -13367,6 +13510,165 @@ mod tests {
                 .any(|m| m.contains("e-3") && m.contains("empty condition set")),
             "an empty guard set is named: {v:?}"
         );
+    }
+
+    /// Round 723 — `set_edge_guard_threshold` GATES `1<=k<=len` and NORMALIZES a
+    /// redundant `Some(len)` to the canonical `None` (review F3). NON-VACUITY: each
+    /// rejection asserts its loud message; the normalize + clear assert `None`.
+    #[test]
+    fn edge_guard_threshold_set_gates_and_normalizes() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        for f in ["f-edge", "c1", "c2", "c3"] {
+            add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
+        }
+        for c in ["c1", "c2", "c3"] {
+            add_edge_guard(&mut store, &path, "f-edge", c).unwrap();
+        }
+        // A fresh guard is AND (threshold None).
+        assert_eq!(store.edge_guards["f-edge"].threshold, None);
+        // Set 2-of-3.
+        set_edge_guard_threshold(&mut store, &path, "f-edge", Some(2)).unwrap();
+        assert_eq!(store.edge_guards["f-edge"].threshold, Some(2));
+        // Some(len) is a redundant AND → normalized to None (canonical).
+        set_edge_guard_threshold(&mut store, &path, "f-edge", Some(3)).unwrap();
+        assert_eq!(store.edge_guards["f-edge"].threshold, None, "k==len -> AND");
+        // k==0 is vacuous → reject.
+        let err = set_edge_guard_threshold(&mut store, &path, "f-edge", Some(0))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("vacuous"), "{err}");
+        // k>len is unsatisfiable → reject.
+        let err = set_edge_guard_threshold(&mut store, &path, "f-edge", Some(4))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("exceeds"), "{err}");
+        // Clear back to AND.
+        set_edge_guard_threshold(&mut store, &path, "f-edge", Some(2)).unwrap();
+        set_edge_guard_threshold(&mut store, &path, "f-edge", None).unwrap();
+        assert_eq!(store.edge_guards["f-edge"].threshold, None);
+        // An edge with no guard → reject (a threshold is a property of a guard).
+        let err = set_edge_guard_threshold(&mut store, &path, "c1", Some(1))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no guard"), "{err}");
+    }
+
+    /// Round 723 — `add_edge_guard` CARRIES the threshold unchanged (a `Some(k)`
+    /// stays k over the bigger set), and `remove_edge_guard_condition` NORMALIZES
+    /// `Some(k)` to `None` when the set shrinks to k (canonical AND). NON-VACUITY:
+    /// threshold + len asserted at each step.
+    #[test]
+    fn edge_guard_threshold_survives_add_and_normalizes_on_remove() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        for f in ["f-edge", "c1", "c2", "c3", "c4", "c5"] {
+            add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
+        }
+        for c in ["c1", "c2", "c3", "c4"] {
+            add_edge_guard(&mut store, &path, "f-edge", c).unwrap();
+        }
+        set_edge_guard_threshold(&mut store, &path, "f-edge", Some(3)).unwrap(); // 3-of-4
+                                                                                 // add a 5th condition → k unchanged (3-of-5).
+        add_edge_guard(&mut store, &path, "f-edge", "c5").unwrap();
+        assert_eq!(store.edge_guards["f-edge"].threshold, Some(3));
+        assert_eq!(store.edge_guards["f-edge"].conditions.len(), 5);
+        // remove one → 3-of-4 (k stays, still < len).
+        remove_edge_guard_condition(&mut store, &path, "f-edge", "c5").unwrap();
+        assert_eq!(store.edge_guards["f-edge"].threshold, Some(3));
+        // remove one → the set shrinks to 3 → normalize Some(3) -> None (3-of-3 AND).
+        remove_edge_guard_condition(&mut store, &path, "f-edge", "c4").unwrap();
+        assert_eq!(
+            store.edge_guards["f-edge"].threshold, None,
+            "3-of-3 is AND, normalized to None"
+        );
+        assert_eq!(store.edge_guards["f-edge"].conditions.len(), 3);
+    }
+
+    /// Round 723 — DEFENSE-IN-DEPTH for a non-canonical threshold an out-of-band
+    /// edit could leave (the write path keeps `1<=k<len`): `edge_guard_violations`
+    /// flags k outside `1..=len`, and `remove_edge_guard_condition` REFUSES a removal
+    /// that would drop the set below k. NON-VACUITY: the flag + the refuse asserted.
+    #[test]
+    fn edge_guard_threshold_out_of_band_flagged_and_remove_refuses() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        for f in ["f-edge", "c1", "c2", "c3"] {
+            add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
+        }
+        // Inject an out-of-band guard whose k == len (canonical would be None) — a
+        // stand-in for the k>=len an edit could leave; removing a member would drop
+        // the set below k.
+        store.edge_guards.insert(
+            "f-edge".to_string(),
+            EdgeGuard {
+                conditions: ["c1", "c2", "c3"].into_iter().map(String::from).collect(),
+                threshold: Some(3),
+            },
+        );
+        let err = remove_edge_guard_condition(&mut store, &path, "f-edge", "c1")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("below the threshold"), "{err}");
+        // A truly out-of-range k (k>len) is named by the detector.
+        store.edge_guards.get_mut("f-edge").unwrap().threshold = Some(5);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-edge") && m.contains("threshold 5 out of range")),
+            "out-of-range threshold named: {v:?}"
+        );
+    }
+
+    /// Round 723 (review F4 — the mandatory R305 field-invariant parity test): the
+    /// `edge_guards` threshold invariant (`None`, or `Some(k)` with `1<=k<=len`) is
+    /// upheld by EVERY write path — `add_edge_guard`, `set_edge_guard_threshold`, and
+    /// `remove_edge_guard_condition` — so no sequence leaves `k==0` or `k>len`. Feeds
+    /// the same out-of-range edge case at the setter and asserts the invariant after
+    /// every mutation.
+    #[test]
+    fn edge_guard_threshold_invariant_parity_across_write_paths() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        for f in ["f-edge", "c1", "c2", "c3", "c4"] {
+            add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
+        }
+        let inv_holds = |s: &AtomicStore| {
+            s.edge_guards.values().all(|g| {
+                g.threshold
+                    .is_none_or(|k| (1..=g.conditions.len()).contains(&k))
+            })
+        };
+        for c in ["c1", "c2", "c3", "c4"] {
+            add_edge_guard(&mut store, &path, "f-edge", c).unwrap();
+            assert!(inv_holds(&store), "add upholds the invariant");
+        }
+        set_edge_guard_threshold(&mut store, &path, "f-edge", Some(2)).unwrap();
+        assert!(inv_holds(&store));
+        // The setter rejects the out-of-range edge cases (k>len, k==0).
+        assert!(set_edge_guard_threshold(&mut store, &path, "f-edge", Some(5)).is_err());
+        assert!(set_edge_guard_threshold(&mut store, &path, "f-edge", Some(0)).is_err());
+        assert!(
+            inv_holds(&store),
+            "a rejected set left the invariant intact"
+        );
+        // Shrinking the set (the other write path) never leaves k>len.
+        remove_edge_guard_condition(&mut store, &path, "f-edge", "c1").unwrap();
+        assert!(inv_holds(&store), "remove upholds the invariant");
+        remove_edge_guard_condition(&mut store, &path, "f-edge", "c2").unwrap();
+        assert!(inv_holds(&store), "remove upholds the invariant");
     }
 
     /// Round 709 (DEBT-J) — the delete rule: `retract_fact` CASCADE-DROPS the edge

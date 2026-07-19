@@ -645,28 +645,32 @@ fn registries() -> Vec<RegistrySpec> {
         RegistrySpec {
             name: "edge_guards",
             key: "adjacent (edge) fact id",
-            referenced_by: "keyed BY the adjacent (edge) fact; VALUE = the SET of condition facts \
-                it requires — read by the consumer (pinion runtime) which evaluates each condition \
-                and ANDs them, never by Mnemosyne",
+            referenced_by: "keyed BY the adjacent (edge) fact; VALUE = a condition SET plus an \
+                optional K-of-N threshold — read by the consumer (pinion runtime) which evaluates \
+                each condition and ANDs them (or counts >= the threshold), never by Mnemosyne",
             add_op: "add-edge-guard",
             load_bearing: false,
-            description: "Map EDGE GUARDS (R717/721 design → R720/722) — a PLACE-ACCESS condition \
-                on an adjacency edge, keyed by the edge fact id, value = the SET of CONDITION fact \
-                ids the edge REQUIRES (\"this passage requires the key AND low tide\"). The set is \
-                AND-semantics: the consumer evaluates each condition and ANDs them; OR is authored \
-                as MULTIPLE guarded edges to the same target (never a stored boolean expression \
-                tree — the layering line; negation and K-of-N thresholds are named-deferred). A \
-                SIDE-TABLE like edge_costs: the LINK is frame-invariant edge metadata, each \
-                CONDITION is a real fact. Mnemosyne holds the DECLARATION and integrity-checks ONLY \
-                that the edge and EVERY condition resolve (a per-member dangling-ref check) — it \
-                NEVER evaluates whether the guard holds now (the consumer's playthrough job). So \
-                the AUTHOR puts the branch outcomes in the store (the got-condition world-line and \
-                the without one, as forked branches); the game only evaluates the booleans and \
-                follows the branch. add-edge-guard adds one condition (call N times); \
-                remove-edge-guard-condition drops one (the key is deleted when the set empties); \
-                remove-edge-guard drops the whole set. retract-fact cascade-drops the set with its \
-                edge and REFUSES to retract a referenced condition; validate-continuity flags a \
-                guard on a non-edge (edge_guard_not_an_edge).",
+            description: "Map EDGE GUARDS (R717/721 design → R720/722, K-of-N threshold R723) — a \
+                PLACE-ACCESS condition on an adjacency edge, keyed by the edge fact id, value = an \
+                EdgeGuard: the SET of CONDITION fact ids the edge REQUIRES (\"this passage requires \
+                the key AND low tide\") plus an optional K-of-N `threshold`. threshold None = \
+                require ALL (AND, the default + canonical); Some(k) = at least k of them (1<=k<len, \
+                set via set-edge-guard-threshold, k==len normalizes to None). The consumer \
+                evaluates each condition and ANDs them (or counts >= k); OR is authored as MULTIPLE \
+                guarded edges to the same target (never a stored boolean expression tree — the \
+                layering line; negation stays named-deferred). A SIDE-TABLE like edge_costs: the \
+                LINK is frame-invariant edge metadata, each CONDITION is a real fact. Mnemosyne \
+                holds the DECLARATION and integrity-checks ONLY that the edge and EVERY condition \
+                resolve (a per-member dangling-ref check) + that 1<=k<=len — it NEVER evaluates \
+                whether the guard holds now (the consumer's playthrough job). So the AUTHOR puts \
+                the branch outcomes in the store (the got-condition world-line and the without \
+                one, as forked branches); the game only evaluates the booleans and follows the \
+                branch. add-edge-guard adds one condition (call N times); set-edge-guard-threshold \
+                sets/clears k; remove-edge-guard-condition drops one (the key is deleted when the \
+                set empties, and it REFUSES a drop below k); remove-edge-guard drops the whole set. \
+                retract-fact cascade-drops the set with its edge and REFUSES to retract a \
+                referenced condition; validate-continuity flags a guard on a non-edge \
+                (edge_guard_not_an_edge).",
         },
         RegistrySpec {
             name: "disclosure_plans",

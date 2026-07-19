@@ -845,6 +845,58 @@ pub fn cmd_remove_edge_guard_condition(
     )
 }
 
+/// Round 723 — set (or clear) a map edge guard's K-of-N THRESHOLD. `--threshold k`
+/// makes the guard "at least k of the conditions" (1<=k<=len; k==len normalizes to
+/// AND); `--clear` reverts to AND (require all). Exactly one of the two is required.
+pub fn cmd_set_edge_guard_threshold(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut threshold: Option<usize> = None;
+    let mut clear = false;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--threshold" => {
+                let v = iter.next().ok_or_else(|| anyhow!("--threshold missing"))?;
+                threshold = Some(v.parse::<usize>().map_err(|_| {
+                    anyhow!("--threshold must be a non-negative integer, got `{v}`")
+                })?);
+            }
+            "--clear" => clear = true,
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    if threshold.is_some() == clear {
+        return Err(anyhow!("provide exactly one of --threshold <k> or --clear").into());
+    }
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_edge_guard_threshold(&mut store, &sidecar_path, &fact_id, threshold),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|token|quantity|fact`
 /// mandatory (Round 708 removed free-text `scalar`).

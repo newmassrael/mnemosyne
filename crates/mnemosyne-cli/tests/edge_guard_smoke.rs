@@ -557,3 +557,192 @@ fn multi_condition_guard_set_end_to_end() {
         "the dropped condition retracts: {out:?}"
     );
 }
+
+/// Round 723 — THE NOVEL PROOF: a "3-of-5 evidence" gate that the R722 DNF would
+/// need C(5,3)=10 parallel guarded edges for is authored as ONE edge with a
+/// threshold. Asserts (1) validate-continuity is clean, (2) the raw store SSOT
+/// holds `{ 5 conditions, threshold: 3 }` on the ONE edge (review F5 — the stored
+/// JSON, not a query), (3) the CLI gates `k>len` and `k==0`, and (4) a NEGATIVE
+/// CONTROL — a plain two-condition guard with NO threshold is a genuine AND
+/// (threshold absent), never a silent partial-of-N.
+#[test]
+fn threshold_guard_three_of_five_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws);
+    // The edge: a door hall <-> vault.
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-door",
+            "--frame",
+            "gt",
+            "--claim",
+            "a door joins the hall and the vault",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "hall,vault",
+            "--typed-subject",
+            "hall",
+            "--typed-predicate",
+            "adjacent",
+            "--typed-object-entity",
+            "vault",
+        ],
+    );
+    // Five evidence facts (the conditions).
+    for i in 1..=5 {
+        let id = format!("f-c{i}");
+        add_fact(
+            ws,
+            &[
+                "--fact",
+                id.as_str(),
+                "--frame",
+                "gt",
+                "--claim",
+                "a piece of evidence",
+                "--canon-from",
+                "ch-1",
+                "--evidence",
+                "ch-1",
+            ],
+        );
+    }
+    // Author ONE guarded edge requiring 3 of the 5 (add all 5, then threshold 3).
+    for i in 1..=5 {
+        let cond = format!("f-c{i}");
+        ok(
+            ws,
+            &[
+                "add-edge-guard",
+                "--fact",
+                "f-door",
+                "--condition",
+                cond.as_str(),
+            ],
+        );
+    }
+    ok(
+        ws,
+        &[
+            "set-edge-guard-threshold",
+            "--fact",
+            "f-door",
+            "--threshold",
+            "3",
+        ],
+    );
+    // Clean: the guard rides a real edge, never evaluated.
+    let out = run(
+        ws,
+        &[
+            "validate-continuity",
+            "--rules",
+            "narrative-rules.json",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "a 3-of-5 threshold guard on a real edge is clean: {out:?}"
+    );
+    // Assert on the raw store SSOT: ONE edge guard, 5 conditions, threshold 3.
+    let store: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(ws.join("docs/.atomic/workspace.atomic.json")).unwrap(),
+    )
+    .unwrap();
+    let g = &store["edge_guards"]["f-door"];
+    assert_eq!(
+        g["conditions"].as_array().unwrap().len(),
+        5,
+        "five conditions on ONE edge (vs C(5,3)=10 DNF edges): {g}"
+    );
+    assert_eq!(
+        g["threshold"], 3,
+        "the threshold is STORED in the SSOT: {g}"
+    );
+    assert_eq!(
+        store["edge_guards"].as_object().unwrap().len(),
+        1,
+        "ONE guarded edge, not ten"
+    );
+    // The CLI gates an unsatisfiable (k>len) and a vacuous (k==0) threshold.
+    assert!(
+        !run(
+            ws,
+            &[
+                "set-edge-guard-threshold",
+                "--fact",
+                "f-door",
+                "--threshold",
+                "6"
+            ]
+        )
+        .status
+        .success(),
+        "k>len is rejected"
+    );
+    assert!(
+        !run(
+            ws,
+            &[
+                "set-edge-guard-threshold",
+                "--fact",
+                "f-door",
+                "--threshold",
+                "0"
+            ]
+        )
+        .status
+        .success(),
+        "k==0 is rejected"
+    );
+    // NEGATIVE CONTROL: a two-condition guard with NO threshold is a genuine AND
+    // (threshold absent from the JSON), never a silent "2-of-5".
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-door2",
+            "--frame",
+            "gt",
+            "--claim",
+            "a second door",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "hall,vault",
+            "--typed-subject",
+            "hall",
+            "--typed-predicate",
+            "adjacent",
+            "--typed-object-entity",
+            "vault",
+        ],
+    );
+    ok(
+        ws,
+        &["add-edge-guard", "--fact", "f-door2", "--condition", "f-c1"],
+    );
+    ok(
+        ws,
+        &["add-edge-guard", "--fact", "f-door2", "--condition", "f-c2"],
+    );
+    let store: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(ws.join("docs/.atomic/workspace.atomic.json")).unwrap(),
+    )
+    .unwrap();
+    let g2 = &store["edge_guards"]["f-door2"];
+    assert_eq!(g2["conditions"].as_array().unwrap().len(), 2);
+    assert!(
+        g2.get("threshold").is_none(),
+        "no threshold set = a genuine AND, not a silent partial-of-N: {g2}"
+    );
+}
