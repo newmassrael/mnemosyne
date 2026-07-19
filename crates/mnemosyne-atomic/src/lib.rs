@@ -39,7 +39,7 @@ use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
     DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, Entity, EntityKind,
     Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind,
-    TypedClaim, TypedObject,
+    TypedClaim, TypedObject, Unit,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -654,6 +654,15 @@ pub struct AtomicStore {
     /// 5 kinds over 109 entities).
     #[serde(default)]
     pub entity_kinds: BTreeMap<String, EntityKind>,
+    /// Unit registry (Round 706) — keyed by unit id. Every
+    /// `TypedObject::Quantity.unit` must name a key here (fail-loud at the
+    /// mutate primitives AND at the scan boundary; the entity_kinds symmetry —
+    /// units are consumer vocabulary, invariant 4, never a core enum). Empty on
+    /// pre-v27 stores via `#[serde(default)]`; like `entity_kinds` this is NOT a
+    /// compat carry — an empty registry plus a Quantity fact whose unit is
+    /// unregistered is a boundary REJECT.
+    #[serde(default)]
+    pub units: BTreeMap<String, Unit>,
     /// Predicate registry (Round 446) — the FOURTH registry, keyed by
     /// predicate id. Every `TypedClaim.predicate` must name a key here
     /// (fail-loud at the mutate primitives). Predicates are load-bearing
@@ -1192,11 +1201,20 @@ pub enum AtomicStoreError {
 // reach the drop-on-save path — but the bump is kept for audit consistency (the
 // codebase notes every on-disk shape change) and to keep the `> CURRENT` guard
 // monotone.
+// v26→v27 adds `AtomicStore.units` (Round 706 — the unit registry) and the
+// `TypedObject::Quantity { n, unit }` object shape (`object_kind=quantity`).
+// `units` is a top-level `BTreeMap` under `#[serde(default)]`, empty on older
+// stores. As with `object_tokens`, the silent-drop risk is weak: a Quantity
+// object only appears under the NEW `object_kind=quantity` / `TypedObject::
+// Quantity` variants, which a pre-R706 binary rejects loudly (serde unknown
+// variant `quantity`), so a quantity store cannot reach the drop-on-save path
+// of an old binary. The bump keeps the `> CURRENT` guard monotone and the
+// audit trail of on-disk shape changes complete.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 26;
+pub const CURRENT_SCHEMA_VERSION: u32 = 27;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 impl AtomicStore {
@@ -3673,6 +3691,18 @@ pub struct EntityKindImport {
     pub description: String,
 }
 
+/// One unit entry in the [`FactsManifest`] (and the `add_unit` shape, Round
+/// 706) — the consumer's measurement vocabulary. Staged BEFORE `facts` so one
+/// manifest can declare a unit and use it in a `Quantity` object (the
+/// registries-before-facts ordering this manifest already relies on).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct UnitImport {
+    pub unit_id: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 /// One predicate entry in the [`FactsManifest`] (and the `add_predicate`
 /// shape, Round 446). `object_kind` is the canonical lowercase tag
 /// (`entity` | `scalar`) — unknown tags reject (fail-loud, no silent
@@ -3759,6 +3789,8 @@ pub struct FactsManifest {
     #[serde(default)]
     pub entity_kinds: Vec<EntityKindImport>,
     #[serde(default)]
+    pub units: Vec<UnitImport>,
+    #[serde(default)]
     pub entities: Vec<EntityImport>,
     #[serde(default)]
     pub predicates: Vec<PredicateImport>,
@@ -3772,7 +3804,7 @@ pub struct FactsManifest {
 /// single-sourced so the CLI/MCP parse hints cannot drift apart (they had, at
 /// R590: some still said "frames + facts", one omitted `disclosure_plans`).
 pub const FACTS_MANIFEST_SHAPE: &str = "a JSON object with frames / branches / \
-     entity_kinds / entities / predicates / facts / disclosure_plans arrays";
+     entity_kinds / units / entities / predicates / facts / disclosure_plans arrays";
 
 /// Single shared fact builder/validator — both write paths route here
 /// (R305 parity). Enforces the scalar invariants:
@@ -4112,19 +4144,51 @@ fn build_typed_claim(
                 token: token.to_string(),
             }
         }
+        (TypedObject::Quantity { n, unit }, PredicateObjectKind::Quantity) => {
+            // Round 706 — the unit must be a REGISTERED unit (fail-loud, the
+            // entity-leg pattern one axis over; a bare unit reintroduces the
+            // drift defect). `n` is the exact stored integer — no parse, no
+            // fuzz. Resolved through the SHARED `fact_ref_resolves`
+            // (`FactRefFacet::TypedUnit`) so the write path and the out-of-band
+            // detector cannot disagree on what "a registered unit" means.
+            let unit = unit.trim();
+            if unit.is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: quantity unit mandatory (non-empty)"
+                ));
+            }
+            if !fact_ref_resolves(store, FactRefFacet::TypedUnit, unit) {
+                return Err(format!(
+                    "fact `{fact_id}`: predicate `{predicate}` quantity unit `{unit}` is not a \
+                     registered unit (add_unit first; fail-loud — a bare unit string would \
+                     drift `min`/`minute`/`분`)"
+                ));
+            }
+            TypedObject::Quantity {
+                n: *n,
+                unit: unit.to_string(),
+            }
+        }
         // Every cross pair is a shape mismatch — enumerated explicitly (no
         // wildcard, the R624/R658 discipline) so a new object OR object_kind
         // variant breaks this build rather than silently rejecting.
         (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => {
+        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => {
             let actual = match &t.object {
                 TypedObject::Entity { .. } => "an entity",
                 TypedObject::Value { .. } => "a scalar value",
                 TypedObject::Token { .. } => "a token",
+                TypedObject::Quantity { .. } => "a quantity",
             };
             return Err(format!(
                 "fact `{fact_id}`: predicate `{predicate}` declares object_kind={} but the \
@@ -4593,6 +4657,37 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Register one unit of measure — the vocabulary [`TypedObject::Quantity::unit`]
+/// refs (Round 706). The members are the CONSUMER's (`day`, `minute`, `metre`);
+/// core never enumerates them (invariant 4, the R700 place-kind lesson one axis
+/// over), the substrate enforces only that a unit in use was declared. The
+/// entity_kind precedent exactly: the escape hatch a closed set requires
+/// (R626), so the author registers a unit the moment a `Quantity` needs it.
+pub fn add_unit(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    unit_id: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = unit_id.trim().to_string();
+    let candidate = Unit {
+        description: description.trim().to_string(),
+    };
+    let created = stage_registry_entry(&mut store.units, "add_unit", "unit", &id, candidate)
+        .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(store, sidecar_path, "add_unit", "unit", &id, created)
+}
+
+/// Whether a `Quantity` unit resolves in the registry — the ONE verdict, shared
+/// by the write path (`fact_ref_resolves`) and the scan boundary
+/// (`store_registry_violations`), so the two cannot drift (the half-enforced
+/// anti-pattern). Unlike `entity_kind_registered`, empty does NOT pass: a
+/// Quantity unit is mandatory (the amount slot has no unit-less form — a bare
+/// number reintroduces the drift defect), so an empty unit fails to resolve.
+pub fn unit_registered(store: &AtomicStore, unit: &str) -> bool {
+    store.units.contains_key(unit)
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -4620,6 +4715,10 @@ pub enum FactRefFacet {
     TypedPredicate,
     TypedSubject,
     TypedObject,
+    /// Round 706 — a `TypedObject::Quantity` object's `unit`, resolved against
+    /// the `units` registry (distinct from `TypedObject`, which resolves an
+    /// entity-shaped object against `entities`).
+    TypedUnit,
 }
 
 /// Every registry ref a built fact carries, as `(facet, value)` — the ONE
@@ -4645,8 +4744,12 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
     if let Some(claim) = &fact.typed {
         refs.push((FactRefFacet::TypedPredicate, claim.predicate.as_str()));
         refs.push((FactRefFacet::TypedSubject, claim.subject.as_str()));
-        if let TypedObject::Entity { id } = &claim.object {
-            refs.push((FactRefFacet::TypedObject, id.as_str()));
+        match &claim.object {
+            TypedObject::Entity { id } => refs.push((FactRefFacet::TypedObject, id.as_str())),
+            TypedObject::Quantity { unit, .. } => {
+                refs.push((FactRefFacet::TypedUnit, unit.as_str()))
+            }
+            TypedObject::Value { .. } | TypedObject::Token { .. } => {}
         }
     }
     refs
@@ -4667,6 +4770,7 @@ pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) 
             store.sections.contains_key(value)
         }
         FactRefFacet::TypedPredicate => resolve_predicate(store, value).is_some(),
+        FactRefFacet::TypedUnit => unit_registered(store, value),
     }
 }
 
@@ -4715,6 +4819,10 @@ fn store_registry_ref_message(id: &str, facet: FactRefFacet, value: &str) -> Str
         FactRefFacet::TypedObject => format!(
             "fact `{id}`: typed object `{value}` not in the entity registry \
              (out-of-band edit; the write path enforces this)"
+        ),
+        FactRefFacet::TypedUnit => format!(
+            "fact `{id}`: quantity unit `{value}` not in the units registry \
+             (out-of-band edit; the write path enforces this — add-unit first)"
         ),
     }
 }
@@ -4849,7 +4957,10 @@ fn build_predicate(
 ) -> Result<Predicate, String> {
     let tag = object_kind.trim();
     let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
-        format!("{context}: unknown object_kind `{tag}` (expected one of: entity, scalar, token)")
+        format!(
+            "{context}: unknown object_kind `{tag}` (expected one of: entity, scalar, token, \
+             quantity)"
+        )
     })?;
     let norm = |s: Option<&str>| {
         s.map(str::trim)
@@ -4896,7 +5007,9 @@ fn build_predicate(
                 ));
             }
         }
-        PredicateObjectKind::Entity | PredicateObjectKind::Scalar => {
+        PredicateObjectKind::Entity
+        | PredicateObjectKind::Scalar
+        | PredicateObjectKind::Quantity => {
             if !tokens.is_empty() {
                 return Err(format!(
                     "{context}: object_kind={} cannot carry an object_tokens vocabulary \
@@ -5059,12 +5172,19 @@ fn object_matches_kind(object: &TypedObject, kind: PredicateObjectKind) -> bool 
         (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
         (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
         (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
+        (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
         (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
         | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+        | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => false,
+        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
+        | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => false,
     }
 }
 
@@ -5738,6 +5858,25 @@ pub fn apply_facts_manifest(
             no_op += 1;
         }
     }
+    let mut units_created = 0usize;
+    for (idx, u) in manifest.units.iter().enumerate() {
+        let candidate = Unit {
+            description: u.description.trim().to_string(),
+        };
+        let created = stage_registry_entry(
+            &mut store.units,
+            &format!("import_facts: manifest unit {idx}"),
+            "unit",
+            u.unit_id.trim(),
+            candidate,
+        )
+        .map_err(AtomicMutateError::Validation)?;
+        if created {
+            units_created += 1;
+        } else {
+            no_op += 1;
+        }
+    }
     let mut entities_created = 0usize;
     for (idx, e) in manifest.entities.iter().enumerate() {
         let kind = e.kind.trim();
@@ -5895,13 +6034,15 @@ pub fn apply_facts_manifest(
     }
     let summary = format!(
         "{frames_created} frames + {branches_created} branches + {entity_kinds_created} \
-         entity-kinds + {entities_created} entities + {predicates_created} predicates + \
-         {facts_created} facts + {disclosure_plans_created} disclosure-plans + \
-         {disclosure_overrides_set} disclosure-overrides created, {no_op} no-op"
+         entity-kinds + {units_created} units + {entities_created} entities + \
+         {predicates_created} predicates + {facts_created} facts + \
+         {disclosure_plans_created} disclosure-plans + {disclosure_overrides_set} \
+         disclosure-overrides created, {no_op} no-op"
     );
     let changed = frames_created != 0
         || branches_created != 0
         || entity_kinds_created != 0
+        || units_created != 0
         || entities_created != 0
         || predicates_created != 0
         || facts_created != 0
@@ -10577,6 +10718,7 @@ mod tests {
             path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -10904,6 +11046,7 @@ mod tests {
             path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 frames: vec![
                     FrameImport {
@@ -11031,6 +11174,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -11359,6 +11503,7 @@ mod tests {
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
             entity_kinds: vec![],
+            units: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -11378,8 +11523,8 @@ mod tests {
         let receipt = import_facts(&mut store, &path, &manifest).unwrap();
         assert_eq!(
             receipt.target_id,
-            "2 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 2 facts \
-             + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op"
+            "2 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
+             + 2 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -11400,8 +11545,8 @@ mod tests {
         assert_eq!(again.written_bytes, 0);
         assert_eq!(
             again.target_id,
-            "0 frames + 0 branches + 0 entity-kinds + 0 entities + 0 predicates + 0 facts \
-             + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
+            "0 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
+             + 0 facts + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
         );
     }
 
@@ -11414,6 +11559,7 @@ mod tests {
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
             entity_kinds: vec![],
+            units: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -11435,6 +11581,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 frames: frames.clone(),
@@ -11456,6 +11603,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -11474,6 +11622,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -11498,6 +11647,7 @@ mod tests {
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
             entity_kinds: vec![],
+            units: vec![],
             disclosure_plans: vec![],
             entities: vec![],
             branches: vec![],
@@ -11537,6 +11687,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -11554,6 +11705,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 branches: vec![],
@@ -11682,6 +11834,7 @@ mod tests {
                 &path_b,
                 &FactsManifest {
                     entity_kinds: vec![],
+                    units: vec![],
                     disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
@@ -11863,6 +12016,7 @@ mod tests {
                 &path_b,
                 &FactsManifest {
                     entity_kinds: vec![],
+                    units: vec![],
                     disclosure_plans: vec![],
                     entities: vec![],
                     frames: vec![],
@@ -12176,6 +12330,78 @@ mod tests {
         .unwrap();
     }
 
+    /// Round 706 — a `quantity` predicate's object must carry a REGISTERED unit.
+    /// A registered unit is accepted; an unregistered unit is rejected (the
+    /// entity-leg pattern one axis over); a free-text `Value` under a quantity
+    /// predicate is a shape mismatch. NON-VACUITY BY INJECTION: the same store
+    /// accepts `day` and rejects `fortnight` — the check reads the registry, not
+    /// the spelling.
+    #[test]
+    fn quantity_predicate_gates_registered_unit() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        store
+            .entities
+            .insert("codicil".to_string(), Entity::default());
+        add_unit(&mut store, &path, "day", "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "signed-on-day",
+            "quantity",
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
+        let qty = |n: i64, unit: &str, id: &str| FactImport {
+            entities: vec!["codicil".to_string()],
+            typed: Some(TypedClaim {
+                subject: "codicil".to_string(),
+                predicate: "signed-on-day".to_string(),
+                object: TypedObject::Quantity {
+                    n,
+                    unit: unit.to_string(),
+                },
+            }),
+            ..sample_fact(id, "gt")
+        };
+        add_fact(&mut store, &path, &qty(10, "day", "f1")).unwrap();
+        let err = add_fact(&mut store, &path, &qty(2, "fortnight", "f2"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not a registered unit"),
+            "unregistered unit must reject: {err}"
+        );
+        // An empty unit is mandatory-rejected with its own message (before the
+        // registry lookup — a units registry can never hold an empty id).
+        let err = add_fact(&mut store, &path, &qty(2, "  ", "f2b"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("quantity unit mandatory"), "unexpected: {err}");
+        // A free-text scalar Value under the quantity predicate: shape mismatch.
+        let mismatch = FactImport {
+            entities: vec!["codicil".to_string()],
+            typed: Some(TypedClaim {
+                subject: "codicil".to_string(),
+                predicate: "signed-on-day".to_string(),
+                object: TypedObject::Value {
+                    value: "10".to_string(),
+                },
+            }),
+            ..sample_fact("f3", "gt")
+        };
+        let err = add_fact(&mut store, &path, &mismatch)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("shape mismatch"), "unexpected: {err}");
+    }
+
     /// Round 701 — declaration guards on the predicate write path: a scalar
     /// object cannot carry an object-entity-kind constraint, and both kind refs
     /// must be registered `entity_kinds`. Proven on BOTH creators
@@ -12412,6 +12638,7 @@ mod tests {
                     frames: vec![],
                     branches: vec![],
                     entity_kinds: vec![],
+                    units: vec![],
                     entities: vec![],
                     predicates: vec![],
                     facts: vec![],
@@ -12819,6 +13046,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 frames: vec![FrameImport {
                     frame_id: "gt".to_string(),
@@ -12899,6 +13127,7 @@ mod tests {
             &path,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 frames: vec![],
                 branches: vec![],
@@ -13001,6 +13230,7 @@ mod tests {
             &path_b,
             &FactsManifest {
                 entity_kinds: vec![],
+                units: vec![],
                 disclosure_plans: vec![],
                 entities: vec![],
                 frames: vec![],
@@ -13341,6 +13571,7 @@ mod tests {
         };
         let manifest = FactsManifest {
             entity_kinds: vec![],
+            units: vec![],
             disclosure_plans: vec![],
             frames: vec![FrameImport {
                 frame_id: "gt".to_string(),
@@ -13548,6 +13779,10 @@ mod tests {
         add_entity(&mut base, &path, "a", "", "").unwrap();
         add_entity(&mut base, &path, "b", "", "").unwrap();
         add_predicate(&mut base, &path, "rel", "entity", None, None, &[], "").unwrap();
+        // A quantity predicate so the TypedUnit facet has a case (Round 706); the
+        // unit corruption below is the ONLY defect (qty resolves, day registered).
+        add_predicate(&mut base, &path, "qty", "quantity", None, None, &[], "").unwrap();
+        add_unit(&mut base, &path, "day", "").unwrap();
         let mut valid = sample_fact("f1", "gt");
         valid.entities = vec!["a".to_string(), "b".to_string()];
         valid.typed = Some(TypedClaim {
@@ -13635,6 +13870,19 @@ mod tests {
                 |f| f.typed.as_mut().unwrap().object = TypedObject::Entity { id: "ghost".into() },
                 "typed object `ghost`",
             ),
+            (
+                "typed-unit",
+                Some(FactRefFacet::TypedUnit),
+                |f| {
+                    let t = f.typed.as_mut().unwrap();
+                    t.predicate = "qty".into();
+                    t.object = TypedObject::Quantity {
+                        n: 1,
+                        unit: "ghost".into(),
+                    };
+                },
+                "unit `ghost`",
+            ),
         ];
         // Completeness: every FactRefFacet is exercised by a case, so a facet
         // added to fact_registry_refs cannot land without a detector case here.
@@ -13678,6 +13926,8 @@ mod tests {
             add_entity(&mut s, &path, "a", "", "").unwrap();
             add_entity(&mut s, &path, "b", "", "").unwrap();
             add_predicate(&mut s, &path, "rel", "entity", None, None, &[], "").unwrap();
+            add_predicate(&mut s, &path, "qty", "quantity", None, None, &[], "").unwrap();
+            add_unit(&mut s, &path, "day", "").unwrap();
             s
         };
         let valid = || FactImport {
@@ -13773,6 +14023,19 @@ mod tests {
                 |f| f.typed.as_mut().unwrap().object = TypedObject::Entity { id: "ghost".into() },
                 "typed object `ghost`",
             ),
+            (
+                "typed-unit",
+                Some(FactRefFacet::TypedUnit),
+                |f| {
+                    let t = f.typed.as_mut().unwrap();
+                    t.predicate = "qty".into();
+                    t.object = TypedObject::Quantity {
+                        n: 1,
+                        unit: "ghost".into(),
+                    };
+                },
+                "registered unit",
+            ),
         ];
         // Completeness: every FactRefFacet is exercised, so a new enumerated ref
         // the write path forgets to reject fails HERE (the case corrupts it and
@@ -13799,10 +14062,13 @@ mod tests {
     // Binds the enumeration to FactRefFacet::iter(): a fully-populated fact must
     // enumerate EVERY facet (Round 688). A variant added to the enum but never
     // pushed in fact_registry_refs (a dead resolver/message arm, a silent
-    // detector gap) fails here.
+    // detector gap) fails here. Round 706 — TypedObject (an entity object) and
+    // TypedUnit (a quantity object) are MUTUALLY EXCLUSIVE on one fact (the
+    // object has ONE shape), so the coverage is the UNION over both object
+    // shapes: an entity-object fact + a quantity-object fact.
     #[test]
     fn fact_registry_refs_enumerates_every_facet() {
-        let full = NarrativeFact {
+        let base = |object: TypedObject| NarrativeFact {
             frame: "gt".to_string(),
             branch: mnemosyne_core::MAIN_BRANCH.to_string(),
             entities: vec!["a".to_string()],
@@ -13817,21 +14083,27 @@ mod tests {
             typed: Some(TypedClaim {
                 subject: "a".to_string(),
                 predicate: "rel".to_string(),
-                object: TypedObject::Entity {
-                    id: "b".to_string(),
-                },
+                object,
             }),
             quote: None,
             quote_sha256: None,
         };
-        let seen: std::collections::HashSet<FactRefFacet> = fact_registry_refs(&full)
+        let with_entity = base(TypedObject::Entity {
+            id: "b".to_string(),
+        });
+        let with_quantity = base(TypedObject::Quantity {
+            n: 1,
+            unit: "day".to_string(),
+        });
+        let seen: std::collections::HashSet<FactRefFacet> = fact_registry_refs(&with_entity)
             .into_iter()
+            .chain(fact_registry_refs(&with_quantity))
             .map(|(f, _)| f)
             .collect();
         assert_eq!(
             seen,
             FactRefFacet::iter().collect::<std::collections::HashSet<_>>(),
-            "fact_registry_refs must emit every FactRefFacet for a fully-populated fact"
+            "fact_registry_refs must emit every FactRefFacet across the object shapes"
         );
     }
 

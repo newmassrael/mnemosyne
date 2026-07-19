@@ -410,6 +410,24 @@ pub struct EntityKind {
     pub description: String,
 }
 
+/// A registered unit of measure (Round 706) — the consumer's vocabulary for
+/// the [`TypedObject::Quantity`] amount slot, keyed by unit id in
+/// `AtomicStore.units`. Every `Quantity.unit` must reference a key here
+/// (fail-loud at the mutate primitives AND at the scan boundary — the
+/// entity_kinds symmetry). The registry holds WHICH units the consumer
+/// declares (`day`, `minute`, `metre`); core never enumerates the members —
+/// there is no `Day` variant and there must never be one (invariant 4, the
+/// R700 place-kind lesson applied one axis over). A bare unit string would
+/// reintroduce the drift defect one level down (`min`/`minute`/`분`); the
+/// registry keeps the set the consumer's while the substrate enforces THAT the
+/// unit is registered.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unit {
+    /// Free-form description. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
 /// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
 /// `Entity` = the object leg names a registered entity (locations, custody
 /// targets); `Scalar` = the object leg is a free-text consumer-vocabulary value
@@ -419,8 +437,13 @@ pub struct EntityKind {
 /// Round 705) — the enumerable replacement for a free-text scalar, so the
 /// substrate can answer "what values does this predicate take" (the machine slot
 /// stops being blind). The vocabulary itself stays the consumer's (invariant 4);
-/// the substrate enforces only THAT a token is in the declared set. The builder
-/// checks the typed leg's object against this declaration — a shape or
+/// the substrate enforces only THAT a token is in the declared set. `Quantity`
+/// (Round 706) = the object leg is a number + a REGISTERED unit
+/// ([`TypedObject::Quantity`]): the amount slot for timeline/measurement facts,
+/// with the unit a ref into the store's `units` registry (fail-loud, never free
+/// text — the entity_kinds/invariant-4 lesson applied to units, since a game
+/// measures `minute`, a legal store `day`; core must not enumerate them). The
+/// builder checks the typed leg's object against this declaration — a shape or
 /// vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -428,6 +451,7 @@ pub enum PredicateObjectKind {
     Entity,
     Scalar,
     Token,
+    Quantity,
 }
 
 impl PredicateObjectKind {
@@ -437,6 +461,7 @@ impl PredicateObjectKind {
             PredicateObjectKind::Entity => "entity",
             PredicateObjectKind::Scalar => "scalar",
             PredicateObjectKind::Token => "token",
+            PredicateObjectKind::Quantity => "quantity",
         }
     }
 
@@ -447,6 +472,7 @@ impl PredicateObjectKind {
             "entity" => Some(PredicateObjectKind::Entity),
             "scalar" => Some(PredicateObjectKind::Scalar),
             "token" => Some(PredicateObjectKind::Token),
+            "quantity" => Some(PredicateObjectKind::Quantity),
             _ => None,
         }
     }
@@ -517,6 +543,15 @@ pub enum TypedObject {
     /// substrate CAN enumerate the legal set, so self-extraction is not blind
     /// here. The write path rejects a token outside the declared set.
     Token { token: String },
+    /// A number + a REGISTERED unit (Round 706 — the amount slot for
+    /// timeline/measurement facts, e.g. `signed-on-day = Quantity{10, day}`).
+    /// `n` is an EXACT integer (all measured live uses are integer counts;
+    /// `f64` is deliberately avoided — it reintroduces `10` vs `10.0`
+    /// serialization and equality fuzz for what are day/minute counts). `unit`
+    /// is a ref into the store's `units` registry (fail-loud, never free text —
+    /// invariant 4); the write path rejects an unregistered unit. The interval
+    /// evaluator (R489) reads `n` for its arithmetic.
+    Quantity { n: i64, unit: String },
 }
 
 impl TypedObject {
@@ -533,15 +568,24 @@ impl TypedObject {
     /// when `PredicateObjectKind::Token` was added: without it that test fails,
     /// and adding it breaks every CLI call site so the flag cannot
     /// be left unwired — the R625/R659 half-wired-green defense.
+    ///
+    /// Round 706 — the `quantity` parameter (an `(n, unit)` pair, since a
+    /// [`TypedObject::Quantity`] carries two fields) is the same oracle-forced
+    /// arity change for `PredicateObjectKind::Quantity`. The CLI pairs its
+    /// `--typed-object-quantity-n` / `--typed-object-quantity-unit` flags into
+    /// this `Some((n, unit))` (both-or-neither) before resolution, so the
+    /// exactly-one-shape rule counts a quantity as a single candidate.
     pub fn from_exclusive_args(
         entity: Option<String>,
         value: Option<String>,
         token: Option<String>,
+        quantity: Option<(i64, String)>,
     ) -> Result<Self, String> {
         let candidates: Vec<TypedObject> = [
             entity.map(|id| TypedObject::Entity { id }),
             value.map(|value| TypedObject::Value { value }),
             token.map(|token| TypedObject::Token { token }),
+            quantity.map(|(n, unit)| TypedObject::Quantity { n, unit }),
         ]
         .into_iter()
         .flatten()
@@ -549,13 +593,13 @@ impl TypedObject {
         match candidates.len() {
             1 => Ok(candidates.into_iter().next().unwrap()),
             0 => Err(
-                "typed leg needs an object: give exactly one of the entity / value / token \
-                 object args"
+                "typed leg needs an object: give exactly one of the entity / value / token / \
+                 quantity object args"
                     .to_string(),
             ),
             _ => Err(
-                "typed leg: the entity / value / token object args are mutually exclusive \
-                 (give exactly one)"
+                "typed leg: the entity / value / token / quantity object args are mutually \
+                 exclusive (give exactly one)"
                     .to_string(),
             ),
         }
@@ -1010,32 +1054,47 @@ mod tests {
     #[test]
     fn typed_object_exclusive_args_resolution() {
         assert_eq!(
-            TypedObject::from_exclusive_args(Some("gun".into()), None, None).unwrap(),
+            TypedObject::from_exclusive_args(Some("gun".into()), None, None, None).unwrap(),
             TypedObject::Entity { id: "gun".into() }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, Some("alive".into()), None).unwrap(),
+            TypedObject::from_exclusive_args(None, Some("alive".into()), None, None).unwrap(),
             TypedObject::Value {
                 value: "alive".into()
             }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, None, Some("dead".into())).unwrap(),
+            TypedObject::from_exclusive_args(None, None, Some("dead".into()), None).unwrap(),
             TypedObject::Token {
                 token: "dead".into()
             }
         );
+        assert_eq!(
+            TypedObject::from_exclusive_args(None, None, None, Some((10, "day".into()))).unwrap(),
+            TypedObject::Quantity {
+                n: 10,
+                unit: "day".into()
+            }
+        );
         assert!(
-            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()), None)
+            TypedObject::from_exclusive_args(Some("a".into()), Some("b".into()), None, None)
                 .unwrap_err()
                 .contains("mutually exclusive")
         );
         assert!(
-            TypedObject::from_exclusive_args(Some("a".into()), None, Some("c".into()))
+            TypedObject::from_exclusive_args(Some("a".into()), None, Some("c".into()), None)
                 .unwrap_err()
                 .contains("mutually exclusive")
         );
-        assert!(TypedObject::from_exclusive_args(None, None, None)
+        assert!(TypedObject::from_exclusive_args(
+            None,
+            None,
+            Some("c".into()),
+            Some((1, "u".into()))
+        )
+        .unwrap_err()
+        .contains("mutually exclusive"));
+        assert!(TypedObject::from_exclusive_args(None, None, None, None)
             .unwrap_err()
             .contains("needs an object"));
     }

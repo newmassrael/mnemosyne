@@ -397,6 +397,19 @@ pub struct AddEntityKindArgs {
     pub description: String,
 }
 
+/// Register one unit of measure (Round 706) — the vocabulary a `quantity`
+/// object's `unit` refs. Without it an MCP-only agent could not declare a unit,
+/// so no Quantity fact could pass the units-registry gate. Mirrors
+/// `add_entity_kind`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddUnitArgs {
+    /// Unit id — one member of the measurement vocabulary (e.g. day / minute /
+    /// metre). Fail-loud: a Quantity whose unit is unregistered rejects.
+    pub unit_id: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
@@ -519,10 +532,11 @@ pub struct ImportSectionsArgs {
 // Round 692 — `add_fact` / `amend_fact` take `atomic::FactImport` directly
 // (the ONE fact DTO, JsonSchema via the schemars feature), so the AddFactArgs
 // mirror + `fact_import_from` are gone. The typed leg is now the tagged
-// `TypedObject` enum ({kind:"entity"|"value"|"token", …}, Round 705) — stricter
-// than the old object_entity/object_value pair (cannot set both or neither) and
-// identical to what `import_facts` already exposes (DEBT-… option-1→option-2
-// sweep). A new variant is auto-exposed here via the enum's JsonSchema.
+// `TypedObject` enum ({kind:"entity"|"value"|"token"|"quantity", …}, Round
+// 705/706) — stricter than the old object_entity/object_value pair (cannot set
+// both or neither) and identical to what `import_facts` already exposes
+// (DEBT-… option-1→option-2 sweep). A new variant is auto-exposed here via the
+// enum's JsonSchema (the Quantity variant needed no MCP arg change).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AmendFactArgs {
@@ -1633,6 +1647,16 @@ impl MnemosyneServer {
         let outcome = self.run_mutate(|store, path| {
             atomic::add_entity_kind(store, path, &a.kind_id, &a.description)
         });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Register one unit of measure (R706) — the vocabulary a `quantity` typed object's `unit` refs (day / minute / metre). The consumer declares the members; the substrate never enumerates them (invariant 4, the R700 place-kind lesson one axis over) and enforces only that a unit in use was declared — a bare unit string would drift min/minute/분. Register a unit before a Quantity uses it (the R626 escape hatch). Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a unit, so no Quantity fact could pass the units gate."
+    )]
+    async fn add_unit(&self, args: Parameters<AddUnitArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self
+            .run_mutate(|store, path| atomic::add_unit(store, path, &a.unit_id, &a.description));
         self.finish_mutate(outcome)
     }
 
@@ -2816,6 +2840,7 @@ mod tests {
             }],
             branches: vec![],
             entity_kinds: vec![],
+            units: vec![],
             entities: vec![],
             predicates: vec![],
             facts: vec![atomic::FactImport {

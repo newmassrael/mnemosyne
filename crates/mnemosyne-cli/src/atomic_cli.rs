@@ -572,6 +572,50 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(),
     )
 }
 
+/// Round 706 — register one unit of measure (the `quantity` object shape's
+/// unit vocabulary). `--unit` mandatory; the members are the consumer's
+/// (`day`, `minute`), core never enumerates them (invariant 4).
+pub fn cmd_add_unit(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut unit_id: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--unit" => {
+                unit_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--unit missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let unit_id = unit_id.ok_or_else(|| anyhow!("--unit arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_unit(&mut store, &sidecar_path, &unit_id, &description),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|scalar` mandatory.
 /// Round 701 — optional `--subject-kind` / `--object-entity-kind` declare the
@@ -1048,6 +1092,8 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     let mut typed_object_entity: Option<String> = None;
     let mut typed_object_value: Option<String> = None;
     let mut typed_object_token: Option<String> = None;
+    let mut typed_object_quantity_n: Option<String> = None;
+    let mut typed_object_quantity_unit: Option<String> = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -1161,6 +1207,20 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .clone(),
                 )
             }
+            "--typed-object-quantity-n" => {
+                typed_object_quantity_n = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-quantity-n missing"))?
+                        .clone(),
+                )
+            }
+            "--typed-object-quantity-unit" => {
+                typed_object_quantity_unit = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--typed-object-quantity-unit missing"))?
+                        .clone(),
+                )
+            }
             "--reason" if accept_reason => {
                 out.reason = Some(
                     iter.next()
@@ -1179,6 +1239,23 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             other => bail!("unknown flag `{}`", other),
         }
     }
+    // Pair the two quantity flags into one candidate (Round 706) — both or
+    // neither, since a Quantity object carries n AND unit; the number is parsed
+    // fail-loud (an exact integer, never f64).
+    let typed_object_quantity: Option<(i64, String)> =
+        match (typed_object_quantity_n, typed_object_quantity_unit) {
+            (Some(n), Some(unit)) => {
+                let n = n.trim().parse::<i64>().map_err(|_| {
+                    anyhow!("--typed-object-quantity-n must be an integer (got `{n}`)")
+                })?;
+                Some((n, unit))
+            }
+            (None, None) => None,
+            _ => bail!(
+                "--typed-object-quantity-n and --typed-object-quantity-unit must be given \
+                 together (a quantity object is a number + a unit)"
+            ),
+        };
     // Assemble the optional typed leg (Round 446): all-or-nothing —
     // subject + predicate + exactly ONE object shape. Shape/registry
     // validation lives in the shared builder, not here.
@@ -1188,13 +1265,22 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         typed_object_entity,
         typed_object_value,
         typed_object_token,
+        typed_object_quantity,
     ) {
-        (None, None, None, None, None) => None,
-        (Some(subject), Some(predicate), object_entity, object_value, object_token) => {
+        (None, None, None, None, None, None) => None,
+        (
+            Some(subject),
+            Some(predicate),
+            object_entity,
+            object_value,
+            object_token,
+            object_quantity,
+        ) => {
             let object = mnemosyne_core::TypedObject::from_exclusive_args(
                 object_entity,
                 object_value,
                 object_token,
+                object_quantity,
             )
             .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
@@ -1205,7 +1291,8 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         }
         _ => bail!(
             "typed leg is all-or-nothing: --typed-subject + --typed-predicate + one of \
-             --typed-object-entity | --typed-object-value | --typed-object-token"
+             --typed-object-entity | --typed-object-value | --typed-object-token | \
+             (--typed-object-quantity-n + --typed-object-quantity-unit)"
         ),
     };
     Ok(out)

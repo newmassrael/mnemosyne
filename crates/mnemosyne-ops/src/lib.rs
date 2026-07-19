@@ -1537,6 +1537,7 @@ mod tests {
             frames: vec![],
             branches: vec![],
             entity_kinds: vec![],
+            units: vec![],
             entities: vec![],
             predicates: vec![],
             facts,

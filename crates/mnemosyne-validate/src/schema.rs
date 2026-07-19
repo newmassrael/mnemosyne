@@ -428,12 +428,14 @@ fn manifest_wire() -> ManifestWireSpec {
         ],
         typed_object_wire:
             "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
-             id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with three \
+             id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with four \
              variants matching the predicate's object_kind: for `entity`, write { \"kind\": \
              \"entity\", \"id\": entity id }; for `scalar`, write { \"kind\": \"value\", \
              \"value\": string }; for `token` (R705), write { \"kind\": \"token\", \"token\": \
              string } where the token MUST be a member of the predicate's declared object_tokens \
-             (a token outside the closed set rejects). NOTE the deliberate naming: the \
+             (a token outside the closed set rejects); for `quantity` (R706), write { \"kind\": \
+             \"quantity\", \"n\": integer, \"unit\": unit id } where `unit` MUST be a registered \
+             unit (add-unit first; an unregistered unit rejects). NOTE the deliberate naming: the \
              predicate's object_kind is spelled `scalar`, but the object's wire tag for that \
              shape is `value` (the object_KIND vs the runtime object shape) — write `value`, not \
              `scalar`. The subject and any entity-shaped object must ALSO appear in the fact's \
@@ -594,8 +596,21 @@ fn registries() -> Vec<RegistrySpec> {
             description: "Typed-claim predicates. LOAD-BEARING: narrative rules key off a \
                 predicate id, so a typo would silently escape its rule — hence a strict \
                 registry (unlike the free-form entity kind). Each predicate declares its object \
-                shape (entity | scalar | token), enforced on every typed leg; a `token` predicate \
-                also declares a closed `object_tokens` vocabulary the object must be a member of.",
+                shape (entity | scalar | token | quantity), enforced on every typed leg; a \
+                `token` predicate also declares a closed `object_tokens` vocabulary the object \
+                must be a member of, and a `quantity` object's unit must be a registered unit.",
+        },
+        RegistrySpec {
+            name: "units",
+            key: "unit id",
+            referenced_by: "TypedObject::Quantity.unit",
+            add_op: "add-unit",
+            load_bearing: false,
+            description: "Units of measure for the `quantity` object shape (R706) — `day`, \
+                `minute`, `metre`. Consumer vocabulary (invariant 4: core never enumerates \
+                them, the R700 place-kind lesson one axis over); the substrate enforces only \
+                THAT a Quantity's unit is registered, fail-loud — a bare unit string would \
+                drift `min`/`minute`/`분`. Declared via add-unit before a Quantity uses it.",
         },
         RegistrySpec {
             name: "disclosure_plans",
@@ -978,6 +993,12 @@ fn predicate_object_kind_values() -> Vec<EnumValue> {
                 "the object leg is a member of the predicate's CLOSED, declared \
                 vocabulary (`object_tokens`) — enumerable, so the substrate can answer \
                 what values this predicate takes; a token outside the set is rejected"
+            }
+            PredicateObjectKind::Quantity => {
+                "the object leg is a number + a REGISTERED unit \
+                (`{kind:quantity, n, unit}`) — the amount slot for timeline/measurement \
+                facts; `n` is an exact integer, `unit` a ref into the units registry \
+                (add-unit first, invariant 4), an unregistered unit is rejected"
             }
         }
     }
@@ -1521,22 +1542,31 @@ mod tests {
                 (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
                 (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
                 (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
+                (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
                 (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
                 | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
                 | (TypedObject::Value { .. }, PredicateObjectKind::Token)
+                | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-                | (TypedObject::Token { .. }, PredicateObjectKind::Scalar) => false,
+                | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
+                | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
+                | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
+                | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
+                | (TypedObject::Quantity { .. }, PredicateObjectKind::Token) => false,
             }
         }
 
         // THE SURFACE, measured: every arg combination the CLI flags
-        // (`--typed-object-entity` / `--typed-object-value` / `--typed-object-token`)
-        // and the MCP fields can actually send.
+        // (`--typed-object-entity` / `--typed-object-value` / `--typed-object-token`
+        // / `--typed-object-quantity-n` + `--typed-object-quantity-unit`) and the
+        // MCP fields can actually send.
         let buildable: Vec<TypedObject> = [
-            TypedObject::from_exclusive_args(Some("e".to_string()), None, None),
-            TypedObject::from_exclusive_args(None, Some("v".to_string()), None),
-            TypedObject::from_exclusive_args(None, None, Some("t".to_string())),
+            TypedObject::from_exclusive_args(Some("e".to_string()), None, None, None),
+            TypedObject::from_exclusive_args(None, Some("v".to_string()), None, None),
+            TypedObject::from_exclusive_args(None, None, Some("t".to_string()), None),
+            TypedObject::from_exclusive_args(None, None, None, Some((1, "u".to_string()))),
         ]
         .into_iter()
         .flatten()
@@ -1864,6 +1894,7 @@ mod tests {
                 kind_id: "character".into(),
                 description: "d".into(),
             }],
+            units: vec![],
             entities: vec![mnemosyne_atomic::EntityImport {
                 entity_id: "e".into(),
                 kind: "character".into(),

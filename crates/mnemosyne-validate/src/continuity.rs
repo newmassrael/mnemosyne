@@ -854,21 +854,63 @@ impl ExclusiveKey {
 /// never collide in practice because a predicate's object shape is fixed by
 /// its registered `object_kind` — every object of one predicate has one
 /// shape.
-fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> &str {
+fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> String {
     match leg {
-        ExclusiveKey::Subject => &t.subject,
-        ExclusiveKey::Object => typed_object_key(&t.object),
+        ExclusiveKey::Subject => t.subject.clone(),
+        // The COLLISION-FREE identity (Round 706): a `Quantity` object needs both
+        // `n` and `unit` to compare equal, so the exclusive rule uses the display
+        // form, not the `unit`-only borrow.
+        ExclusiveKey::Object => typed_object_display(&t.object),
     }
 }
 
-/// The object leg's comparison/report string: the entity id or the scalar
-/// value. The rule gate is the only reader today; promote to
-/// `mnemosyne-core` if a second one appears.
+/// The object leg's borrowed comparison string for the MAP paths (adjacency /
+/// containment / transition edges), which build `&str`-keyed graphs. A
+/// well-authored map's edge/containment predicates are entity-kind (their
+/// objects are entity ids). A `Quantity` arm exists only for totality — its
+/// `unit` is the borrowable field, NOT a full identity — and it is reached only
+/// if a map predicate is MIS-DECLARED `object_kind=quantity`, the same garbage-in
+/// mis-declaration tolerance already documented for a scalar-object adjacency
+/// predicate (see the note in the transition arm below): the rules are not
+/// re-checked for predicate object-kind, so a mis-declared map keys on the wrong
+/// field rather than being rejected. The identity-sensitive readers (exclusive /
+/// state-change / interval) do NOT route a Quantity here — they use
+/// [`typed_object_display`] / [`typed_object_scalar`] / structural equality.
 fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     match o {
         mnemosyne_core::TypedObject::Entity { id } => id,
         mnemosyne_core::TypedObject::Value { value } => value,
         mnemosyne_core::TypedObject::Token { token } => token,
+        mnemosyne_core::TypedObject::Quantity { unit, .. } => unit,
+    }
+}
+
+/// The object leg's owned, COLLISION-FREE display/identity string (Round 706).
+/// For the single-string shapes this is the field itself (byte-identical to
+/// [`typed_object_key`]); for a `Quantity` it is `"{n} {unit}"`, so two
+/// quantities are equal iff BOTH fields match (unlike `typed_object_key`'s
+/// `unit`-only borrow). Used where a Quantity legitimately appears and needs a
+/// full identity: the exclusive-rule leg key and the interval report value.
+fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
+    match o {
+        mnemosyne_core::TypedObject::Entity { id } => id.clone(),
+        mnemosyne_core::TypedObject::Value { value } => value.clone(),
+        mnemosyne_core::TypedObject::Token { token } => token.clone(),
+        mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
+    }
+}
+
+/// The object leg as a number for the interval evaluator (Round 489/706). A
+/// `Quantity` yields its exact `n` (no parse — the stored integer IS the
+/// amount); the legacy single-string shapes are parsed as before (a timeline
+/// value authored as a free-text scalar still evaluates). `None` = non-numeric,
+/// surfaced by the caller as `interval_unverifiable`, never silently skipped.
+fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
+    match o {
+        mnemosyne_core::TypedObject::Quantity { n, .. } => Some(*n as f64),
+        mnemosyne_core::TypedObject::Entity { id } => parse_scalar(id),
+        mnemosyne_core::TypedObject::Value { value } => parse_scalar(value),
+        mnemosyne_core::TypedObject::Token { token } => parse_scalar(token),
     }
 }
 
@@ -2013,10 +2055,11 @@ fn parse_scalar(value: &str) -> Option<f64> {
 /// the evaluation point (Round 489).
 enum Operand<'a> {
     /// Exactly one distinct holding value (one or more facts agreeing on it):
-    /// the parsed number, the authored value string, and the fact id.
+    /// the parsed number, the object's display string (owned — a `Quantity`'s
+    /// `"{n} {unit}"` is not a borrow of any one field), and the fact id.
     Value {
         num: f64,
-        value: &'a str,
+        value: String,
         fact: &'a str,
     },
     /// No holding fact for this (subject, predicate) here — the rule does not
@@ -2039,7 +2082,7 @@ fn resolve_operand<'a>(
     predicate: &str,
     at: &str,
 ) -> Operand<'a> {
-    let mut resolved: Option<(f64, &'a str, &'a str)> = None;
+    let mut resolved: Option<(f64, String, &'a str)> = None;
     for (gid, g) in facts {
         let Some(gt) = g.typed.as_ref() else { continue };
         if g.frame != frame || gt.subject != subject || gt.predicate != predicate {
@@ -2048,12 +2091,18 @@ fn resolve_operand<'a>(
         if !ctx.holds_at(gid, g, at) {
             continue;
         }
-        let raw = typed_object_key(&gt.object);
-        let Some(n) = parse_scalar(raw) else {
+        let Some(n) = typed_object_scalar(&gt.object) else {
             return Operand::Unverifiable; // non-numeric operand
         };
+        // Round 706 DEFERRED DEBT — the evaluator is UNIT-BLIND: two Quantity
+        // facts `{10,day}` and `{10,minute}` de-dup on `n` alone and the display
+        // is iteration-order-dependent. Unit was newly made numeric here (a
+        // free-text `10 minutes` was previously Unverifiable), so mixed-unit
+        // authoring under ONE predicate is newly reachable. Cross-unit
+        // normalization/segregation is out of scope (design sec 3) — a future
+        // guard, not assumed safe.
         match resolved {
-            None => resolved = Some((n, raw, gid.as_str())),
+            None => resolved = Some((n, typed_object_display(&gt.object), gid.as_str())),
             Some((existing, _, _)) if existing == n => {} // same value restated
             Some(_) => return Operand::Unverifiable,      // distinct values: ambiguous
         }
@@ -2118,19 +2167,22 @@ fn interval_verdict(
     ctx: &WorldCtx<'_>,
     frame: &str,
     subject: &str,
-    left_raw: &str,
+    left_object: &mnemosyne_core::TypedObject,
     right_pred: &str,
     op: IntervalOp,
     bound: &IntervalBound,
     at: &str,
 ) -> IntervalVerdict {
     let unver = |reason: String| IntervalVerdict::Unverifiable { reason };
-    let Some(left_num) = parse_scalar(left_raw) else {
-        return unver(format!("left operand value `{left_raw}` is not numeric"));
+    let Some(left_num) = typed_object_scalar(left_object) else {
+        return unver(format!(
+            "left operand value `{}` is not numeric",
+            typed_object_display(left_object)
+        ));
     };
     let (right_num, right_value, right_fact) =
         match resolve_operand(facts, ctx, frame, subject, right_pred, at) {
-            Operand::Value { num, value, fact } => (num, value.to_string(), fact.to_string()),
+            Operand::Value { num, value, fact } => (num, value, fact.to_string()),
             Operand::Absent => {
                 return unver(format!("right operand `{right_pred}` has no holding value"))
             }
@@ -2143,7 +2195,7 @@ fn interval_verdict(
     let (bound_num, bound_str) = match bound {
         IntervalBound::Const(c) => (*c, c.to_string()),
         IntervalBound::Predicate(bp) => match resolve_operand(facts, ctx, frame, subject, bp, at) {
-            Operand::Value { num, value, .. } => (num, value.to_string()),
+            Operand::Value { num, value, .. } => (num, value),
             Operand::Absent => return unver(format!("bound `{bp}` has no holding value")),
             Operand::Unverifiable => {
                 return unver(format!("bound `{bp}` is non-numeric or ambiguous"))
@@ -2204,13 +2256,12 @@ fn scan_interval_rule(
             if !ctx.holds_at(lid, lf, &lf.canon_from) {
                 continue;
             }
-            let left_raw = typed_object_key(&lt.object);
             let verdict = interval_verdict(
                 facts,
                 &ctx,
                 &lf.frame,
                 &lt.subject,
-                left_raw,
+                &lt.object,
                 right_pred,
                 op,
                 bound,
@@ -2225,7 +2276,7 @@ fn scan_interval_rule(
                 world: ctx.world.to_string(),
                 subject: lt.subject.clone(),
                 left_fact: lid.clone(),
-                left_value: left_raw.to_string(),
+                left_value: typed_object_display(&lt.object),
                 at: lf.canon_from.clone(),
                 verdict,
             });
@@ -2282,6 +2333,9 @@ fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
                 mnemosyne_core::PredicateObjectKind::Scalar
             }
             mnemosyne_core::TypedObject::Token { .. } => mnemosyne_core::PredicateObjectKind::Token,
+            mnemosyne_core::TypedObject::Quantity { .. } => {
+                mnemosyne_core::PredicateObjectKind::Quantity
+            }
         };
         if actual != want {
             return Err(format!(
@@ -3522,7 +3576,9 @@ fn discharging_payoffs(
     setup_typed: &mnemosyne_core::TypedClaim,
     payoffs: &[String],
 ) -> Vec<String> {
-    let v0 = typed_object_key(&setup_typed.object);
+    // Structural object inequality (Round 706): `TypedObject` is `Eq`, so a
+    // `Quantity` discharges iff its `(n, unit)` differs — comparing the whole
+    // object is correct for every shape and needs no single-string key.
     payoffs
         .iter()
         .filter(|pid| {
@@ -3532,7 +3588,7 @@ fn discharging_payoffs(
                 .is_some_and(|t| {
                     t.subject == setup_typed.subject
                         && t.predicate == setup_typed.predicate
-                        && typed_object_key(&t.object) != v0
+                        && t.object != setup_typed.object
                 })
         })
         .cloned()
@@ -4774,10 +4830,17 @@ pub fn quest_graph(
             }
             QUEST_PRED_COMPLETED_BY => {
                 // subject quest is discharged by the object actor at this fact.
+                // A validated store only reaches the Entity arm — the quest
+                // contract gate (`check_quest_predicate_shapes`) rejects a
+                // non-entity quest object; the other arms are the pre-gate
+                // defensive fallback (Round 706 adds Quantity for totality).
                 let actor = match &claim.object {
                     mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
                     mnemosyne_core::TypedObject::Value { value } => Some(value.clone()),
                     mnemosyne_core::TypedObject::Token { token } => Some(token.clone()),
+                    mnemosyne_core::TypedObject::Quantity { n, unit } => {
+                        Some(format!("{n} {unit}"))
+                    }
                 };
                 completions_of
                     .entry(claim.subject.as_str())
@@ -5235,6 +5298,7 @@ mod tests {
     ) -> (
         Vec<mnemosyne_atomic::EntityImport>,
         Vec<mnemosyne_atomic::PredicateImport>,
+        Vec<mnemosyne_atomic::UnitImport>,
     ) {
         let entities = facts
             .iter()
@@ -5244,6 +5308,22 @@ mod tests {
             .map(|entity_id| mnemosyne_atomic::EntityImport {
                 entity_id,
                 kind: String::new(),
+                description: String::new(),
+            })
+            .collect();
+        // Round 706 — a Quantity object's unit must be registered before the
+        // fact imports, so derive the units in use (like predicates/entities).
+        let units = facts
+            .iter()
+            .filter_map(|f| f.typed.as_ref())
+            .filter_map(|t| match &t.object {
+                mnemosyne_core::TypedObject::Quantity { unit, .. } => Some(unit.clone()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|unit_id| mnemosyne_atomic::UnitImport {
+                unit_id,
                 description: String::new(),
             })
             .collect();
@@ -5257,6 +5337,7 @@ mod tests {
                         mnemosyne_core::TypedObject::Entity { .. } => "entity",
                         mnemosyne_core::TypedObject::Value { .. } => "scalar",
                         mnemosyne_core::TypedObject::Token { .. } => "token",
+                        mnemosyne_core::TypedObject::Quantity { .. } => "quantity",
                     },
                 )
             })
@@ -5273,7 +5354,7 @@ mod tests {
                 },
             )
             .collect();
-        (entities, predicates)
+        (entities, predicates, units)
     }
 
     /// Store with sections ch-1..ch-4 and the given facts, built through the
@@ -5311,13 +5392,14 @@ mod tests {
                 converges_from: vec![],
             })
             .collect();
-        let (entities, predicates) = derived_registries(&facts);
+        let (entities, predicates, units) = derived_registries(&facts);
         mnemosyne_atomic::import_facts(
             &mut store,
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units,
                 entities,
                 frames,
                 branches,
@@ -5752,6 +5834,7 @@ mod tests {
                         kind_id: "character".to_string(),
                         description: String::new(),
                     }],
+                    units: vec![],
                     frames: vec![mnemosyne_atomic::FrameImport {
                         frame_id: "seward".to_string(),
                         description: String::new(),
@@ -5847,13 +5930,14 @@ mod tests {
                 }
             })
             .collect();
-        let (entities, predicates) = derived_registries(&facts);
+        let (entities, predicates, units) = derived_registries(&facts);
         mnemosyne_atomic::import_facts(
             &mut store,
             &path,
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units,
                 frames,
                 branches,
                 entities,
@@ -9487,6 +9571,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9721,6 +9806,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9817,6 +9903,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -9963,6 +10050,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10177,6 +10265,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10314,6 +10403,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10419,6 +10509,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10691,6 +10782,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![mnemosyne_atomic::FrameImport {
                     frame_id: "gt".to_string(),
                     description: String::new(),
@@ -10801,6 +10893,7 @@ mod tests {
             &FactsManifest {
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
+                units: vec![],
                 frames: vec![],
                 branches: vec![],
                 entities: vec![],
@@ -11070,6 +11163,52 @@ mod tests {
         assert!(
             report.violations.is_empty(),
             "6-day gap is clean: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 706 — the interval evaluator reads a `Quantity` object's exact `n`
+    /// for its arithmetic (no parse, no unit-string confusion). Same rule and
+    /// day counts as `interval_const_bound_gates_short_gap`, but the operands are
+    /// `Quantity{n, day}` rather than free-text scalars: a 5-day gap violates
+    /// `>= 6`, a 6-day gap is clean — so the number is being read, not the unit.
+    #[test]
+    fn interval_reads_quantity_n() {
+        let rule = NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let qty = |n: i64| TypedObject::Quantity {
+            n,
+            unit: "day".to_string(),
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let short = store_with(vec![
+            typed_fact("s", "gt", "ch-1", "codicil", "signed-on-day", qty(10)),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", qty(15)),
+        ]);
+        let report = scan_continuity(&short, &order, std::slice::from_ref(&rule)).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "a 5-day gap on Quantity operands must violate >= 6: {:?}",
+            report.violations
+        );
+        let ok = store_with(vec![
+            typed_fact("s", "gt", "ch-1", "codicil", "signed-on-day", qty(10)),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", qty(16)),
+        ]);
+        let report = scan_continuity(&ok, &order, &[rule]).unwrap();
+        assert!(
+            report.violations.is_empty(),
+            "a 6-day gap on Quantity operands is clean: {:?}",
             report.violations
         );
     }
