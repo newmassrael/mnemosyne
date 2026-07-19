@@ -387,6 +387,92 @@ fn refinement_aware_exclusivity_end_to_end() {
     assert_eq!(v["violations"][0]["rule"], "loc");
 }
 
+/// Round 715 — containment-tree integrity end-to-end through the real binary: a
+/// place contained by two different containers in one frame is not a tree, so
+/// `validate-continuity` gates with `containment_multiple_parents`.
+#[test]
+fn containment_tree_integrity_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("docs/.atomic")).unwrap();
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    let atomic = serde_json::json!({
+        "schema_version": 19,
+        "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "character": {}, "place": {} },
+        "entities": {
+            "dracula": { "kind": "character" },
+            "castle": { "kind": "place" },
+            "keep": { "kind": "place" }
+        },
+        "predicates": {
+            "at-location": { "object_kind": "token", "object_tokens": ["hall"] },
+            "contains": { "object_kind": "token", "object_tokens": ["hall"] }
+        },
+        "narrative_facts": {
+            "l0": {
+                "frame": "gt", "entities": ["dracula"], "claim": "Dracula is in the hall",
+                "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "dracula", "predicate": "at-location",
+                           "object": { "kind": "token", "token": "hall" } }
+            },
+            "c1": {
+                "frame": "gt", "entities": ["castle"], "claim": "The castle contains the hall",
+                "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "castle", "predicate": "contains",
+                           "object": { "kind": "token", "token": "hall" } }
+            },
+            "c2": {
+                "frame": "gt", "entities": ["keep"], "claim": "The keep contains the hall",
+                "canon_from": "ch-1", "evidence": ["ch-1"],
+                "typed": { "subject": "keep", "predicate": "contains",
+                           "object": { "kind": "token", "token": "hall" } }
+            }
+        }
+    });
+    fs::write(
+        tmp.path().join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("canon-order.json"),
+        serde_json::json!({ "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]] }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("narrative-rules.json"),
+        serde_json::json!({ "schema": "narrative-rules/v1", "rules": [
+            { "id": "loc", "class": "exclusive", "predicate": "at-location",
+              "per": "subject", "containment": "contains" }
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(
+        !out.status.success(),
+        "a place with two containers must gate: {out:?}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    let kinds: Vec<&str> = v["violations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["kind"].as_str().unwrap())
+        .collect();
+    assert!(
+        kinds.contains(&"containment_multiple_parents"),
+        "expected containment_multiple_parents: {v}"
+    );
+}
+
 /// Round 491 — a single-world store with one INTERVAL violation (a codicil
 /// ratified 5 days after signing against a 42-day rule) and no structural
 /// violations. The per-class gating: `severity` (reject) does NOT gate the

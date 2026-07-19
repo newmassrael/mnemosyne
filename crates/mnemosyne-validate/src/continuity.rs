@@ -1654,6 +1654,44 @@ pub enum ContinuityViolation {
         /// be one of, in sorted order.
         expected: Vec<String>,
     },
+    /// Round 715 — a place is CONTAINED by two different containers within one
+    /// (frame, branch) world, so the `containment` relation is not a tree there
+    /// (design R713.1). Cross-FRAME parents are both-true (a belief-frame
+    /// hierarchy differing from ground truth is legitimate, R713.7), so this
+    /// fires only when the two containers co-scope in ONE (frame, branch) — the
+    /// frame/branch-blind read would false-reject a multi-frame store (the R713
+    /// review's Finding 3). TIME-scoped too (Round 715 review Finding 1): the two
+    /// containers must CO-HOLD at some canon point `at` (both `holds_at`) — a
+    /// place MOVED from one container to another over the timeline (temporally
+    /// disjoint containment) is one container at every point, not a conflict. The
+    /// place identity is the collision-free display (Round 714), so two distinct
+    /// Quantity-valued contained legs never collapse to a false shared child.
+    /// Structural (rides `severity`); `parents` sorted, reported once per place.
+    ContainmentMultipleParents {
+        predicate: String,
+        frame: String,
+        branch: String,
+        place: String,
+        parents: Vec<String>,
+        /// A canon point where the containers co-hold (the conflict is real).
+        at: String,
+    },
+    /// Round 715 — the `contains` relation closes a loop AT some canon point `at`
+    /// within one (frame, branch) world: a place transitively contains its own
+    /// container (design R713.4). TIME-scoped (review Finding 1): the loop must
+    /// hold at one point (a→b [early] then b→a [late] is a legal reorganization,
+    /// never a cycle at any point). Acyclicity is the precondition that makes a
+    /// containment walk (ancestry / scope) terminate. Reported once per cycle,
+    /// members in walk order from the minimum id (mirror `SuccessionCycle` Round
+    /// 463). Structural (rides `severity`).
+    ContainmentCycle {
+        predicate: String,
+        frame: String,
+        branch: String,
+        cycle: Vec<String>,
+        /// A canon point where the loop holds.
+        at: String,
+    },
 }
 
 impl ContinuityViolation {
@@ -3366,7 +3404,158 @@ pub fn scan_continuity(
             }
         }
     }
+    // Round 715 — containment-tree INTEGRITY over EVERY declared containment
+    // predicate (a transition rule's map `containment`, Round 703, OR an
+    // exclusive rule's refinement `containment`, Round 714), deduped. A place
+    // hierarchy must be a TREE per (frame, world): at most one direct container
+    // (`ContainmentMultipleParents`) and acyclic (`ContainmentCycle`). This is
+    // the structural foundation the per-scope map partition (a later round) sits
+    // on, and the invariant the Round 714 refinement walk assumes. Scoped per
+    // (frame, branch) so a belief-frame hierarchy differing from ground truth is
+    // NOT a false reject (the R713 review's Finding 3).
+    let containment_predicates: BTreeSet<&str> = rules
+        .iter()
+        .filter_map(|r| match &r.spec {
+            NarrativeRuleSpec::Transition { containment, .. } => containment.as_deref(),
+            NarrativeRuleSpec::Exclusive { containment, .. } => containment.as_deref(),
+            NarrativeRuleSpec::Interval { .. } => None,
+        })
+        .collect();
+    for cont_pred in &containment_predicates {
+        scan_containment_tree(
+            cont_pred,
+            store,
+            &worlds,
+            &lineages,
+            order,
+            &successors,
+            &mut report,
+        );
+    }
     Ok(report)
+}
+
+/// Round 715 — validate that a `containment` predicate's `contains(container,
+/// contained)` facts form a TREE within every (frame, branch) world: at most one
+/// direct container per place, and no cycle. Node identity is the collision-free
+/// [`typed_object_display`] (Round 714), so two distinct Quantity-valued
+/// contained legs never collapse to a false shared child. FRAME-scoped: two
+/// containers naming one child in DIFFERENT frames are both-true (a belief-frame
+/// hierarchy differing from ground truth), not a violation — only a same-(frame,
+/// world) pair is (the R713 review's Finding 3). BRANCH-scoped via `visibility`.
+/// TIME-scoped (review Finding 1): the containment is evaluated as a per-canon-
+/// point SNAPSHOT via `holds_at`, so this hard-reject gate never false-rejects
+/// LEGAL time-varying containment — a place MOVED between containers over the
+/// timeline is one container at every point (not a conflict), and a
+/// reorganization `a contains b` early then `b contains a` late is a cycle at NO
+/// point. This mirrors the Round 714 refinement walk, which reads the same
+/// relation through `holds_at` (no two-readers-one-field split).
+fn scan_containment_tree(
+    cont_pred: &str,
+    store: &AtomicStore,
+    worlds: &[&str],
+    lineages: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    order: &CanonOrder,
+    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+    report: &mut ContinuityReport,
+) {
+    for world in worlds {
+        let ctx = WorldCtx {
+            world,
+            membership: &lineages[*world],
+            order,
+            successors,
+        };
+        // This world's `contains` facts of the predicate, grouped by frame (kept
+        // whole so each point's snapshot can read their `holds_at`).
+        let mut by_frame: BTreeMap<&str, Vec<(&str, &NarrativeFact)>> = BTreeMap::new();
+        for (fid, f) in &store.narrative_facts {
+            let Some(t) = f.typed.as_ref() else {
+                continue;
+            };
+            if t.predicate != cont_pred || ctx.visibility(f) != Vis::In {
+                continue;
+            }
+            by_frame
+                .entry(f.frame.as_str())
+                .or_default()
+                .push((fid.as_str(), f));
+        }
+        for (frame, group) in &by_frame {
+            // Report each place / cycle once per (frame, world) across all points.
+            let mut multi_seen: BTreeSet<String> = BTreeSet::new();
+            let mut cycle_seen: BTreeSet<String> = BTreeSet::new();
+            for p in store.sections.keys() {
+                // The point's SNAPSHOT: only `contains` facts co-holding at `p`.
+                let mut snap: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+                for &(fid, f) in group {
+                    if !ctx.holds_at(fid, f, p) {
+                        continue;
+                    }
+                    let t = f.typed.as_ref().unwrap();
+                    snap.entry(typed_object_display(&t.object))
+                        .or_default()
+                        .insert(t.subject.clone());
+                }
+                // Two containers co-holding at `p` = not a tree here.
+                for (place, containers) in &snap {
+                    if containers.len() > 1 && multi_seen.insert(place.clone()) {
+                        report
+                            .violations
+                            .push(ContinuityViolation::ContainmentMultipleParents {
+                                predicate: cont_pred.to_string(),
+                                frame: frame.to_string(),
+                                branch: world.to_string(),
+                                place: place.clone(),
+                                parents: containers.iter().cloned().collect(),
+                                at: p.clone(),
+                            });
+                    }
+                }
+                // Cycle within the snapshot's functional parent graph (first
+                // container per place — a place with a SECOND container is already
+                // the multiple-parents finding, so a cycle closing only through
+                // that non-first container is under-reported, never a silent
+                // accept: the store is gated regardless). Reported once per cycle,
+                // rotated to start at the minimum member (mirror SuccessionCycle
+                // R463).
+                let parent: BTreeMap<&str, &str> = snap
+                    .iter()
+                    .map(|(c, conts)| (c.as_str(), conts.iter().next().unwrap().as_str()))
+                    .collect();
+                for &start in parent.keys() {
+                    let mut path: Vec<&str> = Vec::new();
+                    let mut cur = start;
+                    loop {
+                        if let Some(pos) = path.iter().position(|&n| n == cur) {
+                            let members: BTreeSet<&str> = path[pos..].iter().copied().collect();
+                            let min = *members.iter().min().unwrap();
+                            if cycle_seen.insert(min.to_string()) {
+                                let mut ordered: Vec<&str> = path[pos..].to_vec();
+                                let mstart = ordered.iter().position(|&n| n == min).unwrap();
+                                ordered.rotate_left(mstart);
+                                report
+                                    .violations
+                                    .push(ContinuityViolation::ContainmentCycle {
+                                        predicate: cont_pred.to_string(),
+                                        frame: frame.to_string(),
+                                        branch: world.to_string(),
+                                        cycle: ordered.iter().map(|s| s.to_string()).collect(),
+                                        at: p.clone(),
+                                    });
+                            }
+                            break;
+                        }
+                        path.push(cur);
+                        match parent.get(cur) {
+                            Some(&pp) => cur = pp,
+                            None => break, // reached a root — no cycle on this chain
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// One fact currently in effect in a frame view.
@@ -7278,6 +7467,192 @@ mod tests {
                 .iter()
                 .any(|v| matches!(v, ContinuityViolation::RuleExclusiveOverlap { .. })),
             "campus transitively contains room — a refinement across two hops: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 — a place contained by two DIFFERENT containers in one (frame,
+    /// world) is not a tree: ContainmentMultipleParents.
+    #[test]
+    fn containment_tree_flags_multiple_parents_same_frame() {
+        let store = store_with(vec![
+            typed_fact("l0", "gt", "ch-1", "dracula", "at-location", at("hall")),
+            typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall")),
+            typed_fact("c2", "gt", "ch-1", "keep", "contains", at("hall")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ContainmentMultipleParents { place, parents, .. }
+                    if place == "hall" && parents.len() == 2
+            )),
+            "hall has two containers in one frame — not a tree: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 (review Finding 3) — the SAME place contained by different
+    /// containers in DIFFERENT frames is both-true (a belief-frame hierarchy),
+    /// NOT a multiple-parents violation.
+    #[test]
+    fn containment_tree_cross_frame_parents_are_not_flagged() {
+        let store = store_with(vec![
+            typed_fact("l0", "gt", "ch-1", "dracula", "at-location", at("hall")),
+            typed_fact("c1", "gt", "ch-1", "castle", "contains", at("hall")),
+            typed_fact("c2", "belief", "ch-1", "keep", "contains", at("hall")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::ContainmentMultipleParents { .. })),
+            "cross-frame containers are both-true, not a conflict: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 — a containment loop within one (frame, world) is flagged.
+    #[test]
+    fn containment_tree_flags_cycle() {
+        let store = store_with(vec![
+            typed_fact("l0", "gt", "ch-1", "dracula", "at-location", at("a")),
+            typed_fact("c1", "gt", "ch-1", "a", "contains", at("b")),
+            typed_fact("c2", "gt", "ch-1", "b", "contains", at("a")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ContainmentCycle { cycle, .. } if cycle.len() == 2
+            )),
+            "a contains b contains a is a cycle: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 — a well-formed tree (single parent, acyclic, a container with
+    /// many children) has no integrity violation.
+    #[test]
+    fn containment_tree_clean_tree_is_silent() {
+        let store = store_with(vec![
+            typed_fact("l0", "gt", "ch-1", "dracula", "at-location", at("room-a")),
+            typed_fact("c1", "gt", "ch-1", "campus", "contains", at("school")),
+            typed_fact("c2", "gt", "ch-1", "school", "contains", at("room-a")),
+            typed_fact("c3", "gt", "ch-1", "school", "contains", at("room-b")),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::ContainmentMultipleParents { .. }
+                    | ContinuityViolation::ContainmentCycle { .. }
+            )),
+            "campus > school > {{room-a, room-b}} is a valid tree: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 (review Finding 1) — a place MOVED between containers over
+    /// DISJOINT canon extents co-holds with neither, so it is one container at
+    /// every point — NOT a multiple-parents conflict (the time-blind gate would
+    /// false-reject it).
+    #[test]
+    fn containment_tree_moved_place_across_disjoint_time_is_not_flagged() {
+        let mut c1 = typed_fact("c1", "gt", "ch-1", "vault", "contains", at("gem"));
+        c1.canon_to = Some("ch-1".to_string()); // vault contains gem only at ch-1
+        let store = store_with(vec![
+            typed_fact(
+                "l0",
+                "gt",
+                "ch-1",
+                "dracula",
+                "at-location",
+                at("elsewhere"),
+            ),
+            c1,
+            typed_fact("c2", "gt", "ch-2", "museum", "contains", at("gem")), // ch-2 open
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::ContainmentMultipleParents { .. })),
+            "gem moved vault -> museum across disjoint extents — one container per point: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 715 (review Finding 1) — an early containment reversed later across
+    /// DISJOINT extents (`a` contains `b`, then `b` contains `a`) is a legal
+    /// reorganization, a cycle at NO point — not flagged.
+    #[test]
+    fn containment_tree_reorg_across_disjoint_time_is_not_a_cycle() {
+        let mut c1 = typed_fact("c1", "gt", "ch-1", "a", "contains", at("b"));
+        c1.canon_to = Some("ch-1".to_string()); // a contains b only at ch-1
+        let store = store_with(vec![
+            typed_fact(
+                "l0",
+                "gt",
+                "ch-1",
+                "dracula",
+                "at-location",
+                at("elsewhere"),
+            ),
+            c1,
+            typed_fact("c2", "gt", "ch-2", "b", "contains", at("a")), // b contains a from ch-2
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [refining_exclusive_rule(
+            "loc",
+            "at-location",
+            ExclusiveKey::Subject,
+            "contains",
+        )];
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::ContainmentCycle { .. })),
+            "a->b early then b->a late is a reorganization, a cycle at no point: {:?}",
             report.violations
         );
     }

@@ -600,6 +600,69 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 expected.join(", ")
             ),
         ),
+        ContinuityViolation::ContainmentMultipleParents {
+            predicate,
+            frame,
+            branch,
+            place,
+            parents,
+            at,
+        } => action(
+            "containment_multiple_parents",
+            ViolationLocus {
+                facts: Vec::new(),
+                entities: {
+                    let mut e = vec![place.clone()];
+                    e.extend(parents.clone());
+                    e
+                },
+                field: Some("typed".to_string()),
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
+                at: Some(at.clone()),
+            },
+            format!(
+                "a `{predicate}` place must have at most one direct container at any one canon \
+                 point per (frame, world) — the containment relation must be a tree"
+            ),
+            format!(
+                "these containers CO-HOLD at `{at}` — end one before the other begins (a MOVE is \
+                 fine, disjoint extents never conflict), or put the differing hierarchy in \
+                 another frame; do not delete a still-true fact"
+            ),
+            format!(
+                "`{predicate}` place `{place}` has {} co-holding containers ({}) at `{at}` in \
+                 frame `{frame}` world `{branch}`",
+                parents.len(),
+                parents.join(", ")
+            ),
+        ),
+        ContinuityViolation::ContainmentCycle {
+            predicate,
+            frame,
+            branch,
+            cycle,
+            at,
+        } => action(
+            "containment_cycle",
+            ViolationLocus {
+                facts: Vec::new(),
+                entities: cycle.clone(),
+                field: Some("typed".to_string()),
+                frame: Some(frame.clone()),
+                branch: Some(branch.clone()),
+                at: Some(at.clone()),
+            },
+            format!("`{predicate}` facts must form a tree, never a cycle"),
+            format!(
+                "break the loop at `{at}` — one place in the cycle must not contain an ancestor \
+                 there (an early-then-reversed containment across disjoint extents is fine)"
+            ),
+            format!(
+                "`{predicate}` cycle at `{at}` in frame `{frame}` world `{branch}`: {}",
+                cycle.join(" -> ")
+            ),
+        ),
     }
 }
 
@@ -693,6 +756,21 @@ mod tests {
                 fact: "f-loves".into(),
                 found: Some("loves".into()),
                 expected: vec!["adjacent".into()],
+            },
+            ContinuityViolation::ContainmentMultipleParents {
+                predicate: "contains".into(),
+                frame: "gt".into(),
+                branch: "main".into(),
+                place: "ent-hall".into(),
+                parents: vec!["ent-castle".into(), "ent-keep".into()],
+                at: "ch-2".into(),
+            },
+            ContinuityViolation::ContainmentCycle {
+                predicate: "contains".into(),
+                frame: "gt".into(),
+                branch: "main".into(),
+                cycle: vec!["ent-a".into(), "ent-b".into()],
+                at: "ch-2".into(),
             },
         ];
         for v in &samples {

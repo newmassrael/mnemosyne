@@ -343,7 +343,10 @@ pub fn describe_schema() -> SchemaContract {
              (true = an edge admits both directions, the map; absent/false = one-way, a state \
              machine like `alive → dead`) + \"containment\"?: <predicate id> (Round 703: its \
              facts are `contains(region, node)` — turns on the G2 completeness/leak checks over \
-             containers; omit for a map with no containers); interval → \
+             containers; omit for a map with no containers). Any declared containment predicate \
+             (a transition map's OR an exclusive rule's) is Round-715 integrity-checked to form a \
+             TREE per (frame, world): at most one direct container per place, and acyclic. \
+             interval → \
              \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
              \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
              bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
