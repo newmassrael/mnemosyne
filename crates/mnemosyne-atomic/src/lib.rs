@@ -37,9 +37,9 @@ pub use redact::*;
 
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
-    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, Entity, EntityKind,
-    Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate, PredicateObjectKind,
-    TypedClaim, TypedObject, Unit,
+    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, EdgeCost, Entity,
+    EntityKind, Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate,
+    PredicateObjectKind, TypedClaim, TypedObject, Unit,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -685,6 +685,17 @@ pub struct AtomicStore {
     /// Empty on pre-v22 stores via `#[serde(default)]`.
     #[serde(default)]
     pub disclosure_plans: BTreeMap<String, DisclosurePlan>,
+    /// Map edge-cost side-table (Round 709 design → DEBT-J build) — keyed by the
+    /// ADJACENT FACT ID (the R698 `adjacent(a,b)` fact's primary key), value =
+    /// the edge's cost ([`EdgeCost`], a number + registered unit). A SIDE-TABLE,
+    /// not a reified fact: the cost is frame-invariant edge metadata, so it needs
+    /// no per-fact frame/branch/evidence (the R709-review decision over reifying
+    /// the subject leg). Every key must resolve to an existing narrative fact and
+    /// its unit to a registered unit (fail-loud at the primitive AND the scan
+    /// boundary); `retract_fact` CASCADE-DROPS the entry when its fact goes, so
+    /// the store can never hold a dangling cost. Empty on pre-v30 stores.
+    #[serde(default)]
+    pub edge_costs: BTreeMap<String, EdgeCost>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1240,11 +1251,18 @@ pub enum AtomicStoreError {
 // fact object, or its text moves to the fact's `claim`. There is deliberately no
 // `schema_version < 29` back-fill arm — silently guessing a shape for free text
 // would defeat the closure the removal exists to enforce.
+// v29→v30 adds `AtomicStore.edge_costs` (Round 709 design → DEBT-J build — the
+// map edge-cost side-table). Additive: a top-level `BTreeMap` under
+// `#[serde(default)]`, empty on older stores, no fact re-validated on load. A
+// pre-DEBT-J binary reading a v30 store drops the unknown field on save (the
+// v24→v25 silent-drop class), which the monotone `> CURRENT` guard rejects
+// loudly instead. No migration arm needed (the field is new, not a shape change
+// to existing data).
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 29;
+pub const CURRENT_SCHEMA_VERSION: u32 = 30;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -4826,6 +4844,92 @@ pub fn unit_registered(store: &AtomicStore, unit: &str) -> bool {
     store.units.contains_key(unit)
 }
 
+/// Register the cost of one map EDGE (Round 709 design → DEBT-J build) — keyed by
+/// the ADJACENT FACT ID (the R698 `adjacent(a,b)` fact). The number + unit is the
+/// R706 `Quantity` shape stored as an [`EdgeCost`] SIDE-TABLE value, not a
+/// reified fact (the R709 review: the cost is frame-invariant edge metadata, so
+/// it needs no per-fact frame/branch/evidence). Fail-loud: the fact must EXIST (a
+/// cost has no edge without one), `n` must be POSITIVE (build-map.py's G3 — 0 is
+/// a free teleport), and the unit must be REGISTERED (invariant 4). A2-consistent
+/// (absent → create, byte-identical → no-op, divergent → reject). The
+/// adjacency-fact SEMANTIC (that the fact is a map edge, not any fact) is a
+/// validate-layer concern — the store cannot know which predicate is the map's
+/// adjacency without the rules config — so it is NOT enforced here.
+pub fn add_edge_cost(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    n: i64,
+    unit: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim().to_string();
+    let unit = unit.trim();
+    if !store.narrative_facts.contains_key(&id) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_cost: fact `{id}` not present (a cost attaches to an existing edge fact; \
+             add the adjacent fact first)"
+        )));
+    }
+    if n <= 0 {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_cost: cost n={n} must be positive (0/negative = a free teleport — \
+             build-map.py's G3)"
+        )));
+    }
+    if !unit_registered(store, unit) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_edge_cost: unit `{unit}` is not a registered unit (add_unit first; fail-loud — \
+             invariant 4)"
+        )));
+    }
+    let candidate = EdgeCost {
+        n,
+        unit: unit.to_string(),
+    };
+    let created = stage_registry_entry(
+        &mut store.edge_costs,
+        "add_edge_cost",
+        "edge_cost",
+        &id,
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_edge_cost",
+        "edge_cost",
+        &id,
+        created,
+    )
+}
+
+/// Every out-of-band `edge_costs` violation (Round 709 → DEBT-J): a key whose
+/// fact is GONE, or an entry whose unit is UNregistered. A write path cannot
+/// produce either (`add_edge_cost` checks both, and `retract_fact` cascade-drops
+/// the cost when its fact goes) — only an out-of-band edit can. The ONE detector
+/// `store_registry_violations` calls, so the boundary and the baseline gate
+/// enforce the same set. Messages in key order (BTreeMap), empty = clean.
+pub fn edge_cost_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (fid, cost) in &store.edge_costs {
+        if !store.narrative_facts.contains_key(fid) {
+            out.push(format!(
+                "edge_cost `{fid}`: no such narrative fact (out-of-band edit; retract_fact \
+                 cascade-drops the cost, so a live store never holds this)"
+            ));
+        }
+        if !unit_registered(store, &cost.unit) {
+            out.push(format!(
+                "edge_cost `{fid}`: unit `{}` not in the units registry (out-of-band edit; \
+                 add-unit first)",
+                cost.unit
+            ));
+        }
+    }
+    out
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -5024,6 +5128,10 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
             }
         }
     }
+    // Round 709 → DEBT-J — the edge-cost side-table's out-of-band integrity (an
+    // entry whose fact is gone or whose unit is unregistered). The write path
+    // (`add_edge_cost`) + the cascade-drop (`retract_fact`) cannot produce these.
+    out.extend(edge_cost_violations(store));
     out
 }
 
@@ -6434,6 +6542,12 @@ pub fn retract_fact(
         )));
     }
     store.narrative_facts.remove(id);
+    // Round 709 → DEBT-J — CASCADE-DROP the edge cost keyed by this fact (if any):
+    // the cost is subordinate edge metadata, so it goes WITH the edge (ON DELETE
+    // CASCADE), never dangles. This is the write-path invariant the R709 review
+    // required — the store can never hold an `edge_costs` entry whose fact is gone
+    // (distinct from the R707 fact-ref BLOCK, which fits a peer, not metadata).
+    store.edge_costs.remove(id);
     save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
 }
 
@@ -12715,6 +12829,106 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("shape mismatch"), "unexpected: {err}");
+    }
+
+    /// Round 709 (DEBT-J) — `add_edge_cost` gates the side-table: the keyed fact
+    /// must EXIST, the cost `n` must be POSITIVE (G3), and the unit must be
+    /// REGISTERED. NON-VACUITY BY INJECTION: the same store lands a valid cost and
+    /// rejects each of the three defects in isolation.
+    #[test]
+    fn add_edge_cost_gates_fact_positive_and_unit() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_unit(&mut store, &path, "minute", "").unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
+        // Valid: fact exists, n>0, unit registered.
+        add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
+        assert_eq!(store.edge_costs["f-edge"].n, 4);
+        assert_eq!(store.edge_costs["f-edge"].unit, "minute");
+        // Missing fact rejects.
+        let err = add_edge_cost(&mut store, &path, "f-gone", 4, "minute")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not present"),
+            "missing fact must reject: {err}"
+        );
+        // Non-positive n rejects (G3 — free teleport).
+        let err = add_edge_cost(&mut store, &path, "f-edge", 0, "minute")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must be positive"), "n=0 must reject: {err}");
+        // Unregistered unit rejects.
+        let err = add_edge_cost(&mut store, &path, "f-edge", 4, "fortnight")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not a registered unit"),
+            "unregistered unit must reject: {err}"
+        );
+    }
+
+    /// Round 709 (DEBT-J) — the delete rule: `retract_fact` CASCADE-DROPS the edge
+    /// cost keyed by the retracted fact (edge metadata goes with the edge), so the
+    /// store can never hold a dangling cost; and the out-of-band detector
+    /// (`edge_cost_violations` via `store_registry_violations`) names an orphan an
+    /// out-of-band edit leaves. NON-VACUITY: clean before the drop, named after.
+    #[test]
+    fn retract_cascade_drops_edge_cost_and_detector_catches_out_of_band() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_unit(&mut store, &path, "minute", "").unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
+        add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "clean with the cost"
+        );
+        // Retract the edge fact → its cost cascade-drops.
+        retract_fact(&mut store, &path, "f-edge", "map edit").unwrap();
+        assert!(
+            !store.edge_costs.contains_key("f-edge"),
+            "the cost must cascade-drop with its fact"
+        );
+        // Out-of-band: an edge_cost whose fact is gone (re-inserted directly,
+        // bypassing add_edge_cost) is named by the detector.
+        store.edge_costs.insert(
+            "f-orphan".to_string(),
+            EdgeCost {
+                n: 3,
+                unit: "minute".to_string(),
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan must be named: {v:?}"
+        );
+        // Out-of-band: an edge_cost whose FACT exists but whose UNIT is
+        // unregistered is also named (the non-orphan detector branch — proven by
+        // injection, symmetric with the Quantity→unit path; drop the branch and
+        // this assertion fails).
+        add_fact(&mut store, &path, &sample_fact("f-live", "gt")).unwrap();
+        store.edge_costs.insert(
+            "f-live".to_string(),
+            EdgeCost {
+                n: 3,
+                unit: "fortnight".to_string(),
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-live") && m.contains("not in the units registry")),
+            "out-of-band unregistered unit must be named: {v:?}"
+        );
     }
 
     /// Round 707 — a `fact` object is resolved in PHASE 2 against store ∪ staged:

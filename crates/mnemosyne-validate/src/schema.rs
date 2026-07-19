@@ -618,6 +618,20 @@ fn registries() -> Vec<RegistrySpec> {
                 drift `min`/`minute`/`분`. Declared via add-unit before a Quantity uses it.",
         },
         RegistrySpec {
+            name: "edge_costs",
+            key: "adjacent fact id",
+            referenced_by: "keyed BY the adjacent fact; read by the future derived travel-time \
+                computation (tide_budget − Σcost) — not referenced by any other row",
+            add_op: "add-edge-cost",
+            load_bearing: false,
+            description: "Map EDGE COSTS (R709 → DEBT-J) — keyed by the adjacent(a,b) fact id, \
+                value = a number + registered unit (the Quantity shape). A SIDE-TABLE, not a \
+                reified fact: the cost is frame-invariant edge metadata (owner-invented map \
+                minutes, no evidence), so it needs no per-fact frame/branch. Fail-loud: the fact \
+                must exist, the cost must be POSITIVE (G3 — 0 is a free teleport), the unit \
+                registered. retract-fact cascade-drops the cost, so it never dangles.",
+        },
+        RegistrySpec {
             name: "disclosure_plans",
             key: "telling id",
             referenced_by: "the `--telling` carrier + the render-acceptance gates",

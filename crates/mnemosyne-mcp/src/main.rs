@@ -410,6 +410,20 @@ pub struct AddUnitArgs {
     pub description: String,
 }
 
+/// Attach a cost to one map edge (Round 709 → DEBT-J) — a side-table entry keyed
+/// by the adjacent fact id, NOT a reified fact (the cost is frame-invariant edge
+/// metadata). Mirrors `add_unit`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddEdgeCostArgs {
+    /// The ADJACENT FACT ID the cost attaches to (must already exist).
+    pub fact_id: String,
+    /// The cost amount — a POSITIVE integer (e.g. walk minutes; 0/negative = a
+    /// free teleport, rejected by G3).
+    pub n: i64,
+    /// A REGISTERED unit (e.g. minute; add_unit first).
+    pub unit: String,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
@@ -1659,6 +1673,16 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_unit(store, path, &a.unit_id, &a.description));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Attach a cost to one map EDGE (R709 → DEBT-J) — a side-table entry keyed by the ADJACENT FACT ID (the adjacent(a,b) fact), value = a number + registered unit (the Quantity shape). NOT a reified fact: the cost is frame-invariant edge metadata, so it carries no per-fact frame/branch/evidence. Fail-loud: the fact must exist, n must be POSITIVE (G3 — 0/negative is a free teleport), and the unit must be registered (add_unit first). `retract_fact` cascade-drops the cost when its fact goes, so it never dangles. Idempotent on identical content; divergent rejects."
+    )]
+    async fn add_edge_cost(&self, args: Parameters<AddEdgeCostArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self
+            .run_mutate(|store, path| atomic::add_edge_cost(store, path, &a.fact_id, a.n, &a.unit));
         self.finish_mutate(outcome)
     }
 

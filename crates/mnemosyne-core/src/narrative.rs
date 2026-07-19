@@ -428,6 +428,30 @@ pub struct Unit {
     pub description: String,
 }
 
+/// The cost of one map EDGE (Round 709 design → DEBT-J build) — a number + a
+/// registered unit, the SAME shape as [`TypedObject::Quantity`] but stored as a
+/// side-table VALUE (`AtomicStore.edge_costs`, keyed by the adjacent fact id)
+/// rather than a reified fact. The edge cost is FRAME-INVARIANT ground truth
+/// (owner-invented map minutes, no section evidence, no per-frame/branch
+/// variation), so it is edge METADATA, not a perspectival claim — the R709
+/// review's decisive reason to pick the side-table over reifying the subject
+/// leg. `n` is an EXACT integer (map minutes; f64 avoided, the R706 lesson) and
+/// must be POSITIVE (build-map.py's G3 — 0 = a free teleport); `unit` is a ref
+/// into the store's `units` registry (fail-loud, never free text — invariant 4).
+///
+/// No `Default` derive (unlike sibling `Unit`/`Frame`): `EdgeCost::default()`
+/// would be `{n:0, unit:""}` — a value the write path REJECTS (n=0 is the G3
+/// free-teleport, `""` an unregistered unit), so a `..Default::default()` would
+/// materialize a cost the primitive never accepts. `stage_registry_entry` needs
+/// only `PartialEq`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdgeCost {
+    /// The cost amount — an exact positive integer (e.g. walk minutes).
+    pub n: i64,
+    /// A ref into the `units` registry (e.g. `minute`), fail-loud.
+    pub unit: String,
+}
+
 /// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
 /// `Entity` = the object leg names a registered entity (locations, custody
 /// targets); `Token` = the object leg is a member of a CLOSED vocabulary

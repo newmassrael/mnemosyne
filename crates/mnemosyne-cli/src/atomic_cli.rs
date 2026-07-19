@@ -616,6 +616,60 @@ pub fn cmd_add_unit(workspace_root: &Path, args: &[String]) -> Result<(), CliErr
     )
 }
 
+/// Round 709 → DEBT-J — attach a cost to one map edge (the adjacent fact).
+/// `--fact` (the adjacent fact id) + `--n` (positive integer) + `--unit`
+/// (registered) mandatory. The cost is edge metadata (a side-table entry), not
+/// a fact.
+pub fn cmd_add_edge_cost(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut n: Option<String> = None;
+    let mut unit: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--n" => n = Some(iter.next().ok_or_else(|| anyhow!("--n missing"))?.clone()),
+            "--unit" => {
+                unit = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--unit missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let n = n
+        .ok_or_else(|| anyhow!("--n arg required"))?
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| anyhow!("--n must be an integer"))?;
+    let unit = unit.ok_or_else(|| anyhow!("--unit arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_edge_cost(&mut store, &sidecar_path, &fact_id, n, &unit),
+        json,
+    )
+}
+
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
 /// the narrative rules key off). `--object-kind entity|token|quantity|fact`
 /// mandatory (Round 708 removed free-text `scalar`).

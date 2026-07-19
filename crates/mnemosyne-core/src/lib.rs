@@ -39,7 +39,7 @@ mod narrative;
 pub use narrative::{
     forward_confluences, is_known_world, succession_branch_inherits, world_membership, Branch,
     BranchFork, ConflictAssertion, DisclosureMode, DisclosureOverride, DisclosurePlan,
-    DisclosureSurface, EffectiveDisclosure, Entity, EntityKind, Frame, NarrativeFact,
+    DisclosureSurface, EdgeCost, EffectiveDisclosure, Entity, EntityKind, Frame, NarrativeFact,
     PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject, Unit,
     WorldMembership, MAIN_BRANCH,
 };
