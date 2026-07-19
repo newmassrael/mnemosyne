@@ -1001,6 +1001,22 @@ fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
     }
 }
 
+/// Round 718 — the DECLARED unit of a numeric operand (the R706-deferred
+/// unit-blindness fix). Only a `Quantity` carries a registered unit; a bare
+/// scalar (a numeric Entity id / Token) has NONE. Interval arithmetic
+/// (`value(left) − value(right)`) is meaningful only when both operands share
+/// one unit, so two operands are UNIT-COMPATIBLE iff this is EQUAL for both
+/// (both `None` = both unitless, the Round 489 all-scalar legacy = compatible;
+/// both `Some(u)` = the same registered unit; `Some` vs `None`, or two
+/// different units = a mismatch surfaced as `interval_unverifiable`, never a
+/// raw-number compare across units).
+fn operand_unit(o: &mnemosyne_core::TypedObject) -> Option<&str> {
+    match o {
+        mnemosyne_core::TypedObject::Quantity { unit, .. } => Some(unit.as_str()),
+        _ => None,
+    }
+}
+
 /// The schema tag every `narrative-rules` file carries; a present-but-wrong
 /// value fails loud (the wrong-version silent-no-op, the same class as an
 /// unknown field).
@@ -2259,10 +2275,14 @@ fn parse_scalar(value: &str) -> Option<f64> {
 /// the evaluation point (Round 489).
 enum Operand<'a> {
     /// Exactly one distinct holding value (one or more facts agreeing on it):
-    /// the parsed number, the object's display string (owned — a `Quantity`'s
-    /// `"{n} {unit}"` is not a borrow of any one field), and the fact id.
+    /// the parsed number, its declared unit (Round 718 — `None` for a bare
+    /// scalar, `Some(u)` for a `Quantity`; carried so the caller can check
+    /// cross-operand unit compatibility), the object's display string (owned — a
+    /// `Quantity`'s `"{n} {unit}"` is not a borrow of any one field), and the
+    /// fact id.
     Value {
         num: f64,
+        unit: Option<String>,
         value: String,
         fact: &'a str,
     },
@@ -2286,7 +2306,7 @@ fn resolve_operand<'a>(
     predicate: &str,
     at: &str,
 ) -> Operand<'a> {
-    let mut resolved: Option<(f64, String, &'a str)> = None;
+    let mut resolved: Option<(f64, Option<String>, String, &'a str)> = None;
     for (gid, g) in facts {
         let Some(gt) = g.typed.as_ref() else { continue };
         if g.frame != frame || gt.subject != subject || gt.predicate != predicate {
@@ -2298,21 +2318,30 @@ fn resolve_operand<'a>(
         let Some(n) = typed_object_scalar(&gt.object) else {
             return Operand::Unverifiable; // non-numeric operand
         };
-        // Round 706 DEFERRED DEBT — the evaluator is UNIT-BLIND: two Quantity
-        // facts `{10,day}` and `{10,minute}` de-dup on `n` alone and the display
-        // is iteration-order-dependent. Unit was newly made numeric here (a
-        // free-text `10 minutes` was previously Unverifiable), so mixed-unit
-        // authoring under ONE predicate is newly reachable. Cross-unit
-        // normalization/segregation is out of scope (design sec 3) — a future
-        // guard, not assumed safe.
-        match resolved {
-            None => resolved = Some((n, typed_object_display(&gt.object), gid.as_str())),
-            Some((existing, _, _)) if existing == n => {} // same value restated
-            Some(_) => return Operand::Unverifiable,      // distinct values: ambiguous
+        // Round 718 (the R706-deferred unit-blindness fix) — DE-DUP on the TYPED
+        // identity `(num, unit)`, NOT on `n` alone: two holding facts `{10,day}`
+        // and `{10,minute}` are DISTINCT values (ambiguous → Unverifiable), not
+        // "the same value restated". `(num, unit)` — NOT the display STRING (review
+        // F1) — so two numerically-equal bare scalars (`"10"` and `"10.0"`, both
+        // unit `None`) still collapse as before (the R489 all-scalar legacy) while
+        // a differing unit still separates. The unit rides along so
+        // `interval_verdict` can reject a cross-unit compare; `display` is carried
+        // only as the reported value.
+        let unit = operand_unit(&gt.object).map(str::to_string);
+        match &resolved {
+            None => resolved = Some((n, unit, typed_object_display(&gt.object), gid.as_str())),
+            // Same value restated iff BOTH the number and the unit match.
+            Some((existing_n, existing_u, _, _)) if *existing_n == n && *existing_u == unit => {}
+            Some(_) => return Operand::Unverifiable, // distinct values: ambiguous
         }
     }
     match resolved {
-        Some((num, value, fact)) => Operand::Value { num, value, fact },
+        Some((num, unit, value, fact)) => Operand::Value {
+            num,
+            unit,
+            value,
+            fact,
+        },
         None => Operand::Absent,
     }
 }
@@ -2384,9 +2413,18 @@ fn interval_verdict(
             typed_object_display(left_object)
         ));
     };
-    let (right_num, right_value, right_fact) =
+    // Round 718 — the diff's unit is the left operand's; every other numeric
+    // operand it is combined with (right, a predicate bound) must share it, or
+    // the arithmetic crosses units and is Unverifiable, never a raw compare.
+    let left_unit = operand_unit(left_object).map(str::to_string);
+    let (right_num, right_unit, right_value, right_fact) =
         match resolve_operand(facts, ctx, frame, subject, right_pred, at) {
-            Operand::Value { num, value, fact } => (num, value, fact.to_string()),
+            Operand::Value {
+                num,
+                unit,
+                value,
+                fact,
+            } => (num, unit, value, fact.to_string()),
             Operand::Absent => {
                 return unver(format!("right operand `{right_pred}` has no holding value"))
             }
@@ -2396,10 +2434,32 @@ fn interval_verdict(
                 ))
             }
         };
+    if left_unit != right_unit {
+        return unver(format!(
+            "left `{}` and right `{right_pred}` have mismatched units ({} vs {}) — \
+             the difference is not defined across units",
+            typed_object_display(left_object),
+            left_unit.as_deref().unwrap_or("<none>"),
+            right_unit.as_deref().unwrap_or("<none>")
+        ));
+    }
     let (bound_num, bound_str) = match bound {
+        // A `const` bound is an author-written bare number, read in the diff's
+        // own unit by convention (the Round 489 legacy) — unit-agnostic.
         IntervalBound::Const(c) => (*c, c.to_string()),
         IntervalBound::Predicate(bp) => match resolve_operand(facts, ctx, frame, subject, bp, at) {
-            Operand::Value { num, value, .. } => (num, value),
+            Operand::Value {
+                num, unit, value, ..
+            } => {
+                if unit != left_unit {
+                    return unver(format!(
+                        "bound `{bp}` unit ({}) does not match the difference's unit ({})",
+                        unit.as_deref().unwrap_or("<none>"),
+                        left_unit.as_deref().unwrap_or("<none>")
+                    ));
+                }
+                (num, value)
+            }
             Operand::Absent => return unver(format!("bound `{bp}` has no holding value")),
             Operand::Unverifiable => {
                 return unver(format!("bound `{bp}` is non-numeric or ambiguous"))
@@ -12632,6 +12692,236 @@ mod tests {
             "a 6-day gap on Quantity operands is clean: {:?}",
             report.violations
         );
+    }
+
+    /// Round 718 (the R706-deferred unit-blindness fix) — two operands with
+    /// DIFFERENT units are NOT subtracted as raw numbers: `15 day − 10 hour` is
+    /// surfaced as `interval_unverifiable`, never a spurious violation/pass. The
+    /// SAME numbers under one unit still gate, proving the guard is not vacuous.
+    #[test]
+    fn interval_mismatched_units_surface_not_gate() {
+        let rule = || NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity {
+            n,
+            unit: u.to_string(),
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // Mismatched units: day vs hour → Unverifiable, no violation.
+        let mixed = store_with(vec![
+            typed_fact(
+                "s",
+                "gt",
+                "ch-1",
+                "codicil",
+                "signed-on-day",
+                qty(10, "hour"),
+            ),
+            typed_fact(
+                "r",
+                "gt",
+                "ch-2",
+                "codicil",
+                "ratified-on-day",
+                qty(15, "day"),
+            ),
+        ]);
+        let report = scan_continuity(&mixed, &order, &[rule()]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "mismatched units must NOT gate a raw-number compare: {:?}",
+            report.violations
+        );
+        assert_eq!(
+            report.interval_unverifiable, 1,
+            "the mismatch is surfaced as unverifiable: {report:?}"
+        );
+        // NON-VACUITY: the SAME numbers under ONE unit gate as before.
+        let same = store_with(vec![
+            typed_fact(
+                "s",
+                "gt",
+                "ch-1",
+                "codicil",
+                "signed-on-day",
+                qty(10, "day"),
+            ),
+            typed_fact(
+                "r",
+                "gt",
+                "ch-2",
+                "codicil",
+                "ratified-on-day",
+                qty(15, "day"),
+            ),
+        ]);
+        let report = scan_continuity(&same, &order, &[rule()]).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "a 5-day gap under one unit still violates >= 6: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 718 — `resolve_operand` de-dups on the COLLISION-FREE identity, so
+    /// two holding facts `{10,day}` and `{10,minute}` for ONE (subject,predicate)
+    /// are DISTINCT (ambiguous → Unverifiable), not silently "the same value".
+    #[test]
+    fn interval_distinct_units_same_number_are_ambiguous() {
+        let rule = NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity {
+            n,
+            unit: u.to_string(),
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // Two DISTINCT right values (10 day, 10 minute) hold together → ambiguous.
+        let store = store_with(vec![
+            typed_fact(
+                "s1",
+                "gt",
+                "ch-1",
+                "codicil",
+                "signed-on-day",
+                qty(10, "day"),
+            ),
+            typed_fact(
+                "s2",
+                "gt",
+                "ch-1",
+                "codicil",
+                "signed-on-day",
+                qty(10, "minute"),
+            ),
+            typed_fact(
+                "r",
+                "gt",
+                "ch-2",
+                "codicil",
+                "ratified-on-day",
+                qty(20, "day"),
+            ),
+        ]);
+        let report = scan_continuity(&store, &order, &[rule]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "distinct-unit same-number values must not collapse into a compare: {:?}",
+            report.violations
+        );
+        assert_eq!(report.interval_unverifiable, 1, "{report:?}");
+    }
+
+    /// Round 718 (review F1) — the de-dup is on `(num, unit)`, NOT the display
+    /// STRING, so two numerically-equal BARE scalars (`"10"` and `"10.0"`, both
+    /// unitless) still collapse as "the same value restated" (the R489 all-scalar
+    /// legacy) instead of regressing to a spurious ambiguity. The rule still
+    /// gates on the single agreed value.
+    #[test]
+    fn interval_numerically_equal_bare_scalars_still_collapse() {
+        let rule = NarrativeRule {
+            id: "min-six".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Const(6.0),
+            },
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // Two textually-different but numerically-equal bare Token values (10, 10.0)
+        // for one (subject, predicate) — the same value restated, not ambiguous.
+        // signed collapses to 10; ratified 13 → a 3-day gap VIOLATES >= 6.
+        let store = store_with(vec![
+            typed_fact("s1", "gt", "ch-1", "codicil", "signed-on-day", at("10")),
+            typed_fact("s2", "gt", "ch-1", "codicil", "signed-on-day", at("10.0")),
+            typed_fact("r", "gt", "ch-2", "codicil", "ratified-on-day", at("13")),
+        ]);
+        let report = scan_continuity(&store, &order, &[rule]).unwrap();
+        assert_eq!(
+            report.interval_unverifiable, 0,
+            "10 and 10.0 are one value restated, not ambiguous: {report:?}"
+        );
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "a 3-day gap still gates >= 6 on the collapsed value: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 718 — a PREDICATE bound whose unit differs from the difference's
+    /// unit is Unverifiable (the bound comparison is also unit-checked).
+    #[test]
+    fn interval_predicate_bound_unit_mismatch_surfaces() {
+        let rule = NarrativeRule {
+            id: "gap".to_string(),
+            predicate: "ratified-on-day".to_string(),
+            spec: NarrativeRuleSpec::Interval {
+                right: "signed-on-day".to_string(),
+                op: IntervalOp::Ge,
+                bound: IntervalBound::Predicate("min-gap".to_string()),
+            },
+        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity {
+            n,
+            unit: u.to_string(),
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // diff is in `day`; the bound is in `hour` → mismatch → Unverifiable.
+        let store = store_with(vec![
+            typed_fact(
+                "s",
+                "gt",
+                "ch-1",
+                "codicil",
+                "signed-on-day",
+                qty(10, "day"),
+            ),
+            typed_fact(
+                "r",
+                "gt",
+                "ch-2",
+                "codicil",
+                "ratified-on-day",
+                qty(15, "day"),
+            ),
+            typed_fact("b", "gt", "ch-1", "codicil", "min-gap", qty(6, "hour")),
+        ]);
+        let report = scan_continuity(&store, &order, &[rule]).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleIntervalViolation { .. })),
+            "a bound in a different unit must not gate: {:?}",
+            report.violations
+        );
+        assert_eq!(report.interval_unverifiable, 1, "{report:?}");
     }
 
     /// A non-numeric operand is SURFACED as `interval_unverifiable`, never a

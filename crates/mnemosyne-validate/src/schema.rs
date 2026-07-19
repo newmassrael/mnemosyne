@@ -349,7 +349,12 @@ pub fn describe_schema() -> SchemaContract {
              interval → \
              \"right\": <predicate id>, \"op\": \"ge\"|\"le\"|\"eq\"|\"gt\"|\"lt\", \"bound\": { \
              \"const\": number } | { \"predicate\": <predicate id> } (a TAGGED object, never a \
-             bare number). The parser is fail-loud on unknown or class-mismatched legs (a \
+             bare number). The relation is `value(left) − value(right) op bound`; the two operands \
+             (and a predicate bound) must share ONE unit — a `Quantity{n,unit}` carries a \
+             registered unit, a bare numeric token has none, and MISMATCHED units (day vs hour, or \
+             typed vs bare) are SURFACED as `interval_unverifiable`, never subtracted as raw \
+             numbers (Round 718); a `const` bound is read in the difference's own unit (it has no \
+             unit slot). The parser is fail-loud on unknown or class-mismatched legs (a \
              transition carrying `per`, or a bare-number `bound`, rejects). WIRE the file via \
              `[continuity].rules_path = \"<file>\"` in mnemosyne.toml (+ an optional \
              `rules_sha256` pin, like the canon order); `--rules <file>` overrides it. Authoring \
