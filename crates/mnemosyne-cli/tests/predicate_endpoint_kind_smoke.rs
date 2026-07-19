@@ -82,7 +82,7 @@ fn predicate_endpoint_kind_gate_end_to_end() {
             "--predicate",
             "bad",
             "--object-kind",
-            "scalar",
+            "quantity",
             "--object-entity-kind",
             "place",
             "--description",
@@ -91,7 +91,7 @@ fn predicate_endpoint_kind_gate_end_to_end() {
     );
     assert!(!out.status.success());
     assert!(
-        stderr(&out).contains("scalar cannot carry"),
+        stderr(&out).contains("cannot carry an object-entity-kind"),
         "{}",
         stderr(&out)
     );

@@ -324,7 +324,9 @@ fn add_predicate_and_typed_fact_end_to_end() {
             "--predicate",
             "alive",
             "--object-kind",
-            "scalar",
+            "token",
+            "--object-tokens",
+            "operational",
             "--description",
             "life state",
         ],
@@ -375,7 +377,7 @@ fn add_predicate_and_typed_fact_end_to_end() {
             "kara",
             "--typed-predicate",
             "alive",
-            "--typed-object-value",
+            "--typed-object-token",
             "operational",
         ],
     );
@@ -384,7 +386,7 @@ fn add_predicate_and_typed_fact_end_to_end() {
     assert_eq!(store["narrative_facts"]["f1"]["typed"]["subject"], "kara");
     assert_eq!(
         store["narrative_facts"]["f1"]["typed"]["object"]["kind"],
-        "value"
+        "token"
     );
-    assert_eq!(store["predicates"]["alive"]["object_kind"], "scalar");
+    assert_eq!(store["predicates"]["alive"]["object_kind"], "token");
 }

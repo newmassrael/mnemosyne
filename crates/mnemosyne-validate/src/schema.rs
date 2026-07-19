@@ -77,8 +77,8 @@ pub struct SchemaContract {
     /// manifest (Round 595, unattended-loop-experiment/v1 Finding 1). The field
     /// specs above give the SEMANTIC contract (names + types); this gives the
     /// SERIALIZATION an agent must emit — registry key names, the typed-object
-    /// enum tagging (incl. the `scalar` object_kind → `value` wire tag), the
-    /// `first_at` tuple shape — plus a complete worked example. Without this an
+    /// enum tagging (one wire tag per object_kind), the `first_at` tuple shape —
+    /// plus a complete worked example. Without this an
     /// agent must reverse-engineer the serializer from parse errors.
     pub manifest_wire: ManifestWireSpec,
     /// The canon ORDER a store needs to be RENDERABLE (Round 596,
@@ -123,8 +123,8 @@ pub struct ManifestWireSpec {
     pub overview: &'static str,
     /// Per-kind serialized JSON key names (what the parser reads).
     pub kinds: Vec<KindWire>,
-    /// The typed leg's object enum wire tagging — INCLUDING the naming quirk
-    /// that a `scalar` predicate object_kind serializes with the tag `value`.
+    /// The typed leg's object enum wire tagging — one wire tag per object_kind
+    /// (Round 708 removed the `scalar`→`value` naming quirk with the value shape).
     pub typed_object_wire: &'static str,
     /// A complete, valid worked example: copy it and adapt. Parses through the
     /// real manifest parser (a test pins it, so it cannot silently drift).
@@ -221,7 +221,7 @@ pub struct QuestPredicate {
     pub object_shape: &'static str,
     /// Round 631 — the MACHINE-READABLE required object kind, the SSOT the
     /// validate-layer quest-shape guard reads. `None` = both kinds are allowed
-    /// (`completed_by`, whose object is an entity actor OR a scalar discharger).
+    /// (`completed_by`, whose object is an entity actor OR a token discharger).
     ///
     /// Round 636 — this doc used to claim the prose `object_shape` and this
     /// field "cannot drift". NOTHING BOUND THEM, so it was the same unbacked
@@ -273,7 +273,7 @@ pub fn describe_schema() -> SchemaContract {
             An optional TYPED leg gives a fact a machine-readable subject-predicate-object \
             reading, authored in the same act as the prose (never NLP-derived) — the typed \
             subset is what the deterministic rule gate covers. Nothing fiction-shaped is \
-            enforced: entity kinds and scalar values are consumer vocabulary (sec 6 inv4).",
+            enforced: entity kinds, token vocabularies, and units are consumer vocabulary (sec 6 inv4).",
         registries: registries(),
         fact: fact_spec(),
         typed_claim: typed_claim_spec(),
@@ -402,7 +402,9 @@ fn manifest_wire() -> ManifestWireSpec {
             },
             KindWire {
                 kind: "predicates",
-                json_keys: "{ \"predicate_id\": string, \"object_kind\": \"entity\"|\"scalar\", \
+                json_keys: "{ \"predicate_id\": string, \"object_kind\": \
+                    \"entity\"|\"token\"|\"quantity\"|\"fact\", \"object_tokens\"?: [string, …] \
+                    (REQUIRED non-empty under object_kind=token — the closed vocabulary), \
                     \"subject_kind\"?: entity_kind, \"object_entity_kind\"?: entity_kind, \
                     \"description\"?: string }",
             },
@@ -429,27 +431,25 @@ fn manifest_wire() -> ManifestWireSpec {
         typed_object_wire:
             "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
              id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with four \
-             variants matching the predicate's object_kind: for `entity`, write { \"kind\": \
-             \"entity\", \"id\": entity id }; for `scalar`, write { \"kind\": \"value\", \
-             \"value\": string }; for `token` (R705), write { \"kind\": \"token\", \"token\": \
+             registered variants matching the predicate's object_kind (Round 708 removed the \
+             free-text `scalar`/`value` shape — every machine-slot object is now enumerable; free \
+             text lives only in the prose `claim`): for `entity`, write { \"kind\": \"entity\", \
+             \"id\": entity id }; for `token` (R705), write { \"kind\": \"token\", \"token\": \
              string } where the token MUST be a member of the predicate's declared object_tokens \
              (a token outside the closed set rejects); for `quantity` (R706), write { \"kind\": \
              \"quantity\", \"n\": integer, \"unit\": unit id } where `unit` MUST be a registered \
              unit (add-unit first; an unregistered unit rejects); for `fact` (R707), write \
              { \"kind\": \"fact\", \"id\": fact id } referencing another fact of this store \
              (existence checked in phase 2 against store + same-manifest staged; self-reference \
-             rejects; the fact cannot be retracted while referenced). NOTE the deliberate naming: the \
-             predicate's object_kind is spelled `scalar`, but the object's wire tag for that \
-             shape is `value` (the object_KIND vs the runtime object shape) — write `value`, not \
-             `scalar`. The subject and any entity-shaped object must ALSO appear in the fact's \
-             `entities` list.",
+             rejects; the fact cannot be retracted while referenced). The subject and any \
+             entity-shaped object must ALSO appear in the fact's `entities` list.",
         example_json: MANIFEST_EXAMPLE_JSON,
     }
 }
 
 /// A complete, valid `import-facts` manifest — the copy-and-adapt template
 /// (Round 595). Exercises every kind and the load-bearing serialization quirks:
-/// a fork branch (`forks_from` string), a scalar typed object (`kind`:`value`),
+/// a fork branch (`forks_from` string), a token typed object (`kind`:`token`),
 /// an entity typed object (`kind`:`entity`), a setup/payoff pair, and a
 /// disclosure override with a `first_at` `[branch, section]` pin. Section ids
 /// are illustrative — serde does not check them (the store validator does). A
@@ -469,7 +469,7 @@ const MANIFEST_EXAMPLE_JSON: &str = r#"{
   ],
   "predicates": [
     { "predicate_id": "held_by", "object_kind": "entity", "description": "custody" },
-    { "predicate_id": "state", "object_kind": "scalar", "description": "an item's state" }
+    { "predicate_id": "state", "object_kind": "token", "object_tokens": ["hidden", "taken"], "description": "an item's state" }
   ],
   "facts": [
     {
@@ -478,7 +478,7 @@ const MANIFEST_EXAMPLE_JSON: &str = r#"{
       "evidence": ["sc-01"], "entities": ["e-relic"],
       "payoff_expectation": "expected",
       "typed": { "subject": "e-relic", "predicate": "state",
-                 "object": { "kind": "value", "value": "hidden" } }
+                 "object": { "kind": "token", "token": "hidden" } }
     },
     {
       "fact_id": "f-payoff", "frame": "ground-truth", "branch": "road-b",
@@ -599,10 +599,11 @@ fn registries() -> Vec<RegistrySpec> {
             description: "Typed-claim predicates. LOAD-BEARING: narrative rules key off a \
                 predicate id, so a typo would silently escape its rule — hence a strict \
                 registry (unlike the free-form entity kind). Each predicate declares its object \
-                shape (entity | scalar | token | quantity | fact), enforced on every typed leg; a \
-                `token` predicate also declares a closed `object_tokens` vocabulary the object \
-                must be a member of, a `quantity` object's unit must be a registered unit, and a \
-                `fact` object references another fact (phase-2 existence + delete-guard).",
+                shape (entity | token | quantity | fact — R708 removed free-text scalar), enforced \
+                on every typed leg; a `token` predicate also declares a closed `object_tokens` \
+                vocabulary the object must be a member of, a `quantity` object's unit must be a \
+                registered unit, and a `fact` object references another fact (phase-2 existence + \
+                delete-guard).",
         },
         RegistrySpec {
             name: "units",
@@ -988,11 +989,6 @@ fn predicate_object_kind_values() -> Vec<EnumValue> {
                 "the object leg names a registered entity that is \
                 also a member of the fact's entities list (locations, custody targets)"
             }
-            PredicateObjectKind::Scalar => {
-                "the object leg is a FREE-TEXT consumer-vocabulary value string \
-                (`alive`, `undead`) — not enumerable; the pre-Round-705 slot being \
-                closed by the object-shape-closure arc (prefer `token`)"
-            }
             PredicateObjectKind::Token => {
                 "the object leg is a member of the predicate's CLOSED, declared \
                 vocabulary (`object_tokens`) — enumerable, so the substrate can answer \
@@ -1059,7 +1055,7 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             movement between PLACES is gated; the edges are store facts, not a \
                             file list. Each edge's legs are OBJECT KEYS (a registered entity id \
                             when the adjacency predicate's `object_kind` is `entity`, else the \
-                            scalar value).",
+                            token value).",
                     },
                     FieldSpec {
                         name: "undirected",
@@ -1085,7 +1081,7 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
             },
             RuleClass::Interval => RuleClassSpec {
                 class: "interval",
-                description: "A scalar/arithmetic relation over numeric typed legs, same \
+                description: "A numeric/arithmetic relation over numeric typed legs, same \
                     subject: value(left_predicate) - value(right) `op` bound. Expresses \
                     constraints the equality/exclusivity gates cannot; a non-numeric operand is \
                     surfaced (interval_unverifiable), never silently passed.",
@@ -1123,7 +1119,7 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
 
 /// Round 631 — the quest predicates and their REQUIRED object kind, read by the
 /// validate-layer quest-shape guard (`continuity::check_quest_predicate_shapes`)
-/// so a store cannot hold a `requires`/`pursues` fact with a scalar object where
+/// so a store cannot hold a `requires`/`pursues` fact with a non-entity object where
 /// the contract declares an entity. Derived from the ONE contract in
 /// `quest_encoding` — the guard shares the SSOT with `describe-schema`, never a
 /// second hardcoded list (the R629 drift class). `None` = both kinds allowed.
@@ -1163,7 +1159,7 @@ fn quest_encoding() -> QuestEncoding {
                 predicate: QUEST_PRED_COMPLETED_BY,
                 role: "a quest (subject) is DISCHARGED by an actor (object) on a road — the \
                     carrying fact also `pays_off` the quest's giving setup.",
-                object_shape: "entity or scalar value (the discharger)",
+                object_shape: "entity or token (the discharger)",
                 required_object_kind: None,
             },
         ],
@@ -1220,7 +1216,8 @@ fn invariants() -> Vec<Invariant> {
         Invariant {
             name: "object-shape-match",
             rule: "the typed object's shape must match the predicate's declared object_kind \
-                (entity vs scalar); a scalar value must be non-empty.",
+                (entity | token | quantity | fact); a token must be a declared-vocabulary \
+                member, a quantity's unit a registered unit, and a fact ref must resolve.",
             enforced_at: mutate,
         },
         Invariant {
@@ -1301,14 +1298,14 @@ mod tests {
                 ),
                 // `None` = both kinds legal; the prose must not read as a single
                 // fixed shape, so it has to name BOTH (completed_by: "entity or
-                // scalar value"). Without this arm the None case is unpinned and
-                // the test would be half-vacuous.
+                // token"). Without this arm the None case is unpinned and the
+                // test would be half-vacuous. (Round 708 — the second shape is
+                // `token`, the free-text scalar having been removed.)
                 None => {
                     let names_both = PredicateObjectKind::Entity.as_str();
-                    let names_scalar = PredicateObjectKind::Scalar.as_str();
+                    let names_token = PredicateObjectKind::Token.as_str();
                     assert!(
-                        p.object_shape.contains(names_both)
-                            && p.object_shape.contains(names_scalar),
+                        p.object_shape.contains(names_both) && p.object_shape.contains(names_token),
                         "quest predicate `{}` accepts BOTH kinds, but its prose `{}` does not \
                          name both — an author would read one shape as the only legal one",
                         p.predicate,
@@ -1550,43 +1547,34 @@ mod tests {
         fn conforms(object: &TypedObject, kind: PredicateObjectKind) -> bool {
             match (object, kind) {
                 (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
-                (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
                 (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
                 (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
                 (TypedObject::Fact { .. }, PredicateObjectKind::Fact) => true,
-                (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
-                | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+                (TypedObject::Entity { .. }, PredicateObjectKind::Token)
                 | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
                 | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
-                | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
-                | (TypedObject::Value { .. }, PredicateObjectKind::Token)
-                | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
-                | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-                | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
                 | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
-                | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
                 | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
                 | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
-                | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
                 | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
                 | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => false,
             }
         }
 
         // THE SURFACE, measured: every arg combination the CLI flags
-        // (`--typed-object-entity` / `--typed-object-value` / `--typed-object-token`
-        // / `--typed-object-quantity-n` + `--typed-object-quantity-unit` /
-        // `--typed-object-fact`) and the MCP fields can actually send.
+        // (`--typed-object-entity` / `--typed-object-token` /
+        // `--typed-object-quantity-n` + `--typed-object-quantity-unit` /
+        // `--typed-object-fact`) and the MCP fields can actually send (Round 708
+        // removed the free-text value arg).
         let buildable: Vec<TypedObject> = [
-            TypedObject::from_exclusive_args(Some("e".to_string()), None, None, None, None),
-            TypedObject::from_exclusive_args(None, Some("v".to_string()), None, None, None),
-            TypedObject::from_exclusive_args(None, None, Some("t".to_string()), None, None),
-            TypedObject::from_exclusive_args(None, None, None, Some((1, "u".to_string())), None),
-            TypedObject::from_exclusive_args(None, None, None, None, Some("f".to_string())),
+            TypedObject::from_exclusive_args(Some("e".to_string()), None, None, None),
+            TypedObject::from_exclusive_args(None, Some("t".to_string()), None, None),
+            TypedObject::from_exclusive_args(None, None, Some((1, "u".to_string())), None),
+            TypedObject::from_exclusive_args(None, None, None, Some("f".to_string())),
         ]
         .into_iter()
         .flatten()
@@ -1827,12 +1815,13 @@ mod tests {
         assert_eq!(m.entities.len(), 2);
         assert_eq!(m.predicates.len(), 2);
         assert_eq!(m.facts.len(), 2);
-        // the scalar typed object serializes with the tag `value` (the quirk).
+        // the token typed object serializes with the tag `token` (Round 708 —
+        // the free-text scalar/value shape was removed).
         let setup = &m.facts[0];
         assert_eq!(setup.payoff_expectation.as_deref(), Some("expected"));
         match &setup.typed.as_ref().expect("setup has a typed leg").object {
-            mnemosyne_core::TypedObject::Value { value } => assert_eq!(value, "hidden"),
-            other => panic!("scalar object must be the Value variant, got {other:?}"),
+            mnemosyne_core::TypedObject::Token { token } => assert_eq!(token, "hidden"),
+            other => panic!("state object must be the Token variant, got {other:?}"),
         }
         // the entity typed object serializes with the tag `entity` + `id`.
         let payoff = &m.facts[1];
@@ -1922,10 +1911,10 @@ mod tests {
             }],
             predicates: vec![mnemosyne_atomic::PredicateImport {
                 predicate_id: "p".into(),
-                object_kind: "scalar".into(),
+                object_kind: "token".into(),
                 subject_kind: None,
                 object_entity_kind: None,
-                object_tokens: vec![],
+                object_tokens: vec!["v".into()],
                 description: "d".into(),
             }],
             facts: vec![mnemosyne_atomic::FactImport {
@@ -1944,7 +1933,7 @@ mod tests {
                 typed: Some(mnemosyne_core::TypedClaim {
                     subject: "e".into(),
                     predicate: "p".into(),
-                    object: mnemosyne_core::TypedObject::Value { value: "v".into() },
+                    object: mnemosyne_core::TypedObject::Token { token: "v".into() },
                 }),
                 quote: Some("q".into()),
             }],

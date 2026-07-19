@@ -364,10 +364,15 @@ mod tests {
         store.predicates.insert(
             "did".to_string(),
             Predicate {
-                object_kind: PredicateObjectKind::Scalar,
+                // Round 708 — the free-text scalar shape was removed; `did` is a
+                // token predicate whose vocabulary is the states the fixtures use.
+                object_kind: PredicateObjectKind::Token,
                 subject_kind: None,
                 object_entity_kind: None,
-                object_tokens: Default::default(),
+                object_tokens: ["climbed", "fell", "spoke"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
                 description: String::new(),
             },
         );
@@ -377,8 +382,8 @@ mod tests {
         TypedClaim {
             subject: subject.to_string(),
             predicate: "did".to_string(),
-            object: TypedObject::Value {
-                value: value.to_string(),
+            object: TypedObject::Token {
+                token: value.to_string(),
             },
         }
     }

@@ -186,7 +186,7 @@ fn write_rules_workspace(workspace: &Path, continuity_table: &str) {
         "frames": { "gt": {} },
         "entity_kinds": { "character": {} },
         "entities": { "dracula": { "kind": "character" } },
-        "predicates": { "at-location": { "object_kind": "scalar" } },
+        "predicates": { "at-location": { "object_kind": "token", "object_tokens": ["castle", "whitby"] } },
         "narrative_facts": {
             "l1": {
                 "frame": "gt",
@@ -195,7 +195,7 @@ fn write_rules_workspace(workspace: &Path, continuity_table: &str) {
                 "canon_from": "ch-1",
                 "evidence": ["ch-1"],
                 "typed": { "subject": "dracula", "predicate": "at-location",
-                           "object": { "kind": "value", "value": "castle" } }
+                           "object": { "kind": "token", "token": "castle" } }
             },
             "bad": {
                 "frame": "gt",
@@ -204,7 +204,7 @@ fn write_rules_workspace(workspace: &Path, continuity_table: &str) {
                 "canon_from": "ch-2",
                 "evidence": ["ch-2"],
                 "typed": { "subject": "dracula", "predicate": "at-location",
-                           "object": { "kind": "value", "value": "whitby" } }
+                           "object": { "kind": "token", "token": "whitby" } }
             }
         }
     });
@@ -308,11 +308,13 @@ fn write_interval_workspace(workspace: &Path, continuity_table: &str) {
         format!("[workspace]\n{continuity_table}"),
     )
     .unwrap();
-    let scalar = |p: &str, v: &str, from: &str| {
+    // Round 708 — the interval operand is a `token` (the free-text scalar shape
+    // was removed); the interval evaluator reads the numeric token via parse.
+    let tok = |p: &str, v: &str, from: &str| {
         serde_json::json!({
             "frame": "gt", "entities": ["codicil"],
             "claim": format!("{p}={v}"), "canon_from": from, "evidence": [from],
-            "typed": {"subject": "codicil", "predicate": p, "object": {"kind": "value", "value": v}}
+            "typed": {"subject": "codicil", "predicate": p, "object": {"kind": "token", "token": v}}
         })
     };
     let atomic = serde_json::json!({
@@ -323,14 +325,14 @@ fn write_interval_workspace(workspace: &Path, continuity_table: &str) {
         "branches": {},
         "entities": { "codicil": {} },
         "predicates": {
-            "min-ratify-gap-days": { "object_kind": "scalar" },
-            "signed-on-day": { "object_kind": "scalar" },
-            "ratified-on-day": { "object_kind": "scalar" }
+            "min-ratify-gap-days": { "object_kind": "token", "object_tokens": ["42"] },
+            "signed-on-day": { "object_kind": "token", "object_tokens": ["10"] },
+            "ratified-on-day": { "object_kind": "token", "object_tokens": ["15"] }
         },
         "narrative_facts": {
-            "f-rule": scalar("min-ratify-gap-days", "42", "ch-1"),
-            "f-sign": scalar("signed-on-day", "10", "ch-1"),
-            "f-rat": scalar("ratified-on-day", "15", "ch-2")
+            "f-rule": tok("min-ratify-gap-days", "42", "ch-1"),
+            "f-sign": tok("signed-on-day", "10", "ch-1"),
+            "f-rat": tok("ratified-on-day", "15", "ch-2")
         }
     });
     fs::write(

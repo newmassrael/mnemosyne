@@ -879,7 +879,6 @@ fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> String {
 fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     match o {
         mnemosyne_core::TypedObject::Entity { id } => id,
-        mnemosyne_core::TypedObject::Value { value } => value,
         mnemosyne_core::TypedObject::Token { token } => token,
         mnemosyne_core::TypedObject::Quantity { unit, .. } => unit,
         // A `Fact` object's key is the referenced fact id (a single string,
@@ -898,7 +897,6 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
 fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
     match o {
         mnemosyne_core::TypedObject::Entity { id } => id.clone(),
-        mnemosyne_core::TypedObject::Value { value } => value.clone(),
         mnemosyne_core::TypedObject::Token { token } => token.clone(),
         mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
         mnemosyne_core::TypedObject::Fact { id } => id.clone(),
@@ -907,14 +905,14 @@ fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
 
 /// The object leg as a number for the interval evaluator (Round 489/706). A
 /// `Quantity` yields its exact `n` (no parse — the stored integer IS the
-/// amount); the legacy single-string shapes are parsed as before (a timeline
-/// value authored as a free-text scalar still evaluates). `None` = non-numeric,
-/// surfaced by the caller as `interval_unverifiable`, never silently skipped.
+/// amount); the single-string shapes (entity id / token) are parsed as before (a
+/// timeline value authored as a numeric token still evaluates). `None` =
+/// non-numeric, surfaced by the caller as `interval_unverifiable`, never
+/// silently skipped.
 fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
     match o {
         mnemosyne_core::TypedObject::Quantity { n, .. } => Some(*n as f64),
         mnemosyne_core::TypedObject::Entity { id } => parse_scalar(id),
-        mnemosyne_core::TypedObject::Value { value } => parse_scalar(value),
         mnemosyne_core::TypedObject::Token { token } => parse_scalar(token),
         // A fact id (`f-*`) is not a number → non-numeric operand (Unverifiable),
         // never a silent skip.
@@ -2304,7 +2302,7 @@ fn scan_interval_rule(
 /// instead of passing a trimmed check while the evaluation compares exact and
 /// silently matches nothing.
 /// Round 631 — a reserved quest predicate (`pursues` / `requires`) whose object
-/// the contract declares an ENTITY must not carry a scalar object. Without this
+/// the contract declares an ENTITY must not carry a non-entity object. Without this
 /// the malformed fact validated CLEAN and then vanished silently from
 /// `quest_graph` (an `if let Entity` with no else) while `structural_fact_ids`
 /// still counted it by predicate string — two readers disagreeing about one
@@ -2336,9 +2334,6 @@ fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
         let actual = match &claim.object {
             mnemosyne_core::TypedObject::Entity { .. } => {
                 mnemosyne_core::PredicateObjectKind::Entity
-            }
-            mnemosyne_core::TypedObject::Value { .. } => {
-                mnemosyne_core::PredicateObjectKind::Scalar
             }
             mnemosyne_core::TypedObject::Token { .. } => mnemosyne_core::PredicateObjectKind::Token,
             mnemosyne_core::TypedObject::Quantity { .. } => {
@@ -4498,7 +4493,7 @@ pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 /// in BOTH is a reversed/mis-typed slot (an actor sitting in a quest position, or
 /// the reverse) — a fail-loud error, REPLACING the removed marker's silent
 /// tolerance with a louder, better verdict. Calls [`check_quest_predicate_shapes`]
-/// first, so a scalar object on a `pursues`/`requires` leg fails loud rather than
+/// first, so a non-entity object on a `pursues`/`requires` leg fails loud rather than
 /// dropping silently (the R631 `if let Entity` with no else); after it, those
 /// objects are entity-shaped.
 fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
@@ -4841,12 +4836,11 @@ pub fn quest_graph(
                 // subject quest is discharged by the object actor at this fact.
                 // A validated store only reaches the Entity arm — the quest
                 // contract gate (`check_quest_predicate_shapes`) rejects a
-                // non-entity quest object; the other arms are the pre-gate
-                // defensive fallback (Round 706 adds Quantity, 707 adds Fact for
-                // totality).
+                // non-entity quest object; the other arms are the defensive
+                // fallback (Token/Quantity/Fact for totality — Round 708 removed
+                // the free-text Value shape).
                 let actor = match &claim.object {
                     mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
-                    mnemosyne_core::TypedObject::Value { value } => Some(value.clone()),
                     mnemosyne_core::TypedObject::Token { token } => Some(token.clone()),
                     mnemosyne_core::TypedObject::Quantity { n, unit } => {
                         Some(format!("{n} {unit}"))
@@ -5338,6 +5332,18 @@ mod tests {
                 description: String::new(),
             })
             .collect();
+        // Round 708 — a token object needs its value in the predicate's declared
+        // vocabulary (build_predicate rejects an empty token vocab), so gather
+        // the tokens in use per predicate, mirroring the units above.
+        let mut token_vocab: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for t in facts.iter().filter_map(|f| f.typed.as_ref()) {
+            if let mnemosyne_core::TypedObject::Token { token } = &t.object {
+                token_vocab
+                    .entry(t.predicate.clone())
+                    .or_default()
+                    .insert(token.clone());
+            }
+        }
         let predicates = facts
             .iter()
             .filter_map(|f| f.typed.as_ref())
@@ -5346,7 +5352,6 @@ mod tests {
                     t.predicate.clone(),
                     match t.object {
                         mnemosyne_core::TypedObject::Entity { .. } => "entity",
-                        mnemosyne_core::TypedObject::Value { .. } => "scalar",
                         mnemosyne_core::TypedObject::Token { .. } => "token",
                         mnemosyne_core::TypedObject::Quantity { .. } => "quantity",
                         mnemosyne_core::TypedObject::Fact { .. } => "fact",
@@ -5357,11 +5362,14 @@ mod tests {
             .into_iter()
             .map(
                 |(predicate_id, object_kind)| mnemosyne_atomic::PredicateImport {
+                    object_tokens: token_vocab
+                        .get(&predicate_id)
+                        .map(|s| s.iter().cloned().collect())
+                        .unwrap_or_default(),
                     predicate_id,
                     object_kind: object_kind.to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
-                    object_tokens: vec![],
                     description: String::new(),
                 },
             )
@@ -6313,14 +6321,17 @@ mod tests {
     }
 
     /// Round 485 — deterministic payoff substantiation. Set a typed leg on a
-    /// FactImport (registers the entity + predicate via `derived_registries`).
+    /// FactImport (registers the entity + predicate + token vocab via
+    /// `derived_registries`). Round 708 — the state value is a `Token` (the
+    /// free-text scalar shape was removed); the derived predicate is token-kind
+    /// with the value in its declared vocabulary.
     fn typed_value(mut f: FactImport, subject: &str, predicate: &str, value: &str) -> FactImport {
         f.entities = vec![subject.to_string()];
         f.typed = Some(mnemosyne_core::TypedClaim {
             subject: subject.to_string(),
             predicate: predicate.to_string(),
-            object: mnemosyne_core::TypedObject::Value {
-                value: value.to_string(),
+            object: mnemosyne_core::TypedObject::Token {
+                token: value.to_string(),
             },
         });
         f
@@ -6703,9 +6714,13 @@ mod tests {
         }
     }
 
+    // Round 708 — the interval/state operand is a `Token` (free-text scalar
+    // removed); the interval evaluator reads a numeric token via parse, a
+    // non-numeric one surfaces Unverifiable exactly as before. `derived_registries`
+    // gives the predicate its token vocabulary.
     fn at(value: &str) -> TypedObject {
-        TypedObject::Value {
-            value: value.to_string(),
+        TypedObject::Token {
+            token: value.to_string(),
         }
     }
 
@@ -6744,8 +6759,9 @@ mod tests {
     /// Author the undirected edges a transition rule reads (Round 697): one
     /// `adjacency(a, b)` fact per pair, under the `adjacency` predicate. The
     /// eval symmetrizes, so only the forward direction need be authored. The
-    /// object leg is a scalar VALUE (matching the `at()` state fixtures);
-    /// `derived_registries` registers the predicate as `scalar` from it.
+    /// object leg is a TOKEN (matching the `at()` state fixtures; Round 708
+    /// removed the free-text scalar); `derived_registries` registers the
+    /// predicate as `token` with the derived vocabulary from it.
     fn adjacency_facts(adjacency: &str, pairs: &[(&str, &str)]) -> Vec<FactImport> {
         pairs
             .iter()
@@ -7246,7 +7262,7 @@ mod tests {
 
     /// A `contains(region, node)` fact under the given containment predicate,
     /// entity endpoints (Round 703 G2 fixtures). Distinct from `adjacency_facts`,
-    /// whose object leg is a scalar VALUE — G2 completeness enumerates ENTITIES,
+    /// whose object leg is a TOKEN — G2 completeness enumerates ENTITIES,
     /// so both legs must be real registered entities (`holds`).
     fn map_edge(a: &str, b: &str) -> FactImport {
         typed_fact(&format!("e-{a}-{b}"), "gt", "ch-1", a, "adjacent", holds(b))
@@ -9082,12 +9098,16 @@ mod tests {
     /// `scan_continuity` too.
     #[test]
     fn malformed_quest_object_is_refused_by_every_reader() {
-        fn scalar_claim(subject: &str, predicate: &str, value: &str) -> mnemosyne_core::TypedClaim {
+        // Round 708 — a non-entity (token) object under a quest predicate: the
+        // quest contract requires an entity, so every reader refuses it (the
+        // free-text scalar shape this once used was removed; token exercises the
+        // same non-entity refusal).
+        fn token_claim(subject: &str, predicate: &str, value: &str) -> mnemosyne_core::TypedClaim {
             mnemosyne_core::TypedClaim {
                 subject: subject.to_string(),
                 predicate: predicate.to_string(),
-                object: mnemosyne_core::TypedObject::Value {
-                    value: value.to_string(),
+                object: mnemosyne_core::TypedObject::Token {
+                    token: value.to_string(),
                 },
             }
         }
@@ -9112,7 +9132,7 @@ mod tests {
                 "ch-1",
                 None,
                 &["q-a", "q-b"],
-                scalar_claim("q-b", pred, "q-a"),
+                token_claim("q-b", pred, "q-a"),
                 &[],
             )]);
             plan(&mut store);

@@ -617,7 +617,8 @@ pub fn cmd_add_unit(workspace_root: &Path, args: &[String]) -> Result<(), CliErr
 }
 
 /// Round 446 — register one predicate (fourth registry; load-bearing refs
-/// the narrative rules key off). `--object-kind entity|scalar` mandatory.
+/// the narrative rules key off). `--object-kind entity|token|quantity|fact`
+/// mandatory (Round 708 removed free-text `scalar`).
 /// Round 701 — optional `--subject-kind` / `--object-entity-kind` declare the
 /// required endpoint entity-kind (registered `entity_kinds`); the write path
 /// then rejects a fact whose endpoint is not that kind (the spatial-map gate).
@@ -1090,7 +1091,6 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
     let mut typed_subject: Option<String> = None;
     let mut typed_predicate: Option<String> = None;
     let mut typed_object_entity: Option<String> = None;
-    let mut typed_object_value: Option<String> = None;
     let mut typed_object_token: Option<String> = None;
     let mut typed_object_quantity_n: Option<String> = None;
     let mut typed_object_quantity_unit: Option<String> = None;
@@ -1194,13 +1194,6 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
                         .clone(),
                 )
             }
-            "--typed-object-value" => {
-                typed_object_value = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--typed-object-value missing"))?
-                        .clone(),
-                )
-            }
             "--typed-object-token" => {
                 typed_object_token = Some(
                     iter.next()
@@ -1271,24 +1264,21 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         typed_subject,
         typed_predicate,
         typed_object_entity,
-        typed_object_value,
         typed_object_token,
         typed_object_quantity,
         typed_object_fact,
     ) {
-        (None, None, None, None, None, None, None) => None,
+        (None, None, None, None, None, None) => None,
         (
             Some(subject),
             Some(predicate),
             object_entity,
-            object_value,
             object_token,
             object_quantity,
             object_fact,
         ) => {
             let object = mnemosyne_core::TypedObject::from_exclusive_args(
                 object_entity,
-                object_value,
                 object_token,
                 object_quantity,
                 object_fact,
@@ -1302,7 +1292,7 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
         }
         _ => bail!(
             "typed leg is all-or-nothing: --typed-subject + --typed-predicate + one of \
-             --typed-object-entity | --typed-object-value | --typed-object-token | \
+             --typed-object-entity | --typed-object-token | \
              (--typed-object-quantity-n + --typed-object-quantity-unit) | --typed-object-fact"
         ),
     };

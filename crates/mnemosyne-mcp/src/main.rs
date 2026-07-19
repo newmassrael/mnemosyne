@@ -421,7 +421,8 @@ pub struct AddPredicateArgs {
     /// Predicate id — the registry key every TypedClaim predicate must
     /// name. Load-bearing (narrative rules key off it), hence fail-loud.
     pub predicate_id: String,
-    /// Declared object shape: `entity` | `scalar`. Unknown tags reject.
+    /// Declared object shape: `entity` | `token` | `quantity` | `fact` (R708
+    /// removed free-text `scalar`). Unknown tags reject.
     pub object_kind: String,
     /// R701 — required entity-KIND for the subject leg (a registered
     /// `entity_kinds` ref; omit = any). The write path rejects a fact whose
@@ -429,7 +430,7 @@ pub struct AddPredicateArgs {
     #[serde(default)]
     pub subject_kind: Option<String>,
     /// R701 — required entity-KIND for an entity-shaped object leg (omit =
-    /// any). Rejects under `object_kind=scalar` (a scalar object has no kind).
+    /// any). Rejects unless `object_kind=entity` (only an entity object has a kind).
     #[serde(default)]
     pub object_entity_kind: Option<String>,
     /// R705 — the CLOSED object vocabulary. REQUIRED (non-empty) under
@@ -448,8 +449,9 @@ pub struct AddPredicateArgs {
 pub struct SetPredicateArgs {
     /// Predicate id — must ALREADY be registered (`add_predicate` creates).
     pub predicate_id: String,
-    /// New declared object shape: `entity` | `scalar`. A re-type rejects
-    /// while any existing use still holds an object of the old shape.
+    /// New declared object shape: `entity` | `token` | `quantity` | `fact`
+    /// (R708 removed free-text `scalar`). A re-type rejects while any existing
+    /// use still holds an object of the old shape.
     pub object_kind: String,
     /// R701 — new required subject entity-KIND (omit = clear; full replace).
     /// A tighten rejects while any existing use's subject is off-kind.
@@ -1672,7 +1674,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | scalar | token | quantity | fact. R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set — prefer it over free-text `scalar` so the substrate can answer what values this predicate takes. R706 — `quantity` is a number + a registered unit (units registry, add_unit first). R707 — `fact` references another fact of this store (phase-2 existence check, self-ref rejected, delete-guarded). R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
+        description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | token | quantity | fact (R708 removed the free-text `scalar` shape — every machine-slot object is registered/enumerable now, free text lives only in the prose `claim`). R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set. R706 — `quantity` is a number + a registered unit (units registry, add_unit first). R707 — `fact` references another fact of this store (phase-2 existence check, self-ref rejected, delete-guarded). R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
     )]
     async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
         let a = args.0;

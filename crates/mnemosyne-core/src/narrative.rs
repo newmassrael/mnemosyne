@@ -430,14 +430,12 @@ pub struct Unit {
 
 /// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
 /// `Entity` = the object leg names a registered entity (locations, custody
-/// targets); `Scalar` = the object leg is a free-text consumer-vocabulary value
-/// string (`alive`, `undead` — the pre-Round-705 opaque slot, being closed by
-/// the object-shape-closure arc); `Token` = the object leg is a member of a
-/// CLOSED vocabulary DECLARED on the predicate ([`Predicate::object_tokens`],
-/// Round 705) — the enumerable replacement for a free-text scalar, so the
-/// substrate can answer "what values does this predicate take" (the machine slot
-/// stops being blind). The vocabulary itself stays the consumer's (invariant 4);
-/// the substrate enforces only THAT a token is in the declared set. `Quantity`
+/// targets); `Token` = the object leg is a member of a CLOSED vocabulary
+/// DECLARED on the predicate ([`Predicate::object_tokens`], Round 705) — the
+/// enumerable replacement for the removed free-text scalar, so the substrate can
+/// answer "what values does this predicate take" (the machine slot is never
+/// blind). The vocabulary itself stays the consumer's (invariant 4); the
+/// substrate enforces only THAT a token is in the declared set. `Quantity`
 /// (Round 706) = the object leg is a number + a REGISTERED unit
 /// ([`TypedObject::Quantity`]): the amount slot for timeline/measurement facts,
 /// with the unit a ref into the store's `units` registry (fail-loud, never free
@@ -447,13 +445,15 @@ pub struct Unit {
 /// ([`TypedObject::Fact`]) — a typed fact-ref with two-way referential
 /// integrity (existence checked in PHASE 2 against store ∪ staged, so a legal
 /// same-manifest forward ref is not rejected; the delete path refuses to orphan
-/// it). The builder checks the typed leg's object against this declaration — a
-/// shape or vocabulary mismatch is a write-time reject, not a scan finding.
+/// it). Round 708 REMOVED the free-text `Scalar` shape (with `TypedObject::Value`)
+/// — the last unenumerable machine slot; free text now lives ONLY in the fact's
+/// prose `claim`, and every typed object is registered/enumerable. The builder
+/// checks the typed leg's object against this declaration — a shape or
+/// vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PredicateObjectKind {
     Entity,
-    Scalar,
     Token,
     Quantity,
     Fact,
@@ -464,7 +464,6 @@ impl PredicateObjectKind {
     pub fn as_str(self) -> &'static str {
         match self {
             PredicateObjectKind::Entity => "entity",
-            PredicateObjectKind::Scalar => "scalar",
             PredicateObjectKind::Token => "token",
             PredicateObjectKind::Quantity => "quantity",
             PredicateObjectKind::Fact => "fact",
@@ -476,7 +475,6 @@ impl PredicateObjectKind {
     pub fn from_tag(s: &str) -> Option<Self> {
         match s {
             "entity" => Some(PredicateObjectKind::Entity),
-            "scalar" => Some(PredicateObjectKind::Scalar),
             "token" => Some(PredicateObjectKind::Token),
             "quantity" => Some(PredicateObjectKind::Quantity),
             "fact" => Some(PredicateObjectKind::Fact),
@@ -509,8 +507,8 @@ pub struct Predicate {
     pub subject_kind: Option<String>,
     /// Round 701 — required entity-KIND for an ENTITY-shaped OBJECT leg (a
     /// registered `entity_kinds` ref; `None` = any). Only meaningful when
-    /// `object_kind = Entity`; the builder REJECTS `Some` under
-    /// `object_kind = Scalar` (a scalar object has no entity kind), so the
+    /// `object_kind = Entity`; the builder REJECTS `Some` under any non-entity
+    /// kind (a token / quantity / fact object has no entity kind), so the
     /// nonsensical pairing is unreachable through the mutate API.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_entity_kind: Option<String>,
@@ -532,8 +530,10 @@ pub struct Predicate {
 
 /// The object leg of a [`TypedClaim`] — shaped by real data (design sec 7.12):
 /// locations/custody objects are entities; state values are consumer-vocabulary
-/// tokens (a closed declared set, Round 705) or the legacy free-text scalar.
-/// Serde-tagged, no stringly union.
+/// tokens (a closed declared set, Round 705). Round 708 removed the free-text
+/// `Value` variant — EVERY machine-slot object is now registered/enumerable
+/// (Entity / Token / Quantity / Fact); free text lives ONLY in the prose
+/// `claim`. Serde-tagged, no stringly union.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -541,14 +541,11 @@ pub enum TypedObject {
     /// A registered entity id (must also be a member of the owning fact's
     /// `entities` list — the entities list stays THE retrieval key).
     Entity { id: String },
-    /// A free-text consumer-vocabulary value (`alive`, `undead`, …). The
-    /// pre-Round-705 opaque slot the substrate cannot enumerate — being closed by
-    /// the object-shape-closure arc (`Token` is its enumerable replacement).
-    Value { value: String },
     /// A member of the predicate's CLOSED, declared vocabulary
-    /// ([`Predicate::object_tokens`], Round 705). Distinct from `Value`: the
-    /// substrate CAN enumerate the legal set, so self-extraction is not blind
-    /// here. The write path rejects a token outside the declared set.
+    /// ([`Predicate::object_tokens`], Round 705) — the enumerable replacement for
+    /// the removed free-text `Value`: the substrate CAN enumerate the legal set,
+    /// so self-extraction is not blind. The write path rejects a token outside
+    /// the declared set.
     Token { token: String },
     /// A number + a REGISTERED unit (Round 706 — the amount slot for
     /// timeline/measurement facts, e.g. `signed-on-day = Quantity{10, day}`).
@@ -571,41 +568,28 @@ pub enum TypedObject {
 
 impl TypedObject {
     /// Resolve the flattened CLI arg surface (`--typed-object-entity` /
-    /// `--typed-object-value` / `--typed-object-token`) into the object leg — the
-    /// exactly-one rule lives here (Round 448). The MCP surface does NOT route
-    /// here: since Round 692 it accepts the `TypedObject` enum directly through its
-    /// JsonSchema (a new variant is auto-exposed), so the enum's own shape is the
-    /// forcing function there. Shape-vs-predicate validation stays in the store
-    /// builder; this is pure arg resolution.
+    /// `--typed-object-token` / `--typed-object-quantity-*` / `--typed-object-fact`)
+    /// into the object leg — the exactly-one rule lives here (Round 448). The MCP
+    /// surface does NOT route here: since Round 692 it accepts the `TypedObject`
+    /// enum directly through its JsonSchema (a new variant is auto-exposed), so
+    /// the enum's own shape is the forcing function there. Shape-vs-predicate
+    /// validation stays in the store builder; this is pure arg resolution.
     ///
-    /// Round 705 — the `token` parameter is the arity change the R660 oracle
+    /// The `token` (Round 705) / `quantity` (Round 706) / `fact` (Round 707)
+    /// parameters are each the arity change the R660 oracle
     /// (`every_declared_object_kind_is_satisfiable_from_the_arg_surface`) forced
-    /// when `PredicateObjectKind::Token` was added: without it that test fails,
-    /// and adding it breaks every CLI call site so the flag cannot
-    /// be left unwired — the R625/R659 half-wired-green defense.
-    ///
-    /// Round 706 — the `quantity` parameter (an `(n, unit)` pair, since a
-    /// [`TypedObject::Quantity`] carries two fields) is the same oracle-forced
-    /// arity change for `PredicateObjectKind::Quantity`. The CLI pairs its
-    /// `--typed-object-quantity-n` / `--typed-object-quantity-unit` flags into
-    /// this `Some((n, unit))` (both-or-neither) before resolution, so the
-    /// exactly-one-shape rule counts a quantity as a single candidate.
-    ///
-    /// Round 707 — the `fact` parameter is the same oracle-forced arity change
-    /// for `PredicateObjectKind::Fact` (`--typed-object-fact`). The existence /
-    /// self-ref check is NOT here (nor in the store builder) — it is a PHASE 2
-    /// referential check, because a fact-ref has staging semantics; this stays
-    /// pure arg resolution.
+    /// when its `PredicateObjectKind` variant was added — the arity change breaks
+    /// every CLI call site so the flag cannot be left unwired (the R625/R659
+    /// half-wired-green defense). Round 708 removed the `value` parameter with the
+    /// free-text `Value` shape.
     pub fn from_exclusive_args(
         entity: Option<String>,
-        value: Option<String>,
         token: Option<String>,
         quantity: Option<(i64, String)>,
         fact: Option<String>,
     ) -> Result<Self, String> {
         let candidates: Vec<TypedObject> = [
             entity.map(|id| TypedObject::Entity { id }),
-            value.map(|value| TypedObject::Value { value }),
             token.map(|token| TypedObject::Token { token }),
             quantity.map(|(n, unit)| TypedObject::Quantity { n, unit }),
             fact.map(|id| TypedObject::Fact { id }),
@@ -616,12 +600,12 @@ impl TypedObject {
         match candidates.len() {
             1 => Ok(candidates.into_iter().next().unwrap()),
             0 => Err(
-                "typed leg needs an object: give exactly one of the entity / value / token / \
+                "typed leg needs an object: give exactly one of the entity / token / \
                  quantity / fact object args"
                     .to_string(),
             ),
             _ => Err(
-                "typed leg: the entity / value / token / quantity / fact object args are \
+                "typed leg: the entity / token / quantity / fact object args are \
                  mutually exclusive (give exactly one)"
                     .to_string(),
             ),
@@ -1077,53 +1061,32 @@ mod tests {
     #[test]
     fn typed_object_exclusive_args_resolution() {
         assert_eq!(
-            TypedObject::from_exclusive_args(Some("gun".into()), None, None, None, None).unwrap(),
+            TypedObject::from_exclusive_args(Some("gun".into()), None, None, None).unwrap(),
             TypedObject::Entity { id: "gun".into() }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, Some("alive".into()), None, None, None).unwrap(),
-            TypedObject::Value {
-                value: "alive".into()
-            }
-        );
-        assert_eq!(
-            TypedObject::from_exclusive_args(None, None, Some("dead".into()), None, None).unwrap(),
+            TypedObject::from_exclusive_args(None, Some("dead".into()), None, None).unwrap(),
             TypedObject::Token {
                 token: "dead".into()
             }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, None, None, Some((10, "day".into())), None)
-                .unwrap(),
+            TypedObject::from_exclusive_args(None, None, Some((10, "day".into())), None).unwrap(),
             TypedObject::Quantity {
                 n: 10,
                 unit: "day".into()
             }
         );
         assert_eq!(
-            TypedObject::from_exclusive_args(None, None, None, None, Some("f-1".into())).unwrap(),
+            TypedObject::from_exclusive_args(None, None, None, Some("f-1".into())).unwrap(),
             TypedObject::Fact { id: "f-1".into() }
         );
+        assert!(
+            TypedObject::from_exclusive_args(Some("a".into()), Some("c".into()), None, None)
+                .unwrap_err()
+                .contains("mutually exclusive")
+        );
         assert!(TypedObject::from_exclusive_args(
-            Some("a".into()),
-            Some("b".into()),
-            None,
-            None,
-            None
-        )
-        .unwrap_err()
-        .contains("mutually exclusive"));
-        assert!(TypedObject::from_exclusive_args(
-            Some("a".into()),
-            None,
-            Some("c".into()),
-            None,
-            None
-        )
-        .unwrap_err()
-        .contains("mutually exclusive"));
-        assert!(TypedObject::from_exclusive_args(
-            None,
             None,
             None,
             Some((1, "u".into())),
@@ -1131,11 +1094,9 @@ mod tests {
         )
         .unwrap_err()
         .contains("mutually exclusive"));
-        assert!(
-            TypedObject::from_exclusive_args(None, None, None, None, None)
-                .unwrap_err()
-                .contains("needs an object")
-        );
+        assert!(TypedObject::from_exclusive_args(None, None, None, None)
+            .unwrap_err()
+            .contains("needs an object"));
     }
 
     /// A subway-braid trunk: `main` + `braid1` (fork at s1) reconverge into the

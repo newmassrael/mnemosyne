@@ -1009,6 +1009,19 @@ pub enum AtomicStoreError {
     Json(#[from] serde_json::Error),
     #[error("schema version mismatch: store={store} expected ≤ {expected}")]
     SchemaVersionMismatch { store: u32, expected: u32 },
+    /// Round 708 — the free-text `value` object shape AND the `scalar` predicate
+    /// `object_kind` were both removed. A store still carrying either cannot be
+    /// loaded until it is migrated to a registered shape (token / quantity /
+    /// fact) or the text moves to the fact's prose `claim`. Fail LOUD with the
+    /// named work-list — BOTH the value-object facts and the scalar predicates —
+    /// rather than a cryptic serde "unknown variant" (the R625 brick lesson): the
+    /// migration is executable, so the store lists exactly what to re-author.
+    #[error(
+        "removed `value`/`scalar` object shape (Round 708): {detail}. Migrate each value object \
+         to a token / quantity / fact object (or move its text to the fact's `claim`), and \
+         re-declare each scalar predicate as token / quantity / fact."
+    )]
+    RemovedValueShape { detail: String },
 }
 
 // Schema version 2 (Round 273): Phase 1A entry — adds AtomicStore.inventory_entries.
@@ -1216,12 +1229,80 @@ pub enum AtomicStoreError {
 // registry. A pre-R707 binary rejects a `fact` object loudly (serde unknown
 // variant), so no silent drop; the bump keeps the `> CURRENT` guard monotone
 // and the shape-change audit complete.
+// v28→v29 REMOVES the free-text `TypedObject::Value` shape + `object_kind=scalar`
+// (Round 708 — the object-shape-closure arc's terminus: every machine-slot object
+// is now registered/enumerable, free text lives ONLY in the prose `claim`). This
+// is a BREAKING removal, not an additive bump: a store still carrying
+// `{kind:value}` objects fails the strict parse, and `load` turns that into the
+// NAMED migration work-list (`removed_value_shape_error` → `RemovedValueShape`)
+// rather than a silent drop or a cryptic serde error (the R625 brick lesson). The
+// migration is executable: each value object re-authors to a token / quantity /
+// fact object, or its text moves to the fact's `claim`. There is deliberately no
+// `schema_version < 29` back-fill arm — silently guessing a shape for free text
+// would defeat the closure the removal exists to enforce.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 28;
+pub const CURRENT_SCHEMA_VERSION: u32 = 29;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
+
+/// Round 708 — the reject-loud work-list for a store carrying EITHER removed
+/// shape: a `{kind:value}` typed object OR a `object_kind:"scalar"` predicate
+/// (both wire tokens were removed with the free-text shape). The strict parse
+/// has already failed; this lenient-parses the raw bytes and, IFF the failure is
+/// a lingering value object OR scalar predicate (not some other corruption),
+/// returns the named migration error listing every offender. `None` = the parse
+/// failed for a DIFFERENT reason (propagate the original serde error) — so a
+/// `{kind:bogus}` object or malformed JSON is NOT mislabeled here.
+fn removed_value_shape_error(bytes: &[u8]) -> Option<AtomicStoreError> {
+    let raw: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let mut value_facts: Vec<&str> = raw
+        .get("narrative_facts")
+        .and_then(|f| f.as_object())
+        .into_iter()
+        .flatten()
+        .filter(|(_, f)| {
+            f.get("typed")
+                .and_then(|t| t.get("object"))
+                .and_then(|o| o.get("kind"))
+                .and_then(|k| k.as_str())
+                == Some("value")
+        })
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let mut scalar_predicates: Vec<&str> = raw
+        .get("predicates")
+        .and_then(|p| p.as_object())
+        .into_iter()
+        .flatten()
+        .filter(|(_, p)| p.get("object_kind").and_then(|k| k.as_str()) == Some("scalar"))
+        .map(|(id, _)| id.as_str())
+        .collect();
+    if value_facts.is_empty() && scalar_predicates.is_empty() {
+        return None;
+    }
+    value_facts.sort_unstable();
+    scalar_predicates.sort_unstable();
+    let mut clauses = Vec::new();
+    if !value_facts.is_empty() {
+        clauses.push(format!(
+            "{} fact(s) with a `{{kind:value}}` object [{}]",
+            value_facts.len(),
+            value_facts.join(", ")
+        ));
+    }
+    if !scalar_predicates.is_empty() {
+        clauses.push(format!(
+            "{} predicate(s) with object_kind=scalar [{}]",
+            scalar_predicates.len(),
+            scalar_predicates.join(", ")
+        ));
+    }
+    Some(AtomicStoreError::RemovedValueShape {
+        detail: clauses.join("; "),
+    })
+}
 
 impl AtomicStore {
     pub fn new() -> Self {
@@ -1245,7 +1326,20 @@ impl AtomicStore {
             return Ok(Self::new());
         }
         let bytes = fs::read(path)?;
-        let mut store: AtomicStore = serde_json::from_slice(&bytes)?;
+        let mut store: AtomicStore = match serde_json::from_slice(&bytes) {
+            Ok(store) => store,
+            Err(e) => {
+                // Round 708 — the strict parse fails on a removed `{kind:value}`
+                // object (serde "unknown variant `value`"). Turn that cryptic
+                // error into the NAMED migration work-list (R625 brick lesson):
+                // lenient-parse the bytes and list every fact still carrying a
+                // value object. If it is a DIFFERENT parse error, propagate it.
+                if let Some(err) = removed_value_shape_error(&bytes) {
+                    return Err(err);
+                }
+                return Err(e.into());
+            }
+        };
         if store.schema_version > CURRENT_SCHEMA_VERSION {
             return Err(AtomicStoreError::SchemaVersionMismatch {
                 store: store.schema_version,
@@ -3711,8 +3805,8 @@ pub struct UnitImport {
 
 /// One predicate entry in the [`FactsManifest`] (and the `add_predicate`
 /// shape, Round 446). `object_kind` is the canonical lowercase tag
-/// (`entity` | `scalar`) — unknown tags reject (fail-loud, no silent
-/// default).
+/// (`entity` | `token` | `quantity` | `fact`; Round 708 removed free-text
+/// `scalar`) — unknown tags reject (fail-loud, no silent default).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PredicateImport {
@@ -3720,7 +3814,7 @@ pub struct PredicateImport {
     pub object_kind: String,
     /// Round 701 — optional required entity-kind for the subject / entity-object
     /// legs (registered `entity_kinds` refs; omitted = any). Same guard as the
-    /// primitive: an `object_entity_kind` under `object_kind=scalar` rejects.
+    /// primitive: an `object_entity_kind` under any non-entity object_kind rejects.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4039,8 +4133,9 @@ fn build_candidate_fact(
 ///   rules key off it);
 /// - the object leg's shape must match the predicate's declared
 ///   `object_kind`; an entity-shaped object obeys the same
-///   registered-and-listed rule as the subject; a scalar value must be
-///   non-empty (opaque consumer vocabulary, never enumerated here).
+///   registered-and-listed rule as the subject; a token must be a member of the
+///   predicate's declared vocabulary, a quantity's unit must be registered, and
+///   a fact ref is resolved in phase 2 (Round 708 removed the free-text shape).
 fn build_typed_claim(
     store: &AtomicStore,
     fact_id: &str,
@@ -4112,17 +4207,6 @@ fn build_typed_claim(
             }
             TypedObject::Entity { id }
         }
-        (TypedObject::Value { value }, PredicateObjectKind::Scalar) => {
-            let value = value.trim();
-            if value.is_empty() {
-                return Err(format!(
-                    "fact `{fact_id}`: typed object value mandatory (non-empty)"
-                ));
-            }
-            TypedObject::Value {
-                value: value.to_string(),
-            }
-        }
         (TypedObject::Token { token }, PredicateObjectKind::Token) => {
             // Round 705 — the token must be a member of the predicate's CLOSED
             // declared vocabulary; a token outside it is a typo escaping the set
@@ -4193,29 +4277,20 @@ fn build_typed_claim(
         // Every cross pair is a shape mismatch — enumerated explicitly (no
         // wildcard, the R624/R658 discipline) so a new object OR object_kind
         // variant breaks this build rather than silently rejecting.
-        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
-        | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        (TypedObject::Entity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Token)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => {
             let actual = match &t.object {
                 TypedObject::Entity { .. } => "an entity",
-                TypedObject::Value { .. } => "a scalar value",
                 TypedObject::Token { .. } => "a token",
                 TypedObject::Quantity { .. } => "a quantity",
                 TypedObject::Fact { .. } => "a fact ref",
@@ -4817,7 +4892,7 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
             // (`validate_and_stamp_fact_refs`) against store ∪ staged and
             // delete-guarded via `inbound_fact_refs`, exactly like
             // conflicts_with / pays_off (which are also absent here).
-            TypedObject::Value { .. } | TypedObject::Token { .. } | TypedObject::Fact { .. } => {}
+            TypedObject::Token { .. } | TypedObject::Fact { .. } => {}
         }
     }
     refs
@@ -4953,7 +5028,8 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
 }
 
 /// The entity-shaped refs of a typed leg — subject (always an entity) and an
-/// entity-shaped object (a scalar object is opaque, no ref). One list so the
+/// entity-shaped object (a token / quantity object carries no entity ref; a
+/// fact object is a phase-2 ref, not a facet). One list so the
 /// out-of-band detector checks the same refs the write path's `build_typed_claim`
 /// validates.
 fn typed_entity_refs(claim: &TypedClaim) -> Vec<(&'static str, &str)> {
@@ -5075,10 +5151,7 @@ fn build_predicate(
                 ));
             }
         }
-        PredicateObjectKind::Entity
-        | PredicateObjectKind::Scalar
-        | PredicateObjectKind::Quantity
-        | PredicateObjectKind::Fact => {
+        PredicateObjectKind::Entity | PredicateObjectKind::Quantity | PredicateObjectKind::Fact => {
             if !tokens.is_empty() {
                 return Err(format!(
                     "{context}: object_kind={} cannot carry an object_tokens vocabulary \
@@ -5179,8 +5252,8 @@ fn use_satisfies_declaration(store: &AtomicStore, t: &TypedClaim, decl: &Predica
         }
     }
     if let Some(req) = &decl.object_entity_kind {
-        // A scalar object with `object_entity_kind` is unrepresentable
-        // (`build_predicate` rejects it), so a scalar object here means the
+        // A non-entity object with `object_entity_kind` is unrepresentable
+        // (`build_predicate` rejects it), so a non-entity object here means the
         // constraint does not apply; only an entity object is gated.
         if let TypedObject::Entity { id } = &t.object {
             if entity_kind(store, id) != Some(req.as_str()) {
@@ -5239,28 +5312,19 @@ fn validate_predicate_kind_refs(
 fn object_matches_kind(object: &TypedObject, kind: PredicateObjectKind) -> bool {
     match (object, kind) {
         (TypedObject::Entity { .. }, PredicateObjectKind::Entity) => true,
-        (TypedObject::Value { .. }, PredicateObjectKind::Scalar) => true,
         (TypedObject::Token { .. }, PredicateObjectKind::Token) => true,
         (TypedObject::Quantity { .. }, PredicateObjectKind::Quantity) => true,
         (TypedObject::Fact { .. }, PredicateObjectKind::Fact) => true,
-        (TypedObject::Entity { .. }, PredicateObjectKind::Scalar)
-        | (TypedObject::Entity { .. }, PredicateObjectKind::Token)
+        (TypedObject::Entity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Entity { .. }, PredicateObjectKind::Fact)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Token)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Quantity)
-        | (TypedObject::Value { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Token { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Token { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Token { .. }, PredicateObjectKind::Quantity)
         | (TypedObject::Token { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Quantity { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Token)
         | (TypedObject::Quantity { .. }, PredicateObjectKind::Fact)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Entity)
-        | (TypedObject::Fact { .. }, PredicateObjectKind::Scalar)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Token)
         | (TypedObject::Fact { .. }, PredicateObjectKind::Quantity) => false,
     }
@@ -7352,6 +7416,92 @@ mod tests {
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
     }
 
+    /// Round 708 — loading a store that still carries EITHER removed shape (a
+    /// `{kind:value}` object OR a `object_kind:"scalar"` predicate) fails LOUD
+    /// with the named migration work-list, NOT a cryptic serde error or a silent
+    /// drop (the R625 brick lesson). NON-VACUITY + NEGATIVE CONTROLS: a
+    /// value-object-only store names the FACTS, a scalar-predicate-only store
+    /// names the PREDICATE (R708-review MED-1: the detector must cover BOTH
+    /// removed tokens, not just the object), a clean store loads, and a DIFFERENT
+    /// corruption (`{kind:bogus}`) propagates the ORIGINAL serde error rather
+    /// than being mislabeled as RemovedValueShape.
+    #[test]
+    fn load_rejects_removed_value_shape_with_named_worklist() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let write_load = |body: &str| {
+            std::fs::write(&path, body).unwrap();
+            AtomicStore::load(&path)
+        };
+        // (a) value-object facts under a scalar predicate: BOTH offenders named.
+        let err = write_load(
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "entities": { "kara": {} },
+ "predicates": { "alive": { "object_kind": "scalar" } },
+ "narrative_facts": {
+   "f-a": { "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "value", "value": "operational" } } },
+   "f-b": { "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "value", "value": "destroyed" } } },
+   "f-prose": { "frame": "gt", "entities": [], "claim": "just prose", "canon_from": "ch-1", "evidence": ["ch-1"] }
+ }, "schema_version": 28 }"#,
+        )
+        .unwrap_err();
+        match err {
+            AtomicStoreError::RemovedValueShape { detail } => {
+                assert!(detail.contains("f-a") && detail.contains("f-b"), "{detail}");
+                assert!(!detail.contains("f-prose"), "clean fact listed: {detail}");
+                assert!(
+                    detail.contains("alive"),
+                    "scalar predicate not named: {detail}"
+                );
+            }
+            other => panic!("expected RemovedValueShape, got {other:?}"),
+        }
+        // (b) MED-1 — a scalar predicate with NO value objects (only a prose
+        // fact) must STILL be the named work-list, not a raw serde error.
+        let err = write_load(
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "predicates": { "alive": { "object_kind": "scalar" } },
+ "narrative_facts": {
+   "f-prose": { "frame": "gt", "entities": [], "claim": "just prose", "canon_from": "ch-1", "evidence": ["ch-1"] }
+ }, "schema_version": 28 }"#,
+        )
+        .unwrap_err();
+        match err {
+            AtomicStoreError::RemovedValueShape { detail } => {
+                assert!(
+                    detail.contains("alive") && detail.contains("scalar"),
+                    "{detail}"
+                )
+            }
+            other => panic!("scalar-predicate-only must reject-loud, got {other:?}"),
+        }
+        // (c) non-vacuity: neither removed shape present → loads clean.
+        write_load(
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "narrative_facts": {
+   "f-prose": { "frame": "gt", "entities": [], "claim": "p", "canon_from": "ch-1", "evidence": ["ch-1"] }
+ }, "schema_version": 28 }"#,
+        )
+        .unwrap();
+        // (d) NEGATIVE CONTROL — a DIFFERENT unknown variant is NOT relabeled: the
+        // original serde error propagates (Json), never a false RemovedValueShape.
+        let err = write_load(
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "entities": { "kara": {} }, "predicates": { "alive": { "object_kind": "token", "object_tokens": ["x"] } },
+ "narrative_facts": {
+   "f-x": { "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "bogus", "id": "x" } } }
+ }, "schema_version": 28 }"#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, AtomicStoreError::Json(_)),
+            "a different corruption must propagate the original serde error, got {err:?}"
+        );
+    }
+
     #[test]
     fn schema_version_2_store_loads_with_empty_outline_fields() {
         // Round 287 back-compat: a v2 store (pre-outline-lift) deserializes
@@ -8816,15 +8966,25 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
 
         let typed = |id: &str, canon: &str| FactImport {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
                 subject: "pike".to_string(),
                 predicate: "did".to_string(),
-                object: TypedObject::Value {
-                    value: "climbed".to_string(),
+                object: TypedObject::Token {
+                    token: "climbed".to_string(),
                 },
             }),
             canon_from: canon.to_string(),
@@ -10632,15 +10792,25 @@ mod tests {
             &[],
         )
         .unwrap();
-        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
         add_fact(&mut store, &path, &sample_fact("f-untyped", "gt")).unwrap();
         let typed_fact = FactImport {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
                 subject: "pike".to_string(),
                 predicate: "did".to_string(),
-                object: TypedObject::Value {
-                    value: "climbed".to_string(),
+                object: TypedObject::Token {
+                    token: "climbed".to_string(),
                 },
             }),
             ..sample_fact("f-typed", "gt")
@@ -10827,10 +10997,10 @@ mod tests {
                 }],
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
-                    object_kind: "scalar".to_string(),
+                    object_kind: "token".to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
-                    object_tokens: vec![],
+                    object_tokens: vec!["alive".to_string()],
                     description: String::new(),
                 }],
                 facts: vec![
@@ -10856,8 +11026,8 @@ mod tests {
             typed: TypedClaim {
                 subject: "kara".to_string(),
                 predicate: "alive".to_string(),
-                object: TypedObject::Value {
-                    value: "alive".to_string(),
+                object: TypedObject::Token {
+                    token: "alive".to_string(),
                 },
             },
             claim_sha256: sha256_hex(claim.as_bytes()),
@@ -10889,12 +11059,22 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
-        add_predicate(&mut store, &path, "did", "scalar", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
         let typed_leg = Some(TypedClaim {
             subject: "pike".to_string(),
             predicate: "did".to_string(),
-            object: TypedObject::Value {
-                value: "climbed".to_string(),
+            object: TypedObject::Token {
+                token: "climbed".to_string(),
             },
         });
         let typed_import = |id: &str| FactImport {
@@ -12069,8 +12249,8 @@ mod tests {
                 object,
             })
         };
-        let scalar = |v: &str| TypedObject::Value {
-            value: v.to_string(),
+        let tok = |v: &str| TypedObject::Token {
+            token: v.to_string(),
         };
         let ent = |id: &str| TypedObject::Entity { id: id.to_string() };
         let with_entities = |fact_id: &str, ents: &[&str], t| FactImport {
@@ -12080,12 +12260,8 @@ mod tests {
         };
         let cases: Vec<(&str, FactImport)> = vec![
             (
-                "valid scalar typed",
-                with_entities(
-                    "t1",
-                    &["kara"],
-                    typed("kara", "alive", scalar("operational")),
-                ),
+                "valid token typed",
+                with_entities("t1", &["kara"], typed("kara", "alive", tok("operational"))),
             ),
             (
                 "valid entity typed",
@@ -12097,22 +12273,22 @@ mod tests {
             ),
             (
                 "unknown predicate",
-                with_entities("t3", &["kara"], typed("kara", "at-locaton", scalar("x"))),
+                with_entities("t3", &["kara"], typed("kara", "at-locaton", tok("x"))),
             ),
             (
                 "subject not in entities list",
-                with_entities("t4", &[], typed("kara", "alive", scalar("operational"))),
+                with_entities("t4", &[], typed("kara", "alive", tok("operational"))),
             ),
             (
                 "subject unregistered",
-                with_entities("t5", &["kara"], typed("alucard", "alive", scalar("x"))),
+                with_entities("t5", &["kara"], typed("alucard", "alive", tok("x"))),
             ),
             (
                 "object entity not listed",
                 with_entities("t6", &["kara"], typed("kara", "holds", ent("todd-gun"))),
             ),
             (
-                "entity object on scalar predicate",
+                "entity object on token predicate",
                 with_entities(
                     "t7",
                     &["kara", "todd-gun"],
@@ -12120,16 +12296,16 @@ mod tests {
                 ),
             ),
             (
-                "value object on entity predicate",
-                with_entities("t8", &["kara"], typed("kara", "holds", scalar("todd-gun"))),
+                "token object on entity predicate",
+                with_entities("t8", &["kara"], typed("kara", "holds", tok("todd-gun"))),
             ),
             (
                 "blank subject",
-                with_entities("t9", &["kara"], typed("  ", "alive", scalar("x"))),
+                with_entities("t9", &["kara"], typed("  ", "alive", tok("x"))),
             ),
             (
-                "blank scalar value",
-                with_entities("t10", &["kara"], typed("kara", "alive", scalar("  "))),
+                "blank token value",
+                with_entities("t10", &["kara"], typed("kara", "alive", tok("  "))),
             ),
         ];
         for (label, entry) in cases {
@@ -12146,10 +12322,10 @@ mod tests {
                 s.predicates.insert(
                     "alive".to_string(),
                     Predicate {
-                        object_kind: PredicateObjectKind::Scalar,
+                        object_kind: PredicateObjectKind::Token,
                         subject_kind: None,
                         object_entity_kind: None,
-                        object_tokens: BTreeSet::new(),
+                        object_tokens: BTreeSet::from(["operational".to_string()]),
                         description: String::new(),
                     },
                 );
@@ -12349,22 +12525,6 @@ mod tests {
             err.contains("not in its declared vocabulary"),
             "out-of-vocab token must reject: {err}"
         );
-        // A free-text scalar Value under the token predicate: shape mismatch.
-        let mismatch = FactImport {
-            entities: vec!["lucy".to_string()],
-            typed: Some(TypedClaim {
-                subject: "lucy".to_string(),
-                predicate: "life".to_string(),
-                object: TypedObject::Value {
-                    value: "alive".to_string(),
-                },
-            }),
-            ..sample_fact("f3", "gt")
-        };
-        let err = add_fact(&mut store, &path, &mismatch)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("shape mismatch"), "unexpected: {err}");
     }
 
     /// Round 705 — the token-vocabulary declaration guards (shared `build_predicate`,
@@ -12538,14 +12698,15 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("quantity unit mandatory"), "unexpected: {err}");
-        // A free-text scalar Value under the quantity predicate: shape mismatch.
+        // An entity object under the quantity predicate: shape mismatch (a
+        // cross-shape check that survives the R708 Value removal).
         let mismatch = FactImport {
             entities: vec!["codicil".to_string()],
             typed: Some(TypedClaim {
                 subject: "codicil".to_string(),
                 predicate: "signed-on-day".to_string(),
-                object: TypedObject::Value {
-                    value: "10".to_string(),
+                object: TypedObject::Entity {
+                    id: "codicil".to_string(),
                 },
             }),
             ..sample_fact("f3", "gt")
@@ -12714,10 +12875,16 @@ mod tests {
                 Some("place"),
                 true,
             ),
-            ("scalar, no constraint (valid)", "scalar", None, None, true),
             (
-                "scalar + object-entity-kind (combo)",
-                "scalar",
+                "quantity, no constraint (valid)",
+                "quantity",
+                None,
+                None,
+                true,
+            ),
+            (
+                "quantity + object-entity-kind (combo)",
+                "quantity",
                 None,
                 Some("place"),
                 false,
@@ -12874,10 +13041,10 @@ mod tests {
                 s.predicates.insert(
                     "alive".to_string(),
                     Predicate {
-                        object_kind: PredicateObjectKind::Scalar,
+                        object_kind: PredicateObjectKind::Token,
                         subject_kind: None,
                         object_entity_kind: None,
-                        object_tokens: BTreeSet::new(),
+                        object_tokens: BTreeSet::from(["operational".to_string()]),
                         description: String::new(),
                     },
                 );
@@ -12889,8 +13056,8 @@ mod tests {
                         typed: Some(TypedClaim {
                             subject: "kara".to_string(),
                             predicate: "alive".to_string(),
-                            object: TypedObject::Value {
-                                value: "operational".to_string(),
+                            object: TypedObject::Token {
+                                token: "operational".to_string(),
                             },
                         }),
                         ..sample_fact("typed-1", "gt")
@@ -12982,10 +13149,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "life state",
         )
         .unwrap();
@@ -12993,10 +13160,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "life state",
         )
         .unwrap();
@@ -13022,8 +13189,8 @@ mod tests {
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
                     predicate: "alive".to_string(),
-                    object: TypedObject::Value {
-                        value: "operational".to_string(),
+                    object: TypedObject::Token {
+                        token: "operational".to_string(),
                     },
                 }),
                 ..sample_fact("typed-1", "gt")
@@ -13037,8 +13204,8 @@ mod tests {
         assert_eq!(t.predicate, "alive");
         assert_eq!(
             t.object,
-            TypedObject::Value {
-                value: "operational".to_string()
+            TypedObject::Token {
+                token: "operational".to_string()
             }
         );
         assert!(reloaded.narrative_facts["prose-1"].typed.is_none());
@@ -13082,10 +13249,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "life state",
         )
         .unwrap_err();
@@ -13096,18 +13263,18 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "life state",
         )
         .unwrap();
         assert_eq!(
             store.predicates["alive"].object_kind,
-            PredicateObjectKind::Scalar
+            PredicateObjectKind::Token
         );
-        // Repaired for real: the fact builder now accepts the scalar leg.
+        // Repaired for real: the fact builder now accepts the token leg.
         add_fact(
             &mut store,
             &path,
@@ -13116,8 +13283,8 @@ mod tests {
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
                     predicate: "alive".to_string(),
-                    object: TypedObject::Value {
-                        value: "operational".to_string(),
+                    object: TypedObject::Token {
+                        token: "operational".to_string(),
                     },
                 }),
                 ..sample_fact("typed-1", "gt")
@@ -13146,10 +13313,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "life state",
         )
         .unwrap();
@@ -13161,8 +13328,8 @@ mod tests {
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
                     predicate: "alive".to_string(),
-                    object: TypedObject::Value {
-                        value: "operational".to_string(),
+                    object: TypedObject::Token {
+                        token: "operational".to_string(),
                     },
                 }),
                 ..sample_fact("typed-1", "gt")
@@ -13189,7 +13356,7 @@ mod tests {
         assert!(msg.contains("typed-1"), "offender not named: {msg}");
         assert_eq!(
             store.predicates["alive"].object_kind,
-            PredicateObjectKind::Scalar,
+            PredicateObjectKind::Token,
             "a rejected re-type must not mutate the registry"
         );
         // The description alone still moves — the reject is about the SHAPE.
@@ -13197,10 +13364,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "vital state",
         )
         .unwrap();
@@ -13210,10 +13377,10 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "scalar",
+            "token",
             None,
             None,
-            &[],
+            &["operational".to_string()],
             "vital state",
         )
         .unwrap();
@@ -13235,7 +13402,7 @@ mod tests {
         // Absent predicate fails loud on BOTH repair paths (no silent create,
         // no idempotent delete).
         let err =
-            set_predicate(&mut store, &path, "ghost", "scalar", None, None, &[], "").unwrap_err();
+            set_predicate(&mut store, &path, "ghost", "entity", None, None, &[], "").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
         let err = remove_predicate(&mut store, &path, "ghost").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
@@ -13253,10 +13420,10 @@ mod tests {
         let cases = [
             ("unknown tag", "boolean", "d"),
             ("empty tag", "", "d"),
-            ("tag whitespace", "  scalar  ", "d"),
-            ("tag case", "Scalar", "d"),
-            ("description whitespace", "scalar", "  spaced  "),
-            ("description empty", "scalar", ""),
+            ("tag whitespace", "  entity  ", "d"),
+            ("tag case", "Entity", "d"),
+            ("description whitespace", "entity", "  spaced  "),
+            ("description empty", "entity", ""),
         ];
         for (label, object_kind, description) in cases {
             let tmp = TempDir::new().unwrap();
@@ -13349,10 +13516,10 @@ mod tests {
                 }],
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
-                    object_kind: "scalar".to_string(),
+                    object_kind: "token".to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
-                    object_tokens: vec![],
+                    object_tokens: vec!["operational".to_string(), "destroyed".to_string()],
                     description: String::new(),
                 }],
                 facts: vec![FactImport {
@@ -13360,8 +13527,8 @@ mod tests {
                     typed: Some(TypedClaim {
                         subject: "kara".to_string(),
                         predicate: "alive".to_string(),
-                        object: TypedObject::Value {
-                            value: "operational".to_string(),
+                        object: TypedObject::Token {
+                            token: "operational".to_string(),
                         },
                     }),
                     ..sample_fact("f-1", "gt")
@@ -13388,8 +13555,8 @@ mod tests {
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
                     predicate: "alive".to_string(),
-                    object: TypedObject::Value {
-                        value: "destroyed".to_string(),
+                    object: TypedObject::Token {
+                        token: "destroyed".to_string(),
                     },
                 }),
                 ..sample_fact("f-2", "gt")
