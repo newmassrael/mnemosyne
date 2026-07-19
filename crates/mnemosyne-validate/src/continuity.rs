@@ -3658,6 +3658,16 @@ fn scan_spatial_map(
                         continue;
                     }
                     let a = t.subject.as_str();
+                    // `typed_object_key` (a `Quantity`'s `unit`-only borrow) vs the
+                    // containment snapshot's `typed_object_display` diverge ONLY for
+                    // a Quantity object (R716-F5). But R701 forbids a Quantity object
+                    // on any predicate that declares `object_entity_kind` (the write
+                    // path rejects a non-entity object there, atomic/lib.rs ~3835),
+                    // and a KINDED spatial map declares it — so a Quantity endpoint
+                    // is unreachable on a real map; the only residue is an UNKINDED
+                    // Quantity-object adjacency, doubly garbage-in (a spatial edge to
+                    // a number), which the mutate API does not produce. Documented
+                    // tolerance, not a live divergence (Round 719 debt disposition).
                     let b = typed_object_key(&t.object);
                     union_nodes.insert(a.to_string());
                     union_nodes.insert(b.to_string());
@@ -3713,15 +3723,24 @@ fn scan_spatial_map(
             // Per-scope connectivity (undirected/spatial only): each scope's UNION
             // graph must be one component — an island never connected AT ANY point
             // is dead content. Root-independent; DFS from an arbitrary node.
-            // NAMED LIMITATION (review Finding 3, weaker than R702's whole-map
-            // guarantee, not a backward-compat claim): this checks EACH scope
-            // internally; two internally-connected but mutually-unreachable
-            // top-level containers (a genuinely disjoint world with no portal edge
-            // linking their parent-scope nodes) produce NO finding — the
-            // DEBT-MAP-G2-SINGLEMAP / disjoint-top-level-map tail R713 explicitly
-            // declined to close. A portal edge (a container as a node in its
-            // parent's scope) is what would connect them and bring them under one
-            // scope's connectivity check.
+            //
+            // SCOPE (Round 719, the debt-slate disposition of the R716-F3 /
+            // DEBT-MAP-G2-SINGLEMAP tail): connectivity is checked PER SCOPE, so
+            // two internally-connected but mutually-unreachable top-level
+            // containers produce no finding. This is the CORRECT nested-model
+            // relaxation, NOT a limitation to close: R702's whole-map connectivity
+            // was the SINGLE-scope special case, and re-imposing it would
+            // FALSE-POSITIVE on a legitimately disjoint authored world (two
+            // islands, a dream vs the waking world). A nested model makes
+            // containers a first-class "separate sub-map" declaration; an author
+            // who wants two containers connected declares an adjacency between
+            // their parent-scope nodes (a portal — a container as a node in its
+            // parent's scope), and THEN that scope's connectivity checks it. So
+            // the connectivity guarantee is exactly "every scope you declared
+            // edges within is connected", which is the right invariant for a
+            // model with explicit containment. (Measured: the live tide map is
+            // flat/0-containers = one root scope = the R702 whole-map check, so no
+            // live case is affected either way.)
             if undirected {
                 for (scope, sedges) in &scope_union_edges {
                     let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
