@@ -428,6 +428,24 @@ pub struct Unit {
     pub description: String,
 }
 
+/// A registered numeric PARAMETER (Round 728 design → Round 729 build, DEBT-K)
+/// — the consumer's vocabulary for an accumulating meter (`affection`, `karma`,
+/// `gold`, an RPG stat), keyed by parameter id in `AtomicStore.parameters`.
+/// Every `parameter_deltas` reference (and `parameter_gates`, R730) must name a
+/// key here (fail-loud at the mutate primitives AND at the scan boundary — the
+/// `units` symmetry). The registry holds WHICH meters the consumer declares; core never
+/// enumerates the members — there is no `Affection` / `Karma` variant and there
+/// must never be one (invariant 4, the R700 place-kind / R706 unit lesson one
+/// axis over). A bare parameter string would reintroduce the drift defect
+/// (`affection` / `affinity` / `호감도`); the registry keeps the set the
+/// consumer's while the substrate enforces THAT the parameter is registered.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Parameter {
+    /// Free-form description. Optional prose, not load-bearing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
 /// The cost of one map EDGE (Round 709 design → DEBT-J build) — a number + a
 /// registered unit, the SAME shape as [`TypedObject::Quantity`] but stored as a
 /// side-table VALUE (`AtomicStore.edge_costs`, keyed by the adjacent fact id)

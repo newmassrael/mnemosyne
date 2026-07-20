@@ -616,6 +616,162 @@ pub fn cmd_add_unit(workspace_root: &Path, args: &[String]) -> Result<(), CliErr
     )
 }
 
+/// Round 728 design → Round 729 (DEBT-K) — register a numeric PARAMETER (a
+/// meter: affection / karma / gold). `--parameter` mandatory; `--description`
+/// optional. Mirrors `add-unit` (the registry precedent).
+pub fn cmd_add_parameter(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut param_id: Option<String> = None;
+    let mut description = String::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--parameter" => {
+                param_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--parameter missing"))?
+                        .clone(),
+                )
+            }
+            "--description" => {
+                description = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--description missing"))?
+                    .clone()
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let param_id = param_id.ok_or_else(|| anyhow!("--parameter arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_parameter(&mut store, &sidecar_path, &param_id, &description),
+        json,
+    )
+}
+
+/// Round 729 (DEBT-K) — attach a SIGNED per-beat delta to a parameter.
+/// `--fact` (the beat fact), `--parameter` (registered), `--delta` (non-zero
+/// signed integer) mandatory. The delta is beat metadata (a side-table entry),
+/// never evaluated by Mnemosyne (the consumer accumulates the running sum).
+pub fn cmd_add_parameter_delta(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut parameter: Option<String> = None;
+    let mut delta: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--parameter" => {
+                parameter = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--parameter missing"))?
+                        .clone(),
+                )
+            }
+            "--delta" => {
+                delta = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--delta missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let parameter = parameter.ok_or_else(|| anyhow!("--parameter arg required"))?;
+    let delta = delta
+        .ok_or_else(|| anyhow!("--delta arg required"))?
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| anyhow!("--delta must be an integer"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_parameter_delta(
+            &mut store,
+            &sidecar_path,
+            &fact_id,
+            &parameter,
+            delta,
+        ),
+        json,
+    )
+}
+
+/// Round 729 (DEBT-K) — remove ONE (fact, parameter) delta (the peer of
+/// `add-parameter-delta`). The beat's key is deleted when the last delta goes.
+/// Fail-loud if the beat has no delta on that parameter.
+pub fn cmd_remove_parameter_delta(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut parameter: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--parameter" => {
+                parameter = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--parameter missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let parameter = parameter.ok_or_else(|| anyhow!("--parameter arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_parameter_delta(&mut store, &sidecar_path, &fact_id, &parameter),
+        json,
+    )
+}
+
 /// Round 709 → DEBT-J — attach a cost to one map edge (the adjacent fact).
 /// `--fact` (the adjacent fact id) + `--n` (positive integer) + `--unit`
 /// (registered) mandatory. The cost is edge metadata (a side-table entry), not

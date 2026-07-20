@@ -673,6 +673,42 @@ fn registries() -> Vec<RegistrySpec> {
                 (edge_guard_not_an_edge).",
         },
         RegistrySpec {
+            name: "parameters",
+            key: "parameter id",
+            referenced_by: "parameter_deltas reference a registered parameter (parameter_gates \
+                joins them in R730)",
+            add_op: "add-parameter",
+            load_bearing: false,
+            description: "Numeric PARAMETER registry (R728 design → R729 build, DEBT-K) — the \
+                consumer's accumulating meters (`affection`, `karma`, `gold`, an RPG stat). \
+                Consumer vocabulary (invariant 4: core never enumerates them, the R700/R706 \
+                lesson one axis over); the substrate enforces only THAT a parameter in use is \
+                registered, fail-loud — a bare parameter string would drift \
+                `affection`/`affinity`/`호감도`. Declared via add-parameter before a delta or \
+                gate names it. Like `units`, EMPTY does not pass.",
+        },
+        RegistrySpec {
+            name: "parameter_deltas",
+            key: "beat fact id",
+            referenced_by: "keyed BY the beat fact; VALUE = a map from parameter id to a SIGNED \
+                delta — read by the consumer (a VN/RPG runtime), which accumulates the running \
+                sum along a playthrough, never by Mnemosyne",
+            add_op: "add-parameter-delta",
+            load_bearing: false,
+            description: "Per-beat SIGNED parameter DELTAS (R728 design → R729 build, DEBT-K) — \
+                keyed by the fact id of the beat that grants the change, value = parameter id -> \
+                signed delta (`+2` a gift, `-1` an insult; one beat may move several meters). A \
+                SIDE-TABLE like edge_costs, not a reified fact: the delta is frame-invariant \
+                game-mechanic ground truth (which branch it applies on is captured by the \
+                branch-scoped fact key; the VALUE is invariant). Fail-loud: the fact must exist, \
+                the parameter be registered, and the delta be NON-ZERO — re-checked at the scan \
+                boundary too (the parity-complete edge_guard precedent, not the n>0-blind \
+                edge_cost one). Signed deltas are the weighted/negative axis K-of-N cannot \
+                express. retract-fact cascade-drops the deltas, so none dangles. Mnemosyne holds \
+                the authored delta; it NEVER computes a running sum (the consumer's playthrough \
+                job — the layering line).",
+        },
+        RegistrySpec {
             name: "disclosure_plans",
             key: "telling id",
             referenced_by: "the `--telling` carrier + the render-acceptance gates",
@@ -1404,6 +1440,10 @@ mod tests {
             "entities",
             "predicates",
             "disclosure_plans",
+            // Round 729 (DEBT-K) — the meter economy registries (F5: assert the
+            // new describe-schema entries land, since side-table docs are manual).
+            "parameters",
+            "parameter_deltas",
         ] {
             assert!(reg.contains(&expected), "registry `{expected}` missing");
         }

@@ -459,6 +459,42 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_add_unit(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "add-parameter",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-parameter --parameter <id> [--description <text>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 729 (DEBT-K) — register a numeric meter (affection/karma/gold); the",
+            "   members are the consumer's; a parameter_delta/gate must reference a registered one",
+        ],
+        run: |c| atomic_cli::cmd_add_parameter(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-parameter-delta",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-parameter-delta --fact <beat-fact-id> --parameter <registered-id> --delta <nonzero-int> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 729 (DEBT-K) — attach a SIGNED per-beat delta to a meter (side-table,",
+            "   keyed by the beat fact); delta non-zero, parameter registered; consumer sums it",
+        ],
+        run: |c| atomic_cli::cmd_add_parameter_delta(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-parameter-delta",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-parameter-delta --fact <beat-fact-id> --parameter <registered-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 729 — the peer of add-parameter-delta: drop one (fact,parameter) delta;",
+            "   the beat key is deleted when the last delta goes; fail-loud if none",
+        ],
+        run: |c| atomic_cli::cmd_remove_parameter_delta(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-edge-cost",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

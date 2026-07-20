@@ -38,7 +38,7 @@ pub use redact::*;
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
     DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, EdgeCost, Entity,
-    EntityKind, Frame, InventoryStatus, NarrativeFact, PayoffExpectation, Predicate,
+    EntityKind, Frame, InventoryStatus, NarrativeFact, Parameter, PayoffExpectation, Predicate,
     PredicateObjectKind, TypedClaim, TypedObject, Unit,
 };
 use serde::{Deserialize, Serialize};
@@ -718,6 +718,32 @@ pub struct AtomicStore {
     /// v32 bare-set value predate any populated store (object-form only from v33).
     #[serde(default)]
     pub edge_guards: BTreeMap<String, EdgeGuard>,
+    /// Numeric-PARAMETER registry (Round 728 design → Round 729 build, DEBT-K) —
+    /// keyed by parameter id. The consumer's accumulating meters (`affection`,
+    /// `karma`, `gold`); every `parameter_deltas` reference (and `parameter_gates`,
+    /// R730) must name a key here (fail-loud at the mutate primitives AND at the
+    /// scan boundary — the `units` symmetry; empty does NOT pass, a delta on an
+    /// unregistered parameter is a REJECT). Members are consumer vocabulary
+    /// (invariant 4, never a core enum). Empty on pre-v34 stores via
+    /// `#[serde(default)]`.
+    #[serde(default)]
+    pub parameters: BTreeMap<String, Parameter>,
+    /// Per-beat parameter DELTAS side-table (Round 728 design → Round 729 build,
+    /// DEBT-K) — keyed by the FACT ID of the beat that grants the change, value =
+    /// a map from parameter id to a SIGNED delta (`+2` a gift, `-1` an insult).
+    /// One beat may move several meters. A SIDE-TABLE like [`edge_costs`], not a
+    /// reified fact: the delta is frame-invariant game-mechanic ground truth
+    /// (which BRANCH it applies on is captured by which branch-scoped fact it is
+    /// keyed to; the VALUE is invariant), so it needs no per-fact
+    /// frame/branch/evidence. Every key must resolve to an existing fact, every
+    /// parameter be registered, and every delta be non-zero (fail-loud at the
+    /// primitive AND the scan boundary — the parity-complete `edge_guard`
+    /// precedent, NOT the `n>0`-blind `edge_cost` one). `retract_fact`
+    /// CASCADE-DROPS the beat's deltas, so no delta ever dangles. Mnemosyne holds
+    /// the authored delta; it NEVER computes a running sum along a playthrough
+    /// (the consumer's job — the R712 layering line). Empty on pre-v34 stores.
+    #[serde(default)]
+    pub parameter_deltas: BTreeMap<String, BTreeMap<String, i64>>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1324,11 +1350,18 @@ pub enum AtomicStoreError {
 // the OBJECT shape only; an old v32 bare-array value would fail the struct parse
 // LOUD (no silent guess), and the monotone `> CURRENT` guard stops an old binary
 // misreading a threshold guard's object as `Some(len)` AND.
+// v33→v34 adds `AtomicStore.parameters` (a numeric-meter registry) +
+// `AtomicStore.parameter_deltas` (a per-beat signed-delta side-table) — Round
+// 728 design → Round 729 build, DEBT-K. Additive: two top-level `BTreeMap`s
+// under `#[serde(default)]`, empty on older stores, no fact re-validated on
+// load. A pre-DEBT-K binary reading a v34 store drops the unknown fields on save
+// (the silent-drop class), which the monotone `> CURRENT` guard rejects loudly
+// instead. No migration arm (new fields, not a shape change to existing data).
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 33;
+pub const CURRENT_SCHEMA_VERSION: u32 = 34;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -5274,6 +5307,207 @@ pub fn edge_guard_violations(store: &AtomicStore) -> Vec<String> {
     out
 }
 
+/// Register one numeric PARAMETER (Round 728 design → Round 729 build, DEBT-K) —
+/// the vocabulary `parameter_deltas` refs name (and `parameter_gates`, R730). The members
+/// are the CONSUMER's (`affection`, `karma`, `gold`); core never enumerates them
+/// (invariant 4, the R700/R706 lesson), the substrate enforces only that a
+/// parameter in use was declared. The `add_unit` precedent exactly.
+pub fn add_parameter(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    param_id: &str,
+    description: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = param_id.trim().to_string();
+    let candidate = Parameter {
+        description: description.trim().to_string(),
+    };
+    let created = stage_registry_entry(
+        &mut store.parameters,
+        "add_parameter",
+        "parameter",
+        &id,
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_parameter",
+        "parameter",
+        &id,
+        created,
+    )
+}
+
+/// Whether a parameter resolves in the registry — the ONE verdict, shared by the
+/// delta write path (`add_parameter_delta`) and the scan boundary
+/// (`parameter_delta_violations`), so the two cannot drift (the half-enforced
+/// anti-pattern, R295). Like `unit_registered` (and unlike
+/// `entity_kind_registered`), EMPTY does NOT pass: a delta/gate reference has no
+/// meaning without its registered meter, so an unregistered parameter fails to
+/// resolve.
+pub fn parameter_registered(store: &AtomicStore, parameter: &str) -> bool {
+    store.parameters.contains_key(parameter)
+}
+
+/// Attach a SIGNED per-beat delta to a parameter (Round 728 design → Round 729
+/// build, DEBT-K) — keyed by the FACT ID of the beat that grants the change,
+/// with `parameter` a `parameters` registry ref and `delta` the signed amount.
+/// Fail-loud: the fact must EXIST (a delta rides a real beat), the parameter must
+/// be REGISTERED (invariant 4), and `delta != 0` (0 = a no-op beat; the signed
+/// analog of `add_edge_cost`'s `n > 0`, but BOTH signs are legal — this is the
+/// weighted/negative axis K-of-N cannot express). The store holds the authored
+/// delta; it NEVER computes a running sum along a playthrough (the consumer's
+/// job — the R712 layering line). A2-consistent per (fact, parameter): absent →
+/// insert, byte-identical → no-op, DIVERGENT → reject. The A2 check is
+/// hand-rolled on the inner `i64` because the value is a NESTED map
+/// (`stage_registry_entry` stages a whole value at the OUTER key and cannot see
+/// the inner divergent case, unlike `edge_guard`'s set which has none).
+pub fn add_parameter_delta(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    parameter: &str,
+    delta: i64,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let fact = fact_id.trim().to_string();
+    let param = parameter.trim().to_string();
+    if !store.narrative_facts.contains_key(&fact) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_parameter_delta: fact `{fact}` not present (a delta rides an existing beat fact; \
+             add the fact first)"
+        )));
+    }
+    if !parameter_registered(store, &param) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_parameter_delta: parameter `{param}` is not registered (add_parameter first; \
+             fail-loud — invariant 4)"
+        )));
+    }
+    if delta == 0 {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_parameter_delta: delta 0 on parameter `{param}` is a no-op (a beat that changes \
+             nothing; use a non-zero signed delta)"
+        )));
+    }
+    // A2-consistent per (fact, param), hand-rolled on the inner i64. Only the
+    // create branch touches the map, so a rejected add never leaves a vacuous
+    // empty inner map behind.
+    let created = match store
+        .parameter_deltas
+        .get(&fact)
+        .and_then(|m| m.get(&param))
+    {
+        Some(existing) if *existing == delta => false,
+        Some(existing) => {
+            return Err(AtomicMutateError::Validation(format!(
+                "add_parameter_delta: fact `{fact}` already has a DIVERGENT delta {existing} on \
+                 parameter `{param}` — refusing silent overwrite (remove_parameter_delta first)"
+            )));
+        }
+        None => {
+            store
+                .parameter_deltas
+                .entry(fact.clone())
+                .or_default()
+                .insert(param.clone(), delta);
+            true
+        }
+    };
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_parameter_delta",
+        "parameter_delta",
+        &fact,
+        created,
+    )
+}
+
+/// Remove ONE (fact, parameter) delta (Round 729) — the granular peer of
+/// [`add_parameter_delta`]. Drops the named parameter's delta from the beat; if
+/// it was the LAST one, the beat's map KEY is DELETED (never a vacuous empty map
+/// — the `remove_edge_guard_condition` empty-set-drops-key rule). Fail-loud: the
+/// beat must have that parameter's delta (a no-op remove would hide a typo).
+pub fn remove_parameter_delta(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    parameter: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let fact = fact_id.trim().to_string();
+    let param = parameter.trim().to_string();
+    match store.parameter_deltas.get_mut(&fact) {
+        Some(m) if m.contains_key(&param) => {
+            m.remove(&param);
+        }
+        _ => {
+            return Err(AtomicMutateError::Validation(format!(
+                "remove_parameter_delta: fact `{fact}` has no delta on parameter `{param}` to \
+                 remove (add_parameter_delta adds one)"
+            )));
+        }
+    }
+    if store
+        .parameter_deltas
+        .get(&fact)
+        .is_some_and(|m| m.is_empty())
+    {
+        store.parameter_deltas.remove(&fact);
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_parameter_delta",
+        "parameter_delta",
+        &fact,
+    )
+}
+
+/// Every out-of-band `parameter_deltas` violation (Round 729, DEBT-K): a key
+/// whose fact is GONE, an EMPTY delta map, a delta on an UNregistered parameter,
+/// or a ZERO delta. The write path (`add_parameter_delta`) + the cascade-drop
+/// (`retract_fact`) cannot produce any — only an out-of-band edit can. This
+/// re-checks the value invariants (`delta != 0`, parameter-registered) at the
+/// scan boundary, matching the write path (the parity-complete
+/// `edge_guard_violations` precedent, NOT the `n>0`-blind `edge_cost_violations`
+/// one — else "half-enforced invariant = no invariant"). The ONE detector
+/// `store_registry_violations` calls. Messages in key order (BTreeMap), empty =
+/// clean.
+pub fn parameter_delta_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (fact, deltas) in &store.parameter_deltas {
+        if !store.narrative_facts.contains_key(fact) {
+            out.push(format!(
+                "parameter_delta `{fact}`: no such narrative fact (out-of-band edit; retract_fact \
+                 cascade-drops the deltas, so a live store never holds this)"
+            ));
+        }
+        if deltas.is_empty() {
+            out.push(format!(
+                "parameter_delta `{fact}`: empty delta map (a vacuous entry; out-of-band edit — \
+                 remove_parameter_delta drops the key when the last delta goes)"
+            ));
+        }
+        for (param, delta) in deltas {
+            if !parameter_registered(store, param) {
+                out.push(format!(
+                    "parameter_delta `{fact}`: parameter `{param}` not in the parameters registry \
+                     (out-of-band edit; add-parameter first)"
+                ));
+            }
+            if *delta == 0 {
+                out.push(format!(
+                    "parameter_delta `{fact}`: delta 0 on parameter `{param}` (a no-op; \
+                     out-of-band edit — add_parameter_delta rejects a zero delta)"
+                ));
+            }
+        }
+    }
+    out
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -5481,6 +5715,11 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // (`add_edge_guard`) + the cascade-drop / condition-refuse (`retract_fact`)
     // cannot produce these.
     out.extend(edge_guard_violations(store));
+    // Round 729 → DEBT-K — the parameter-DELTA side-table's out-of-band integrity
+    // (a key whose fact is gone, an empty delta map, an unregistered parameter, or
+    // a zero delta). Parity-complete with the write path (`add_parameter_delta`):
+    // re-checks `delta != 0` + parameter-registered at the boundary too.
+    out.extend(parameter_delta_violations(store));
     out
 }
 
@@ -6924,6 +7163,12 @@ pub fn retract_fact(
     // side is the REFUSE above (a referenced condition can't be retracted), so no
     // dangling guard is possible from either direction.
     store.edge_guards.remove(id);
+    // Round 729 → DEBT-K — CASCADE-DROP the parameter DELTAS keyed by this beat
+    // fact: a delta is subordinate beat metadata, so it goes WITH the beat, never
+    // dangles. A delta references only a registry parameter (not another fact), so
+    // there is no CONDITION-side refuse to mirror — the cascade-drop is the whole
+    // integrity story for the delta side-table.
+    store.parameter_deltas.remove(id);
     save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
 }
 
@@ -9443,6 +9688,12 @@ mod tests {
             // condition SET (empties → the key is dropped); a set member is a
             // referrer of its condition, referenced by nothing — strands no ref,
             // same leaf class as edge_guard.
+            "parameter_delta", // R729 (DEBT-K): drops ONE (fact,parameter) delta from a
+            // beat's delta map (empties → the beat key is dropped); a delta is a
+            // side-table VALUE keyed BY a beat fact, referencing only a registry
+            // parameter — referenced by nothing (a leaf), so it strands no ref. The
+            // inverse hazard (a beat fact removed under live deltas) is the
+            // retract_fact cascade-drop, not this remover.
             "predicate", // R658: an identity (TypedClaim.predicate names
                          // it), so it IS this test's target class — guarded by
                          // predicate_uses, which rejects while any typed leg refers to it.
@@ -13728,6 +13979,203 @@ mod tests {
             v.iter()
                 .any(|m| m.contains("f-live") && m.contains("not in the units registry")),
             "out-of-band unregistered unit must be named: {v:?}"
+        );
+    }
+
+    /// Round 729 (DEBT-K) — the parameter registry + delta write-path gates:
+    /// add_parameter registers a meter (empty registry fails parameter_registered,
+    /// then passes); a delta requires an existing fact, a registered parameter, and
+    /// a NON-ZERO delta (BOTH signs legal — the weighted/negative axis edge_cost's
+    /// n>0 forbids); A2 per (fact, param): identical is a no-op, divergent rejects.
+    /// NON-VACUITY: the stored delta value is asserted, and each reject asserts the
+    /// loud error + that the store was not mutated on the divergent reject.
+    #[test]
+    fn add_parameter_and_delta_gate_registry_fact_and_nonzero() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
+
+        // Empty registry: a parameter is not registered until add_parameter, and a
+        // delta on an unregistered parameter rejects.
+        assert!(!parameter_registered(&store, "affection"));
+        let err = add_parameter_delta(&mut store, &path, "f-beat", "affection", 2)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not registered"),
+            "unregistered param rejects: {err}"
+        );
+
+        add_parameter(&mut store, &path, "affection", "the meter").unwrap();
+        assert!(parameter_registered(&store, "affection"));
+
+        // Valid positive delta, and a NEGATIVE delta (the axis edge_cost forbids).
+        add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
+        assert_eq!(store.parameter_deltas["f-beat"]["affection"], 2);
+        add_fact(&mut store, &path, &sample_fact("f-insult", "gt")).unwrap();
+        add_parameter_delta(&mut store, &path, "f-insult", "affection", -1).unwrap();
+        assert_eq!(store.parameter_deltas["f-insult"]["affection"], -1);
+
+        // Missing fact rejects; zero delta rejects.
+        let err = add_parameter_delta(&mut store, &path, "f-gone", "affection", 1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not present"), "missing fact rejects: {err}");
+        let err = add_parameter_delta(&mut store, &path, "f-beat", "affection", 0)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no-op"), "zero delta rejects: {err}");
+
+        // A2: identical is a no-op; a DIVERGENT delta on the same key rejects and
+        // does NOT mutate the stored value.
+        add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
+        let err = add_parameter_delta(&mut store, &path, "f-beat", "affection", 3)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("DIVERGENT"), "divergent delta rejects: {err}");
+        assert_eq!(
+            store.parameter_deltas["f-beat"]["affection"], 2,
+            "a rejected divergent add left the value intact"
+        );
+    }
+
+    /// Round 729 — `remove_parameter_delta` drops ONE (fact, param) delta; when the
+    /// LAST delta on a beat goes, the beat's KEY is dropped (never a vacuous empty
+    /// map — the remove_edge_guard_condition rule); a remove with nothing to drop
+    /// fails loud. NON-VACUITY: a multi-meter beat keeps its other delta; the
+    /// emptied beat key is gone.
+    #[test]
+    fn remove_parameter_delta_drops_the_last_delta_key() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-gift", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter(&mut store, &path, "trust", "").unwrap();
+        // One beat moves TWO meters.
+        add_parameter_delta(&mut store, &path, "f-gift", "affection", 2).unwrap();
+        add_parameter_delta(&mut store, &path, "f-gift", "trust", 1).unwrap();
+
+        // Remove-absent fails loud.
+        let err = remove_parameter_delta(&mut store, &path, "f-gift", "gold")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no delta"), "remove-absent fails loud: {err}");
+
+        // Drop one: the beat key stays (trust remains).
+        remove_parameter_delta(&mut store, &path, "f-gift", "affection").unwrap();
+        assert!(
+            store.parameter_deltas.contains_key("f-gift"),
+            "beat kept while a delta remains"
+        );
+        assert!(!store.parameter_deltas["f-gift"].contains_key("affection"));
+        // Drop the last: the beat KEY is dropped (no vacuous empty map).
+        remove_parameter_delta(&mut store, &path, "f-gift", "trust").unwrap();
+        assert!(
+            !store.parameter_deltas.contains_key("f-gift"),
+            "emptied beat key dropped"
+        );
+    }
+
+    /// Round 729 (F3 — the mandatory R305 field-invariant parity test): the
+    /// parameter_delta value invariants (delta != 0, parameter registered) are
+    /// enforced by the WRITE PATH (`add_parameter_delta`) AND re-checked at the SCAN
+    /// BOUNDARY (`parameter_delta_violations` via `store_registry_violations`).
+    /// Feeds the SAME edge cases to both — a write reject must correspond to a scan
+    /// flag — so a future one-sided change (the half-enforced anti-pattern that made
+    /// edge_cost's n>0 boundary-blind) fails right here.
+    #[test]
+    fn parameter_delta_invariant_parity_across_write_and_scan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a clean delta passes the scan"
+        );
+
+        // WRITE PATH rejects delta=0 and an unregistered parameter.
+        assert!(add_parameter_delta(&mut store, &path, "f-beat", "affection", 0).is_err());
+        assert!(add_parameter_delta(&mut store, &path, "f-beat", "karma", 1).is_err());
+
+        // SCAN BOUNDARY flags the SAME two, injected out-of-band (bypassing writes).
+        store
+            .parameter_deltas
+            .get_mut("f-beat")
+            .unwrap()
+            .insert("affection".to_string(), 0);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-beat") && m.contains("delta 0")),
+            "out-of-band zero delta must be flagged (write↔scan parity): {v:?}"
+        );
+        // Restore a valid delta; inject an unregistered-parameter delta.
+        store
+            .parameter_deltas
+            .get_mut("f-beat")
+            .unwrap()
+            .insert("affection".to_string(), 2);
+        store
+            .parameter_deltas
+            .get_mut("f-beat")
+            .unwrap()
+            .insert("karma".to_string(), 1);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter().any(|m| m.contains("f-beat")
+                && m.contains("karma")
+                && m.contains("not in the parameters registry")),
+            "out-of-band unregistered param must be flagged: {v:?}"
+        );
+    }
+
+    /// Round 729 (DEBT-K) — `retract_fact` CASCADE-DROPS a beat's parameter deltas
+    /// (delta metadata goes with its beat), so no delta dangles; and the detector
+    /// names an orphan an out-of-band edit leaves. NON-VACUITY: clean with the
+    /// delta, gone after retract, named after injection.
+    #[test]
+    fn retract_cascade_drops_parameter_deltas_and_detector_catches_orphan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "clean with the delta"
+        );
+
+        retract_fact(&mut store, &path, "f-beat", "beat cut").unwrap();
+        assert!(
+            !store.parameter_deltas.contains_key("f-beat"),
+            "the deltas must cascade-drop with the beat"
+        );
+
+        // Out-of-band: a delta map whose beat fact is gone is named.
+        let mut orphan = BTreeMap::new();
+        orphan.insert("affection".to_string(), 2i64);
+        store
+            .parameter_deltas
+            .insert("f-orphan".to_string(), orphan);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan must be named: {v:?}"
         );
     }
 

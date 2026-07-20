@@ -410,6 +410,40 @@ pub struct AddUnitArgs {
     pub description: String,
 }
 
+/// Register a numeric PARAMETER (Round 729, DEBT-K) — an accumulating meter
+/// (affection / karma / gold). Mirrors `add_unit`. Without it an MCP-only agent
+/// could not declare a meter, so no parameter_delta could pass the gate.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddParameterArgs {
+    /// Parameter id — one member of the meter vocabulary (e.g. affection).
+    pub parameter_id: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Attach a SIGNED per-beat delta to a parameter (Round 729, DEBT-K) — a
+/// side-table entry keyed by the beat fact id. The consumer accumulates the
+/// running sum; Mnemosyne never does.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddParameterDeltaArgs {
+    /// The BEAT FACT ID the delta rides (must already exist).
+    pub fact_id: String,
+    /// A REGISTERED parameter (add_parameter first).
+    pub parameter: String,
+    /// The SIGNED delta — non-zero (0 = a no-op beat); both signs legal.
+    pub delta: i64,
+}
+
+/// Remove one (fact, parameter) delta (Round 729) — the peer of
+/// `add_parameter_delta`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveParameterDeltaArgs {
+    /// The beat fact id whose delta to drop.
+    pub fact_id: String,
+    /// The parameter whose delta to drop (fail-loud if the beat has none).
+    pub parameter: String,
+}
+
 /// Attach a cost to one map edge (Round 709 → DEBT-J) — a side-table entry keyed
 /// by the adjacent fact id, NOT a reified fact (the cost is frame-invariant edge
 /// metadata). Mirrors `add_unit`.
@@ -1721,6 +1755,42 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_unit(store, path, &a.unit_id, &a.description));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Register a numeric PARAMETER (R729, DEBT-K) — an accumulating meter (affection / karma / gold / an RPG stat). The consumer declares the members; the substrate never enumerates them (invariant 4) and enforces only that a parameter in use was declared — a bare string would drift affection/affinity/호감도. Register a parameter before a delta or gate names it. Idempotent on identical content; divergent rejects. Like units, empty does not pass."
+    )]
+    async fn add_parameter(&self, args: Parameters<AddParameterArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_parameter(store, path, &a.parameter_id, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Attach a SIGNED per-beat DELTA to a parameter (R729, DEBT-K) — a side-table entry keyed by the BEAT FACT ID, value = a parameter -> signed delta (+2 a gift, -1 an insult; one beat may move several meters). Fail-loud: the fact must exist, the parameter be registered (add_parameter first), and the delta be NON-ZERO (0 = a no-op beat) — both signs legal (the weighted/negative axis K-of-N cannot express). retract_fact cascade-drops the beat's deltas, so none dangles. Mnemosyne holds the authored delta; it NEVER computes a running sum along a playthrough (the consumer's job — the layering line). A2-consistent per (fact, parameter): identical is a no-op, divergent rejects."
+    )]
+    async fn add_parameter_delta(&self, args: Parameters<AddParameterDeltaArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_parameter_delta(store, path, &a.fact_id, &a.parameter, a.delta)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove ONE (fact, parameter) delta (R729) — the peer of add_parameter_delta. Drops the named parameter's delta from the beat; the beat key is deleted when the last delta goes. Fail-loud if the beat has no delta on that parameter."
+    )]
+    async fn remove_parameter_delta(
+        &self,
+        args: Parameters<RemoveParameterDeltaArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::remove_parameter_delta(store, path, &a.fact_id, &a.parameter)
+        });
         self.finish_mutate(outcome)
     }
 
