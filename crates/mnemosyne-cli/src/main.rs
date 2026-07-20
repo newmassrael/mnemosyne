@@ -2923,7 +2923,11 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
                 .as_deref()
                 .map(|t| format!("..{t}"))
                 .unwrap_or_default();
-            println!("  [{}{}] {}: {}", e.canon_from, to, e.fact_id, e.claim);
+            let count = e.count.map(|n| format!(" (x{n})")).unwrap_or_default();
+            println!(
+                "  [{}{}] {}: {}{}",
+                e.canon_from, to, e.fact_id, e.claim, count
+            );
         }
         for u in &view.unknown {
             println!("  [unknown under declared order] {u}");
@@ -3418,6 +3422,9 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
                 s.holding_count
             );
             for e in &s.begins {
+                // R731 multiset count rides the claim on the human surface too
+                // (parity with report-frame-view's `(xN)`); JSON already carries it.
+                let count = e.count.map(|n| format!(" (x{n})")).unwrap_or_default();
                 match &e.disclosure {
                     Some(d) => {
                         let at = d
@@ -3434,16 +3441,17 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
                             })
                             .unwrap_or_default();
                         println!(
-                            "    + {} ({}) [{}{}{}]: {}",
+                            "    + {} ({}) [{}{}{}]: {}{}",
                             e.fact_id,
                             e.frame,
                             d.mode.as_str(),
                             at,
                             surf,
-                            e.claim
+                            e.claim,
+                            count
                         );
                     }
-                    None => println!("    + {} ({}): {}", e.fact_id, e.frame, e.claim),
+                    None => println!("    + {} ({}): {}{}", e.fact_id, e.frame, e.claim, count),
                 }
             }
             for e in &s.ends {

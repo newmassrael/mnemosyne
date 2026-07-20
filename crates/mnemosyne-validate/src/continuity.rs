@@ -3853,6 +3853,16 @@ pub struct FrameViewEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub typed: Option<mnemosyne_core::TypedClaim>,
     pub quote: Option<String>,
+    /// Multiset count (Round 731 `fact_counts`) riding this fact, surfaced
+    /// verbatim when authored — the belief-frame's ASSERTED CONTENT ("A holds
+    /// FIVE potions"), a stored per-fact attribute keyed by this fact's id,
+    /// the same fidelity as `evidence` / `typed` / `quote`. Absent = no
+    /// authored multiplicity (a unique token is `None`, never an implicit 1).
+    /// Echoed, never summed across facts (the Round 712 layering line — the
+    /// economy/gate side-tables `parameter_deltas` / `parameter_gates` are
+    /// NOT content and stay in the consumer's `report-parameter-economy`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
 }
 
 /// The frame-at-T projection result (Round 432). Three-state honest under a
@@ -3962,6 +3972,7 @@ pub fn frame_view(
                 evidence: fact.evidence.clone(),
                 typed: fact.typed.clone(),
                 quote: fact.quote.clone(),
+                count: store.fact_counts.get(id).copied(),
             });
             continue;
         }
@@ -4537,6 +4548,11 @@ pub struct ManuscriptFactEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub typed: Option<mnemosyne_core::TypedClaim>,
     pub quote: Option<String>,
+    /// Multiset count (Round 731 `fact_counts`) riding this fact — the same
+    /// asserted-content echo as [`FrameViewEntry::count`]; absent = no
+    /// authored multiplicity, never summed (the Round 712 layering line).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
     /// Render-brief disclosure decision under the `--telling` carrier (Round
     /// 506) — `None` unless a telling is given; the craft-bearing input the
     /// bare fact list lacked.
@@ -4780,6 +4796,7 @@ pub fn playthrough_manuscript(
                         evidence: fact.evidence.clone(),
                         typed: fact.typed.clone(),
                         quote: fact.quote.clone(),
+                        count: store.fact_counts.get(id).copied(),
                         disclosure: plan.map(|p| resolve_fact_disclosure(p, &world, id)),
                     });
                 }
@@ -6439,6 +6456,46 @@ mod tests {
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-arm".to_string()]);
         assert_eq!(view.not_holding, 0);
+    }
+
+    #[test]
+    fn frame_view_surfaces_the_multiset_count_only_when_authored() {
+        // R731 `fact_counts` is ASSERTED CONTENT of the fact — the belief-frame
+        // view echoes it verbatim (never sums, R712). A fact with NO authored
+        // count stays `None` (a unique token is not an implicit 1).
+        let counted = fact("f-hold", "seward", "ch-1", None);
+        let plain = fact("f-plain", "seward", "ch-1", None);
+        let mut store = store_with(vec![counted, plain]);
+        store.fact_counts.insert("f-hold".to_string(), 5);
+        let order = chain(&["ch-1", "ch-2"]);
+        let count_of = |store: &AtomicStore, id: &str| -> Option<i64> {
+            frame_view(store, &order, "seward", MAIN_BRANCH, None, "ch-1")
+                .unwrap()
+                .holding
+                .into_iter()
+                .find(|e| e.fact_id == id)
+                .unwrap_or_else(|| panic!("{id} should be holding"))
+                .count
+        };
+        assert_eq!(
+            count_of(&store, "f-hold"),
+            Some(5),
+            "the authored multiset count rides the entry"
+        );
+        // NON-VACUITY: a sibling fact with no count is `None`, not Some(1).
+        assert_eq!(
+            count_of(&store, "f-plain"),
+            None,
+            "no authored count = None, never an implicit 1"
+        );
+        // NEUTER-AND-FAIL: drop the count and the echo goes None — a hard-wired
+        // Some(5) would fail here, so the assertion above is not vacuous.
+        store.fact_counts.remove("f-hold");
+        assert_eq!(
+            count_of(&store, "f-hold"),
+            None,
+            "removing the count neuters the echo"
+        );
     }
 
     #[test]
@@ -9830,6 +9887,36 @@ mod tests {
         assert_eq!(s[2].ends[0].kind, ManuscriptEndKind::Superseded);
         assert_eq!(s[2].ends[0].by.as_deref(), Some("f3"));
         assert_eq!(s[2].holding_count, 1, "f1 cut, f2 expired — f3 alone");
+    }
+
+    #[test]
+    fn manuscript_fact_event_carries_the_multiset_count() {
+        // The manuscript begins-event is a FrameViewEntry mirror, so the R731
+        // count is asserted content there too (the follow-on named both read
+        // surfaces). Echoed only when authored; a plain fact is `None`.
+        let counted = fact("f-hold", "gt", "ch-1", None);
+        let plain = fact("f-plain", "gt", "ch-1", None);
+        let mut store = store_with(vec![counted, plain]);
+        store.fact_counts.insert("f-hold".to_string(), 5);
+        let order = chain(&["ch-1", "ch-2"]);
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
+        let begins = &report.worlds[MAIN_BRANCH].scenes[0].begins;
+        let event = |id: &str| begins.iter().find(|e| e.fact_id == id).unwrap();
+        assert_eq!(event("f-hold").count, Some(5), "the count rides the event");
+        assert_eq!(event("f-plain").count, None, "no count = None, not Some(1)");
+        // NEUTER-AND-FAIL: drop it and the mirror goes None too.
+        store.fact_counts.remove("f-hold");
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
+        assert_eq!(
+            report.worlds[MAIN_BRANCH].scenes[0]
+                .begins
+                .iter()
+                .find(|e| e.fact_id == "f-hold")
+                .unwrap()
+                .count,
+            None,
+            "removing the count neuters the mirror echo"
+        );
     }
 
     /// A visible fact whose coordinate the order never names emits no

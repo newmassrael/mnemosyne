@@ -166,6 +166,74 @@ fn fact_count_the_potion_stack_end_to_end() {
     );
 }
 
+/// Round 735 — the R731 count is ASSERTED CONTENT, so `report-frame-view` echoes
+/// it verbatim on the holding entry (the R731 follow-on: "surface the count in
+/// report-frame-view"), through the REAL binary. A fact with no authored count
+/// has no `count` key — opt-in, never an implicit 1.
+#[test]
+fn frame_view_echoes_the_multiset_count_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+    author_custody(ws);
+    assert!(
+        run(ws, &["add-fact-count", "--fact", "f-hold", "--count", "5"])
+            .status
+            .success()
+    );
+    // A sibling custody fact with NO count — the opt-in negative control.
+    assert!(run(ws, &["add-entity", "--entity", "char-b"])
+        .status
+        .success());
+    assert!(run(
+        ws,
+        &[
+            "add-fact",
+            "--fact",
+            "f-plain",
+            "--frame",
+            "gt",
+            "--claim",
+            "char-b waits",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "char-b",
+        ],
+    )
+    .status
+    .success());
+
+    let out = run(
+        ws,
+        &[
+            "report-frame-view",
+            "--frame",
+            "gt",
+            "--at",
+            "ch-1",
+            "--json",
+        ],
+    );
+    assert!(out.status.success(), "{out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let holding = v["holding"].as_array().unwrap();
+    let entry = |id: &str| holding.iter().find(|e| e["fact_id"] == id).unwrap();
+    assert_eq!(
+        entry("f-hold")["count"],
+        5,
+        "the count rides the frame-view entry: {}",
+        entry("f-hold")
+    );
+    assert!(
+        entry("f-plain").get("count").is_none(),
+        "no authored count = no `count` key (opt-in): {}",
+        entry("f-plain")
+    );
+}
+
 /// Round 731 — `remove-fact-count` through the REAL binary: it drops a stray count
 /// off a fact WITHOUT retracting the fact (the exit `retract-fact` cannot give a
 /// referenced or legitimate fact), and a remove with no count to drop fails loud.
