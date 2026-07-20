@@ -1,12 +1,16 @@
-//! Round 732 (DEBT-M) — the entity-kind inheritance tree through the CLI.
+//! Round 732 (DEBT-M) / Round 738 (DAG) — the entity-kind inheritance graph
+//! through the CLI.
 //!
 //! The durable proof (not an ephemeral dogfood — the R689/R699 discipline) that
 //! `add-entity-kind --parent` is wired end-to-end through the REAL binary AND
-//! that the subtree scope closes the R732-measured expressiveness gap: "a weapon
-//! is a kind of thing" — a `thing`-scoped predicate ACCEPTS a `weapon` (which a
-//! flat registry rejected), a `weapon`-scoped predicate still REJECTS a bare
-//! `thing` (the subtree is directional), and a self / unregistered parent is
-//! rejected at write time. The `parent` link is visible in the raw SSOT JSON.
+//! that the ancestor-closure scope closes the R732-measured expressiveness gap:
+//! "a weapon is a kind of thing" — a `thing`-scoped predicate ACCEPTS a `weapon`
+//! (which a flat registry rejected), a `weapon`-scoped predicate still REJECTS a
+//! bare `thing` (directional), and a self / unregistered parent is rejected at
+//! write time. R738 adds the MULTIPLE-INHERITANCE proof: a `magic-sword`
+//! declared with a REPEATED `--parent` (`weapon` AND `magic`) satisfies BOTH a
+//! weapon-scoped and a magic-scoped rule at once — the capability a single-parent
+//! tree could not express. Both parents are visible in the raw SSOT JSON.
 
 use std::fs;
 use std::path::Path;
@@ -89,11 +93,12 @@ fn entity_kind_hierarchy_end_to_end() {
         stderr(&out)
     );
 
-    // The raw SSOT JSON carries the parent link.
+    // The raw SSOT JSON carries the parent link (a set — a one-element array).
     let store = read_store(ws);
     assert_eq!(
-        store["entity_kinds"]["weapon"]["parent"], "thing",
-        "parent must be stored: {store}"
+        store["entity_kinds"]["weapon"]["parents"],
+        serde_json::json!(["thing"]),
+        "parents must be stored: {store}"
     );
 
     // Entities + two predicates: holds scoped to `thing`, wields to `weapon`.
@@ -187,6 +192,86 @@ fn entity_kind_hierarchy_end_to_end() {
         stderr(&out).contains("object kind `weapon`"),
         "{}",
         stderr(&out)
+    );
+
+    // ── Round 738 (DAG / multiple inheritance) ─────────────────────────────
+    // magic-sword is BOTH a weapon (⊂ thing) AND a magic-item — the capability
+    // a single-parent tree could not express. Declared with a REPEATED --parent.
+    assert!(run(ws, &["add-entity-kind", "--kind", "magic"])
+        .status
+        .success());
+    let out = run(
+        ws,
+        &[
+            "add-entity-kind",
+            "--kind",
+            "magic-sword",
+            "--parent",
+            "weapon",
+            "--parent",
+            "magic",
+        ],
+    );
+    assert!(out.status.success(), "magic-sword two parents: {out:?}");
+    // The raw SSOT JSON carries BOTH parents (a BTreeSet ⇒ a sorted array).
+    let store = read_store(ws);
+    assert_eq!(
+        store["entity_kinds"]["magic-sword"]["parents"],
+        serde_json::json!(["magic", "weapon"]),
+        "both parents stored, sorted: {store}"
+    );
+    // A magic-scoped predicate + an entity of the doubly-parented kind.
+    assert!(run(
+        ws,
+        &[
+            "add-predicate",
+            "--predicate",
+            "attunes",
+            "--object-kind",
+            "entity",
+            "--subject-kind",
+            "character",
+            "--object-entity-kind",
+            "magic",
+            "--description",
+            "attunement",
+        ],
+    )
+    .status
+    .success());
+    assert!(run(
+        ws,
+        &[
+            "add-entity",
+            "--entity",
+            "excalibur",
+            "--kind",
+            "magic-sword"
+        ]
+    )
+    .status
+    .success());
+    // THE MULTIPLE-INHERITANCE GAP: excalibur satisfies BOTH ancestor scopes.
+    //  holds   scoped to thing  — magic-sword ⊂ weapon ⊂ thing ⇒ ACCEPT (parent 1).
+    assert!(
+        add_fact("f-mh", "holds", "excalibur").status.success(),
+        "holds(hero, excalibur) via weapon⊂thing must accept"
+    );
+    //  wields  scoped to weapon — magic-sword ⊂ weapon ⇒ ACCEPT (parent 1).
+    assert!(
+        add_fact("f-mw", "wields", "excalibur").status.success(),
+        "wields(hero, excalibur) via weapon must accept"
+    );
+    //  attunes scoped to magic  — magic-sword ⊂ magic ⇒ ACCEPT (parent 2, the DAG).
+    assert!(
+        add_fact("f-ma", "attunes", "excalibur").status.success(),
+        "attunes(hero, excalibur) via the SECOND parent must accept"
+    );
+    // Directional still holds: a plain weapon (sword) is NOT a magic-item.
+    let out = add_fact("f-mbad", "attunes", "sword");
+    assert!(
+        !out.status.success(),
+        "attunes(hero, sword) must reject — sword is not ⊂ magic"
     );
 
     // The store validates clean end to end.

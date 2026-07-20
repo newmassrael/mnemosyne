@@ -1445,12 +1445,62 @@ pub enum AtomicStoreError {
 // reading a v37 store drops the field on save, which the monotone `> CURRENT`
 // guard rejects loudly instead. No migration arm (a new field, not a shape
 // change to existing data).
+// v37→v38 GENERALISES `EntityKind.parent: Option<String>` to `parents:
+// BTreeSet<String>` — Round 738, the R661 kind-tree extension (single-parent
+// TREE → multiple-inheritance DAG: a `magic-sword` is BOTH a `weapon` and a
+// `magic-item`). This is a SHAPE CHANGE to an existing field (rename + retype),
+// not an additive one, so it DOES need a migration arm: a v37 store may carry
+// `"parent": "thing"` on a kind, which the retyped struct would silently DROP on
+// read (EntityKind has no `deny_unknown_fields`) — data loss. `load` therefore
+// runs `migrate_entity_kind_parent_to_parents` on the raw JSON when the on-disk
+// `schema_version < 38`, rewriting each `"parent": "x"` to `"parents": ["x"]`
+// BEFORE the typed parse. Backward-compat is exact: `None` / absent ⇒ an empty
+// set ⇒ a root kind (a flat registry, unchanged). A pre-R738 binary reading a
+// v38 store hits the monotone `> CURRENT` guard.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 37;
+pub const CURRENT_SCHEMA_VERSION: u32 = 38;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
+
+/// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
+/// `parent` (`Option<String>`) to the `parents` SET (`BTreeSet<String>`) in the
+/// raw JSON, run by `load` BEFORE the typed parse. The retyped struct carries no
+/// `deny_unknown_fields`, so a lingering `"parent"` key would be silently dropped
+/// — data loss. Exact backward-compat: a string `parent` becomes a one-element
+/// `parents` array, a null / empty / absent `parent` yields NO `parents` key (an
+/// empty set = a root kind). Idempotent + defensive: a kind already carrying
+/// `"parents"` keeps it (the legacy key, if also present, is just removed); a
+/// non-object `entity_kinds` value or a missing map is a no-op (the typed parse
+/// reports any real corruption).
+fn migrate_entity_kind_parent_to_parents(raw: &mut serde_json::Value) {
+    let Some(kinds) = raw
+        .get_mut("entity_kinds")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    for kind in kinds.values_mut() {
+        let Some(obj) = kind.as_object_mut() else {
+            continue;
+        };
+        let Some(parent) = obj.remove("parent") else {
+            continue;
+        };
+        if obj.contains_key("parents") {
+            continue; // already the new shape — the stray legacy key is dropped
+        }
+        if let serde_json::Value::String(s) = parent {
+            if !s.trim().is_empty() {
+                obj.insert(
+                    "parents".to_string(),
+                    serde_json::Value::Array(vec![serde_json::Value::String(s)]),
+                );
+            }
+        }
+    }
+}
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
 /// shape: a `{kind:value}` typed object OR a `object_kind:"scalar"` predicate
@@ -1531,27 +1581,48 @@ impl AtomicStore {
             return Ok(Self::new());
         }
         let bytes = fs::read(path)?;
-        let mut store: AtomicStore = match serde_json::from_slice(&bytes) {
+        // Parse to a raw Value first, so a SHAPE migration that must run BEFORE
+        // the typed parse can (a renamed/retyped field is silently dropped by
+        // serde otherwise — the store structs carry no `deny_unknown_fields`).
+        // Cheap: the JSON is already in memory and load is not a hot path.
+        let mut raw: serde_json::Value = serde_json::from_slice(&bytes)?;
+        // A version-less store MUST default to the SAME value the typed
+        // `schema_version` field's serde default uses (`default_schema_version`),
+        // or the pre-v4 audit→publishable clone below silently stops running for
+        // it (the two defaults must not drift — the SSOT rule one read-path over).
+        let on_disk_version = raw
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            .map(|v| v as u32)
+            .unwrap_or_else(default_schema_version);
+        if on_disk_version > CURRENT_SCHEMA_VERSION {
+            return Err(AtomicStoreError::SchemaVersionMismatch {
+                store: on_disk_version,
+                expected: CURRENT_SCHEMA_VERSION,
+            });
+        }
+        // v37→v38 (Round 738): EntityKind.parent (Option<String>) → parents
+        // (BTreeSet<String>). Rewrite the raw JSON before the typed parse would
+        // silently drop the legacy `parent` key (data loss).
+        if on_disk_version < 38 {
+            migrate_entity_kind_parent_to_parents(&mut raw);
+        }
+        let mut store: AtomicStore = match serde_json::from_value(raw) {
             Ok(store) => store,
             Err(e) => {
-                // Round 708 — the strict parse fails on a removed `{kind:value}`
+                // Round 708 — the typed parse fails on a removed `{kind:value}`
                 // object (serde "unknown variant `value`"). Turn that cryptic
                 // error into the NAMED migration work-list (R625 brick lesson):
-                // lenient-parse the bytes and list every fact still carrying a
-                // value object. If it is a DIFFERENT parse error, propagate it.
+                // lenient-parse the ORIGINAL bytes and list every fact still
+                // carrying a value object. If it is a DIFFERENT parse error,
+                // propagate it.
                 if let Some(err) = removed_value_shape_error(&bytes) {
                     return Err(err);
                 }
                 return Err(e.into());
             }
         };
-        if store.schema_version > CURRENT_SCHEMA_VERSION {
-            return Err(AtomicStoreError::SchemaVersionMismatch {
-                store: store.schema_version,
-                expected: CURRENT_SCHEMA_VERSION,
-            });
-        }
-        if store.schema_version < 4 {
+        if on_disk_version < 4 {
             for entry in store.changelog_entries.values_mut() {
                 entry.clone_audit_into_publishable();
             }
@@ -3987,15 +4058,18 @@ pub struct EntityImport {
 /// One entity-kind entry in the [`FactsManifest`] (and the `add_entity_kind`
 /// shape) — the consumer's vocabulary declaration. Staged BEFORE `entities`
 /// so one manifest can declare a kind and use it (the frames-before-facts
-/// ordering this manifest already relies on). A `parent` (Round 732, DEBT-M)
-/// must appear EARLIER in the `entity_kinds` array than the child that names
-/// it (the parent-declared-first staging the write path enforces).
+/// ordering this manifest already relies on). Each `parents` entry (Round 732
+/// DEBT-M as one parent, Round 738 as a SET — multiple inheritance) must appear
+/// EARLIER in the `entity_kinds` array than the child that names it (the
+/// parent-declared-first staging the write path enforces).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityKindImport {
     pub kind_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
+    /// Direct super-kinds (0..N) — registered EARLIER in the array. A DAG:
+    /// omitted / empty ⇒ a root kind (a flat registry, backward-compat).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parents: Vec<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -4951,28 +5025,40 @@ pub fn add_branch(
 /// moment authoring needs one, exactly as Round 658's `set-predicate` does
 /// for the predicate vocabulary.
 ///
-/// `parent` (Round 732, DEBT-M) is this kind's direct super-kind. When Some
-/// (trimmed non-empty) it must ALREADY be a registered kind (the `add_entity`
-/// kind-first symmetry — parent-declared-first) and must NOT be `kind_id`
-/// itself (a 1-node self-cycle). Because the parent must pre-exist and there
-/// is no parent-mutation setter, a multi-node cycle is unreachable via the
-/// mutate API (each new kind points only at strictly-earlier kinds); the scan
-/// detector (`entity_kind_parent_violations`) is defense-in-depth for a
-/// hand-edited store.
+/// `parents` (Round 732 DEBT-M as one parent, Round 738 as a SET — the DAG /
+/// multiple-inheritance extension) are this kind's direct super-kinds. Each
+/// (trimmed, non-empty; duplicates and blanks dropped) must ALREADY be a
+/// registered kind (the `add_entity` kind-first symmetry — parent-declared-first)
+/// and none may be `kind_id` itself (a 1-node self-cycle). Because every parent
+/// must pre-exist and there is no parent-mutation setter on this write path, a
+/// multi-node cycle is unreachable via it (each new kind is a leaf
+/// pointing only at strictly-earlier kinds); the scan detector
+/// (`entity_kind_parent_violations`) is defense-in-depth for a hand-edited store
+/// or the parent-mutation setter.
 pub fn add_entity_kind(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     kind_id: &str,
-    parent: Option<&str>,
+    parents: &[&str],
     description: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = kind_id.trim().to_string();
-    let parent = parent.map(str::trim).filter(|s| !s.is_empty());
-    if let Some(p) = parent {
-        if p == id {
+    // Trim + drop empties + dedup into the stored SET. A new kind is a leaf
+    // (nothing references it yet), so naming already-registered parents can
+    // never close a multi-node cycle — the only cycle a write can make is a
+    // self-parent (rejected below); a multi-node cycle needs a parent-mutation
+    // setter (a later round) and would be caught there + at the scan boundary.
+    let parents: BTreeSet<String> = parents
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    for p in &parents {
+        if p == &id {
             return Err(AtomicMutateError::Validation(format!(
                 "add_entity_kind: kind `{id}` cannot be its own parent (a kind \
-                 inheritance tree has no self-loop)"
+                 inheritance graph has no self-loop)"
             )));
         }
         if !store.entity_kinds.contains_key(p) {
@@ -4995,7 +5081,7 @@ pub fn add_entity_kind(
         }
     }
     let candidate = EntityKind {
-        parent: parent.map(str::to_string),
+        parents,
         description: description.trim().to_string(),
     };
     let created = stage_registry_entry(
@@ -5028,20 +5114,25 @@ pub fn entity_kind_registered(store: &AtomicStore, kind: &str) -> bool {
 }
 
 /// Whether a stored [`Entity::kind`] (or any kind ref) satisfies a predicate's
-/// endpoint-kind constraint under the Round 732 (DEBT-M) inheritance tree: the
-/// kind IS `required`, or `required` is a transitive ANCESTOR of it (a `weapon`
-/// satisfies a `thing`-scoped rule because `weapon.parent = thing`). `None` or
-/// an empty kind satisfies nothing — an unspecified kind is a subkind of
-/// nothing, preserving Round 701's reject-on-unspecified.
+/// endpoint-kind constraint under the Round 738 (DEBT-M, generalised to a DAG)
+/// inheritance graph: the kind IS `required`, or `required` is reachable by
+/// walking UP through the kind's `parents` closure (a `weapon` satisfies a
+/// `thing`-scoped rule because `thing ∈ ancestors(weapon)`; a `magic-sword`
+/// with parents `{weapon, magic-item}` satisfies BOTH a `weapon`-scoped and a
+/// `magic-item`-scoped rule). `None` or an empty kind satisfies nothing — an
+/// unspecified kind is a subkind of nothing, preserving Round 701's
+/// reject-on-unspecified.
 ///
 /// The ONE resolver, shared by the write-path endpoint gate
 /// (`build_typed_claim`), the read-side tighten twin (`use_satisfies_declaration`),
 /// AND the map-completeness scan (`mnemosyne-validate` R703) — a second
 /// hand-rolled walk is exactly how two paths drift into a half-enforced
-/// invariant (the R295/R699 lesson). Cycle-safe: a hand-edited parent loop
-/// terminates via the visited set (returns false, does not hang); the loop
-/// itself is a separate [`entity_kind_parent_violations`] finding. 0 parent
-/// links ⇒ the walk stops at the start node ⇒ exact-match (backward-compat).
+/// invariant (the R295/R699 lesson). Cycle-safe AND diamond-safe: the `visited`
+/// set both terminates a hand-edited parent loop (returns false, does not hang;
+/// the loop itself is a separate [`entity_kind_parent_violations`] finding) and
+/// collapses a diamond (a super-kind reached by two paths is expanded once). An
+/// empty `parents` set ⇒ the walk finds only the start node ⇒ exact-match
+/// (backward-compat: a flat registry is the DAG with no edges).
 pub fn is_kind_or_subkind(store: &AtomicStore, kind: Option<&str>, required: &str) -> bool {
     let Some(start) = kind.map(str::trim).filter(|s| !s.is_empty()) else {
         return false;
@@ -5050,26 +5141,24 @@ pub fn is_kind_or_subkind(store: &AtomicStore, kind: Option<&str>, required: &st
     if required.is_empty() {
         return false;
     }
-    let mut cursor = start;
+    // DFS up through every parent; `required` reachable ⇒ subkind. `visited`
+    // guards both cycles (terminate, do not hang) and diamonds (expand once).
+    let mut stack: Vec<&str> = vec![start];
     let mut visited: BTreeSet<&str> = BTreeSet::new();
-    loop {
+    while let Some(cursor) = stack.pop() {
         if cursor == required {
             return true;
         }
         if !visited.insert(cursor) {
-            // A parent cycle closed without reaching `required` — terminate
-            // (the cycle is reported separately by the parent-violations scan).
-            return false;
+            continue;
         }
-        match store
-            .entity_kinds
-            .get(cursor)
-            .and_then(|k| k.parent.as_deref())
-        {
-            Some(p) => cursor = p,
-            None => return false,
+        if let Some(k) = store.entity_kinds.get(cursor) {
+            for parent in &k.parents {
+                stack.push(parent.as_str());
+            }
         }
     }
+    false
 }
 
 /// Every stored entity whose `kind` does not resolve in the registry — the
@@ -5090,84 +5179,109 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Every entity-kind whose `parent` link (Round 732, DEBT-M) breaks the
-/// inheritance-tree invariant — a parent that is NOT in the registry (a
-/// dangling ref) OR a parent chain that CYCLES. The write path
-/// (`add_entity_kind`) forbids both (parent-registered + non-self; a multi-node
-/// cycle is unreachable without a parent-mutation setter), so only an
-/// out-of-band edit reaches here — re-checking at the scan boundary is the
+/// Every entity-kind whose `parents` links (Round 732 DEBT-M as a tree, Round
+/// 738 as a DAG) break the inheritance-graph invariant — a parent that is NOT
+/// in the registry (a dangling ref) OR a `parents` graph that CYCLES. The write
+/// path (`add_entity_kind`) forbids a dangling or self parent, and a new leaf
+/// cannot close a multi-node cycle; only a future parent-mutation setter
+/// or an out-of-band edit can — re-checking at the scan boundary is the
 /// write↔scan parity (the edge_guard / parameter_delta / fact_count precedent,
 /// not the n>0-blind edge_cost one). Returns `(kind_id, message)` pairs in id
 /// order (`entity_kinds` is a BTreeMap), empty = clean.
 ///
-/// The acyclic-chain walk is MEMOIZED (`proven_acyclic`): each kind is pushed
-/// onto a walk path and proven at most once, so a deep legitimate chain (n valid
-/// `add_entity_kind --parent` calls) is O(n log n), not O(n²) re-walking every
-/// ancestor for every kind (R732 review LOW-1).
+/// Cycle detection is an iterative three-colour DFS over the parent DAG, MEMOIZED
+/// (`black` = proven fully-explored): each kind is entered at most once, so the
+/// whole scan is O(V+E), not O(V²) (R732 review LOW-1, generalised from the
+/// single-parent chain to the multi-parent graph). A kind is a cycle violation
+/// iff its upward closure contains a cycle (equivalently, its parent chains never
+/// all bottom out at a root) — so a tail leading INTO a cycle is named too, not
+/// only the cycle members. A self-loop (a 1-cycle) is included. Diamonds are NOT
+/// cycles: a super-kind reached by two disjoint paths is fully explored once
+/// (`black`) and never re-flagged.
 pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    // Kinds whose whole ancestor chain terminates (at a root or a dangling end)
-    // without a cycle. Memoized across the loop: a walk stops the moment it hits
-    // a proven node, so no ancestor is re-traversed once proven.
-    let mut proven_acyclic: BTreeSet<&str> = BTreeSet::new();
+    // (1) Dangling: every direct parent ref must resolve in the registry.
     for (id, ek) in &store.entity_kinds {
-        let Some(parent) = ek
-            .parent
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        else {
-            proven_acyclic.insert(id.as_str());
-            continue;
-        };
-        if !store.entity_kinds.contains_key(parent) {
-            out.push((
-                id.clone(),
-                format!(
-                    "entity kind `{id}` names parent `{parent}`, which is not in the \
-                     entity-kind registry (out-of-band edit — register the parent, or \
-                     fix the spelling)"
-                ),
-            ));
+        for parent in &ek.parents {
+            let parent = parent.trim();
+            if parent.is_empty() {
+                continue;
+            }
+            if !store.entity_kinds.contains_key(parent) {
+                out.push((
+                    id.clone(),
+                    format!(
+                        "entity kind `{id}` names parent `{parent}`, which is not in the \
+                         entity-kind registry (out-of-band edit — register the parent, or \
+                         fix the spelling)"
+                    ),
+                ));
+            }
+        }
+    }
+    // (2) Cycle: iterative three-colour DFS. `black` = fully explored (memoised
+    // across roots so each node is entered once). `bad` = its upward closure
+    // reaches a cycle. `on_path` is reset per root (the GRAY set); a parent link
+    // to an on-path node is a back edge ⇒ that node is on a cycle, and this node
+    // (which reaches it) is bad. Badness then flows down the DFS on exit: a node
+    // is bad if any parent is bad. A dangling parent is a dead end (skipped —
+    // reported in pass 1, cannot be part of a cycle).
+    let mut black: BTreeSet<&str> = BTreeSet::new();
+    let mut bad: BTreeSet<&str> = BTreeSet::new();
+    for root in store.entity_kinds.keys() {
+        if black.contains(root.as_str()) {
             continue;
         }
-        // Walk up from `id`, recording the path, until a PROVEN-acyclic node or a
-        // root (⇒ the whole path is acyclic) or a node already ON THIS walk (⇒ the
-        // chain loops back = a cycle).
-        let mut path: Vec<&str> = vec![id.as_str()];
         let mut on_path: BTreeSet<&str> = BTreeSet::new();
-        on_path.insert(id.as_str());
-        let mut cursor = parent;
-        let cyclic = loop {
-            if proven_acyclic.contains(cursor) {
-                break false;
+        // (node, exiting?) — false = enter, true = post-order exit.
+        let mut stack: Vec<(&str, bool)> = vec![(root.as_str(), false)];
+        while let Some((node, exiting)) = stack.pop() {
+            if exiting {
+                on_path.remove(node);
+                black.insert(node);
+                if let Some(ek) = store.entity_kinds.get(node) {
+                    if ek
+                        .parents
+                        .iter()
+                        .any(|p| bad.contains(p.trim()) && !p.trim().is_empty())
+                    {
+                        bad.insert(node);
+                    }
+                }
+                continue;
             }
-            if on_path.contains(cursor) {
-                break true;
+            if black.contains(node) {
+                continue;
             }
-            path.push(cursor);
-            on_path.insert(cursor);
-            match store
-                .entity_kinds
-                .get(cursor)
-                .and_then(|k| k.parent.as_deref())
-            {
-                Some(p) => cursor = p,
-                None => break false,
+            on_path.insert(node);
+            stack.push((node, true));
+            if let Some(ek) = store.entity_kinds.get(node) {
+                for parent in &ek.parents {
+                    let parent = parent.trim();
+                    if parent.is_empty() || !store.entity_kinds.contains_key(parent) {
+                        continue; // dangling / empty — a dead end, not a cycle edge
+                    }
+                    if on_path.contains(parent) {
+                        // Back edge: `parent` is on the current path ⇒ a cycle.
+                        bad.insert(parent);
+                        bad.insert(node);
+                    } else if !black.contains(parent) {
+                        stack.push((parent, false));
+                    }
+                    // parent already black ⇒ its badness is folded in at `node`'s exit.
+                }
             }
-        };
-        if cyclic {
+        }
+    }
+    for id in store.entity_kinds.keys() {
+        if bad.contains(id.as_str()) {
             out.push((
                 id.clone(),
                 format!(
                     "entity kind `{id}` has a cyclic parent chain (a kind inheritance \
-                     tree has no loop — an out-of-band edit)"
+                     graph has no loop — an out-of-band edit)"
                 ),
             ));
-        } else {
-            for node in path {
-                proven_acyclic.insert(node);
-            }
         }
     }
     out
@@ -7183,15 +7297,20 @@ pub fn apply_facts_manifest(
     let mut entity_kinds_created = 0usize;
     for (idx, k) in manifest.entity_kinds.iter().enumerate() {
         let kind_id = k.kind_id.trim();
-        // Round 732 (DEBT-M): a parent must be registered EARLIER in the array
-        // (parent-declared-first) and not the kind itself — the same tree
-        // invariant `add_entity_kind` enforces.
-        let parent = k.parent.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        if let Some(p) = parent {
+        // Round 732 (DEBT-M) / Round 738 (DAG): every parent must be registered
+        // EARLIER in the array (parent-declared-first) and not the kind itself —
+        // the same invariant `add_entity_kind` enforces. A new leaf naming
+        // already-registered parents cannot close a cycle.
+        let mut parents: BTreeSet<String> = BTreeSet::new();
+        for p in &k.parents {
+            let p = p.trim();
+            if p.is_empty() {
+                continue;
+            }
             if p == kind_id {
                 return Err(AtomicMutateError::Validation(format!(
                     "import_facts: manifest entity_kind {idx} (`{kind_id}`) cannot be \
-                     its own parent (a kind inheritance tree has no self-loop)"
+                     its own parent (a kind inheritance graph has no self-loop)"
                 )));
             }
             if !store.entity_kinds.contains_key(p) {
@@ -7201,9 +7320,10 @@ pub fn apply_facts_manifest(
                      in the entity_kinds array, or register it with add_entity_kind"
                 )));
             }
+            parents.insert(p.to_string());
         }
         let candidate = EntityKind {
-            parent: parent.map(str::to_string),
+            parents,
             description: k.description.trim().to_string(),
         };
         let created = stage_registry_entry(
@@ -8869,6 +8989,49 @@ mod tests {
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         let reloaded_entry = reloaded.changelog_entries.get("Round 200").unwrap();
         assert!(reloaded_entry.publishable_matches_audit());
+    }
+
+    /// Round 738 review (Finding 1) — a store with NO `schema_version` key must
+    /// clone audit→publishable on load, exactly as an explicit v1/v3 store does:
+    /// the version-less default (`default_schema_version` = 1) is `< 4`. The R738
+    /// load refactor read the version from raw JSON, so this default must match
+    /// the typed field's serde default or the clone silently stops (the two
+    /// read-defaults must not drift). NON-VACUITY: with the pre-fix `unwrap_or(4)`
+    /// the version-less store defaulted to 4, `4 < 4` is false, and this assert
+    /// went red (publishable stayed None).
+    #[test]
+    fn version_less_store_clones_audit_into_publishable_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // No `schema_version` key at all — the pre-history / hand-authored case.
+        let version_less_json = r#"{
+ "changelog_entries": {
+ "Round 1": {
+ "decision_summary": "audit-only summary",
+ "changes_bullets": ["audit change"]
+ }
+ }
+}"#;
+        std::fs::write(&path, version_less_json).unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            loaded.schema_version, 1,
+            "version-less ⇒ the serde default 1"
+        );
+        let entry = loaded
+            .changelog_entries
+            .get("Round 1")
+            .expect("Round 1 entry present");
+        assert_eq!(
+            entry.publishable_decision_summary.as_deref(),
+            Some("audit-only summary"),
+            "a version-less (pre-v4) store must clone audit→publishable on load"
+        );
+        assert!(
+            entry.publishable_matches_audit(),
+            "publishable must match audit after the pre-v4 clone"
+        );
     }
 
     #[test]
@@ -13774,8 +13937,8 @@ mod tests {
             let mut store = AtomicStore::new();
             seed_chapters(&mut store);
             store.frames.insert("gt".to_string(), Frame::default());
-            add_entity_kind(&mut store, &path, "place", None, "").unwrap();
-            add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
+            add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
+            add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
             add_entity(&mut store, &path, "cove", "place", "").unwrap();
             add_entity(&mut store, &path, "dike", "place", "").unwrap();
             add_entity(&mut store, &path, "stake", "thing", "").unwrap();
@@ -13838,8 +14001,8 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
-        add_entity_kind(&mut store, &path, "place", None, "").unwrap();
-        add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
+        add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
         add_entity(&mut store, &path, "cove", "place", "").unwrap();
         add_entity(&mut store, &path, "stake", "thing", "").unwrap();
         // Unconstrained predicate + a use whose object is a `thing`.
@@ -15130,23 +15293,24 @@ mod tests {
         assert!(err.to_string().contains("no fact count"), "{err}");
     }
 
-    /// Round 732 (DEBT-M) — the ONE subtree resolver `is_kind_or_subkind`: a
-    /// kind IS its `required` OR a transitive descendant of it (directional — a
-    /// PARENT is not accepted where a subkind is required); None / empty resolve
-    /// to nothing; a hand-edited parent cycle TERMINATES (returns false, does not
-    /// hang); and 0 parent links ⇒ exact-match (backward-compat). Pure unit on
-    /// the registry.
+    /// Round 738 (DAG) — the ONE resolver `is_kind_or_subkind`: a kind IS its
+    /// `required` OR `required` is reachable by walking UP through the kind's
+    /// `parents` closure (directional — a PARENT is not a subkind of its child);
+    /// None / empty resolve to nothing; a hand-edited cycle TERMINATES (false,
+    /// no hang); 0 parent links ⇒ exact-match (backward-compat). MULTIPLE
+    /// INHERITANCE: a kind with two parents satisfies rules scoped to EITHER; a
+    /// DIAMOND (one ancestor reached by two paths) resolves once, no hang.
     #[test]
-    fn is_kind_or_subkind_resolves_the_subtree() {
+    fn is_kind_or_subkind_resolves_the_ancestor_closure() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
-        // thing ⊃ weapon ⊃ sword-kind ; potion is a sibling subtree of thing.
-        add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
-        add_entity_kind(&mut store, &path, "weapon", Some("thing"), "").unwrap();
-        add_entity_kind(&mut store, &path, "blade", Some("weapon"), "").unwrap();
-        add_entity_kind(&mut store, &path, "potion", Some("thing"), "").unwrap();
-        // Exact + ancestor (subtree) accept.
+        // thing ⊃ weapon ⊃ blade ; potion is a sibling subtree of thing.
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
+        add_entity_kind(&mut store, &path, "blade", &["weapon"], "").unwrap();
+        add_entity_kind(&mut store, &path, "potion", &["thing"], "").unwrap();
+        // Exact + ancestor accept.
         assert!(is_kind_or_subkind(&store, Some("thing"), "thing"));
         assert!(is_kind_or_subkind(&store, Some("weapon"), "thing"));
         assert!(is_kind_or_subkind(&store, Some("blade"), "thing")); // 2 hops
@@ -15158,60 +15322,114 @@ mod tests {
         assert!(!is_kind_or_subkind(&store, None, "thing"));
         assert!(!is_kind_or_subkind(&store, Some(""), "thing"));
         assert!(!is_kind_or_subkind(&store, Some("ghost"), "thing"));
+
+        // MULTIPLE INHERITANCE (the R738 gap): magic-item is a second root; a
+        // magic-sword is BOTH a blade (⊂ weapon ⊂ thing) AND a magic-item.
+        add_entity_kind(&mut store, &path, "magic-item", &[], "").unwrap();
+        add_entity_kind(
+            &mut store,
+            &path,
+            "magic-sword",
+            &["blade", "magic-item"],
+            "",
+        )
+        .unwrap();
+        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "blade"));
+        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "weapon"));
+        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "thing")); // via blade
+        assert!(is_kind_or_subkind(
+            &store,
+            Some("magic-sword"),
+            "magic-item"
+        )); // 2nd parent
+        assert!(is_kind_or_subkind(
+            &store,
+            Some("magic-sword"),
+            "magic-sword"
+        ));
+        // A single-parent tree CANNOT reach both: this is the capability flat +
+        // single-parent lacked. It stays directional — magic-item is not a weapon.
+        assert!(!is_kind_or_subkind(&store, Some("magic-item"), "weapon"));
+
+        // DIAMOND: gem ⊂ {shiny, valuable}; both shiny and valuable ⊂ thing2 —
+        // thing2 is an ancestor by two paths, resolved once (no hang, no dup).
+        add_entity_kind(&mut store, &path, "thing2", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "shiny", &["thing2"], "").unwrap();
+        add_entity_kind(&mut store, &path, "valuable", &["thing2"], "").unwrap();
+        add_entity_kind(&mut store, &path, "gem", &["shiny", "valuable"], "").unwrap();
+        assert!(is_kind_or_subkind(&store, Some("gem"), "thing2"));
+        assert!(is_kind_or_subkind(&store, Some("gem"), "shiny"));
+        assert!(is_kind_or_subkind(&store, Some("gem"), "valuable"));
+
         // 0 parent links ⇒ exact-match only (the backward-compat line).
         let mut flat = AtomicStore::new();
-        add_entity_kind(&mut flat, &path, "thing", None, "").unwrap();
-        add_entity_kind(&mut flat, &path, "weapon", None, "").unwrap();
+        add_entity_kind(&mut flat, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut flat, &path, "weapon", &[], "").unwrap();
         assert!(is_kind_or_subkind(&flat, Some("weapon"), "weapon"));
         assert!(!is_kind_or_subkind(&flat, Some("weapon"), "thing"));
+
         // A hand-edited parent CYCLE terminates (does not hang) and returns false.
         let mut cyclic = AtomicStore::new();
         cyclic.entity_kinds.insert(
             "a".to_string(),
             EntityKind {
-                parent: Some("b".to_string()),
+                parents: BTreeSet::from(["b".to_string()]),
                 description: String::new(),
             },
         );
         cyclic.entity_kinds.insert(
             "b".to_string(),
             EntityKind {
-                parent: Some("a".to_string()),
+                parents: BTreeSet::from(["a".to_string()]),
                 description: String::new(),
             },
         );
         assert!(!is_kind_or_subkind(&cyclic, Some("a"), "thing"));
     }
 
-    /// Round 732 (DEBT-M) — the parent-link invariant is enforced IDENTICALLY at
-    /// the write path (`add_entity_kind`: self-parent + unregistered parent
-    /// reject) and the scan boundary (`entity_kind_parent_violations` via
-    /// `store_registry_violations`: an out-of-band dangling parent OR cycle is
-    /// flagged). Write-side parity-complete: the write path forbids both, so only
-    /// a hand edit reaches the scan. NON-VACUITY: a clean tree passes both.
+    /// Round 738 (DAG) — the parent-link invariant is enforced IDENTICALLY at the
+    /// write path (`add_entity_kind`: self-parent + unregistered parent reject,
+    /// for EVERY parent) and the scan boundary (`entity_kind_parent_violations`
+    /// via `store_registry_violations`: an out-of-band dangling parent OR cycle).
+    /// A MULTI-parent write with all parents registered is clean; naming any one
+    /// bad parent rejects. NON-VACUITY: a clean DAG passes both.
     #[test]
     fn entity_kind_parent_write_path_and_scan_parity() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
-        add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
-        add_entity_kind(&mut store, &path, "weapon", Some("thing"), "").unwrap();
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "magic", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
+        // A MULTI-parent write (both registered) is accepted and clean.
+        add_entity_kind(&mut store, &path, "magic-sword", &["weapon", "magic"], "").unwrap();
+        assert_eq!(
+            store.entity_kinds["magic-sword"].parents,
+            BTreeSet::from(["weapon".to_string(), "magic".to_string()])
+        );
         assert!(
             store_registry_violations(&store).is_empty(),
-            "a clean kind tree passes the scan"
+            "a clean kind DAG passes the scan"
         );
 
-        // WRITE PATH rejects a self-parent and an unregistered parent.
-        let err = add_entity_kind(&mut store, &path, "loop", Some("loop"), "").unwrap_err();
+        // WRITE PATH rejects a self-parent and an unregistered parent — and
+        // rejects when ONE of several parents is bad (all-or-nothing).
+        let err = add_entity_kind(&mut store, &path, "loop", &["loop"], "").unwrap_err();
         assert!(err.to_string().contains("its own parent"), "{err}");
-        let err = add_entity_kind(&mut store, &path, "orphan", Some("ghost"), "").unwrap_err();
+        let err = add_entity_kind(&mut store, &path, "orphan", &["ghost"], "").unwrap_err();
         assert!(err.to_string().contains("not a registered"), "{err}");
+        let err = add_entity_kind(&mut store, &path, "mixed", &["thing", "ghost"], "").unwrap_err();
+        assert!(err.to_string().contains("not a registered"), "{err}");
+        assert!(
+            !store.entity_kinds.contains_key("mixed"),
+            "rejected write leaves no row"
+        );
 
         // SCAN BOUNDARY flags an out-of-band DANGLING parent (write↔scan parity).
         store.entity_kinds.insert(
             "widget".to_string(),
             EntityKind {
-                parent: Some("gone".to_string()),
+                parents: BTreeSet::from(["gone".to_string()]),
                 description: String::new(),
             },
         );
@@ -15223,8 +15441,14 @@ mod tests {
         );
         store.entity_kinds.remove("widget");
 
-        // SCAN BOUNDARY flags an out-of-band CYCLE (unreachable via the write path).
-        store.entity_kinds.get_mut("thing").unwrap().parent = Some("weapon".to_string());
+        // SCAN BOUNDARY flags an out-of-band CYCLE (unreachable via the write path):
+        // adding weapon to thing.parents closes weapon↔thing.
+        store
+            .entity_kinds
+            .get_mut("thing")
+            .unwrap()
+            .parents
+            .insert("weapon".to_string());
         let v = store_registry_violations(&store);
         assert!(
             v.iter().any(|m| m.contains("cyclic parent chain")),
@@ -15232,26 +15456,30 @@ mod tests {
         );
     }
 
-    /// Round 732 (DEBT-M) — the MEMOIZED detector (review LOW-1 fold): a DEEP
-    /// legitimate chain validates clean (the O(n) proven-acyclic memo does not
-    /// false-flag a long ancestor chain), and a TAIL leading INTO a cycle reports
-    /// every node whose chain never terminates at a root (not only the cycle
-    /// members) — the memo caches only acyclic nodes, so cyclic ones are still
-    /// each named.
+    /// Round 738 (DAG) — the MEMOIZED detector: a DEEP legitimate chain validates
+    /// clean (the O(V+E) three-colour DFS does not false-flag a long chain), a
+    /// DIAMOND is NOT a cycle (a super-kind reached by two paths is fine), a TAIL
+    /// leading INTO a cycle names every node whose closure never bottoms out at a
+    /// root, and a SELF-LOOP (a 1-cycle) is flagged.
     #[test]
-    fn entity_kind_parent_detector_deep_chain_and_tail_into_cycle() {
+    fn entity_kind_parent_detector_deep_chain_diamond_and_cycles() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
-        // A 200-deep legitimate chain via the mutate API: k0 root, k{i}.parent=k{i-1}.
-        add_entity_kind(&mut store, &path, "k0", None, "").unwrap();
+        // A 200-deep legitimate chain via the mutate API: k0 root, k{i}⊂k{i-1}.
+        add_entity_kind(&mut store, &path, "k0", &[], "").unwrap();
         for i in 1..200 {
             let parent = format!("k{}", i - 1);
-            add_entity_kind(&mut store, &path, &format!("k{i}"), Some(&parent), "").unwrap();
+            add_entity_kind(&mut store, &path, &format!("k{i}"), &[parent.as_str()], "").unwrap();
         }
+        // A DIAMOND built through the write path: d ⊂ {l, r}, both ⊂ top.
+        add_entity_kind(&mut store, &path, "top", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "l", &["top"], "").unwrap();
+        add_entity_kind(&mut store, &path, "r", &["top"], "").unwrap();
+        add_entity_kind(&mut store, &path, "d", &["l", "r"], "").unwrap();
         assert!(
             entity_kind_parent_violations(&store).is_empty(),
-            "a deep acyclic chain must validate clean"
+            "a deep acyclic chain + a diamond must validate clean"
         );
 
         // A tail (t) leading INTO a 2-cycle (a↔b): all three never reach a root.
@@ -15259,23 +15487,78 @@ mod tests {
             store.entity_kinds.insert(
                 k.to_string(),
                 EntityKind {
-                    parent: Some(p.to_string()),
+                    parents: BTreeSet::from([p.to_string()]),
                     description: String::new(),
                 },
             );
         }
+        // A SELF-LOOP (1-cycle), out-of-band.
+        store.entity_kinds.insert(
+            "z".to_string(),
+            EntityKind {
+                parents: BTreeSet::from(["z".to_string()]),
+                description: String::new(),
+            },
+        );
         let v = entity_kind_parent_violations(&store);
-        for k in ["a", "b", "t"] {
+        for k in ["a", "b", "t", "z"] {
             assert!(
                 v.iter()
                     .any(|(id, m)| id == k && m.contains("cyclic parent chain")),
-                "`{k}` (in or leading into the cycle) must be flagged: {v:?}"
+                "`{k}` (in or leading into a cycle) must be flagged: {v:?}"
             );
         }
-        // The deep clean chain is untouched by the injected cycle.
+        // The deep clean chain and the diamond are untouched by the injected cycles.
         assert!(
-            !v.iter().any(|(id, _)| id.starts_with('k')),
-            "the acyclic chain must stay clean: {v:?}"
+            !v.iter()
+                .any(|(id, _)| id.starts_with('k') || ["top", "l", "r", "d"].contains(&id.as_str())),
+            "the acyclic chain + diamond must stay clean: {v:?}"
+        );
+    }
+
+    /// Round 738 (v37→v38 load migration) — a hand-authored v37 store carrying
+    /// the LEGACY single `parent` (`Option<String>`) is migrated on load to the
+    /// `parents` SET, BEFORE the typed parse would silently drop the field (data
+    /// loss — EntityKind has no `deny_unknown_fields`). NON-VACUITY: the same raw
+    /// value parsed WITHOUT the migration drops the legacy key, so `parents` is
+    /// empty — the control proves the migration, not serde, does the work.
+    #[test]
+    fn v37_parent_migrates_to_parents_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let v37 = serde_json::json!({
+            "schema_version": 37,
+            "entity_kinds": {
+                "thing": {},
+                "weapon": { "parent": "thing" },
+                "rootish": { "parent": null }
+            }
+        });
+        fs::write(&path, serde_json::to_string_pretty(&v37).unwrap()).unwrap();
+        let store = AtomicStore::load(&path).unwrap();
+        assert_eq!(
+            store.entity_kinds["weapon"].parents,
+            BTreeSet::from(["thing".to_string()]),
+            "legacy `parent` migrates to a one-element `parents` set"
+        );
+        assert!(
+            store.entity_kinds["thing"].parents.is_empty(),
+            "a kind with no parent stays a root"
+        );
+        assert!(
+            store.entity_kinds["rootish"].parents.is_empty(),
+            "an explicit null parent stays a root (no phantom parent)"
+        );
+        // The resolver works on the migrated store.
+        assert!(is_kind_or_subkind(&store, Some("weapon"), "thing"));
+
+        // NON-VACUITY control: the SAME raw shape parsed WITHOUT the migration
+        // drops the legacy `parent` (the retyped struct has no such field), so
+        // `parents` would be empty — proving the migration is load-bearing.
+        let unmigrated: AtomicStore = serde_json::from_value(v37).unwrap();
+        assert!(
+            unmigrated.entity_kinds["weapon"].parents.is_empty(),
+            "control: without migration the legacy parent is silently dropped"
         );
     }
 
@@ -15292,9 +15575,9 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".to_string(), Frame::default());
-        add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
-        add_entity_kind(&mut store, &path, "weapon", Some("thing"), "").unwrap();
-        add_entity_kind(&mut store, &path, "character", None, "").unwrap();
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
+        add_entity_kind(&mut store, &path, "character", &[], "").unwrap();
         add_entity(&mut store, &path, "hero", "character", "").unwrap();
         add_entity(&mut store, &path, "sword", "weapon", "").unwrap();
         add_entity(&mut store, &path, "shield", "thing", "").unwrap();
@@ -15568,13 +15851,13 @@ mod tests {
             let tmp = TempDir::new().unwrap();
             let path = tmp.path().join("a.json");
             let mut store = AtomicStore::new();
-            add_entity_kind(&mut store, &path, "place", None, "").unwrap();
+            add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
             let add_ok = add_predicate(&mut store, &path, "p", ok, sk, oek, &[], "").is_ok();
             // set_predicate on a store where `p` already exists (benign, no uses).
             let tmp2 = TempDir::new().unwrap();
             let path2 = tmp2.path().join("b.json");
             let mut store2 = AtomicStore::new();
-            add_entity_kind(&mut store2, &path2, "place", None, "").unwrap();
+            add_entity_kind(&mut store2, &path2, "place", &[], "").unwrap();
             add_predicate(&mut store2, &path2, "p", "entity", None, None, &[], "").unwrap();
             let set_ok = set_predicate(&mut store2, &path2, "p", ok, sk, oek, &[], "").is_ok();
             assert_eq!(add_ok, accepts, "add_predicate `{label}`");
@@ -15604,8 +15887,8 @@ mod tests {
             let mut store = AtomicStore::new();
             seed_chapters(&mut store);
             store.frames.insert("gt".to_string(), Frame::default());
-            add_entity_kind(&mut store, &path, "place", None, "").unwrap();
-            add_entity_kind(&mut store, &path, "thing", None, "").unwrap();
+            add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
+            add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
             add_entity(&mut store, &path, "cove", "place", "").unwrap();
             add_entity(&mut store, &path, "dike", "place", "").unwrap();
             add_entity(&mut store, &path, "stake", "thing", "").unwrap();
@@ -16753,15 +17036,8 @@ mod tests {
         };
         let err = add_fact(&mut store, &path, &about_count).unwrap_err();
         assert!(err.to_string().contains("entity registry"), "{err}");
-        add_entity_kind(
-            &mut store,
-            &path,
-            "character",
-            None,
-            "a person in the story",
-        )
-        .unwrap();
-        add_entity_kind(&mut store, &path, "location", None, "a place").unwrap();
+        add_entity_kind(&mut store, &path, "character", &[], "a person in the story").unwrap();
+        add_entity_kind(&mut store, &path, "location", &[], "a place").unwrap();
         add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
         add_fact(&mut store, &path, &about_count).unwrap();
         assert_eq!(
@@ -16809,14 +17085,7 @@ mod tests {
         assert!(!store.entities.contains_key("ent-village"), "wrote anyway");
 
         // Registered kind is accepted — the gate is not rejecting everything.
-        add_entity_kind(
-            &mut store,
-            &path,
-            "place",
-            None,
-            "somewhere a person can be",
-        )
-        .unwrap();
+        add_entity_kind(&mut store, &path, "place", &[], "somewhere a person can be").unwrap();
         add_entity(&mut store, &path, "ent-village", "place", "the lane").unwrap();
         assert_eq!(store.entities["ent-village"].kind, "place");
 

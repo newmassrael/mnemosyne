@@ -393,12 +393,14 @@ pub struct AddEntityKindArgs {
     /// Entity-kind id — one member of the vocabulary `add_entity`'s `kind`
     /// refs (e.g. character / place / item). Fail-loud, load-bearing.
     pub kind_id: String,
-    /// Optional direct SUPER-kind (Round 732, DEBT-M) forming a single-parent
-    /// inheritance TREE — a `thing`-scoped rule then accepts a `weapon` when
-    /// `weapon.parent = thing`. Must already be registered (parent-first) and
-    /// not the kind itself. Omitted = a root kind (a flat registry, unchanged).
+    /// Direct SUPER-kinds (Round 732 DEBT-M as one, Round 738 as a SET —
+    /// multiple inheritance / a DAG) — a `thing`-scoped rule then accepts a
+    /// `weapon` when `thing` is reachable upward from `weapon`'s parents, and a
+    /// `magic-sword` with parents `["weapon","magic-item"]` satisfies BOTH. Each
+    /// must already be registered (parent-first) and not the kind itself.
+    /// Omitted / empty = a root kind (a flat registry, unchanged).
     #[serde(default)]
-    pub parent: Option<String>,
+    pub parents: Vec<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -1787,12 +1789,13 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register one entity kind (R669) — the vocabulary `add_entity`'s `kind` refs name (character / place / item). The consumer declares the members; the substrate never enumerates them (ARCHITECTURE.md sec 6 invariant 4) and enforces only that a kind in use was declared. The extension path a closed set requires (R626: a guard without an escape hatch is a trap) — register a new kind the moment authoring needs one. Optional `parent` (R732, DEBT-M) makes this kind a SUBKIND, so a rule scoped to the parent kind accepts it (a `thing`-scoped predicate admits a `weapon` when `weapon.parent = thing`); the parent must be registered first and cannot be the kind itself. Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a kind (the Phase-0 AI-first north star)."
+        description = "Register one entity kind (R669) — the vocabulary `add_entity`'s `kind` refs name (character / place / item). The consumer declares the members; the substrate never enumerates them (ARCHITECTURE.md sec 6 invariant 4) and enforces only that a kind in use was declared. The extension path a closed set requires (R626: a guard without an escape hatch is a trap) — register a new kind the moment authoring needs one. Optional `parents` (R732 DEBT-M as one, R738 as a SET — multiple inheritance) make this kind a SUBKIND of each, so a rule scoped to any ancestor accepts it (a `thing`-scoped predicate admits a `weapon` when `thing` is reachable from `weapon`'s parents; a `magic-sword` with parents `[\"weapon\",\"magic-item\"]` satisfies both); each parent must be registered first and cannot be the kind itself. Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a kind (the Phase-0 AI-first north star)."
     )]
     async fn add_entity_kind(&self, args: Parameters<AddEntityKindArgs>) -> CallToolResult {
         let a = args.0;
+        let parents: Vec<&str> = a.parents.iter().map(String::as_str).collect();
         let outcome = self.run_mutate(|store, path| {
-            atomic::add_entity_kind(store, path, &a.kind_id, a.parent.as_deref(), &a.description)
+            atomic::add_entity_kind(store, path, &a.kind_id, &parents, &a.description)
         });
         self.finish_mutate(outcome)
     }

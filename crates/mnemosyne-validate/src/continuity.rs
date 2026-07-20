@@ -6586,7 +6586,7 @@ mod tests {
                     disclosure_plans: vec![],
                     entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
                         kind_id: "character".to_string(),
-                        parent: None,
+                        parents: vec![],
                         description: String::new(),
                     }],
                     units: vec![],
@@ -11105,13 +11105,13 @@ mod tests {
         for (kind, want_accept) in [("place", true), ("", true), ("palce", false)] {
             // Write path.
             let mut w = AtomicStore::new();
-            mnemosyne_atomic::add_entity_kind(&mut w, &path, "place", None, "").unwrap();
+            mnemosyne_atomic::add_entity_kind(&mut w, &path, "place", &[], "").unwrap();
             let write_accepts =
                 mnemosyne_atomic::add_entity(&mut w, &path, "ent-x", kind, "").is_ok();
 
             // Scan boundary, given the same store shape reached out-of-band.
             let mut b = AtomicStore::new();
-            mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", None, "").unwrap();
+            mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", &[], "").unwrap();
             b.entities.insert(
                 "ent-x".to_string(),
                 mnemosyne_core::Entity {

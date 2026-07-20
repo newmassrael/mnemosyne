@@ -403,11 +403,13 @@ fn manifest_wire() -> ManifestWireSpec {
             },
             KindWire {
                 kind: "entity_kinds",
-                json_keys: "{ \"kind_id\": string, \"parent\"?: string (a registered entity_kind \
-                    id declared EARLIER in this array — R732 kind-inheritance tree; a rule scoped \
-                    to the parent kind then accepts this subkind), \"description\"?: string } — \
-                    the consumer's entity-kind vocabulary (character/place/item/quest/…); members \
-                    are the consumer's, never core's",
+                json_keys: "{ \"kind_id\": string, \"parents\"?: [string, …] (registered \
+                    entity_kind ids declared EARLIER in this array — R732 kind-inheritance tree, \
+                    R738 a DAG / multiple inheritance; a rule scoped to ANY ancestor then accepts \
+                    this subkind, so a `magic-sword` with parents [`weapon`,`magic-item`] \
+                    satisfies both), \"description\"?: string } — the consumer's entity-kind \
+                    vocabulary (character/place/item/quest/…); members are the consumer's, never \
+                    core's",
             },
             KindWire {
                 kind: "entities",
@@ -2066,7 +2068,7 @@ mod tests {
             }],
             entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
                 kind_id: "character".into(),
-                parent: None,
+                parents: vec![],
                 description: "d".into(),
             }],
             units: vec![],

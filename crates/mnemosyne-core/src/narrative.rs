@@ -404,23 +404,28 @@ pub struct Entity {
 /// enumerates the members — there is no `Place` variant here and there must
 /// never be one (invariant 4).
 ///
-/// `parent` (Round 732, DEBT-M) is an optional registered-kind ref = this
-/// kind's direct SUPER-kind, forming a single-parent inheritance TREE (the
-/// Inform "a weapon is a kind of thing" model). A predicate's endpoint-kind
-/// gate (Round 701) then scopes over the whole SUBTREE: a `thing`-scoped rule
-/// accepts a `weapon` because `weapon.parent = thing`. `Option` (≤1 parent)
-/// makes multiple inheritance structurally unrepresentable; a DAG is deferred
-/// (the Round 715 containment-tree precedent). 0 parent links ⇒ every subtree
-/// is a singleton ⇒ identical to a flat registry (the backward-compat line).
+/// `parents` (Round 732 DEBT-M as a single-parent tree, generalised to a DAG
+/// in Round 738) is the SET of this kind's direct SUPER-kinds (registered
+/// `entity_kinds` refs), forming a directed ACYCLIC graph — MULTIPLE
+/// inheritance (the Inform "a weapon is a kind of thing" model, extended so a
+/// `magic-sword` can be BOTH a `weapon` AND a `magic-item`). A predicate's
+/// endpoint-kind gate (Round 701) then scopes over the whole ANCESTOR CLOSURE:
+/// a `thing`-scoped rule accepts a `weapon` because `thing` is reachable
+/// upward from `weapon.parents`. An empty set ⇒ a root kind ⇒ the ancestor
+/// closure is the singleton `{self}` ⇒ identical to a flat registry (the
+/// backward-compat line: a pre-R738 store's lone `parent` migrates to a
+/// one-element `parents`, Round 738 load migration v37→v38).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityKind {
-    /// This kind's direct super-kind (a registered `entity_kinds` ref), or
-    /// None for a root kind. Fail-loud at the write path (`add_entity_kind`:
-    /// parent registered + not self) AND at the scan boundary
-    /// (`entity_kind_parent_violations`: registered + acyclic) — the
-    /// registry-symmetry parity.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
+    /// This kind's direct super-kinds (registered `entity_kinds` refs) — a SET
+    /// (0..N), because a kind may specialise more than one super-kind (a DAG,
+    /// not a tree). Empty for a root kind. Fail-loud at the write path
+    /// (`add_entity_kind`: every parent registered + none self) AND at the scan
+    /// boundary (`entity_kind_parent_violations`: every parent registered + the
+    /// whole graph acyclic) — the registry-symmetry parity. `BTreeSet` dedups
+    /// and orders deterministically (a byte-stable on-disk shape).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub parents: BTreeSet<String>,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
