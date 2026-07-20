@@ -5035,6 +5035,53 @@ pub fn branch_ref_violations(store: &AtomicStore) -> Vec<String> {
     out
 }
 
+/// Every branch's fork/converge lineage is ACYCLIC — the scan-boundary twin of
+/// the read path's fail-loud. The write path cannot register a cycle (a
+/// fork/converge parent must pre-exist and an edge is immutable after
+/// registration, so fork ancestry is a forest by construction), so — like the
+/// CYCLE leg of [`entity_kind_parent_violations`] — this fires ONLY on a raw-JSON
+/// edit. It is the CYCLE half of the ref-emitting branch-field parity, beside the
+/// DANGLING half [`branch_ref_violations`]: together they close the asymmetry the
+/// R743 review named (a kind's `parents` were re-checked for BOTH dangling and
+/// cycle at the scan boundary, a branch's fork/converge for dangling only).
+///
+/// The verdict is DERIVED from [`mnemosyne_core::world_membership`] — the ONE
+/// definition of branch lineage the read path already walks (it recurses through
+/// `forks_from` AND every `converges_from` edge, failing loud on an out-of-band
+/// cyclic edit). Reusing it as the ORACLE, rather than hand-rolling a second DFS,
+/// is what makes the scan reject EXACTLY the stores a read surface chokes on — no
+/// more, no less — and unable to drift from the edge set the read path actually
+/// traverses (a bespoke walk that forgot the converge edges would be the R743
+/// class of bug). A dangling edge is a dead end for the walk (it stops at the
+/// unregistered parent, no loop) and is reported by `branch_ref_violations`
+/// instead, so the two detectors never double-report.
+///
+/// A branch that merely REACHES a cycle (not only one ON it) is reported too — its
+/// lineage is genuinely uncomputable — matching the entity-kind detector's
+/// upward-closure semantics. `MAIN_BRANCH` is never registered and carries no
+/// edges, so iterating `store.branches` alone is complete.
+///
+/// The MESSAGE names the SCANNED branch `id`, not the raw `world_membership` Err
+/// (which names the branch where the back-edge CLOSES — the same loop-closing
+/// name for every branch reaching that loop, so a raw push would duplicate one
+/// name and never name the reaching branches). Emitting one message per affected
+/// scanned branch is the R745 review's R1 parity with
+/// [`entity_kind_parent_violations`], which emits one deduped message per bad node
+/// naming that node.
+pub fn branch_lineage_cycle_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for id in store.branches.keys() {
+        if mnemosyne_core::world_membership(&store.branches, id).is_err() {
+            out.push(format!(
+                "branch `{id}`: fork/converge lineage is cyclic or reaches a cycle \
+                 (an out-of-band edit — the mutate API cannot write one: a parent \
+                 must pre-exist)"
+            ));
+        }
+    }
+    out
+}
+
 pub fn add_branch(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -6518,6 +6565,12 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // generalized off predicate endpoints. The write paths forbid a dangling
     // edge, so this fires only on a raw-JSON edit.
     out.extend(branch_ref_violations(store));
+    // Round 745 — the CYCLE half of the branch parity (the R743 review's named
+    // residual): a fork/converge lineage that loops. The write path cannot write
+    // one, so like the entity-kind cycle leg this fires only on a raw-JSON edit;
+    // the read path already fails loud on it, this makes validate-workspace flag
+    // it too (the asymmetry vs entity_kind_parent_violations closed).
+    out.extend(branch_lineage_cycle_violations(store));
     // Round 506 disclosure override refs (the override's fact-id key + its
     // first_at branch/coord + surface scene/object) re-checked at the scan
     // boundary — the LAST member of the ref-emitting-field class. The write path
@@ -10819,9 +10872,12 @@ mod tests {
             // MUST have a `*_violations` scan wired below. The ref-emitting class
             // (entity_kinds.parents, predicate endpoints, branch fork/converge) is
             // caught here too — refs OUT of an entry, not just refs INTO a registry.
-            entity_kinds: _,     // -> entity_kind_parent_violations (parent link)
-            predicates: _,       // -> predicate_kind_ref_violations (endpoint kinds)
-            branches: _,         // -> branch_ref_violations (fork/converge refs)
+            // A field with BOTH a dangling AND a cycle failure (entity_kinds,
+            // branches) has a detector for each — the scan re-checks both.
+            entity_kinds: _, // -> entity_kind_parent_violations (dangling + cycle)
+            predicates: _,   // -> predicate_kind_ref_violations (endpoint kinds)
+            branches: _,     // -> branch_ref_violations (dangling fork/converge)
+            //    + branch_lineage_cycle_violations (cycle)
             disclosure_plans: _, // -> disclosure_ref_violations (override refs)
             edge_costs: _,       // -> edge_cost_violations
             edge_guards: _,      // -> edge_guard_violations
@@ -10870,8 +10926,8 @@ mod tests {
         // Non-vacuity guard: the family is non-empty (the scan actually found the
         // detectors), so a silent regex-miss cannot pass this as trivially equal.
         assert!(
-            detectors.len() >= 9,
-            "expected the nine known guarded-field detectors, found {}: {detectors:?}",
+            detectors.len() >= 10,
+            "expected the ten known guarded-field detectors, found {}: {detectors:?}",
             detectors.len()
         );
     }
@@ -16008,6 +16064,145 @@ mod tests {
             v.iter()
                 .any(|m| m.contains("rogue-merge") && m.contains("converge parent `gone-a`")),
             "out-of-band phantom converge parent must be flagged: {v:?}"
+        );
+    }
+
+    /// The CYCLE half of the branch scan-boundary parity (Round 745 — the R743
+    /// review's named residual). `entity_kind_parent_violations` re-checks a
+    /// kind's `parents` for BOTH a dangling ref AND a cycle; a branch's
+    /// fork/converge edges were re-checked for dangling only
+    /// (`branch_ref_violations`), so a raw-JSON edit that loops a lineage
+    /// validated CLEAN while every read surface failed loud on it (measured: the
+    /// pre-change binary's validate-workspace exits 0 over an A↔B fork cycle,
+    /// report-fork-tree exits 1). `branch_lineage_cycle_violations` closes the
+    /// asymmetry, DERIVING its verdict from `world_membership` (the ONE lineage
+    /// walk the read path already uses), so it catches cycles through BOTH fork
+    /// AND converge edges — a bespoke fork-only DFS would miss the converge leg
+    /// (the R743 class of bug), which the converge-cycle case below proves.
+    #[test]
+    fn branch_lineage_cycle_scan_boundary_parity() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store); // ch-1, ch-2, ch-3
+
+        // CLEAN CONTROL: a fork chain main <- sluice <- ride is acyclic.
+        add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
+        add_branch(&mut store, &path, "ride", "", Some(("sluice", "ch-2")), &[]).unwrap();
+        assert!(
+            branch_lineage_cycle_violations(&store).is_empty(),
+            "an acyclic fork chain has no cycle violation"
+        );
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "the clean control passes the aggregate"
+        );
+
+        // FORK CYCLE (out-of-band, unreachable via the write path): point sluice's
+        // fork at ride, so sluice -> ride -> sluice. Both refs RESOLVE (ride is a
+        // known world, ch-2 a section), so the DANGLING detector stays clean — the
+        // cycle detector is the one that catches it (cycle != dangling).
+        store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
+            branch: "ride".to_string(),
+            at: "ch-2".to_string(),
+        });
+        assert!(
+            branch_ref_violations(&store).is_empty(),
+            "a ref-resolvable cycle has no DANGLING violation: {:?}",
+            branch_ref_violations(&store)
+        );
+        let cyc = branch_lineage_cycle_violations(&store);
+        assert!(
+            cyc.iter()
+                .any(|m| m.contains("sluice") && m.contains("cyclic")),
+            "the fork cycle must be flagged: {cyc:?}"
+        );
+        // The aggregate (validate-workspace's scan) surfaces it — the wire.
+        assert!(
+            store_registry_violations(&store)
+                .iter()
+                .any(|m| m.contains("cyclic")),
+            "the aggregate surfaces the branch cycle (wired into validate-workspace)"
+        );
+        // The read path already fails loud on the SAME lineage — the scan's SSOT.
+        assert!(
+            mnemosyne_core::world_membership(&store.branches, "sluice").is_err(),
+            "the read path fails loud on the cyclic lineage (the scan's derivation source)"
+        );
+
+        // R1 (the R745 review's message-hygiene fold): a branch that merely
+        // REACHES the cycle is named by its OWN id, and every affected branch is
+        // named exactly once. `tail` forks off `sluice` (on the cycle), so its
+        // lineage is uncomputable. The raw world_membership Err would name the
+        // loop-CLOSING branch (`sluice`) here instead — never `tail` — and would
+        // duplicate that name across the reaching branches; both are locked out.
+        store.branches.insert(
+            "tail".to_string(),
+            Branch {
+                description: String::new(),
+                forks_from: Some(BranchFork {
+                    branch: "sluice".to_string(),
+                    at: "ch-2".to_string(),
+                }),
+                converges_from: Vec::new(),
+            },
+        );
+        let cyc = branch_lineage_cycle_violations(&store);
+        assert!(
+            cyc.iter().any(|m| m.contains("`tail`")),
+            "a branch REACHING the cycle is named by its own id (R1): {cyc:?}"
+        );
+        let uniq: std::collections::BTreeSet<&String> = cyc.iter().collect();
+        assert_eq!(
+            uniq.len(),
+            cyc.len(),
+            "each affected branch is named exactly once, no duplicate message: {cyc:?}"
+        );
+
+        // CONVERGE-EDGE CYCLE: a confluence `mouth` converges from `sluice` (and a
+        // valid parent `ride`), and `sluice` forks from `mouth` — so the loop
+        // sluice -> mouth (fork) -> sluice (converge) runs THROUGH a converge edge.
+        // A fork-only walk would miss it; deriving from world_membership does not.
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
+        add_branch(&mut store, &path, "ride", "", Some(("main", "ch-2")), &[]).unwrap();
+        store.branches.insert(
+            "mouth".to_string(),
+            Branch {
+                description: String::new(),
+                forks_from: None,
+                converges_from: vec![
+                    BranchFork {
+                        branch: "sluice".to_string(),
+                        at: "ch-3".to_string(),
+                    },
+                    BranchFork {
+                        branch: "ride".to_string(),
+                        at: "ch-3".to_string(),
+                    },
+                ],
+            },
+        );
+        store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
+            branch: "mouth".to_string(),
+            at: "ch-2".to_string(),
+        });
+        assert!(
+            branch_ref_violations(&store).is_empty(),
+            "the converge-cycle refs all resolve (no dangling): {:?}",
+            branch_ref_violations(&store)
+        );
+        assert!(
+            store_registry_violations(&store)
+                .iter()
+                .any(|m| m.contains("cyclic")),
+            "a cycle THROUGH a converge edge is caught (world_membership walks both edge types)"
+        );
+        // The innocent parent `ride` is NOT on the loop — no false positive.
+        assert!(
+            mnemosyne_core::world_membership(&store.branches, "ride").is_ok(),
+            "a branch that neither is on nor reaches the cycle stays clean"
         );
     }
 
