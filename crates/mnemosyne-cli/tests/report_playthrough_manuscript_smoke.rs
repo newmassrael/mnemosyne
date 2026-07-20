@@ -470,3 +470,80 @@ fn confluence_fragment_is_marked_and_playthroughs_are_not() {
         );
     }
 }
+
+/// Round 746 — report-frame-view names a confluence `--branch` as a FRAGMENT (the
+/// R741 residual, the primary surface it named). The shared `is_confluence`
+/// discriminator drives the same `[FRAGMENT]` marker the manuscript uses, on both
+/// the --json and human surfaces; a fork branch is NEVER marked (the neuter-and-
+/// fail control). Reuses the diamond confluence fixture — one authoring path.
+#[test]
+fn frame_view_names_a_confluence_branch_as_a_fragment() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_confluence_workspace(ws);
+    add_diamond_branches(ws);
+
+    // --branch conf: the --json surface carries confluence_fragment=true.
+    let out = run(
+        ws,
+        &[
+            "report-frame-view",
+            "--frame",
+            "gt",
+            "--branch",
+            "conf",
+            "--at",
+            "merge",
+            "--json",
+        ],
+    );
+    assert!(out.status.success(), "{out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        v["confluence_fragment"],
+        serde_json::json!(true),
+        "a --branch <confluence> view is a fragment"
+    );
+
+    // The human render prints the shared [FRAGMENT] note (JSON + human parity).
+    let human = run(
+        ws,
+        &[
+            "report-frame-view",
+            "--frame",
+            "gt",
+            "--branch",
+            "conf",
+            "--at",
+            "merge",
+        ],
+    );
+    assert!(human.status.success(), "{human:?}");
+    assert!(
+        String::from_utf8_lossy(&human.stdout).contains("[FRAGMENT"),
+        "the human render names the fragment: {}",
+        String::from_utf8_lossy(&human.stdout)
+    );
+
+    // NON-VACUITY: a fork branch is NOT a fragment (a hardcoded-true fails here).
+    let fork = run(
+        ws,
+        &[
+            "report-frame-view",
+            "--frame",
+            "gt",
+            "--branch",
+            "thief",
+            "--at",
+            "t1",
+            "--json",
+        ],
+    );
+    assert!(fork.status.success(), "{fork:?}");
+    let fv: serde_json::Value = serde_json::from_slice(&fork.stdout).unwrap();
+    assert_eq!(
+        fv["confluence_fragment"],
+        serde_json::json!(false),
+        "a fork playthrough is not a fragment"
+    );
+}

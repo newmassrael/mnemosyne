@@ -279,6 +279,25 @@ pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> 
     out.into_iter().collect()
 }
 
+/// Whether a world-line is a CONFLUENCE — a merge node whose `converges_from`
+/// is non-empty (Round 533) — THE single definition of the "is this a confluence
+/// fragment" discriminator every read surface shares (Round 746). `main` and a
+/// fork-child both answer `false` (main is never registered; a fork carries
+/// `forks_from` but no `converges_from`; a branch is a fork XOR a confluence),
+/// so a RENDERED world is a prefix-less confluence FRAGMENT — a merge node, not a
+/// standalone playthrough — iff this is `true`. A confluence never appears in the
+/// default dump ([`crate`]'s `query_worlds` excludes it); it is reached only by an
+/// explicit `--world <confluence>`. Routing the manuscript, frame-view,
+/// playable-world and quest-graph surfaces through this ONE predicate is what lets
+/// them name the fragment identically without the discriminator drifting across
+/// four copies — the [`is_known_world`] single-definition discipline applied to
+/// the confluence axis (Round 746 folded the inline manuscript copy into it).
+pub fn is_confluence(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
+    branches
+        .get(world)
+        .is_some_and(|b| !b.converges_from.is_empty())
+}
+
 /// A world-line reference is "known" iff it is [`MAIN_BRANCH`] (the implicit,
 /// never-registered default world) or a registered branch — THE single
 /// definition of the "main or registered" guard the write path and every read

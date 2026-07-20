@@ -3880,6 +3880,14 @@ pub struct FrameView {
     pub holding: Vec<FrameViewEntry>,
     pub not_holding: usize,
     pub unknown: Vec<String>,
+    /// This world-line is a CONFLUENCE (a merge node) rendered as a prefix-less
+    /// FRAGMENT (Round 533/746) — its pre-merge trunk reads `unknown` because the
+    /// merge's prefix is not composed for an explicit `--branch <confluence>`
+    /// view. ALWAYS serialized (matching the manuscript's convention, so a
+    /// consumer reads a positive `false` on a real playthrough, not an inferred
+    /// absence). Set from the shared [`mnemosyne_core::is_confluence`], the same
+    /// discriminator the manuscript / playable-world / quest-graph surfaces use.
+    pub confluence_fragment: bool,
 }
 
 /// "Facts of frame F in world-line B at canon point T" — the read
@@ -3940,6 +3948,9 @@ pub fn frame_view(
         branch: branch.to_string(),
         at: at.to_string(),
         entity: entity.map(str::to_string),
+        // The shared discriminator (Round 746) — a `--branch <confluence>` view
+        // is a prefix-less fragment, named so it is not misread as a playthrough.
+        confluence_fragment: mnemosyne_core::is_confluence(&store.branches, branch),
         ..Default::default()
     };
     for (id, fact) in facts {
@@ -4734,15 +4745,12 @@ pub fn playthrough_manuscript(
                 .filter(|s| !node_set.contains(s.as_str()))
                 .cloned()
                 .collect(),
-            // Round 533 — a rendered world is a confluence FRAGMENT iff the
-            // branch registry gives it a non-empty `converges_from` (main is
-            // absent from the registry, a fork carries `forks_from` but no
-            // `converges_from`); only an explicit `--world <confluence>` ever
-            // reaches this true (the default dump excludes confluences).
-            confluence_fragment: store
-                .branches
-                .get(&world)
-                .is_some_and(|b| !b.converges_from.is_empty()),
+            // Round 533/746 — a rendered world is a confluence FRAGMENT iff the
+            // shared `is_confluence` predicate says so; only an explicit
+            // `--world <confluence>` ever reaches this true (the default dump
+            // excludes confluences). ONE discriminator, shared with frame-view /
+            // playable-world / quest-graph, so the four cannot drift.
+            confluence_fragment: mnemosyne_core::is_confluence(&store.branches, &world),
             ..Default::default()
         };
         // Visibility split + placement honesty, one pass (facts iterate
@@ -5466,6 +5474,13 @@ pub struct QuestGraphReport {
     /// dropped — the R558 lesson). Each still appears in `quests` with empty
     /// `giving_facts` and an all-`unknown` `per_world`.
     pub unresolved_quests: Vec<String>,
+    /// The subset of `worlds` that are confluence FRAGMENTS (Round 746) — a merge
+    /// node reached by an explicit `--world <confluence>`, not a standalone
+    /// playthrough, so its `per_world` quest column is a fragment view. Sorted;
+    /// empty on the default cross-world dump (confluences are excluded there).
+    /// Read from each world's embedded manuscript `confluence_fragment` (the ONE
+    /// [`mnemosyne_core::is_confluence`] computation), never re-derived here.
+    pub confluence_fragment_worlds: Vec<String>,
 }
 
 /// Compose the quest-graph projection for `telling` (R559 design sec 7.38, R568
@@ -5498,6 +5513,17 @@ pub fn quest_graph(
     // The reported world set = playable-world's worlds (respects `world`); the
     // fork tree stays full (cross-world topology).
     let worlds: Vec<String> = playable.worlds.keys().cloned().collect();
+
+    // Round 746 — which of those worlds are confluence FRAGMENTS. READ from each
+    // world's embedded manuscript (playable-world reuses the manuscript verbatim,
+    // R558), which already carries the ONE `is_confluence` computation — not
+    // re-derived here, so the quest-graph signal cannot drift from the manuscript.
+    let confluence_fragment_worlds: Vec<String> = playable
+        .worlds
+        .iter()
+        .filter(|(_, w)| w.manuscript.confluence_fragment)
+        .map(|(id, _)| id.clone())
+        .collect();
 
     let facts = &store.narrative_facts;
 
@@ -5680,6 +5706,7 @@ pub fn quest_graph(
         worlds,
         quests,
         unresolved_quests,
+        confluence_fragment_worlds,
     })
 }
 
@@ -11016,6 +11043,98 @@ mod tests {
         // s2 is a node of each parent's composed order (the base chain) — placed.
         assert!(dawn.converges.iter().all(|e| e.at_placed));
         assert!(report.unplaced_fork_points.is_empty());
+    }
+
+    /// Round 746 — the confluence fragment discriminator is ONE shared predicate
+    /// (`mnemosyne_core::is_confluence`), surfaced identically by every read
+    /// surface. This closes the R741 residual (frame-view / playable-world /
+    /// quest-graph carried NO fragment signal — only the manuscript did) WITHOUT
+    /// four copies of the `!converges_from.is_empty()` check that could drift. A
+    /// confluence `dawn` (converges from two forks) is a fragment; `main`, a fork,
+    /// and an unregistered id are NOT (the neuter-and-fail control — a hardcoded
+    /// flag fails one leg), and the DEFAULT cross-world dump lists no fragment.
+    #[test]
+    fn confluence_fragment_is_one_shared_discriminator() {
+        // ch-1..ch-4 sections + the `gt` frame (from the seed fact); sluice/ride
+        // fork main at ch-1 and converge into `dawn` at ch-2 (the shared suffix).
+        let mut store = store_with(vec![fact("f-seed", "gt", "ch-1", None)]);
+        for b in ["sluice", "ride"] {
+            store.branches.insert(
+                b.to_string(),
+                mnemosyne_core::Branch {
+                    description: String::new(),
+                    forks_from: Some(mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.to_string(),
+                        at: "ch-1".to_string(),
+                    }),
+                    converges_from: vec![],
+                },
+            );
+        }
+        store.branches.insert(
+            "dawn".to_string(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: None,
+                converges_from: vec![
+                    mnemosyne_core::BranchFork {
+                        branch: "sluice".to_string(),
+                        at: "ch-2".to_string(),
+                    },
+                    mnemosyne_core::BranchFork {
+                        branch: "ride".to_string(),
+                        at: "ch-2".to_string(),
+                    },
+                ],
+            },
+        );
+        // A telling so playable-world / quest-graph resolve (an empty plan is
+        // enough — the fragment flag is topology, not disclosed content).
+        store.disclosure_plans.insert(
+            "t".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides: BTreeMap::new(),
+            },
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+
+        // (1) THE PREDICATE — the SSOT truth table.
+        assert!(mnemosyne_core::is_confluence(&store.branches, "dawn"));
+        assert!(!mnemosyne_core::is_confluence(&store.branches, "sluice"));
+        assert!(!mnemosyne_core::is_confluence(&store.branches, MAIN_BRANCH));
+        assert!(!mnemosyne_core::is_confluence(&store.branches, "ghost"));
+
+        // (2) FRAME-VIEW — the R741-named residual, a NEW derivation via the predicate.
+        let fv_conf = frame_view(&store, &order, "gt", "dawn", None, "ch-2").unwrap();
+        assert!(
+            fv_conf.confluence_fragment,
+            "a --branch <confluence> view is a fragment"
+        );
+        let fv_fork = frame_view(&store, &order, "gt", "sluice", None, "ch-2").unwrap();
+        assert!(
+            !fv_fork.confluence_fragment,
+            "a fork playthrough is not a fragment"
+        );
+        let fv_main = frame_view(&store, &order, "gt", MAIN_BRANCH, None, "ch-2").unwrap();
+        assert!(!fv_main.confluence_fragment);
+
+        // (3) PLAYABLE-WORLD — rides the manuscript flag verbatim (no re-derivation).
+        let pw = playable_world(&store, &order, Some("dawn"), "t").unwrap();
+        assert!(pw.worlds["dawn"].manuscript.confluence_fragment);
+
+        // (4) QUEST-GRAPH — reads that same flag into confluence_fragment_worlds.
+        let qg = quest_graph(&store, &order, Some("dawn"), "t").unwrap();
+        assert_eq!(qg.confluence_fragment_worlds, vec!["dawn".to_string()]);
+        // Non-vacuity: the default cross-world dump EXCLUDES confluences, so the
+        // list is empty there — a hardcoded-non-empty would fail this leg.
+        let qg_all = quest_graph(&store, &order, None, "t").unwrap();
+        assert!(
+            qg_all.confluence_fragment_worlds.is_empty(),
+            "the default dump lists no fragment: {:?}",
+            qg_all.confluence_fragment_worlds
+        );
     }
 
     /// MNEMO-GAP-002 — a confluence PARENT may be `main` itself: the main road

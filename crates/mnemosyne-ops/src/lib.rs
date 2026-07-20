@@ -783,6 +783,10 @@ pub struct FrameViewReport {
     pub holding_count: usize,
     pub not_holding: usize,
     pub unknown: Vec<String>,
+    /// The world-line is a confluence FRAGMENT (Round 746) — carried through from
+    /// the projection so the CLI/MCP render can name it, the same signal the
+    /// manuscript / playable-world / quest-graph surfaces already carry.
+    pub confluence_fragment: bool,
 }
 
 /// Run the frame-at-T projection (Round 432) over the workspace store with
@@ -813,6 +817,7 @@ pub fn continuity_frame_view(
         holding: view.holding,
         not_holding: view.not_holding,
         unknown: view.unknown,
+        confluence_fragment: view.confluence_fragment,
     })
 }
 

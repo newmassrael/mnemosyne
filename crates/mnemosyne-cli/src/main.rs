@@ -2842,6 +2842,22 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// The ONE confluence-fragment note (Round 746) every read surface prints, so a
+/// consumer reading the manuscript / frame-view / playable-world / quest-graph
+/// output sees the SAME wording for a merge node — the R733 misread was on one
+/// surface; routing all four through this keeps the human signal from drifting,
+/// beside the shared `is_confluence` discriminator it names. Surface-agnostic on
+/// purpose: the trunk reads `undecidable` in the manuscript and `unknown` in the
+/// frame-view (both because the merge's prefix is not composed for an explicit
+/// `--world <confluence>` render, R533/R734 — honest, not a defect), so the note
+/// states the cause, not a surface-specific verdict.
+fn confluence_fragment_note(world: &str) -> String {
+    format!(
+        "[FRAGMENT — `{world}` is a confluence merge node, not a standalone \
+         playthrough; its pre-merge trunk is not composed here]"
+    )
+}
+
 /// Round 432 — frame-at-T read projection (`report-frame-view`): the facts a
 /// frame holds at a canon point, over the SAME holds-semantics as the
 /// continuity gate (R390 single-predicate discipline). Read-only; order and
@@ -2930,6 +2946,12 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
             "=== frame `{}` branch `{}`{} at `{}` ===",
             view.frame, view.branch, entity_tag, view.at
         );
+        if view.confluence_fragment {
+            // Round 746 — a `--branch <confluence>` view is a prefix-less
+            // fragment; name it (the shared note) so its `unknown` trunk is not
+            // misread as a standalone playthrough (the R741 residual).
+            println!("  {}", confluence_fragment_note(&view.branch));
+        }
         println!(
             "  holding={} not_holding={} unknown={}",
             view.holding_count,
@@ -3428,16 +3450,11 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
             m.sections_off_road.len()
         );
         if m.confluence_fragment {
-            // Round 533 — a confluence renders as a prefix-less fragment; name
-            // it in the output so it is not misread as a standalone playthrough
-            // (the R733 review misread it; R734 closed the study by test, this
-            // marker closes the follow-on). The pre-merge trunk reads
-            // `undecidable` because the merge's prefix is not composed here.
-            println!(
-                "  [FRAGMENT — `{world}` is a confluence merge node, not a \
-                 standalone playthrough; the pre-merge trunk reads `undecidable` \
-                 by design]"
-            );
+            // Round 533/746 — a confluence renders as a prefix-less fragment;
+            // name it (the shared note) so it is not misread as a standalone
+            // playthrough (the R733 review misread it; R734 closed the study by
+            // test, this marker closes the follow-on).
+            println!("  {}", confluence_fragment_note(world));
         }
         for s in &m.scenes {
             let title = if s.title.is_empty() {
@@ -3634,6 +3651,12 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
             m.unplaced_facts.len(),
             m.undecidable.len()
         );
+        if m.confluence_fragment {
+            // Round 746 — the embedded manuscript already carries the flag; print
+            // the shared note so the playable-world human render names the merge
+            // node too (the JSON already did — the R741 residual).
+            println!("  {}", confluence_fragment_note(world));
+        }
         for loc in &w.locators {
             let ord = loc
                 .scene_ordinal
@@ -3706,6 +3729,12 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
             "unresolved (no completed_by anchor): {}",
             report.unresolved_quests.join(", ")
         );
+    }
+    // Round 746 — name any confluence world in the set as a fragment (the shared
+    // note), so its per-world quest column is not misread as a standalone
+    // playthrough (the R741 residual; empty on the default cross-world dump).
+    for world in &report.confluence_fragment_worlds {
+        println!("{}", confluence_fragment_note(world));
     }
     for q in &report.quests {
         println!("quest `{}`: {}", q.quest_id, q.objective);
