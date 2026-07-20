@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use mnemosyne_atomic::{self as atomic, ChangelogEntryDraft, ExampleBlock, RejectedAlternative};
-use mnemosyne_core::{strip_section_marker, InventoryStatus};
+use mnemosyne_core::{strip_section_marker, IntervalOp, InventoryStatus};
 use mnemosyne_ops::{
     self as ops, run_atomic_mutate, MutateOutcome, OpError, QuerySectionMode, QueryTermInput,
     RedactTermInput, StyleCheckInput,
@@ -442,6 +442,30 @@ pub struct RemoveParameterDeltaArgs {
     pub fact_id: String,
     /// The parameter whose delta to drop (fail-loud if the beat has none).
     pub parameter: String,
+}
+
+/// Attach a numeric-value THRESHOLD gate to a CHOICE edge (Round 730, DEBT-K) — a
+/// side-table entry keyed by the choice fact id. The gate references the meter
+/// DIRECTLY (no boolean proxy); the consumer accumulates the meter and compares.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddParameterGateArgs {
+    /// The CHOICE FACT ID the gate rides (must already exist; rides ANY fact — no
+    /// map-edge check).
+    pub fact_id: String,
+    /// A REGISTERED parameter (add_parameter first).
+    pub parameter: String,
+    /// The comparison operator: ge | le | eq | gt | lt.
+    pub op: IntervalOp,
+    /// The required accumulated value (signed; 0 / negative legal).
+    pub threshold: i64,
+}
+
+/// Remove a choice's parameter gate (Round 730) — the peer of
+/// `add_parameter_gate`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveParameterGateArgs {
+    /// The choice fact id whose gate to drop (fail-loud if it has none).
+    pub fact_id: String,
 }
 
 /// Attach a cost to one map edge (Round 709 → DEBT-J) — a side-table entry keyed
@@ -1795,6 +1819,30 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Attach a numeric-value THRESHOLD GATE to a CHOICE edge (R730, DEBT-K) — a side-table entry keyed by the CHOICE FACT ID, value = {parameter, op, threshold} (\"romance route unlocks if affection >= 4\"). The axis K-of-N (edge_guards threshold) cannot express: a signed/weighted meter compared to a threshold. Fail-loud: the fact must exist, the parameter be registered (add_parameter first). Rides ANY real fact — NO map-edge check (a meter-gated route unlock is a narrative branch, not a spatial move). Because the gate references the meter DIRECTLY, the boolean-proxy silent hole is unrepresentable (no disconnected proxy fact to leave stale). op = ge|le|eq|gt|lt; threshold is signed (0/negative legal — satisfiability is the consumer's model, never Mnemosyne's). retract_fact cascade-drops the gate. Mnemosyne holds the declaration; it NEVER accumulates the meter or evaluates whether the gate holds now (the consumer's job — the layering line). A2-consistent: identical is a no-op, divergent rejects."
+    )]
+    async fn add_parameter_gate(&self, args: Parameters<AddParameterGateArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_parameter_gate(store, path, &a.fact_id, &a.parameter, a.op, a.threshold)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove a choice's parameter GATE (R730) — the peer of add_parameter_gate (mirrors remove_edge_cost). A gate is subordinate metadata that retract_fact cascade-drops with its fact, but a stray gate must be removable WITHOUT retracting the fact (the author may keep the choice un-gated, or the fact may be referenced so retract refuses it). Also cleans an out-of-band orphan gate. Fail-loud if the fact has no gate."
+    )]
+    async fn remove_parameter_gate(
+        &self,
+        args: Parameters<RemoveParameterGateArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_parameter_gate(store, path, &a.fact_id));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
         description = "Attach a cost to one map EDGE (R709 → DEBT-J) — a side-table entry keyed by the ADJACENT FACT ID (the adjacent(a,b) fact), value = a number + registered unit (the Quantity shape). NOT a reified fact: the cost is frame-invariant edge metadata, so it carries no per-fact frame/branch/evidence. Fail-loud: the fact must exist, n must be POSITIVE (G3 — 0/negative is a free teleport), and the unit must be registered (add_unit first). `retract_fact` cascade-drops the cost when its fact goes, so it never dangles. Idempotent on identical content; divergent rejects."
     )]
     async fn add_edge_cost(&self, args: Parameters<AddEdgeCostArgs>) -> CallToolResult {
@@ -1991,6 +2039,16 @@ impl MnemosyneServer {
     )]
     async fn report_entity_kind_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::entity_kind_migration(&self.workspace, None) {
+            Ok(r) => self.tool_json(&r),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Parameter-economy read (R730, DEBT-K, read-only): the VISIBLE accumulation surface (gap 3). Per REGISTERED meter, the delta inventory (count, Σ+ = apply-once max reach, Σ- = apply-once min) and the gates that threshold it. NEUTRAL — the Σ is DESCRIPTIVE, NOT a reachability verdict: the consumer applies its OWN accumulation model (grinding / one-shot / clamped), so Mnemosyne never judges whether a gate is reachable (the R712 layering line). Deltas/gates on an unregistered parameter are out-of-band (the validate detectors' job), not this registered-scoped read."
+    )]
+    async fn report_parameter_economy(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+        match ops::parameter_economy_report(&self.workspace, None) {
             Ok(r) => self.tool_json(&r),
             Err(e) => self.op_error(e),
         }

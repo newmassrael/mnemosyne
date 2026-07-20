@@ -1,14 +1,19 @@
-//! Round 728 design → Round 729 build (DEBT-K) — the numeric parameter economy
-//! (meter substrate half: `parameters` registry + `parameter_deltas`) through the
-//! CLI.
+//! Round 728 design → Round 729 build (meter substrate) + Round 730 build (the
+//! CHOICE gate) — the numeric parameter economy (DEBT-K) through the CLI.
 //!
 //! The durable proof (not an ephemeral dogfood — the R689/R699 discipline) that
-//! `add-parameter` / `add-parameter-delta` / `remove-parameter-delta` are wired
-//! end-to-end through the REAL binary: a meter is registered, SIGNED per-beat
-//! deltas attach to real facts (both signs, the axis edge_cost's n>0 forbids), an
-//! unregistered parameter / zero delta / missing fact are rejected, and
-//! `retract-fact` cascade-drops a beat's deltas so none dangles. The threshold
-//! GATE (the choice half, gaps 1+2) is R730.
+//! the meter economy is wired end-to-end through the REAL binary:
+//! - R729 substrate — `add-parameter` / `add-parameter-delta` /
+//!   `remove-parameter-delta`: a meter is registered, SIGNED per-beat deltas
+//!   attach to real facts (both signs, the axis edge_cost's n>0 forbids), an
+//!   unregistered parameter / zero delta / missing fact are rejected, and
+//!   `retract-fact` cascade-drops a beat's deltas so none dangles.
+//! - R730 gate (gaps 1+2) — `add-parameter-gate` / `remove-parameter-gate` /
+//!   `report-parameter-economy`: "The Courtship" — a rising affection meter, a
+//!   romance choice gated `affection >= 4`; the gate references the LIVE meter
+//!   (drop a delta, the reported Σ moves), the boolean-proxy silent hole is
+//!   unrepresentable (there is no proxy fact, only the meter), and `retract-fact`
+//!   cascade-drops the gate.
 
 use std::fs;
 use std::path::Path;
@@ -29,6 +34,10 @@ fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
 
 fn stderr(out: &std::process::Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+fn stdout(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 fn read_store(ws: &Path) -> serde_json::Value {
@@ -314,5 +323,217 @@ fn remove_parameter_delta_end_to_end() {
     assert!(
         read_store(ws)["parameter_deltas"].get("f-gift").is_none(),
         "the emptied beat key is dropped"
+    );
+}
+
+/// Round 730 build (DEBT-K, the CHOICE half — gaps 1+2) — "The Courtship" through
+/// the REAL binary: a rising affection meter, a romance choice gated
+/// `affection >= 4`. The durable proof that `add-parameter-gate` /
+/// `remove-parameter-gate` / `report-parameter-economy` are wired end-to-end AND
+/// that the gate references the LIVE meter (the R725 boolean-proxy silent hole is
+/// unrepresentable — there is no disconnected "sufficient" fact, only the meter).
+#[test]
+fn the_courtship_parameter_gate_end_to_end() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+
+    // The beats: two gifts (+2 each), one insult (-1), and the romance choice.
+    for f in ["f-gift-1", "f-gift-2", "f-insult", "f-romance-choice"] {
+        assert!(add_beat(ws, f).status.success());
+    }
+    assert!(run(ws, &["add-parameter", "--parameter", "affection"])
+        .status
+        .success());
+    for (fact, delta) in [("f-gift-1", "2"), ("f-gift-2", "2"), ("f-insult", "-1")] {
+        assert!(run(
+            ws,
+            &[
+                "add-parameter-delta",
+                "--fact",
+                fact,
+                "--parameter",
+                "affection",
+                "--delta",
+                delta,
+            ],
+        )
+        .status
+        .success());
+    }
+
+    // A gate on an UNREGISTERED parameter rejects (invariant 4).
+    let out = run(
+        ws,
+        &[
+            "add-parameter-gate",
+            "--fact",
+            "f-romance-choice",
+            "--parameter",
+            "karma",
+            "--op",
+            "ge",
+            "--threshold",
+            "4",
+        ],
+    );
+    assert!(!out.status.success(), "unregistered parameter must reject");
+    assert!(stderr(&out).contains("not registered"), "{}", stderr(&out));
+
+    // A bogus op rejects; a missing fact rejects.
+    let out = run(
+        ws,
+        &[
+            "add-parameter-gate",
+            "--fact",
+            "f-romance-choice",
+            "--parameter",
+            "affection",
+            "--op",
+            "approximately",
+            "--threshold",
+            "4",
+        ],
+    );
+    assert!(!out.status.success(), "bogus op must reject");
+    assert!(stderr(&out).contains("ge|le|eq|gt|lt"), "{}", stderr(&out));
+
+    let out = run(
+        ws,
+        &[
+            "add-parameter-gate",
+            "--fact",
+            "f-gone",
+            "--parameter",
+            "affection",
+            "--op",
+            "ge",
+            "--threshold",
+            "4",
+        ],
+    );
+    assert!(!out.status.success(), "missing fact must reject");
+    assert!(stderr(&out).contains("not present"), "{}", stderr(&out));
+
+    // The gate lands: romance unlocks at affection >= 4.
+    assert!(run(
+        ws,
+        &[
+            "add-parameter-gate",
+            "--fact",
+            "f-romance-choice",
+            "--parameter",
+            "affection",
+            "--op",
+            "ge",
+            "--threshold",
+            "4",
+        ],
+    )
+    .status
+    .success());
+    let store = read_store(ws);
+    let gate = &store["parameter_gates"]["f-romance-choice"];
+    // The gate references the METER DIRECTLY — `parameter` IS the meter the deltas
+    // move, not a disconnected "sufficient" proxy fact. This is the structural
+    // proof the R725 boolean-proxy silent hole is UNREPRESENTABLE.
+    assert_eq!(gate["parameter"], "affection");
+    assert_eq!(gate["op"], "ge");
+    assert_eq!(gate["threshold"], 4);
+
+    // A2: a DIVERGENT gate on the same choice rejects the silent overwrite.
+    let out = run(
+        ws,
+        &[
+            "add-parameter-gate",
+            "--fact",
+            "f-romance-choice",
+            "--parameter",
+            "affection",
+            "--op",
+            "ge",
+            "--threshold",
+            "6",
+        ],
+    );
+    assert!(!out.status.success(), "divergent gate must reject");
+    assert!(stderr(&out).contains("DIVERGENT"), "{}", stderr(&out));
+
+    // report-parameter-economy: the meter is VISIBLE with its Σ and its gate.
+    let out = run(ws, &["report-parameter-economy", "--json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let meter = report["meters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["parameter"] == "affection")
+        .expect("affection meter in the economy read");
+    assert_eq!(meter["delta_count"], 3);
+    assert_eq!(meter["sum_positive"], 4, "Σ+ = 2 + 2");
+    assert_eq!(meter["sum_negative"], -1, "Σ- = -1");
+    let gate_row = &meter["gates"][0];
+    assert_eq!(gate_row["fact"], "f-romance-choice");
+    assert_eq!(gate_row["op"], ">=");
+    assert_eq!(gate_row["threshold"], 4);
+
+    // The gate rides the LIVE meter: drop a +2 gift, and the SAME meter the gate
+    // references changes (Σ+ 4 -> 2). Under an apply-once model the gate is now
+    // unreachable — but that is the CONSUMER's judgment; Mnemosyne emits no
+    // verdict, it just reports the moved Σ. (The R725 disconnected proxy could not
+    // move with the value; this one is the value.)
+    assert!(run(
+        ws,
+        &[
+            "remove-parameter-delta",
+            "--fact",
+            "f-gift-2",
+            "--parameter",
+            "affection"
+        ]
+    )
+    .status
+    .success());
+    let out = run(ws, &["report-parameter-economy", "--json"]);
+    let report: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let meter = report["meters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["parameter"] == "affection")
+        .unwrap();
+    assert_eq!(meter["delta_count"], 2, "one gift dropped");
+    assert_eq!(meter["sum_positive"], 2, "Σ+ moved with the live meter");
+    // The gate is untouched by the delta drop (it references the meter, not the beat).
+    assert_eq!(meter["gates"][0]["threshold"], 4);
+
+    // The store validates clean throughout.
+    assert!(
+        run(ws, &["validate-workspace"]).status.success(),
+        "the store validates clean with the gated meter economy"
+    );
+
+    // retract-fact on the choice cascade-drops the gate.
+    assert!(run(
+        ws,
+        &[
+            "retract-fact",
+            "--fact",
+            "f-romance-choice",
+            "--reason",
+            "route cut"
+        ]
+    )
+    .status
+    .success());
+    assert!(
+        read_store(ws)["parameter_gates"]
+            .get("f-romance-choice")
+            .is_none(),
+        "the gate must cascade-drop with the choice fact"
+    );
+    assert!(
+        run(ws, &["validate-workspace"]).status.success(),
+        "clean after the cascade-drop"
     );
 }

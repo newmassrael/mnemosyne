@@ -34,12 +34,14 @@
 //!   part that can drift; it is documentation of the enforcement, not a second
 //!   source of it.
 
-use mnemosyne_core::{DisclosureMode, PayoffExpectation, PredicateObjectKind};
+// Round 730 — `IntervalOp` LIFTED to core (shared by the interval rule + the
+// DEBT-K parameter gate); imported from its canonical home, no longer from
+// `crate::continuity`.
+use mnemosyne_core::{DisclosureMode, IntervalOp, PayoffExpectation, PredicateObjectKind};
 use serde::Serialize;
 
 use crate::continuity::{
-    ExclusiveKey, IntervalOp, RuleClass, QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES,
-    QUEST_PRED_REQUIRES,
+    ExclusiveKey, RuleClass, QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
 };
 
 /// The complete medium-neutral authoring contract (R587). Every field is a
@@ -707,6 +709,31 @@ fn registries() -> Vec<RegistrySpec> {
                 express. retract-fact cascade-drops the deltas, so none dangles. Mnemosyne holds \
                 the authored delta; it NEVER computes a running sum (the consumer's playthrough \
                 job — the layering line).",
+        },
+        RegistrySpec {
+            name: "parameter_gates",
+            key: "choice (edge) fact id",
+            referenced_by: "keyed BY the choice fact; VALUE = {parameter, op, threshold} — read by \
+                the consumer (a VN/RPG runtime), which accumulates the meter along a playthrough \
+                and compares it to the threshold, never by Mnemosyne",
+            add_op: "add-parameter-gate",
+            load_bearing: false,
+            description: "Per-CHOICE numeric-threshold GATES (R728 design → R730 build, DEBT-K) — \
+                keyed by the choice edge fact id, value = a ParameterGate {parameter (a registered \
+                meter), op (ge|le|eq|gt|lt), threshold (signed int)}. The axis K-of-N (edge_guards \
+                threshold) cannot express: a signed/weighted meter compared to a numeric threshold \
+                (\"romance route unlocks if affection >= 4\"). Because the gate references the meter \
+                DIRECTLY (via the parameters registry), the boolean-proxy silent hole is \
+                UNREPRESENTABLE — there is no disconnected \"sufficient\" fact to leave stale when \
+                the meter drops. Rides ANY real fact — NO map-edge check (unlike edge_guards' \
+                edge_guard_not_an_edge): a meter-gated route unlock is a NARRATIVE branch choice, \
+                not necessarily a spatial place-to-place move. Fail-loud: the fact must exist, the \
+                parameter be registered — re-checked at the scan boundary too (the parity-complete \
+                edge_guard precedent). The threshold has NO bound (0/negative legal); satisfiability \
+                is the consumer's model, never Mnemosyne's (NO reachability verdict). retract-fact \
+                cascade-drops the gate. Mnemosyne holds the DECLARATION; it NEVER accumulates the \
+                meter or evaluates whether the gate holds now (the consumer's playthrough job — the \
+                layering line).",
         },
         RegistrySpec {
             name: "disclosure_plans",
@@ -1444,6 +1471,8 @@ mod tests {
             // new describe-schema entries land, since side-table docs are manual).
             "parameters",
             "parameter_deltas",
+            // Round 730 (DEBT-K) — the choice-gate side-table.
+            "parameter_gates",
         ] {
             assert!(reg.contains(&expected), "registry `{expected}` missing");
         }

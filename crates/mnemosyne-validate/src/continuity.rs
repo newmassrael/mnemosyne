@@ -61,7 +61,7 @@ use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::Severity;
-use mnemosyne_core::NarrativeFact;
+use mnemosyne_core::{IntervalOp, NarrativeFact};
 use serde::{Deserialize, Serialize};
 
 /// The `canon-order/v1` contract — consumer/medium-adapter generated
@@ -801,44 +801,6 @@ pub enum NarrativeRuleSpec {
         op: IntervalOp,
         bound: IntervalBound,
     },
-}
-
-/// The comparison operator of an [`NarrativeRuleSpec::Interval`] rule
-/// (Round 489): the closed set of scalar comparisons. `value(left) −
-/// value(right)  ⋈op⋈  bound`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IntervalOp {
-    Ge,
-    Le,
-    Eq,
-    Gt,
-    Lt,
-}
-
-impl IntervalOp {
-    /// Apply the operator to a computed `diff = value(left) − value(right)`
-    /// and a `bound`. `true` = the constraint HOLDS (no violation).
-    fn holds(self, diff: f64, bound: f64) -> bool {
-        match self {
-            IntervalOp::Ge => diff >= bound,
-            IntervalOp::Le => diff <= bound,
-            IntervalOp::Eq => diff == bound,
-            IntervalOp::Gt => diff > bound,
-            IntervalOp::Lt => diff < bound,
-        }
-    }
-
-    /// The reporting symbol (findings carry it so a reader sees the relation).
-    fn symbol(self) -> &'static str {
-        match self {
-            IntervalOp::Ge => ">=",
-            IntervalOp::Le => "<=",
-            IntervalOp::Eq => "==",
-            IntervalOp::Gt => ">",
-            IntervalOp::Lt => "<",
-        }
-    }
 }
 
 /// The right-hand bound of an [`NarrativeRuleSpec::Interval`] rule (Round

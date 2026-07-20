@@ -495,6 +495,31 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_remove_parameter_delta(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "add-parameter-gate",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-parameter-gate --fact <choice-fact-id> --parameter <registered-id> --op <ge|le|eq|gt|lt> --threshold <int> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 730 (DEBT-K) — gate a choice on a numeric meter threshold (\"romance if",
+            "   affection >= 4\"); references the meter DIRECTLY (no boolean proxy), rides ANY",
+            "   fact (no map-edge check); never evaluated (the consumer sums the meter)",
+        ],
+        run: |c| atomic_cli::cmd_add_parameter_gate(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-parameter-gate",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-parameter-gate --fact <choice-fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 730 — the peer of add-parameter-gate: drop a stray gate off a fact",
+            "   without retracting the fact; fail-loud if none",
+        ],
+        run: |c| atomic_cli::cmd_remove_parameter_gate(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-edge-cost",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -642,6 +667,15 @@ static COMMANDS: &[Command] = &[
         usage: &["report-entity-kind-migration [--sidecar <path>] [--json]"],
         notes: &["   R679 — the worklist for a pre-registry (v23-) or out-of-band store: the distinct unregistered entity kinds in use, each with the add-entity-kind call to make"],
         run: |c| cmd_report_entity_kind_migration(c.rest()).map_err(CliError::from),
+    },
+    Command {
+        name: "report-parameter-economy",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-parameter-economy [--sidecar <path>] [--json]"],
+        notes: &["   Round 730 (DEBT-K) — the VISIBLE accumulation read (gap 3): per registered meter, the delta inventory (count, Σ+ = apply-once max, Σ- = apply-once min) and the gates. NEUTRAL: the Σ is descriptive, NOT a reachability verdict (the consumer applies its own accumulation model)"],
+        run: |c| cmd_report_parameter_economy(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "report-payoff-coverage",
@@ -2993,6 +3027,66 @@ fn cmd_report_entity_kind_migration(args: &[String]) -> Result<()> {
                 row.entities.len(),
                 row.entities.join(", ")
             );
+        }
+    }
+    Ok(())
+}
+
+/// Round 730 (DEBT-K) — the parameter-economy read (`report-parameter-economy`):
+/// per REGISTERED meter, the delta inventory (count, Σ+, Σ-) and the gates. Pure
+/// read projection — a NEUTRAL Σ the consumer interprets with its own
+/// accumulation model, never a reachability verdict (R728 review F1). No order,
+/// no world — a static aggregate over the meter side-tables.
+fn cmd_report_parameter_economy(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::parameter_economy_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else if report.meters.is_empty() {
+        println!("parameter economy: 0 registered meters");
+    } else {
+        println!(
+            "=== parameter economy — {} meter(s) ===",
+            report.meters.len()
+        );
+        for m in &report.meters {
+            let desc = if m.description.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", m.description)
+            };
+            println!(
+                "meter `{}`: {} delta(s), Σ+ {} / Σ- {} (apply-once reach; the consumer's model decides), {} gate(s){}",
+                m.parameter, m.delta_count, m.sum_positive, m.sum_negative, m.gates.len(), desc
+            );
+            for g in &m.gates {
+                println!("  [gate] {} {} {}", g.fact, g.op, g.threshold);
+            }
         }
     }
     Ok(())

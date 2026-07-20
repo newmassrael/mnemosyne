@@ -1210,6 +1210,99 @@ pub fn entity_kind_migration(
     })
 }
 
+/// Round 730 (DEBT-K) — one numeric-threshold gate on a choice, in the neutral
+/// economy read. `op` is the operator SYMBOL (`>=` etc.), the interval rule's
+/// reporting symbol (shared since the R730 `IntervalOp` lift).
+#[derive(Debug, Clone, Serialize)]
+pub struct ParameterEconomyGateRow {
+    /// The choice fact the gate rides.
+    pub fact: String,
+    /// The comparison symbol (`>=`, `<=`, `==`, `>`, `<`).
+    pub op: String,
+    /// The required accumulated value.
+    pub threshold: i64,
+}
+
+/// Round 730 (DEBT-K) — one meter's economy row: its declared description, how
+/// many beats move it, the apply-once Σ of positive and of negative deltas, and
+/// the gates that reference it. A NEUTRAL aggregate: `sum_positive` /
+/// `sum_negative` are DESCRIPTIVE Σ over the authored deltas the consumer
+/// interprets with its OWN accumulation model (grinding, one-shot, clamped) —
+/// NOT a reachability verdict (the R728 review killed `ParameterGateUnreachable`:
+/// Σ is an upper bound only under an apply-once/unclamped model, which is the
+/// consumer's dynamic playthrough evaluation, not Mnemosyne's — the R712 layering
+/// line).
+#[derive(Debug, Clone, Serialize)]
+pub struct ParameterEconomyRow {
+    pub parameter: String,
+    pub description: String,
+    /// How many beats carry a delta on this meter.
+    pub delta_count: usize,
+    /// Σ of the POSITIVE deltas (an apply-once max reach — descriptive only).
+    pub sum_positive: i64,
+    /// Σ of the NEGATIVE deltas (an apply-once min reach — descriptive only).
+    pub sum_negative: i64,
+    /// The gates that threshold this meter.
+    pub gates: Vec<ParameterEconomyGateRow>,
+}
+
+/// Round 730 (DEBT-K) — the VISIBLE accumulation read (gap 3): per REGISTERED
+/// meter, the delta inventory and the gates. A pure read projection over the
+/// `parameters` / `parameter_deltas` / `parameter_gates` side-tables — NO order,
+/// NO world, NO verdict (a NEUTRAL Σ the consumer interprets with its own model).
+/// Deltas / gates naming an UNregistered parameter are out-of-band and belong to
+/// the validate detectors (`parameter_delta_violations` /
+/// `parameter_gate_violations`), not this read — the report is registered-scoped.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParameterEconomyReport {
+    pub meters: Vec<ParameterEconomyRow>,
+}
+
+pub fn parameter_economy_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<ParameterEconomyReport, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let meters = store
+        .parameters
+        .iter()
+        .map(|(param, decl)| {
+            let mut delta_count = 0usize;
+            let mut sum_positive = 0i64;
+            let mut sum_negative = 0i64;
+            for deltas in store.parameter_deltas.values() {
+                if let Some(d) = deltas.get(param) {
+                    delta_count += 1;
+                    if *d > 0 {
+                        sum_positive += *d;
+                    } else {
+                        sum_negative += *d;
+                    }
+                }
+            }
+            let gates = store
+                .parameter_gates
+                .iter()
+                .filter(|(_, g)| &g.parameter == param)
+                .map(|(fact, g)| ParameterEconomyGateRow {
+                    fact: fact.clone(),
+                    op: g.op.symbol().to_string(),
+                    threshold: g.threshold,
+                })
+                .collect();
+            ParameterEconomyRow {
+                parameter: param.clone(),
+                description: decl.description.clone(),
+                delta_count,
+                sum_positive,
+                sum_negative,
+                gates,
+            }
+        })
+        .collect();
+    Ok(ParameterEconomyReport { meters })
+}
+
 /// One binding that inherited `kind = implements` from a pre-v5 store, pending
 /// Stage-B reclassification (implements vs references). `defaulted_kind` is the
 /// typed `BindingKind` (Round 694 — DEBT-MIGRATION-PROJECTION; it was needlessly

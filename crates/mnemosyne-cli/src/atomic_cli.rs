@@ -47,6 +47,9 @@ use mnemosyne_atomic::{
     RejectedAlternative, Verdict,
 };
 use mnemosyne_config::discover_config;
+// Round 730 (DEBT-K) — the parameter-gate op; parsed from the CLI via serde (the
+// ONE IntervalOp mapping, no second string-array mirror).
+use mnemosyne_core::IntervalOp;
 use mnemosyne_core::{
     strip_section_marker, CoverageExpectation, DecisionStatus, InventoryStatus,
     VerificationExpectation,
@@ -768,6 +771,119 @@ pub fn cmd_remove_parameter_delta(workspace_root: &Path, args: &[String]) -> Res
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         mnemosyne_atomic::remove_parameter_delta(&mut store, &sidecar_path, &fact_id, &parameter),
+        json,
+    )
+}
+
+/// Round 730 (DEBT-K) — attach a numeric-value THRESHOLD gate to a choice edge.
+/// `--fact` (the choice fact), `--parameter` (registered), `--op` (ge|le|eq|gt|lt),
+/// `--threshold` (signed integer) mandatory. The gate references the meter
+/// DIRECTLY (no boolean proxy), rides ANY fact (no map-edge check), and is never
+/// evaluated by Mnemosyne (the consumer accumulates the meter and compares).
+pub fn cmd_add_parameter_gate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut parameter: Option<String> = None;
+    let mut op_token: Option<String> = None;
+    let mut threshold: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--parameter" => {
+                parameter = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--parameter missing"))?
+                        .clone(),
+                )
+            }
+            "--op" => op_token = Some(iter.next().ok_or_else(|| anyhow!("--op missing"))?.clone()),
+            "--threshold" => {
+                threshold = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--threshold missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let parameter = parameter.ok_or_else(|| anyhow!("--parameter arg required"))?;
+    let op_token = op_token.ok_or_else(|| anyhow!("--op arg required (ge|le|eq|gt|lt)"))?;
+    // Parse the op via serde — the ONE IntervalOp mapping (no second string array
+    // mirror, the R629 lesson). The snake_case variant names are ge|le|eq|gt|lt.
+    let op: IntervalOp =
+        serde_json::from_value(serde_json::Value::String(op_token.trim().to_lowercase()))
+            .map_err(|_| anyhow!("--op must be one of ge|le|eq|gt|lt, got `{op_token}`"))?;
+    let threshold = threshold
+        .ok_or_else(|| anyhow!("--threshold arg required"))?
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| anyhow!("--threshold must be an integer"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_parameter_gate(
+            &mut store,
+            &sidecar_path,
+            &fact_id,
+            &parameter,
+            op,
+            threshold,
+        ),
+        json,
+    )
+}
+
+/// Round 730 (DEBT-K) — remove a choice's parameter gate (the peer of
+/// `add-parameter-gate`; mirrors `remove-edge-cost`). Drops a stray gate off a
+/// fact without retracting the fact. Fail-loud if the fact has no gate.
+pub fn cmd_remove_parameter_gate(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_parameter_gate(&mut store, &sidecar_path, &fact_id),
         json,
     )
 }

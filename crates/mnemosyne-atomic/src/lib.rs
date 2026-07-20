@@ -38,8 +38,8 @@ pub use redact::*;
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
     DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, EdgeCost, Entity,
-    EntityKind, Frame, InventoryStatus, NarrativeFact, Parameter, PayoffExpectation, Predicate,
-    PredicateObjectKind, TypedClaim, TypedObject, Unit,
+    EntityKind, Frame, IntervalOp, InventoryStatus, NarrativeFact, Parameter, ParameterGate,
+    PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject, Unit,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -744,6 +744,28 @@ pub struct AtomicStore {
     /// (the consumer's job — the R712 layering line). Empty on pre-v34 stores.
     #[serde(default)]
     pub parameter_deltas: BTreeMap<String, BTreeMap<String, i64>>,
+    /// Per-CHOICE numeric-threshold GATES side-table (Round 728 design → Round 730
+    /// build, DEBT-K) — keyed by the CHOICE EDGE fact id, value = a
+    /// [`ParameterGate`] (`{parameter, op, threshold}`). The thing K-of-N
+    /// (`edge_guards.threshold`, R724) cannot express: a signed/weighted meter
+    /// compared to a numeric threshold ("romance route unlocks if affection >= 4").
+    /// A SIDE-TABLE like [`edge_costs`], not a reified fact: the gate is
+    /// frame-invariant choice metadata. Because the gate references the METER
+    /// DIRECTLY (via the `parameters` registry), the R725 boolean-proxy silent hole
+    /// is UNREPRESENTABLE — there is no disconnected "sufficient" fact to leave
+    /// stale (DEBT-K hole 1, closed by make-unrepresentable). Rides ANY real fact —
+    /// NO map-edge check (unlike `edge_guards`' `EdgeGuardNotAnEdge`): a
+    /// meter-gated route unlock is a NARRATIVE branch choice, not necessarily a
+    /// spatial place-to-place move, so reusing the spatial `adjacency` predicate
+    /// would false-reject a legit affection-gated dialogue choice (R728 review F2 —
+    /// the R717-F4 conflation). Every gate must name a REGISTERED parameter and be
+    /// keyed by a REAL fact (fail-loud at the primitive AND the scan boundary — the
+    /// parity-complete `edge_guard` precedent). `retract_fact` CASCADE-DROPS the
+    /// gate. Mnemosyne holds the DECLARATION; it NEVER accumulates the meter or
+    /// evaluates whether the gate holds now (the consumer's job — the R712 layering
+    /// line; NO reachability verdict, R728 review F1). Empty on pre-v35 stores.
+    #[serde(default)]
+    pub parameter_gates: BTreeMap<String, ParameterGate>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1357,11 +1379,18 @@ pub enum AtomicStoreError {
 // load. A pre-DEBT-K binary reading a v34 store drops the unknown fields on save
 // (the silent-drop class), which the monotone `> CURRENT` guard rejects loudly
 // instead. No migration arm (new fields, not a shape change to existing data).
+// v34→v35 adds `AtomicStore.parameter_gates` (a per-choice numeric-threshold gate
+// side-table) — Round 728 design → Round 730 build, DEBT-K (the CHOICE half:
+// gaps 1+2). Additive: a top-level `BTreeMap` under `#[serde(default)]`, empty on
+// older stores, no fact re-validated on load. Same class as parameter_deltas — a
+// pre-R730 binary reading a v35 store drops the unknown field on save, which the
+// monotone `> CURRENT` guard rejects loudly instead. No migration arm (a new
+// field, not a shape change to existing data).
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 34;
+pub const CURRENT_SCHEMA_VERSION: u32 = 35;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -5508,6 +5537,129 @@ pub fn parameter_delta_violations(store: &AtomicStore) -> Vec<String> {
     out
 }
 
+/// Attach a numeric-value THRESHOLD gate to a CHOICE edge (Round 728 design →
+/// Round 730 build, DEBT-K) — keyed by the CHOICE edge fact id, value = a
+/// [`ParameterGate`] (`{parameter, op, threshold}`). The axis K-of-N
+/// (`edge_guards.threshold`, R724) cannot express: a signed/weighted meter
+/// compared to a threshold ("romance route unlocks if affection >= 4"). Fail-loud:
+/// the fact must EXIST (a gate rides a real choice), and the parameter must be
+/// REGISTERED (invariant 4). Rides ANY real fact — NO map-edge check (R728 review
+/// F2: a meter-gated route unlock is a NARRATIVE branch choice, not necessarily a
+/// spatial place-to-place move, so reusing the spatial `adjacency` predicate is
+/// the wrong gate; contrast `add_edge_guard` / `EdgeGuardNotAnEdge`). NO self-ref
+/// check either (a gate references a PARAMETER, not another fact). Because the
+/// gate references the meter DIRECTLY, the R725 boolean-proxy silent hole is
+/// UNREPRESENTABLE — there is no disconnected proxy fact to leave stale.
+/// A2-consistent (absent → create, byte-identical → no-op, divergent → reject —
+/// the `add_edge_cost` flat side-table shape). The threshold has NO bound (0 /
+/// negative are legal — a `karma <= -3` or `gold >= 0` gate); satisfiability is
+/// the consumer's model, never Mnemosyne's (R728 review F1 killed the reachability
+/// verdict). Mnemosyne holds the declaration; it NEVER accumulates the meter along
+/// a playthrough or evaluates whether the gate holds now (the R712 layering line).
+pub fn add_parameter_gate(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    edge_fact_id: &str,
+    parameter: &str,
+    op: IntervalOp,
+    threshold: i64,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let fact = edge_fact_id.trim().to_string();
+    let param = parameter.trim().to_string();
+    if !store.narrative_facts.contains_key(&fact) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_parameter_gate: fact `{fact}` not present (a gate rides an existing choice fact; \
+             add the fact first)"
+        )));
+    }
+    if !parameter_registered(store, &param) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_parameter_gate: parameter `{param}` is not registered (add_parameter first; \
+             fail-loud — invariant 4)"
+        )));
+    }
+    let candidate = ParameterGate {
+        parameter: param,
+        op,
+        threshold,
+    };
+    let created = stage_registry_entry(
+        &mut store.parameter_gates,
+        "add_parameter_gate",
+        "parameter_gate",
+        &fact,
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_parameter_gate",
+        "parameter_gate",
+        &fact,
+        created,
+    )
+}
+
+/// Remove a choice's parameter gate (Round 730) — the symmetric peer of
+/// [`add_parameter_gate`] (mirrors R711 `remove_edge_cost`). A gate is subordinate
+/// choice metadata, so `retract_fact` cascade-drops it WITH the fact; but a gate
+/// must also be removable WITHOUT retracting the fact — the author may want to keep
+/// the choice un-gated, or the fact may be referenced so `retract_fact` REFUSES it,
+/// leaving no other way to drop a stray gate. Also cleans up an out-of-band orphan
+/// gate. Does NOT touch any fact — only the side-table entry. Fail-loud: there must
+/// be a gate to remove (a no-op remove would hide a typo'd fact id).
+pub fn remove_parameter_gate(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim().to_string();
+    if store.parameter_gates.remove(&id).is_none() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_parameter_gate: no parameter gate on fact `{id}` to remove (a gate is added by \
+             add_parameter_gate and cascade-dropped by retract_fact)"
+        )));
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_parameter_gate",
+        "parameter_gate",
+        &id,
+    )
+}
+
+/// Every out-of-band `parameter_gates` violation (Round 730, DEBT-K): a key whose
+/// fact is GONE, or a gate whose parameter is UNregistered. The write path
+/// (`add_parameter_gate`) + the cascade-drop (`retract_fact`) cannot produce
+/// either — only an out-of-band edit can. Parity-complete with the write path
+/// (re-checks parameter-registered at the boundary too — the parity-complete
+/// `edge_guard_violations` precedent, NOT the `n>0`-blind `edge_cost_violations`
+/// one). There is NO threshold invariant to re-check (0 / negative are legal) and
+/// `op` is a typed enum (unrepresentable if invalid). The ONE detector
+/// `store_registry_violations` calls. Messages in key order (BTreeMap), empty =
+/// clean.
+pub fn parameter_gate_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (fact, gate) in &store.parameter_gates {
+        if !store.narrative_facts.contains_key(fact) {
+            out.push(format!(
+                "parameter_gate `{fact}`: no such narrative fact (out-of-band edit; retract_fact \
+                 cascade-drops the gate, so a live store never holds this)"
+            ));
+        }
+        if !parameter_registered(store, &gate.parameter) {
+            out.push(format!(
+                "parameter_gate `{fact}`: parameter `{}` not in the parameters registry \
+                 (out-of-band edit; add-parameter first)",
+                gate.parameter
+            ));
+        }
+    }
+    out
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -5720,6 +5872,11 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // a zero delta). Parity-complete with the write path (`add_parameter_delta`):
     // re-checks `delta != 0` + parameter-registered at the boundary too.
     out.extend(parameter_delta_violations(store));
+    // Round 730 → DEBT-K — the parameter-GATE side-table's out-of-band integrity
+    // (a key whose fact is gone, or a gate whose parameter is unregistered).
+    // Parity-complete with the write path (`add_parameter_gate`): re-checks
+    // parameter-registered at the boundary too.
+    out.extend(parameter_gate_violations(store));
     out
 }
 
@@ -7169,6 +7326,12 @@ pub fn retract_fact(
     // there is no CONDITION-side refuse to mirror — the cascade-drop is the whole
     // integrity story for the delta side-table.
     store.parameter_deltas.remove(id);
+    // Round 730 → DEBT-K — CASCADE-DROP the parameter GATE keyed by this choice
+    // fact: a gate is subordinate choice metadata, so it goes WITH the fact, never
+    // dangles. Like a delta, a gate references only a registry parameter (not
+    // another fact), so there is no CONDITION-side refuse to mirror — the
+    // cascade-drop is the whole integrity story for the gate side-table.
+    store.parameter_gates.remove(id);
     save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
 }
 
@@ -9694,6 +9857,11 @@ mod tests {
             // parameter — referenced by nothing (a leaf), so it strands no ref. The
             // inverse hazard (a beat fact removed under live deltas) is the
             // retract_fact cascade-drop, not this remover.
+            "parameter_gate", // R730 (DEBT-K): drops a choice's WHOLE gate; a gate is a
+            // side-table VALUE keyed BY a choice fact, referencing only a registry
+            // parameter — referenced by nothing (a leaf, the edge_cost class), so it
+            // strands no ref. The inverse hazard (a choice fact removed under a live
+            // gate) is the retract_fact cascade-drop, not this remover.
             "predicate", // R658: an identity (TypedClaim.predicate names
                          // it), so it IS this test's target class — guarded by
                          // predicate_uses, which rejects while any typed leg refers to it.
@@ -14177,6 +14345,198 @@ mod tests {
                 .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
             "out-of-band orphan must be named: {v:?}"
         );
+    }
+
+    /// Round 730 (DEBT-K) — the parameter GATE write↔scan invariant parity (R305):
+    /// the write path (`add_parameter_gate`) REJECTS a gate on an UNregistered
+    /// parameter / a missing fact, and the scan boundary (`parameter_gate_violations`
+    /// via `store_registry_violations`) FLAGS the same state injected out-of-band,
+    /// so the two cannot drift. There is NO threshold invariant (0/negative are
+    /// legal) and `op` is a typed enum, so parity is on parameter-registered +
+    /// fact-gone. NON-VACUITY: a clean gate passes the scan.
+    #[test]
+    fn parameter_gate_invariant_parity_across_write_and_scan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Ge,
+            4,
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a clean gate passes the scan"
+        );
+
+        // WRITE PATH rejects an unregistered parameter and a missing fact.
+        assert!(
+            add_parameter_gate(&mut store, &path, "f-choice", "karma", IntervalOp::Ge, 1).is_err(),
+            "unregistered parameter must reject at the write path"
+        );
+        assert!(
+            add_parameter_gate(&mut store, &path, "f-gone", "affection", IntervalOp::Ge, 1)
+                .is_err(),
+            "missing fact must reject at the write path"
+        );
+
+        // SCAN BOUNDARY flags an out-of-band unregistered-parameter gate.
+        store.parameter_gates.insert(
+            "f-choice".to_string(),
+            ParameterGate {
+                parameter: "karma".to_string(),
+                op: IntervalOp::Ge,
+                threshold: 1,
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter().any(|m| m.contains("f-choice")
+                && m.contains("karma")
+                && m.contains("not in the parameters registry")),
+            "out-of-band unregistered param must be flagged (write↔scan parity): {v:?}"
+        );
+        // A gate keyed by a gone fact is flagged too.
+        store.parameter_gates.insert(
+            "f-orphan".to_string(),
+            ParameterGate {
+                parameter: "affection".to_string(),
+                op: IntervalOp::Ge,
+                threshold: 4,
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan gate must be flagged: {v:?}"
+        );
+    }
+
+    /// Round 730 (DEBT-K) — `retract_fact` CASCADE-DROPS a choice's parameter gate
+    /// (gate metadata goes with its choice), so no gate dangles; and the detector
+    /// names an orphan an out-of-band edit leaves. NON-VACUITY: clean with the
+    /// gate, gone after retract, named after injection.
+    #[test]
+    fn retract_cascade_drops_parameter_gate_and_detector_catches_orphan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Ge,
+            4,
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "clean with the gate"
+        );
+
+        retract_fact(&mut store, &path, "f-choice", "choice cut").unwrap();
+        assert!(
+            !store.parameter_gates.contains_key("f-choice"),
+            "the gate must cascade-drop with the choice"
+        );
+
+        // Out-of-band: a gate whose fact is gone is named.
+        store.parameter_gates.insert(
+            "f-orphan".to_string(),
+            ParameterGate {
+                parameter: "affection".to_string(),
+                op: IntervalOp::Ge,
+                threshold: 4,
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan must be named: {v:?}"
+        );
+    }
+
+    /// Round 730 (DEBT-K) — `add_parameter_gate` A2 (identical re-add is a no-op,
+    /// a DIVERGENT gate on the same fact rejects the silent overwrite) +
+    /// `remove_parameter_gate` (drops the gate, fail-loud when absent). The gate
+    /// rides ANY fact — a non-edge choice fact gates cleanly (no map-edge check).
+    #[test]
+    fn parameter_gate_a2_and_remove() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
+        add_parameter(&mut store, &path, "affection", "").unwrap();
+        add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Ge,
+            4,
+        )
+        .unwrap();
+
+        // Identical re-add = no-op (no bytes written).
+        let again = add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Ge,
+            4,
+        )
+        .unwrap();
+        assert_eq!(again.written_bytes, 0, "identical re-add is a no-op");
+
+        // A DIVERGENT gate (different threshold) on the same fact rejects.
+        let err = add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Ge,
+            5,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+        // A divergent op also rejects.
+        let err = add_parameter_gate(
+            &mut store,
+            &path,
+            "f-choice",
+            "affection",
+            IntervalOp::Le,
+            4,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+
+        // Remove drops the gate; a remove with nothing to drop fails loud.
+        remove_parameter_gate(&mut store, &path, "f-choice").unwrap();
+        assert!(
+            !store.parameter_gates.contains_key("f-choice"),
+            "gate dropped"
+        );
+        let err = remove_parameter_gate(&mut store, &path, "f-choice").unwrap_err();
+        assert!(err.to_string().contains("no parameter gate"), "{err}");
     }
 
     /// Round 707 — a `fact` object is resolved in PHASE 2 against store ∪ staged:

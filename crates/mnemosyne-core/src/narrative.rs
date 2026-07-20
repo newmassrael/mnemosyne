@@ -446,6 +446,88 @@ pub struct Parameter {
     pub description: String,
 }
 
+/// A numeric comparison operator (Round 489 interval rule; LIFTED to core in
+/// Round 730 so the [`ParameterGate`] threshold and the
+/// `NarrativeRuleSpec::Interval` bound share ONE operator — a numeric comparison
+/// is a core domain concept, not a validate-only one). The closed set of scalar
+/// comparisons: `value ⋈op⋈ bound`. Mnemosyne STORES `op` on a gate and NEVER
+/// evaluates it (the R712 layering line); [`holds`](IntervalOp::holds) is the
+/// interval rule's tool AND the consumer's, never called by Mnemosyne on a gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum IntervalOp {
+    Ge,
+    Le,
+    Eq,
+    Gt,
+    Lt,
+}
+
+impl IntervalOp {
+    /// Apply the operator to a computed `diff` (the interval rule's
+    /// `value(left) − value(right)`, or a consumer's accumulated meter) and a
+    /// `bound` (the interval bound, or a gate threshold). `true` = the
+    /// constraint HOLDS (no violation). `pub` since Round 730 (the lift widened
+    /// it for cross-crate use); Mnemosyne calls it only for the interval rule,
+    /// never on a stored gate (the R712 layering line — a gate is the consumer's
+    /// to evaluate).
+    pub fn holds(self, diff: f64, bound: f64) -> bool {
+        match self {
+            IntervalOp::Ge => diff >= bound,
+            IntervalOp::Le => diff <= bound,
+            IntervalOp::Eq => diff == bound,
+            IntervalOp::Gt => diff > bound,
+            IntervalOp::Lt => diff < bound,
+        }
+    }
+
+    /// The reporting symbol (findings / reports carry it so a reader sees the
+    /// relation). `pub` since Round 730 (the lift).
+    pub fn symbol(self) -> &'static str {
+        match self {
+            IntervalOp::Ge => ">=",
+            IntervalOp::Le => "<=",
+            IntervalOp::Eq => "==",
+            IntervalOp::Gt => ">",
+            IntervalOp::Lt => "<",
+        }
+    }
+}
+
+/// A numeric-value THRESHOLD gate on a CHOICE edge (Round 728 design → Round 730
+/// build, DEBT-K) — the thing K-of-N ([`EdgeGuard`](crate::narrative) threshold,
+/// R724) cannot express: a signed/weighted meter compared to a threshold
+/// ("romance route unlocks if affection >= 4"). The value type of
+/// [`AtomicStore::parameter_gates`](../../mnemosyne_atomic/struct.AtomicStore.html),
+/// keyed by the CHOICE edge fact id. `parameter` is a `parameters` registry ref
+/// (fail-loud); `op` is the comparison ([`IntervalOp`], shared with the interval
+/// rule); `threshold` is the required accumulated value.
+///
+/// Because the gate references the METER DIRECTLY (not a disconnected boolean
+/// proxy fact), the R725 boolean-proxy silent hole is UNREPRESENTABLE — there is
+/// no second "sufficient" fact to leave stale when the meter drops (DEBT-K hole
+/// 1, closed by make-unrepresentable, not by a detector). Mnemosyne holds the
+/// DECLARATION and integrity-checks only that the parameter is registered + the
+/// keyed fact exists — it NEVER accumulates the meter along a playthrough or
+/// evaluates whether the gate holds now (the consumer's job; the R712 layering
+/// line, exactly as `edge_guards` stores conditions the consumer counts). NOT
+/// `Default`: a default op/threshold is meaningless (the [`EdgeCost`] no-Default
+/// lesson).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ParameterGate {
+    /// The gated meter — a `parameters` registry ref (fail-loud at the write
+    /// path AND the scan boundary).
+    pub parameter: String,
+    /// The comparison operator (`>=` is the measured case; the full
+    /// [`IntervalOp`] set is a cheap declaration — karma `<=`, currency `>=`
+    /// both occur).
+    pub op: IntervalOp,
+    /// The required accumulated value the consumer compares the meter against.
+    pub threshold: i64,
+}
+
 /// The cost of one map EDGE (Round 709 design → DEBT-J build) — a number + a
 /// registered unit, the SAME shape as [`TypedObject::Quantity`] but stored as a
 /// side-table VALUE (`AtomicStore.edge_costs`, keyed by the adjacent fact id)
