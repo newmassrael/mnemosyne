@@ -4635,6 +4635,17 @@ pub struct WorldManuscript {
     /// past this world's fork). Named for what it means: they are not this world's
     /// scenes. Not a defect surface — a reading surface (a manuscript never gates).
     pub sections_off_road: Vec<String>,
+    /// This world is a CONFLUENCE (a merge node — its `converges_from` is
+    /// non-empty), rendered here as a prefix-less FRAGMENT for inspection, NOT
+    /// a standalone playthrough (Round 533). A confluence never appears in the
+    /// default dump (`query_worlds` excludes it); it is reached only by an
+    /// explicit `--world <confluence>`, and the fragment marks the pre-merge
+    /// trunk `undecidable` because the merge's prefix is not composed. Named in
+    /// the output so a reader cannot misread the fragment as a playthrough (the
+    /// R733 review did exactly that; R734 proved the trunk survives every real
+    /// playthrough and the fragment is honest — this field closes that
+    /// follow-on). `false` for every real playthrough (main + forks).
+    pub confluence_fragment: bool,
 }
 
 /// Playthrough manuscripts over query worlds (Round 466) — pure read
@@ -4723,6 +4734,15 @@ pub fn playthrough_manuscript(
                 .filter(|s| !node_set.contains(s.as_str()))
                 .cloned()
                 .collect(),
+            // Round 533 — a rendered world is a confluence FRAGMENT iff the
+            // branch registry gives it a non-empty `converges_from` (main is
+            // absent from the registry, a fork carries `forks_from` but no
+            // `converges_from`); only an explicit `--world <confluence>` ever
+            // reaches this true (the default dump excludes confluences).
+            confluence_fragment: store
+                .branches
+                .get(&world)
+                .is_some_and(|b| !b.converges_from.is_empty()),
             ..Default::default()
         };
         // Visibility split + placement honesty, one pass (facts iterate

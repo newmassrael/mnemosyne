@@ -238,12 +238,11 @@ fn write_confluence_workspace(workspace: &Path) {
     .unwrap();
 }
 
-#[test]
-fn pre_fork_trunk_survives_the_confluence_suffix_in_every_playthrough() {
-    let tmp = TempDir::new().unwrap();
-    let ws = tmp.path();
-    write_confluence_workspace(ws);
-    // thief + knight fork off main at `fork`; conf converges from BOTH at `merge`.
+/// The diamond branch registry: thief + knight fork off main at `fork`; conf
+/// converges from BOTH at `merge` and continues the shared suffix. The shared
+/// substrate for both confluence tests (R734 trunk-survival + the fragment
+/// marker) — one authoring path, no duplication.
+fn add_diamond_branches(ws: &Path) {
     for args in [
         &[
             "add-branch",
@@ -276,6 +275,14 @@ fn pre_fork_trunk_survives_the_confluence_suffix_in_every_playthrough() {
         let out = run(ws, args);
         assert!(out.status.success(), "{args:?}: {out:?}");
     }
+}
+
+#[test]
+fn pre_fork_trunk_survives_the_confluence_suffix_in_every_playthrough() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_confluence_workspace(ws);
+    add_diamond_branches(ws);
     // f-pre: a PATH-INDEPENDENT pre-fork trunk fact on main at prologue.
     add_fact(
         ws,
@@ -407,4 +414,59 @@ fn pre_fork_trunk_survives_the_confluence_suffix_in_every_playthrough() {
         !all_begins(&conf, "conf").contains(&"f-pre".to_string()),
         "the prefix-less fragment does not falsely show the trunk holding"
     );
+}
+
+/// The confluence FRAGMENT names itself as one — the R734 follow-on closed by
+/// building the marker (R533's in-code note lifted into the output). The R733
+/// review misread the prefix-less `--world <confluence>` fragment as a
+/// playthrough; R734 proved the trunk survives every real playthrough and the
+/// fragment is honest, and left the marker as an optional follow-on. This
+/// gives the fragment a self-describing signal on BOTH the --json and human
+/// surfaces so the misread cannot recur, and asserts a real playthrough is
+/// NEVER marked (the neuter-and-fail control — a hardcoded value fails one leg
+/// or the other).
+#[test]
+fn confluence_fragment_is_marked_and_playthroughs_are_not() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_confluence_workspace(ws);
+    add_diamond_branches(ws);
+
+    // (1) An explicit --world <confluence> is a fragment and now SAYS so on the
+    // --json surface (the AI-first read path).
+    let conf = manuscript_json(ws, &["--world", "conf"]);
+    assert_eq!(
+        conf["worlds"]["conf"]["confluence_fragment"],
+        serde_json::json!(true),
+        "the confluence fragment is marked"
+    );
+
+    // (2) The human render carries the marker too (JSON + human parity — a
+    // consumer reading either surface is warned).
+    let out = run(ws, &["report-playthrough-manuscript", "--world", "conf"]);
+    assert!(out.status.success(), "{out:?}");
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("[FRAGMENT"),
+        "the human render names the fragment: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // (3) NON-VACUITY (neuter-and-fail): a REAL playthrough is NOT a fragment.
+    // A fork read explicitly, AND every world of the default dump, all read
+    // false — a hardcoded-true marker fails here, a hardcoded-false fails (1),
+    // so only the branch-registry-driven value passes both legs.
+    let thief = manuscript_json(ws, &["--world", "thief"]);
+    assert_eq!(
+        thief["worlds"]["thief"]["confluence_fragment"],
+        serde_json::json!(false),
+        "a fork playthrough is not a fragment"
+    );
+    let all = manuscript_json(ws, &[]);
+    for (world, m) in all["worlds"].as_object().unwrap() {
+        assert_eq!(
+            m["confluence_fragment"],
+            serde_json::json!(false),
+            "default-dump world `{world}` is a playthrough, not a fragment"
+        );
+    }
 }

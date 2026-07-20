@@ -3427,6 +3427,18 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
             m.undecidable.len(),
             m.sections_off_road.len()
         );
+        if m.confluence_fragment {
+            // Round 533 — a confluence renders as a prefix-less fragment; name
+            // it in the output so it is not misread as a standalone playthrough
+            // (the R733 review misread it; R734 closed the study by test, this
+            // marker closes the follow-on). The pre-merge trunk reads
+            // `undecidable` because the merge's prefix is not composed here.
+            println!(
+                "  [FRAGMENT — `{world}` is a confluence merge node, not a \
+                 standalone playthrough; the pre-merge trunk reads `undecidable` \
+                 by design]"
+            );
+        }
         for s in &m.scenes {
             let title = if s.title.is_empty() {
                 String::new()
