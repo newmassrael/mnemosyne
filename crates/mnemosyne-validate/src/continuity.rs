@@ -300,7 +300,9 @@ fn road_of(
         let is_root = b == mnemosyne_core::MAIN_BRANCH
             || branches
                 .get(b)
-                .is_some_and(|br| br.forks_from.is_none() && br.converges_from.is_empty());
+                // A root shares no history: neither a fork-child nor a confluence
+                // (the shared `is_confluence` definition, Round 747).
+                .is_some_and(|br| br.forks_from.is_none() && !br.is_confluence());
         if !is_root {
             continue;
         }
@@ -2143,7 +2145,9 @@ fn query_worlds(store: &AtomicStore) -> Vec<&str> {
             store
                 .branches
                 .iter()
-                .filter(|(_, b)| b.converges_from.is_empty())
+                // Exclude confluences (a merge node is not its own playable
+                // world-line) — the shared `is_confluence` definition, Round 747.
+                .filter(|(_, b)| !b.is_confluence())
                 .map(|(id, _)| id.as_str()),
         )
         .collect()
@@ -2777,7 +2781,7 @@ pub fn scan_continuity(
         let confluence_parents = store
             .branches
             .get(&fact.branch)
-            .filter(|b| !b.converges_from.is_empty())
+            .filter(|b| b.is_confluence()) // Round 747 — the shared definition
             .map(|b| b.converges_from.as_slice());
         for e in &fact.evidence {
             if !positioned.contains(e.as_str()) {

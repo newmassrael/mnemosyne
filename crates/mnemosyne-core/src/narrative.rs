@@ -95,6 +95,22 @@ pub struct Branch {
     pub converges_from: Vec<BranchFork>,
 }
 
+impl Branch {
+    /// Whether THIS branch is a CONFLUENCE — a merge node with at least one
+    /// incoming converge edge (Round 533). THE one definition of the confluence
+    /// predicate (Round 747 folded the scattered `!converges_from.is_empty()`
+    /// copies into it): the free [`is_confluence`] resolves an id to a branch and
+    /// delegates here, and every `&Branch`-in-hand caller (the world sweep's
+    /// confluence exclusion, the lineage-root seed, the confluence-parent slice)
+    /// calls it directly — so redefining "a branch is a confluence" is a
+    /// one-line change here, not a hunt across copies. A registered non-empty
+    /// `converges_from` always means >= 2 parents (the mutate layer rejects a
+    /// 1-parent "merge" as a fork), so this bool is exact.
+    pub fn is_confluence(&self) -> bool {
+        !self.converges_from.is_empty()
+    }
+}
+
 /// The divergence coordinate of a forked world-line (Round 438): the parent
 /// branch and the canon point (structure-section ref) where the child's
 /// history departs it.
@@ -293,9 +309,7 @@ pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> 
 /// four copies — the [`is_known_world`] single-definition discipline applied to
 /// the confluence axis (Round 746 folded the inline manuscript copy into it).
 pub fn is_confluence(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
-    branches
-        .get(world)
-        .is_some_and(|b| !b.converges_from.is_empty())
+    branches.get(world).is_some_and(Branch::is_confluence)
 }
 
 /// A world-line reference is "known" iff it is [`MAIN_BRANCH`] (the implicit,
@@ -1118,6 +1132,45 @@ mod tests {
         assert!(is_known_world(&branches, "braid"));
         assert!(is_known_world(&branches, MAIN_BRANCH));
         assert!(!is_known_world(&branches, "ghost"));
+    }
+
+    /// Round 747 — the confluence predicate has ONE definition
+    /// (`Branch::is_confluence`); the free `is_confluence(branches, world)`
+    /// resolves an id and delegates to it, so the world sweep, the lineage-root
+    /// seed, and the confluence-parent slice all share one meaning of "confluence".
+    #[test]
+    fn is_confluence_has_one_definition_shared_by_method_and_free_fn() {
+        let edge = |b: &str, at: &str| BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        // The method IS the definition: a non-empty converges_from is a confluence.
+        let merge = Branch {
+            converges_from: vec![edge("sluice", "s2"), edge("ride", "s2")],
+            ..Branch::default()
+        };
+        assert!(merge.is_confluence());
+        // A fork-child (forks_from, no converge) is NOT a confluence.
+        let fork = Branch {
+            forks_from: Some(edge(MAIN_BRANCH, "s1")),
+            ..Branch::default()
+        };
+        assert!(!fork.is_confluence());
+        // A standalone default branch is NOT a confluence.
+        assert!(!Branch::default().is_confluence());
+
+        // The free fn delegates: it agrees with the method for every registered
+        // id, and answers false for main (never registered) and an unknown id.
+        let mut branches = BTreeMap::new();
+        branches.insert("dawn".to_string(), merge);
+        branches.insert("sluice".to_string(), fork);
+        for (id, b) in &branches {
+            assert_eq!(is_confluence(&branches, id), b.is_confluence());
+        }
+        assert!(is_confluence(&branches, "dawn"));
+        assert!(!is_confluence(&branches, "sluice"));
+        assert!(!is_confluence(&branches, MAIN_BRANCH));
+        assert!(!is_confluence(&branches, "ghost"));
     }
 
     /// Round 535 — the cross-branch succession legitimacy predicate, the SINGLE
