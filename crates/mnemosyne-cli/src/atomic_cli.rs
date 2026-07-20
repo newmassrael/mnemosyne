@@ -979,6 +979,93 @@ pub fn cmd_remove_edge_cost(workspace_root: &Path, args: &[String]) -> Result<()
     )
 }
 
+/// Round 731 (DEBT-L) — attach a multiset COUNT to a fact: `--fact` (the custody
+/// fact) with a POSITIVE `--count` (holds(A,potion) count 5 = A holds 5 potions).
+/// Rides any fact (no custody-predicate check); retract cascade-drops it.
+pub fn cmd_add_fact_count(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut count: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--count" => {
+                count = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--count missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let count = count
+        .ok_or_else(|| anyhow!("--count arg required"))?
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| anyhow!("--count must be an integer"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_fact_count(&mut store, &sidecar_path, &fact_id, count),
+        json,
+    )
+}
+
+/// Round 731 — remove a fact's multiset count (the peer of `add-fact-count`).
+/// Drops a stray count off a fact without retracting the fact, and cleans an
+/// out-of-band orphan count. Fail-loud if none.
+pub fn cmd_remove_fact_count(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut fact_id: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fact" => {
+                fact_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_fact_count(&mut store, &sidecar_path, &fact_id),
+        json,
+    )
+}
+
 /// Round 717 design → Round 720 — attach a place-access GUARD to one map edge:
 /// `--fact` (the adjacent edge fact) REQUIRES `--condition` (the condition fact).
 /// Both must exist (a dangling-ref check); the guard is edge metadata (a

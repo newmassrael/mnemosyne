@@ -766,6 +766,48 @@ pub struct AtomicStore {
     /// line; NO reachability verdict, R728 review F1). Empty on pre-v35 stores.
     #[serde(default)]
     pub parameter_gates: BTreeMap<String, ParameterGate>,
+    /// Per-fact multiset COUNT side-table (Round 731, DEBT-L) — keyed by a FACT
+    /// id, value = a POSITIVE count (the multiset multiplicity: `holds(A, potion)`
+    /// with count 5 = A holds FIVE potions). The thing singular `holds` custody
+    /// cannot express — one holder per object carries no quantity, so a stackable
+    /// item (5 potions) had to live in a SEPARATE, disconnected fact (the
+    /// R731-measured silent hole: retract the custody fact and the stray count
+    /// fact SURVIVES, validating clean — a phantom stack with no holder). Currency
+    /// (100 gold) is a DEBT-K global meter; this is the DISTINCT part — a count
+    /// bound to a SPECIFIC fact (per-holder-per-item, which a global meter cannot
+    /// express). A SIDE-TABLE like [`edge_costs`], not a reified fact: the count is
+    /// frame-invariant metadata. A BARE `i64` (no unit — the thing counted is the
+    /// fact's OBJECT leg, `holds(A, potion)` = 5 *potions*), unlike [`EdgeCost`]'s
+    /// number+unit. Because the count is keyed BY the fact, `retract_fact`
+    /// CASCADE-DROPS it — the orphaned-count silent hole is UNREPRESENTABLE
+    /// (make-unrepresentable, the DEBT-K hole-1 approach).
+    ///
+    /// Rides ANY fact — NO custody-predicate check (unlike `edge_costs`'
+    /// `EdgeCostNotAnEdge`). The decisive reason is SEMANTIC INVERSION, not just
+    /// breadth: a multiset count is meaningful precisely for FUNGIBLE items (5
+    /// potions), and fungible items are exactly the ones NOT under per:object
+    /// exclusivity (a UNIQUE token has one holder and count 1; a FUNGIBLE stack is
+    /// not under the Exclusive rule, which would false-flag two holders as
+    /// double-custody). The only machine-knowable custody signal is the per:object
+    /// Exclusive rule (invariant 4 — core has no `holds`), so anchoring to it would
+    /// REJECT the count where it is meaningful (fungible) and ACCEPT it only where
+    /// it is redundant (unique = always 1) — inverted, not merely narrow. A count
+    /// is a GENERAL per-fact cardinality (`holds` is the motivating case, but
+    /// `killed(A,goblin)` × 5 / `carries(A,arrow)` × 20 are equally legit) — the
+    /// R728 review F2 lesson (a side-table over a broad predicate class must not be
+    /// pinned to one rule-predicate). Named `fact_counts`, not `custody_counts`,
+    /// for that reason (the `parameter_gates` naming discipline: name = the shape,
+    /// doc = the motivating case).
+    ///
+    /// Every key must resolve to an existing fact and the count be POSITIVE
+    /// (fail-loud at the primitive AND the scan boundary — the parity-complete
+    /// `edge_guard`/`parameter_delta` precedent, NOT the n>0-blind `edge_cost`
+    /// one). Mnemosyne holds the authored count; it NEVER sums counts across facts
+    /// or evaluates the multiset (the consumer's job — the R712 layering line;
+    /// singular-custody stays the per:object Exclusive rule's, unchanged). Empty on
+    /// pre-v36 stores.
+    #[serde(default)]
+    pub fact_counts: BTreeMap<String, i64>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -1386,11 +1428,19 @@ pub enum AtomicStoreError {
 // pre-R730 binary reading a v35 store drops the unknown field on save, which the
 // monotone `> CURRENT` guard rejects loudly instead. No migration arm (a new
 // field, not a shape change to existing data).
+// v35→v36 adds `AtomicStore.fact_counts` (a per-fact multiset-count side-table)
+// — Round 731 build, DEBT-L (the distinct part of multiset/quantity custody: a
+// positive count bound to a custody fact, which singular `holds` cannot express).
+// Additive: a top-level `BTreeMap<String, i64>` under `#[serde(default)]`, empty
+// on older stores, no fact re-validated on load. Same class as parameter_gates —
+// a pre-R731 binary reading a v36 store drops the unknown field on save, which
+// the monotone `> CURRENT` guard rejects loudly instead. No migration arm (a new
+// field, not a shape change to existing data).
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 35;
+pub const CURRENT_SCHEMA_VERSION: u32 = 36;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 708 — the reject-loud work-list for a store carrying EITHER removed
@@ -5660,6 +5710,107 @@ pub fn parameter_gate_violations(store: &AtomicStore) -> Vec<String> {
     out
 }
 
+/// Attach a multiset COUNT to a fact (Round 731 — DEBT-L) — keyed by the FACT id,
+/// `count` the POSITIVE multiplicity (`holds(A, potion)` count 5 = A holds FIVE
+/// potions). The thing singular `holds` custody cannot express (one holder per
+/// object, no quantity). Fail-loud: the fact must EXIST (a count rides a real
+/// fact) and `count > 0` (0/negative = not holding it — retract the fact instead;
+/// the `edge_cost` n>0 analog, re-checked at the scan boundary —
+/// parity-complete). Rides ANY fact — NO custody-predicate check: a count is a
+/// GENERAL cardinality, and anchoring to the per:object Exclusive rule is
+/// SEMANTICALLY INVERTED (the count is meaningful for FUNGIBLE items, which are
+/// exactly the ones NOT under exclusivity — a unique token has count 1; see the
+/// `fact_counts` field doc + R728 review F2). A2-consistent (absent→create,
+/// identical→no-op, divergent→reject) via `stage_registry_entry` (a FLAT `i64`
+/// value, unlike `parameter_delta`'s nested hand-roll). The store holds the count;
+/// it NEVER evaluates the multiset (the consumer's job — the R712 layering line).
+pub fn add_fact_count(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+    count: i64,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim().to_string();
+    if !store.narrative_facts.contains_key(&id) {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_fact_count: fact `{id}` not present (a count attaches to an existing fact; \
+             add the fact first)"
+        )));
+    }
+    if count <= 0 {
+        return Err(AtomicMutateError::Validation(format!(
+            "add_fact_count: count {count} must be positive (0/negative = not holding it — \
+             retract the fact instead; the edge_cost n>0 analog)"
+        )));
+    }
+    let created = stage_registry_entry(
+        &mut store.fact_counts,
+        "add_fact_count",
+        "fact_count",
+        &id,
+        count,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_fact_count",
+        "fact_count",
+        &id,
+        created,
+    )
+}
+
+/// Remove a fact's multiset count (Round 731) — the symmetric peer of
+/// [`add_fact_count`] (mirrors R711 `remove_edge_cost`). A count is subordinate
+/// fact metadata, so `retract_fact` cascade-drops it WITH the fact; but a count
+/// must also be removable WITHOUT retracting the fact — the author may want the
+/// fact kept un-counted, or the fact may be referenced so `retract_fact` REFUSES
+/// it, leaving no other way to drop a stray count. Also cleans up an out-of-band
+/// orphan count. Does NOT touch any fact — only the side-table entry. Fail-loud:
+/// there must be a count to remove (a no-op remove would hide a typo'd fact id).
+pub fn remove_fact_count(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    fact_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = fact_id.trim().to_string();
+    if store.fact_counts.remove(&id).is_none() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_fact_count: no fact count on fact `{id}` to remove (a count is added by \
+             add_fact_count and cascade-dropped by retract_fact)"
+        )));
+    }
+    save_with_receipt(store, sidecar_path, "remove_fact_count", "fact_count", &id)
+}
+
+/// Every out-of-band `fact_counts` violation (Round 731, DEBT-L): a key whose
+/// fact is GONE, or a NON-POSITIVE count. The write path (`add_fact_count`) + the
+/// cascade-drop (`retract_fact`) cannot produce either — only an out-of-band edit
+/// can. Parity-complete with the write path: re-checks `count > 0` at the boundary
+/// too (the parity-complete `edge_guard`/`parameter_delta` precedent, NOT the
+/// `n>0`-blind `edge_cost_violations` one — else "half-enforced invariant = no
+/// invariant"). The ONE detector `store_registry_violations` calls. Messages in
+/// key order (BTreeMap), empty = clean.
+pub fn fact_count_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (fid, count) in &store.fact_counts {
+        if !store.narrative_facts.contains_key(fid) {
+            out.push(format!(
+                "fact_count `{fid}`: no such narrative fact (out-of-band edit; retract_fact \
+                 cascade-drops the count, so a live store never holds this)"
+            ));
+        }
+        if *count <= 0 {
+            out.push(format!(
+                "fact_count `{fid}`: count {count} is not positive (out-of-band edit; \
+                 add_fact_count rejects a non-positive count)"
+            ));
+        }
+    }
+    out
+}
+
 /// Which registry a fact-level ref resolves against — one variant per ref slot
 /// a `NarrativeFact` carries (Round 688 — DEBT-DUP-REGISTRY). The write path
 /// (`build_candidate_fact` / `build_typed_claim`) and the out-of-band detector
@@ -5877,6 +6028,10 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // Parity-complete with the write path (`add_parameter_gate`): re-checks
     // parameter-registered at the boundary too.
     out.extend(parameter_gate_violations(store));
+    // Round 731 → DEBT-L — the multiset-COUNT side-table's out-of-band integrity
+    // (a key whose fact is gone, or a non-positive count). Parity-complete with
+    // the write path (`add_fact_count`): re-checks `count > 0` at the boundary.
+    out.extend(fact_count_violations(store));
     out
 }
 
@@ -7332,6 +7487,13 @@ pub fn retract_fact(
     // another fact), so there is no CONDITION-side refuse to mirror — the
     // cascade-drop is the whole integrity story for the gate side-table.
     store.parameter_gates.remove(id);
+    // Round 731 → DEBT-L — CASCADE-DROP the multiset COUNT keyed by this fact: a
+    // count is subordinate fact metadata, so it goes WITH the fact, never dangles.
+    // A count references only an i64 (not another fact), so there is no
+    // CONDITION-side refuse to mirror — the cascade-drop is the whole integrity
+    // story for the count side-table. This makes the R731-measured orphaned-count
+    // silent hole (a count surviving its custody retract) unrepresentable.
+    store.fact_counts.remove(id);
     save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
 }
 
@@ -9862,6 +10024,11 @@ mod tests {
             // parameter — referenced by nothing (a leaf, the edge_cost class), so it
             // strands no ref. The inverse hazard (a choice fact removed under a live
             // gate) is the retract_fact cascade-drop, not this remover.
+            "fact_count", // R731 (DEBT-L): drops a fact's multiset count; a count is a
+            // side-table VALUE keyed BY a fact, a bare i64 referencing nothing —
+            // referenced by nothing (a leaf, the edge_cost class), so it strands no
+            // ref. The inverse hazard (a fact removed under a live count) is the
+            // retract_fact cascade-drop, not this remover.
             "predicate", // R658: an identity (TypedClaim.predicate names
                          // it), so it IS this test's target class — guarded by
                          // predicate_uses, which rejects while any typed leg refers to it.
@@ -14537,6 +14704,124 @@ mod tests {
         );
         let err = remove_parameter_gate(&mut store, &path, "f-choice").unwrap_err();
         assert!(err.to_string().contains("no parameter gate"), "{err}");
+    }
+
+    /// Round 731 (DEBT-L) — the multiset count invariant is enforced IDENTICALLY
+    /// at the write path (`add_fact_count`) and the scan boundary
+    /// (`fact_count_violations` via `store_registry_violations`): a missing fact
+    /// and a non-positive count reject at write, and an out-of-band orphan / a
+    /// non-positive count is flagged at scan (the parity-complete precedent — a
+    /// half-enforced invariant is no invariant). NON-VACUITY: a clean count passes
+    /// both, each corruption is named.
+    #[test]
+    fn fact_count_invariant_parity_across_write_and_scan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
+        add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
+        assert_eq!(store.fact_counts["f-hold"], 5);
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a clean count passes the scan"
+        );
+
+        // WRITE PATH rejects a missing fact and a non-positive count.
+        assert!(
+            add_fact_count(&mut store, &path, "f-gone", 3).is_err(),
+            "missing fact must reject at the write path"
+        );
+        for bad in [0, -1] {
+            let err = add_fact_count(&mut store, &path, "f-hold", bad).unwrap_err();
+            assert!(
+                err.to_string().contains("must be positive"),
+                "count {bad} must reject: {err}"
+            );
+        }
+
+        // SCAN BOUNDARY flags an out-of-band non-positive count (write↔scan parity)
+        // and an orphan whose fact is gone.
+        store.fact_counts.insert("f-hold".to_string(), -2);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-hold") && m.contains("not positive")),
+            "out-of-band non-positive count must be flagged (parity): {v:?}"
+        );
+        store.fact_counts.insert("f-hold".to_string(), 5); // restore
+        store.fact_counts.insert("f-orphan".to_string(), 2);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan count must be flagged: {v:?}"
+        );
+    }
+
+    /// Round 731 (DEBT-L) — `retract_fact` CASCADE-DROPS a fact's multiset count
+    /// (count metadata goes with its fact), so the R731-measured orphaned-count
+    /// silent hole (a count surviving its custody retract) is unrepresentable; and
+    /// the detector names an orphan an out-of-band edit leaves. NON-VACUITY: clean
+    /// with the count, gone after retract, named after injection.
+    #[test]
+    fn retract_cascade_drops_fact_count_and_detector_catches_orphan() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
+        add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "clean with the count"
+        );
+
+        retract_fact(&mut store, &path, "f-hold", "used the potions").unwrap();
+        assert!(
+            !store.fact_counts.contains_key("f-hold"),
+            "the count must cascade-drop with the fact (orphaned-count hole closed)"
+        );
+
+        // Out-of-band: a count whose fact is gone is named.
+        store.fact_counts.insert("f-orphan".to_string(), 3);
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("f-orphan") && m.contains("no such narrative fact")),
+            "out-of-band orphan must be named: {v:?}"
+        );
+    }
+
+    /// Round 731 (DEBT-L) — `add_fact_count` A2 (identical re-add is a no-op, a
+    /// DIVERGENT count on the same fact rejects the silent overwrite) +
+    /// `remove_fact_count` (drops the count, fail-loud when absent). The count
+    /// rides ANY fact — a plain non-custody fact counts cleanly (no custody check).
+    #[test]
+    fn fact_count_a2_and_remove() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        store.frames.insert("gt".to_string(), Frame::default());
+        add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
+        add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
+
+        // Identical re-add = no-op (no bytes written).
+        let again = add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
+        assert_eq!(again.written_bytes, 0, "identical re-add is a no-op");
+
+        // A DIVERGENT count on the same fact rejects.
+        let err = add_fact_count(&mut store, &path, "f-hold", 7).unwrap_err();
+        assert!(err.to_string().contains("DIVERGENT"), "{err}");
+
+        // Remove drops the count; a remove with nothing to drop fails loud.
+        remove_fact_count(&mut store, &path, "f-hold").unwrap();
+        assert!(!store.fact_counts.contains_key("f-hold"), "count dropped");
+        let err = remove_fact_count(&mut store, &path, "f-hold").unwrap_err();
+        assert!(err.to_string().contains("no fact count"), "{err}");
     }
 
     /// Round 707 — a `fact` object is resolved in PHASE 2 against store ∪ staged:

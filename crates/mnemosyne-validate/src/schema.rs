@@ -736,6 +736,30 @@ fn registries() -> Vec<RegistrySpec> {
                 layering line).",
         },
         RegistrySpec {
+            name: "fact_counts",
+            key: "fact id",
+            referenced_by: "keyed BY the fact; VALUE = a positive int count — read by the consumer \
+                (a VN/RPG runtime) as the multiset size, never summed or evaluated by Mnemosyne",
+            add_op: "add-fact-count",
+            load_bearing: false,
+            description: "Per-fact multiset COUNTS (R731 build, DEBT-L) — keyed by a fact id, value \
+                = a POSITIVE count (the multiset multiplicity: holds(A, potion) count 5 = A holds \
+                FIVE potions). The DISTINCT part of multiset/quantity custody (currency 100 gold is \
+                a DEBT-K global meter): a count bound to a SPECIFIC custody fact, which singular \
+                holds cannot express and a global meter cannot express per-holder. A SIDE-TABLE like \
+                edge_costs, not a reified fact: the count is frame-invariant metadata; a bare int \
+                (no unit — the thing counted is the fact's OBJECT leg). Because it is keyed BY the \
+                fact, retract-fact CASCADE-DROPS it — the orphaned-count silent hole (a stray count \
+                fact surviving its custody retract) is UNREPRESENTABLE. Rides ANY fact — NO \
+                custody-predicate check: anchoring to the per:object Exclusive rule is semantically \
+                INVERTED (a multiset count is meaningful for FUNGIBLE items, which are exactly the \
+                ones NOT under exclusivity; a unique token has count 1). Fail-loud: the fact must \
+                exist, the count be POSITIVE — re-checked at the scan boundary too (the \
+                parity-complete edge_guard precedent). Mnemosyne holds the count; it NEVER evaluates \
+                the multiset (the consumer's job — the layering line; singular-custody stays the \
+                per:object Exclusive rule's, unchanged).",
+        },
+        RegistrySpec {
             name: "disclosure_plans",
             key: "telling id",
             referenced_by: "the `--telling` carrier + the render-acceptance gates",

@@ -520,6 +520,31 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_remove_parameter_gate(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "add-fact-count",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-fact-count --fact <fact-id> --count <positive-int> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 731 (DEBT-L) — attach a multiset count to a fact (holds(A,potion) count 5 =",
+            "   A holds FIVE potions); count must be positive, rides ANY fact (no custody check),",
+            "   retract cascade-drops it; never evaluated (the consumer reads the multiset size)",
+        ],
+        run: |c| atomic_cli::cmd_add_fact_count(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-fact-count",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-fact-count --fact <fact-id> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 731 — the peer of add-fact-count: drop a stray count off a fact",
+            "   without retracting the fact; fail-loud if none",
+        ],
+        run: |c| atomic_cli::cmd_remove_fact_count(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-edge-cost",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

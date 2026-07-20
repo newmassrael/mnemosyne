@@ -490,6 +490,25 @@ pub struct RemoveEdgeCostArgs {
     pub fact_id: String,
 }
 
+/// Attach a multiset COUNT to a fact (Round 731 → DEBT-L) — a side-table entry
+/// keyed by the fact id, value = a positive count. Mirrors `add_edge_cost`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddFactCountArgs {
+    /// The FACT ID the count attaches to (must already exist).
+    pub fact_id: String,
+    /// The multiset count — a POSITIVE integer (holds(A,potion) count 5 = A holds
+    /// FIVE potions; 0/negative = not holding it, rejected — retract the fact).
+    pub count: i64,
+}
+
+/// Remove a fact's multiset count (Round 731) — the peer of `add_fact_count`.
+/// Drops a stray count off a fact without retracting the fact.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveFactCountArgs {
+    /// The fact id whose multiset count to drop (fail-loud if it has none).
+    pub fact_id: String,
+}
+
 /// Attach a place-access guard to one map edge (Round 717 design → Round 720).
 /// Keyed by the edge fact id, value = the condition fact id; both must exist.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1859,6 +1878,26 @@ impl MnemosyneServer {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_edge_cost(store, path, &a.fact_id));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Attach a multiset COUNT to a fact (R731 → DEBT-L) — a side-table entry keyed by the fact id, value = a POSITIVE count (holds(A, potion) count 5 = A holds FIVE potions). The thing singular holds custody cannot express: a stackable-item quantity tied to the custody edge (the distinct part of DEBT-L; currency is a DEBT-K meter). NOT a reified fact: the count is frame-invariant metadata, a bare int (no unit — the thing counted is the fact's object leg). Fail-loud: the fact must EXIST and count must be POSITIVE (0/negative = not holding it — retract the fact). Rides ANY fact — NO custody-predicate check: anchoring to the per:object Exclusive rule is semantically inverted (a multiset count is meaningful for FUNGIBLE items, which are exactly the ones NOT under exclusivity). retract_fact cascade-drops the count, so it never dangles — the orphaned-count silent hole is unrepresentable. Idempotent on identical content; divergent rejects. Mnemosyne holds the count; it NEVER evaluates the multiset (the consumer's job — the layering line)."
+    )]
+    async fn add_fact_count(&self, args: Parameters<AddFactCountArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::add_fact_count(store, path, &a.fact_id, a.count));
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove a fact's multiset COUNT (R731) — the peer of add_fact_count. A count is subordinate metadata that retract_fact cascade-drops with its fact, but a count must also be removable WITHOUT retracting the fact (the author may want it kept un-counted, or the fact may be referenced so retract refuses it). Also cleans an out-of-band orphan count. Fail-loud if the fact has no count."
+    )]
+    async fn remove_fact_count(&self, args: Parameters<RemoveFactCountArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_fact_count(store, path, &a.fact_id));
         self.finish_mutate(outcome)
     }
 
