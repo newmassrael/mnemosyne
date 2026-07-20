@@ -10256,6 +10256,100 @@ mod tests {
     }
 
     #[test]
+    fn every_side_table_detector_is_wired_into_the_aggregate() {
+        // Round 737 — the completeness tripwire for `store_registry_violations`,
+        // the R730/R731 named follow-on. Each SIDE-TABLE (a field the write path
+        // guards but a raw JSON edit can corrupt) has a `*_violations` out-of-band
+        // scan; the aggregate must call EVERY one, or a forgotten side-table's
+        // corruption validates clean ("a forgotten sixth stays green"). Detection
+        // not derivation (R622): a source tripwire, the sibling of
+        // `every_remover_pairs_with_an_inbound_scan`. TWO forced enumerations, so
+        // neither a new FIELD nor a new DETECTOR can slip in unacknowledged.
+        //
+        // KNOWN LIMITS (honest scope): it asserts a detector is CALLED, not that
+        // its result reaches `out` (a `let _ = x(store);` would pass); and it
+        // guards only the `pub fn *_violations` convention — an inline check that
+        // is NOT a `*_violations` fn (e.g. `unregistered_entity_kinds`) is a
+        // different class, caught only by enumeration (1) forcing a human to
+        // classify a new field.
+
+        // (1) FORCED FIELD ENUMERATION — this exhaustive destructure (no `..`)
+        // stops compiling the day a field is added, so a new side-table cannot
+        // be introduced without classifying it HERE as detector-guarded or not.
+        let AtomicStore {
+            // Identity registries / content: refs INTO these are checked inline by
+            // `store_registry_violations` (via `fact_registry_refs` /
+            // `unregistered_entity_kinds`) or they are content, NOT a value
+            // side-table with a dedicated `*_violations` scan.
+            schema_version: _,
+            sections: _,
+            changelog_entries: _,
+            inventory_entries: _,
+            confirmation_events: _,
+            frames: _,
+            branches: _,
+            entities: _,
+            units: _,
+            predicates: _,
+            narrative_facts: _,
+            disclosure_plans: _,
+            parameters: _,
+            // SIDE-TABLES — each MUST have a `*_violations` scan wired below:
+            entity_kinds: _,     // -> entity_kind_parent_violations (parent link)
+            edge_costs: _,       // -> edge_cost_violations
+            edge_guards: _,      // -> edge_guard_violations
+            parameter_deltas: _, // -> parameter_delta_violations
+            parameter_gates: _,  // -> parameter_gate_violations
+            fact_counts: _,      // -> fact_count_violations
+        } = AtomicStore::new();
+
+        // (2) FORCED DETECTOR WIRING — every `pub fn *_violations` in the source
+        // must be CALLED by `store_registry_violations`; a new one that lands
+        // unwired fails here (the `every_remover_pairs_with_an_inbound_scan`
+        // mechanism applied to the detector family).
+        let src = include_str!("lib.rs");
+        let detectors: std::collections::BTreeSet<&str> = src
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("pub fn "))
+            .filter_map(|rest| rest.split(['(', '<']).next())
+            .filter(|n| n.ends_with("_violations") && *n != "store_registry_violations")
+            .collect();
+        // The aggregate's body: its signature to the first column-0 `}` (inner
+        // braces are indented, so this is the function's own closing brace).
+        let start = src
+            .find("pub fn store_registry_violations")
+            .expect("the aggregate must exist");
+        let after = &src[start..];
+        let end = after.find("\n}\n").map(|i| i + 3).unwrap_or(after.len());
+        let body = &after[..end];
+        // Match only on NON-COMMENT lines, so a commented-out wire (or a doc
+        // comment that names the call) cannot masquerade as wired.
+        let wired: std::collections::BTreeSet<&str> = detectors
+            .iter()
+            .copied()
+            .filter(|d| {
+                let needle = format!("{d}(store)");
+                body.lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .any(|l| l.contains(&needle))
+            })
+            .collect();
+        assert_eq!(
+            detectors, wired,
+            "a `*_violations` side-table detector is not called by \
+             store_registry_violations — wire it in (out.extend(...) or a loop), or an \
+             out-of-band edit to that side-table validates clean"
+        );
+        // Non-vacuity guard: the family is non-empty (the scan actually found the
+        // detectors), so a silent regex-miss cannot pass this as trivially equal.
+        assert!(
+            detectors.len() >= 6,
+            "expected the six known side-table detectors, found {}: {detectors:?}",
+            detectors.len()
+        );
+    }
+
+    #[test]
     fn remove_section_refuses_to_strand_every_reference_class() {
         // Round 630 — what the write path refuses to point at a missing
         // section, remove_section must refuse to strand. One assertion per
