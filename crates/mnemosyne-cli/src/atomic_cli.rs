@@ -636,6 +636,42 @@ pub fn cmd_set_entity_kind_parents(workspace_root: &Path, args: &[String]) -> Re
     )
 }
 
+/// Round 740 — the remove peer of add-entity-kind. Refuses while any entity,
+/// child kind, or predicate endpoint still names it (no orphan); absent rejects.
+pub fn cmd_remove_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut kind_id: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--kind" => {
+                kind_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let kind_id = kind_id.ok_or_else(|| anyhow!("--kind arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_entity_kind(&mut store, &sidecar_path, &kind_id),
+        json,
+    )
+}
+
 /// Round 706 — register one unit of measure (the `quantity` object shape's
 /// unit vocabulary). `--unit` mandatory; the members are the consumer's
 /// (`day`, `minute`), core never enumerates them (invariant 4).

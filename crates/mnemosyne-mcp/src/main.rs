@@ -420,6 +420,15 @@ pub struct SetEntityKindParentsArgs {
     pub parents: Vec<String>,
 }
 
+/// R740 — the remove peer of add_entity_kind. Refuses while the kind is still
+/// referenced (an Entity.kind, a child kind's parents, a predicate endpoint),
+/// so an MCP-only agent can un-declare a mistaken kind without orphaning a ref.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveEntityKindArgs {
+    /// The entity-kind to remove (fail-loud if absent or still referenced).
+    pub kind_id: String,
+}
+
 /// Register one unit of measure (Round 706) — the vocabulary a `quantity`
 /// object's `unit` refs. Without it an MCP-only agent could not declare a unit,
 /// so no Quantity fact could pass the units-registry gate. Mirrors
@@ -1827,6 +1836,16 @@ impl MnemosyneServer {
         let outcome = self.run_mutate(|store, path| {
             atomic::set_entity_kind_parents(store, path, &a.kind_id, &parents)
         });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove an entity kind from the registry (R740) — the remove peer of add_entity_kind. REFUSES while the kind is still referenced by an entity (Entity.kind), a child kind (a parents link), or a predicate endpoint (subject_kind / object_entity_kind, R701) — removing it would orphan those refs, which the write paths forbid. Absent kind rejects (not an idempotent no-op); a kind naming itself as a parent does not block its own removal."
+    )]
+    async fn remove_entity_kind(&self, args: Parameters<RemoveEntityKindArgs>) -> CallToolResult {
+        let a = args.0;
+        let outcome =
+            self.run_mutate(|store, path| atomic::remove_entity_kind(store, path, &a.kind_id));
         self.finish_mutate(outcome)
     }
 

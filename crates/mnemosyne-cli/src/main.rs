@@ -457,6 +457,15 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_set_entity_kind_parents(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "remove-entity-kind",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-entity-kind --kind <id> [--sidecar <path>] [--json]"],
+        notes: &["   Round 740 — the remove peer of add-entity-kind; REFUSES while any entity, child kind (parent), or predicate endpoint still names it (no orphan); absent kind rejects"],
+        run: |c| atomic_cli::cmd_remove_entity_kind(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "add-unit",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

@@ -360,3 +360,56 @@ fn set_entity_kind_parents_through_the_cli() {
         .is_none());
     assert!(run(ws, &["validate-workspace"]).status.success());
 }
+
+/// Round 740 — the remove peer `remove-entity-kind` through the REAL binary: it
+/// REFUSES while a child kind still names it as a parent (no orphan), and
+/// succeeds once the reference is gone; an absent kind rejects.
+#[test]
+fn remove_entity_kind_through_the_cli() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+
+    assert!(run(ws, &["add-entity-kind", "--kind", "thing"])
+        .status
+        .success());
+    assert!(run(
+        ws,
+        &["add-entity-kind", "--kind", "weapon", "--parent", "thing"]
+    )
+    .status
+    .success());
+
+    // Absent kind rejects.
+    let out = run(ws, &["remove-entity-kind", "--kind", "ghost"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("not present"), "{}", stderr(&out));
+
+    // REFUSE: `thing` is still named as a parent by `weapon`.
+    let out = run(ws, &["remove-entity-kind", "--kind", "thing"]);
+    assert!(
+        !out.status.success(),
+        "remove of a referenced kind must refuse"
+    );
+    assert!(
+        stderr(&out).contains("naming it as a parent"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(
+        read_store(ws)["entity_kinds"].get("thing").is_some(),
+        "a refused remove leaves the kind in place"
+    );
+
+    // Remove the child first, then the parent — both succeed, store stays clean.
+    assert!(run(ws, &["remove-entity-kind", "--kind", "weapon"])
+        .status
+        .success());
+    assert!(run(ws, &["remove-entity-kind", "--kind", "thing"])
+        .status
+        .success());
+    let store = read_store(ws);
+    assert!(store["entity_kinds"].get("thing").is_none());
+    assert!(store["entity_kinds"].get("weapon").is_none());
+    assert!(run(ws, &["validate-workspace"]).status.success());
+}

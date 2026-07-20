@@ -5183,6 +5183,103 @@ pub fn set_entity_kind_parents(
     )
 }
 
+/// Remove an entity kind from the registry (Round 740, the R661 kind-tree
+/// extension item 3 — the remove peer of `add_entity_kind`). Referential
+/// integrity is the whole contract (the R630 inbound-scan rule, the
+/// `remove_predicate` R658 precedent): an entity_kind is an IDENTITY referenced
+/// by (a) an `Entity.kind`, (b) another kind's `parents` (a child super-kind
+/// link), and (c) a predicate's `subject_kind` / `object_entity_kind` (the R701
+/// endpoint gate). Removing it while any of those still names it would leave a
+/// ref pointing at nothing while the store still round-trips — the orphan the
+/// write paths forbid (`add_entity` / `add_entity_kind` / `add_predicate` all
+/// reject an unregistered kind ref). So it REFUSES while any inbound ref exists,
+/// naming the offenders. An absent kind REJECTS (not an idempotent no-op —
+/// "remove what is not there" is a caller mistake worth surfacing, the
+/// `remove_predicate` precedent). A kind naming ITSELF as a parent does not block
+/// its own removal (the ref leaves with the node).
+pub fn remove_entity_kind(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    kind_id: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = kind_id.trim().to_string();
+    if id.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "remove_entity_kind: kind_id mandatory (non-empty after trim)".to_string(),
+        ));
+    }
+    if !store.entity_kinds.contains_key(&id) {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_entity_kind: kind `{id}` not present in the registry (fail-loud)"
+        )));
+    }
+    // Inbound scan (R630): every reference must be gone first. Collected into
+    // owned strings inside this block so the borrows release before the mutation.
+    let offenders: Vec<String> = {
+        let mut v = Vec::new();
+        let ents: Vec<&str> = store
+            .entities
+            .iter()
+            .filter(|(_, e)| e.kind == id)
+            .map(|(k, _)| k.as_str())
+            .collect();
+        if !ents.is_empty() {
+            v.push(format!(
+                "{} entity/entities of this kind: {}",
+                ents.len(),
+                sample_ids(&ents)
+            ));
+        }
+        let children: Vec<&str> = store
+            .entity_kinds
+            .iter()
+            .filter(|(kid, k)| kid.as_str() != id && k.parents.contains(&id))
+            .map(|(kid, _)| kid.as_str())
+            .collect();
+        if !children.is_empty() {
+            v.push(format!(
+                "{} kind(s) naming it as a parent: {}",
+                children.len(),
+                sample_ids(&children)
+            ));
+        }
+        let preds: Vec<&str> = store
+            .predicates
+            .iter()
+            .filter(|(_, p)| {
+                p.subject_kind.as_deref() == Some(id.as_str())
+                    || p.object_entity_kind.as_deref() == Some(id.as_str())
+            })
+            .map(|(pid, _)| pid.as_str())
+            .collect();
+        if !preds.is_empty() {
+            v.push(format!(
+                "{} predicate(s) scoping an endpoint to it: {}",
+                preds.len(),
+                sample_ids(&preds)
+            ));
+        }
+        v
+    };
+    if !offenders.is_empty() {
+        return Err(AtomicMutateError::Validation(format!(
+            "remove_entity_kind: kind `{id}` is still referenced — {} (re-kind or \
+             retract those first; a removal here would orphan the ref, which the \
+             write path forbids)",
+            offenders.join("; ")
+        )));
+    }
+    store.entity_kinds.remove(&id);
+    registry_receipt(
+        store,
+        sidecar_path,
+        "remove_entity_kind",
+        "entity_kind",
+        &id,
+        true,
+    )
+}
+
 /// Whether a stored [`Entity::kind`] is acceptable against the registry —
 /// the ONE verdict, shared by the write path here and the scan boundary in
 /// `mnemosyne-validate` (the two-copies rule: a second hand-rolled copy is
@@ -10486,8 +10583,13 @@ mod tests {
             // ref. The inverse hazard (a fact removed under a live count) is the
             // retract_fact cascade-drop, not this remover.
             "predicate", // R658: an identity (TypedClaim.predicate names
-                         // it), so it IS this test's target class — guarded by
-                         // predicate_uses, which rejects while any typed leg refers to it.
+            // it), so it IS this test's target class — guarded by
+            // predicate_uses, which rejects while any typed leg refers to it.
+            "entity_kind", // R740: an identity referenced by Entity.kind, a child
+                           // kind's parents, and a predicate's subject/object_entity_kind
+                           // (R701) — this test's target class. Guarded by the inbound
+                           // scan in remove_entity_kind, which REFUSES while any of the
+                           // three still names it (the remove_predicate precedent).
         ]
         .into_iter()
         .collect();
@@ -15707,6 +15809,77 @@ mod tests {
         set_entity_kind_parents(&mut store, &path, "weapon", &[]).unwrap();
         assert!(store.entity_kinds["weapon"].parents.is_empty());
         assert!(!is_kind_or_subkind(&store, Some("weapon"), "thing"));
+    }
+
+    /// Round 740 — remove_entity_kind: fail-loud on an absent kind; REFUSES while
+    /// referenced by (a) an Entity.kind, (b) a child kind's `parents`, or (c) a
+    /// predicate endpoint kind (the R630 inbound scan, the remove_predicate
+    /// precedent); succeeds and leaves the scan clean once unreferenced; a kind
+    /// naming ITSELF as a parent does not block its own removal. NON-VACUITY:
+    /// each of the three inbound ref types is exercised as a distinct refuse.
+    #[test]
+    fn remove_entity_kind_refuses_while_referenced() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
+        add_entity_kind(&mut store, &path, "character", &[], "").unwrap();
+
+        // Fail-loud on an absent kind (not an idempotent no-op).
+        let err = remove_entity_kind(&mut store, &path, "ghost").unwrap_err();
+        assert!(err.to_string().contains("not present"), "{err}");
+
+        // (a) an ENTITY of the kind blocks removal.
+        add_entity(&mut store, &path, "hero", "character", "").unwrap();
+        let err = remove_entity_kind(&mut store, &path, "character").unwrap_err();
+        assert!(
+            err.to_string().contains("entity/entities of this kind"),
+            "{err}"
+        );
+
+        // (b) a CHILD kind naming it as a parent blocks removal (weapon.parents={thing}).
+        let err = remove_entity_kind(&mut store, &path, "thing").unwrap_err();
+        assert!(err.to_string().contains("naming it as a parent"), "{err}");
+
+        // (c) a PREDICATE endpoint kind blocks removal (object_entity_kind=weapon).
+        add_predicate(
+            &mut store,
+            &path,
+            "wields",
+            "entity",
+            Some("character"),
+            Some("weapon"),
+            &[],
+            "",
+        )
+        .unwrap();
+        let err = remove_entity_kind(&mut store, &path, "weapon").unwrap_err();
+        assert!(
+            err.to_string().contains("predicate(s) scoping an endpoint"),
+            "{err}"
+        );
+
+        // SUCCESS: an unreferenced kind removes cleanly and the scan stays clean.
+        add_entity_kind(&mut store, &path, "orphan-kind", &[], "").unwrap();
+        remove_entity_kind(&mut store, &path, "orphan-kind").unwrap();
+        assert!(!store.entity_kinds.contains_key("orphan-kind"));
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "the store is clean after a valid remove"
+        );
+
+        // A SELF-PARENT (out-of-band) does NOT block its own removal — the ref
+        // leaves with the node.
+        store.entity_kinds.insert(
+            "selfy".to_string(),
+            EntityKind {
+                parents: BTreeSet::from(["selfy".to_string()]),
+                description: String::new(),
+            },
+        );
+        remove_entity_kind(&mut store, &path, "selfy").unwrap();
+        assert!(!store.entity_kinds.contains_key("selfy"));
     }
 
     /// Round 732 (DEBT-M) — the MEASURED gap closed at the fact level: a
