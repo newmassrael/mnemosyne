@@ -6456,6 +6456,10 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     for (_kind, msg) in entity_kind_parent_violations(store) {
         out.push(msg);
     }
+    // Round 701 endpoint-kind refs re-checked at the scan boundary — the parity
+    // the R740 review named beside `parents`. The write paths forbid a dangling
+    // `subject_kind`/`object_entity_kind`, so this fires only on a raw-JSON edit.
+    out.extend(predicate_kind_ref_violations(store));
     for (id, fact) in &store.narrative_facts {
         // Ref resolution: the ONE enumeration + resolver, shared with the write
         // path (Round 688 — DEBT-DUP-REGISTRY). The typed leg's predicate and
@@ -6766,6 +6770,19 @@ fn use_satisfies_declaration(store: &AtomicStore, t: &TypedClaim, decl: &Predica
     true
 }
 
+/// The entity-kind refs of a predicate declaration — `subject_kind` and
+/// `object_entity_kind` (Round 701). ONE enumeration so the write-path
+/// validator ([`validate_predicate_kind_refs`]) and the out-of-band scan
+/// ([`predicate_kind_ref_violations`]) check the SAME refs — a hand-rolled
+/// second copy is how the two drift (the R688 shared-enumeration discipline,
+/// the sibling of `fact_registry_refs`).
+fn predicate_kind_refs(p: &Predicate) -> [(&'static str, Option<&str>); 2] {
+    [
+        ("subject_kind", p.subject_kind.as_deref()),
+        ("object_entity_kind", p.object_entity_kind.as_deref()),
+    ]
+}
+
 /// Fail-loud that a predicate's endpoint-kind constraints name REGISTERED
 /// `entity_kinds` (Round 701) — the R436/R661 write-side-typo rule applied to
 /// the two new refs. Store-aware, so it lives beside the mutate primitives that
@@ -6776,10 +6793,7 @@ fn validate_predicate_kind_refs(
     context: &str,
     p: &Predicate,
 ) -> Result<(), String> {
-    for (leg, k) in [
-        ("subject_kind", p.subject_kind.as_deref()),
-        ("object_entity_kind", p.object_entity_kind.as_deref()),
-    ] {
+    for (leg, k) in predicate_kind_refs(p) {
         if let Some(k) = k {
             if !store.entity_kinds.contains_key(k) {
                 return Err(format!(
@@ -6791,6 +6805,34 @@ fn validate_predicate_kind_refs(
         }
     }
     Ok(())
+}
+
+/// Every predicate's endpoint-kind refs (`subject_kind` / `object_entity_kind`)
+/// still name a REGISTERED `entity_kind` — the out-of-band scan twin of
+/// [`validate_predicate_kind_refs`]'s write-path verdict (Round 701). Every
+/// write path (`add_predicate` / `set_predicate` / the manifest path) forbids a
+/// dangling endpoint kind, and `remove_entity_kind` (Round 740) refuses while a
+/// predicate references the kind, so this fires ONLY on a raw-JSON edit — the
+/// scan-boundary parity the R740 review named as the gap beside
+/// `entity_kind_parent_violations`. It reuses [`predicate_kind_refs`], so it
+/// cannot drift from the write gate. Reports EVERY bad endpoint (both legs), not
+/// just the first, since a scan wants the whole corruption surface.
+pub fn predicate_kind_ref_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (id, p) in &store.predicates {
+        for (leg, k) in predicate_kind_refs(p) {
+            if let Some(k) = k {
+                if !store.entity_kinds.contains_key(k) {
+                    out.push(format!(
+                        "predicate `{id}`: {leg} `{k}` is not a registered entity_kind \
+                         (out-of-band edit — a typo'd kind routes every fact out of the \
+                         endpoint gate silently)"
+                    ));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Whether one stored object leg satisfies a declared [`PredicateObjectKind`]
@@ -10636,12 +10678,12 @@ mod tests {
             branches: _,
             entities: _,
             units: _,
-            predicates: _,
             narrative_facts: _,
             disclosure_plans: _,
             parameters: _,
             // SIDE-TABLES — each MUST have a `*_violations` scan wired below:
             entity_kinds: _,     // -> entity_kind_parent_violations (parent link)
+            predicates: _,       // -> predicate_kind_ref_violations (endpoint kinds)
             edge_costs: _,       // -> edge_cost_violations
             edge_guards: _,      // -> edge_guard_violations
             parameter_deltas: _, // -> parameter_delta_violations
@@ -10689,8 +10731,8 @@ mod tests {
         // Non-vacuity guard: the family is non-empty (the scan actually found the
         // detectors), so a silent regex-miss cannot pass this as trivially equal.
         assert!(
-            detectors.len() >= 6,
-            "expected the six known side-table detectors, found {}: {detectors:?}",
+            detectors.len() >= 7,
+            "expected the seven known side-table detectors, found {}: {detectors:?}",
             detectors.len()
         );
     }
@@ -15636,6 +15678,104 @@ mod tests {
         assert!(
             v.iter().any(|m| m.contains("cyclic parent chain")),
             "out-of-band cycle must be flagged: {v:?}"
+        );
+    }
+
+    /// The predicate endpoint-kind refs (`subject_kind` / `object_entity_kind`,
+    /// Round 701) get WRITE↔SCAN parity — the gap the R740 review named beside
+    /// `parents`. Every write path forbids a dangling endpoint kind; the
+    /// out-of-band scan (`predicate_kind_ref_violations`, wired into
+    /// `store_registry_violations`) re-checks it, so a raw-JSON edit that points
+    /// an endpoint at a phantom kind can no longer validate clean. The scan and
+    /// the write gate share `predicate_kind_refs`, so they cannot drift.
+    #[test]
+    fn predicate_endpoint_kind_write_path_and_scan_parity() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        add_entity_kind(&mut store, &path, "weapon", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "creature", &[], "").unwrap();
+        // Both endpoints constrained to REGISTERED kinds — accepted and clean.
+        add_predicate(
+            &mut store,
+            &path,
+            "wields",
+            "entity",
+            Some("creature"),
+            Some("weapon"),
+            &[],
+            "",
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a predicate with registered endpoint kinds passes the scan"
+        );
+
+        // WRITE PATH rejects an unregistered subject_kind (add_predicate) AND an
+        // unregistered object_entity_kind (set_predicate) — one validator, both
+        // paths; a rejected write leaves no row and the scan stays clean.
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "bad-subj",
+            "entity",
+            Some("ghost"),
+            None,
+            &[],
+            "",
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("not a registered entity_kind"),
+            "{err}"
+        );
+        let err = set_predicate(
+            &mut store,
+            &path,
+            "wields",
+            "entity",
+            Some("creature"),
+            Some("ghost"),
+            &[],
+            "",
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("not a registered entity_kind"),
+            "{err}"
+        );
+        assert!(
+            !store.predicates.contains_key("bad-subj"),
+            "a rejected add leaves no row"
+        );
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "the rejected writes leave the scan clean"
+        );
+
+        // SCAN BOUNDARY flags an out-of-band phantom endpoint kind on BOTH legs
+        // (unreachable via any write path — the parity the R740 review named).
+        store.predicates.insert(
+            "rogue".to_string(),
+            Predicate {
+                object_kind: PredicateObjectKind::Entity,
+                subject_kind: Some("gone-subj".to_string()),
+                object_entity_kind: Some("gone-obj".to_string()),
+                object_tokens: BTreeSet::new(),
+                description: String::new(),
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("rogue") && m.contains("subject_kind `gone-subj`")),
+            "out-of-band phantom subject_kind must be flagged: {v:?}"
+        );
+        assert!(
+            v.iter()
+                .any(|m| m.contains("rogue") && m.contains("object_entity_kind `gone-obj`")),
+            "out-of-band phantom object_entity_kind must be flagged (both legs): {v:?}"
         );
     }
 
