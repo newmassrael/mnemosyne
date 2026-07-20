@@ -6,6 +6,7 @@
 //! loud on a typo, and the verb is a pure read (exit 0 with unplaced
 //! facts — a reading surface, never gated).
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -185,4 +186,225 @@ fn world_filter_narrows_and_fails_loud_and_unplaced_never_gates() {
     );
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("branch registry"));
+}
+
+/// Round 734 — the confluence follow-on from the R733 review, PROVEN BY TEST
+/// (not by reading source). The review saw a pre-fork trunk fact read
+/// `undecidable` under `--world <confluence>` and doubted describe-schema's
+/// "the path-independent trunk survives" a merge. This locks in the real
+/// behaviour: the trunk fact SURVIVES through the shared confluence suffix in
+/// EVERY real playthrough (main + the two forks); the default dump enumerates
+/// only those playthroughs (a confluence is not a standalone world —
+/// `query_worlds`); and an explicit `--world <confluence>` renders the
+/// prefix-less FRAGMENT for inspection, marking the pre-merge trunk
+/// `undecidable` (B-1 honest) rather than silently dropping it. A
+/// path-dependent sibling fact is the negative control — it survives its OWN
+/// playthrough's suffix but is dropped from the sibling's at the merge
+/// intersect, so the trunk assertion is not vacuous.
+fn write_confluence_workspace(workspace: &Path) {
+    fs::create_dir_all(workspace.join("docs/.atomic")).unwrap();
+    fs::write(
+        workspace.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n",
+    )
+    .unwrap();
+    let atomic = serde_json::json!({
+        "schema_version": 37,
+        "sections": { "prologue": {}, "fork": {}, "t1": {}, "k1": {}, "merge": {}, "end": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "thing": {} },
+        "entities": { "crown": { "kind": "thing" }, "dagger": { "kind": "thing" } },
+        "narrative_facts": {}
+    });
+    fs::write(
+        workspace.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    // main trunk prologue -> fork; thief/knight fork at `fork` and rejoin at
+    // `merge`; conf continues the shared suffix merge -> end.
+    fs::write(
+        workspace.join("canon-order.json"),
+        serde_json::json!({ "schema": "canon-order/v1",
+        "edges": [["prologue", "fork"]],
+        "branches": {
+            "thief":  [["fork", "t1"], ["t1", "merge"]],
+            "knight": [["fork", "k1"], ["k1", "merge"]],
+            "conf":   [["merge", "end"]]
+        }})
+        .to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn pre_fork_trunk_survives_the_confluence_suffix_in_every_playthrough() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_confluence_workspace(ws);
+    // thief + knight fork off main at `fork`; conf converges from BOTH at `merge`.
+    for args in [
+        &[
+            "add-branch",
+            "--branch",
+            "thief",
+            "--forks-from",
+            "main",
+            "--forks-at",
+            "fork",
+        ][..],
+        &[
+            "add-branch",
+            "--branch",
+            "knight",
+            "--forks-from",
+            "main",
+            "--forks-at",
+            "fork",
+        ][..],
+        &[
+            "add-branch",
+            "--branch",
+            "conf",
+            "--converges",
+            "thief=merge",
+            "--converges",
+            "knight=merge",
+        ][..],
+    ] {
+        let out = run(ws, args);
+        assert!(out.status.success(), "{args:?}: {out:?}");
+    }
+    // f-pre: a PATH-INDEPENDENT pre-fork trunk fact on main at prologue.
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-pre",
+            "--frame",
+            "gt",
+            "--claim",
+            "the crown sits in the vault",
+            "--canon-from",
+            "prologue",
+            "--evidence",
+            "prologue",
+            "--entities",
+            "crown",
+        ],
+    );
+    // f-thief: a PATH-DEPENDENT fact on the thief branch at t1 (the negative control).
+    add_fact(
+        ws,
+        &[
+            "--fact",
+            "f-thief",
+            "--frame",
+            "gt",
+            "--branch",
+            "thief",
+            "--claim",
+            "the thief pockets a dagger",
+            "--canon-from",
+            "t1",
+            "--evidence",
+            "t1",
+            "--entities",
+            "dagger",
+        ],
+    );
+
+    let all_begins = |v: &serde_json::Value, world: &str| -> Vec<String> {
+        v["worlds"][world]["scenes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|s| s["begins"].as_array().unwrap())
+            .map(|b| b["fact_id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let holding_at = |v: &serde_json::Value, world: &str, section: &str| -> u64 {
+        v["worlds"][world]["scenes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["section"] == section)
+            .unwrap_or_else(|| panic!("no scene {section} in {world}"))["holding_count"]
+            .as_u64()
+            .unwrap()
+    };
+
+    // (1) The default dump enumerates only the PLAYTHROUGHS — main + the two
+    // forks — NOT the confluence (a converges branch is not a standalone world;
+    // its shared suffix renders within each parent).
+    let all = manuscript_json(ws, &[]);
+    let worlds: BTreeSet<&str> = all["worlds"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        worlds,
+        BTreeSet::from(["main", "thief", "knight"]),
+        "a confluence is not a standalone world: {worlds:?}"
+    );
+
+    // (2) THE THIEF PLAYTHROUGH: the trunk fact AND the thief's own fact both
+    // survive through the shared confluence suffix (merge, end).
+    let thief = manuscript_json(ws, &["--world", "thief"]);
+    let thief_begins = all_begins(&thief, "thief");
+    assert!(thief_begins.contains(&"f-pre".to_string()));
+    assert!(thief_begins.contains(&"f-thief".to_string()));
+    assert_eq!(
+        holding_at(&thief, "thief", "merge"),
+        2,
+        "both hold at the merge"
+    );
+    assert_eq!(
+        holding_at(&thief, "thief", "end"),
+        2,
+        "both survive the confluence suffix in the thief playthrough"
+    );
+
+    // (3) THE KNIGHT PLAYTHROUGH: only the TRUNK survives the suffix; the
+    // sibling thief's path-dependent fact is dropped at the intersect (the
+    // negative control — the trunk-survival assertion is not vacuous).
+    let knight = manuscript_json(ws, &["--world", "knight"]);
+    let knight_begins = all_begins(&knight, "knight");
+    assert!(knight_begins.contains(&"f-pre".to_string()));
+    assert!(
+        !knight_begins.contains(&"f-thief".to_string()),
+        "the sibling's path-dependent fact is not in the knight playthrough: {knight_begins:?}"
+    );
+    assert_eq!(
+        holding_at(&knight, "knight", "merge"),
+        1,
+        "only the trunk at the merge"
+    );
+    assert_eq!(
+        holding_at(&knight, "knight", "end"),
+        1,
+        "the trunk survives the confluence suffix in the knight playthrough too"
+    );
+
+    // (4) THE CONFLUENCE FRAGMENT (explicit --world conf): the prefix-less
+    // fragment cannot place the pre-merge trunk, so it marks it `undecidable`
+    // (B-1 honest) — it does NOT silently drop it, and does NOT show it holding.
+    let conf = manuscript_json(ws, &["--world", "conf"]);
+    let undecidable: Vec<&str> = conf["worlds"]["conf"]["undecidable"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_str().unwrap())
+        .collect();
+    assert!(
+        undecidable.contains(&"f-pre"),
+        "the fragment marks the pre-merge trunk undecidable, not silently dropped: {undecidable:?}"
+    );
+    assert!(
+        !all_begins(&conf, "conf").contains(&"f-pre".to_string()),
+        "the prefix-less fragment does not falsely show the trunk holding"
+    );
 }
