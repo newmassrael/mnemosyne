@@ -592,6 +592,50 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(),
     )
 }
 
+/// Round 739 — REPLACE an existing entity-kind's direct super-kinds. `--parent`
+/// is REPEATABLE (0..N); an empty set roots the kind. Rejects self, an
+/// unregistered parent, or a parent that would close a cycle.
+pub fn cmd_set_entity_kind_parents(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut kind_id: Option<String> = None;
+    let mut parents: Vec<String> = Vec::new();
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--kind" => {
+                kind_id = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
+            "--parent" => parents.push(
+                iter.next()
+                    .ok_or_else(|| anyhow!("--parent missing"))?
+                    .clone(),
+            ),
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let kind_id = kind_id.ok_or_else(|| anyhow!("--kind arg required"))?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    let parents: Vec<&str> = parents.iter().map(String::as_str).collect();
+    finalize_mutate(
+        mnemosyne_atomic::set_entity_kind_parents(&mut store, &sidecar_path, &kind_id, &parents),
+        json,
+    )
+}
+
 /// Round 706 — register one unit of measure (the `quantity` object shape's
 /// unit vocabulary). `--unit` mandatory; the members are the consumer's
 /// (`day`, `minute`), core never enumerates them (invariant 4).

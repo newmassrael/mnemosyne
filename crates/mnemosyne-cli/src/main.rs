@@ -439,12 +439,22 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["add-entity-kind --kind <id> [--description <text>] [--sidecar <path>] [--json]"],
+        usage: &["add-entity-kind --kind <id> [--parent <kind>]... [--description <text>] [--sidecar <path>] [--json]"],
         notes: &[
             "   declares one member of the entity-kind vocabulary add-entity's --kind refs;",
             "   the members are the consumer's (character/place/item/…), never core's",
+            "   Round 732/738 — --parent (REPEATABLE) names direct super-kinds; a rule scoped to any ancestor accepts this subkind (a DAG / multiple inheritance)",
         ],
         run: |c| atomic_cli::cmd_add_entity_kind(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-entity-kind-parents",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-entity-kind-parents --kind <id> [--parent <kind>]... [--sidecar <path>] [--json]"],
+        notes: &["   Round 739 — REPLACE an existing kind's direct super-kinds (0..N); rejects self, an unregistered parent, or a parent that would close a cycle (a subkind made a super-kind)"],
+        run: |c| atomic_cli::cmd_set_entity_kind_parents(&c.anchor()?, c.rest()),
     },
     Command {
         name: "add-unit",

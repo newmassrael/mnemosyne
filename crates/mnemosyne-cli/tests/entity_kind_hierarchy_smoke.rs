@@ -282,3 +282,81 @@ fn entity_kind_hierarchy_end_to_end() {
         stderr(&out)
     );
 }
+
+/// Round 739 — the parent-mutation setter `set-entity-kind-parents` through the
+/// REAL binary: it REPLACES an existing kind's super-kinds, and it REJECTS a
+/// re-parent that would close a cycle (the guard add-entity-kind never needs).
+#[test]
+fn set_entity_kind_parents_through_the_cli() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+
+    // thing ⊃ weapon ; magic is a second root.
+    assert!(run(ws, &["add-entity-kind", "--kind", "thing"])
+        .status
+        .success());
+    assert!(run(ws, &["add-entity-kind", "--kind", "magic"])
+        .status
+        .success());
+    assert!(run(
+        ws,
+        &["add-entity-kind", "--kind", "weapon", "--parent", "thing"]
+    )
+    .status
+    .success());
+
+    // REPLACE: give weapon a SECOND parent (thing + magic) via the setter.
+    let out = run(
+        ws,
+        &[
+            "set-entity-kind-parents",
+            "--kind",
+            "weapon",
+            "--parent",
+            "thing",
+            "--parent",
+            "magic",
+        ],
+    );
+    assert!(out.status.success(), "re-parent weapon: {out:?}");
+    assert_eq!(
+        read_store(ws)["entity_kinds"]["weapon"]["parents"],
+        serde_json::json!(["magic", "thing"]),
+        "the setter replaced the parents set (sorted)"
+    );
+
+    // THE R739 GUARD through the binary: making `thing` a child of `weapon`
+    // closes thing↔weapon — rejected, and the store is untouched.
+    let out = run(
+        ws,
+        &[
+            "set-entity-kind-parents",
+            "--kind",
+            "thing",
+            "--parent",
+            "weapon",
+        ],
+    );
+    assert!(!out.status.success(), "cycle re-parent must reject");
+    assert!(
+        stderr(&out).contains("would create a cycle"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(
+        read_store(ws)["entity_kinds"]["thing"]
+            .get("parents")
+            .is_none(),
+        "a rejected re-parent leaves thing a root"
+    );
+
+    // Empty roots the kind; the store stays clean.
+    assert!(run(ws, &["set-entity-kind-parents", "--kind", "weapon"])
+        .status
+        .success());
+    assert!(read_store(ws)["entity_kinds"]["weapon"]
+        .get("parents")
+        .is_none());
+    assert!(run(ws, &["validate-workspace"]).status.success());
+}

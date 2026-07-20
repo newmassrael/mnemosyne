@@ -5102,6 +5102,87 @@ pub fn add_entity_kind(
     )
 }
 
+/// Round 739 — REPLACE an existing entity-kind's `parents` set (the R661
+/// kind-tree extension item 2, the parent-mutation setter). `add_entity_kind`
+/// creates a leaf whose parents all pre-exist, so it can never close a
+/// multi-node cycle; re-parenting an EXISTING kind CAN (it gains a new outgoing
+/// edge from a node other nodes may already point at), so this is where the
+/// multi-node-cycle guard lives. Every new parent must be registered + not the
+/// kind itself, AND none may be AT-OR-BELOW `kind_id` in the current graph — a
+/// new parent `p` for which `id` is reachable upward from `p`
+/// (`is_kind_or_subkind(p, id)`) would close `id → p → … → id`. The scan detector
+/// (`entity_kind_parent_violations`) re-checks the same acyclicity at rest — the
+/// write↔scan parity, the same shared invariant `add_entity_kind` upholds.
+///
+/// The kind MUST already exist (add creates, set mutates — fail-loud, one
+/// creator per registry, the `set_predicate` R658 precedent). Idempotent:
+/// setting the identical set is a no-op receipt. An empty slice roots the kind.
+pub fn set_entity_kind_parents(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    kind_id: &str,
+    parents: &[&str],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let id = kind_id.trim().to_string();
+    if !store.entity_kinds.contains_key(&id) {
+        return Err(AtomicMutateError::Validation(format!(
+            "set_entity_kind_parents: kind `{id}` not present in the registry — \
+             add_entity_kind creates, set_entity_kind_parents mutates (fail-loud; a \
+             silent create would put two creators on one registry)"
+        )));
+    }
+    let new_parents: BTreeSet<String> = parents
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    for p in &new_parents {
+        if p == &id {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_entity_kind_parents: kind `{id}` cannot be its own parent (a \
+                 kind inheritance graph has no self-loop)"
+            )));
+        }
+        if !store.entity_kinds.contains_key(p) {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_entity_kind_parents: kind `{id}` names parent `{p}`, which is not \
+                 a registered entity kind — register it first or fix the spelling"
+            )));
+        }
+        // A new parent at-or-below `id` closes a cycle: `is_kind_or_subkind(p, id)`
+        // is true iff `id` is reachable upward from `p` (p is a subkind of id), so
+        // making p a super-kind of id would loop. Checked on the CURRENT graph —
+        // sound because any new cycle must use one of id's new outgoing edges and
+        // therefore pass through id (reaching id IS the detection).
+        if is_kind_or_subkind(store, Some(p.as_str()), &id) {
+            return Err(AtomicMutateError::Validation(format!(
+                "set_entity_kind_parents: making `{p}` a parent of `{id}` would create \
+                 a cycle (`{p}` is already a subkind of `{id}`)"
+            )));
+        }
+    }
+    if store.entity_kinds[&id].parents == new_parents {
+        return registry_receipt(
+            store,
+            sidecar_path,
+            "set_entity_kind_parents",
+            "entity_kind",
+            &id,
+            false,
+        );
+    }
+    store.entity_kinds.get_mut(&id).unwrap().parents = new_parents;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "set_entity_kind_parents",
+        "entity_kind",
+        &id,
+        true,
+    )
+}
+
 /// Whether a stored [`Entity::kind`] is acceptable against the registry —
 /// the ONE verdict, shared by the write path here and the scan boundary in
 /// `mnemosyne-validate` (the two-copies rule: a second hand-rolled copy is
@@ -15560,6 +15641,72 @@ mod tests {
             unmigrated.entity_kinds["weapon"].parents.is_empty(),
             "control: without migration the legacy parent is silently dropped"
         );
+    }
+
+    /// Round 739 — the parent-mutation setter set_entity_kind_parents: it
+    /// REPLACES an existing kind's parents; fail-loud on an absent kind; rejects
+    /// self / an unregistered parent; REJECTS a re-parent that would close a
+    /// multi-node cycle (the guard add_entity_kind cannot need, since a new leaf
+    /// can't cycle); is idempotent on the identical set; and a valid re-parent
+    /// leaves the scan clean (write↔scan parity). NON-VACUITY: the cycle case is
+    /// exactly the one the write path could never reach.
+    #[test]
+    fn set_entity_kind_parents_replaces_and_guards_cycles() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "magic", &[], "").unwrap();
+        add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
+
+        // Fail-loud: setting parents on a kind that does not exist.
+        let err = set_entity_kind_parents(&mut store, &path, "ghost", &["thing"]).unwrap_err();
+        assert!(err.to_string().contains("not present"), "{err}");
+
+        // REPLACE: weapon gains a second parent (thing + magic) — a DAG re-parent.
+        set_entity_kind_parents(&mut store, &path, "weapon", &["thing", "magic"]).unwrap();
+        assert_eq!(
+            store.entity_kinds["weapon"].parents,
+            BTreeSet::from(["thing".to_string(), "magic".to_string()])
+        );
+        assert!(is_kind_or_subkind(&store, Some("weapon"), "magic"));
+        // Full replace, not a merge: setting just [thing] drops magic.
+        set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
+        assert_eq!(
+            store.entity_kinds["weapon"].parents,
+            BTreeSet::from(["thing".to_string()])
+        );
+
+        // Rejects self and an unregistered parent.
+        let err = set_entity_kind_parents(&mut store, &path, "weapon", &["weapon"]).unwrap_err();
+        assert!(err.to_string().contains("its own parent"), "{err}");
+        let err = set_entity_kind_parents(&mut store, &path, "weapon", &["ghost"]).unwrap_err();
+        assert!(err.to_string().contains("not a registered"), "{err}");
+
+        // THE R739 GUARD: making `thing` a child of `weapon` closes thing↔weapon
+        // (weapon is already a subkind of thing) — the write path could never
+        // reach this, the setter must. Rejected, and the store is untouched.
+        let err = set_entity_kind_parents(&mut store, &path, "thing", &["weapon"]).unwrap_err();
+        assert!(err.to_string().contains("would create a cycle"), "{err}");
+        assert!(
+            store.entity_kinds["thing"].parents.is_empty(),
+            "a rejected re-parent must not mutate the store"
+        );
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "after a rejected cycle the store stays clean (write↔scan parity)"
+        );
+
+        // Idempotent: setting the identical set is a no-op that still succeeds.
+        set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
+        assert_eq!(
+            store.entity_kinds["weapon"].parents,
+            BTreeSet::from(["thing".to_string()])
+        );
+        // Empty roots the kind.
+        set_entity_kind_parents(&mut store, &path, "weapon", &[]).unwrap();
+        assert!(store.entity_kinds["weapon"].parents.is_empty());
+        assert!(!is_kind_or_subkind(&store, Some("weapon"), "thing"));
     }
 
     /// Round 732 (DEBT-M) — the MEASURED gap closed at the fact level: a

@@ -405,6 +405,21 @@ pub struct AddEntityKindArgs {
     pub description: String,
 }
 
+/// R739 — the parent-mutation half of the entity-kind registry: REPLACE an
+/// existing kind's direct super-kinds (add_entity_kind only creates). Without it
+/// an MCP-only agent could never re-parent a kind (fix a mis-declared parent,
+/// add a second super-kind), leaving only a hand-edit or a banned vN id.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetEntityKindParentsArgs {
+    /// The EXISTING entity-kind whose super-kinds to replace (fail-loud if absent).
+    pub kind_id: String,
+    /// The new direct SUPER-kinds (0..N) — a full replace, not a merge. Each must
+    /// be registered and not the kind itself; none may be at-or-below `kind_id`
+    /// (that would close a cycle). Empty = root the kind.
+    #[serde(default)]
+    pub parents: Vec<String>,
+}
+
 /// Register one unit of measure (Round 706) — the vocabulary a `quantity`
 /// object's `unit` refs. Without it an MCP-only agent could not declare a unit,
 /// so no Quantity fact could pass the units-registry gate. Mirrors
@@ -1796,6 +1811,21 @@ impl MnemosyneServer {
         let parents: Vec<&str> = a.parents.iter().map(String::as_str).collect();
         let outcome = self.run_mutate(|store, path| {
             atomic::add_entity_kind(store, path, &a.kind_id, &parents, &a.description)
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Replace an EXISTING entity-kind's direct super-kinds (R739) — the parent-mutation half of the kind registry: add_entity_kind creates a leaf (which can never close a cycle), this re-parents an existing kind, so it is where the multi-node-cycle guard lives. `parents` is a full REPLACE (0..N, not a merge); each must be registered and not the kind itself, and none may be at-or-below the kind (that would close a cycle — a subkind made a super-kind). Empty roots the kind. Absent kind rejects (add creates, this mutates); the identical set is a no-op."
+    )]
+    async fn set_entity_kind_parents(
+        &self,
+        args: Parameters<SetEntityKindParentsArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let parents: Vec<&str> = a.parents.iter().map(String::as_str).collect();
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_entity_kind_parents(store, path, &a.kind_id, &parents)
         });
         self.finish_mutate(outcome)
     }
