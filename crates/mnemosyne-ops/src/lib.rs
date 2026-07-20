@@ -1166,6 +1166,14 @@ pub struct EntityFactRow {
     /// Typed leg (Round 446), surfaced verbatim when authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub typed: Option<mnemosyne_core::TypedClaim>,
+    /// Verbatim source quote (R736 content parity with FrameViewEntry /
+    /// ManuscriptFactEvent) — the dossier is the raw fact list, so it echoes
+    /// the same stored content, not a reduced-fidelity subset.
+    pub quote: Option<String>,
+    /// Multiset count (R731 `fact_counts`) riding this fact — asserted content,
+    /// echoed verbatim when authored, never summed (the R712 layering line).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
 }
 
 /// R679 — one unregistered entity kind and the entities that name it, the unit
@@ -1398,6 +1406,8 @@ pub fn entity_dossier(
             canon_to: f.canon_to.clone(),
             evidence: f.evidence.clone(),
             typed: f.typed.clone(),
+            quote: f.quote.clone(),
+            count: store.fact_counts.get(fid).copied(),
         })
         .collect();
     Ok(EntityDossier {

@@ -2999,9 +2999,10 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
                 .as_deref()
                 .map(|t| format!("..{t}"))
                 .unwrap_or_default();
+            let count = f.count.map(|n| format!(" (x{n})")).unwrap_or_default();
             println!(
-                "  [{}{}] {} (frame {} / branch {}): {}",
-                f.canon_from, to, f.fact_id, f.frame, f.branch, f.claim
+                "  [{}{}] {} (frame {} / branch {}): {}{}",
+                f.canon_from, to, f.fact_id, f.frame, f.branch, f.claim, count
             );
         }
     }

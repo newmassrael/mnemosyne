@@ -162,3 +162,114 @@ fn entity_axis_end_to_end() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("entity registry"));
 }
+
+/// Round 736 — the dossier is CONTENT-COMPLETE: EntityFactRow echoes the R731
+/// multiset count AND the verbatim quote (parity with report-frame-view /
+/// manuscript, the R735 principle applied to the third fact-echoing surface),
+/// through the REAL binary. A fact with neither shows a null quote and no
+/// `count` key — opt-in, never an implicit 1.
+#[test]
+fn dossier_echoes_the_count_and_quote() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let ws = tmp.path();
+    for e in ["char-a", "potion"] {
+        assert!(run(ws, &["add-entity", "--entity", e]).status.success());
+    }
+    assert!(run(
+        ws,
+        &[
+            "add-predicate",
+            "--predicate",
+            "holds",
+            "--object-kind",
+            "entity"
+        ]
+    )
+    .status
+    .success());
+    // A custody fact carrying a verbatim quote.
+    assert!(run(
+        ws,
+        &[
+            "add-fact",
+            "--fact",
+            "f-hold",
+            "--frame",
+            "jonathan",
+            "--claim",
+            "char-a holds a potion",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "char-a,potion",
+            "--typed-subject",
+            "char-a",
+            "--typed-predicate",
+            "holds",
+            "--typed-object-entity",
+            "potion",
+            "--quote",
+            "five vials clinked in the bag",
+        ],
+    )
+    .status
+    .success());
+    assert!(
+        run(ws, &["add-fact-count", "--fact", "f-hold", "--count", "5"])
+            .status
+            .success()
+    );
+    // A plain fact on the same entity: no count, no quote (the negative control).
+    assert!(run(
+        ws,
+        &[
+            "add-fact",
+            "--fact",
+            "f-plain",
+            "--frame",
+            "jonathan",
+            "--claim",
+            "char-a waits",
+            "--canon-from",
+            "ch-1",
+            "--evidence",
+            "ch-1",
+            "--entities",
+            "char-a",
+        ],
+    )
+    .status
+    .success());
+
+    let out = run(ws, &["report-entity", "--entity", "char-a", "--json"]);
+    assert!(out.status.success(), "{out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let rows = v["facts"].as_array().unwrap();
+    let row = |id: &str| rows.iter().find(|f| f["fact_id"] == id).unwrap();
+    assert_eq!(
+        row("f-hold")["count"],
+        5,
+        "the count rides the dossier row: {}",
+        row("f-hold")
+    );
+    assert_eq!(
+        row("f-hold")["quote"],
+        "five vials clinked in the bag",
+        "the quote rides the dossier row: {}",
+        row("f-hold")
+    );
+    // NON-VACUITY: the plain fact has no count key and a null quote.
+    assert!(
+        row("f-plain").get("count").is_none(),
+        "no authored count = no key (opt-in): {}",
+        row("f-plain")
+    );
+    assert!(
+        row("f-plain")["quote"].is_null(),
+        "no authored quote = null: {}",
+        row("f-plain")
+    );
+}
