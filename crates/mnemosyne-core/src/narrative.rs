@@ -174,8 +174,32 @@ pub fn world_membership(
     world: &str,
 ) -> Result<WorldMembership, String> {
     let mut memo: BTreeMap<String, WorldMembership> = BTreeMap::new();
+    world_membership_memoized(branches, world, &mut memo)
+}
+
+/// [`world_membership`] with a CALLER-OWNED `memo`, so a sweep that queries EVERY
+/// branch (the Round 745 branch-lineage cycle scan) computes each world's
+/// membership ONCE across the whole sweep instead of recomputing the shared
+/// ancestry per branch — O(N²) over a deep fork chain instead of O(N³) (Round 748,
+/// the R745 review's R2 perf follow-on: measured 22s → sub-second at N=500).
+///
+/// The verdict is UNCHANGED: a world's membership is independent of which root
+/// asked for it (exactly why `membership_of` already memoizes WITHIN one call), so
+/// reusing a completed entry across roots is transparent. The per-root cycle guard
+/// (`on_stack`) is still FRESH per call — only fully-computed (acyclic) memberships
+/// enter the memo, never an on-stack node of a failed path — so a cyclic branch
+/// still fails loud identically. This is the SSOT-preserving way to close R2: NO
+/// second cycle definition (a bespoke DFS) that could drift from this one.
+///
+/// CONTRACT: the `memo` is keyed by world id for ONE `branches` map — do not reuse
+/// it across different registries.
+pub fn world_membership_memoized(
+    branches: &BTreeMap<String, Branch>,
+    world: &str,
+    memo: &mut BTreeMap<String, WorldMembership>,
+) -> Result<WorldMembership, String> {
     let mut on_stack: BTreeSet<String> = BTreeSet::new();
-    membership_of(branches, world, &mut memo, &mut on_stack)
+    membership_of(branches, world, memo, &mut on_stack)
 }
 
 fn membership_of(
@@ -1171,6 +1195,75 @@ mod tests {
         assert!(!is_confluence(&branches, "sluice"));
         assert!(!is_confluence(&branches, MAIN_BRANCH));
         assert!(!is_confluence(&branches, "ghost"));
+    }
+
+    /// Round 748 — the shared-memo entry point is TRANSPARENT: sweeping every
+    /// world with ONE memo yields the SAME per-world membership as independent
+    /// fresh calls (a world's membership is root-independent), and a cyclic store
+    /// still fails loud under a shared memo. This is what lets the R745 branch
+    /// cycle scan drop from O(N³) to O(N²) with an unchanged verdict.
+    #[test]
+    fn world_membership_memoized_is_transparent_and_still_fails_loud_on_a_cycle() {
+        let edge = |b: &str, at: &str| BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        // A diamond: sluice/ride fork main at s1; dawn converges both at s2.
+        let mut branches = BTreeMap::new();
+        branches.insert(
+            "sluice".to_string(),
+            Branch {
+                forks_from: Some(edge(MAIN_BRANCH, "s1")),
+                ..Branch::default()
+            },
+        );
+        branches.insert(
+            "ride".to_string(),
+            Branch {
+                forks_from: Some(edge(MAIN_BRANCH, "s1")),
+                ..Branch::default()
+            },
+        );
+        branches.insert(
+            "dawn".to_string(),
+            Branch {
+                converges_from: vec![edge("sluice", "s2"), edge("ride", "s2")],
+                ..Branch::default()
+            },
+        );
+
+        // Transparency: one shared memo over the whole sweep == a fresh call per world.
+        let mut memo = BTreeMap::new();
+        for w in [MAIN_BRANCH, "sluice", "ride", "dawn"] {
+            let shared = world_membership_memoized(&branches, w, &mut memo).unwrap();
+            let fresh = world_membership(&branches, w).unwrap();
+            assert_eq!(
+                shared, fresh,
+                "memoized sweep must match a fresh call for `{w}`"
+            );
+        }
+        // Every world was computed and cached once (main reused by all of them).
+        assert!(memo.contains_key(MAIN_BRANCH) && memo.contains_key("dawn"));
+
+        // A cycle still fails loud under a shared memo (a <-> b), for every root.
+        let mut cyc = BTreeMap::new();
+        cyc.insert(
+            "a".to_string(),
+            Branch {
+                forks_from: Some(edge("b", "s1")),
+                ..Branch::default()
+            },
+        );
+        cyc.insert(
+            "b".to_string(),
+            Branch {
+                forks_from: Some(edge("a", "s1")),
+                ..Branch::default()
+            },
+        );
+        let mut memo2 = BTreeMap::new();
+        assert!(world_membership_memoized(&cyc, "a", &mut memo2).is_err());
+        assert!(world_membership_memoized(&cyc, "b", &mut memo2).is_err());
     }
 
     /// Round 535 — the cross-branch succession legitimacy predicate, the SINGLE

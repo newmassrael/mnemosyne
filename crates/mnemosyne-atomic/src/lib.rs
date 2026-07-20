@@ -5070,8 +5070,14 @@ pub fn branch_ref_violations(store: &AtomicStore) -> Vec<String> {
 /// naming that node.
 pub fn branch_lineage_cycle_violations(store: &AtomicStore) -> Vec<String> {
     let mut out = Vec::new();
+    // ONE memo shared across the whole sweep (Round 748 — the R745 review's R2):
+    // each world's membership is computed ONCE, not recomputed from scratch per
+    // branch, so a deep fork chain is O(N²) not O(N³) (measured 22s -> sub-second
+    // at N=500). The verdict is identical to N fresh `world_membership` calls —
+    // still the ONE `world_membership` definition, just memoized.
+    let mut memo = std::collections::BTreeMap::new();
     for id in store.branches.keys() {
-        if mnemosyne_core::world_membership(&store.branches, id).is_err() {
+        if mnemosyne_core::world_membership_memoized(&store.branches, id, &mut memo).is_err() {
             out.push(format!(
                 "branch `{id}`: fork/converge lineage is cyclic or reaches a cycle \
                  (an out-of-band edit — the mutate API cannot write one: a parent \
