@@ -403,8 +403,24 @@ pub struct Entity {
 /// The registry holds the vocabulary the CONSUMER declares. Core never
 /// enumerates the members — there is no `Place` variant here and there must
 /// never be one (invariant 4).
+///
+/// `parent` (Round 732, DEBT-M) is an optional registered-kind ref = this
+/// kind's direct SUPER-kind, forming a single-parent inheritance TREE (the
+/// Inform "a weapon is a kind of thing" model). A predicate's endpoint-kind
+/// gate (Round 701) then scopes over the whole SUBTREE: a `thing`-scoped rule
+/// accepts a `weapon` because `weapon.parent = thing`. `Option` (≤1 parent)
+/// makes multiple inheritance structurally unrepresentable; a DAG is deferred
+/// (the Round 715 containment-tree precedent). 0 parent links ⇒ every subtree
+/// is a singleton ⇒ identical to a flat registry (the backward-compat line).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityKind {
+    /// This kind's direct super-kind (a registered `entity_kinds` ref), or
+    /// None for a root kind. Fail-loud at the write path (`add_entity_kind`:
+    /// parent registered + not self) AND at the scan boundary
+    /// (`entity_kind_parent_violations`: registered + acyclic) — the
+    /// registry-symmetry parity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,

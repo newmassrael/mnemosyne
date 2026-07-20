@@ -3790,9 +3790,15 @@ fn scan_spatial_map(
             // Completeness (kind-gated): a place-kind entity must be a node OR a
             // container at SOME point (union) — else it is declared but never
             // placed on the map (R703's "invented place", the ∀ semantic).
+            // Round 732 (DEBT-M): "place-kind entity" means the place kind OR a
+            // SUBKIND of it, via the SAME resolver the write-path adjacency gate
+            // uses — else the two derivations diverge (adjacency admits a
+            // subkind node the completeness scan would then not police, the
+            // R699 half-enforced-invariant trap). Flat registry ⇒ subtree =
+            // singleton ⇒ the exact-match this replaced.
             if let Some(pk) = place_kind {
                 for (eid, ent) in &store.entities {
-                    if ent.kind.as_str() == pk
+                    if mnemosyne_atomic::is_kind_or_subkind(store, Some(ent.kind.as_str()), pk)
                         && !union_nodes.contains(eid.as_str())
                         && !union_containers.contains(eid.as_str())
                     {
@@ -6523,6 +6529,7 @@ mod tests {
                     disclosure_plans: vec![],
                     entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
                         kind_id: "character".to_string(),
+                        parent: None,
                         description: String::new(),
                     }],
                     units: vec![],
@@ -11011,13 +11018,13 @@ mod tests {
         for (kind, want_accept) in [("place", true), ("", true), ("palce", false)] {
             // Write path.
             let mut w = AtomicStore::new();
-            mnemosyne_atomic::add_entity_kind(&mut w, &path, "place", "").unwrap();
+            mnemosyne_atomic::add_entity_kind(&mut w, &path, "place", None, "").unwrap();
             let write_accepts =
                 mnemosyne_atomic::add_entity(&mut w, &path, "ent-x", kind, "").is_ok();
 
             // Scan boundary, given the same store shape reached out-of-band.
             let mut b = AtomicStore::new();
-            mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", "").unwrap();
+            mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", None, "").unwrap();
             b.entities.insert(
                 "ent-x".to_string(),
                 mnemosyne_core::Entity {

@@ -403,9 +403,11 @@ fn manifest_wire() -> ManifestWireSpec {
             },
             KindWire {
                 kind: "entity_kinds",
-                json_keys: "{ \"kind_id\": string, \"description\"?: string } — the consumer's \
-                    entity-kind vocabulary (character/place/item/quest/…); members are the \
-                    consumer's, never core's",
+                json_keys: "{ \"kind_id\": string, \"parent\"?: string (a registered entity_kind \
+                    id declared EARLIER in this array — R732 kind-inheritance tree; a rule scoped \
+                    to the parent kind then accepts this subkind), \"description\"?: string } — \
+                    the consumer's entity-kind vocabulary (character/place/item/quest/…); members \
+                    are the consumer's, never core's",
             },
             KindWire {
                 kind: "entities",
@@ -2064,6 +2066,7 @@ mod tests {
             }],
             entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
                 kind_id: "character".into(),
+                parent: None,
                 description: "d".into(),
             }],
             units: vec![],

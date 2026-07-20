@@ -536,6 +536,7 @@ pub fn cmd_add_entity(workspace_root: &Path, args: &[String]) -> Result<(), CliE
 /// use was declared (Round 661's machine-slot rule, invariant 4 routing).
 pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut kind_id: Option<String> = None;
+    let mut parent: Option<String> = None;
     let mut description = String::new();
     let mut sidecar: Option<String> = None;
     let mut json = false;
@@ -546,6 +547,15 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(),
                 kind_id = Some(
                     iter.next()
                         .ok_or_else(|| anyhow!("--kind missing"))?
+                        .clone(),
+                )
+            }
+            // Round 732 (DEBT-M): the kind's direct super-kind, forming the
+            // inheritance tree — must already be registered (parent-first).
+            "--parent" => {
+                parent = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--parent missing"))?
                         .clone(),
                 )
             }
@@ -570,7 +580,13 @@ pub fn cmd_add_entity_kind(workspace_root: &Path, args: &[String]) -> Result<(),
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        mnemosyne_atomic::add_entity_kind(&mut store, &sidecar_path, &kind_id, &description),
+        mnemosyne_atomic::add_entity_kind(
+            &mut store,
+            &sidecar_path,
+            &kind_id,
+            parent.as_deref(),
+            &description,
+        ),
         json,
     )
 }
