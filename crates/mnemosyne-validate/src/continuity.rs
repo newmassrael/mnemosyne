@@ -10050,6 +10050,11 @@ mod tests {
                 overrides,
             },
         );
+        // The surface object is a REGISTERED entity (the write path requires it;
+        // this fixture builds the plan directly, so register it here).
+        store
+            .entities
+            .insert("clock".to_string(), mnemosyne_core::Entity::default());
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         // No telling → no disclosure annotation.
@@ -10142,6 +10147,10 @@ mod tests {
                 overrides,
             },
         );
+        // The surface object is a REGISTERED entity (write-path contract).
+        store
+            .entities
+            .insert("clock".to_string(), mnemosyne_core::Entity::default());
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         let report = playable_world(&store, &order, None, "t1").unwrap();
@@ -10226,6 +10235,12 @@ mod tests {
     #[test]
     fn playable_world_surfaces_unplaced_ordinal() {
         let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+        // `ch-off` is a REGISTERED section (a valid ref) that the world's order
+        // below deliberately does NOT travel — so the surface resolves to an
+        // UNPLACED ordinal (None), the case under test, not a dangling ref.
+        store
+            .sections
+            .insert("ch-off".to_string(), AtomicSection::default());
         let mut overrides = BTreeMap::new();
         overrides.insert(
             "f-x".to_string(),
@@ -10308,6 +10323,10 @@ mod tests {
     #[test]
     fn playable_world_lets_an_authored_surface_override_the_derived_seat() {
         let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+        // The surface object is a REGISTERED entity (write-path contract).
+        store
+            .entities
+            .insert("e-relic".to_string(), mnemosyne_core::Entity::default());
         store.disclosure_plans.insert(
             "t1".to_string(),
             plan_with(
@@ -10346,6 +10365,11 @@ mod tests {
             }),
         ] {
             let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
+            // The surface object (when present) is a REGISTERED entity
+            // (write-path contract); harmless extra for the None iteration.
+            store
+                .entities
+                .insert("e-relic".to_string(), mnemosyne_core::Entity::default());
             store.disclosure_plans.insert(
                 "t1".to_string(),
                 plan_with(mnemosyne_core::DisclosureMode::Withhold, surface.clone()),
@@ -10470,6 +10494,11 @@ mod tests {
             ],
             &[("win", MAIN_BRANCH, "ch-2")],
         );
+        // The disclosure surface object is a REGISTERED entity (write-path
+        // contract); this fixture builds the plan directly, so register it.
+        store
+            .entities
+            .insert("reeve-hall".to_string(), mnemosyne_core::Entity::default());
         // R676 — no `kind:"quest"` marker; quests are derived from their pursues/
         // completed_by legs. Only the objective (description) is authored here.
         for (id, desc) in [

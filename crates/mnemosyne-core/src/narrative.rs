@@ -1007,10 +1007,15 @@ pub struct DisclosureOverride {
 /// disclosure/discourse layer). Keyed by telling id in
 /// `AtomicStore.disclosure_plans`. Multiple plans over ONE fact base = many
 /// tellings (Dark-Souls-fragment / classic-mystery / expository-thriller) —
-/// the North Star "one substrate → many tellings" made concrete. The plan is
-/// authored like any data and is NOT a store-integrity invariant (disclosure
-/// timing is a RENDER property, checked by the render-acceptance gates over
-/// re-extracted prose, not by `validate-workspace`).
+/// the North Star "one substrate → many tellings" made concrete. The plan's
+/// disclosure SEMANTICS — the mode and per-world timing of each telling — is a
+/// RENDER property, checked by the render-acceptance gates over re-extracted
+/// prose, NOT by `validate-workspace`. Its REFS are a different axis and DO
+/// bind: every override keys a present fact, and its `first_at` / `surface`
+/// name registered branches / sections / entities. That ref-existence is
+/// enforced at write (`apply_disclosure_override`) AND re-checked out-of-band by
+/// `store_registry_violations` — a dangling ref is corruption regardless of the
+/// telling, the same ref-emitting-field parity every other registry has.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisclosurePlan {
     /// Free-form description of this telling. Optional prose, not load-bearing.

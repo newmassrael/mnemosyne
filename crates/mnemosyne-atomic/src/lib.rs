@@ -6518,6 +6518,12 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // generalized off predicate endpoints. The write paths forbid a dangling
     // edge, so this fires only on a raw-JSON edit.
     out.extend(branch_ref_violations(store));
+    // Round 506 disclosure override refs (the override's fact-id key + its
+    // first_at branch/coord + surface scene/object) re-checked at the scan
+    // boundary — the LAST member of the ref-emitting-field class. The write path
+    // (apply_disclosure_override) forbids a dangling ref, so this fires only on a
+    // raw-JSON edit.
+    out.extend(disclosure_ref_violations(store));
     for (id, fact) in &store.narrative_facts {
         // Ref resolution: the ONE enumeration + resolver, shared with the write
         // path (Round 688 — DEBT-DUP-REGISTRY). The typed leg's predicate and
@@ -7277,17 +7283,9 @@ pub(crate) fn apply_disclosure_override(
                 "set_disclosure: each first_at needs branch=coord (both non-empty)".to_string(),
             ));
         }
-        if !mnemosyne_core::is_known_world(&store.branches, branch) {
-            return Err(AtomicMutateError::Validation(format!(
-                "set_disclosure: first_at branch `{branch}` not present in the branch registry"
-            )));
-        }
-        if !store.sections.contains_key(coord) {
-            return Err(AtomicMutateError::Validation(format!(
-                "set_disclosure: first_at coord `{coord}` not present as a section \
-                 (canon coordinates are structure refs)"
-            )));
-        }
+        // Ref resolution (branch a known world, coord a registered section) is
+        // enforced by `disclosure_override_ref_violations` on the built candidate
+        // below — the ONE checker the out-of-band scan shares (no drift).
         if first_at_map
             .insert(branch.to_string(), coord.to_string())
             .is_some()
@@ -7306,21 +7304,10 @@ pub(crate) fn apply_disclosure_override(
                     "set_disclosure: surface needs a scene ref".to_string(),
                 ));
             }
-            if !store.sections.contains_key(scene) {
-                return Err(AtomicMutateError::Validation(format!(
-                    "set_disclosure: surface scene `{scene}` not present as a section"
-                )));
-            }
+            // Scene-as-section and object-as-entity resolution is enforced by the
+            // shared `disclosure_override_ref_violations` on the candidate below.
             let object = match object {
-                Some(o) if !o.trim().is_empty() => {
-                    let o = o.trim();
-                    if !store.entities.contains_key(o) {
-                        return Err(AtomicMutateError::Validation(format!(
-                            "set_disclosure: surface object `{o}` not present in the entity registry"
-                        )));
-                    }
-                    Some(o.to_string())
-                }
+                Some(o) if !o.trim().is_empty() => Some(o.trim().to_string()),
                 _ => None,
             };
             Some(DisclosureSurface {
@@ -7329,21 +7316,110 @@ pub(crate) fn apply_disclosure_override(
             })
         }
     };
-    let plan = store
-        .disclosure_plans
-        .get_mut(telling)
-        .expect("telling presence checked above");
     let new_override = DisclosureOverride {
         mode,
         first_at: first_at_map,
         surface,
     };
+    // Ref resolution (first_at branch/coord, surface scene/object) via the ONE
+    // checker the out-of-band scan (`disclosure_ref_violations`) shares — run on
+    // `&store` BEFORE the mutable plan borrow, so a raw-JSON edit cannot bypass a
+    // check the setter enforces (write↔scan parity).
+    if let Some(msg) = disclosure_override_ref_violations(store, "set_disclosure", &new_override)
+        .into_iter()
+        .next()
+    {
+        return Err(AtomicMutateError::Validation(msg));
+    }
+    let plan = store
+        .disclosure_plans
+        .get_mut(telling)
+        .expect("telling presence checked above");
     // Whether the stored override actually changed — a re-set of the identical
     // decision is a no-op, so a manifest re-import stays byte-stable (the
     // standalone `set_disclosure` persists unconditionally, its own contract).
     let changed = plan.overrides.get(fact) != Some(&new_override);
     plan.overrides.insert(fact.to_string(), new_override);
     Ok(changed)
+}
+
+/// The ref violations of ONE stored disclosure override (Round 506) — its
+/// `first_at` coordinates (each branch a known world, each coord a registered
+/// section) and its `surface` (scene a registered section, object a registered
+/// entity). The override KEY (a fact id) is checked by the caller, not here (it
+/// is the map key, not a field of the struct). EXHAUSTIVE destructure (no `..`)
+/// so a new ref-bearing field on `DisclosureOverride` / `DisclosureSurface`
+/// stops compiling until it is checked here (the R737 enumeration-forcing
+/// discipline). ONE checker shared by the write path
+/// ([`apply_disclosure_override`]) and the out-of-band scan
+/// ([`disclosure_ref_violations`]) so the two cannot drift; `context` only
+/// shapes the message.
+fn disclosure_override_ref_violations(
+    store: &AtomicStore,
+    context: &str,
+    ov: &DisclosureOverride,
+) -> Vec<String> {
+    let DisclosureOverride {
+        mode: _, // an enum, carries no registry ref
+        first_at,
+        surface,
+    } = ov;
+    let mut out = Vec::new();
+    for (branch, coord) in first_at {
+        if !mnemosyne_core::is_known_world(&store.branches, branch) {
+            out.push(format!(
+                "{context}: first_at branch `{branch}` not present in the branch registry"
+            ));
+        }
+        if !store.sections.contains_key(coord) {
+            out.push(format!(
+                "{context}: first_at coord `{coord}` not present as a section \
+                 (canon coordinates are structure refs)"
+            ));
+        }
+    }
+    if let Some(s) = surface {
+        let DisclosureSurface { scene, object } = s;
+        if !store.sections.contains_key(scene) {
+            out.push(format!(
+                "{context}: surface scene `{scene}` not present as a section"
+            ));
+        }
+        if let Some(o) = object {
+            if !store.entities.contains_key(o) {
+                out.push(format!(
+                    "{context}: surface object `{o}` not present in the entity registry"
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Every disclosure override still resolves ALL its refs — the override KEY is a
+/// present fact, and its `first_at` / `surface` refs resolve (Round 506). The
+/// out-of-band scan twin of the write path (`apply_disclosure_override`, which
+/// validates the same refs and which `remove-section` / `retract-fact` refuse to
+/// strand), so this fires ONLY on a raw-JSON edit — the scan-boundary parity for
+/// the LAST ref-emitting registry-entry field of the class (beside
+/// `predicate_kind_ref_violations` R742, `branch_ref_violations` R743). Reuses
+/// [`disclosure_override_ref_violations`], so it cannot drift from the write
+/// gate.
+pub fn disclosure_ref_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (telling, plan) in &store.disclosure_plans {
+        for (fact, ov) in &plan.overrides {
+            let ctx = format!("disclosure_plan `{telling}` fact `{fact}`");
+            if !store.narrative_facts.contains_key(fact) {
+                out.push(format!(
+                    "{ctx}: override keys a fact not present in narrative_facts \
+                     (out-of-band edit — a dangling disclosure decision)"
+                ));
+            }
+            out.extend(disclosure_override_ref_violations(store, &ctx, ov));
+        }
+    }
+    out
 }
 
 /// Round 626 — clear ONE telling's disclosure decision for one fact: the
@@ -10736,7 +10812,6 @@ mod tests {
             entities: _,
             units: _,
             narrative_facts: _,
-            disclosure_plans: _,
             parameters: _,
             // GUARDED FIELDS — a value side-table OR a ref-EMITTING registry field
             // (a field whose CONTENTS point at another registry): the write path
@@ -10747,6 +10822,7 @@ mod tests {
             entity_kinds: _,     // -> entity_kind_parent_violations (parent link)
             predicates: _,       // -> predicate_kind_ref_violations (endpoint kinds)
             branches: _,         // -> branch_ref_violations (fork/converge refs)
+            disclosure_plans: _, // -> disclosure_ref_violations (override refs)
             edge_costs: _,       // -> edge_cost_violations
             edge_guards: _,      // -> edge_guard_violations
             parameter_deltas: _, // -> parameter_delta_violations
@@ -10794,8 +10870,8 @@ mod tests {
         // Non-vacuity guard: the family is non-empty (the scan actually found the
         // detectors), so a silent regex-miss cannot pass this as trivially equal.
         assert!(
-            detectors.len() >= 8,
-            "expected the eight known guarded-field detectors, found {}: {detectors:?}",
+            detectors.len() >= 9,
+            "expected the nine known guarded-field detectors, found {}: {detectors:?}",
             detectors.len()
         );
     }
@@ -15933,6 +16009,146 @@ mod tests {
                 .any(|m| m.contains("rogue-merge") && m.contains("converge parent `gone-a`")),
             "out-of-band phantom converge parent must be flagged: {v:?}"
         );
+    }
+
+    /// The disclosure override refs (the override's fact-id KEY + its first_at
+    /// branch/coord + surface scene/object, Round 506) get WRITE↔SCAN parity —
+    /// the LAST member of the ref-emitting-registry-field class (beside predicate
+    /// endpoints R742 and branch fork/converge R743). The write path
+    /// (apply_disclosure_override) validates every ref via the shared
+    /// disclosure_override_ref_violations; the out-of-band scan
+    /// (disclosure_ref_violations, wired into store_registry_violations) re-checks
+    /// them, so a raw-JSON edit that dangles any override ref can no longer
+    /// validate clean. The scan and the write gate share the checker (an
+    /// EXHAUSTIVE destructure of the override), so they cannot drift.
+    #[test]
+    fn disclosure_override_write_path_and_scan_parity() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store); // ch-1, ch-2, ch-3
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("pike".to_string(), Entity::default());
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
+        let typed_fact = FactImport {
+            entities: vec!["pike".to_string()],
+            typed: Some(TypedClaim {
+                subject: "pike".to_string(),
+                predicate: "did".to_string(),
+                object: TypedObject::Token {
+                    token: "climbed".to_string(),
+                },
+            }),
+            ..sample_fact("f-typed", "gt")
+        };
+        add_fact(&mut store, &path, &typed_fact).unwrap();
+        add_disclosure_plan(&mut store, &path, "telling", "withhold", "").unwrap();
+
+        // A fully-resolved override (first_at main->ch-2, surface ch-1/pike) is clean.
+        set_disc(
+            &mut store,
+            &path,
+            "telling",
+            "f-typed",
+            "state",
+            &[(mnemosyne_core::MAIN_BRANCH.to_string(), "ch-2".to_string())],
+            Some(("ch-1", Some("pike"))),
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a fully-resolved disclosure override passes the scan"
+        );
+
+        // WRITE PATH rejects a dangling ref on EACH of the four legs (the shared
+        // checker): first_at branch, first_at coord, surface scene, surface object.
+        let e = set_disc(
+            &mut store,
+            &path,
+            "telling",
+            "f-typed",
+            "state",
+            &[("ghost-branch".to_string(), "ch-2".to_string())],
+            None,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("first_at branch"), "{e}");
+        let e = set_disc(
+            &mut store,
+            &path,
+            "telling",
+            "f-typed",
+            "state",
+            &[(mnemosyne_core::MAIN_BRANCH.to_string(), "ch-99".to_string())],
+            None,
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("first_at coord"), "{e}");
+        let e = set_disc(
+            &mut store,
+            &path,
+            "telling",
+            "f-typed",
+            "state",
+            &[],
+            Some(("ch-99", None)),
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("surface scene"), "{e}");
+        let e = set_disc(
+            &mut store,
+            &path,
+            "telling",
+            "f-typed",
+            "state",
+            &[],
+            Some(("ch-1", Some("ghost-obj"))),
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("surface object"), "{e}");
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "the rejected writes leave the scan clean"
+        );
+
+        // SCAN BOUNDARY flags out-of-band phantom refs on ALL legs at once
+        // (unreachable via any write path): a dangling override fact-id KEY, a
+        // dangling first_at branch + coord, and a dangling surface scene + object.
+        let plan = store.disclosure_plans.get_mut("telling").unwrap();
+        plan.overrides.insert(
+            "gone-fact".to_string(),
+            DisclosureOverride {
+                mode: DisclosureMode::State,
+                first_at: BTreeMap::from([("gone-branch".to_string(), "gone-sec".to_string())]),
+                surface: Some(DisclosureSurface {
+                    scene: "gone-scene".to_string(),
+                    object: Some("gone-obj".to_string()),
+                }),
+            },
+        );
+        let v = store_registry_violations(&store);
+        for needle in [
+            "gone-fact",
+            "first_at branch `gone-branch`",
+            "first_at coord `gone-sec`",
+            "surface scene `gone-scene`",
+            "surface object `gone-obj`",
+        ] {
+            assert!(
+                v.iter().any(|m| m.contains(needle)),
+                "out-of-band disclosure ref `{needle}` must be flagged: {v:?}"
+            );
+        }
     }
 
     /// Round 738 (DAG) — the MEMOIZED detector: a DEEP legitimate chain validates
