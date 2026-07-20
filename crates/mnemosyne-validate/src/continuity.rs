@@ -4945,14 +4945,12 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
         let fork = match &branch.forks_from {
             None => None,
             Some(f) => {
-                if !mnemosyne_core::is_known_world(&store.branches, &f.branch) {
-                    return Err(format!(
-                        "branch `{branch_id}` forks from `{}`, which is neither `main` nor a \
-                         registered branch — fail-loud (a typo'd parent must not read as a \
-                         silent root); fix the registry",
-                        f.branch
-                    ));
-                }
+                // The fork parent is guaranteed a known world by
+                // `check_store_boundary` above: it runs the shared
+                // `store_registry_violations`, into which branch fork/converge
+                // refs are now wired, so an out-of-band dangling parent is
+                // rejected at the boundary. A local re-check here would be the
+                // duplicate enforcement the boundary's own contract avoids.
                 let at_placed = order.names(&f.branch, &f.at);
                 if !at_placed {
                     report.unplaced_fork_points.push(branch_id.clone());
@@ -4973,14 +4971,9 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
         let mut converges = Vec::with_capacity(branch.converges_from.len());
         let mut converge_unplaced = false;
         for edge in &branch.converges_from {
-            if !mnemosyne_core::is_known_world(&store.branches, &edge.branch) {
-                return Err(format!(
-                    "branch `{branch_id}` converges from `{}`, which is neither `main` nor a \
-                     registered branch — fail-loud (a typo'd parent must not read as a silent \
-                     root); fix the registry",
-                    edge.branch
-                ));
-            }
+            // Parent guaranteed a known world by `check_store_boundary` (see the
+            // fork arm above): the boundary's shared registry scan rejects an
+            // out-of-band dangling converge parent before this walk runs.
             let at_placed = order.names(&edge.branch, &edge.at);
             converge_unplaced |= !at_placed;
             converges.push(ForkTreeEdge {
@@ -10910,8 +10903,11 @@ mod tests {
     }
 
     /// A fork whose parent is neither `main` nor registered fails loud — a
-    /// typo'd parent must not read as a silent root (the write path forbids
-    /// this; the read surface guards the out-of-band edit).
+    /// typo'd parent must not read as a silent root. The write path forbids it;
+    /// the read surface guards the out-of-band edit via `check_store_boundary`,
+    /// which runs the shared `store_registry_violations` (branch fork/converge
+    /// refs are wired into it), so the dangling parent is caught at the boundary
+    /// before any per-branch walk — the `fork_tree` body no longer re-checks it.
     #[test]
     fn fork_tree_fails_loud_on_unregistered_parent() {
         let mut store = AtomicStore::new();
@@ -10927,7 +10923,10 @@ mod tests {
             },
         );
         let err = fork_tree(&store, &CanonOrder::empty()).unwrap_err();
-        assert!(err.contains("neither `main` nor a registered"), "{err}");
+        assert!(
+            err.contains("child") && err.contains("fork parent `ghost`"),
+            "the boundary catches the out-of-band dangling parent, fail-loud: {err}"
+        );
     }
 
     /// Round 532 — the fork tree SURFACES a confluence's incoming merges, the

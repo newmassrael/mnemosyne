@@ -4884,17 +4884,11 @@ fn build_branch_fork(
     if parent == branch_id {
         return Err(format!("branch `{branch_id}`: cannot fork from itself"));
     }
-    if !mnemosyne_core::is_known_world(&store.branches, parent) {
-        return Err(format!(
-            "branch `{branch_id}`: fork parent `{parent}` not present in the branch \
-             registry (register parents first; fail-loud)"
-        ));
-    }
-    if !store.sections.contains_key(at) {
-        return Err(format!(
-            "branch `{branch_id}`: fork point `{at}` not present as a section \
-             (canon coordinates are structure refs)"
-        ));
+    if let Some(msg) = branch_edge_ref_violations(store, "fork", branch_id, parent, at)
+        .into_iter()
+        .next()
+    {
+        return Err(msg);
     }
     Ok(Some(BranchFork {
         branch: parent.to_string(),
@@ -4934,17 +4928,11 @@ fn build_branch_converges(
         if parent == branch_id {
             return Err(format!("branch `{branch_id}`: cannot converge from itself"));
         }
-        if !mnemosyne_core::is_known_world(&store.branches, parent) {
-            return Err(format!(
-                "branch `{branch_id}`: converge parent `{parent}` not present in the branch \
-                 registry (register parents first; fail-loud)"
-            ));
-        }
-        if !store.sections.contains_key(at) {
-            return Err(format!(
-                "branch `{branch_id}`: converge point `{at}` not present as a section \
-                 (canon coordinates are structure refs)"
-            ));
+        if let Some(msg) = branch_edge_ref_violations(store, "converge", branch_id, parent, at)
+            .into_iter()
+            .next()
+        {
+            return Err(msg);
         }
         if !seen.insert(parent.to_string()) {
             return Err(format!(
@@ -4980,6 +4968,71 @@ fn build_branch_candidate(
         forks_from: build_branch_fork(store, branch_id, forks_from)?,
         converges_from: build_branch_converges(store, branch_id, converges_from)?,
     })
+}
+
+/// The endpoint-ref violations of ONE branch edge (a fork or a converge point,
+/// Round 438/532): the parent must be a KNOWN WORLD (`MAIN_BRANCH` or a
+/// registered branch) and the canon point `at` a REGISTERED section. Empty =
+/// both resolve. ONE checker shared by the write-path builders
+/// ([`build_branch_fork`] / [`build_branch_converges`]) and the out-of-band scan
+/// ([`branch_ref_violations`]) so the parent-and-section refs cannot drift
+/// across the two — the R688 shared-resolver discipline (`is_known_world` is the
+/// branch resolver; `sections` is the section registry). `kind` (`fork` /
+/// `converge`) only shapes the message.
+fn branch_edge_ref_violations(
+    store: &AtomicStore,
+    kind: &str,
+    owner: &str,
+    parent: &str,
+    at: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    if !mnemosyne_core::is_known_world(&store.branches, parent) {
+        out.push(format!(
+            "branch `{owner}`: {kind} parent `{parent}` not present in the branch \
+             registry (a known world is MAIN_BRANCH or a registered branch)"
+        ));
+    }
+    if !store.sections.contains_key(at) {
+        out.push(format!(
+            "branch `{owner}`: {kind} point `{at}` not present as a section \
+             (canon coordinates are structure refs)"
+        ));
+    }
+    out
+}
+
+/// Every branch's fork / converge edges still resolve their refs — the parent a
+/// known world, the canon point `at` a registered section (Round 438/532). The
+/// out-of-band scan twin of the write-path builders; every write path validates
+/// these (via [`branch_edge_ref_violations`], the shared checker), and
+/// `remove-section` refuses to strand a fork point, so this fires ONLY on a
+/// raw-JSON edit — the scan-boundary parity for the ref-EMITTING branch fields,
+/// beside `entity_kind_parent_violations` (R732) and `predicate_kind_ref_violations`
+/// (R742). It cannot drift from the write gate: same checker.
+pub fn branch_ref_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (id, branch) in &store.branches {
+        if let Some(fork) = &branch.forks_from {
+            out.extend(branch_edge_ref_violations(
+                store,
+                "fork",
+                id,
+                &fork.branch,
+                &fork.at,
+            ));
+        }
+        for edge in &branch.converges_from {
+            out.extend(branch_edge_ref_violations(
+                store,
+                "converge",
+                id,
+                &edge.branch,
+                &edge.at,
+            ));
+        }
+    }
+    out
 }
 
 pub fn add_branch(
@@ -6460,6 +6513,11 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // the R740 review named beside `parents`. The write paths forbid a dangling
     // `subject_kind`/`object_entity_kind`, so this fires only on a raw-JSON edit.
     out.extend(predicate_kind_ref_violations(store));
+    // Round 438/532 branch fork/converge endpoint refs (parent world + section
+    // `at`) re-checked at the scan boundary — the same ref-emitting-field parity
+    // generalized off predicate endpoints. The write paths forbid a dangling
+    // edge, so this fires only on a raw-JSON edit.
+    out.extend(branch_ref_violations(store));
     for (id, fact) in &store.narrative_facts {
         // Ref resolution: the ONE enumeration + resolver, shared with the write
         // path (Round 688 — DEBT-DUP-REGISTRY). The typed leg's predicate and
@@ -10675,15 +10733,20 @@ mod tests {
             inventory_entries: _,
             confirmation_events: _,
             frames: _,
-            branches: _,
             entities: _,
             units: _,
             narrative_facts: _,
             disclosure_plans: _,
             parameters: _,
-            // SIDE-TABLES — each MUST have a `*_violations` scan wired below:
+            // GUARDED FIELDS — a value side-table OR a ref-EMITTING registry field
+            // (a field whose CONTENTS point at another registry): the write path
+            // validates the contents but a raw JSON edit can corrupt them, so each
+            // MUST have a `*_violations` scan wired below. The ref-emitting class
+            // (entity_kinds.parents, predicate endpoints, branch fork/converge) is
+            // caught here too — refs OUT of an entry, not just refs INTO a registry.
             entity_kinds: _,     // -> entity_kind_parent_violations (parent link)
             predicates: _,       // -> predicate_kind_ref_violations (endpoint kinds)
+            branches: _,         // -> branch_ref_violations (fork/converge refs)
             edge_costs: _,       // -> edge_cost_violations
             edge_guards: _,      // -> edge_guard_violations
             parameter_deltas: _, // -> parameter_delta_violations
@@ -10731,8 +10794,8 @@ mod tests {
         // Non-vacuity guard: the family is non-empty (the scan actually found the
         // detectors), so a silent regex-miss cannot pass this as trivially equal.
         assert!(
-            detectors.len() >= 7,
-            "expected the seven known side-table detectors, found {}: {detectors:?}",
+            detectors.len() >= 8,
+            "expected the eight known guarded-field detectors, found {}: {detectors:?}",
             detectors.len()
         );
     }
@@ -15776,6 +15839,99 @@ mod tests {
             v.iter()
                 .any(|m| m.contains("rogue") && m.contains("object_entity_kind `gone-obj`")),
             "out-of-band phantom object_entity_kind must be flagged (both legs): {v:?}"
+        );
+    }
+
+    /// The branch fork / converge endpoint refs (parent world + section `at`,
+    /// Round 438/532) get WRITE↔SCAN parity — the R742 review's broader-residual
+    /// class (a ref-EMITTING registry field), generalized off predicate endpoints.
+    /// Every write path validates the edge via the shared branch_edge_ref_violations;
+    /// the out-of-band scan (branch_ref_violations, wired into
+    /// store_registry_violations) re-checks it, so a raw-JSON edit pointing a fork
+    /// or a converge edge at a phantom parent or section can no longer validate
+    /// clean. The scan and the write gate share the checker, so they cannot drift.
+    #[test]
+    fn branch_edge_refs_write_path_and_scan_parity() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store); // ch-1, ch-2, ch-3 sections
+                                   // Two parents fork off main; a confluence merges them — all refs registered.
+        add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
+        add_branch(&mut store, &path, "ride", "", Some(("main", "ch-2")), &[]).unwrap();
+        add_branch(
+            &mut store,
+            &path,
+            "dawn",
+            "",
+            None,
+            &[("sluice", "ch-3"), ("ride", "ch-3")],
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "a clean fork+confluence registry passes the scan"
+        );
+
+        // WRITE PATH rejects a fork whose parent is unregistered AND one whose `at`
+        // is not a section — the shared checker, both legs; no row on a reject.
+        let err =
+            add_branch(&mut store, &path, "bad", "", Some(("ghost", "ch-2")), &[]).unwrap_err();
+        assert!(err.to_string().contains("fork parent"), "{err}");
+        let err =
+            add_branch(&mut store, &path, "bad", "", Some(("main", "ch-99")), &[]).unwrap_err();
+        assert!(
+            err.to_string().contains("not present as a section"),
+            "{err}"
+        );
+        assert!(
+            !store.branches.contains_key("bad"),
+            "a rejected add leaves no row"
+        );
+
+        // SCAN BOUNDARY flags an out-of-band FORK edge at a phantom parent AND a
+        // phantom section (both legs — unreachable via any write path).
+        store.branches.insert(
+            "rogue-fork".to_string(),
+            Branch {
+                description: String::new(),
+                forks_from: Some(BranchFork {
+                    branch: "gone-parent".to_string(),
+                    at: "gone-section".to_string(),
+                }),
+                converges_from: Vec::new(),
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("rogue-fork") && m.contains("fork parent `gone-parent`")),
+            "out-of-band phantom fork parent must be flagged: {v:?}"
+        );
+        assert!(
+            v.iter()
+                .any(|m| m.contains("rogue-fork") && m.contains("fork point `gone-section`")),
+            "out-of-band phantom fork section must be flagged (both legs): {v:?}"
+        );
+        store.branches.remove("rogue-fork");
+
+        // SCAN BOUNDARY flags an out-of-band CONVERGE edge with a phantom parent.
+        store.branches.insert(
+            "rogue-merge".to_string(),
+            Branch {
+                description: String::new(),
+                forks_from: None,
+                converges_from: vec![BranchFork {
+                    branch: "gone-a".to_string(),
+                    at: "gone-sec".to_string(),
+                }],
+            },
+        );
+        let v = store_registry_violations(&store);
+        assert!(
+            v.iter()
+                .any(|m| m.contains("rogue-merge") && m.contains("converge parent `gone-a`")),
+            "out-of-band phantom converge parent must be flagged: {v:?}"
         );
     }
 
