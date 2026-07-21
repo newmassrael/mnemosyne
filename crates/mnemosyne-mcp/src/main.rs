@@ -704,6 +704,53 @@ pub struct RemoveDisclosureArgs {
     pub reason: String,
 }
 
+/// Round 752 — add ONE trigger coordinate to a fact's per-world first-reveal SET
+/// (the granular peer of `set_disclosure`, mirroring `add_edge_guard`).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddDisclosureRevealCoordArgs {
+    /// Telling id carrying the override (`set_disclosure` first).
+    pub telling_id: String,
+    /// Fact id whose reveal the coord attaches to (a first_at pin makes it
+    /// gate-targeted, so the fact must carry a typed claim).
+    pub fact_id: String,
+    /// World-line the reveal pins timing for (main or a registered branch).
+    pub branch: String,
+    /// The trigger coordinate to ADD to the branch's SET (a registered section).
+    pub coord: String,
+}
+
+/// Round 752 — remove ONE trigger coordinate from a fact's per-world first-reveal
+/// SET (the granular peer of `add_disclosure_reveal_coord`).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemoveDisclosureRevealCoordArgs {
+    /// Telling id carrying the override.
+    pub telling_id: String,
+    /// Fact id whose reveal the coord is dropped from.
+    pub fact_id: String,
+    /// World-line the reveal is pinned on.
+    pub branch: String,
+    /// The trigger coordinate to DROP from the set (fail-loud if absent; the
+    /// branch key is deleted when the set empties — never a vacuous empty trigger).
+    pub coord: String,
+}
+
+/// Round 752 — set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD
+/// (the granular peer of `set_edge_guard_threshold`).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetDisclosureRevealThresholdArgs {
+    /// Telling id carrying the override.
+    pub telling_id: String,
+    /// Fact id whose reveal threshold to set.
+    pub fact_id: String,
+    /// World-line whose reveal threshold to set (must already have a reveal).
+    pub branch: String,
+    /// K-of-N threshold: `k` fires at the k-th-earliest trigger (2 <= k <= len;
+    /// k == 1 normalizes to first-reached; k == len = last-reached, kept distinct);
+    /// omit/null clears back to first-reached.
+    #[serde(default)]
+    pub threshold: Option<usize>,
+}
+
 /// Transactional batch section authoring (Round 687, retyped Round 690 —
 /// DEBT-MCP-MANIFEST-SCHEMA). The R687 form took an opaque `manifest_json`
 /// String, so the agent got no schema; Round 690 exposes the ONE atomic DTO
@@ -2142,6 +2189,69 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Add ONE first-reveal trigger COORDINATE to a fact's per-world reveal SET (R752) — the granular peer of set_disclosure, mirroring add_edge_guard. Where set_disclosure writes a fact's WHOLE disclosure decision at once, this edits ONE branch's first_at trigger set INCREMENTALLY, keyed by telling + fact + branch, value = the coord (a section ref) added to that branch's SET. A first_at reveal is first-reached-of-a-SET: a non-linear reader reveals the fact at the EARLIEST coord in the set they reach (R751/752). Multiple coords = multiple trigger points; call this N times to grow the set. Fail-loud: the override must already exist (set_disclosure first), the coord must be a registered section, the branch a known world; and because a first_at pin makes the fact gate-targeted, the fact must carry a typed claim (the premature-leak gate matches by typed tuple — the same gate-enabling invariant set_disclosure enforces). The branch's threshold is carried unchanged. Idempotent on an already-present coord."
+    )]
+    async fn add_disclosure_reveal_coord(
+        &self,
+        args: Parameters<AddDisclosureRevealCoordArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::add_disclosure_reveal_coord(
+                store,
+                path,
+                &a.telling_id,
+                &a.fact_id,
+                &a.branch,
+                &a.coord,
+            )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Remove ONE first-reveal trigger COORDINATE from a fact's per-world reveal SET (R752) — the granular peer of add_disclosure_reveal_coord, mirroring remove_edge_guard_condition. Drops the named coord from the branch's first_at set; when it was the LAST coord the branch key is deleted (never a vacuous empty trigger). Fail-loud: the override, the branch, and that coord must exist. REFUSES a removal that would leave the branch's K-of-N threshold unsatisfiable (k > remaining) — lower it first with set_disclosure_reveal_threshold. UNLIKE the edge guard, a surviving threshold equal to the new length is KEPT (last-reached is a distinct semantic)."
+    )]
+    async fn remove_disclosure_reveal_coord(
+        &self,
+        args: Parameters<RemoveDisclosureRevealCoordArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::remove_disclosure_reveal_coord(
+                store,
+                path,
+                &a.telling_id,
+                &a.fact_id,
+                &a.branch,
+                &a.coord,
+            )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD (R752) — the granular peer of set_edge_guard_threshold, the ONE place k changes. threshold=k makes the branch's reveal fire at the k-th-earliest trigger reached (2<=k<=len; k==1 normalizes to the canonical first-reached; k==len = last-reached, KEPT distinct — unlike the edge guard where k==len collapses to AND); omit/null clears back to first-reached. Fail-loud: the override + the branch reveal must exist, and k must be in range (0 is vacuous, >len unsatisfiable). Mnemosyne checks the range on the DECLARATION and NEVER evaluates which triggers are reached (the R712 layering line — the consumer's playthrough job). set_disclosure sets a fact's whole reveal at once; this edits the threshold incrementally."
+    )]
+    async fn set_disclosure_reveal_threshold(
+        &self,
+        args: Parameters<SetDisclosureRevealThresholdArgs>,
+    ) -> CallToolResult {
+        let a = args.0;
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_disclosure_reveal_threshold(
+                store,
+                path,
+                &a.telling_id,
+                &a.fact_id,
+                &a.branch,
+                a.threshold,
+            )
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
         description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter."
     )]
     async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
@@ -3096,14 +3206,17 @@ mod tests {
     fn mcp_router_exposes_the_authoring_tools() {
         let router = MnemosyneServer::tool_router();
         for name in [
-            "add_entity_kind",              // R674
-            "remove_section",               // R678
-            "set_section_decision_status",  // R678
-            "report_entity_kind_migration", // R679
-            "report_binding_migration",     // R686
-            "import_facts",                 // R687
-            "import_sections",              // R687
-            "add_entity",                   // pre-existing anchors (non-vacuity)
+            "add_entity_kind",                 // R674
+            "remove_section",                  // R678
+            "set_section_decision_status",     // R678
+            "report_entity_kind_migration",    // R679
+            "report_binding_migration",        // R686
+            "import_facts",                    // R687
+            "import_sections",                 // R687
+            "add_disclosure_reveal_coord",     // R752 (granular disclosure-reveal parity)
+            "remove_disclosure_reveal_coord",  // R752
+            "set_disclosure_reveal_threshold", // R752
+            "add_entity",                      // pre-existing anchors (non-vacuity)
             "add_fact",
             "report_quest_graph",
         ] {

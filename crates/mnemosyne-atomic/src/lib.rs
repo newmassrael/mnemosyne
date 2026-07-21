@@ -7492,13 +7492,15 @@ pub(crate) fn apply_disclosure_override(
     }
     // The gate-enabling invariant runs on the RESOLVED pin set — a withhold mode
     // OR any surviving first_at trigger requires the fact to carry a typed claim.
-    if disclosure_needs_typed_target(mode, !first_at_map.is_empty()) && !fact_is_typed {
-        return Err(AtomicMutateError::Validation(format!(
-            "set_disclosure: fact `{fact}` has no typed claim, but a withhold/first_at \
-             disclosure decision is deterministically un-gateable without one (the \
-             premature-leak gate matches by typed tuple — author a typed leg first)"
-        )));
-    }
+    // Enforced through the ONE shared predicate the granular
+    // `add_disclosure_reveal_coord` also routes through (multi-write-path parity).
+    ensure_disclosure_typed_target(
+        fact_is_typed,
+        mode,
+        !first_at_map.is_empty(),
+        "set_disclosure",
+        fact,
+    )?;
     let surface = match surface {
         None => None,
         Some((scene, object)) => {
@@ -7687,21 +7689,18 @@ pub fn add_disclosure_reveal_coord(
             "add_disclosure_reveal_coord: --branch and --coord must be non-empty".to_string(),
         ));
     }
-    // The gate-enabling typed invariant: a first_at pin needs a typed target.
-    match store.narrative_facts.get(&fact).map(|f| f.typed.is_some()) {
-        Some(true) => {}
-        Some(false) => {
-            return Err(AtomicMutateError::Validation(format!(
-                "add_disclosure_reveal_coord: fact `{fact}` has no typed claim, but a first_at \
-                 trigger is deterministically un-gateable without one (author a typed leg first)"
-            )));
-        }
+    // Keep the fact-ABSENT check distinct (a missing fact is a different error from
+    // an untyped one), and capture whether the fact carries a typed claim — the
+    // gate-enabling invariant is enforced below on the CANDIDATE, through the ONE
+    // predicate `apply_disclosure_override` also uses (multi-write-path parity).
+    let fact_is_typed = match store.narrative_facts.get(&fact) {
+        Some(f) => f.typed.is_some(),
         None => {
             return Err(AtomicMutateError::Validation(format!(
                 "add_disclosure_reveal_coord: fact `{fact}` not present in narrative_facts"
             )));
         }
-    }
+    };
     // Build the candidate override (a clone of the existing decision with the new
     // coord inserted), ref-validated via the SHARED checker before it lands — the
     // same gate the setter + out-of-band scan run, so no path drifts.
@@ -7713,6 +7712,15 @@ pub fn add_disclosure_reveal_coord(
         .or_default()
         .coords
         .insert(coord);
+    // Adding a coord makes `first_at` non-empty, so this always requires a typed
+    // target — but via the SAME predicate the setter uses, so it cannot drift.
+    ensure_disclosure_typed_target(
+        fact_is_typed,
+        candidate.mode,
+        !candidate.first_at.is_empty(),
+        "add_disclosure_reveal_coord",
+        &fact,
+    )?;
     if let Some(msg) =
         disclosure_override_ref_violations(store, "add_disclosure_reveal_coord", &candidate)
             .into_iter()
@@ -8455,6 +8463,31 @@ fn inbound_disclosure_refs<'a>(
 /// multi-write-path invariant drifts into a half-enforced one.
 fn disclosure_needs_typed_target(mode: DisclosureMode, has_first_at: bool) -> bool {
     mode == DisclosureMode::Withhold || has_first_at
+}
+
+/// Round 752 — THE one enforcement of the gate-enabling typed-target invariant,
+/// shared by the two write paths that can pin a fact (`apply_disclosure_override`
+/// and the granular `add_disclosure_reveal_coord`) so a decision that a withhold
+/// mode OR any `first_at` trigger requires a typed target cannot drift into a
+/// half-enforced one (the CLAUDE.md multi-write-path parity rule — the R295
+/// paste-error class). One predicate ([`disclosure_needs_typed_target`]) wrapped
+/// in one reject message, not two copies. `primitive` names the caller for the
+/// diagnostic; `fact` is the offending fact id.
+fn ensure_disclosure_typed_target(
+    fact_is_typed: bool,
+    mode: DisclosureMode,
+    has_first_at: bool,
+    primitive: &str,
+    fact: &str,
+) -> Result<(), AtomicMutateError> {
+    if disclosure_needs_typed_target(mode, has_first_at) && !fact_is_typed {
+        return Err(AtomicMutateError::Validation(format!(
+            "{primitive}: fact `{fact}` has no typed claim, but a withhold/first_at \
+             disclosure decision is un-gateable without one (the premature-leak gate \
+             matches by typed tuple — author a typed leg first)"
+        )));
+    }
+    Ok(())
 }
 
 /// Round 434 — authorial retract (design sec 7.9 axis 4). Removes a fact the
