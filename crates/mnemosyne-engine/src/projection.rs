@@ -253,6 +253,14 @@ impl PlayableProjection {
             .map_or(&[][..], Vec::as_slice)
     }
 
+    /// Whether the configured interactive layer is PARTIAL (a free fallback
+    /// reveals a ladder spot's remainder) rather than MODAL — the gate reads it to
+    /// decide whether the offered-fact-unreachable check applies. See
+    /// [`Interactivity::free_investigate`](crate::Interactivity::free_investigate).
+    pub(crate) fn free_investigate(&self) -> bool {
+        self.interactivity.free_investigate
+    }
+
     /// The store-declared walk for a world-line — the section sequence the
     /// player's own traversal must match (the reachability yardstick). Empty for
     /// an unknown world.
@@ -489,6 +497,7 @@ mod tests {
                     "sc-01".to_string(),
                     vec![rung("Whose name?", "f-name", &[])],
                 )]),
+                free_investigate: false,
             },
             journal_predicates: Vec::new(),
         };

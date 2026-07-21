@@ -132,6 +132,7 @@ mod tests {
         let d = DefaultOverrides::default();
         assert!(d.interactivity().ladders.is_empty());
         assert!(d.interactivity().objects.is_empty());
+        assert!(!d.interactivity().free_investigate); // default MODAL
         assert!(d.journal_predicates().is_empty());
     }
 

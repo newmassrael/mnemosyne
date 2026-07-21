@@ -36,6 +36,9 @@ pub enum GateViolation {
     /// G5 (unreachable) — a ladder spot offers a fact that no door (ask or
     /// examine) reveals: the ladder closed access, so the player can never dig
     /// it. Only a ladder spot gates access; elsewhere facts are shown directly.
+    /// Reported only for a MODAL layer; a PARTIAL layer
+    /// ([`Interactivity::free_investigate`](crate::Interactivity::free_investigate))
+    /// reveals the remainder freely, so an offered fact is never stranded there.
     OfferedFactUnreachable {
         /// The world-line walked.
         world: String,
@@ -128,9 +131,12 @@ impl PlayableProjection {
                 }
             }
 
-            // G5 unreachable — only where a ladder gates access. Iterate `lines`
-            // (deterministic order), not the `offered` set.
-            if !rungs.is_empty() {
+            // G5 unreachable — only where a ladder gates access AND the layer is
+            // MODAL (no free fallback). A PARTIAL consumer (free_investigate)
+            // reveals the remainder freely, so no offered fact is stranded and this
+            // check does not apply. Iterate `lines` (deterministic order), not the
+            // `offered` set.
+            if !rungs.is_empty() && !self.free_investigate() {
                 for line in lines {
                     if !reachable.contains(line.fact_id.as_str()) {
                         violations.push(GateViolation::OfferedFactUnreachable {
@@ -162,6 +168,18 @@ mod tests {
             interactivity: Interactivity {
                 objects: HashSet::new(),
                 ladders: HashMap::from([(section.to_string(), rungs)]),
+                free_investigate: false,
+            },
+            journal_predicates: Vec::new(),
+        }
+    }
+
+    fn partial_ladder_at(section: &str, rungs: Vec<Rung>) -> StaticOverrides {
+        StaticOverrides {
+            interactivity: Interactivity {
+                objects: HashSet::new(),
+                ladders: HashMap::from([(section.to_string(), rungs)]),
+                free_investigate: true,
             },
             journal_predicates: Vec::new(),
         }
@@ -282,6 +300,49 @@ mod tests {
                 fact_id: "f-b".into(),
             }]
         );
+    }
+
+    #[test]
+    fn a_partial_ladder_suppresses_unreachable_but_still_flags_leaks() {
+        // The SAME store as the modal unreachable test: f-a shown via the ladder,
+        // f-b offered but no door reveals it. A PARTIAL layer (free_investigate)
+        // reveals f-b via the free fallback, so f-b is NOT unreachable — while a
+        // rung revealing an unoffered fact still leaks. Proves the flag suppresses
+        // ONLY the modal unreachable check, never leak (non-vacuous suppression).
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dawn",
+                vec![
+                    begin("f-a", "shown via ladder", "ground-truth", &[]),
+                    begin("f-b", "offered, freely investigable", "ground-truth", &[]),
+                ],
+            )],
+            vec![
+                locator("f-a", "sc-01", DisclosureMode::State),
+                locator("f-b", "sc-01", DisclosureMode::Hint),
+            ],
+            ForkTreeReport::default(),
+        );
+        // Rung 1 reveals the real f-a; rung 2 invents f-ghost (a leak).
+        let overrides = partial_ladder_at(
+            "sc-01",
+            vec![rung("q", "f-a", &[]), rung("invent?", "f-ghost", &[])],
+        );
+        let proj = PlayableProjection::from_report(r, &overrides).unwrap();
+        let v = proj.gate("main");
+        // f-b is NOT flagged unreachable — the free fallback reveals it.
+        assert!(!v.iter().any(|x| matches!(
+            x,
+            GateViolation::OfferedFactUnreachable { fact_id, .. } if fact_id == "f-b"
+        )));
+        // ...but the leak still fires: free_investigate never softens leak/needs.
+        assert!(v.contains(&GateViolation::RungRevealsUnofferedFact {
+            world: "main".into(),
+            section: "sc-01".into(),
+            fact_id: "f-ghost".into(),
+        }));
     }
 
     #[test]

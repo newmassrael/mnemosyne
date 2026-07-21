@@ -318,4 +318,21 @@ pub struct Interactivity {
     pub ladders: HashMap<String, Vec<Rung>>,
     /// Entity ids that are examinable diegetic objects.
     pub objects: HashSet<String>,
+    /// Does a ladder gate only the facts behind its rungs/objects (a PARTIAL
+    /// ladder), or does entering a ladder spot hide everything not behind a door
+    /// (a MODAL ladder)?
+    ///
+    /// A partial consumer keeps a free fallback that reveals whatever no door
+    /// claimed — tide's `investigate` action reveals the spot's remainder, so a
+    /// fact is never stranded. For such a consumer the offered-fact-unreachable
+    /// check ("does every offered fact have a door?") does not apply: the free
+    /// fallback IS the door. Set `true` to declare a partial layer and suppress
+    /// that check; leak (a rung reveals an unoffered fact) and precondition timing
+    /// still gate.
+    ///
+    /// Default `false` = modal: the strict check runs (the batteries-included
+    /// assumption that a ladder replaces free reading, so a door-less offered fact
+    /// is stranded). A modal consumer that forgets a door still fails loud.
+    #[serde(default)]
+    pub free_investigate: bool,
 }
