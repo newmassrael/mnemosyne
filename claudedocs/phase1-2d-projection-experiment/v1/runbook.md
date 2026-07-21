@@ -80,7 +80,14 @@ pins, the two-axis projection, and every later stage.
 ## Step 5 — blind extractor x2 (one per slice)
 
 - Write `run/extract/vocab.md`: the entity / predicate / frame ids + the fork
-  scene + the two road names ONLY (no claims, no facts, no plan).
+  scene + the two road names + **each token predicate's `object_tokens`
+  literals** (a vocabulary, NOT claims) ONLY (no facts, no plan). The token
+  literals are load-bearing for a NON-VACUOUS machine leak gate:
+  `validate-disclosure-leak` matches a withheld secret by its full typed tuple
+  (subject, predicate, token), so if the re-extraction cannot name the same
+  token the gate goes VACUOUS (`vocabulary_shared=0`, its own guard fires) — the
+  R750 harness lesson (my v1 vocab omitted the token literals, so the leak gate
+  read blind and the leak verdict had to come from a deterministic manual scan).
 - Spawn the blind extractor TWICE (fresh each): VN slice -> `run/extract-vn/`,
   tsukuru slice -> `run/extract-tsukuru/`. Each: `reextracted.atomic.json` +
   `extract-log.md`, blind to the original facts and to the other axis.

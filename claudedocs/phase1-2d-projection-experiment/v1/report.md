@@ -111,10 +111,15 @@ real limits surfaced, both worth recording:
    it. A prose render that states a secret without the typed structure evades the
    gate. The manual keyword scan covered this gap.
 
-Follow-ons: `vocab.md` should carry the token literals + gt-frame guidance for a
-non-vacuous machine gate; the leak gate's typed-only scope should be documented
-(or the re-extraction required to type secrets). The fidelity gate, by contrast,
-worked non-vacuously and clean on both axes.
+Follow-ons (APPLIED R754): the `runbook.md` vocab-build step now carries each
+token predicate's `object_tokens` literals + a gt-frame-and-TYPE instruction, and
+the `extractor-brief.md` now tells the extractor to record narration-true facts
+(incl. a secret at the moment its reveal lands) in the `gt` frame and to TYPE
+every secret-content statement — so a re-run's machine leak gate is non-vacuous
+and catches a typed leak. The leak gate's typed-only scope is thereby documented
+where it bites (the extractor brief): an untyped prose statement of a secret
+evades the typed-tuple match. The fidelity gate, by contrast, worked
+non-vacuously and clean on both axes.
 
 ## Decision rule applied
 
