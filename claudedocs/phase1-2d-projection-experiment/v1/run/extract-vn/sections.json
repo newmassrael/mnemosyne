@@ -1,0 +1,18 @@
+[
+  { "section_id": "sc-01", "parent_doc": "world-together", "title": "온실 로비 — 자정 전, 유리 너머 비" },
+  { "section_id": "sc-02", "parent_doc": "world-together", "title": "온실 로비 — 자정, 걸쇠 잠기는 소리" },
+  { "section_id": "sc-03", "parent_doc": "world-together", "title": "긴 복도 — 형광등 절반이 나감" },
+  { "section_id": "sc-04", "parent_doc": "world-together", "title": "계단실 — 아래층 계단, 찬 공기" },
+  { "section_id": "sc-05", "parent_doc": "world-together", "title": "3반 교실 — 어둠 속 책상들" },
+  { "section_id": "sc-06", "parent_doc": "world-together", "title": "교무실 — 작은 열쇠가 자물쇠에 맞는다" },
+  { "section_id": "sc-07", "parent_doc": "world-together", "title": "자료실 — 서류 캐비닛과 낡은 출석부" },
+  { "section_id": "sc-08", "parent_doc": "world-together", "title": "자료실 — 사흘 전 출석부를 펼친다" },
+  { "section_id": "sc-09", "parent_doc": "world-together", "title": "긴 복도 — 문마다 잠겨 있다" },
+  { "section_id": "sc-10", "parent_doc": "world-together", "title": "긴 복도 — 지나온 자리에서 무언가 움직임" },
+  { "section_id": "sc-11", "parent_doc": "world-together", "title": "온실 로비 — 정문이 코앞" },
+  { "section_id": "sc-12", "parent_doc": "world-together", "title": "정문 앞 — 세리가 마스터 열쇠를 넣는다 (fork)" },
+  { "section_id": "tg-13", "parent_doc": "world-together", "title": "정문 앞 — 문 반쯤 열림, 그것이 연을 향해 섬" },
+  { "section_id": "tg-14", "parent_doc": "world-together", "title": "정문 앞 — 그것이 지척, 진실이 드러남" },
+  { "section_id": "tg-15", "parent_doc": "world-together", "title": "정문 앞 — 그것이 멈춰 연을 기다림" },
+  { "section_id": "tg-16", "parent_doc": "world-together", "title": "정문 — 문이 활짝 열리고 빗소리가 쏟아짐" }
+]

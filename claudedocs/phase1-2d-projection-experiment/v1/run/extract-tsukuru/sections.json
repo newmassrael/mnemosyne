@@ -1,0 +1,18 @@
+[
+  { "id": "sc-01", "title": "로비 — 늦은 밤, 넷이 남다", "branch": "main" },
+  { "id": "sc-02", "title": "자정 — 문이 잠기고 휴대폰이 먹통이 된다", "branch": "main" },
+  { "id": "sc-03", "title": "긴 복도 — 첫 발, 교무실이 잠겨 있다", "branch": "main" },
+  { "id": "sc-04", "title": "계단실 — 사흘 전의 자리", "branch": "main" },
+  { "id": "sc-05", "title": "3반 교실 — 책상에서 교무실 열쇠", "branch": "main" },
+  { "id": "sc-06", "title": "교무실 — 마스터 열쇠", "branch": "main" },
+  { "id": "sc-07", "title": "자료실 — 출석 기록", "branch": "main" },
+  { "id": "sc-08", "title": "자료실 — 젖어 번진 한 칸", "branch": "main" },
+  { "id": "sc-09", "title": "긴 복도 — 그것이 좁혀 온다", "branch": "main" },
+  { "id": "sc-10", "title": "복도 — 세리가 믿기 시작한다", "branch": "main" },
+  { "id": "sc-11", "title": "로비 — 정문 앞으로", "branch": "main" },
+  { "id": "sc-12", "title": "정문 앞 — 그것이 나타난다 (갈림)", "branch": "main" },
+  { "id": "tg-13", "title": "함께 — 하준이 연을 붙잡는다", "branch": "together" },
+  { "id": "tg-14", "title": "함께 — 진실이 착지한다", "branch": "together" },
+  { "id": "tg-15", "title": "함께 — 연이 남기를 택한다", "branch": "together" },
+  { "id": "tg-16", "title": "함께 — 셋이 빗속으로", "branch": "together" }
+]

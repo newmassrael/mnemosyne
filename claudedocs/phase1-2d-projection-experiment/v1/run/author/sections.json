@@ -1,0 +1,22 @@
+[
+  {"section_id":"sc-01","parent_doc":"onshil","title":"sc-01 로비 — 늦은 밤, 넷이 남다","coverage_expectation":"informational"},
+  {"section_id":"sc-02","parent_doc":"onshil","title":"sc-02 자정 — 문이 잠기고 휴대폰이 먹통이 된다","coverage_expectation":"informational"},
+  {"section_id":"sc-03","parent_doc":"onshil","title":"sc-03 긴 복도 — 첫 발, 교무실이 잠겨 있다","coverage_expectation":"informational"},
+  {"section_id":"sc-04","parent_doc":"onshil","title":"sc-04 계단실 — 사흘 전의 자리","coverage_expectation":"informational"},
+  {"section_id":"sc-05","parent_doc":"onshil","title":"sc-05 3반 교실 — 책상에서 교무실 열쇠","coverage_expectation":"informational"},
+  {"section_id":"sc-06","parent_doc":"onshil","title":"sc-06 교무실 — 마스터 열쇠","coverage_expectation":"informational"},
+  {"section_id":"sc-07","parent_doc":"onshil","title":"sc-07 자료실 — 출석 기록","coverage_expectation":"informational"},
+  {"section_id":"sc-08","parent_doc":"onshil","title":"sc-08 자료실 — 젖어 번진 한 칸","coverage_expectation":"informational"},
+  {"section_id":"sc-09","parent_doc":"onshil","title":"sc-09 긴 복도 — 그것이 좁혀 온다","coverage_expectation":"informational"},
+  {"section_id":"sc-10","parent_doc":"onshil","title":"sc-10 복도 — 세리가 믿기 시작한다","coverage_expectation":"informational"},
+  {"section_id":"sc-11","parent_doc":"onshil","title":"sc-11 로비 — 정문 앞으로","coverage_expectation":"informational"},
+  {"section_id":"sc-12","parent_doc":"onshil","title":"sc-12 정문 앞 — 그것이 나타난다 (갈림)","coverage_expectation":"informational"},
+  {"section_id":"tg-13","parent_doc":"onshil","title":"tg-13 함께 — 하준이 연을 붙잡는다","coverage_expectation":"informational"},
+  {"section_id":"tg-14","parent_doc":"onshil","title":"tg-14 함께 — 진실이 착지한다","coverage_expectation":"informational"},
+  {"section_id":"tg-15","parent_doc":"onshil","title":"tg-15 함께 — 연이 남기를 택한다","coverage_expectation":"informational"},
+  {"section_id":"tg-16","parent_doc":"onshil","title":"tg-16 함께 — 셋이 빗속으로","coverage_expectation":"informational"},
+  {"section_id":"al-13","parent_doc":"onshil","title":"al-13 홀로 — 문을 넘어 홀로","coverage_expectation":"informational"},
+  {"section_id":"al-14","parent_doc":"onshil","title":"al-14 홀로 — 문 밖에도 밤은 끝나지 않는다","coverage_expectation":"informational"},
+  {"section_id":"al-15","parent_doc":"onshil","title":"al-15 홀로 — 셋은 안쪽에 남는다","coverage_expectation":"informational"},
+  {"section_id":"al-16","parent_doc":"onshil","title":"al-16 홀로 — 진실을 홀로 안고","coverage_expectation":"informational"}
+]

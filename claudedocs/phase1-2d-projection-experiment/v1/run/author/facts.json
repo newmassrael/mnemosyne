@@ -1,0 +1,142 @@
+{
+  "frames": [
+    { "frame_id": "gt", "description": "ground truth — 실제로 무슨 일이 벌어지는가" },
+    { "frame_id": "hajun", "description": "하준 — 화자, 관찰과 반응 (독백의 재료)" },
+    { "frame_id": "seri", "description": "세리 — 실용, 앞장, 괴담→믿음" },
+    { "frame_id": "minu", "description": "민우 — 겁많음, 연이 여기 없어야 함을 어렴풋이 앎" },
+    { "frame_id": "yeon", "description": "연 — 비어 있음, 자신이 무엇인지 모름" },
+    { "frame_id": "geot", "description": "그것 — 넷의 위치를 앎, 연을 찾음" }
+  ],
+  "branches": [
+    { "branch_id": "together", "description": "함께 — 하준이 연을 붙잡고 진실을 마주함; 연이 남기를 택하고 그것이 멎음; 셋이 빗속으로", "forks_from": "main", "forks_at": "sc-12" },
+    { "branch_id": "alone", "description": "홀로 — 하준이 문을 열고 홀로 나감; 셋이 남고; 밤은 끝나지 않음", "forks_from": "main", "forks_at": "sc-12" }
+  ],
+  "entity_kinds": [
+    { "kind_id": "place", "description": "장소 — 방-그래프 노드" },
+    { "kind_id": "character", "description": "인물/적대자" },
+    { "kind_id": "quest", "description": "목표·선행조건·결과를 가진 추적 의무" },
+    { "kind_id": "item", "description": "집어 옮기는 열쇠" },
+    { "kind_id": "fixture", "description": "살펴보는 사물/설비" }
+  ],
+  "entities": [
+    { "entity_id": "e-lobby", "kind": "place", "description": "로비" },
+    { "entity_id": "e-long-hall", "kind": "place", "description": "긴 복도 (허브)" },
+    { "entity_id": "e-classroom-3", "kind": "place", "description": "3반 교실" },
+    { "entity_id": "e-stairwell", "kind": "place", "description": "계단실" },
+    { "entity_id": "e-staff-room", "kind": "place", "description": "교무실 (잠김)" },
+    { "entity_id": "e-archive", "kind": "place", "description": "자료실" },
+    { "entity_id": "e-exit", "kind": "place", "description": "정문 (잠김)" },
+    { "entity_id": "e-hajun", "kind": "character", "description": "하준" },
+    { "entity_id": "e-seri", "kind": "character", "description": "세리" },
+    { "entity_id": "e-minu", "kind": "character", "description": "민우" },
+    { "entity_id": "e-yeon", "kind": "character", "description": "연" },
+    { "entity_id": "e-geot", "kind": "character", "description": "그것" },
+    { "entity_id": "q-escape", "kind": "quest", "description": "나간다 — 잠긴 정문을 열고 온실을 빠져나감 (메인)" },
+    { "entity_id": "q-staffkey", "kind": "quest", "description": "교무실 열쇠 찾기 — 교무실을 열 작은 열쇠 (선행)" },
+    { "entity_id": "q-save-yeon", "kind": "quest", "description": "연을 데리고 나간다 — 길마다 다르게 끝남" },
+    { "entity_id": "q-truth", "kind": "quest", "description": "그것의 정체를 안다 — 자료실 기록 (선택)" },
+    { "entity_id": "e-staff-key", "kind": "item", "description": "교무실 열쇠" },
+    { "entity_id": "e-master-key", "kind": "item", "description": "마스터 열쇠" },
+    { "entity_id": "e-record-book", "kind": "fixture", "description": "자료실 출석 기록부" },
+    { "entity_id": "e-staff-desk", "kind": "fixture", "description": "교무실 책상" },
+    { "entity_id": "e-desk-3", "kind": "fixture", "description": "3반 교실 책상" }
+  ],
+  "predicates": [
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "두 장소가 통행으로 이어짐" },
+    { "predicate_id": "pursues", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "quest", "description": "어느 인물이 퀘스트를 이끄나" },
+    { "predicate_id": "requires", "object_kind": "entity", "subject_kind": "quest", "object_entity_kind": "quest", "description": "한 퀘스트가 먼저 끝나야 하는 선행 퀘스트" },
+    { "predicate_id": "completed_by", "object_kind": "entity", "subject_kind": "quest", "object_entity_kind": "character", "description": "한 세계선에서 퀘스트를 완료하는 이" },
+    { "predicate_id": "holds", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "item", "description": "단일 소지자 열쇠를 쥠" },
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place", "description": "인물의 현재 위치" },
+    { "predicate_id": "seeks", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "character", "description": "찾는 대상" },
+    { "predicate_id": "hidden_nature", "object_kind": "token", "object_tokens": ["afterimage", "revenant", "no-exit"], "description": "늦게 드러나는 숨은 본질" }
+  ],
+  "facts": [
+    { "fact_id": "f-adj-lobby-hall", "frame": "gt", "claim": "로비와 긴 복도가 통행으로 이어진다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-lobby", "e-long-hall"], "typed": { "subject": "e-lobby", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-long-hall" } } },
+    { "fact_id": "f-adj-hall-classroom", "frame": "gt", "claim": "긴 복도와 3반 교실이 이어진다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-long-hall", "e-classroom-3"], "typed": { "subject": "e-long-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-classroom-3" } } },
+    { "fact_id": "f-adj-hall-stairwell", "frame": "gt", "claim": "긴 복도와 계단실이 이어진다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-long-hall", "e-stairwell"], "typed": { "subject": "e-long-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-stairwell" } } },
+    { "fact_id": "f-adj-hall-staffroom", "frame": "gt", "claim": "긴 복도와 교무실이 이어진다 (문은 잠겨 있다)", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-long-hall", "e-staff-room"], "typed": { "subject": "e-long-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-staff-room" } } },
+    { "fact_id": "f-adj-hall-archive", "frame": "gt", "claim": "긴 복도와 자료실이 이어진다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-long-hall", "e-archive"], "typed": { "subject": "e-long-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-archive" } } },
+    { "fact_id": "f-adj-lobby-exit", "frame": "gt", "claim": "로비와 정문이 이어진다 (문은 잠겨 있다)", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-lobby", "e-exit"], "typed": { "subject": "e-lobby", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-exit" } } },
+
+    { "fact_id": "f-give-escape", "frame": "gt", "claim": "잠긴 정문을 열고 온실을 빠져나가는 것이 오늘 밤의 목표로 걸린다", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["q-escape"], "payoff_expectation": "expected" },
+    { "fact_id": "f-give-save-yeon", "frame": "gt", "claim": "넷이 연까지 함께 데리고 나가려 한다 — 곁가지가 열린다", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["q-save-yeon", "e-yeon"], "payoff_expectation": "expected" },
+    { "fact_id": "f-give-staffkey", "frame": "gt", "claim": "교무실이 잠겨 있다 — 그 문을 열 작은 열쇠를 찾는 곁가지가 열린다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["q-staffkey", "e-staff-room"], "payoff_expectation": "expected" },
+    { "fact_id": "f-give-truth", "frame": "gt", "claim": "자료실의 기록이 하나의 물음을 연다 — 복도를 도는 그것은 무엇인가", "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["q-truth", "e-record-book"], "payoff_expectation": "expected" },
+
+    { "fact_id": "f-pursue-escape", "frame": "gt", "claim": "하준이 탈출을 이끈다", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-hajun", "q-escape"], "typed": { "subject": "e-hajun", "predicate": "pursues", "object": { "kind": "entity", "id": "q-escape" } } },
+    { "fact_id": "f-pursue-save-yeon", "frame": "gt", "claim": "하준이 연을 데리고 나가는 것을 자기 몫으로 진다", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-hajun", "q-save-yeon", "e-yeon"], "typed": { "subject": "e-hajun", "predicate": "pursues", "object": { "kind": "entity", "id": "q-save-yeon" } } },
+    { "fact_id": "f-pursue-staffkey", "frame": "gt", "claim": "세리가 교무실 열쇠 찾기를 맡는다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-seri", "q-staffkey"], "typed": { "subject": "e-seri", "predicate": "pursues", "object": { "kind": "entity", "id": "q-staffkey" } } },
+    { "fact_id": "f-pursue-truth", "frame": "gt", "claim": "하준이 그것의 정체를 밝히려 한다", "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-hajun", "q-truth"], "typed": { "subject": "e-hajun", "predicate": "pursues", "object": { "kind": "entity", "id": "q-truth" } } },
+    { "fact_id": "f-req-escape-staffkey", "frame": "gt", "claim": "정문에 닿으려면 먼저 교무실 열쇠 찾기가 끝나야 한다 — 교실→교무실 열쇠→교무실→마스터 열쇠→정문", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["q-escape", "q-staffkey"], "typed": { "subject": "q-escape", "predicate": "requires", "object": { "kind": "entity", "id": "q-staffkey" } } },
+
+    { "fact_id": "f-gt-stairwell", "frame": "gt", "claim": "계단실 아래에는 사흘 전의 사고 흔적이 남아 있다", "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-stairwell"] },
+    { "fact_id": "f-have-staffkey", "frame": "gt", "claim": "세리가 3반 교실 책상에서 교무실 열쇠를 손에 넣는다", "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-seri", "e-staff-key", "e-desk-3"], "typed": { "subject": "e-seri", "predicate": "holds", "object": { "kind": "entity", "id": "e-staff-key" } } },
+    { "fact_id": "f-done-staffkey", "frame": "gt", "claim": "교무실 열쇠를 확보해 곁가지가 완수된다", "canon_from": "sc-05", "evidence": ["sc-05", "sc-03"], "entities": ["q-staffkey", "e-seri"], "pays_off": ["f-give-staffkey"], "typed": { "subject": "q-staffkey", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-seri" } } },
+    { "fact_id": "f-gt-staffroom-master", "frame": "gt", "claim": "교무실 책상 안쪽에서 마스터 열쇠가 나온다", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-staff-room", "e-master-key", "e-staff-desk"] },
+    { "fact_id": "f-have-masterkey", "frame": "gt", "claim": "세리가 마스터 열쇠를 손에 넣는다", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-seri", "e-master-key"], "typed": { "subject": "e-seri", "predicate": "holds", "object": { "kind": "entity", "id": "e-master-key" } } },
+    { "fact_id": "f-gt-record-examined", "frame": "gt", "claim": "자료실 출석부의 한 칸이 젖어 번져 읽히지 않는다", "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-record-book"] },
+    { "fact_id": "f-gt-push-exit", "frame": "gt", "claim": "넷은 마스터 열쇠를 들고 정문으로 향한다", "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-master-key", "e-exit"] },
+    { "fact_id": "f-gt-at-door", "frame": "gt", "claim": "넷이 로비를 가로질러 정문 앞에 선다", "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-lobby", "e-exit"] },
+    { "fact_id": "f-gt-it-appears", "frame": "gt", "claim": "마스터 열쇠가 정문에 닿는 순간 그것이 나타난다 — 하준은 택해야 한다", "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-geot", "e-exit", "e-hajun"] },
+
+    { "fact_id": "f-secret-yeon", "frame": "gt", "claim": "연은 이미 이 건물의 산 사람이 아니다 — 사흘 전 같은 밤 사라졌고, 지금의 연은 남은 셋의 기억이 붙든 잔상이다", "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-yeon"], "typed": { "subject": "e-yeon", "predicate": "hidden_nature", "object": { "kind": "token", "token": "afterimage" } } },
+    { "fact_id": "f-secret-geot", "frame": "gt", "claim": "그것은 사흘 전 계단에서 떨어져 죽은 관리인의 남은 것이며, 그것이 찾는 것은 연이다", "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-geot", "e-yeon"], "typed": { "subject": "e-geot", "predicate": "hidden_nature", "object": { "kind": "token", "token": "revenant" } } },
+    { "fact_id": "f-secret-exit", "frame": "gt", "claim": "정문은 끝이 아니다 — 그 밖에도 밤은 끝나지 않는다", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-exit"], "typed": { "subject": "e-exit", "predicate": "hidden_nature", "object": { "kind": "token", "token": "no-exit" } } },
+
+    { "fact_id": "f-geot-track-1", "frame": "geot", "claim": "그것은 넷이 로비에 있음을 안다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-hajun", "e-lobby"], "typed": { "subject": "e-hajun", "predicate": "at", "object": { "kind": "entity", "id": "e-lobby" } } },
+    { "fact_id": "f-geot-seeks", "frame": "geot", "claim": "그것은 오직 연을 찾는다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-geot", "e-yeon"], "typed": { "subject": "e-geot", "predicate": "seeks", "object": { "kind": "entity", "id": "e-yeon" } } },
+    { "fact_id": "f-geot-knows-four", "frame": "geot", "claim": "그것은 넷이 어디 있는지 언제나 안다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-hajun", "e-seri", "e-minu", "e-yeon"] },
+    { "fact_id": "f-geot-track-2", "frame": "geot", "claim": "그것은 넷이 긴 복도로 들어섰음을 안다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-hajun", "e-long-hall"], "supersedes_in_frame": "f-geot-track-1", "typed": { "subject": "e-hajun", "predicate": "at", "object": { "kind": "entity", "id": "e-long-hall" } } },
+    { "fact_id": "f-geot-track-3", "frame": "geot", "claim": "그것은 넷이 정문 앞 로비에 이르렀음을 안다", "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-hajun", "e-lobby"], "supersedes_in_frame": "f-geot-track-2", "typed": { "subject": "e-hajun", "predicate": "at", "object": { "kind": "entity", "id": "e-lobby" } } },
+
+    { "fact_id": "f-hajun-obs-1", "frame": "hajun", "claim": "하준은 유리 너머로 빗줄기가 두꺼워지는 것을 본다", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-hajun"] },
+    { "fact_id": "f-hajun-cant-place", "frame": "hajun", "claim": "하준은 복도에서 무언가의 기척을 느끼지만 그것이 어디 있는지 짚지 못한다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-hajun"] },
+    { "fact_id": "f-hajun-dread", "frame": "hajun", "claim": "하준은 문마다 잠긴 것을 확인하며 목덜미가 서늘해진다", "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-hajun"] },
+
+    { "fact_id": "f-seri-skeptic", "frame": "seri", "claim": "세리는 복도를 도는 것을 흔한 괴담쯤으로 여긴다", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-seri"] },
+    { "fact_id": "f-seri-leads", "frame": "seri", "claim": "세리는 앞장서 길을 정하고 열쇠를 챙긴다", "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-seri"] },
+    { "fact_id": "f-seri-believes", "frame": "seri", "claim": "세리는 이제 그것이 실재함을 믿는다", "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-seri"], "supersedes_in_frame": "f-seri-skeptic" },
+
+    { "fact_id": "f-minu-knows", "frame": "minu", "claim": "민우는 연이 원래 오늘 여기 있어선 안 된다는 것을 어렴풋이 안다 — 그러나 입 밖으로 내지 못한다", "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-minu", "e-yeon"] },
+    { "fact_id": "f-minu-fear", "frame": "minu", "claim": "민우는 겁에 질려 무리에서 뒤처진다", "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-minu"] },
+
+    { "fact_id": "f-yeon-empty", "frame": "yeon", "claim": "연은 자신이 무언가 비어 있다고 느끼지만 그것이 무엇인지 모른다", "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-yeon"] },
+
+    { "fact_id": "f-hajun-choose-tg", "frame": "hajun", "branch": "together", "claim": "하준은 연의 손목을 붙잡고 물러서지 않기로 한다", "canon_from": "tg-13", "evidence": ["tg-13", "sc-12"], "entities": ["e-hajun", "e-yeon"] },
+    { "fact_id": "f-seri-pulls-tg", "frame": "seri", "branch": "together", "claim": "세리는 하준을 문 쪽으로 끌어당기며 서두른다", "canon_from": "tg-14", "evidence": ["tg-14"], "entities": ["e-seri", "e-hajun"] },
+    { "fact_id": "f-done-truth-tg", "frame": "gt", "branch": "together", "claim": "진실이 착지한다 — 하준은 그것의 정체를 온전히 안다, 그리고 선택 곁가지가 완수된다", "canon_from": "tg-14", "evidence": ["tg-14", "sc-07", "sc-08"], "entities": ["q-truth", "e-hajun"], "pays_off": ["f-give-truth"], "typed": { "subject": "q-truth", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-hajun" } } },
+    { "fact_id": "f-yeon-chooses-tg", "frame": "yeon", "branch": "together", "claim": "연은 스스로 남기를 택한다", "canon_from": "tg-15", "evidence": ["tg-15"], "entities": ["e-yeon"] },
+    { "fact_id": "f-minu-watches-tg", "frame": "minu", "branch": "together", "claim": "민우는 연을 마지막으로 한 번 돌아본다", "canon_from": "tg-15", "evidence": ["tg-15"], "entities": ["e-minu", "e-yeon"] },
+    { "fact_id": "f-gt-yeon-stays-tg", "frame": "gt", "branch": "together", "claim": "연은 온실에 남고, 그것은 찾던 것을 되찾아 멎는다", "canon_from": "tg-15", "evidence": ["tg-15"], "entities": ["e-yeon", "e-geot"] },
+    { "fact_id": "f-done-save-yeon-tg", "frame": "gt", "branch": "together", "claim": "연이 남기를 택하고, 하준은 작별로 그 몫을 갚는다 — 곁가지가 완수된다", "canon_from": "tg-15", "evidence": ["tg-15", "sc-02"], "entities": ["q-save-yeon", "e-hajun", "e-yeon"], "pays_off": ["f-give-save-yeon"], "typed": { "subject": "q-save-yeon", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-hajun" } } },
+    { "fact_id": "f-done-escape-tg", "frame": "gt", "branch": "together", "claim": "하준·세리·민우 셋이 정문을 열고 빗속으로 나선다 — 탈출이 완수된다", "canon_from": "tg-16", "evidence": ["tg-16", "sc-02"], "entities": ["q-escape", "e-hajun"], "pays_off": ["f-give-escape"], "typed": { "subject": "q-escape", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-hajun" } } },
+    { "fact_id": "f-gt-three-out-tg", "frame": "gt", "branch": "together", "claim": "하준·세리·민우 셋이 빗속으로 걸어 나간다", "canon_from": "tg-16", "evidence": ["tg-16"], "entities": ["e-hajun", "e-seri", "e-minu"] },
+
+    { "fact_id": "f-hajun-choose-al", "frame": "hajun", "branch": "alone", "claim": "하준은 문을 열고 혼자 문턱을 넘기로 한다", "canon_from": "al-13", "evidence": ["al-13", "sc-12"], "entities": ["e-hajun"] },
+    { "fact_id": "f-gt-door-shuts-al", "frame": "gt", "branch": "alone", "claim": "하준의 등 뒤에서 문이 닫히고 세리·민우·연 셋이 안에 남는다", "canon_from": "al-13", "evidence": ["al-13"], "entities": ["e-hajun", "e-seri", "e-minu", "e-yeon"] },
+    { "fact_id": "f-done-escape-al", "frame": "gt", "branch": "alone", "claim": "하준이 홀로 문을 열고 나선다 — 탈출이 (홀로) 완수된다", "canon_from": "al-14", "evidence": ["al-14", "sc-02"], "entities": ["q-escape", "e-hajun"], "pays_off": ["f-give-escape"], "typed": { "subject": "q-escape", "predicate": "completed_by", "object": { "kind": "entity", "id": "e-hajun" } } },
+    { "fact_id": "f-gt-night-unending-al", "frame": "gt", "branch": "alone", "claim": "문 밖에도 밤은 끝나지 않고 빗속의 어둠이 계속된다", "canon_from": "al-14", "evidence": ["al-14"], "entities": ["e-exit", "e-hajun"] },
+    { "fact_id": "f-seri-remains-al", "frame": "seri", "branch": "alone", "claim": "세리는 닫힌 문을 두드리며 안쪽에 남는다", "canon_from": "al-15", "evidence": ["al-15"], "entities": ["e-seri"] },
+    { "fact_id": "f-minu-remains-al", "frame": "minu", "branch": "alone", "claim": "민우는 안쪽에서 하준을 부르며 남는다", "canon_from": "al-15", "evidence": ["al-15"], "entities": ["e-minu"] },
+    { "fact_id": "f-yeon-remains-al", "frame": "yeon", "branch": "alone", "claim": "연은 안쪽에 남아 하준의 뒷모습을 바라본다", "canon_from": "al-15", "evidence": ["al-15"], "entities": ["e-yeon"] },
+    { "fact_id": "f-hajun-carries-al", "frame": "hajun", "branch": "alone", "claim": "하준은 진실을 홀로 안은 채 밤 속으로 걸어간다", "canon_from": "al-16", "evidence": ["al-16", "sc-08"], "entities": ["e-hajun"] },
+    { "fact_id": "f-gt-hajun-alone-al", "frame": "gt", "branch": "alone", "claim": "하준은 홀로 밤 아래 남고, 온실은 등 뒤에서 어둠에 잠긴다", "canon_from": "al-16", "evidence": ["al-16", "sc-12"], "entities": ["e-hajun"] }
+  ],
+  "disclosure_plans": [
+    {
+      "telling_id": "play",
+      "default_mode": "state",
+      "description": "플레이 텔링 — 퀘스트 시작은 알려주고(state), 세 비밀은 감춘다(withhold)",
+      "overrides": [
+        { "fact_id": "f-give-escape", "mode": "state", "surface": { "scene": "sc-02", "object": "e-exit" } },
+        { "fact_id": "f-give-staffkey", "mode": "state", "surface": { "scene": "sc-03", "object": "e-staff-room" } },
+        { "fact_id": "f-give-save-yeon", "mode": "state", "surface": { "scene": "sc-02", "object": "e-yeon" } },
+        { "fact_id": "f-give-truth", "mode": "state", "surface": { "scene": "sc-07", "object": "e-record-book" } },
+        { "fact_id": "f-secret-yeon", "mode": "withhold", "first_at": [ ["together", "tg-14"] ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
+        { "fact_id": "f-secret-geot", "mode": "withhold", "first_at": [ ["together", "tg-14"] ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
+        { "fact_id": "f-secret-exit", "mode": "withhold", "first_at": [ ["alone", "al-14"] ], "surface": { "scene": "sc-12", "object": "e-exit" } }
+      ]
+    }
+  ]
+}

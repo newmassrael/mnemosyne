@@ -1,0 +1,7 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "교무실 열쇠와 마스터 열쇠는 단일 소지자 물건 — 한 순간 한 사람만 쥔다 (보존/custody).",
+  "rules": [
+    { "id": "one-holder-per-key", "predicate": "holds", "class": "exclusive", "per": "object" }
+  ]
+}
