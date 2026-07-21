@@ -28,6 +28,7 @@
 mod gate;
 mod overrides;
 mod projection;
+mod prose;
 mod quest;
 #[cfg(test)]
 mod test_support;
@@ -38,6 +39,7 @@ pub use mnemosyne_core::{DisclosureMode, MAIN_BRANCH};
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
 pub use projection::PlayableProjection;
+pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
 pub use quest::{
     QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
 };
