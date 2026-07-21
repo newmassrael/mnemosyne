@@ -1,0 +1,20 @@
+[package]
+name = "mnemosyne-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
+mnemosyne-ops = { path = "../mnemosyne-ops" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

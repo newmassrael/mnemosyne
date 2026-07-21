@@ -18,6 +18,8 @@ members = [
  "crates/mnemosyne-ops",
  "crates/mnemosyne-index",
  "crates/mnemosyne-projection",
+ "crates/mnemosyne-engine",
+ "crates/mnemosyne-render",
 ]
 
 [workspace.package]

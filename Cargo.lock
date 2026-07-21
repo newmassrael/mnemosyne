@@ -1058,6 +1058,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-engine"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "mnemosyne-ops",
+ "mnemosyne-validate",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mnemosyne-facts"
 version = "0.1.0"
 dependencies = [
@@ -1156,6 +1167,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "mnemosyne-render"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "mnemosyne-engine",
+ "mnemosyne-validate",
 ]
 
 [[package]]
