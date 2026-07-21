@@ -318,7 +318,8 @@ pub fn describe_schema() -> SchemaContract {
              disclosed on EVERY world-line — reaching for `state` to reveal a secret on one road \
              LEAKS it on the others. To reveal a fact on the reveal-road yet keep it hidden \
              elsewhere, leave the mode `withhold` and pin `first_at` for THAT road only (e.g. \
-             `first_at: [[reveal-road, reveal-scene]]`); a road with no pin stays withheld. The \
+             `first_at: [{branch: reveal-road, coords: [reveal-scene]}]` — the coords are a \
+             first-reached trigger SET, Round 752); a road with no pin stays withheld. The \
              secrecy is the withhold default; the reveal is the per-world timing pin — never a \
              non-withhold mode. IMPORTANT: a clean `report-authoring-frontier` does NOT certify a \
              correct telling — the frontier counts any fact carrying an override as `planned` and \
@@ -378,7 +379,7 @@ pub fn describe_schema() -> SchemaContract {
 /// SSOT an agent copies; the per-kind key notes name the exact serialized keys
 /// (which differ from the semantic field names in a few load-bearing places —
 /// `forks_from` is a bare string, the typed object is a tagged enum, `first_at`
-/// is a list of `[branch, section]` pairs).
+/// is a list of per-world reveal triggers `{branch, coords, threshold?}`).
 fn manifest_wire() -> ManifestWireSpec {
     ManifestWireSpec {
         add_op: "import-facts (apply) / propose-verdict (dry-run gate) — both read this manifest",
@@ -440,9 +441,12 @@ fn manifest_wire() -> ManifestWireSpec {
                 json_keys: "{ \"telling_id\": string, \"default_mode\"?: \
                     \"withhold\"|\"state\"|\"hint\"|\"imply\" (omitted = withhold), \
                     \"description\"?: string, \"overrides\"?: [ { \"fact_id\": string, \"mode\": \
-                    string, \"first_at\"?: [ [branch id, section id], … ] (a list of 2-element \
-                    [branch, section] arrays), \"surface\"?: {\"scene\": string, \"object\"?: \
-                    string} } ] }",
+                    string, \"first_at\"?: [ { \"branch\": branch id, \"coords\": [section id, …] \
+                    (>= 1; the first-reached trigger SET — a non-linear reader reveals the fact at \
+                    the EARLIEST coord reached), \"threshold\"?: integer (K-of-N; omitted = \
+                    first-reached, 2..=len selects the k-th-earliest, len = last-reached) }, … ] (a \
+                    list of per-world reveal triggers), \"surface\"?: {\"scene\": string, \
+                    \"object\"?: string} } ] }",
             },
         ],
         typed_object_wire:
@@ -511,7 +515,7 @@ const MANIFEST_EXAMPLE_JSON: &str = r#"{
       "telling_id": "default", "default_mode": "withhold",
       "description": "the reader reconstructs by default",
       "overrides": [
-        { "fact_id": "f-setup", "mode": "state", "first_at": [ ["road-b", "sc-04"] ] }
+        { "fact_id": "f-setup", "mode": "state", "first_at": [ { "branch": "road-b", "coords": ["sc-04"] } ] }
       ]
     }
   ]
@@ -2002,15 +2006,16 @@ mod tests {
             mnemosyne_core::TypedObject::Entity { id } => assert_eq!(id, "e-scout"),
             other => panic!("entity object must be the Entity variant, got {other:?}"),
         }
-        // the disclosure override's first_at is a [branch, section] pair.
+        // the disclosure override's first_at is a per-world reveal trigger
+        // (branch + a coord SET + optional threshold, Round 752).
         assert_eq!(m.disclosure_plans.len(), 1);
         let overrides = &m.disclosure_plans[0].overrides;
         assert_eq!(overrides.len(), 1);
         assert_eq!(overrides[0].fact_id, "f-setup");
-        assert_eq!(
-            overrides[0].first_at,
-            vec![["road-b".to_string(), "sc-04".to_string()]]
-        );
+        assert_eq!(overrides[0].first_at.len(), 1);
+        assert_eq!(overrides[0].first_at[0].branch, "road-b");
+        assert_eq!(overrides[0].first_at[0].coords, vec!["sc-04".to_string()]);
+        assert_eq!(overrides[0].first_at[0].threshold, None);
     }
 
     /// Round 600 (session review, Findings 1 + 3): extend the drift guard from
@@ -2112,7 +2117,13 @@ mod tests {
                 overrides: vec![mnemosyne_atomic::DisclosureOverrideImport {
                     fact_id: "f".into(),
                     mode: "state".into(),
-                    first_at: vec![["b".into(), "s".into()]],
+                    // Round 752 — exercise every reveal key (branch/coords/
+                    // threshold) so the wire-prose drift guard checks them all.
+                    first_at: vec![mnemosyne_atomic::DisclosureRevealImport {
+                        branch: "b".into(),
+                        coords: vec!["s".into(), "s2".into()],
+                        threshold: Some(2),
+                    }],
                     surface: Some(mnemosyne_atomic::DisclosureSurfaceImport {
                         scene: "s".into(),
                         object: Some("o".into()),

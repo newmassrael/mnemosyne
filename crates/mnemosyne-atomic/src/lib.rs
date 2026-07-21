@@ -37,9 +37,10 @@ pub use redact::*;
 
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
-    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureSurface, EdgeCost, Entity,
-    EntityKind, Frame, IntervalOp, InventoryStatus, NarrativeFact, Parameter, ParameterGate,
-    PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject, Unit,
+    DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureReveal, DisclosureSurface,
+    EdgeCost, Entity, EntityKind, Frame, IntervalOp, InventoryStatus, NarrativeFact, Parameter,
+    ParameterGate, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject,
+    Unit,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1457,11 +1458,24 @@ pub enum AtomicStoreError {
 // BEFORE the typed parse. Backward-compat is exact: `None` / absent ⇒ an empty
 // set ⇒ a root kind (a flat registry, unchanged). A pre-R738 binary reading a
 // v38 store hits the monotone `> CURRENT` guard.
+// v38→v39 GENERALISES `DisclosureOverride.first_at`'s per-world VALUE from a
+// single ordinal coord (`String`) to a `DisclosureReveal` { coords:
+// BTreeSet<String>, threshold: Option<usize> } — Round 752, the R751 first-
+// reached-of-a-set trigger (the non-linear-render pull; the edge-guard shape
+// mirror). This is a SHAPE CHANGE to an existing map value, not an additive
+// one, so it needs a migration arm: a v38 store carries `first_at: {branch:
+// "sc-NN"}`, which the retyped struct fails to parse (a string where an object
+// is expected). `load` runs `migrate_disclosure_first_at_to_reveal` on the raw
+// JSON when the on-disk `schema_version < 39`, rewriting each `"sc-NN"` to
+// `{"coords": ["sc-NN"], "threshold": null}` BEFORE the typed parse. Backward-
+// compat is exact: the single ordinal becomes a one-coord first-reached trigger
+// (the same effective pin). A pre-R752 binary reading a v39 store hits the
+// monotone `> CURRENT` guard.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 38;
+pub const CURRENT_SCHEMA_VERSION: u32 = 39;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -1497,6 +1511,51 @@ fn migrate_entity_kind_parent_to_parents(raw: &mut serde_json::Value) {
                     "parents".to_string(),
                     serde_json::Value::Array(vec![serde_json::Value::String(s)]),
                 );
+            }
+        }
+    }
+}
+
+/// Round 752 (v38→v39 migration): rewrite each `DisclosureOverride.first_at`
+/// world value from the legacy single ordinal coord (`"sc-NN"`) to the
+/// `DisclosureReveal` object (`{"coords": ["sc-NN"], "threshold": null}`) in the
+/// raw JSON, run by `load` BEFORE the typed parse. A v38 store stored a string
+/// where the retyped struct now expects an object, so the parse would FAIL
+/// (not silently drop) — the migration keeps old stores loadable. Exact
+/// backward-compat: the single coord becomes a one-element first-reached trigger
+/// (the same effective pin). Idempotent + defensive: a value already an object
+/// (the new shape) is left untouched; a non-object `disclosure_plans` /
+/// `overrides` / `first_at`, or a missing map, is a no-op (the typed parse
+/// reports any real corruption).
+fn migrate_disclosure_first_at_to_reveal(raw: &mut serde_json::Value) {
+    let Some(plans) = raw
+        .get_mut("disclosure_plans")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    for plan in plans.values_mut() {
+        let Some(overrides) = plan
+            .get_mut("overrides")
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            continue;
+        };
+        for ov in overrides.values_mut() {
+            let Some(first_at) = ov
+                .get_mut("first_at")
+                .and_then(serde_json::Value::as_object_mut)
+            else {
+                continue;
+            };
+            for value in first_at.values_mut() {
+                if let serde_json::Value::String(coord) = value {
+                    let coord = std::mem::take(coord);
+                    *value = serde_json::json!({
+                        "coords": [coord],
+                        "threshold": serde_json::Value::Null,
+                    });
+                }
             }
         }
     }
@@ -1606,6 +1665,12 @@ impl AtomicStore {
         // silently drop the legacy `parent` key (data loss).
         if on_disk_version < 38 {
             migrate_entity_kind_parent_to_parents(&mut raw);
+        }
+        // v38→v39 (Round 752): DisclosureOverride.first_at value String → the
+        // DisclosureReveal object. Rewrite the raw JSON before the typed parse,
+        // which would otherwise FAIL on a string where an object is expected.
+        if on_disk_version < 39 {
+            migrate_disclosure_first_at_to_reveal(&mut raw);
         }
         let mut store: AtomicStore = match serde_json::from_value(raw) {
             Ok(store) => store,
@@ -2265,7 +2330,11 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
     // (set_disclosure checks both exist at write time).
     for (telling, plan) in &store.disclosure_plans {
         for (fid, ov) in &plan.overrides {
-            if ov.first_at.values().any(|coord| coord == section_id) {
+            if ov
+                .first_at
+                .values()
+                .any(|reveal| reveal.coords.contains(section_id))
+            {
                 refs.push(format!(
                     "telling `{telling}` (via first_at pin on fact `{fid}`)"
                 ));
@@ -4120,6 +4189,25 @@ pub struct DisclosureSurfaceImport {
     pub object: Option<String>,
 }
 
+/// One per-world-line first-reveal trigger in a [`DisclosureOverrideImport`]
+/// (Round 752) — the manifest + authoring-input form of a [`DisclosureReveal`]:
+/// a branch key plus its trigger-coordinate SET and an optional K-of-N
+/// threshold. The single input carrier the CLI, MCP and manifest all build (the
+/// `FactImport` convention), so the write path has ONE reveal-input shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct DisclosureRevealImport {
+    /// The world-line this reveal pins timing for (`main` or a registered branch).
+    pub branch: String,
+    /// The first-reveal trigger coordinates (each a canon section ref). Multiple
+    /// entries make a first-reached-of-a-set trigger; an empty set drops the key.
+    pub coords: Vec<String>,
+    /// Optional K-of-N threshold: omitted / `null` = first-reached (k = 1);
+    /// `k` = the k-th-earliest trigger (`2 <= k <= coords.len()`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<usize>,
+}
+
 /// One per-fact disclosure override in a [`DisclosurePlanImport`] (Round 590) —
 /// the manifest form of a `set-disclosure` decision. Applied through the SAME
 /// [`apply_disclosure_override`] the standalone setter uses (write-path parity).
@@ -4129,9 +4217,10 @@ pub struct DisclosureOverrideImport {
     pub fact_id: String,
     /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed fail-loud.
     pub mode: String,
-    /// Per-world-line `first_at` pins as `[branch, coord]` pairs.
+    /// Per-world-line first-reveal triggers (Round 752): each a branch key + its
+    /// trigger-coordinate SET + an optional threshold.
     #[serde(default)]
-    pub first_at: Vec<[String; 2]>,
+    pub first_at: Vec<DisclosureRevealImport>,
     #[serde(default)]
     pub surface: Option<DisclosureSurfaceImport>,
 }
@@ -7253,8 +7342,10 @@ pub struct DisclosureDecision<'a> {
     /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed
     /// fail-loud.
     pub mode: &'a str,
-    /// Per-world-line `first_at` pins as `(branch, coord)` pairs.
-    pub first_at: &'a [(String, String)],
+    /// Per-world-line first-reveal triggers (Round 752): each a branch + its
+    /// coord SET + optional threshold. Multiple entries for one branch
+    /// accumulate into that world's trigger set.
+    pub first_at: &'a [DisclosureRevealImport],
     /// Optional `(scene, object?)` diegetic surface.
     pub surface: Option<(&'a str, Option<&'a str>)>,
 }
@@ -7286,6 +7377,35 @@ pub fn set_disclosure(
         "disclosure_plan",
         &format!("{telling}/{fact}"),
     )
+}
+
+/// The [`DisclosureReveal`] threshold discipline (Round 752), shared by the
+/// write path ([`apply_disclosure_override`]) and the granular
+/// [`set_disclosure_reveal_threshold`] so the two cannot drift (the CLAUDE.md
+/// multi-write-path parity rule). `len` = the reveal's coord count. Rejects
+/// `Some(0)` (vacuous) and `Some(k > len)` (unsatisfiable); NORMALIZES `Some(1)`
+/// to `None` (first-reached is the canonical default). UNLIKE the edge-guard
+/// threshold ([`set_edge_guard_threshold`]), `Some(len)` is KEPT — last-reached
+/// is a DISTINCT semantic here, not a redundant AND. Returns the stored
+/// threshold, or a human reason on reject.
+fn normalize_disclosure_reveal_threshold(
+    len: usize,
+    threshold: Option<usize>,
+) -> Result<Option<usize>, String> {
+    match threshold {
+        None => Ok(None),
+        Some(0) => Err(format!(
+            "first_at threshold 0 is vacuous (a reveal that fires at none of its {len} \
+             coord(s) reveals nothing); use 1..={len}, or omit for first-reached"
+        )),
+        Some(k) if k > len => Err(format!(
+            "first_at threshold {k} exceeds its {len} coord(s) (unsatisfiable); use 1..={len}"
+        )),
+        // Some(1) = first-reached = the canonical None; each k >= 2 is kept
+        // distinct (including Some(len) = last-reached — unlike the edge guard).
+        Some(1) => Ok(None),
+        Some(k) => Ok(Some(k)),
+    }
 }
 
 /// Set one per-fact disclosure override in an IN-MEMORY store WITHOUT persisting
@@ -7326,33 +7446,58 @@ pub(crate) fn apply_disclosure_override(
             mode.trim()
         ))
     })?;
-    if disclosure_needs_typed_target(mode, !first_at.is_empty()) && !fact_is_typed {
+    // Build the per-world first-reveal triggers (Round 752): multiple first_at
+    // entries for ONE branch ACCUMULATE into that world's coord SET (the R751
+    // loosening of the pre-752 duplicate-branch reject). An emptied coord set
+    // drops the branch key (never a vacuous pin); each coord non-empty. The
+    // DisclosureReveal threshold discipline runs through the ONE shared helper
+    // the granular `set_disclosure_reveal_threshold` also uses (parity).
+    let mut acc: BTreeMap<String, (BTreeSet<String>, Option<usize>)> = BTreeMap::new();
+    for reveal in first_at {
+        let branch = reveal.branch.trim();
+        if branch.is_empty() {
+            return Err(AtomicMutateError::Validation(
+                "set_disclosure: each first_at needs a branch (non-empty)".to_string(),
+            ));
+        }
+        let entry = acc.entry(branch.to_string()).or_default();
+        for coord in &reveal.coords {
+            let coord = coord.trim();
+            if coord.is_empty() {
+                return Err(AtomicMutateError::Validation(
+                    "set_disclosure: each first_at coord must be non-empty".to_string(),
+                ));
+            }
+            entry.0.insert(coord.to_string());
+        }
+        if reveal.threshold.is_some() {
+            entry.1 = reveal.threshold; // last-write-wins per branch
+        }
+    }
+    let mut first_at_map: BTreeMap<String, DisclosureReveal> = BTreeMap::new();
+    for (branch, (coords, requested)) in acc {
+        if coords.is_empty() {
+            // A dropped (emptied) branch: a threshold naming no coords is
+            // meaningless — reject it fail-loud rather than silently discard.
+            if requested.is_some() {
+                return Err(AtomicMutateError::Validation(format!(
+                    "set_disclosure: first_at branch `{branch}` has a threshold but no coords"
+                )));
+            }
+            continue;
+        }
+        let threshold = normalize_disclosure_reveal_threshold(coords.len(), requested)
+            .map_err(|msg| AtomicMutateError::Validation(format!("set_disclosure: {msg}")))?;
+        first_at_map.insert(branch, DisclosureReveal { coords, threshold });
+    }
+    // The gate-enabling invariant runs on the RESOLVED pin set — a withhold mode
+    // OR any surviving first_at trigger requires the fact to carry a typed claim.
+    if disclosure_needs_typed_target(mode, !first_at_map.is_empty()) && !fact_is_typed {
         return Err(AtomicMutateError::Validation(format!(
             "set_disclosure: fact `{fact}` has no typed claim, but a withhold/first_at \
              disclosure decision is deterministically un-gateable without one (the \
              premature-leak gate matches by typed tuple — author a typed leg first)"
         )));
-    }
-    let mut first_at_map: BTreeMap<String, String> = BTreeMap::new();
-    for (branch, coord) in first_at {
-        let branch = branch.trim();
-        let coord = coord.trim();
-        if branch.is_empty() || coord.is_empty() {
-            return Err(AtomicMutateError::Validation(
-                "set_disclosure: each first_at needs branch=coord (both non-empty)".to_string(),
-            ));
-        }
-        // Ref resolution (branch a known world, coord a registered section) is
-        // enforced by `disclosure_override_ref_violations` on the built candidate
-        // below — the ONE checker the out-of-band scan shares (no drift).
-        if first_at_map
-            .insert(branch.to_string(), coord.to_string())
-            .is_some()
-        {
-            return Err(AtomicMutateError::Validation(format!(
-                "set_disclosure: duplicate first_at branch `{branch}`"
-            )));
-        }
     }
     let surface = match surface {
         None => None,
@@ -7424,17 +7569,26 @@ fn disclosure_override_ref_violations(
         surface,
     } = ov;
     let mut out = Vec::new();
-    for (branch, coord) in first_at {
+    for (branch, reveal) in first_at {
+        // EXHAUSTIVE destructure (Round 752) — a new ref-bearing field on
+        // DisclosureReveal stops compiling here (R737 enumeration-forcing).
+        // `threshold` is a bare count, no registry ref.
+        let DisclosureReveal {
+            coords,
+            threshold: _,
+        } = reveal;
         if !mnemosyne_core::is_known_world(&store.branches, branch) {
             out.push(format!(
                 "{context}: first_at branch `{branch}` not present in the branch registry"
             ));
         }
-        if !store.sections.contains_key(coord) {
-            out.push(format!(
-                "{context}: first_at coord `{coord}` not present as a section \
-                 (canon coordinates are structure refs)"
-            ));
+        for coord in coords {
+            if !store.sections.contains_key(coord) {
+                out.push(format!(
+                    "{context}: first_at coord `{coord}` not present as a section \
+                     (canon coordinates are structure refs)"
+                ));
+            }
         }
     }
     if let Some(s) = surface {
@@ -7479,6 +7633,199 @@ pub fn disclosure_ref_violations(store: &AtomicStore) -> Vec<String> {
         }
     }
     out
+}
+
+/// Locate a mutable [`DisclosureOverride`] for the granular reveal primitives
+/// (Round 752), fail-loud on an absent telling or override. A reveal is a
+/// property of an EXISTING disclosure decision (set-disclosure creates it),
+/// mirroring [`add_edge_guard`] requiring the edge fact to exist — so a granular
+/// reveal edit refuses to invent an override (which would need a mode out of
+/// thin air). `primitive` shapes the message.
+fn disclosure_override_mut<'a>(
+    store: &'a mut AtomicStore,
+    primitive: &str,
+    telling: &str,
+    fact: &str,
+) -> Result<&'a mut DisclosureOverride, AtomicMutateError> {
+    let plan = store.disclosure_plans.get_mut(telling).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "{primitive}: telling `{telling}` not present in the disclosure_plans registry \
+             (add-disclosure-plan + set-disclosure first)"
+        ))
+    })?;
+    plan.overrides.get_mut(fact).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "{primitive}: telling `{telling}` has no disclosure override for fact `{fact}` \
+             (set-disclosure creates the decision a reveal attaches to)"
+        ))
+    })
+}
+
+/// Round 752 — add ONE trigger coordinate to a fact's per-world first-reveal SET
+/// (the granular peer of [`set_disclosure`], mirroring [`add_edge_guard`]): the
+/// override's `first_at[branch]` reveal gains `coord`. The override must already
+/// exist (set-disclosure), the coord must be a registered section, the branch a
+/// known world, and — because adding a first_at pin makes the fact gate-targeted
+/// — the fact must carry a typed claim (the same gate-enabling invariant
+/// [`apply_disclosure_override`] enforces; the multi-write-path parity rule).
+/// Idempotent on the coordinate (a re-add is a no-op); the branch's threshold is
+/// carried unchanged (the growing set stays satisfiable — k <= old len < new len).
+pub fn add_disclosure_reveal_coord(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    telling_id: &str,
+    fact_id: &str,
+    branch: &str,
+    coord: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let telling = telling_id.trim().to_string();
+    let fact = fact_id.trim().to_string();
+    let branch = branch.trim().to_string();
+    let coord = coord.trim().to_string();
+    if branch.is_empty() || coord.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "add_disclosure_reveal_coord: --branch and --coord must be non-empty".to_string(),
+        ));
+    }
+    // The gate-enabling typed invariant: a first_at pin needs a typed target.
+    match store.narrative_facts.get(&fact).map(|f| f.typed.is_some()) {
+        Some(true) => {}
+        Some(false) => {
+            return Err(AtomicMutateError::Validation(format!(
+                "add_disclosure_reveal_coord: fact `{fact}` has no typed claim, but a first_at \
+                 trigger is deterministically un-gateable without one (author a typed leg first)"
+            )));
+        }
+        None => {
+            return Err(AtomicMutateError::Validation(format!(
+                "add_disclosure_reveal_coord: fact `{fact}` not present in narrative_facts"
+            )));
+        }
+    }
+    // Build the candidate override (a clone of the existing decision with the new
+    // coord inserted), ref-validated via the SHARED checker before it lands — the
+    // same gate the setter + out-of-band scan run, so no path drifts.
+    let mut candidate =
+        disclosure_override_mut(store, "add_disclosure_reveal_coord", &telling, &fact)?.clone();
+    let created = candidate
+        .first_at
+        .entry(branch)
+        .or_default()
+        .coords
+        .insert(coord);
+    if let Some(msg) =
+        disclosure_override_ref_violations(store, "add_disclosure_reveal_coord", &candidate)
+            .into_iter()
+            .next()
+    {
+        return Err(AtomicMutateError::Validation(msg));
+    }
+    *disclosure_override_mut(store, "add_disclosure_reveal_coord", &telling, &fact)? = candidate;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_disclosure_reveal_coord",
+        "disclosure_plan",
+        &format!("{telling}/{fact}"),
+        created,
+    )
+}
+
+/// Round 752 — remove ONE trigger coordinate from a fact's per-world first-reveal
+/// SET (the granular peer of [`add_disclosure_reveal_coord`], mirroring
+/// [`remove_edge_guard_condition`]). Drops `coord` from `first_at[branch]`; if it
+/// was the LAST coord the branch key is deleted (never a vacuous empty trigger).
+/// Fail-loud: the override, the branch, and that coord must exist. REFUSES a
+/// removal that would leave the branch's threshold `Some(k)` unsatisfiable
+/// (k > remaining) — lower it first with `set_disclosure_reveal_threshold`.
+/// UNLIKE the edge guard, a surviving `Some(len)` is NOT normalized to `None`
+/// (last-reached is a distinct semantic).
+pub fn remove_disclosure_reveal_coord(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    telling_id: &str,
+    fact_id: &str,
+    branch: &str,
+    coord: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let telling = telling_id.trim().to_string();
+    let fact = fact_id.trim().to_string();
+    let branch = branch.trim().to_string();
+    let coord = coord.trim().to_string();
+    let ov = disclosure_override_mut(store, "remove_disclosure_reveal_coord", &telling, &fact)?;
+    let reveal = match ov.first_at.get_mut(&branch) {
+        Some(r) if r.coords.contains(&coord) => r,
+        _ => {
+            return Err(AtomicMutateError::Validation(format!(
+                "remove_disclosure_reveal_coord: telling `{telling}` fact `{fact}` has no first_at \
+                 coord `{coord}` on branch `{branch}` to remove"
+            )));
+        }
+    };
+    if let Some(k) = reveal.threshold {
+        if reveal.coords.len() - 1 < k {
+            return Err(AtomicMutateError::Validation(format!(
+                "remove_disclosure_reveal_coord: branch `{branch}` reveal is {k}-of-{len} — \
+                 removing `{coord}` would leave {rem} coord(s), below the threshold {k}; lower it \
+                 first with set-disclosure-reveal-threshold, or clear the reveal",
+                len = reveal.coords.len(),
+                rem = reveal.coords.len() - 1
+            )));
+        }
+    }
+    reveal.coords.remove(&coord);
+    // Emptied set → drop the branch key (never a vacuous empty trigger). A
+    // surviving Some(len) is KEPT (last-reached, distinct — unlike the edge guard).
+    if reveal.coords.is_empty() {
+        ov.first_at.remove(&branch);
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_disclosure_reveal_coord",
+        "disclosure_plan",
+        &format!("{telling}/{fact}"),
+    )
+}
+
+/// Round 752 — set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD,
+/// the ONE place `k` changes (the granular peer of [`set_edge_guard_threshold`]).
+/// `Some(k)` makes the reveal fire at the k-th-earliest trigger (`2 <= k <= len`;
+/// `k == len` = last-reached, KEPT distinct; `k == 1` normalizes to the canonical
+/// first-reached `None`); `None` clears back to first-reached. Fail-loud: the
+/// override + branch reveal must exist, and `k` runs through the SHARED
+/// [`normalize_disclosure_reveal_threshold`] discipline (`Some(0)` vacuous,
+/// `Some(k > len)` unsatisfiable). Mnemosyne checks the range on the DECLARATION
+/// and NEVER evaluates which triggers are reached (the R712 layering line).
+pub fn set_disclosure_reveal_threshold(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    telling_id: &str,
+    fact_id: &str,
+    branch: &str,
+    threshold: Option<usize>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let telling = telling_id.trim().to_string();
+    let fact = fact_id.trim().to_string();
+    let branch = branch.trim().to_string();
+    let ov = disclosure_override_mut(store, "set_disclosure_reveal_threshold", &telling, &fact)?;
+    let reveal = ov.first_at.get_mut(&branch).ok_or_else(|| {
+        AtomicMutateError::Validation(format!(
+            "set_disclosure_reveal_threshold: telling `{telling}` fact `{fact}` has no first_at \
+             reveal on branch `{branch}` (add a coord with add-disclosure-reveal-coord first)"
+        ))
+    })?;
+    reveal.threshold = normalize_disclosure_reveal_threshold(reveal.coords.len(), threshold)
+        .map_err(|msg| {
+            AtomicMutateError::Validation(format!("set_disclosure_reveal_threshold: {msg}"))
+        })?;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_disclosure_reveal_threshold",
+        "disclosure_plan",
+        &format!("{telling}/{fact}"),
+    )
 }
 
 /// Round 626 — clear ONE telling's disclosure decision for one fact: the
@@ -7896,11 +8243,6 @@ pub fn apply_facts_manifest(
             no_op += 1;
         }
         for (ov_idx, ov) in plan.overrides.iter().enumerate() {
-            let first_at: Vec<(String, String)> = ov
-                .first_at
-                .iter()
-                .map(|[b, c]| (b.clone(), c.clone()))
-                .collect();
             let surface = ov
                 .surface
                 .as_ref()
@@ -7911,7 +8253,7 @@ pub fn apply_facts_manifest(
                     telling_id: &plan.telling_id,
                     fact_id: &ov.fact_id,
                     mode: &ov.mode,
-                    first_at: &first_at,
+                    first_at: &ov.first_at,
                     surface,
                 },
             )
@@ -10783,11 +11125,15 @@ mod tests {
         // Each entry is annotated with WHY it is or is not an identity remover
         // that can strand section refs. Update deliberately when this fails.
         let acknowledged: std::collections::BTreeSet<&str> = [
-            "section",         // R630: guarded by inbound_section_refs.
-            "section_binding", // a code binding on a section, not an identity.
-            "inventory_entry", // inventory id, referenced by nothing.
-            "disclosure",      // removes a referrer (an override), not a target.
-            "edge_cost",       // R711: a side-table VALUE keyed BY a fact, referenced
+            "section",                 // R630: guarded by inbound_section_refs.
+            "section_binding",         // a code binding on a section, not an identity.
+            "inventory_entry",         // inventory id, referenced by nothing.
+            "disclosure",              // removes a referrer (an override), not a target.
+            "disclosure_reveal_coord", // R752: drops ONE trigger coord from a fact's
+            // per-world first-reveal SET (empties → the branch key is dropped); a coord is a
+            // referrer of a section (write↔scan checked by disclosure_ref_violations),
+            // referenced by nothing itself — same leaf/referrer class as edge_guard_condition.
+            "edge_cost", // R711: a side-table VALUE keyed BY a fact, referenced
             // by nothing (a leaf); removing it strands no ref. The
             // inverse hazard (a fact removed under a live cost) is
             // the retract_fact cascade-drop, not this remover.
@@ -12743,6 +13089,17 @@ mod tests {
         first_at: &[(String, String)],
         surface: Option<(&str, Option<&str>)>,
     ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        // Adapt the legacy single-coord `(branch, coord)` pairs to the R752
+        // reveal-input shape (one first-reached coord each); the multi-coord +
+        // threshold cases are exercised directly by the R752 tests.
+        let reveals: Vec<DisclosureRevealImport> = first_at
+            .iter()
+            .map(|(b, c)| DisclosureRevealImport {
+                branch: b.clone(),
+                coords: vec![c.clone()],
+                threshold: None,
+            })
+            .collect();
         set_disclosure(
             store,
             path,
@@ -12750,7 +13107,7 @@ mod tests {
                 telling_id: telling,
                 fact_id: fact,
                 mode,
-                first_at,
+                first_at: &reveals,
                 surface,
             },
         )
@@ -12871,7 +13228,13 @@ mod tests {
         .unwrap();
         let ov = &store.disclosure_plans["dark-souls"].overrides["f-typed"];
         assert_eq!(ov.mode, DisclosureMode::State);
-        assert_eq!(ov.first_at.get("route").map(String::as_str), Some("ch-3"));
+        assert_eq!(
+            ov.first_at.get("route"),
+            Some(&DisclosureReveal {
+                coords: BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            })
+        );
         let surface = ov.surface.as_ref().unwrap();
         assert_eq!(surface.scene, "ch-2");
         assert_eq!(surface.object.as_deref(), Some("pike"));
@@ -16330,7 +16693,13 @@ mod tests {
             "gone-fact".to_string(),
             DisclosureOverride {
                 mode: DisclosureMode::State,
-                first_at: BTreeMap::from([("gone-branch".to_string(), "gone-sec".to_string())]),
+                first_at: BTreeMap::from([(
+                    "gone-branch".to_string(),
+                    DisclosureReveal {
+                        coords: BTreeSet::from(["gone-sec".to_string()]),
+                        threshold: None,
+                    },
+                )]),
                 surface: Some(DisclosureSurface {
                     scene: "gone-scene".to_string(),
                     object: Some("gone-obj".to_string()),
@@ -16456,6 +16825,283 @@ mod tests {
             unmigrated.entity_kinds["weapon"].parents.is_empty(),
             "control: without migration the legacy parent is silently dropped"
         );
+    }
+
+    /// Round 752 (v38→v39 load migration) — a hand-authored v38 store carrying
+    /// the LEGACY single-coord `first_at: {branch: "sc-NN"}` is migrated on load
+    /// to the `DisclosureReveal` object (a one-coord first-reached trigger),
+    /// BEFORE the typed parse — which would otherwise FAIL (a string where an
+    /// object is expected). NON-VACUITY: the same raw value parsed WITHOUT the
+    /// migration is a hard parse error, so the migration (not serde) does the work.
+    #[test]
+    fn v38_first_at_migrates_to_reveal_on_load() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let v38 = serde_json::json!({
+            "schema_version": 38,
+            "disclosure_plans": {
+                "t": {
+                    "overrides": {
+                        "f-1": {
+                            "mode": "state",
+                            "first_at": { "main": "sc-08", "route": "sc-12" }
+                        }
+                    }
+                }
+            }
+        });
+        fs::write(&path, serde_json::to_string_pretty(&v38).unwrap()).unwrap();
+        let store = AtomicStore::load(&path).unwrap();
+        let ov = &store.disclosure_plans["t"].overrides["f-1"];
+        assert_eq!(
+            ov.first_at["main"],
+            DisclosureReveal {
+                coords: BTreeSet::from(["sc-08".to_string()]),
+                threshold: None,
+            },
+            "legacy single coord migrates to a one-coord first-reached trigger"
+        );
+        assert_eq!(
+            ov.first_at["route"].coords,
+            BTreeSet::from(["sc-12".to_string()])
+        );
+        assert!(ov.first_at["route"].threshold.is_none());
+
+        // NON-VACUITY control: the SAME raw shape parsed WITHOUT the migration is
+        // a hard parse error (a String where a DisclosureReveal object is
+        // expected) — proving the migration is load-bearing, not serde tolerance.
+        assert!(
+            serde_json::from_value::<AtomicStore>(v38).is_err(),
+            "control: without migration the legacy string value fails to parse"
+        );
+    }
+
+    /// Round 752 — the write path builds per-world first-reveal SETS: multiple
+    /// first_at entries for ONE branch ACCUMULATE into a coord set (the loosened
+    /// duplicate-branch reject), the threshold discipline NORMALIZES Some(1)->None
+    /// and KEEPS Some(len) (last-reached, unlike the edge guard), and rejects
+    /// Some(0) / Some(k>len). NON-VACUITY: a naive single-coord write cannot hold
+    /// a 2-coord set nor a distinct Some(len).
+    #[test]
+    fn disclosure_reveal_write_path_set_and_threshold() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store); // ch-1, ch-2, ch-3
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("pike".to_string(), Entity::default());
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["pike".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "pike".to_string(),
+                    predicate: "did".to_string(),
+                    object: TypedObject::Token {
+                        token: "climbed".to_string(),
+                    },
+                }),
+                ..sample_fact("f-typed", "gt")
+            },
+        )
+        .unwrap();
+        add_disclosure_plan(&mut store, &path, "t", "withhold", "").unwrap();
+
+        let reveal =
+            |branch: &str, coords: &[&str], threshold: Option<usize>| DisclosureRevealImport {
+                branch: branch.to_string(),
+                coords: coords.iter().map(|c| c.to_string()).collect(),
+                threshold,
+            };
+        let set = |store: &mut AtomicStore, path: &Path, first_at: &[DisclosureRevealImport]| {
+            set_disclosure(
+                store,
+                path,
+                DisclosureDecision {
+                    telling_id: "t",
+                    fact_id: "f-typed",
+                    mode: "state",
+                    first_at,
+                    surface: None,
+                },
+            )
+        };
+
+        // ACCUMULATE: two separate first_at entries for `main` build a 2-coord set.
+        set(
+            &mut store,
+            &path,
+            &[
+                reveal("main", &["ch-1"], None),
+                reveal("main", &["ch-2"], None),
+            ],
+        )
+        .unwrap();
+        let stored = |store: &AtomicStore| store.disclosure_plans["t"].overrides["f-typed"].clone();
+        assert_eq!(
+            stored(&store).first_at["main"].coords,
+            BTreeSet::from(["ch-1".to_string(), "ch-2".to_string()]),
+            "two first_at entries for one branch accumulate into a set"
+        );
+        assert!(stored(&store).first_at["main"].threshold.is_none());
+
+        // Some(1) NORMALIZES to None (first-reached is the canonical default).
+        set(
+            &mut store,
+            &path,
+            &[reveal("main", &["ch-1", "ch-2"], Some(1))],
+        )
+        .unwrap();
+        assert!(stored(&store).first_at["main"].threshold.is_none());
+
+        // Some(len) is KEPT distinct (last-reached — unlike the edge guard's AND).
+        set(
+            &mut store,
+            &path,
+            &[reveal("main", &["ch-1", "ch-2"], Some(2))],
+        )
+        .unwrap();
+        assert_eq!(stored(&store).first_at["main"].threshold, Some(2));
+
+        // Some(0) is vacuous; Some(k>len) is unsatisfiable — both reject.
+        let e = set(
+            &mut store,
+            &path,
+            &[reveal("main", &["ch-1", "ch-2"], Some(0))],
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("vacuous"), "{e}");
+        let e = set(&mut store, &path, &[reveal("main", &["ch-1"], Some(2))]).unwrap_err();
+        assert!(e.to_string().contains("exceeds"), "{e}");
+        // A dangling coord still rejects via the shared ref checker.
+        let e = set(&mut store, &path, &[reveal("main", &["ch-404"], None)]).unwrap_err();
+        assert!(e.to_string().contains("first_at coord"), "{e}");
+    }
+
+    /// Round 752 — the edge-guard-parity granular reveal primitives: add / remove
+    /// one trigger coord + set/clear the threshold, sharing the DisclosureReveal
+    /// discipline with the setter. Covers the full lifecycle, the below-threshold
+    /// removal REFUSAL (the guard a naive impl misses), the empty-set branch-drop,
+    /// the typed invariant, fail-loud refs, and write↔scan parity.
+    #[test]
+    fn disclosure_reveal_granular_primitives() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store); // ch-1, ch-2, ch-3
+        store.frames.insert("gt".to_string(), Frame::default());
+        store.entities.insert("pike".to_string(), Entity::default());
+        add_predicate(
+            &mut store,
+            &path,
+            "did",
+            "token",
+            None,
+            None,
+            &["climbed".to_string()],
+            "",
+        )
+        .unwrap();
+        add_fact(
+            &mut store,
+            &path,
+            &FactImport {
+                entities: vec!["pike".to_string()],
+                typed: Some(TypedClaim {
+                    subject: "pike".to_string(),
+                    predicate: "did".to_string(),
+                    object: TypedObject::Token {
+                        token: "climbed".to_string(),
+                    },
+                }),
+                ..sample_fact("f-typed", "gt")
+            },
+        )
+        .unwrap();
+        add_fact(&mut store, &path, &sample_fact("f-untyped", "gt")).unwrap();
+        add_disclosure_plan(&mut store, &path, "t", "withhold", "").unwrap();
+
+        // A reveal attaches to an EXISTING override — fail-loud otherwise.
+        let e = add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1")
+            .unwrap_err();
+        assert!(e.to_string().contains("no disclosure override"), "{e}");
+
+        // Create a pin-less withhold override, then add two coords to `main`.
+        set_disc(&mut store, &path, "t", "f-typed", "withhold", &[], None).unwrap();
+        add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1").unwrap();
+        add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
+        let coords = |store: &AtomicStore| {
+            store.disclosure_plans["t"].overrides["f-typed"].first_at["main"]
+                .coords
+                .clone()
+        };
+        assert_eq!(
+            coords(&store),
+            BTreeSet::from(["ch-1".to_string(), "ch-2".to_string()])
+        );
+        // Idempotent re-add is a no-op.
+        let r =
+            add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
+        assert!(r.target_id.contains("no-op"), "{}", r.target_id);
+
+        // Typed invariant: adding a first_at trigger to an untyped fact rejects.
+        set_disc(&mut store, &path, "t", "f-untyped", "state", &[], None).unwrap();
+        let e = add_disclosure_reveal_coord(&mut store, &path, "t", "f-untyped", "main", "ch-1")
+            .unwrap_err();
+        assert!(e.to_string().contains("no typed claim"), "{e}");
+        // A dangling coord rejects via the shared ref checker.
+        let e = add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-404")
+            .unwrap_err();
+        assert!(e.to_string().contains("first_at coord"), "{e}");
+
+        // Threshold: Some(2) on a 2-coord set = last-reached (kept distinct).
+        set_disclosure_reveal_threshold(&mut store, &path, "t", "f-typed", "main", Some(2))
+            .unwrap();
+        assert_eq!(
+            store.disclosure_plans["t"].overrides["f-typed"].first_at["main"].threshold,
+            Some(2)
+        );
+        // Some(0) is vacuous — reject through the shared discipline.
+        let e = set_disclosure_reveal_threshold(&mut store, &path, "t", "f-typed", "main", Some(0))
+            .unwrap_err();
+        assert!(e.to_string().contains("vacuous"), "{e}");
+
+        // Below-threshold removal REFUSES (2-of-2 minus one = 1 < 2).
+        let e = remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1")
+            .unwrap_err();
+        assert!(e.to_string().contains("below the threshold"), "{e}");
+
+        // Clear the threshold, then remove down to one coord, then to empty →
+        // the branch key drops (never a vacuous empty trigger).
+        set_disclosure_reveal_threshold(&mut store, &path, "t", "f-typed", "main", None).unwrap();
+        remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1").unwrap();
+        assert_eq!(coords(&store), BTreeSet::from(["ch-2".to_string()]));
+        remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
+        assert!(
+            !store.disclosure_plans["t"].overrides["f-typed"]
+                .first_at
+                .contains_key("main"),
+            "an emptied coord set drops the branch key"
+        );
+        // Removing an absent coord fails loud.
+        let e = remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2")
+            .unwrap_err();
+        assert!(e.to_string().contains("no first_at coord"), "{e}");
+
+        // Write↔scan parity: every accepted edit left the out-of-band scan clean.
+        assert!(store_registry_violations(&store).is_empty());
     }
 
     /// Round 739 — the parent-mutation setter set_entity_kind_parents: it
@@ -17043,10 +17689,16 @@ mod tests {
                 add_disclosure_plan(s, p, "reader", "withhold", "").unwrap();
             }
 
-            // Standalone path.
-            let first_at_pairs: Vec<(String, String)> = first_at
+            // Standalone path. The legacy [branch, coord] pairs adapt to the
+            // R752 reveal-input shape (one first-reached coord each) — shared by
+            // both write paths so the parity is over the SAME reveal input.
+            let reveals: Vec<DisclosureRevealImport> = first_at
                 .iter()
-                .map(|[b, c]| (b.clone(), c.clone()))
+                .map(|[b, c]| DisclosureRevealImport {
+                    branch: b.clone(),
+                    coords: vec![c.clone()],
+                    threshold: None,
+                })
                 .collect();
             let set_ok = set_disclosure(
                 &mut store_a,
@@ -17055,7 +17707,7 @@ mod tests {
                     telling_id: "reader",
                     fact_id,
                     mode,
-                    first_at: &first_at_pairs,
+                    first_at: &reveals,
                     surface: None,
                 },
             )
@@ -17080,7 +17732,7 @@ mod tests {
                         overrides: vec![DisclosureOverrideImport {
                             fact_id: fact_id.to_string(),
                             mode: mode.to_string(),
-                            first_at,
+                            first_at: reveals.clone(),
                             surface: None,
                         }],
                     }],

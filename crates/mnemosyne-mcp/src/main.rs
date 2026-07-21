@@ -658,6 +658,21 @@ pub struct AddDisclosurePlanArgs {
     pub description: String,
 }
 
+/// One per-world-line first-reveal trigger (Round 752) — a branch plus its
+/// trigger-coordinate SET and an optional K-of-N threshold.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DisclosureRevealArg {
+    /// World-line this reveal pins timing for (main or a registered branch).
+    pub branch: String,
+    /// First-reveal trigger coordinate SET (each a section ref) — a non-linear
+    /// reader reveals the fact at the EARLIEST coord reached (first-reached).
+    pub coords: Vec<String>,
+    /// Optional K-of-N threshold: omit = first-reached (k=1); 2..=len selects the
+    /// k-th-earliest (len = last-reached).
+    #[serde(default)]
+    pub threshold: Option<usize>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetDisclosureArgs {
     /// Telling id (add_disclosure_plan first).
@@ -666,9 +681,10 @@ pub struct SetDisclosureArgs {
     pub fact_id: String,
     /// Disclosure mode: withhold | state | hint | imply.
     pub mode: String,
-    /// Per-world-line first-disclosure coordinate: branch id -> section ref.
+    /// Per-world-line first-reveal triggers (R752): each a branch + a coord SET +
+    /// optional threshold; multiple entries for one branch accumulate.
     #[serde(default)]
-    pub first_at: std::collections::BTreeMap<String, String>,
+    pub first_at: Vec<DisclosureRevealArg>,
     /// Optional diegetic surface scene (section ref the disclosure rides on).
     #[serde(default)]
     pub surface_scene: Option<String>,
@@ -2081,14 +2097,18 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Set one per-fact disclosure override within a telling (R506): mode (withhold | state | hint | imply), per-world-line first_at timing (branch -> section), and an optional diegetic surface (scene + entity). A setter (last-write-wins). Fail-loud refs: telling + fact must exist, first_at branches/coords + surface scene must resolve, surface object must be a registered entity. THE gate-enabling invariant: a withhold mode OR any first_at pin requires the fact to carry a typed claim — the premature-leak render-acceptance gate matches re-extracted prose to the plan by typed tuple, so an untyped target is un-gateable."
+        description = "Set one per-fact disclosure override within a telling (R506/R752): mode (withhold | state | hint | imply), per-world-line first_at timing (each entry {branch, coords[], threshold?} — a first-reached-of-a-SET trigger, coords the trigger set, threshold the optional K-of-N k-th-earliest; omit threshold = first-reached; multiple entries for one branch accumulate), and an optional diegetic surface (scene + entity). A setter (last-write-wins). Fail-loud refs: telling + fact must exist, first_at branches/coords + surface scene must resolve, surface object must be a registered entity. THE gate-enabling invariant: a withhold mode OR any first_at trigger requires the fact to carry a typed claim — the premature-leak render-acceptance gate matches re-extracted prose to the plan by typed tuple, so an untyped target is un-gateable."
     )]
     async fn set_disclosure(&self, args: Parameters<SetDisclosureArgs>) -> CallToolResult {
         let a = args.0;
-        let first_at: Vec<(String, String)> = a
+        let first_at: Vec<atomic::DisclosureRevealImport> = a
             .first_at
             .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|r| atomic::DisclosureRevealImport {
+                branch: r.branch.clone(),
+                coords: r.coords.clone(),
+                threshold: r.threshold,
+            })
             .collect();
         let surface = a
             .surface_scene
@@ -2454,7 +2474,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Playable world (R556/557, read-only): the map_locator seam a pinion narrative runtime consumes — per telling, the cross-world fork topology (R497) + each world-line's scene walk (R466) + the per-scene disclosure MapLocators (the authored DisclosureSurface resolved to a stable pointer {world_line, scene, scene_ordinal, object, mode, first_at}, no baked geometry = CQRS read-side). A pure JOIN over the manuscript + fork-tree projections; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated. Fail-loud on a typo'd telling / unregistered world."
+        description = "Playable world (R556/557, read-only): the map_locator seam a pinion narrative runtime consumes — per telling, the cross-world fork topology (R497) + each world-line's scene walk (R466) + the per-scene disclosure MapLocators (the authored DisclosureSurface resolved to a stable pointer {world_line, scene, scene_ordinal, object, mode, first_at}, no baked geometry = CQRS read-side). first_at is the order-free reveal DECLARATION {coords[], threshold?} (R752) — a first-reached-of-a-SET trigger the runtime resolves against the player's actual non-linear path, not a single baked coordinate. A pure JOIN over the manuscript + fork-tree projections; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated. Fail-loud on a typo'd telling / unregistered world."
     )]
     async fn report_playable_world(
         &self,

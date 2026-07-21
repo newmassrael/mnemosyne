@@ -1040,6 +1040,37 @@ pub struct DisclosureSurface {
     pub object: Option<String>,
 }
 
+/// Round 751/752 — a per-world FIRST-REVEAL TRIGGER: the discourse coordinate
+/// SET at which a fact may first legitimately reach the reader, plus an optional
+/// K-of-N threshold. The value type of a [`DisclosureOverride::first_at`] world
+/// key (a single-coord `String` before R752). The exact SHAPE-mirror of the
+/// access-axis [`EdgeGuard`](crate::EdgeGuard) — a `BTreeSet` of triggers + an
+/// `Option<usize>` threshold — but the DEFAULT differs on purpose: an edge
+/// guard's `None` is require-ALL (AND, access is conjunctive), while a reveal's
+/// `None` is FIRST-REACHED (k = 1, the reveal fires at the EARLIEST trigger a
+/// non-linear reader reaches). On world W the fact is first disclosed at the
+/// k-th-EARLIEST coord of `coords` by W's canon order, k = `threshold.
+/// unwrap_or(1)`. Mnemosyne stores this DECLARATION order-free (core does not
+/// depend on `CanonOrder`); the validate layer resolves the k-th-earliest with
+/// the order, and pinion resolves first-reached against the player's actual
+/// path at runtime (the R712 declaration-stored-never-evaluated line — pinning
+/// one coord here would re-impose the single-ordinal limit R752 removes). The
+/// write path checks `2 <= k <= len` and NORMALIZES `Some(1)` to `None` (the
+/// canonical first-reached default); UNLIKE the edge guard, `Some(len)` is NOT
+/// normalized away — each k is a DISTINCT semantic (`Some(len)` = last-reached).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisclosureReveal {
+    /// The discourse-coordinate trigger set (each a canon structure-section ref,
+    /// per-member dangling-ref checked). An emptied set drops the whole world
+    /// key from [`DisclosureOverride::first_at`].
+    pub coords: BTreeSet<String>,
+    /// K-of-N threshold: `None` = FIRST-reached (k = 1); `Some(k)` = the
+    /// k-th-earliest (`2 <= k <= len`, `Some(len)` = last-reached, kept
+    /// distinct). Omitted from the wire form when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<usize>,
+}
+
 /// One per-fact disclosure decision within a telling (Round 506, design sec
 /// 7.24): a sparse override over the plan's `default_mode`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1049,11 +1080,12 @@ pub struct DisclosureOverride {
     /// The discourse coordinate where the reader first LEARNS this fact, per
     /// WORLD-LINE (resolves the R502 under-spec: reading order differs per
     /// branch — the per-world contract). Keyed by branch id; the value is a
-    /// structure-section ref in canon space (the same space as `canon_from`),
-    /// distinct from when the fact is TRUE in the fabula. Empty = no timing
-    /// pin (a pure `withhold`, or timing left to the fact's own coordinate).
+    /// [`DisclosureReveal`] first-reveal trigger (a coord SET + optional
+    /// threshold, R752), distinct from when the fact is TRUE in the fabula.
+    /// Empty = no timing pin (a pure `withhold`, or timing left to the fact's
+    /// own coordinate).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub first_at: BTreeMap<String, String>,
+    pub first_at: BTreeMap<String, DisclosureReveal>,
     /// Optional scene/object the disclosure rides on (render-brief craft hint;
     /// NOT gated).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1104,10 +1136,13 @@ pub struct EffectiveDisclosure {
     /// `true` iff an explicit per-fact override exists (vs the plan default) —
     /// the coverage `never-planned` (defaulted) vs `disclosed`/`hidden` split.
     pub is_override: bool,
-    /// The first-disclosure coordinate for the queried world (`None` when
-    /// defaulted, or the override pins no coordinate for this world). Distinct
-    /// from when the fact is TRUE in the fabula (`canon_from`).
-    pub first_at: Option<String>,
+    /// The first-reveal TRIGGER for the queried world (`None` when defaulted,
+    /// or the override pins no trigger for this world) — the order-free
+    /// [`DisclosureReveal`] DECLARATION (a coord SET + optional threshold,
+    /// R752), NOT a resolved single coordinate: the validate layer resolves the
+    /// k-th-earliest with the canon order, pinion resolves first-reached against
+    /// the player's path. Distinct from when the fact is TRUE (`canon_from`).
+    pub first_at: Option<DisclosureReveal>,
     /// The diegetic surface the disclosure rides on (override-only; render
     /// craft guidance, never gated).
     pub surface: Option<DisclosureSurface>,
@@ -1326,7 +1361,13 @@ mod tests {
     fn disclosure_plan_effective_resolver() {
         let mut overrides = BTreeMap::new();
         let mut first_at = BTreeMap::new();
-        first_at.insert("w1".to_string(), "ch-3".to_string());
+        first_at.insert(
+            "w1".to_string(),
+            DisclosureReveal {
+                coords: BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            },
+        );
         overrides.insert(
             "shown".to_string(),
             DisclosureOverride {
@@ -1349,7 +1390,14 @@ mod tests {
         let e_w1 = plan.effective("shown", "w1");
         assert_eq!(e_w1.mode, DisclosureMode::State);
         assert!(e_w1.is_override);
-        assert_eq!(e_w1.first_at.as_deref(), Some("ch-3"));
+        assert_eq!(
+            e_w1.first_at,
+            Some(DisclosureReveal {
+                coords: BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            }),
+            "the resolver carries the order-free reveal declaration for w1"
+        );
         assert!(e_w1.surface.is_some());
         // No pin for another world-line.
         assert_eq!(plan.effective("shown", "w2").first_at, None);

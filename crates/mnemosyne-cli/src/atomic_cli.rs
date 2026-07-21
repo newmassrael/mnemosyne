@@ -1635,14 +1635,19 @@ pub fn cmd_add_disclosure_plan(workspace_root: &Path, args: &[String]) -> Result
     )
 }
 
-/// Round 506 — set one per-fact disclosure override within a telling.
-/// `--first-at <branch>=<coord>` is repeatable (per world-line timing);
-/// `--surface <scene>[,<object>]` is optional (the diegetic carrier).
+/// Round 506 / 752 — set one per-fact disclosure override within a telling.
+/// `--first-at <branch>=<coord>` is repeatable and ACCUMULATES coords per branch
+/// into a first-reached trigger SET; `--first-at-threshold <branch>=<k>` pins the
+/// K-of-N threshold for a branch (omit = first-reached); `--surface
+/// <scene>[,<object>]` is optional (the diegetic carrier).
 pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut telling_id: Option<String> = None;
     let mut fact_id: Option<String> = None;
     let mut mode: Option<String> = None;
-    let mut first_at: Vec<(String, String)> = Vec::new();
+    // branch -> (accumulated coord set, optional threshold). BTreeMap keeps a
+    // deterministic branch order for the built reveal list.
+    let mut first_at: std::collections::BTreeMap<String, (Vec<String>, Option<usize>)> =
+        std::collections::BTreeMap::new();
     let mut surface_scene: Option<String> = None;
     let mut surface_object: Option<String> = None;
     let mut sidecar: Option<String> = None;
@@ -1676,7 +1681,23 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), 
                 let (branch, coord) = raw
                     .split_once('=')
                     .ok_or_else(|| anyhow!("--first-at format: <branch>=<coord>"))?;
-                first_at.push((branch.to_string(), coord.to_string()));
+                first_at
+                    .entry(branch.to_string())
+                    .or_default()
+                    .0
+                    .push(coord.to_string());
+            }
+            "--first-at-threshold" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("--first-at-threshold missing"))?;
+                let (branch, k) = raw
+                    .split_once('=')
+                    .ok_or_else(|| anyhow!("--first-at-threshold format: <branch>=<k>"))?;
+                let k = k.parse::<usize>().map_err(|_| {
+                    anyhow!("--first-at-threshold k must be a non-negative integer, got `{k}`")
+                })?;
+                first_at.entry(branch.to_string()).or_default().1 = Some(k);
             }
             "--surface" => {
                 let raw = iter.next().ok_or_else(|| anyhow!("--surface missing"))?;
@@ -1702,6 +1723,16 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), 
     let telling_id = telling_id.ok_or_else(|| anyhow!("--telling arg required"))?;
     let fact_id = fact_id.ok_or_else(|| anyhow!("--fact arg required"))?;
     let mode = mode.ok_or_else(|| anyhow!("--mode arg required"))?;
+    let reveals: Vec<mnemosyne_atomic::DisclosureRevealImport> = first_at
+        .into_iter()
+        .map(
+            |(branch, (coords, threshold))| mnemosyne_atomic::DisclosureRevealImport {
+                branch,
+                coords,
+                threshold,
+            },
+        )
+        .collect();
     let surface = surface_scene
         .as_deref()
         .map(|scene| (scene, surface_object.as_deref()));
@@ -1715,12 +1746,197 @@ pub fn cmd_set_disclosure(workspace_root: &Path, args: &[String]) -> Result<(), 
                 telling_id: &telling_id,
                 fact_id: &fact_id,
                 mode: &mode,
-                first_at: &first_at,
+                first_at: &reveals,
                 surface,
             },
         ),
         json,
     )
+}
+
+/// Round 752 — add ONE trigger coordinate to a fact's per-world first-reveal SET
+/// (the granular peer of `set-disclosure`, mirroring `add-edge-guard`). The
+/// override must already exist (set-disclosure); the coord must be a section.
+pub fn cmd_add_disclosure_reveal_coord(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let (telling, fact, branch, coord, sidecar, json) = parse_reveal_coord_args(args)?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::add_disclosure_reveal_coord(
+            &mut store,
+            &sidecar_path,
+            &telling,
+            &fact,
+            &branch,
+            &coord,
+        ),
+        json,
+    )
+}
+
+/// Round 752 — remove ONE trigger coordinate from a fact's per-world first-reveal
+/// SET (the granular peer of `add-disclosure-reveal-coord`). The branch key is
+/// dropped when the set empties; refuses a removal below a set threshold.
+pub fn cmd_remove_disclosure_reveal_coord(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let (telling, fact, branch, coord, sidecar, json) = parse_reveal_coord_args(args)?;
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::remove_disclosure_reveal_coord(
+            &mut store,
+            &sidecar_path,
+            &telling,
+            &fact,
+            &branch,
+            &coord,
+        ),
+        json,
+    )
+}
+
+/// Round 752 — set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD
+/// (the granular peer of `set-edge-guard-threshold`). `--threshold k` = the
+/// k-th-earliest trigger (2<=k<=len; k=1 normalizes to first-reached; k=len =
+/// last-reached, kept distinct); `--clear` reverts to first-reached.
+pub fn cmd_set_disclosure_reveal_threshold(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let mut telling: Option<String> = None;
+    let mut fact: Option<String> = None;
+    let mut branch: Option<String> = None;
+    let mut threshold: Option<usize> = None;
+    let mut clear = false;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--fact" => {
+                fact = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--branch" => {
+                branch = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--branch missing"))?
+                        .clone(),
+                )
+            }
+            "--threshold" => {
+                let v = iter.next().ok_or_else(|| anyhow!("--threshold missing"))?;
+                threshold = Some(v.parse::<usize>().map_err(|_| {
+                    anyhow!("--threshold must be a non-negative integer, got `{v}`")
+                })?);
+            }
+            "--clear" => clear = true,
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let telling = telling.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let fact = fact.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let branch = branch.ok_or_else(|| anyhow!("--branch arg required"))?;
+    if threshold.is_some() == clear {
+        return Err(anyhow!("provide exactly one of --threshold <k> or --clear").into());
+    }
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_disclosure_reveal_threshold(
+            &mut store,
+            &sidecar_path,
+            &telling,
+            &fact,
+            &branch,
+            threshold,
+        ),
+        json,
+    )
+}
+
+/// Shared `--telling --fact --branch --coord [--sidecar] [--json]` parser for
+/// the add/remove disclosure-reveal-coord primitives (Round 752).
+#[allow(clippy::type_complexity)]
+fn parse_reveal_coord_args(
+    args: &[String],
+) -> Result<(String, String, String, String, Option<String>, bool)> {
+    let mut telling: Option<String> = None;
+    let mut fact: Option<String> = None;
+    let mut branch: Option<String> = None;
+    let mut coord: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--telling" => {
+                telling = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--telling missing"))?
+                        .clone(),
+                )
+            }
+            "--fact" => {
+                fact = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--fact missing"))?
+                        .clone(),
+                )
+            }
+            "--branch" => {
+                branch = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--branch missing"))?
+                        .clone(),
+                )
+            }
+            "--coord" => {
+                coord = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--coord missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other)),
+        }
+    }
+    let telling = telling.ok_or_else(|| anyhow!("--telling arg required"))?;
+    let fact = fact.ok_or_else(|| anyhow!("--fact arg required"))?;
+    let branch = branch.ok_or_else(|| anyhow!("--branch arg required"))?;
+    let coord = coord.ok_or_else(|| anyhow!("--coord arg required"))?;
+    Ok((telling, fact, branch, coord, sidecar, json))
 }
 
 /// Round 626 — clear ONE telling's disclosure decision for one fact: the

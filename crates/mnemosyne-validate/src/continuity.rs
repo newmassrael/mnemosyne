@@ -4540,8 +4540,12 @@ pub struct FactDisclosure {
     /// (`withhold`/`state`/`hint`/`imply`); a typed enum, not a stringly field
     /// (Round 510).
     pub mode: mnemosyne_core::DisclosureMode,
+    /// The first-reveal TRIGGER for this world (Round 752) — the order-free
+    /// [`DisclosureReveal`](mnemosyne_core::DisclosureReveal) DECLARATION (a
+    /// coord SET + optional threshold), NOT a resolved coordinate: the render
+    /// step / pinion resolves first-reached against the walked path.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub first_at: Option<String>,
+    pub first_at: Option<mnemosyne_core::DisclosureReveal>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub surface: Option<mnemosyne_core::DisclosureSurface>,
 }
@@ -5046,10 +5050,14 @@ pub struct MapLocator {
     /// The effective disclosure mode under the telling (state/hint/imply/
     /// withhold) — pinion honors it when surfacing.
     pub mode: mnemosyne_core::DisclosureMode,
-    /// The reader's first-learn coordinate for THIS world (the disclosure
-    /// `first_at`; `None` when unpinned — distinct from the fact's `canon_from`).
+    /// The reader's first-reveal TRIGGER for THIS world (Round 752) — the
+    /// order-free [`DisclosureReveal`](mnemosyne_core::DisclosureReveal)
+    /// DECLARATION (a coord SET + optional K-of-N threshold), so pinion resolves
+    /// FIRST-REACHED against the player's actual non-linear path at runtime (the
+    /// R712 declaration-stored-never-evaluated seam). `None` when unpinned;
+    /// distinct from the fact's `canon_from`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub first_at: Option<String>,
+    pub first_at: Option<mnemosyne_core::DisclosureReveal>,
 }
 
 /// One world-line's playable surface (Round 556/557, design sec 7.37): the
@@ -10060,7 +10068,13 @@ mod tests {
             &[("route", MAIN_BRANCH, "ch-2")],
         );
         let mut first_at = BTreeMap::new();
-        first_at.insert("route".to_string(), "ch-3".to_string());
+        first_at.insert(
+            "route".to_string(),
+            mnemosyne_core::DisclosureReveal {
+                coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            },
+        );
         let mut overrides = BTreeMap::new();
         overrides.insert(
             "f-main".to_string(),
@@ -10110,6 +10124,7 @@ mod tests {
         let d = ev.disclosure.as_ref().unwrap();
         assert_eq!(d.mode, mnemosyne_core::DisclosureMode::State);
         assert_eq!(d.first_at, None, "no first_at pinned for the main world");
+        // (first_at now carries the order-free reveal DECLARATION, R752.)
         let surface = d.surface.as_ref().unwrap();
         assert_eq!(surface.scene, "ch-2");
         assert_eq!(surface.object.as_deref(), Some("clock"));
@@ -10124,8 +10139,12 @@ mod tests {
             .collect();
         let f_main = route_begins.iter().find(|e| e.fact_id == "f-main").unwrap();
         assert_eq!(
-            f_main.disclosure.as_ref().unwrap().first_at.as_deref(),
-            Some("ch-3")
+            f_main.disclosure.as_ref().unwrap().first_at,
+            Some(mnemosyne_core::DisclosureReveal {
+                coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            }),
+            "the route world carries f-main's order-free reveal declaration"
         );
         let f_rev = route_begins.iter().find(|e| e.fact_id == "f-rev").unwrap();
         assert_eq!(
@@ -10157,7 +10176,13 @@ mod tests {
             &[("route", MAIN_BRANCH, "ch-2")],
         );
         let mut first_at = BTreeMap::new();
-        first_at.insert("route".to_string(), "ch-3".to_string());
+        first_at.insert(
+            "route".to_string(),
+            mnemosyne_core::DisclosureReveal {
+                coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            },
+        );
         let mut overrides = BTreeMap::new();
         overrides.insert(
             "f-main".to_string(),
@@ -10219,7 +10244,14 @@ mod tests {
         assert_eq!(route.locators.len(), 1);
         let route_loc = &route.locators[0];
         assert_eq!(route_loc.fact_id, "f-main");
-        assert_eq!(route_loc.first_at.as_deref(), Some("ch-3"));
+        assert_eq!(
+            route_loc.first_at,
+            Some(mnemosyne_core::DisclosureReveal {
+                coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
+                threshold: None,
+            }),
+            "the locator carries the order-free reveal set for pinion to resolve"
+        );
         assert_eq!(
             route_loc.scene_ordinal,
             route

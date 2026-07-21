@@ -22,13 +22,61 @@
 //! `validate-workspace` store-integrity gates; disclosure timing is a render
 //! property, not a store invariant.
 
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_core::DisclosureMode;
+use mnemosyne_core::{DisclosureMode, DisclosureReveal};
 use serde::Serialize;
 
 use crate::continuity::CanonOrder;
+
+/// Resolve a [`DisclosureReveal`] DECLARATION to its effective first-reveal pin
+/// on `world` (Round 752): the k-th-EARLIEST trigger coordinate by `world`'s
+/// canon order, k = `threshold.unwrap_or(1)` (FIRST-reached by default). The ONE
+/// order-aware resolver of a reveal — the leak gate compares against this pin
+/// exactly as it did the single ordinal before R752 (core stores the order-free
+/// declaration; this validate-layer helper applies the order, per the layering
+/// split). Returns `None` when the reveal's coords do NOT form a CHAIN in this
+/// world's order (incomparable or world-absent coords), or when fewer than k are
+/// present: the k-th-earliest is then UNDEFINED, so the gate surfaces the matches
+/// as unordered rather than inventing a false pin (an honest None, never a
+/// guessed early-leak verdict). Pinion resolves first-reached against the
+/// player's actual non-linear path at runtime from the same declaration.
+pub fn resolve_reveal_pin(
+    reveal: &DisclosureReveal,
+    world: &str,
+    order: &CanonOrder,
+) -> Option<String> {
+    let k = reveal.threshold.unwrap_or(1);
+    if k == 0 {
+        return None; // defensive — the write path normalizes Some(0) away
+    }
+    let mut coords: Vec<&str> = reveal.coords.iter().map(String::as_str).collect();
+    if coords.len() < k {
+        return None;
+    }
+    coords.sort_by(|a, b| {
+        if a == b {
+            Ordering::Equal
+        } else if order.le(world, a, b) {
+            Ordering::Less
+        } else if order.le(world, b, a) {
+            Ordering::Greater
+        } else {
+            // Incomparable — a deterministic id tiebreak keeps the sort total;
+            // the chain check below rejects the (ambiguous) ordering as None.
+            a.cmp(b)
+        }
+    });
+    // The coords must form a CHAIN (each precedes the next) for the k-th-earliest
+    // to be well-defined; a non-chain has no definite k-th trigger.
+    if coords.windows(2).all(|w| order.le(world, w[0], w[1])) {
+        Some(coords[k - 1].to_string())
+    } else {
+        None
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Step 4 — disclosure coverage (SURFACE, never gated).
@@ -122,7 +170,10 @@ pub struct DisclosureLeak {
     pub reextracted_id: String,
     /// The matched fact's re-extracted discourse coordinate.
     pub coord: String,
-    /// The `first_at` pin (`early` / `unordered` only).
+    /// The RESOLVED first_at pin the gate compared against — the k-th-earliest
+    /// trigger of the world's [`DisclosureReveal`] by its canon order (Round
+    /// 752). `early` / `unordered` only; `None` when the reveal had no definite
+    /// pin in this world (a non-chain trigger set surfaced as `unordered`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_at: Option<String>,
 }
@@ -210,8 +261,8 @@ pub fn disclosure_leak(
     };
     for (fact_id, ov) in &plan.overrides {
         let is_withhold = ov.mode == DisclosureMode::Withhold;
-        let pin = ov.first_at.get(world);
-        if !is_withhold && pin.is_none() {
+        let reveal = ov.first_at.get(world);
+        if !is_withhold && reveal.is_none() {
             continue; // not targeted for this world-line
         }
         report.targeted += 1;
@@ -246,11 +297,27 @@ pub fn disclosure_leak(
             }
             continue;
         }
-        let pin = pin.expect("targeted non-withhold has a pin");
+        let reveal = reveal.expect("targeted non-withhold has a reveal");
+        // Resolve the reveal DECLARATION to its effective pin: the k-th-EARLIEST
+        // trigger by this world's order (R752 first-reached-of-a-set). A reveal
+        // whose coords do not form a chain in this world (or fewer than k
+        // present) has no definite pin — its matches surface as unordered
+        // honesty (never a false early-leak), not compared against a guessed pin.
+        let pin = resolve_reveal_pin(reveal, world, order);
         if matches.is_empty() {
             report.unmatched.push(fact_id.clone());
         }
         for (gid, coord) in matches {
+            let Some(pin) = pin.as_deref() else {
+                report.unordered.push(DisclosureLeak {
+                    fact_id: fact_id.clone(),
+                    kind: LeakKind::Unordered,
+                    reextracted_id: gid.clone(),
+                    coord: coord.to_string(),
+                    first_at: None,
+                });
+                continue;
+            };
             if coord == pin {
                 continue; // at the pin = on time
             }
@@ -261,7 +328,7 @@ pub fn disclosure_leak(
                     kind: LeakKind::Early,
                     reextracted_id: gid.clone(),
                     coord: coord.to_string(),
-                    first_at: Some(pin.clone()),
+                    first_at: Some(pin.to_string()),
                 });
             } else if !order.le(world, pin, coord) {
                 // neither direction => incomparable honesty surface (B-1).
@@ -270,7 +337,7 @@ pub fn disclosure_leak(
                     kind: LeakKind::Unordered,
                     reextracted_id: gid.clone(),
                     coord: coord.to_string(),
-                    first_at: Some(pin.clone()),
+                    first_at: Some(pin.to_string()),
                 });
             }
             // else coord strictly after pin => on time.
@@ -408,12 +475,44 @@ mod tests {
     }
 
     fn ov(mode: DisclosureMode, first_at: &[(&str, &str)]) -> DisclosureOverride {
+        // A single-coord first-reached trigger per branch (the common case); the
+        // R752 multi-coord + threshold triggers are built directly in their test.
         DisclosureOverride {
             mode,
             first_at: first_at
                 .iter()
-                .map(|(b, c)| (b.to_string(), c.to_string()))
+                .map(|(b, c)| {
+                    (
+                        b.to_string(),
+                        DisclosureReveal {
+                            coords: BTreeSet::from([c.to_string()]),
+                            threshold: None,
+                        },
+                    )
+                })
                 .collect(),
+            surface: None,
+        }
+    }
+
+    /// A per-branch reveal with an explicit trigger SET + threshold (Round 752).
+    fn reveal_ov(
+        mode: DisclosureMode,
+        branch: &str,
+        coords: &[&str],
+        threshold: Option<usize>,
+    ) -> DisclosureOverride {
+        let mut first_at = BTreeMap::new();
+        first_at.insert(
+            branch.to_string(),
+            DisclosureReveal {
+                coords: coords.iter().map(|c| c.to_string()).collect(),
+                threshold,
+            },
+        );
+        DisclosureOverride {
+            mode,
+            first_at,
             surface: None,
         }
     }
@@ -521,6 +620,78 @@ mod tests {
             r.leaks.is_empty(),
             "belief-frame is not the reader's established truth"
         );
+    }
+
+    /// Round 752 — the leak gate resolves a reveal TRIGGER SET to its k-th-
+    /// earliest pin by the world's order, not a single ordinal. NON-VACUITY: the
+    /// trigger set {x-2, b-4} has canon-earliest x-2 and canon-latest b-4, with
+    /// LEXICAL order REVERSED (b-4 < x-2) — so a naive "first coord in the set"
+    /// picks the wrong end. k=1 (first-reached) pins x-2: a match before x-2
+    /// leaks, one BETWEEN x-2 and b-4 does NOT. k=2 pins b-4 (the 2nd/last): the
+    /// same between-match now leaks. Reverting to single-coord fails both halves.
+    #[test]
+    fn leak_gate_resolves_kth_earliest_of_a_reveal_set() {
+        let order = CanonOrder::from_edges(&[
+            ["r-1".into(), "x-2".into()],
+            ["x-2".into(), "m-3".into()],
+            ["m-3".into(), "b-4".into()],
+        ])
+        .unwrap();
+        let build = |threshold: Option<usize>| {
+            let mut authored = AtomicStore::new();
+            register_vocab(&mut authored);
+            authored
+                .narrative_facts
+                .insert("e".into(), nf("gt", "x-2", Some(typed("pike", "climbed"))));
+            let mut overrides = BTreeMap::new();
+            overrides.insert(
+                "e".to_string(),
+                reveal_ov(DisclosureMode::State, "main", &["x-2", "b-4"], threshold),
+            );
+            authored
+                .disclosure_plans
+                .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
+            authored
+        };
+        let match_at = |coord: &str| {
+            let mut store = AtomicStore::new();
+            store
+                .narrative_facts
+                .insert("g".into(), nf("gt", coord, Some(typed("pike", "climbed"))));
+            store
+        };
+
+        // FIRST-REACHED (k=1): the effective pin is x-2 (the canon-EARLIEST).
+        let authored = build(None);
+        let r = disclosure_leak(&authored, &match_at("r-1"), &order, "t", "main", "gt").unwrap();
+        assert_eq!(
+            r.leaks.len(),
+            1,
+            "a match before the first-reached trigger leaks"
+        );
+        assert_eq!(r.leaks[0].kind, LeakKind::Early);
+        assert_eq!(
+            r.leaks[0].first_at.as_deref(),
+            Some("x-2"),
+            "the resolved pin is the canon-earliest of the set, not the lexical-first"
+        );
+        let r = disclosure_leak(&authored, &match_at("m-3"), &order, "t", "main", "gt").unwrap();
+        assert!(
+            r.leaks.is_empty(),
+            "a match AFTER the first-reached trigger (between x-2 and b-4) is on time: {:?}",
+            r.leaks
+        );
+
+        // THRESHOLD 2 (k=2): the effective pin is b-4 (the 2nd-earliest = last).
+        let authored = build(Some(2));
+        let r = disclosure_leak(&authored, &match_at("m-3"), &order, "t", "main", "gt").unwrap();
+        assert_eq!(
+            r.leaks.len(),
+            1,
+            "k=2 pins the 2nd-earliest (b-4), so the between-match is early: {:?}",
+            r.leaks
+        );
+        assert_eq!(r.leaks[0].first_at.as_deref(), Some("b-4"));
     }
 
     /// Round 510 (F5) — the vacuous-pass guard distinguishes a genuine clean

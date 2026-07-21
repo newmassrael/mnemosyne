@@ -398,7 +398,7 @@ static COMMANDS: &[Command] = &[
             "   bulk narrative registries + facts (Round 430/446): manifest = {frames:[{frame_id,description?}], branches:[...],",
             "   entities:[...], predicates:[{predicate_id,object_kind,subject_kind?,object_entity_kind?,description?}],",
             "   facts:[{fact_id,frame,branch?,entities?,claim,canon_from,canon_to?,evidence[],conflicts_with?,supersedes_in_frame?,payoff_expectation?,pays_off?,typed?,quote?}],",
-            "   disclosure_plans:[{telling_id,default_mode?,description?,overrides:[{fact_id,mode,first_at?,surface?}]}] (Round 590 all-primitive)};",
+            "   disclosure_plans:[{telling_id,default_mode?,description?,overrides:[{fact_id,mode,first_at?:[{branch,coords[],threshold?}],surface?}]}] (Round 590/752 all-primitive)};",
             "   one atomic transaction (registries -> facts -> disclosure); quote_sha256 computed at write, never caller-supplied;",
             "   typed = {subject,predicate,object:{kind:entity,id}|{kind:value,value}} (Round 446 typed leg)",
         ],
@@ -680,9 +680,48 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["set-disclosure --telling <id> --fact <id> --mode withhold|state|hint|imply [--first-at <branch>=<section> ...] [--surface <section>[,<entity>]] [--sidecar <path>] [--json]"],
-        notes: &["   Round 506 — disclosure (discourse) layer: a named telling over the fact base; withhold/first_at need a typed fact (gate-matchable)"],
+        usage: &["set-disclosure --telling <id> --fact <id> --mode withhold|state|hint|imply [--first-at <branch>=<section> ...] [--first-at-threshold <branch>=<k> ...] [--surface <section>[,<entity>]] [--sidecar <path>] [--json]"],
+        notes: &["   Round 506 — disclosure (discourse) layer: a named telling over the fact base; withhold/first_at need a typed fact (gate-matchable)",
+                 "   Round 752 — --first-at is repeatable and ACCUMULATES coords per branch into a first-reached trigger SET; --first-at-threshold k = the k-th-earliest (2<=k<=len; k=len=last-reached)"],
         run: |c| atomic_cli::cmd_set_disclosure(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "add-disclosure-reveal-coord",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["add-disclosure-reveal-coord --telling <id> --fact <id> --branch <branch> --coord <section> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 752 — the granular peer of set-disclosure (mirrors add-edge-guard): add ONE",
+            "   trigger coord to a fact's per-world first-reveal SET; override must exist (set-disclosure",
+            "   first), coord must be a section, fact must be typed (gate-matchable)",
+        ],
+        run: |c| atomic_cli::cmd_add_disclosure_reveal_coord(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "remove-disclosure-reveal-coord",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["remove-disclosure-reveal-coord --telling <id> --fact <id> --branch <branch> --coord <section> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 752 — drop ONE coord from a fact's per-world first-reveal set; the branch key is",
+            "   removed when the set empties; refuses a removal below a set K-of-N threshold",
+        ],
+        run: |c| atomic_cli::cmd_remove_disclosure_reveal_coord(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-disclosure-reveal-threshold",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["set-disclosure-reveal-threshold --telling <id> --fact <id> --branch <branch> (--threshold <k> | --clear) [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 752 — set a K-of-N threshold on a per-world reveal (mirrors set-edge-guard-threshold):",
+            "   --threshold k = the k-th-earliest trigger (2<=k<=len; k=1 normalizes to first-reached;",
+            "   k=len=last-reached, kept distinct); --clear reverts to first-reached. Never evaluated",
+        ],
+        run: |c| atomic_cli::cmd_set_disclosure_reveal_threshold(&c.anchor()?, c.rest()),
     },
     Command {
         name: "remove-disclosure",
@@ -3404,6 +3443,20 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Round 752 — render a first-reveal [`DisclosureReveal`] trigger for the human
+/// surfaces as `first_at={coord,…} k=N`: the trigger SET plus the effective
+/// K-of-N (`threshold.unwrap_or(1)` = first-reached). The JSON already carries
+/// the structured shape; this is the readable echo (leading space to slot into
+/// the existing bracketed line).
+fn format_reveal(reveal: &mnemosyne_core::DisclosureReveal) -> String {
+    let coords: Vec<&str> = reveal.coords.iter().map(String::as_str).collect();
+    format!(
+        " first_at={{{}}} k={}",
+        coords.join(","),
+        reveal.threshold.unwrap_or(1)
+    )
+}
+
 /// Round 466 — playthrough manuscript (`report-playthrough-manuscript`,
 /// design sec 7.17): per query world (or the single `--world` filter), the
 /// composed canon order's deterministic topological walk with declared
@@ -3476,11 +3529,7 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
                 let count = e.count.map(|n| format!(" (x{n})")).unwrap_or_default();
                 match &e.disclosure {
                     Some(d) => {
-                        let at = d
-                            .first_at
-                            .as_deref()
-                            .map(|c| format!(" first_at={c}"))
-                            .unwrap_or_default();
+                        let at = d.first_at.as_ref().map(format_reveal).unwrap_or_default();
                         let surf = d
                             .surface
                             .as_ref()
@@ -3667,11 +3716,7 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
                 .as_deref()
                 .map(|o| format!("/{o}"))
                 .unwrap_or_default();
-            let at = loc
-                .first_at
-                .as_deref()
-                .map(|c| format!(" first_at={c}"))
-                .unwrap_or_default();
+            let at = loc.first_at.as_ref().map(format_reveal).unwrap_or_default();
             println!(
                 "  [{}] {} @ {}{} (#{}){}",
                 loc.mode.as_str(),
