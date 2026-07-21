@@ -171,6 +171,7 @@ mod tests {
                 free_investigate: false,
             },
             journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
                 free_investigate: true,
             },
             journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
         }
     }
 

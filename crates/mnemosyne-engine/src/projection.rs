@@ -500,6 +500,7 @@ mod tests {
                 free_investigate: false,
             },
             journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
         };
         let proj = PlayableProjection::from_report(build(), &overrides).unwrap();
         let view = proj.scene("main", "sc-01");
@@ -558,6 +559,7 @@ mod tests {
         let overrides = StaticOverrides {
             interactivity: Interactivity::default(),
             journal_predicates: vec!["pursues".to_string()],
+            quest_precondition_predicates: Vec::new(),
         };
         let filtered = PlayableProjection::from_report(build(), &overrides).unwrap();
         let lines = filtered.lines("main", "sc-01");

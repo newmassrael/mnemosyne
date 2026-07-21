@@ -25,6 +25,17 @@ pub trait EngineOverrides {
     /// world narrative — routed OUT of the prose `lines` stream (still available
     /// to a quest layer). Empty = every fact is prose.
     fn journal_predicates(&self) -> &[String];
+
+    /// Typed predicates whose claims are quest COMPLETION-PRECONDITIONS: the
+    /// facts a quest needs diggable before it can complete (e.g. a consumer's
+    /// `opened_by`). The kernel reads these keyed by quest for the
+    /// completability gate ([`QuestProjection`](crate::QuestProjection)); it
+    /// never hardcodes a predicate name — the consumer declares it, the same
+    /// contract as [`journal_predicates`](EngineOverrides::journal_predicates).
+    /// Default: none (no completability gate).
+    fn quest_precondition_predicates(&self) -> &[String] {
+        &[]
+    }
 }
 
 /// The zero-config override: no interactivity, no journal policy. A store plays
@@ -51,7 +62,8 @@ impl EngineOverrides for DefaultOverrides {
 /// ```json
 /// {
 ///   "interactivity": { "ladders": { "sc-01": [] }, "objects": [] },
-///   "journal_predicates": ["pursues", "requires", "completed_by"]
+///   "journal_predicates": ["pursues", "requires", "completed_by"],
+///   "quest_precondition_predicates": ["opened_by"]
 /// }
 /// ```
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -62,6 +74,9 @@ pub struct StaticOverrides {
     /// The journal-predicate policy.
     #[serde(default)]
     pub journal_predicates: Vec<String>,
+    /// The quest completion-precondition predicate policy (e.g. `["opened_by"]`).
+    #[serde(default)]
+    pub quest_precondition_predicates: Vec<String>,
 }
 
 impl StaticOverrides {
@@ -93,6 +108,10 @@ impl EngineOverrides for StaticOverrides {
 
     fn journal_predicates(&self) -> &[String] {
         &self.journal_predicates
+    }
+
+    fn quest_precondition_predicates(&self) -> &[String] {
+        &self.quest_precondition_predicates
     }
 }
 
@@ -134,6 +153,7 @@ mod tests {
         assert!(d.interactivity().objects.is_empty());
         assert!(!d.interactivity().free_investigate); // default MODAL
         assert!(d.journal_predicates().is_empty());
+        assert!(d.quest_precondition_predicates().is_empty()); // no completability gate
     }
 
     #[test]
@@ -143,12 +163,17 @@ mod tests {
                 "ladders": { "sc-01": [ { "question": "who?", "reveals": "f-a", "needs": [] } ] },
                 "objects": ["tide-table"]
             },
-            "journal_predicates": ["pursues", "requires"]
+            "journal_predicates": ["pursues", "requires"],
+            "quest_precondition_predicates": ["opened_by"]
         }"#;
         let o = StaticOverrides::from_json(json).unwrap();
         assert_eq!(
             o.journal_predicates(),
             &["pursues".to_string(), "requires".to_string()]
+        );
+        assert_eq!(
+            o.quest_precondition_predicates(),
+            &["opened_by".to_string()]
         );
         assert!(o.interactivity().objects.contains("tide-table"));
         let rungs = &o.interactivity().ladders["sc-01"];
@@ -161,5 +186,6 @@ mod tests {
         let o = StaticOverrides::from_json("{}").unwrap();
         assert!(o.interactivity().ladders.is_empty());
         assert!(o.journal_predicates().is_empty());
+        assert!(o.quest_precondition_predicates().is_empty());
     }
 }

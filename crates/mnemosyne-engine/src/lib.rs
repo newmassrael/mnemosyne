@@ -28,14 +28,19 @@
 mod gate;
 mod overrides;
 mod projection;
+mod quest;
 #[cfg(test)]
 mod test_support;
 mod types;
 
 pub use gate::GateViolation;
 pub use mnemosyne_core::{DisclosureMode, MAIN_BRANCH};
+pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
 pub use projection::PlayableProjection;
+pub use quest::{
+    QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
+};
 pub use types::{Door, Fork, Interactivity, Line, Rung, SceneView};
 
 use std::fmt;

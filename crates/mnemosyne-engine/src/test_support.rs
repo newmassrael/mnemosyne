@@ -2,12 +2,11 @@
 //! `PlayableWorldReport` (and interactive fixtures) without repeating the wide
 //! upstream struct literals in every test module.
 
-use std::collections::BTreeMap;
-
 use mnemosyne_core::{DisclosureMode, TypedClaim, TypedObject};
 use mnemosyne_validate::continuity::{
     ForkTreeBranch, ForkTreeEdge, ForkTreeReport, ManuscriptFactEvent, ManuscriptScene, MapLocator,
-    PlayableWorld, PlayableWorldReport, WorldManuscript,
+    PlayableWorld, PlayableWorldReport, QuestCompletion, QuestGraphReport, QuestNode, QuestState,
+    QuestWorldState, WorldManuscript,
 };
 
 use crate::Rung;
@@ -110,6 +109,47 @@ pub(crate) fn rung(question: &str, reveals: &str, needs: &[&str]) -> Rung {
     }
 }
 
+/// A quest completion beat (the discharging fact, its scene, the actor).
+pub(crate) fn completion(fact: &str, scene: &str, actor: Option<&str>) -> QuestCompletion {
+    QuestCompletion {
+        fact: fact.into(),
+        scene: scene.into(),
+        actor: actor.map(str::to_string),
+    }
+}
+
+/// One quest node: id + objective + prerequisites + per-world (state,
+/// completions). Actors/giving/locators are left default (unused by the quest
+/// tests, which exercise the completability gate).
+pub(crate) fn quest_node(
+    quest_id: &str,
+    objective: &str,
+    prerequisites: &[&str],
+    per_world: Vec<(&str, QuestState, Vec<QuestCompletion>)>,
+) -> QuestNode {
+    QuestNode {
+        quest_id: quest_id.into(),
+        objective: objective.into(),
+        prerequisites: prerequisites.iter().map(|p| (*p).to_string()).collect(),
+        per_world: per_world
+            .into_iter()
+            .map(|(world, state, completions)| {
+                (world.to_string(), QuestWorldState { state, completions })
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// A quest-graph report (`reader` telling) from quest nodes.
+pub(crate) fn quest_report(quests: Vec<QuestNode>) -> QuestGraphReport {
+    QuestGraphReport {
+        telling: "reader".into(),
+        quests,
+        ..Default::default()
+    }
+}
+
 /// A one-world report (`main`) from scenes + locators + an optional fork tree.
 pub(crate) fn report(
     world: &str,
@@ -117,17 +157,31 @@ pub(crate) fn report(
     locators: Vec<MapLocator>,
     fork_tree: ForkTreeReport,
 ) -> PlayableWorldReport {
-    let mut worlds = BTreeMap::new();
-    worlds.insert(
-        world.to_string(),
-        PlayableWorld {
-            manuscript: WorldManuscript {
-                scenes,
-                ..Default::default()
-            },
-            locators,
-        },
-    );
+    report_worlds(vec![(world, scenes, locators)], fork_tree)
+}
+
+/// A multi-world report: each `(world, scenes, locators)` its own walk, sharing
+/// one fork tree — for per-world gate discrimination (a fact diggable on one
+/// road but not a sibling).
+pub(crate) fn report_worlds(
+    worlds: Vec<(&str, Vec<ManuscriptScene>, Vec<MapLocator>)>,
+    fork_tree: ForkTreeReport,
+) -> PlayableWorldReport {
+    let worlds = worlds
+        .into_iter()
+        .map(|(world, scenes, locators)| {
+            (
+                world.to_string(),
+                PlayableWorld {
+                    manuscript: WorldManuscript {
+                        scenes,
+                        ..Default::default()
+                    },
+                    locators,
+                },
+            )
+        })
+        .collect();
     PlayableWorldReport {
         telling: "reader".into(),
         fork_tree,
