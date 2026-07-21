@@ -1,0 +1,125 @@
+{
+  "manifest": "2d-projection-experiment/v1",
+  "designed": "2026-07-21 (R749 DESIGN round; sha256 of this manifest pinned in the R749 ledger entry BEFORE any author/render/extract/judge subagent runs — the pre-commit manifest pattern, the dnd-quest R561 precedent). The owner's steer: start an end-to-end authoring experiment for a NON-point-and-click genre, beginning with the Ao-Oni-style 2D RPG-Maker (tsukuru) genre; verify the SAME narrative can be projected onto BOTH a visual-novel axis AND a tsukuru axis, both dialogue/monologue-centric (not prose-centric).",
+
+  "thesis": "Genre difference = PROJECTION thickness, not SUBSTRATE difference. Hold the fact substrate fixed (one blind-authored store) and split only the render into two genre axes (VN, tsukuru); if BOTH project cleanly with only the render-brief differing, the genre-agnostic claim (the map_locator seam is a pointer, R557) is demonstrated on a non-point-and-click genre. If one axis needs a fact the other does not, that need is the recorded substrate pull.",
+
+  "lineage_note": "DESIGNED by the lineage that maintains the narrative-authoring track (post-R748). Per the R469 contamination bound this lineage may NOT author the fact base, render either slice, re-extract, or judge; it writes this manifest + the PREMISE (the human premise / high-level-direction role) + the briefs + the runbook, and orchestrates the deterministic gates + the map/quest scans + the slice assembly only.",
+
+  "question": {
+    "primary": "Can an AI SELF-AUTHOR one gate-clean fact base for a small Ao-Oni-style 2D horror escape (a room-graph with key-gated locked doors, an antagonist that knows where the party is while the party does not know where it is, three withheld secrets, one fork into two distinct roads) such that the SAME store projects, via two independent blind renders, onto BOTH a visual-novel slice AND a tsukuru slice — each dialogue/monologue-centric, each gate-clean over its own blind re-extraction (leak 0 / fidelity 0), each reading as a real game of its genre to blind judges — and does the non-linear tsukuru axis reveal a substrate pull the linear VN axis does not?",
+    "sub_1_projection_invariance": "Does report-playable-world / the disclosure plan / the fork topology of ONE store serve BOTH a thin-space VN render and a thick-space tsukuru render, with both re-extractions covering the same withheld secrets in the same first_at order (no axis leaking earlier than the other, neither drifting off-road) — i.e. is the store genuinely render-neutral, projectable to two genres by render-brief alone?",
+    "sub_2_per_axis_game_feel": "Does each slice read as a real game of its OWN genre to blind judges — the VN as a played visual novel driven by dialogue + monologue, the tsukuru as a walked 2D horror driven by movement + examine + an unseen chase — rather than a backdrop-swap or a walking-shaped tour?",
+    "sub_3_disclosure_trigger_pull": "The substrate already expresses place-ACCESS as a condition (edge-guard: an adjacency edge REQUIRES condition facts, K-of-N, R717/720/722/723 — the locked-door / key-gate). But DISCLOSURE timing is a single ordinal (first_at {branch=section}, R506). In non-linear tsukuru exploration a secret can be earned at whichever of several spatial triggers the player reaches first (examine the record, get cornered, hear a character break). Does the tsukuru render have to INVENT that trigger / railroad the player because the store pins ONE first_at, while the VN (linear) render is served exactly by the single ordinal? If so, the recorded pull is: give disclosure timing the same condition / first-reached vocabulary the ACCESS axis already has (the exact pull a real-time 3D consumer would also need).",
+    "isolation": "authoring properties (PIN-1/2/3, measured on the author's store) are kept SEPARABLE from render/read properties (PIN-4 + judged game-feel, measured on the two rendered slices + their re-extractions). The projection-invariance headline is DETERMINISTIC (two blind re-extractions vs the one plan); per-axis game-feel is the open judged question; the disclosure-trigger pull is an ORTHOGONAL recorded finding (the renderer's own craft note + the orchestrator's read), not a pass/fail."
+  },
+
+  "premise": {
+    "title": "The Room at the End of the Long Hall (긴 복도 끝의 방) — FRESH, original, no existing IP",
+    "file": "premise.md",
+    "fresh_rationale": "A small (~18-22 scene) Ao-Oni-style night-in-a-locked-building horror chosen to DEMAND the four axes a tsukuru game needs while staying VN-projectable: (1) a room-graph with adjacency + edge-guarded locked doors forming an order-real key chain (classroom -> staff-key -> staff-room -> master-key -> exit); (2) an ANTAGONIST as its own frame (`geot`) that knows the party's location while the party does not know its location (the epistemic-frame engine on a hostile non-party agent, the horror mechanic = the knowledge gap); (3) three withheld secrets (the dead companion, the antagonist's nature, the false exit) each earnable at spatial triggers; (4) one fork (together / alone) into two distinct roads with per-road quest divergence (q-save-yeon farewell-resolved on `together`, left open on `alone`). Small on purpose: this is a PROJECTION test, not a SCALE test (scale is the separate scale-floor axis).",
+    "human_role_note": "Authoring the premise is the human premise / high-level-direction role (the ai-first-end-to-end doctrine: the AI authors the FACTS, the MAP, the QUESTS, and BOTH renders' prose; the human supplies the premise), NOT a contamination of the AI-authoring claim."
+  },
+
+  "firewall": {
+    "orchestrator": "this lineage (R749): writes manifest + premise + briefs + runbook; rebuilds the store FRESH from the blind author's JSON; runs the deterministic gates; runs the PIN-2 spatial+quest scan (kind:place adjacency + edge-guards + the order-real key chain + kind:quest contract + fork per-road divergence + the geot-frame knowledge gap) and the PIN-3 report-playable-world map-surface scan; assembles the trunk + one-road outlines ONCE (both renders receive the SAME outlines); runs PIN-4 leak+fidelity over BOTH blind re-extractions; records the disclosure-trigger pull (the tsukuru render-log craft note + whether a first_at had to be railroaded). NEVER authors a fact, renders a slice, re-extracts, or judges.",
+    "blind_author": "ONE fresh-context subagent (authoring). Input = premise.md + author-brief.md ONLY. Authors ONE fact base + map + quests + disclosure plan via mnemosyne-cli, using the gates as self-consistency feedback. BLIND to the hypothesis, the pins, that the store will be projected onto TWO genre axes, the rubric, the decision rule, and the render/judge stages. The render-neutrality of the store is load-bearing: the author does not know it will become VN or tsukuru.",
+    "blind_render_vn": "ONE fresh-context subagent (VN render). Input = render-vn-brief.md + the trunk outline + ONE road outline ONLY. Renders a dialogue/monologue VN script for that slice. BLIND to the pins, the rubric, the hypothesis, the original facts/plan, the tsukuru render, and that leak/fidelity/game-feel/invariance are tested.",
+    "blind_render_tsukuru": "ONE fresh-context subagent (tsukuru render), SEPARATE from the VN renderer. Input = render-tsukuru-brief.md + the SAME trunk + road outlines ONLY. Renders a dialogue/monologue tsukuru play-log (movement + examine + chase) for the SAME slice. BLIND to the pins, the rubric, the hypothesis, the original facts/plan, the VN render, and that anything is tested. Its render-log craft note (where a pinned first_at was awkward to seat in non-linear space) is the disclosure-trigger pull signal.",
+    "blind_extractor": "the extractor-brief.md run TWICE (once per rendered slice), each a fresh-context subagent. Input = extractor-brief.md + ONE rendered slice + vocab.md (entity/predicate/frame ids + forks_at ONLY — no claims/facts/plan). Re-extracts facts from the played text, canon_from = the text's own ## sc-NN markers, EXPLICIT only. BLIND to the original facts, the plan, and the other axis's render/extraction (so each leak/fidelity comparison and the cross-axis invariance are genuine blind comparisons).",
+    "blind_judges": "3 fresh-context subagents. Input = judge-brief.md + BOTH rendered slices (VN + tsukuru, same road) ONLY (no frame labels, no plan, no internal reports). BLIND to the experiment, the hypothesis, that the content is AI-authored, the pins, and each other. They rate each slice on its genre + a same-night cross check.",
+    "contamination_bound": "the R469 discipline. The lineage that designed the axis may not author, render, re-extract, or judge its instance."
+  },
+
+  "deterministic_pins": {
+    "PIN_1_authoring_clean": {
+      "claim": "PIN. The blind author CONVERGES to a gate-clean (store-consistent) two-road horror escape within a bounded loop budget.",
+      "criteria_all_required": [
+        "import of the final sections.json + facts.json into a fresh empty schema-23 seed = 0 errors.",
+        "validate-continuity --order [--rules]: structural violations = 0 AND interval violations = 0 (incl. evidence-reachability, off-branch, and any declared rule).",
+        "report-fork-tree --order: the single primary fork PLACED; 0 unplaced; two child world-lines (together / alone); every world-line reaches a terminal.",
+        "report-playthrough-manuscript --world W --telling play --order, EVERY W: unplaced = 0, undecidable = 0.",
+        "report-timeline-gaps --world W --order, every W: 0 gap / 0 unreached scene.",
+        "report-payoff-coverage --order: computed; every dangling setup is one the author-log declares INTENTIONALLY open (q-save-yeon on the `alone` road), not an accidental hole."
+      ],
+      "budget": "bounded authoring loop; if the author cannot reach this, PIN-1 FAILS = the tooling-friction branch (record the iteration count + the stuck gate)."
+    },
+    "PIN_2_spatial_quest_structure": {
+      "claim": "PIN (operationalizes the tsukuru genre's structural demands as falsifiable properties of authored data): the store is a real navigable room-graph with an order-real key-gated chain, an antagonist frame with a knowledge gap, quests that gate and diverge per road.",
+      "criteria_all_required": [
+        "MAP: >= 6 kind:place entities; adjacency typed facts (predicate `adjacent`, subject_kind/object_entity_kind = place) forming a connected graph; >= 2 edges carry an edge-guard whose condition is a key-acquisition fact (the locked doors).",
+        "KEY CHAIN ORDER-REAL: the staff-key acquisition scene precedes the staff-room entry in every world-line where both occur, and the master-key acquisition precedes the exit in every world-line where both occur (checked via order.json + canon reachability). The classroom -> staff-key -> staff-room -> master-key -> exit gate is the load-bearing case.",
+        "ANTAGONIST KNOWLEDGE GAP: a `geot` frame carries >= 1 fact locating the party (geot knows where they are) while no party frame carries geot's location on the matching scene (the party does not know where geot is) — the horror asymmetry present as data, checkable via report-frame-view.",
+        "QUEST CONTRACT: >= 4 kind:quest entities, each with a typed `pursues`, exactly one GIVING fact (payoff_expectation=expected, entities include the quest), and (on at least one road) a COMPLETION fact that pays_off the giving fact; >= 1 quest carries a typed `requires` that is order-real (q-escape requires the master key).",
+        "PER-ROAD DIVERGENCE: across the two terminal worlds, >= 1 quest discharged-on one terminal AND >= 1 quest open-on the other (q-save-yeon: farewell-resolved on `together`, open on `alone`), each open quest author-log-INTENDED.",
+        "every map/quest/secret fact is gate-clean under PIN-1."
+      ],
+      "honest_limit": "PIN-2 tests the DECLARATIVE structure only — a well-formed navigable graph, an order-real gate, a knowledge gap present as data, per-road-divergent quests. It does NOT test a played, stateful lifecycle (walking, real-time chase resolution, disjunctive completion) — that is SCE/pinion's (the R559/R560 declarative-vs-executable line). 'The map and quests are well-formed and projectable' is not 'they play'. Stated per feedback_dont_downplay_experiment_flaws.",
+      "budget_note": "PIN-2 is a JSON+report JOIN by the orchestrator over the author's facts.json x report-playable-world x report-payoff-coverage-per-world x order.json. NO new verb. The author is BLIND to the thresholds (the brief asks, in game-design register, for a locked-building escape with a key chain, an antagonist that knows where you are, and quests that diverge per road; it does not state the >= 6 place / >= 4 quest / divergence floors)."
+    },
+    "PIN_3_map_surface_resolves": {
+      "claim": "PIN (exercises the R557 map_locator seam on a tsukuru-genre authored store). Every quest-giver and every withheld secret lives at a resolvable place on the map.",
+      "criteria_all_required": [
+        "report-disclosure-coverage --telling play: a surface per quest-giver AND a surface on each withheld secret's revealing object.",
+        "report-playable-world --telling play --order resolves EVERY quest-giving surface AND every withheld-secret surface to a MapLocator {world_line, scene, scene_ordinal, object} on at least one road's walk: 0 unresolved surfaces.",
+        "the playable-world honesty surfaces (unplaced / undecidable) = 0 on every world (consistent with PIN-1)."
+      ],
+      "honest_limit": "PIN-3 confirms the surfaces RESOLVE to places on the map; it does not test pinion rendering them (separate repo). 'The locators resolve' is not 'the world is rendered'."
+    },
+    "PIN_4_projection_invariance": {
+      "claim": "PIN (the headline). ONE store projects onto BOTH genre axes gate-clean: each blind render (VN + tsukuru) is leak-clean + fidelity-clean over its own blind re-extraction, and the two re-extractions agree on the withheld-secret reveal order — the difference between the axes localizes to render form (thin vs thick space, dialogue-flow vs walk/examine/chase), NOT to the fact set or the disclosure order.",
+      "criteria_all_required": [
+        "for EACH axis A in {vn, tsukuru}: leak (validate-disclosure-leak --telling play --against <reextracted-A> --world <rendered-road> --truth-frame gt) = 0 premature leaks of a withheld secret before its first_at on that road, AND vocab_shared > 0 (the non-vacuous guard), exit 0.",
+        "for EACH axis A: fidelity (validate-render-fidelity --against <reextracted-A> --world <rendered-road> --order) = off_path 0, unplaced 0, reached_terminal true.",
+        "INVARIANCE: the two re-extractions cover the SAME withheld secrets (S1/S2/S3) with the SAME first-reveal scene per secret on the rendered road (neither axis reveals a secret earlier than the other) — the projection preserved the disclosure order across both genres. A divergence here is the recorded pull (which axis moved a reveal, and why)."
+      ],
+      "repair_protocol": "if a gate flags on either axis, that is the render-then-gate-REPAIR signal (the R515 warm-render discipline): record the violation, the scene-scoped repair, and the repair COUNT per axis as the posture tax. Repairs stay in the axis's register (VN dialogue / tsukuru play-log). Do NOT silently fix; the count is reported per axis.",
+      "scope_note": "both renders cover the SAME slice (trunk + one road, the orchestrator-selected road with the most quest givings + >= 1 withheld-secret reveal), so the two axes are compared on identical structural content — the ONLY controlled variable is the render form."
+    }
+  },
+
+  "judged_no_pin": {
+    "procedure": "3 fresh blind judges, judge-brief.md rubric, over BOTH rendered slices (VN + tsukuru, same road) — no frame labels, no plan, no internal reports. Single arm (a capability test).",
+    "axes": "VN game-feel / tsukuru game-feel / horror-dread(geot unseen approach) / knowledge-realism(reveals earned) per axis + a SAME-NIGHT cross check (do both render the same night / same reveal order) + forced calls (which genre the content fits better; what most makes/undercuts each slice; overall per slice).",
+    "outcome_pin": "NONE. The per-axis game-feel + genre-fit verdicts are the open question; the same-night judge line is a soft human-side complement to the deterministic PIN-4 invariance."
+  },
+
+  "decision_rule_pre_committed": {
+    "all_pins_hold_and_judged_good": "ALL four pins hold AND judges find (majority >= 4) both VN game-feel AND tsukuru game-feel with a same-night >= 4 and no major knowledge/coherence break => the genre-agnostic thesis is DEMONSTRATED on a non-point-and-click genre pair: one render-neutral store projects onto both a VN and a tsukuru game by render-brief alone, both reading as real games of their kind. The on-axis expected outcome; its value is the first two-axis projection of one store + whatever disclosure-trigger pull the tsukuru axis surfaces.",
+    "pin4_invariance_fails": "the two axes diverge — one leaks/drifts where the other does not, or the reveal order differs => the store is NOT fully render-neutral for this genre pair => diagnose WHICH axis moved WHAT and why; the most likely cause (pre-registered) is the disclosure-trigger asymmetry (below), a real substrate finding worth a BUILD round, NOT a refutation of the seam.",
+    "pin2_or_pin3_fails": "the author cannot instantiate the room-graph / order-real key chain / antagonist knowledge gap gate-clean (PIN-2), or the surfaces do not resolve on authored content (PIN-3) => the substrate lacks an authoring affordance the tsukuru genre needs => diagnose the stuck point; a measured pull (a spatial-authoring helper, or a map/surface fix).",
+    "judged_game_feel_low": "all pins hold but a judged axis game-feel < 4 majority => the structure is well-formed but does NOT READ as a game of that genre (the structure-consistency != game-feel residue) => a craft ceiling (R476), blind-judged, not a substrate gap; a high-value honest finding about the gap between a correct projection and a game that feels worth playing in that genre.",
+    "disclosure_trigger_pull": "ORTHOGONAL to pass/fail: the orchestrator records whether the tsukuru render had to INVENT a spatial trigger or RAILROAD the player to a pinned first_at (from the tsukuru render-log + the assembled slice), while the VN render was served exactly by the single ordinal. A real pull here justifies a BUILD round that gives disclosure timing the condition / first-reached vocabulary the ACCESS axis already has (edge-guards, R717/720/722/723) — the same generalization a real-time 3D consumer would pull. This experiment is the CONSUMER whose pull (or lack of it) decides whether that build happens (the design-then-build-when-pulled discipline)."
+  },
+
+  "grading_procedure": {
+    "step_0": "orchestrator: this manifest sha256-pinned in the R749 ledger, committed pre-execution (R749 = the DESIGN round). GOTCHA: report-playable-world / validate-disclosure-leak / validate-render-fidelity require a current CLI install; reinstall first (cargo install --path crates/mnemosyne-cli --force; restart mnemosyne-mcp if used) — the binary-skew lesson.",
+    "step_1_author": "spawn the blind author (premise.md + author-brief.md) -> run/author/ (sections/facts/order/narrative-rules JSON + disclosure plan + gate-clean store + author-log.md).",
+    "step_2_pins123": "orchestrator rebuilds the store FRESH from the author's JSON; runs PIN-1; runs the PIN-2 spatial+quest scan (place adjacency + edge-guards + order-real chain + geot knowledge gap + quest contract + per-road divergence) and the PIN-3 report-playable-world map-surface scan; records every verdict verbatim in report.md.",
+    "step_3_slice": "orchestrator selects the render road (most quest givings + >= 1 withheld-secret reveal); assembles the trunk outline + that road's outline (report-playthrough-manuscript --world W --telling play --order) to run/manuscripts/. BOTH renders receive the SAME two outline files.",
+    "step_4_render_both": "spawn TWO SEPARATE blind renderers: (a) VN (render-vn-brief.md + the two outlines) -> run/render-vn/world-*.md; (b) tsukuru (render-tsukuru-brief.md + the SAME two outlines) -> run/render-tsukuru/world-*.md. Each blind to the other.",
+    "step_5_extract_both": "orchestrator writes run/extract/vocab.md (ids + forks_at only); spawn the blind extractor TWICE, once per slice -> run/extract-vn/ + run/extract-tsukuru/ (reextracted.atomic.json + extract-log.md each).",
+    "step_6_pin4": "orchestrator runs PIN-4 leak + fidelity per axis over each re-extraction, and the cross-axis invariance (same withheld-secret first-reveal scene per secret), records verbatim (incl. any repair count per axis + any divergence).",
+    "step_7_judges": "spawn 3 blind judges (judge-brief.md + BOTH slices) -> run/judges/judge-{1,2,3}.md.",
+    "step_8_decide": "orchestrator applies the pre-committed decision rule, records the disclosure-trigger pull finding, writes report.md, appends the execution changelog entry + commits. Do NOT push (gate).",
+    "no_new_harness_code": "reuse mnemosyne-cli verbs verbatim; PIN-2 is a JSON/report scan recorded in report.md; no tools/ or crate change. Scratch *.atomic.json stay gitignored; tracked evidence per runbook.md."
+  },
+
+  "predictions_preregistered": {
+    "PRED_1_authoring": "PIN-1 likely HOLDS at this small scale (~18-22 scenes; convergence tractable). The room-graph + edge-guards + antagonist frame + quests together is more spatial surface than prior narrative runs, so a few extra loop iterations are plausible.",
+    "PRED_2_spatial_quest": "PIN-2 is a GENUINE open authoring question — first time a blind author builds a kind:place adjacency graph with edge-guarded locked doors AND an antagonist knowledge gap AND the quest contract together. The order-real key chain and the geot-frame gap are the likeliest stuck points. Plausible but not assured.",
+    "PRED_3_map_surface": "PIN-3 likely HOLDS (R557 mechanical), main risk a missing surface on a secret's revealing object.",
+    "PRED_4_invariance": "PIN-4 leak+fidelity likely HOLDS per axis (the R515 warm-render discipline). The INVARIANCE sub-check is the interesting one: the VN axis is predicted clean (linear, single ordinal fits); the tsukuru axis is the one predicted to STRAIN — a non-linear walk may want a secret earnable at whichever trigger the player reaches first, which the single first_at cannot express, so the tsukuru renderer may railroad or invent. Whether that shows as a leak/fidelity flag or only as a render-log craft note is exactly the disclosure-trigger pull signal.",
+    "PRED_game_feel": "NO pin. Honest expectation: the VN slice likely reads OK from clean dialogue; the tsukuru slice's risk is reading like a guided walk rather than an explored space, and the chase (geot) reading as a scripted beat rather than a felt threat. Same-night likely holds if the outlines are followed. Game-feel + the tsukuru chase are the likeliest places this finds a real craft limit.",
+    "PRED_pull": "the disclosure-trigger pull is predicted PRESENT but MILD at this scale — a small, tight map with a nearly-linear intended path limits how much the non-linear/first-reached gap bites; a larger open map would bite harder. Recorded either way (present-and-mild is still a real, named pull for the 3D axis)."
+  },
+
+  "honest_caveats": [
+    "n=1 premise / 1 author / 1 VN render / 1 tsukuru render / 2 extractions / 3 judges — one instance, not a distribution (the standing single-instance caveat of this experiment family).",
+    "the experiment tests DECLARATIVE projection: that one store's map + quests + disclosure project onto two genre render forms. It does NOT test a played, stateful tsukuru lifecycle (real-time walking, a live chase state machine, disjunctive spatial triggers) — that is SCE/pinion's (the R559/R560 boundary). Named, not downplayed.",
+    "PIN-2's floors (>= 6 places, >= 2 edge-guards, >= 4 quests, per-road divergence) are defensible floors pinned pre-execution, not derived constants; a different reasonable floor could flip a marginal verdict.",
+    "the render is a SLICE (trunk + one road) per axis; the structural pins cover both roads, but the judged game-feel of the other road is inferred, not read.",
+    "the small tight map deliberately BOUNDS how hard the non-linear disclosure-trigger gap can bite (PRED_pull) — a present-and-mild pull here does not measure how hard an open-world 3D map would pull; that is a larger follow-on if this experiment registers the pull at all.",
+    "binary-skew gotcha: report-playable-world + the disclosure/fidelity validators require a current CLI install; a stale binary lacks a verb (the reference_mnemosyne_mcp_binary_skew lesson). Execution reinstalls first."
+  ]
+}
