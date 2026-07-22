@@ -389,6 +389,20 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_import_epub_anchors(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "import-content-excerpts",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &[
+            "import-content-excerpts --excerpts <content-excerpt-map.json> [--sidecar <path>] [--json]",
+        ],
+        notes: &[
+            "   R756 (P3a) — bulk-set narrative-prose content_excerpt from {excerpts:[{section_id,anchor,text}]};",
+            "   the consumer resolves text against its manuscript, the store pins sha256(text) for drift",
+        ],
+        run: |c| atomic_cli::cmd_import_content_excerpts(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "import-facts",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

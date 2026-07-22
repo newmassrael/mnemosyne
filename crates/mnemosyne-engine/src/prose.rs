@@ -26,31 +26,12 @@
 use std::collections::HashMap;
 use std::fmt;
 
-/// Where an authored passage lives in a content-SSOT. Abstract over the
-/// substrate: a verbatim text prefix into a manuscript (today), or an EPUB CFI
-/// (R755 Phase 4) — the swap is a new [`Locator`] variant, not a redesign. A
-/// CONSUMER INPUT (authored data), so it is plainly constructible / serializable;
-/// the provenance guarantee is that [`Passage::resolve`] rejects an anchor the
-/// source does not resolve, not that the anchor is unconstructible.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct ContentAnchor {
-    /// The content-SSOT document this anchor points into (a manuscript file id,
-    /// or an EPUB spine href).
-    pub source: String,
-    /// The position within that document.
-    pub locator: Locator,
-}
-
-/// The position of a passage within its content-SSOT document.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum Locator {
-    /// A verbatim text prefix into the source (the manuscript-anchor model): the
-    /// passage begins at the first occurrence of this exact prefix and runs to
-    /// the next anchor (or the document end). Resolved by [`PrefixSlices`].
-    Prefix(String),
-    /// An EPUB Canonical Fragment Identifier (R755 Phase 4 — no resolver yet).
-    Cfi(String),
-}
+// `ContentAnchor` + `Locator` are Layer-0 pointers (R756): they live in
+// `mnemosyne-core` so the store (`mnemosyne-atomic`'s `content_excerpt`) and the
+// engine share ONE anchor type with no atomic↔engine dependency. Re-exported
+// below so `mnemosyne_engine::{ContentAnchor, Locator}` stays the public path;
+// the resolution machinery (`Passage`, `ContentSource`, `PrefixSlices`) is here.
+pub use mnemosyne_core::{ContentAnchor, Locator};
 
 /// A provenance-bound unit of authored narration — the prose sibling of
 /// [`Line`](crate::Line). Crate-private fields, no public constructor, no

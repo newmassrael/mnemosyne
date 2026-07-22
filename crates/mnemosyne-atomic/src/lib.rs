@@ -208,6 +208,16 @@ pub struct AtomicSection {
     /// unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epub_locator: Option<EpubLocator>,
+
+    /// Narrative-prose provenance anchor (R756) — the generalized sibling of
+    /// `normative_excerpt` for AUTHORED narrative: a manuscript-anchored prose
+    /// slice (a Layer-0 `ContentAnchor` + a projected-text cache + a drift hash),
+    /// so ANY consumer gets provenance-bound prose from the store with no
+    /// per-consumer anchor file. Set by `import-content-excerpts`. `None` for
+    /// spec sections / until ingested. Additive (R756): `normative_excerpt`
+    /// unchanged; convergence onto one substrate is P3c.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_excerpt: Option<ContentExcerpt>,
 }
 
 /// serde `skip_serializing_if` predicate for [`AtomicSection::coverage_expectation`]:
@@ -271,6 +281,55 @@ impl NormativeExcerpt {
     /// `None` when the hash is empty (unrevalidatable — never imported from an
     /// EPUB; owned by `report-excerpt-hash-backfill`, not treated as drift).
     /// `Some(false)` is a content-integrity failure (`scan_content_drift`).
+    pub fn text_sha256_matches(&self) -> Option<bool> {
+        if self.text_sha256.is_empty() {
+            None
+        } else {
+            Some(self.recompute_text_sha256() == self.text_sha256)
+        }
+    }
+}
+
+/// A provenance-bound narrative-prose excerpt on a Section (R756) — the
+/// generalized sibling of [`NormativeExcerpt`]. Where `normative_excerpt` mirrors
+/// an external spec (an `anchor_url` + `source_revision` into an upstream EPUB), a
+/// `ContentExcerpt` anchors AUTHORED narrative prose to a content-SSOT via the
+/// Layer-0 [`mnemosyne_core::ContentAnchor`] (a manuscript prefix today, an EPUB
+/// CFI later): the store carries the anchor + a projected-text cache + a drift
+/// hash, so ANY consumer gets provenance-bound prose from the store with no
+/// per-consumer anchor file. `text` is the PROJECTION at the anchor (verbatim
+/// from the content-SSOT, a derived cache — never a free authored string), which
+/// the consumer resolves against its manuscript at ingest and supplies;
+/// `text_sha256` is the offline drift check (the `normative_excerpt` R403/R404
+/// model). Additive (R756): `normative_excerpt` is unchanged; convergence onto
+/// one substrate is P3c.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ContentExcerpt {
+    /// The content-SSOT anchor this excerpt projects — its provenance (a
+    /// manuscript file id + verbatim prefix today; an EPUB spine href + CFI
+    /// later). The Layer-0 pointer the engine's `Passage` also carries.
+    pub anchor: mnemosyne_core::ContentAnchor,
+    /// The projected prose at the anchor — a derived cache, verbatim from the
+    /// content-SSOT, never a free authored string.
+    pub text: String,
+    /// SHA-256 (hex) of `text` — the offline drift anchor (R404): the mutate API
+    /// guarantees this equals `sha256(text)` at write time, so a later divergence
+    /// means the cache was edited out-of-band. Empty = unrevalidatable.
+    #[serde(default)]
+    pub text_sha256: String,
+}
+
+impl ContentExcerpt {
+    /// SHA-256 (hex) recomputed from the stored `text` — the value `text_sha256`
+    /// is expected to equal (the offline revalidation anchor, R404).
+    pub fn recompute_text_sha256(&self) -> String {
+        sha256_hex(self.text.as_bytes())
+    }
+
+    /// Whether the declared `text_sha256` still matches the stored `text`.
+    /// `None` when the hash is empty (unrevalidatable); `Some(false)` is a
+    /// content-integrity failure (`scan_content_drift`).
     pub fn text_sha256_matches(&self) -> Option<bool> {
         if self.text_sha256.is_empty() {
             None
@@ -1471,11 +1530,20 @@ pub enum AtomicStoreError {
 // compat is exact: the single ordinal becomes a one-coord first-reached trigger
 // (the same effective pin). A pre-R752 binary reading a v39 store hits the
 // monotone `> CURRENT` guard.
+// v39→v40 adds `AtomicSection.content_excerpt` (Round 756, P3a) — the
+// store-owned narrative-prose provenance anchor (a Layer-0 `ContentAnchor` + a
+// projected-text cache + a drift hash), generalizing `normative_excerpt` to
+// narrative sections. Same declarative new-field-default pattern as v6→v7
+// epub_locator / v8 excerpt hash: a pre-v40 section has no `content_excerpt`
+// key, serde `#[serde(default)]` fills `None`, and serialization skips it when
+// `None` — byte-identical behavior for any store that has not ingested a
+// narrative excerpt. So there is deliberately NO `schema_version < 40` arm in
+// `load`, and no migration report is needed.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 39;
+pub const CURRENT_SCHEMA_VERSION: u32 = 40;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -3261,6 +3329,74 @@ pub fn import_epub_anchors(
         sidecar_path,
         "import_epub_anchors",
         "anchors",
+        &applied.to_string(),
+    )?;
+    Ok((receipt, unmatched))
+}
+
+/// One entry for [`import_content_excerpts`]: a Section's narrative-prose content
+/// anchor + the projected text the consumer resolved from ITS manuscript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentExcerptImport {
+    pub section_id: String,
+    pub anchor: mnemosyne_core::ContentAnchor,
+    pub text: String,
+}
+
+/// R756 (P3a) — bulk-set narrative-prose `content_excerpt`s from a consumer that
+/// resolved the prose against ITS manuscript. Each `(section_id, anchor, text)`
+/// whose section exists gets `content_excerpt = ContentExcerpt { anchor, text,
+/// text_sha256: sha256(text) }`; the store COMPUTES the hash (there is no external
+/// extractor sha to verify against, unlike [`import_epub_excerpts`] — the consumer
+/// supplies the projection, the store pins its hash so [`scan_content_drift`] can
+/// later catch an out-of-band edit). An empty `text` or empty anchor `source` is a
+/// malformed excerpt and returns `Err` BEFORE the save (never a partial import).
+/// Sections absent from the store are returned as `unmatched` (the caller decides
+/// whether that is an error). One in-memory pass + one save (single write path,
+/// like [`import_epub_anchors`]). The excerpt is a derived cache, so overwrite is
+/// allowed (no frozen-ledger gate).
+///
+/// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
+pub fn import_content_excerpts(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    excerpts: &[ContentExcerptImport],
+) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    // Validate every entry BEFORE mutating, so a malformed one never leaves a
+    // partially-applied store (the import_epub_excerpts fail-before-save rule).
+    for e in excerpts {
+        if e.text.is_empty() || e.anchor.source.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_content_excerpts: {} has an empty text or anchor source",
+                e.section_id
+            )));
+        }
+    }
+    let mut applied = 0usize;
+    let mut unmatched = Vec::new();
+    for e in excerpts {
+        match store.sections.get_mut(&e.section_id) {
+            Some(section) => {
+                section.content_excerpt = Some(ContentExcerpt {
+                    anchor: e.anchor.clone(),
+                    text: e.text.clone(),
+                    text_sha256: sha256_hex(e.text.as_bytes()),
+                });
+                applied += 1;
+            }
+            None => unmatched.push(e.section_id.clone()),
+        }
+    }
+    if applied == 0 {
+        return Err(AtomicMutateError::NotFound(
+            "import_content_excerpts: no excerpt matched a section in the store".to_string(),
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "import_content_excerpts",
+        "excerpts",
         &applied.to_string(),
     )?;
     Ok((receipt, unmatched))
@@ -9251,6 +9387,52 @@ mod tests {
         store
             .sections
             .insert(section_id.to_string(), AtomicSection::default());
+    }
+
+    #[test]
+    fn import_content_excerpts_sets_field_computes_sha_and_validates() {
+        // R756 (P3a) — the narrative content_excerpt write path: the store sets
+        // the anchor + text and COMPUTES the sha (so it is consistent by
+        // construction; scan_content_drift catches later out-of-band edits).
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "d01-nat");
+        let text = "지운은 둑에 발을 올렸다.";
+        let anchor = mnemosyne_core::ContentAnchor {
+            source: "MANUSCRIPT.md".to_string(),
+            locator: mnemosyne_core::Locator::Prefix("지운은".to_string()),
+        };
+        // A matched entry sets the field; an unmatched id is reported, not an error.
+        let imports = vec![
+            ContentExcerptImport {
+                section_id: "d01-nat".to_string(),
+                anchor: anchor.clone(),
+                text: text.to_string(),
+            },
+            ContentExcerptImport {
+                section_id: "nope".to_string(),
+                anchor: anchor.clone(),
+                text: text.to_string(),
+            },
+        ];
+        let (_, unmatched) = import_content_excerpts(&mut store, &sidecar, &imports).unwrap();
+        assert_eq!(unmatched, vec!["nope".to_string()]);
+        let ex = store.sections["d01-nat"].content_excerpt.as_ref().unwrap();
+        assert_eq!(ex.text, text);
+        assert_eq!(ex.anchor.source, "MANUSCRIPT.md");
+        assert_eq!(ex.text_sha256, sha256_hex(text.as_bytes()));
+        assert_eq!(ex.text_sha256_matches(), Some(true));
+        // A malformed entry (empty text) fails validation BEFORE any save.
+        let bad = vec![ContentExcerptImport {
+            section_id: "d01-nat".to_string(),
+            anchor,
+            text: String::new(),
+        }];
+        assert!(matches!(
+            import_content_excerpts(&mut store, &sidecar, &bad),
+            Err(AtomicMutateError::Validation(_))
+        ));
     }
 
     // R416 — confirmation-event fixture. Claim targets section "sec".

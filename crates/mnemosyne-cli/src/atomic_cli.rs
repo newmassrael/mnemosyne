@@ -2423,6 +2423,72 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
     finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
+/// R756 (P3a) — bulk-set narrative-prose `content_excerpt`s from a consumer's
+/// `content-excerpt-map/v1` (`{excerpts: [{section_id, anchor, text}]}`). The
+/// consumer resolved each `text` against ITS manuscript; the store pins
+/// `sha256(text)` so `validate-content-drift` catches later out-of-band edits.
+pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    #[derive(serde::Deserialize)]
+    struct ExcerptEntry {
+        section_id: String,
+        anchor: mnemosyne_core::ContentAnchor,
+        text: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct ExcerptMap {
+        excerpts: Vec<ExcerptEntry>,
+    }
+    let mut map_path: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--excerpts" => {
+                map_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--excerpts missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let path = map_path.ok_or_else(|| anyhow!("--excerpts <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read excerpts {}", path))?;
+    let map: ExcerptMap = serde_json::from_str(&raw)
+        .with_context(|| format!("parse {} (content-excerpt-map/v1)", path))?;
+    let imports: Vec<mnemosyne_atomic::ContentExcerptImport> = map
+        .excerpts
+        .into_iter()
+        .map(|e| mnemosyne_atomic::ContentExcerptImport {
+            section_id: e.section_id,
+            anchor: e.anchor,
+            text: e.text,
+        })
+        .collect();
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    let outcome = mnemosyne_atomic::import_content_excerpts(&mut store, &sidecar_path, &imports);
+    if let Ok((_, unmatched)) = &outcome {
+        if !unmatched.is_empty() {
+            eprintln!(
+                "note: {} excerpt section_id(s) matched no section in the store",
+                unmatched.len()
+            );
+        }
+    }
+    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {

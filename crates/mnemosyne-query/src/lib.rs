@@ -33,7 +33,7 @@
 
 use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, Binding,
-    InventoryEntry, NormativeExcerpt,
+    ContentExcerpt, InventoryEntry, NormativeExcerpt,
 };
 use mnemosyne_core::DecisionStatus;
 use serde::Serialize;
@@ -61,6 +61,13 @@ pub struct SectionView {
     /// for ordinary (non-mirror) Sections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub normative_excerpt: Option<NormativeExcerpt>,
+    /// Narrative-prose provenance anchor (R756). `Some` only when this Section
+    /// carries an authored-narrative `content_excerpt` (a manuscript-anchored
+    /// prose slice) — the read-path that gives any consumer provenance-bound
+    /// prose from the store with no per-consumer anchor file. Omitted from JSON
+    /// for sections without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_excerpt: Option<ContentExcerpt>,
     /// Coverage applicability (Round 389). `Some("informative")` only when the
     /// section is exempt from the coverage axiom (prose-only); omitted from
     /// JSON for ordinary `Normative` sections (the default), so the read
@@ -178,6 +185,7 @@ fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
         body: synthesize_section_body(atomic),
         line_anchor: 0,
         normative_excerpt: atomic.normative_excerpt.clone(),
+        content_excerpt: atomic.content_excerpt.clone(),
         // Surface only the `Informative` deviation; ordinary Normative
         // sections omit the field so the JSON stays unchanged.
         coverage_expectation: {
