@@ -1066,6 +1066,7 @@ dependencies = [
  "mnemosyne-validate",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

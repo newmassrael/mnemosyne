@@ -142,6 +142,28 @@ pub fn load_atomic_store(
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
+/// Every registered entity's declared kind — `entity_id -> kind` over the whole
+/// registry, read straight from `AtomicStore.entities`. The bulk companion to
+/// [`entity_dossier`] (which answers one entity): a consumer that owns a kind
+/// registry validates it against the store in one read instead of N. tide's
+/// object / place gates use it — does every store `kind:object` have a screen
+/// name, and is every named id a real store object of that kind.
+///
+/// # Errors
+///
+/// [`OpError`] if the store (or its sidecar) cannot be read.
+pub fn entity_kinds(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<BTreeMap<String, String>, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    Ok(store
+        .entities
+        .iter()
+        .map(|(id, e)| (id.clone(), e.kind.clone()))
+        .collect())
+}
+
 /// The `[continuity]` policy view both read ops resolve from ONE config
 /// discovery (Round 435 single-path rule, the `workspace_entry_id_prefix`
 /// precedent; folded to a single `discover_config` in Round 436).
@@ -1578,6 +1600,34 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let hits = inventory_decay_scan(tmp.path(), "X").expect("missing config = empty");
         assert!(hits.is_empty());
+    }
+
+    /// `entity_kinds` returns the WHOLE registry as `id -> kind`: every entity,
+    /// its declared kind (a kind-less entity reads as `""`, present not absent).
+    /// The bulk read tide's object/place gates validate their kind registries
+    /// against.
+    #[test]
+    fn entity_kinds_maps_each_entity_to_its_declared_kind() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":39,"sections":{},"frames":{},"narrative_facts":{},
+               "entities":{"ent-post":{"kind":"object"},"ent-weir":{"kind":"place"},
+                           "ent-bell":{"kind":"object"},"ent-nameless":{}}}"#,
+        )
+        .unwrap();
+        let kinds = entity_kinds(root, None).expect("entity_kinds reads the store");
+        assert_eq!(kinds.get("ent-post").map(String::as_str), Some("object"));
+        assert_eq!(kinds.get("ent-weir").map(String::as_str), Some("place"));
+        assert_eq!(kinds.get("ent-bell").map(String::as_str), Some("object"));
+        assert_eq!(kinds.get("ent-nameless").map(String::as_str), Some(""));
+        assert_eq!(kinds.len(), 4);
     }
 
     /// A malformed mnemosyne.toml fails loud instead of silently reporting

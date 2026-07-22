@@ -81,3 +81,55 @@ impl fmt::Display for EngineError {
 }
 
 impl std::error::Error for EngineError {}
+
+/// Read every registered entity's declared kind from the store — `entity_id ->
+/// kind` over the whole registry.
+///
+/// The engine never classifies entities by kind for its OWN logic — a consumer
+/// splits its registries by kind ([`Interactivity::objects`] is FED, not derived
+/// here). This is the raw store read a consumer needs to VALIDATE its kind
+/// registry against the store: tide's object/place gates ask "does every store
+/// `kind:object` have a screen name, and is every named id a real store object
+/// of that kind." A read-through of [`mnemosyne_ops::entity_kinds`] so the
+/// consumer talks only to its kernel, not past it into `ops`.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the store (or its sidecar) cannot be read.
+pub fn store_entity_kinds(
+    workspace_root: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, String>, EngineError> {
+    mnemosyne_ops::entity_kinds(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::store_entity_kinds;
+    use tempfile::TempDir;
+
+    /// The kernel's read-through of the store's entity registry — `id -> kind`
+    /// for the whole registry, what a consumer validates its own kind registry
+    /// against. (The read lives in `mnemosyne_ops::entity_kinds`; this proves the
+    /// kernel re-export tide's object/place gates call.)
+    #[test]
+    fn store_entity_kinds_reads_the_registry_through_the_kernel() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":39,"sections":{},"frames":{},"narrative_facts":{},
+               "entities":{"ent-post":{"kind":"object"},"ent-weir":{"kind":"place"}}}"#,
+        )
+        .unwrap();
+        let kinds = store_entity_kinds(root).expect("kernel reads the store kinds");
+        assert_eq!(kinds.get("ent-post").map(String::as_str), Some("object"));
+        assert_eq!(kinds.get("ent-weir").map(String::as_str), Some("place"));
+        assert_eq!(kinds.len(), 2);
+    }
+}
