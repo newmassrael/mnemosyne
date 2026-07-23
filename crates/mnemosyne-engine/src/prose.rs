@@ -83,6 +83,21 @@ impl Passage {
         Ok(Self { anchor, text })
     }
 
+    /// Build a passage from a store `content_excerpt` (R757 P3b) — the STORE-CACHE
+    /// model. The excerpt's (anchor, text) was manuscript-resolved and sha-pinned at
+    /// ingestion (R756 P3a `import-content-excerpts`), so the passage is trusted the
+    /// way a [`crate::Line`] is (a store projection) WITHOUT the engine holding the
+    /// manuscript — this is what lets a manuscript-less consumer get provenance-bound
+    /// prose. Crate-private: a consumer obtains a `Passage` only via
+    /// [`crate::store_passages`] (which reads the real store), never by handing in a
+    /// fabricated excerpt, so the forgery guard holds.
+    pub(crate) fn from_excerpt(excerpt: &mnemosyne_atomic::ContentExcerpt) -> Self {
+        Self {
+            anchor: excerpt.anchor.clone(),
+            text: excerpt.text.clone(),
+        }
+    }
+
     /// The authored text at the anchor.
     #[must_use]
     pub fn text(&self) -> &str {
@@ -280,6 +295,22 @@ mod tests {
             source: DOC.to_string(),
             locator: Locator::Prefix(text.to_string()),
         }
+    }
+
+    #[test]
+    fn from_excerpt_projects_a_store_excerpt_verbatim() {
+        // R757 P3b — the store-cache ctor: a passage built from a store excerpt
+        // carries its text + anchor verbatim (trusted like a Line; the sha-pin at
+        // ingestion + `scan_content_drift` are the store's guard, not re-checked
+        // here), so a manuscript-less consumer gets provenance-bound prose.
+        let excerpt = mnemosyne_atomic::ContentExcerpt {
+            anchor: prefix("The tide"),
+            text: "The tide pulls out at dawn.".to_string(),
+            text_sha256: String::new(),
+        };
+        let p = Passage::from_excerpt(&excerpt);
+        assert_eq!(p.text(), "The tide pulls out at dawn.");
+        assert_eq!(p.anchor().locator, Locator::Prefix("The tide".to_string()));
     }
 
     #[test]

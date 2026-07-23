@@ -103,9 +103,37 @@ pub fn store_entity_kinds(
         .map_err(|e| EngineError::Projection(e.to_string()))
 }
 
+/// Provenance-bound narrative prose FROM THE STORE (R757 P3b) — `section_id ->
+/// Passage`. Reads each section's `content_excerpt` (R756 P3a) via
+/// [`mnemosyne_ops::section_content_excerpts`] and projects it with
+/// `Passage::from_excerpt` (the store-cache model), so a manuscript-less consumer
+/// (a generic renderer, pinion) gets prose bound to its manuscript anchor WITHOUT
+/// the engine holding the manuscript. The excerpt was sha-pinned at ingestion and
+/// is trusted like a [`Line`]; drift is `scan_content_drift`'s separate offline
+/// guard. Sections with no excerpt are omitted.
+///
+/// This is the store-owned generalization of a per-consumer anchor file (R756 P3):
+/// the narrative prose anchor + projected text live in the store's Section, so the
+/// engine hands any consumer the same provenance-bound `Passage` with no manuscript
+/// and no anchor file of its own.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the store (or its sidecar) cannot be read.
+pub fn store_passages(
+    workspace_root: &std::path::Path,
+) -> Result<std::collections::HashMap<String, Passage>, EngineError> {
+    let excerpts = mnemosyne_ops::section_content_excerpts(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))?;
+    Ok(excerpts
+        .into_iter()
+        .map(|(id, ex)| (id, Passage::from_excerpt(&ex)))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::store_entity_kinds;
+    use super::{store_entity_kinds, store_passages};
     use tempfile::TempDir;
 
     /// The kernel's read-through of the store's entity registry — `id -> kind`
@@ -131,5 +159,40 @@ mod tests {
         assert_eq!(kinds.get("ent-post").map(String::as_str), Some("object"));
         assert_eq!(kinds.get("ent-weir").map(String::as_str), Some("place"));
         assert_eq!(kinds.len(), 2);
+    }
+
+    /// R757 P3b — the kernel projects the store's `content_excerpt`s into
+    /// provenance-bound `Passage`s, so a manuscript-less consumer gets narrative
+    /// prose FROM THE STORE. A section with no excerpt yields no passage (no
+    /// invented prose), the fail-loud omission.
+    #[test]
+    fn store_passages_projects_content_excerpts_from_the_store() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":41,"frames":{},"narrative_facts":{},"entities":{},
+               "sections":{
+                 "d01-nat":{"content_excerpt":{
+                   "anchor":{"source":"MANUSCRIPT.md","locator":{"Prefix":"지운은"}},
+                   "text":"지운은 둑에 발을 올렸다.","text_sha256":""}},
+                 "d02-nat":{}
+               }}"#,
+        )
+        .unwrap();
+        let passages = store_passages(root).expect("kernel reads store excerpts");
+        // The section WITH an excerpt projects a provenance-bound passage (text +
+        // its manuscript anchor, both from the store — no manuscript needed here).
+        let p = passages.get("d01-nat").expect("d01-nat has a passage");
+        assert_eq!(p.text(), "지운은 둑에 발을 올렸다.");
+        assert_eq!(p.anchor().source, "MANUSCRIPT.md");
+        // The section WITHOUT an excerpt is omitted — the kernel invents nothing.
+        assert!(!passages.contains_key("d02-nat"));
+        assert_eq!(passages.len(), 1);
     }
 }

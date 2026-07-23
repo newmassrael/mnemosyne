@@ -17,7 +17,7 @@ pub mod validate;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore};
+use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore, ContentExcerpt};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -161,6 +161,29 @@ pub fn entity_kinds(
         .entities
         .iter()
         .map(|(id, e)| (id.clone(), e.kind.clone()))
+        .collect())
+}
+
+/// Every section's narrative-prose `content_excerpt` (R756 P3a) — `section_id ->
+/// ContentExcerpt`, read straight from `AtomicStore.sections`. The bulk read the
+/// engine's `store_passages` (R757 P3b) projects into provenance-bound `Passage`s,
+/// so a manuscript-less consumer (a generic renderer, pinion) gets the prose FROM
+/// THE STORE with no per-consumer anchor file. Sections with no excerpt are
+/// omitted; the excerpt's `text_sha256` is the offline drift anchor (R404), not
+/// re-checked here (that is `scan_content_drift`'s job).
+///
+/// # Errors
+///
+/// [`OpError`] if the store (or its sidecar) cannot be read.
+pub fn section_content_excerpts(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<BTreeMap<String, ContentExcerpt>, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    Ok(store
+        .sections
+        .iter()
+        .filter_map(|(id, s)| s.content_excerpt.as_ref().map(|e| (id.clone(), e.clone())))
         .collect())
 }
 
@@ -1628,6 +1651,37 @@ mod tests {
         assert_eq!(kinds.get("ent-bell").map(String::as_str), Some("object"));
         assert_eq!(kinds.get("ent-nameless").map(String::as_str), Some(""));
         assert_eq!(kinds.len(), 4);
+    }
+
+    /// R757 P3b — the bulk read the engine's `store_passages` projects into
+    /// provenance-bound passages: each section's `content_excerpt` (R756 P3a) read
+    /// from the store; a section without one is omitted (no invented prose).
+    #[test]
+    fn section_content_excerpts_reads_each_sections_prose_anchor() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":41,"frames":{},"narrative_facts":{},"entities":{},
+               "sections":{
+                 "d01-nat":{"content_excerpt":{
+                   "anchor":{"source":"MANUSCRIPT.md","locator":{"Prefix":"지운은"}},
+                   "text":"지운은 둑에 발을 올렸다.","text_sha256":""}},
+                 "d02-nat":{}
+               }}"#,
+        )
+        .unwrap();
+        let ex = section_content_excerpts(root, None).expect("reads the store");
+        let d01 = ex.get("d01-nat").expect("d01-nat has an excerpt");
+        assert_eq!(d01.text, "지운은 둑에 발을 올렸다.");
+        assert_eq!(d01.anchor.source, "MANUSCRIPT.md");
+        assert!(!ex.contains_key("d02-nat"));
+        assert_eq!(ex.len(), 1);
     }
 
     /// A malformed mnemosyne.toml fails loud instead of silently reporting
