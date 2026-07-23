@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-ops = { path = "../mnemosyne-ops" }
 serde.workspace = true

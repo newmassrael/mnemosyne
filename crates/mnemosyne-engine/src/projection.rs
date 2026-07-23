@@ -10,7 +10,8 @@ use mnemosyne_core::MAIN_BRANCH;
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
 use crate::{
-    ChoiceEntityRef, Door, EngineError, EngineOverrides, Fork, Interactivity, Line, Rung, SceneView,
+    CastMember, ChoiceEntityRef, Door, EngineError, EngineOverrides, Fork, Interactivity, Line,
+    Rung, SceneView,
 };
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
@@ -23,6 +24,10 @@ pub struct PlayableProjection {
     by_world: HashMap<String, HashMap<String, Vec<Line>>>,
     walks: HashMap<String, Vec<String>>,
     titles: HashMap<String, String>,
+    /// Section id -> the store-owned cast present there (Round 757, B1b). Keyed by
+    /// section: presence is authored world-truth on the shared section, so it is
+    /// world-independent (every world walking a section sees the same cast).
+    cast: HashMap<String, Vec<CastMember>>,
     forks: Vec<Fork>,
     divergent_endings: HashSet<String>,
     interactivity: Interactivity,
@@ -70,6 +75,7 @@ impl PlayableProjection {
         let mut by_world = HashMap::new();
         let mut walks = HashMap::new();
         let mut titles = HashMap::new();
+        let mut cast: HashMap<String, Vec<CastMember>> = HashMap::new();
 
         for (world_name, world) in worlds {
             walks.insert(
@@ -96,6 +102,17 @@ impl PlayableProjection {
                         .or_insert_with(|| scene.title.clone());
                 }
                 by_section.entry(scene.section.clone()).or_default();
+                // Presence is world-independent (authored on the shared section),
+                // so the first world to carry a section fixes its cast; later
+                // worlds see identical scene_cast. Provenance-bound via
+                // `CastMember::from_presence`.
+                cast.entry(scene.section.clone()).or_insert_with(|| {
+                    scene
+                        .scene_cast
+                        .iter()
+                        .map(CastMember::from_presence)
+                        .collect()
+                });
                 for begin in &scene.begins {
                     facts.insert(begin.fact_id.clone(), begin.clone());
                 }
@@ -160,6 +177,7 @@ impl PlayableProjection {
             by_world,
             walks,
             titles,
+            cast,
             forks,
             divergent_endings,
             interactivity: overrides.interactivity().clone(),
@@ -343,6 +361,18 @@ impl PlayableProjection {
     pub(crate) fn choice_entity_refs(&self) -> &[ChoiceEntityRef] {
         &self.choice_entity_refs
     }
+
+    /// The store-owned cast present at `section` (Round 757, B1b) — WHO is in the
+    /// scene, with the authored `modality`/`can_answer` and a provenance quote,
+    /// projected from `AtomicSection.scene_cast`. The ONLY cast source a consumer
+    /// reads (instead of building its own presence space the kernel cannot see —
+    /// the field-report class). World-independent: presence is authored on the
+    /// shared section, so every world walking `section` sees the same cast. Empty
+    /// for a section with no authored presence (or an unknown section).
+    #[must_use]
+    pub fn cast_at(&self, section: &str) -> &[CastMember] {
+        self.cast.get(section).map_or(&[][..], Vec::as_slice)
+    }
 }
 
 #[cfg(test)]
@@ -352,9 +382,12 @@ mod tests {
     use mnemosyne_core::DisclosureMode;
     use mnemosyne_validate::continuity::ForkTreeReport;
 
-    use crate::test_support::{begin, branch, journal_begin, locator, report, rung, scene};
+    use crate::test_support::{
+        begin, branch, cast_scene, journal_begin, locator, presence, report, rung, scene,
+    };
     use crate::{
-        DefaultOverrides, Door, EngineError, Interactivity, PlayableProjection, StaticOverrides,
+        DefaultOverrides, Door, EngineError, Interactivity, Modality, PlayableProjection,
+        StaticOverrides,
     };
 
     #[test]
@@ -657,5 +690,54 @@ mod tests {
         );
         // A section this world does not walk: empty (no at-or-before).
         assert!(proj.referenceable_entities("main", "sc-99").is_empty());
+    }
+
+    #[test]
+    fn cast_at_projects_the_store_scene_cast_provenance_bound() {
+        // R757 B1b — the store `scene_cast` projected as provenance-bound
+        // `CastMember`s: entity + authored modality/can_answer + the manuscript
+        // quote, in stored order.
+        let r = report(
+            "main",
+            vec![
+                cast_scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin("f-a", "the tide", "ground-truth", &["tide"])],
+                    vec![
+                        presence(
+                            "ent-jongdeuk",
+                            Modality::Observed,
+                            true,
+                            "종득은 문간에 서 있었다.",
+                        ),
+                        presence("ent-driver", Modality::Told, false, "운전기사가 왔다더라."),
+                    ],
+                ),
+                scene(
+                    "sc-02",
+                    "Noon",
+                    vec![begin("f-b", "a plain fact", "ground-truth", &[])],
+                ),
+            ],
+            vec![
+                locator("f-a", "sc-01", DisclosureMode::State),
+                locator("f-b", "sc-02", DisclosureMode::State),
+            ],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &DefaultOverrides::default()).unwrap();
+        let cast = proj.cast_at("sc-01");
+        assert_eq!(cast.len(), 2);
+        assert_eq!(cast[0].entity(), "ent-jongdeuk");
+        assert_eq!(cast[0].modality(), Modality::Observed);
+        assert!(cast[0].can_answer());
+        assert_eq!(cast[0].quote(), "종득은 문간에 서 있었다.");
+        assert_eq!(cast[1].entity(), "ent-driver");
+        assert_eq!(cast[1].modality(), Modality::Told);
+        assert!(!cast[1].can_answer());
+        // A scene with no authored presence, and an unknown section: empty cast.
+        assert!(proj.cast_at("sc-02").is_empty());
+        assert!(proj.cast_at("sc-99").is_empty());
     }
 }

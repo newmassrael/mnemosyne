@@ -4619,6 +4619,13 @@ pub struct ManuscriptScene {
     pub begins: Vec<ManuscriptFactEvent>,
     pub ends: Vec<ManuscriptEndEvent>,
     pub holding_count: usize,
+    /// The store-owned scene presence for this section (Round 757, B1b) — WHO is
+    /// in the scene + the authored modality/can_answer + a manuscript quote
+    /// proving each presence, carried verbatim from `AtomicSection.scene_cast` so
+    /// the engine can project a provenance-bound cast (`cast_at`). Empty for
+    /// sections with no authored presence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scene_cast: Vec<mnemosyne_atomic::ScenePresence>,
 }
 
 /// A visible fact the manuscript cannot place (Round 466, B-1): the named
@@ -4816,6 +4823,13 @@ pub fn playthrough_manuscript(
                 begins: Vec::new(),
                 ends: Vec::new(),
                 holding_count: 0,
+                // R757 B1b — the store-owned scene presence, carried verbatim so
+                // the engine projects a provenance-bound cast (`cast_at`).
+                scene_cast: store
+                    .sections
+                    .get(node)
+                    .map(|s| s.scene_cast.clone())
+                    .unwrap_or_default(),
             };
             for (id, fact) in facts {
                 if ctx.visibility(fact) != Vis::In {
@@ -9939,6 +9953,39 @@ mod tests {
         assert_eq!(s[2].ends[0].kind, ManuscriptEndKind::Superseded);
         assert_eq!(s[2].ends[0].by.as_deref(), Some("f3"));
         assert_eq!(s[2].holding_count, 1, "f1 cut, f2 expired — f3 alone");
+    }
+
+    #[test]
+    fn manuscript_scene_carries_the_store_scene_cast() {
+        // R757 B1b — AtomicSection.scene_cast flows verbatim into ManuscriptScene
+        // so the engine projects a provenance-bound cast (`cast_at`). This pins
+        // the store->report wiring the engine's cast_at depends on.
+        let mut store = store_with(vec![fact("f1", "gt", "ch-1", None)]);
+        store.sections.get_mut("ch-1").unwrap().scene_cast =
+            vec![mnemosyne_atomic::ScenePresence {
+                entity: "ent-jongdeuk".into(),
+                modality: mnemosyne_core::Modality::Observed,
+                can_answer: true,
+                excerpt: mnemosyne_atomic::ContentExcerpt {
+                    anchor: mnemosyne_core::ContentAnchor {
+                        source: "MANUSCRIPT.md".into(),
+                        locator: mnemosyne_core::Locator::Prefix("종득은".into()),
+                    },
+                    text: "종득은 문간에 서 있었다.".into(),
+                    text_sha256: String::new(),
+                },
+            }];
+        let order = chain(&["ch-1", "ch-2"]);
+        let report = playthrough_manuscript(&store, &order, None, None).unwrap();
+        let scenes = &report.worlds[MAIN_BRANCH].scenes;
+        let ch1 = scenes.iter().find(|sc| sc.section == "ch-1").unwrap();
+        assert_eq!(ch1.scene_cast.len(), 1);
+        assert_eq!(ch1.scene_cast[0].entity, "ent-jongdeuk");
+        assert!(ch1.scene_cast[0].can_answer);
+        assert_eq!(ch1.scene_cast[0].excerpt.text, "종득은 문간에 서 있었다.");
+        // A section with no authored presence carries an empty cast.
+        let ch2 = scenes.iter().find(|sc| sc.section == "ch-2").unwrap();
+        assert!(ch2.scene_cast.is_empty());
     }
 
     #[test]

@@ -197,6 +197,7 @@ mod tests {
             ],
             ends: Vec::new(),
             holding_count: 0,
+            scene_cast: Vec::new(),
         };
         let mut worlds = BTreeMap::new();
         worlds.insert(

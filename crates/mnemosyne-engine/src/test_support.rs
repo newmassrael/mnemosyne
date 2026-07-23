@@ -2,7 +2,7 @@
 //! `PlayableWorldReport` (and interactive fixtures) without repeating the wide
 //! upstream struct literals in every test module.
 
-use mnemosyne_core::{DisclosureMode, TypedClaim, TypedObject};
+use mnemosyne_core::{DisclosureMode, Modality, TypedClaim, TypedObject};
 use mnemosyne_validate::continuity::{
     ForkTreeBranch, ForkTreeEdge, ForkTreeReport, ManuscriptFactEvent, ManuscriptScene, MapLocator,
     PlayableWorld, PlayableWorldReport, QuestCompletion, QuestGraphReport, QuestNode, QuestState,
@@ -70,6 +70,44 @@ pub(crate) fn scene(
         begins,
         ends: Vec::new(),
         holding_count: 0,
+        scene_cast: Vec::new(),
+    }
+}
+
+/// One store `ScenePresence` for a `cast_scene` fixture (Round 757, B1b). The
+/// drift hash is left empty (a projection test does not exercise drift; the
+/// store's `import_scene_cast` is what pins it).
+pub(crate) fn presence(
+    entity: &str,
+    modality: Modality,
+    can_answer: bool,
+    quote: &str,
+) -> mnemosyne_atomic::ScenePresence {
+    mnemosyne_atomic::ScenePresence {
+        entity: entity.into(),
+        modality,
+        can_answer,
+        excerpt: mnemosyne_atomic::ContentExcerpt {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "MANUSCRIPT.md".into(),
+                locator: mnemosyne_core::Locator::Prefix(quote.chars().take(8).collect()),
+            },
+            text: quote.into(),
+            text_sha256: String::new(),
+        },
+    }
+}
+
+/// A scene carrying store `scene_cast` — for `cast_at` projection tests.
+pub(crate) fn cast_scene(
+    section: &str,
+    title: &str,
+    begins: Vec<ManuscriptFactEvent>,
+    cast: Vec<mnemosyne_atomic::ScenePresence>,
+) -> ManuscriptScene {
+    ManuscriptScene {
+        scene_cast: cast,
+        ..scene(section, title, begins)
     }
 }
 

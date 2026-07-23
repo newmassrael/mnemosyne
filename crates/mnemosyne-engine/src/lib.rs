@@ -43,7 +43,7 @@ pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, Pr
 pub use quest::{
     QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
 };
-pub use types::{ChoiceEntityRef, Door, Fork, Interactivity, Line, Rung, SceneView};
+pub use types::{CastMember, ChoiceEntityRef, Door, Fork, Interactivity, Line, Rung, SceneView};
 
 use std::fmt;
 

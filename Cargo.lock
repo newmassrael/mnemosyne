@@ -1061,6 +1061,7 @@ dependencies = [
 name = "mnemosyne-engine"
 version = "0.1.0"
 dependencies = [
+ "mnemosyne-atomic",
  "mnemosyne-core",
  "mnemosyne-ops",
  "mnemosyne-validate",

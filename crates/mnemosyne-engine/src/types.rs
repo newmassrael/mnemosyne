@@ -2,7 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use mnemosyne_core::DisclosureMode;
+use mnemosyne_atomic::ScenePresence;
+use mnemosyne_core::{DisclosureMode, Modality};
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, MapLocator};
 
 /// A single disclosed narrative unit — the ONLY carrier of narrative content to
@@ -191,6 +192,77 @@ impl Line {
             typed_predicate: begin.typed.as_ref().map(|t| t.predicate.clone()),
             quote: begin.quote.clone(),
             count: begin.count,
+        }
+    }
+}
+
+/// A character present in a scene (Round 757, B1b) — projected from the store's
+/// authored `scene_cast`, the ONLY cast source a consumer reads. Provenance-bound
+/// like [`Line`]: the fields are crate-private with no public constructor, and the
+/// sole ctor [`CastMember::from_presence`] builds from a real store
+/// [`ScenePresence`], so a downstream crate READS who is present but can never
+/// FABRICATE a presence (the field-report parallel-identity class is unrepresentable
+/// here too). The authored `modality`/`can_answer` are the store's world-truth
+/// (never engine-re-derived), and `quote` is the manuscript excerpt proving the
+/// presence. Struct-literal construction from another crate does not compile:
+///
+/// ```compile_fail
+/// use mnemosyne_engine::{CastMember, Modality};
+/// let _ = CastMember {
+///     entity: "ent-invented".to_string(),
+///     modality: Modality::Observed,
+///     can_answer: true,
+///     quote: "the engine made this up".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CastMember {
+    /// The store entity id present in the scene.
+    pub(crate) entity: String,
+    /// The authored evidentiary stance behind the presence (world-truth).
+    pub(crate) modality: Modality,
+    /// The authored judgment: can this presence answer the reckoner's questions?
+    pub(crate) can_answer: bool,
+    /// The manuscript quote proving the presence (the store excerpt text).
+    pub(crate) quote: String,
+}
+
+impl CastMember {
+    /// The store entity id present in the scene.
+    #[must_use]
+    pub fn entity(&self) -> &str {
+        &self.entity
+    }
+
+    /// The authored evidentiary stance behind the presence.
+    #[must_use]
+    pub fn modality(&self) -> Modality {
+        self.modality
+    }
+
+    /// The authored judgment: can this presence answer questions?
+    #[must_use]
+    pub fn can_answer(&self) -> bool {
+        self.can_answer
+    }
+
+    /// The manuscript quote proving the presence.
+    #[must_use]
+    pub fn quote(&self) -> &str {
+        &self.quote
+    }
+
+    /// Build a cast member from a store scene presence. Crate-private: the only
+    /// path to a `CastMember`, and it always carries a real store `ScenePresence`
+    /// (its excerpt already sha-pinned at ingestion), so a consumer cannot invent
+    /// who is present.
+    pub(crate) fn from_presence(p: &ScenePresence) -> Self {
+        Self {
+            entity: p.entity.clone(),
+            modality: p.modality,
+            can_answer: p.can_answer,
+            quote: p.excerpt.text.clone(),
         }
     }
 }
