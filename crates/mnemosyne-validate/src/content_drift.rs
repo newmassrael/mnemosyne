@@ -107,9 +107,9 @@ pub fn scan_content_drift(store: &AtomicStore) -> Vec<ContentDriftViolation> {
             let normative = section.normative_excerpt.as_ref().map(|e| {
                 (
                     ExcerptKind::Normative,
-                    e.text_sha256_matches(),
-                    e.text_sha256.clone(),
-                    e.recompute_text_sha256(),
+                    e.excerpt.text_sha256_matches(),
+                    e.excerpt.text_sha256.clone(),
+                    e.excerpt.recompute_text_sha256(),
                 )
             });
             let content = section.content_excerpt.as_ref().map(|e| {
@@ -181,10 +181,16 @@ mod tests {
                 decision_status: status,
             },
             normative_excerpt: Some(NormativeExcerpt {
-                text: text.to_string(),
+                excerpt: ContentExcerpt {
+                    anchor: ContentAnchor {
+                        source: "https://www.w3.org/TR/scxml/#x".to_string(),
+                        locator: Locator::Prefix(text.chars().take(8).collect()),
+                    },
+                    text: text.to_string(),
+                    text_sha256: hash.to_string(),
+                },
                 anchor_url: "https://www.w3.org/TR/scxml/#x".to_string(),
                 source_revision: "rev".to_string(),
-                text_sha256: hash.to_string(),
             }),
             ..Default::default()
         }

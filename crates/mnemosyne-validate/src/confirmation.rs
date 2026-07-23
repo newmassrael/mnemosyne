@@ -56,7 +56,7 @@ fn artifact_drifted(event: &ConfirmationEvent, store: &AtomicStore, workspace_ro
     if let Some(spec) = event.artifact_hashes.spec_sha256.as_deref() {
         if !spec.is_empty() {
             if let Some(exc) = section.and_then(|s| s.normative_excerpt.as_ref()) {
-                if !exc.text_sha256.is_empty() && exc.text_sha256 != spec {
+                if !exc.excerpt.text_sha256.is_empty() && exc.excerpt.text_sha256 != spec {
                     return true;
                 }
             }

@@ -1835,7 +1835,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
         println!();
         println!("--- normative excerpt ({}) ---", ne.source_revision);
         println!("source: {}", ne.anchor_url);
-        println!("{}", ne.text);
+        println!("{}", ne.excerpt.text);
         println!("--- end normative excerpt ---");
     }
     if !view.body.is_empty() {

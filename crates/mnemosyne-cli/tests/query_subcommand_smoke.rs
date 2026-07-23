@@ -233,7 +233,7 @@ fn query_surfaces_normative_excerpt_for_spec_section() {
     assert_eq!(view["section_id"], "scxml-3.13");
     let ne = &view["normative_excerpt"];
     assert_eq!(
-        ne["text"], "An event descriptor matches the event name verbatim.",
+        ne["excerpt"]["text"], "An event descriptor matches the event name verbatim.",
         "query --json must surface normative_excerpt; got: {view}"
     );
     assert_eq!(ne["anchor_url"], "https://www.w3.org/TR/scxml/#event");

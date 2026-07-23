@@ -91,8 +91,10 @@ fn import_epub_excerpts_refreshes_text_preserves_identity_and_skips_unmatched() 
     )
     .unwrap();
     let ne = &reloaded["sections"]["scxml-3.13"]["normative_excerpt"];
-    assert_eq!(ne["text"], NEW_TEXT);
-    assert_eq!(ne["text_sha256"], NEW_HASH);
+    // R759 — the excerpt is now wrapped on the shared ContentExcerpt substrate;
+    // the v8 flat fixture is migrated to v42 on load, then refreshed + saved.
+    assert_eq!(ne["excerpt"]["text"], NEW_TEXT);
+    assert_eq!(ne["excerpt"]["text_sha256"], NEW_HASH);
     // authored identity preserved (store-side, not EPUB-projected)
     assert_eq!(
         ne["anchor_url"],

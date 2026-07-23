@@ -98,8 +98,8 @@ pub fn scan_spec_drift(store: &AtomicStore, workspace_revision: &str) -> Vec<Spe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mnemosyne_atomic::{AtomicSection, NormativeExcerpt};
-    use mnemosyne_core::SectionSkeleton;
+    use mnemosyne_atomic::{AtomicSection, ContentExcerpt, NormativeExcerpt};
+    use mnemosyne_core::{ContentAnchor, Locator, SectionSkeleton};
 
     fn section_with_rev(rev: Option<&str>, status: Option<DecisionStatus>) -> AtomicSection {
         AtomicSection {
@@ -110,10 +110,16 @@ mod tests {
                 decision_status: status,
             },
             normative_excerpt: rev.map(|r| NormativeExcerpt {
-                text: "the normative text".to_string(),
+                excerpt: ContentExcerpt {
+                    anchor: ContentAnchor {
+                        source: "https://www.w3.org/TR/scxml/#x".to_string(),
+                        locator: Locator::Prefix("the normative text".to_string()),
+                    },
+                    text: "the normative text".to_string(),
+                    text_sha256: String::new(),
+                },
                 anchor_url: "https://www.w3.org/TR/scxml/#x".to_string(),
                 source_revision: r.to_string(),
-                text_sha256: String::new(),
             }),
             ..Default::default()
         }
