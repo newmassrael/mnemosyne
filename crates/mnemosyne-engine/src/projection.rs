@@ -11,7 +11,7 @@ use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
 use crate::{
     CastMember, ChoiceEntityRef, Door, EngineError, EngineOverrides, Fork, Interactivity, Line,
-    Rung, SceneView,
+    Passage, Rung, RungQuestionFault, SceneView,
 };
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
@@ -32,6 +32,12 @@ pub struct PlayableProjection {
     divergent_endings: HashSet<String>,
     interactivity: Interactivity,
     choice_entity_refs: Vec<ChoiceEntityRef>,
+    /// Section id -> the resolved ask doors dug there (R759 P3c-2). Built once at
+    /// construction: an anchored rung's question is resolved from the section's
+    /// store `content_excerpt` (fail-loud), an un-anchored rung keeps its free
+    /// question. World-independent (ladders + excerpts are both keyed by section),
+    /// so `doors_at` appends these regardless of world.
+    ask_doors: HashMap<String, Vec<Door>>,
 }
 
 impl PlayableProjection {
@@ -52,19 +58,48 @@ impl PlayableProjection {
         let report =
             mnemosyne_ops::playable_world_report(workspace_root, None, None, None, telling)
                 .map_err(|e| EngineError::Projection(e.to_string()))?;
-        Self::from_report(report, overrides)
+        // The store's per-section content prose (R757 P3b), the second store
+        // projection an anchored ladder question resolves against.
+        let passages = crate::store_passages(workspace_root)?;
+        Self::from_report_and_passages(report, overrides, passages)
     }
 
-    /// Index an already-projected [`PlayableWorldReport`] — the testable core
-    /// ([`Self::from_workspace`] is the store-reading wrapper).
+    /// Index an already-projected [`PlayableWorldReport`] — the pure testable core
+    /// ([`Self::from_workspace`] is the store-reading wrapper). No store content
+    /// prose is supplied here, so a rung that declares a `question_anchor` cannot
+    /// resolve (fail-loud) — anchored questions are a [`Self::from_workspace`]
+    /// concern (the store owns the prose); the report path renders only
+    /// un-anchored questions.
     ///
     /// # Errors
     ///
     /// [`EngineError::LocatorFactMissing`] if any locator names a `fact_id` no
-    /// `begins` event carries (a stale report), never a silent drop.
+    /// `begins` event carries (a stale report), never a silent drop;
+    /// [`EngineError::RungQuestionUnresolvable`] if any rung declares a
+    /// `question_anchor` (unresolvable here — no store prose).
     pub fn from_report(
         report: PlayableWorldReport,
         overrides: &impl EngineOverrides,
+    ) -> Result<Self, EngineError> {
+        Self::from_report_and_passages(report, overrides, HashMap::new())
+    }
+
+    /// The store-aware core: index a report AND the store's per-section content
+    /// prose, so an anchored ladder question ([`Rung::question_anchor`]) resolves
+    /// against the section's [`Passage`]. Both public constructors delegate here —
+    /// [`Self::from_report`] with no passages, [`Self::from_workspace`] with the
+    /// live store's. Crate-internal: the only injection point for passages is the
+    /// real store read (or an in-crate test), never a downstream fabrication.
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::LocatorFactMissing`] for a stale locator;
+    /// [`EngineError::RungQuestionUnresolvable`] if an anchored rung's question
+    /// prose is not backed by the section's store excerpt.
+    pub(crate) fn from_report_and_passages(
+        report: PlayableWorldReport,
+        overrides: &impl EngineOverrides,
+        passages: HashMap<String, Passage>,
     ) -> Result<Self, EngineError> {
         let journal = overrides.journal_predicates();
         let PlayableWorldReport {
@@ -172,6 +207,22 @@ impl PlayableProjection {
             })
             .collect();
 
+        // Resolve the ask doors ONCE, fail-loud: an anchored rung's question is
+        // the section's store prose (never the free string), a bare rung keeps its
+        // authored question. Building here (not lazily in `doors_at`) keeps the
+        // read path infallible and localizes the provenance failure to construction.
+        let mut ask_doors: HashMap<String, Vec<Door>> = HashMap::new();
+        for (section, rungs) in &overrides.interactivity().ladders {
+            let mut resolved = Vec::with_capacity(rungs.len());
+            for rung in rungs {
+                resolved.push(Door::Ask {
+                    question: resolve_rung_question(section, rung, &passages)?,
+                    reveals: rung.reveals.clone(),
+                });
+            }
+            ask_doors.insert(section.clone(), resolved);
+        }
+
         Ok(Self {
             telling,
             by_world,
@@ -182,6 +233,7 @@ impl PlayableProjection {
             divergent_endings,
             interactivity: overrides.interactivity().clone(),
             choice_entity_refs: overrides.choice_entity_refs().to_vec(),
+            ask_doors,
         })
     }
 
@@ -252,14 +304,13 @@ impl PlayableProjection {
             });
         }
 
-        // Ask doors: the authored ladder rungs at this section, in authored
-        // order. The leak gate (never construction) enforces that a rung's
-        // reveal is a fact the store actually offers here.
-        for rung in self.rungs_at(section) {
-            doors.push(Door::Ask {
-                question: rung.question.clone(),
-                reveals: rung.reveals.clone(),
-            });
+        // Ask doors: the ladder rungs at this section, in authored order, with
+        // their questions already resolved at construction (R759 P3c-2 — an
+        // anchored question is the section's store prose, fail-loud there; a bare
+        // one is un-anchored chrome). The leak gate (never construction) still
+        // enforces that a rung's reveal is a fact the store offers here.
+        if let Some(ask) = self.ask_doors.get(section) {
+            doors.extend(ask.iter().cloned());
         }
 
         doors
@@ -375,6 +426,39 @@ impl PlayableProjection {
     }
 }
 
+/// Resolve a rung's rendered question, fail-loud (R759 P3c-2). An UN-ANCHORED rung
+/// renders its free `question` verbatim (interactive chrome). An ANCHORED rung's
+/// question is the section's store `content_excerpt` text — and the declared
+/// anchor MUST match that excerpt's anchor, so a false provenance claim (a rung
+/// pointing at prose the section does not hold, or a section with no excerpt) is
+/// [`EngineError::RungQuestionUnresolvable`], never a silent fall-back to the free
+/// string. This is the store-resolution that makes a fabricated door label
+/// inexpressible for a provenance-bound consumer.
+fn resolve_rung_question(
+    section: &str,
+    rung: &Rung,
+    passages: &HashMap<String, Passage>,
+) -> Result<String, EngineError> {
+    let Some(anchor) = &rung.question_anchor else {
+        return Ok(rung.question.clone());
+    };
+    let passage = passages
+        .get(section)
+        .ok_or_else(|| EngineError::RungQuestionUnresolvable {
+            section: section.to_string(),
+            anchor: anchor.clone(),
+            reason: RungQuestionFault::SectionHasNoExcerpt,
+        })?;
+    if passage.anchor() != anchor {
+        return Err(EngineError::RungQuestionUnresolvable {
+            section: section.to_string(),
+            anchor: anchor.clone(),
+            reason: RungQuestionFault::AnchorMismatch,
+        });
+    }
+    Ok(passage.text().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -386,8 +470,8 @@ mod tests {
         begin, branch, cast_scene, journal_begin, locator, presence, report, rung, scene,
     };
     use crate::{
-        DefaultOverrides, Door, EngineError, Interactivity, Modality, PlayableProjection,
-        StaticOverrides,
+        ContentAnchor, DefaultOverrides, Door, EngineError, Interactivity, Locator, Modality,
+        Passage, PlayableProjection, Rung, RungQuestionFault, StaticOverrides,
     };
 
     #[test]
@@ -601,6 +685,150 @@ mod tests {
                 label: "run".into(),
             }]
         );
+    }
+
+    // ---- R759 P3c-2: the anchored ladder question resolves from the store ----
+
+    /// A one-section report carrying the `f-name` fact the ladder reveals.
+    fn name_report() -> mnemosyne_validate::continuity::PlayableWorldReport {
+        report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dawn",
+                vec![begin(
+                    "f-name",
+                    "the name is Yeonggeun",
+                    "ground-truth",
+                    &[],
+                )],
+            )],
+            vec![locator("f-name", "sc-01", DisclosureMode::Hint)],
+            ForkTreeReport::default(),
+        )
+    }
+
+    /// The anchor the section's store excerpt actually carries.
+    fn store_anchor() -> ContentAnchor {
+        ContentAnchor {
+            source: "MANUSCRIPT.md".into(),
+            locator: Locator::Prefix("지운은".into()),
+        }
+    }
+
+    /// `sc-01`'s store content prose — a provenance-bound [`Passage`] the anchored
+    /// question resolves against (the P3b store-cache model, built in-crate).
+    fn sc01_passages() -> HashMap<String, Passage> {
+        let excerpt = mnemosyne_atomic::ContentExcerpt {
+            anchor: store_anchor(),
+            text: "지운은 그 이름을 물었다.".into(),
+            text_sha256: String::new(),
+        };
+        HashMap::from([("sc-01".to_string(), Passage::from_excerpt(&excerpt))])
+    }
+
+    /// A `sc-01` ladder whose one rung carries a FABRICATED free question plus the
+    /// given `question_anchor` — so a passing test proves the store prose wins.
+    fn anchored_ladder(question_anchor: Option<ContentAnchor>) -> StaticOverrides {
+        StaticOverrides {
+            interactivity: Interactivity {
+                objects: HashSet::new(),
+                ladders: HashMap::from([(
+                    "sc-01".to_string(),
+                    vec![Rung {
+                        question: "FABRICATED — a free label that must never be shown".into(),
+                        question_anchor,
+                        reveals: "f-name".into(),
+                        needs: Vec::new(),
+                    }],
+                )]),
+                free_investigate: false,
+            },
+            journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn anchored_rung_question_renders_the_store_excerpt_not_the_free_string() {
+        let proj = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &anchored_ladder(Some(store_anchor())),
+            sc01_passages(),
+        )
+        .expect("the declared anchor matches the section's excerpt");
+        let view = proj.scene("main", "sc-01");
+        // The rendered question IS the store prose.
+        assert!(view.doors.contains(&Door::Ask {
+            question: "지운은 그 이름을 물었다.".into(),
+            reveals: "f-name".into(),
+        }));
+        // The fabricated free string is NEVER rendered.
+        assert!(!view.doors.iter().any(|d| matches!(
+            d,
+            Door::Ask { question, .. } if question.contains("FABRICATED")
+        )));
+    }
+
+    #[test]
+    fn anchored_rung_question_with_no_section_excerpt_is_rejected() {
+        // No passages injected — the section has no store prose to bind to.
+        let err = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &anchored_ladder(Some(store_anchor())),
+            HashMap::new(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            EngineError::RungQuestionUnresolvable {
+                section: "sc-01".into(),
+                anchor: store_anchor(),
+                reason: RungQuestionFault::SectionHasNoExcerpt,
+            }
+        );
+    }
+
+    #[test]
+    fn anchored_rung_question_with_a_mismatched_anchor_is_rejected() {
+        // The rung claims an anchor the section's excerpt does not carry — a false
+        // provenance claim, rejected rather than silently resolved to the excerpt.
+        let wrong = ContentAnchor {
+            source: "MANUSCRIPT.md".into(),
+            locator: Locator::Prefix("존재하지".into()),
+        };
+        let err = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &anchored_ladder(Some(wrong.clone())),
+            sc01_passages(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            EngineError::RungQuestionUnresolvable {
+                section: "sc-01".into(),
+                anchor: wrong,
+                reason: RungQuestionFault::AnchorMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn un_anchored_rung_keeps_its_free_question_even_when_store_prose_exists() {
+        // question_anchor: None -> the free string IS the label; injected store
+        // prose does not override un-anchored interactive chrome.
+        let proj = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &anchored_ladder(None),
+            sc01_passages(),
+        )
+        .expect("an un-anchored rung never resolves against the store");
+        let view = proj.scene("main", "sc-01");
+        assert!(view.doors.contains(&Door::Ask {
+            question: "FABRICATED — a free label that must never be shown".into(),
+            reveals: "f-name".into(),
+        }));
     }
 
     #[test]

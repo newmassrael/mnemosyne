@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use mnemosyne_atomic::ScenePresence;
-use mnemosyne_core::{DisclosureMode, Modality};
+use mnemosyne_core::{ContentAnchor, DisclosureMode, Modality};
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, MapLocator};
 
 /// A single disclosed narrative unit — the ONLY carrier of narrative content to
@@ -368,9 +368,26 @@ pub enum Door {
 /// unconstructible.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rung {
-    /// The authored question (the door label; novel-anchored upstream by the
-    /// consumer's authoring pipeline, not re-checked here).
+    /// The authored question (the door label). The UN-ANCHORED fallback: when
+    /// [`question_anchor`](Self::question_anchor) is `None` this string is the
+    /// rendered label as-is (pure interactive chrome, asserting no manuscript
+    /// prose). When an anchor IS present the engine resolves the label from the
+    /// store excerpt instead and this string is never shown.
     pub question: String,
+    /// R759 P3c-2 — an optional content-SSOT anchor binding this rung's question
+    /// prose to the section's store `content_excerpt`. When `Some`, the engine
+    /// RESOLVES the rendered question from that excerpt at projection and FAILS
+    /// LOUD ([`EngineError::RungQuestionUnresolvable`](crate::EngineError::RungQuestionUnresolvable))
+    /// if it does not resolve — the declared anchor MUST match the section's
+    /// excerpt — so a manuscript-less consumer (a generic renderer, pinion) cannot
+    /// fabricate a ladder door label. This extends R755 fork-2 ("a rendered unit
+    /// is provenance-bound to a `fact_id` OR a content-anchor") to the ladder
+    /// question, the last bare-`String` authored-prose surface in the engine.
+    /// A CONSUMER INPUT (Deserialize, like [`reveals`](Self::reveals)): the
+    /// guarantee is RESOLUTION, not unconstructibility (`Rung` must stay
+    /// Deserialize for `StaticOverrides::load`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_anchor: Option<ContentAnchor>,
     /// The `fact_id` this rung's answer discloses — provenance-checked by the
     /// leak gate against the facts the store offers at the spot.
     pub reveals: String,

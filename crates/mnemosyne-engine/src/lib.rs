@@ -63,6 +63,31 @@ pub enum EngineError {
     /// The underlying `report-playable-world` projection failed (an unregistered
     /// world, a typo'd telling, an unreadable store).
     Projection(String),
+    /// A ladder rung declared a `question_anchor` (R759 P3c-2) but the engine
+    /// could not resolve the question prose from the section's store
+    /// `content_excerpt` — the rung claims provenance the store does not back.
+    /// Fail-loud: a manuscript-less consumer cannot render a fabricated door
+    /// label. Raised at projection, never a silent fallback to the free string.
+    RungQuestionUnresolvable {
+        /// The section the rung is dug at.
+        section: String,
+        /// The content anchor the rung declared for its question prose.
+        anchor: ContentAnchor,
+        /// Why the anchor did not resolve.
+        reason: RungQuestionFault,
+    },
+}
+
+/// Why a [`Rung`]'s `question_anchor` did not resolve against the store
+/// ([`EngineError::RungQuestionUnresolvable`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RungQuestionFault {
+    /// The section carries no store `content_excerpt`, so there is no prose to
+    /// anchor the question to.
+    SectionHasNoExcerpt,
+    /// The section HAS an excerpt, but it is anchored elsewhere than the rung
+    /// declared — the rung's provenance claim is false.
+    AnchorMismatch,
 }
 
 impl fmt::Display for EngineError {
@@ -75,6 +100,26 @@ impl fmt::Display for EngineError {
             ),
             EngineError::Projection(msg) => {
                 write!(f, "playable-world projection failed: {msg}")
+            }
+            EngineError::RungQuestionUnresolvable {
+                section,
+                anchor,
+                reason,
+            } => {
+                let why = match reason {
+                    RungQuestionFault::SectionHasNoExcerpt => {
+                        "the section has no store content excerpt to bind the question to"
+                    }
+                    RungQuestionFault::AnchorMismatch => {
+                        "the anchor does not match the section's content excerpt"
+                    }
+                };
+                write!(
+                    f,
+                    "rung at `{section}` declares question anchor `{}` but {why} \
+                     — the question prose is not store-backed",
+                    anchor.source
+                )
             }
         }
     }

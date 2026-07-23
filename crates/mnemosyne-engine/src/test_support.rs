@@ -142,6 +142,7 @@ pub(crate) fn branch(
 pub(crate) fn rung(question: &str, reveals: &str, needs: &[&str]) -> Rung {
     Rung {
         question: question.into(),
+        question_anchor: None,
         reveals: reveals.into(),
         needs: needs.iter().map(|n| (*n).to_string()).collect(),
     }
