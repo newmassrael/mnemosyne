@@ -2489,6 +2489,81 @@ pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Re
     finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
+/// R757 (B0) — bulk-set narrative `scene_cast` from a consumer's
+/// `scene-cast-map/v1` (`{presences: [{section_id, entity, modality, can_answer,
+/// anchor, text}]}`). The consumer resolved each manuscript form → store id and
+/// each quote `text` against ITS manuscript; the store pins `sha256(text)` so
+/// `validate-content-drift` catches later out-of-band edits. Presences are grouped
+/// by section (each section's `scene_cast` is replaced).
+pub fn cmd_import_scene_cast(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    #[derive(serde::Deserialize)]
+    struct PresenceEntry {
+        section_id: String,
+        entity: String,
+        modality: mnemosyne_core::Modality,
+        #[serde(default)]
+        can_answer: bool,
+        anchor: mnemosyne_core::ContentAnchor,
+        text: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct SceneCastMap {
+        presences: Vec<PresenceEntry>,
+    }
+    let mut map_path: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--presences" => {
+                map_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--presences missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let path = map_path.ok_or_else(|| anyhow!("--presences <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read presences {}", path))?;
+    let map: SceneCastMap = serde_json::from_str(&raw)
+        .with_context(|| format!("parse {} (scene-cast-map/v1)", path))?;
+    let imports: Vec<mnemosyne_atomic::ScenePresenceImport> = map
+        .presences
+        .into_iter()
+        .map(|p| mnemosyne_atomic::ScenePresenceImport {
+            section_id: p.section_id,
+            entity: p.entity,
+            modality: p.modality,
+            can_answer: p.can_answer,
+            anchor: p.anchor,
+            text: p.text,
+        })
+        .collect();
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    let outcome = mnemosyne_atomic::import_scene_cast(&mut store, &sidecar_path, &imports);
+    if let Ok((_, unmatched)) = &outcome {
+        if !unmatched.is_empty() {
+            eprintln!(
+                "note: {} presence section_id(s) matched no section in the store",
+                unmatched.len()
+            );
+        }
+    }
+    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {

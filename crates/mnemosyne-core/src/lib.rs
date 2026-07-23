@@ -51,6 +51,9 @@ pub use section_ref::{numeric_section_refs, strip_section_marker};
 mod content_anchor;
 pub use content_anchor::{ContentAnchor, Locator};
 
+mod scene;
+pub use scene::Modality;
+
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 

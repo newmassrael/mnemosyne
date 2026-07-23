@@ -218,6 +218,18 @@ pub struct AtomicSection {
     /// unchanged; convergence onto one substrate is P3c.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_excerpt: Option<ContentExcerpt>,
+
+    /// Scene presence — WHO is in this scene and how their presence is known
+    /// (Round 757, B0). The store-owned authored world-truth that lets any
+    /// consumer (tide, pinion) read the cast of a scene from the store instead of
+    /// building a parallel identity/presence space the kernel cannot see (the
+    /// field-report root class). Each [`ScenePresence`] is provenance-bound: it
+    /// carries a manuscript [`ContentExcerpt`] proving the presence, so an
+    /// un-resolvable quote is an un-assertable presence (the `content_excerpt`
+    /// substrate applied to cast). Set by `import-scene-cast`. Empty (default) for
+    /// spec sections / until ingested.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scene_cast: Vec<ScenePresence>,
 }
 
 /// serde `skip_serializing_if` predicate for [`AtomicSection::coverage_expectation`]:
@@ -337,6 +349,34 @@ impl ContentExcerpt {
             Some(self.recompute_text_sha256() == self.text_sha256)
         }
     }
+}
+
+/// One character's presence in a scene (Round 757, B0) — an entry of
+/// [`AtomicSection::scene_cast`]. Store-owned authored world-truth: the entity
+/// present, the authored evidentiary `modality`, whether they `can_answer`
+/// (the dialogue-axis judgment), and a provenance `excerpt` — a manuscript
+/// [`ContentExcerpt`] whose quote proves the presence. The authored judgments
+/// (`modality`, `can_answer`) are STORED, never engine-re-derived: re-deriving an
+/// authored judgment from the prose loses fidelity. Because the `excerpt` reuses
+/// the P3a [`ContentExcerpt`] substrate, an un-resolvable quote is an un-assertable
+/// presence — the `Line`/`Passage` provenance invariant applied to cast.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ScenePresence {
+    /// The store entity id present in the scene (the consumer resolves a
+    /// manuscript form → id via its alias map at ingest and supplies the id).
+    pub entity: String,
+    /// The authored evidentiary stance behind the presence (world-truth, stored).
+    pub modality: mnemosyne_core::Modality,
+    /// Authored judgment: whether this presence can answer the reckoner's
+    /// questions (the dialogue axis). A missing field reads `false`, so an absent
+    /// judgment is "cannot answer", not "unknown" — stored, never re-derived.
+    #[serde(default)]
+    pub can_answer: bool,
+    /// The manuscript quote proving the presence — the same provenance substrate
+    /// as `content_excerpt` (a `ContentAnchor` + verbatim projected text + drift
+    /// hash). An un-resolvable quote is an un-assertable presence.
+    pub excerpt: ContentExcerpt,
 }
 
 /// EPUB-SSOT locator (R393) — where this Section lives inside the workspace's
@@ -1539,11 +1579,20 @@ pub enum AtomicStoreError {
 // `None` — byte-identical behavior for any store that has not ingested a
 // narrative excerpt. So there is deliberately NO `schema_version < 40` arm in
 // `load`, and no migration report is needed.
+// v40→v41 adds `AtomicSection.scene_cast` (Round 757, B0) — the store-owned
+// scene-presence list (who is in a scene + the authored modality/can_answer +
+// a manuscript `ContentExcerpt` proving each presence), so a consumer reads the
+// cast of a scene from the store instead of a parallel identity space. Same
+// declarative new-field-default pattern as v39→v40 content_excerpt: a pre-v41
+// section has no `scene_cast` key, serde `#[serde(default)]` fills an empty
+// `Vec`, and serialization skips it when empty — byte-identical behavior for any
+// store that has not ingested scene presence. So there is deliberately NO
+// `schema_version < 41` arm in `load`, and no migration report is needed.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 40;
+pub const CURRENT_SCHEMA_VERSION: u32 = 41;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -3397,6 +3446,93 @@ pub fn import_content_excerpts(
         sidecar_path,
         "import_content_excerpts",
         "excerpts",
+        &applied.to_string(),
+    )?;
+    Ok((receipt, unmatched))
+}
+
+/// One entry for [`import_scene_cast`]: a Section's scene presence — the entity,
+/// the authored `modality`/`can_answer` judgments, and the manuscript `anchor` +
+/// projected `text` (the quote proving the presence) the consumer resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenePresenceImport {
+    pub section_id: String,
+    pub entity: String,
+    pub modality: mnemosyne_core::Modality,
+    pub can_answer: bool,
+    pub anchor: mnemosyne_core::ContentAnchor,
+    pub text: String,
+}
+
+/// R757 (B0) — bulk-set narrative `scene_cast` from a consumer that resolved the
+/// scene presence against ITS manuscript. Entries are grouped by `section_id` (in
+/// id order); each existing section's `scene_cast` is REPLACED by its group's
+/// presences (idempotent on re-import, the `content_excerpt` derived-cache rule),
+/// each stored as a [`ScenePresence`] whose `excerpt.text_sha256` the store
+/// COMPUTES via the P3a validator so [`scan_content_drift`] can later catch an
+/// out-of-band edit. An empty `entity`, `text`, or anchor `source` is a malformed
+/// presence and returns `Err` BEFORE the save (never a partial import). Sections
+/// absent from the store are returned as `unmatched` (the caller decides whether
+/// that is an error). One in-memory pass + one save (single write path, like
+/// [`import_content_excerpts`]).
+///
+/// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
+pub fn import_scene_cast(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    presences: &[ScenePresenceImport],
+) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    // Validate every entry BEFORE mutating, so a malformed one never leaves a
+    // partially-applied store (the import_content_excerpts fail-before-save rule).
+    for p in presences {
+        if p.entity.is_empty() || p.text.is_empty() || p.anchor.source.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_scene_cast: {} has an empty entity, text, or anchor source",
+                p.section_id
+            )));
+        }
+    }
+    // Group by section (the consumer supplies the whole cast of a section, so the
+    // list REPLACES that section's scene_cast). BTreeMap = deterministic id order;
+    // within a section the presences keep the supplied order.
+    let mut grouped: std::collections::BTreeMap<String, Vec<ScenePresence>> =
+        std::collections::BTreeMap::new();
+    for p in presences {
+        grouped
+            .entry(p.section_id.clone())
+            .or_default()
+            .push(ScenePresence {
+                entity: p.entity.clone(),
+                modality: p.modality,
+                can_answer: p.can_answer,
+                excerpt: ContentExcerpt {
+                    anchor: p.anchor.clone(),
+                    text: p.text.clone(),
+                    text_sha256: sha256_hex(p.text.as_bytes()),
+                },
+            });
+    }
+    let mut applied = 0usize;
+    let mut unmatched = Vec::new();
+    for (section_id, cast) in grouped {
+        match store.sections.get_mut(&section_id) {
+            Some(section) => {
+                section.scene_cast = cast;
+                applied += 1;
+            }
+            None => unmatched.push(section_id),
+        }
+    }
+    if applied == 0 {
+        return Err(AtomicMutateError::NotFound(
+            "import_scene_cast: no presence matched a section in the store".to_string(),
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "import_scene_cast",
+        "sections",
         &applied.to_string(),
     )?;
     Ok((receipt, unmatched))
@@ -9431,6 +9567,78 @@ mod tests {
         }];
         assert!(matches!(
             import_content_excerpts(&mut store, &sidecar, &bad),
+            Err(AtomicMutateError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn import_scene_cast_sets_field_computes_sha_and_validates() {
+        // R757 (B0) — the scene-presence write path: the store REPLACES a
+        // section's scene_cast with the supplied presences, computing each
+        // excerpt sha (consistent by construction; scan_content_drift catches
+        // later out-of-band edits). Authored modality/can_answer are stored verbatim.
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "d08-bam");
+        let quote = "종득은 문간에 서 있었다.";
+        let anchor = mnemosyne_core::ContentAnchor {
+            source: "MANUSCRIPT.md".to_string(),
+            locator: mnemosyne_core::Locator::Prefix("종득은".to_string()),
+        };
+        // Two presences on one section + an unmatched id (reported, not an error).
+        let imports = vec![
+            ScenePresenceImport {
+                section_id: "d08-bam".to_string(),
+                entity: "ent-jongdeuk".to_string(),
+                modality: mnemosyne_core::Modality::Observed,
+                can_answer: true,
+                anchor: anchor.clone(),
+                text: quote.to_string(),
+            },
+            ScenePresenceImport {
+                section_id: "d08-bam".to_string(),
+                entity: "ent-driver".to_string(),
+                modality: mnemosyne_core::Modality::Told,
+                can_answer: false,
+                anchor: anchor.clone(),
+                text: "운전기사가 왔다더라.".to_string(),
+            },
+            ScenePresenceImport {
+                section_id: "nope".to_string(),
+                entity: "ent-jongdeuk".to_string(),
+                modality: mnemosyne_core::Modality::Observed,
+                can_answer: true,
+                anchor: anchor.clone(),
+                text: quote.to_string(),
+            },
+        ];
+        let (_, unmatched) = import_scene_cast(&mut store, &sidecar, &imports).unwrap();
+        assert_eq!(unmatched, vec!["nope".to_string()]);
+        let cast = &store.sections["d08-bam"].scene_cast;
+        assert_eq!(cast.len(), 2);
+        assert_eq!(cast[0].entity, "ent-jongdeuk");
+        assert_eq!(cast[0].modality, mnemosyne_core::Modality::Observed);
+        assert!(cast[0].can_answer);
+        assert_eq!(cast[0].excerpt.text, quote);
+        assert_eq!(cast[0].excerpt.text_sha256, sha256_hex(quote.as_bytes()));
+        assert_eq!(cast[0].excerpt.text_sha256_matches(), Some(true));
+        assert_eq!(cast[1].modality, mnemosyne_core::Modality::Told);
+        assert!(!cast[1].can_answer);
+        // Re-import REPLACES (idempotent), not appends.
+        let (_, _) = import_scene_cast(&mut store, &sidecar, &imports[..1]).unwrap();
+        assert_eq!(store.sections["d08-bam"].scene_cast.len(), 1);
+        // A malformed entry (empty entity) fails validation BEFORE any save.
+        let bad = vec![ScenePresenceImport {
+            section_id: "d08-bam".to_string(),
+            entity: String::new(),
+            modality: mnemosyne_core::Modality::Observed,
+            can_answer: true,
+            anchor,
+            text: quote.to_string(),
+        }];
+        assert!(matches!(
+            import_scene_cast(&mut store, &sidecar, &bad),
             Err(AtomicMutateError::Validation(_))
         ));
     }

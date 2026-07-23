@@ -403,6 +403,20 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_import_content_excerpts(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "import-scene-cast",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &[
+            "import-scene-cast --presences <scene-cast-map.json> [--sidecar <path>] [--json]",
+        ],
+        notes: &[
+            "   R757 (B0) — bulk-set narrative scene_cast from {presences:[{section_id,entity,modality,can_answer,anchor,text}]};",
+            "   the consumer resolves form->id + quote against its manuscript, the store pins sha256(text) for drift",
+        ],
+        run: |c| atomic_cli::cmd_import_scene_cast(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "import-facts",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),

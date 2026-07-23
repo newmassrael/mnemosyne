@@ -33,15 +33,19 @@
 use mnemosyne_atomic::AtomicStore;
 
 /// Which provenance-excerpt cache drifted (R756 generalized the scan to cover
-/// both). `Normative` = the spec/EPUB-external mirror (`normative_excerpt`);
-/// `Content` = the narrative-prose anchor (`content_excerpt`). Same offline sha
-/// model; the kind tells a consumer which cache to re-ingest.
+/// both; R757 added scene presence). `Normative` = the spec/EPUB-external mirror
+/// (`normative_excerpt`); `Content` = the narrative-prose anchor
+/// (`content_excerpt`); `ScenePresence` = a `scene_cast` presence's manuscript
+/// quote (Round 757, B0). Same offline sha model; the kind tells a consumer which
+/// cache to re-ingest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExcerptKind {
     /// `normative_excerpt` — the spec/EPUB-external-mirror excerpt.
     Normative,
     /// `content_excerpt` — the narrative-prose content anchor (R756).
     Content,
+    /// `scene_cast[].excerpt` — a scene presence's manuscript quote (Round 757).
+    ScenePresence,
 }
 
 impl ExcerptKind {
@@ -49,6 +53,7 @@ impl ExcerptKind {
         match self {
             ExcerptKind::Normative => "normative",
             ExcerptKind::Content => "content",
+            ExcerptKind::ScenePresence => "scene_presence",
         }
     }
 }
@@ -84,13 +89,15 @@ impl ContentDriftViolation {
 }
 
 /// Scan `store` for content-integrity drift: every Section carrying a
-/// `normative_excerpt` OR a `content_excerpt` (R756) with a **non-empty**
-/// `text_sha256` that no longer equals `sha256(text)` contributes a
-/// [`ContentDriftViolation`] (one per drifted cache; a Section could carry both).
+/// `normative_excerpt`, a `content_excerpt` (R756), OR a `scene_cast` presence
+/// quote (R757) with a **non-empty** `text_sha256` that no longer equals
+/// `sha256(text)` contributes a [`ContentDriftViolation`] (one per drifted cache;
+/// a Section could carry several).
 ///
 /// Excerpts with an empty `text_sha256` are skipped (unrevalidatable — owned
 /// by `report-excerpt-hash-backfill`, not drift). Pure + offline + deterministic,
-/// `BTreeMap`-key ordered, normative before content within a Section.
+/// `BTreeMap`-key ordered; within a Section: normative, then content, then each
+/// `scene_cast` presence in stored order.
 pub fn scan_content_drift(store: &AtomicStore) -> Vec<ContentDriftViolation> {
     store
         .sections
@@ -113,11 +120,21 @@ pub fn scan_content_drift(store: &AtomicStore) -> Vec<ContentDriftViolation> {
                     e.recompute_text_sha256(),
                 )
             });
+            // Each scene presence carries the same ContentExcerpt drift surface.
+            let presences = section.scene_cast.iter().map(|p| {
+                (
+                    ExcerptKind::ScenePresence,
+                    p.excerpt.text_sha256_matches(),
+                    p.excerpt.text_sha256.clone(),
+                    p.excerpt.recompute_text_sha256(),
+                )
+            });
             // None = empty hash (unrevalidatable, not drift); Some(true) = clean.
             // Only Some(false) — a populated hash that no longer matches — drifts.
-            [normative, content]
+            normative
                 .into_iter()
-                .flatten()
+                .chain(content)
+                .chain(presences)
                 .filter_map(|(kind, matches, declared, computed)| {
                     (matches == Some(false)).then(|| ContentDriftViolation {
                         section_id: section_id.clone(),
@@ -273,5 +290,108 @@ mod tests {
         assert_eq!(v.len(), 2);
         assert_eq!(v[0].excerpt, ExcerptKind::Normative);
         assert_eq!(v[1].excerpt, ExcerptKind::Content);
+    }
+
+    // ── R757 (B0): scene_cast presence-quote drift, the same offline sha check ──
+
+    /// A Section carrying a `scene_cast` presence whose quote hashes to `hash`.
+    fn scene_section(entity: &str, quote: &str, hash: &str) -> AtomicSection {
+        AtomicSection {
+            scene_cast: vec![mnemosyne_atomic::ScenePresence {
+                entity: entity.to_string(),
+                modality: mnemosyne_core::Modality::Observed,
+                can_answer: true,
+                excerpt: ContentExcerpt {
+                    anchor: ContentAnchor {
+                        source: "MANUSCRIPT.md".to_string(),
+                        locator: Locator::Prefix(quote.chars().take(8).collect()),
+                    },
+                    text: quote.to_string(),
+                    text_sha256: hash.to_string(),
+                },
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn scene_presence_matching_hash_is_clean() {
+        let store = store_with(&[(
+            "d08-bam",
+            scene_section(
+                "ent-jongdeuk",
+                "종득은 문간에",
+                &sha256_hex("종득은 문간에"),
+            ),
+        )]);
+        assert!(scan_content_drift(&store).is_empty());
+    }
+
+    #[test]
+    fn scene_presence_mismatched_hash_is_drift() {
+        // Injection: a scene_cast presence quote whose stored text no longer
+        // hashes to its declared sha — non-vacuity of the R757 generalized scan.
+        let store = store_with(&[(
+            "d08-bam",
+            scene_section("ent-jongdeuk", "고쳐 쓴 인용", "deadbeef"),
+        )]);
+        let v = scan_content_drift(&store);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].section_id, "d08-bam");
+        assert_eq!(v[0].excerpt, ExcerptKind::ScenePresence);
+        assert_eq!(v[0].declared_sha256, "deadbeef");
+        assert_eq!(v[0].computed_sha256, sha256_hex("고쳐 쓴 인용"));
+    }
+
+    #[test]
+    fn scene_presence_empty_hash_is_not_drift() {
+        // Unrevalidatable (never ingested with a hash), not drift — same as the others.
+        let store = store_with(&[(
+            "d08-bam",
+            scene_section("ent-jongdeuk", "종득은 문간에", ""),
+        )]);
+        assert!(scan_content_drift(&store).is_empty());
+    }
+
+    #[test]
+    fn multiple_scene_presences_drift_in_stored_order_after_content() {
+        // A Section can carry content + several presences; each drifted cache is
+        // its own violation, content before scene presences, presences in order.
+        let mut sec = content_section("edited", "badcontent");
+        sec.scene_cast = vec![
+            mnemosyne_atomic::ScenePresence {
+                entity: "ent-a".to_string(),
+                modality: mnemosyne_core::Modality::Observed,
+                can_answer: true,
+                excerpt: ContentExcerpt {
+                    anchor: ContentAnchor {
+                        source: "MANUSCRIPT.md".to_string(),
+                        locator: Locator::Prefix("a".to_string()),
+                    },
+                    text: "a-quote".to_string(),
+                    text_sha256: "bada".to_string(),
+                },
+            },
+            mnemosyne_atomic::ScenePresence {
+                entity: "ent-b".to_string(),
+                modality: mnemosyne_core::Modality::Told,
+                can_answer: false,
+                excerpt: ContentExcerpt {
+                    anchor: ContentAnchor {
+                        source: "MANUSCRIPT.md".to_string(),
+                        locator: Locator::Prefix("b".to_string()),
+                    },
+                    text: "b-quote".to_string(),
+                    text_sha256: "badb".to_string(),
+                },
+            },
+        ];
+        let v = scan_content_drift(&store_with(&[("s", sec)]));
+        assert_eq!(v.len(), 3);
+        assert_eq!(v[0].excerpt, ExcerptKind::Content);
+        assert_eq!(v[1].excerpt, ExcerptKind::ScenePresence);
+        assert_eq!(v[1].computed_sha256, sha256_hex("a-quote"));
+        assert_eq!(v[2].excerpt, ExcerptKind::ScenePresence);
+        assert_eq!(v[2].computed_sha256, sha256_hex("b-quote"));
     }
 }

@@ -33,7 +33,7 @@
 
 use mnemosyne_atomic::{
     synthesize_section_body, AtomicChangelogEntry, AtomicSection, AtomicStore, Binding,
-    ContentExcerpt, InventoryEntry, NormativeExcerpt,
+    ContentExcerpt, InventoryEntry, NormativeExcerpt, ScenePresence,
 };
 use mnemosyne_core::DecisionStatus;
 use serde::Serialize;
@@ -68,6 +68,13 @@ pub struct SectionView {
     /// for sections without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_excerpt: Option<ContentExcerpt>,
+    /// Scene presence (Round 757, B0). The store-owned cast of a scene — who is
+    /// present, the authored modality/can_answer, and a manuscript quote proving
+    /// each presence — so any consumer reads the cast from the store instead of a
+    /// parallel identity space. Empty for sections that carry no scene cast, and
+    /// omitted from JSON then so the read surface stays unchanged.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scene_cast: Vec<ScenePresence>,
     /// Coverage applicability (Round 389). `Some("informative")` only when the
     /// section is exempt from the coverage axiom (prose-only); omitted from
     /// JSON for ordinary `Normative` sections (the default), so the read
@@ -186,6 +193,7 @@ fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
         line_anchor: 0,
         normative_excerpt: atomic.normative_excerpt.clone(),
         content_excerpt: atomic.content_excerpt.clone(),
+        scene_cast: atomic.scene_cast.clone(),
         // Surface only the `Informative` deviation; ordinary Normative
         // sections omit the field so the JSON stays unchanged.
         coverage_expectation: {
