@@ -58,6 +58,22 @@ pub enum GateViolation {
         /// The `fact_id` the rung needs but the walk never offers in time.
         needs: String,
     },
+    /// G7 (Round 757, B1) — a consumer-DECLARED interactive choice names an
+    /// entity the discourse has NOT disclosed at-or-before this spot: the choice
+    /// offers a stranger the player has never met (the field-report
+    /// parallel-identity class, now RED in the kernel for any consumer that
+    /// declares its refs). The entity is not in
+    /// [`referenceable_entities`](PlayableProjection::referenceable_entities) here.
+    ChoiceReferencesUndisclosedEntity {
+        /// The world-line walked.
+        world: String,
+        /// The section the choice is offered at.
+        section: String,
+        /// The choice's label (which choice leaked).
+        choice: String,
+        /// The undisclosed entity the choice named.
+        entity: String,
+    },
 }
 
 impl PlayableProjection {
@@ -147,6 +163,33 @@ impl PlayableProjection {
                     }
                 }
             }
+
+            // G7 — a consumer-declared choice at THIS spot names an entity the
+            // discourse has not disclosed at-or-before it. `referenceable_entities`
+            // is the single source of the at-or-before set (computed once here,
+            // only when this spot carries a declared choice ref), so the gate and
+            // the public accessor can never disagree.
+            let refs_here: Vec<&crate::ChoiceEntityRef> = self
+                .choice_entity_refs()
+                .iter()
+                .filter(|c| c.section == *section)
+                .collect();
+            if !refs_here.is_empty() {
+                let referenceable: HashSet<String> = self
+                    .referenceable_entities(world, section)
+                    .into_iter()
+                    .collect();
+                for cref in refs_here {
+                    if !referenceable.contains(&cref.entity) {
+                        violations.push(GateViolation::ChoiceReferencesUndisclosedEntity {
+                            world: world.to_string(),
+                            section: section.clone(),
+                            choice: cref.choice.clone(),
+                            entity: cref.entity.clone(),
+                        });
+                    }
+                }
+            }
         }
         violations
     }
@@ -161,7 +204,7 @@ mod tests {
 
     use crate::gate::GateViolation;
     use crate::test_support::{begin, locator, report, rung, scene};
-    use crate::{Interactivity, PlayableProjection, Rung, StaticOverrides};
+    use crate::{ChoiceEntityRef, Interactivity, PlayableProjection, Rung, StaticOverrides};
 
     fn ladder_at(section: &str, rungs: Vec<Rung>) -> StaticOverrides {
         StaticOverrides {
@@ -172,6 +215,7 @@ mod tests {
             },
             journal_predicates: Vec::new(),
             quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
         }
     }
 
@@ -184,6 +228,7 @@ mod tests {
             },
             journal_predicates: Vec::new(),
             quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
         }
     }
 
@@ -379,5 +424,112 @@ mod tests {
             section: "sc-01".into(),
             needs: "f-late".into(),
         }));
+    }
+
+    // ── G7 (R757 B1): a declared choice referencing an undisclosed entity ──
+
+    fn choose(section: &str, entity: &str, choice: &str) -> StaticOverrides {
+        StaticOverrides {
+            choice_entity_refs: vec![ChoiceEntityRef {
+                section: section.into(),
+                entity: entity.into(),
+                choice: choice.into(),
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn g7_a_choice_naming_an_undisclosed_entity_is_flagged() {
+        // Injection: the consumer declares a choice at sc-01 that offers
+        // `stranger`, an entity NO disclosed line introduces — the field-report
+        // parallel-identity class (a name the player has never met).
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dawn",
+                vec![begin("f-a", "Jiun waits", "ground-truth", &["jiun"])],
+            )],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        let overrides = choose("sc-01", "stranger", "누구를 세울까");
+        let proj = PlayableProjection::from_report(r, &overrides).unwrap();
+        assert_eq!(
+            proj.gate("main"),
+            vec![GateViolation::ChoiceReferencesUndisclosedEntity {
+                world: "main".into(),
+                section: "sc-01".into(),
+                choice: "누구를 세울까".into(),
+                entity: "stranger".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn g7_a_choice_naming_a_disclosed_entity_is_clean() {
+        // The same shape, but the choice names `jiun`, disclosed at sc-01 — green.
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dawn",
+                vec![begin("f-a", "Jiun waits", "ground-truth", &["jiun"])],
+            )],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &choose("sc-01", "jiun", "c")).unwrap();
+        assert!(proj.gate("main").is_empty());
+    }
+
+    #[test]
+    fn g7_is_non_vacuous_reading_discourse_order_not_mere_membership() {
+        // `jiun` exists in the world; the ONLY thing that changes is WHERE the
+        // player first meets them. A choice referencing jiun at sc-01 is RED when
+        // jiun is disclosed only at sc-02 (not yet met), and green when jiun is
+        // disclosed at sc-01 (met at-or-before) — proving the gate reads the
+        // discourse ORDER, not just whether the entity appears somewhere.
+        let build = |jiun_at: &str| {
+            report(
+                "main",
+                vec![
+                    scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![begin("f-a", "the tide", "ground-truth", &["tide"])],
+                    ),
+                    scene(
+                        "sc-02",
+                        "Noon",
+                        vec![
+                            begin("f-b", "the weir", "ground-truth", &["weir"]),
+                            begin("f-j", "Jiun appears", "ground-truth", &["jiun"]),
+                        ],
+                    ),
+                ],
+                vec![
+                    locator("f-a", "sc-01", DisclosureMode::State),
+                    locator("f-b", "sc-02", DisclosureMode::State),
+                    locator("f-j", jiun_at, DisclosureMode::State),
+                ],
+                ForkTreeReport::default(),
+            )
+        };
+        let refs = choose("sc-01", "jiun", "call");
+        // jiun disclosed only at sc-02 → the sc-01 choice names an unmet entity.
+        let late = PlayableProjection::from_report(build("sc-02"), &refs).unwrap();
+        assert!(late
+            .gate("main")
+            .contains(&GateViolation::ChoiceReferencesUndisclosedEntity {
+                world: "main".into(),
+                section: "sc-01".into(),
+                choice: "call".into(),
+                entity: "jiun".into(),
+            }));
+        // Move jiun's disclosure to sc-01 (met at-or-before the choice) → green.
+        let early = PlayableProjection::from_report(build("sc-01"), &refs).unwrap();
+        assert!(early.gate("main").is_empty());
     }
 }

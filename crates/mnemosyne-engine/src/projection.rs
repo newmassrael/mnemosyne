@@ -9,7 +9,9 @@ use std::path::Path;
 use mnemosyne_core::MAIN_BRANCH;
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
-use crate::{Door, EngineError, EngineOverrides, Fork, Interactivity, Line, Rung, SceneView};
+use crate::{
+    ChoiceEntityRef, Door, EngineError, EngineOverrides, Fork, Interactivity, Line, Rung, SceneView,
+};
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
 /// topology, projected from one `report-playable-world` read and configured with
@@ -24,6 +26,7 @@ pub struct PlayableProjection {
     forks: Vec<Fork>,
     divergent_endings: HashSet<String>,
     interactivity: Interactivity,
+    choice_entity_refs: Vec<ChoiceEntityRef>,
 }
 
 impl PlayableProjection {
@@ -160,6 +163,7 @@ impl PlayableProjection {
             forks,
             divergent_endings,
             interactivity: overrides.interactivity().clone(),
+            choice_entity_refs: overrides.choice_entity_refs().to_vec(),
         })
     }
 
@@ -303,6 +307,41 @@ impl PlayableProjection {
             .iter()
             .filter(|f| f.at == section && f.parent == world)
             .collect()
+    }
+
+    /// The entities the discourse has DISCLOSED at-or-before `section` on
+    /// `world`'s walk (Round 757, B1) — the union of every disclosed
+    /// [`Line`]'s entities from the world's first spot through `section`,
+    /// inclusive. Sorted, unique. The §5 discourse-order invariant: an entity is
+    /// referenceable at a spot only once the player has MET it (it appeared in a
+    /// disclosed line there or earlier), so a consumer's choice may name only
+    /// these — a reference to anything else is the field-report parallel-identity
+    /// class, caught by
+    /// [`GateViolation::ChoiceReferencesUndisclosedEntity`](crate::GateViolation::ChoiceReferencesUndisclosedEntity).
+    /// Empty when `world` does not walk `section` (there is no at-or-before).
+    /// A withheld fact emits no line, so a withheld entity is not referenceable —
+    /// disclosure is additive here too.
+    #[must_use]
+    pub fn referenceable_entities(&self, world: &str, section: &str) -> Vec<String> {
+        let walk = self.walk(world);
+        let Some(pos) = walk.iter().position(|s| s == section) else {
+            return Vec::new();
+        };
+        let mut set: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for s in &walk[..=pos] {
+            for line in self.lines(world, s) {
+                for entity in &line.entities {
+                    set.insert(entity.as_str());
+                }
+            }
+        }
+        set.into_iter().map(String::from).collect()
+    }
+
+    /// The consumer-declared choice→entity references (Round 757, B1) — the gate
+    /// reads these to enforce the disclosure invariant on interactive choices.
+    pub(crate) fn choice_entity_refs(&self) -> &[ChoiceEntityRef] {
+        &self.choice_entity_refs
     }
 }
 
@@ -501,6 +540,7 @@ mod tests {
             },
             journal_predicates: Vec::new(),
             quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
         };
         let proj = PlayableProjection::from_report(build(), &overrides).unwrap();
         let view = proj.scene("main", "sc-01");
@@ -560,10 +600,62 @@ mod tests {
             interactivity: Interactivity::default(),
             journal_predicates: vec!["pursues".to_string()],
             quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
         };
         let filtered = PlayableProjection::from_report(build(), &overrides).unwrap();
         let lines = filtered.lines("main", "sc-01");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].fact_id, "f-prose");
+    }
+
+    #[test]
+    fn referenceable_entities_accumulate_disclosed_entities_in_walk_order() {
+        // R757 B1 — the §5 discourse-order invariant. `ghost` is authored on a
+        // WITHHELD fact (no locator), so it is never disclosed and never
+        // referenceable — disclosure is additive here too (non-vacuous exclusion).
+        let r = report(
+            "main",
+            vec![
+                scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin("f-a", "the tide", "ground-truth", &["tide", "jiun"])],
+                ),
+                scene(
+                    "sc-02",
+                    "Noon",
+                    vec![begin("f-b", "Bunok arrives", "ground-truth", &["bunok"])],
+                ),
+                scene(
+                    "sc-03",
+                    "Dusk",
+                    vec![begin("f-c", "a hidden thing", "ground-truth", &["ghost"])],
+                ),
+            ],
+            vec![
+                locator("f-a", "sc-01", DisclosureMode::State),
+                locator("f-b", "sc-02", DisclosureMode::State),
+                // f-c is WITHHELD — no locator, so `ghost` never becomes a line.
+            ],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &DefaultOverrides::default()).unwrap();
+        // At sc-01: only sc-01's disclosed entities (sorted, unique).
+        assert_eq!(
+            proj.referenceable_entities("main", "sc-01"),
+            vec!["jiun".to_string(), "tide".to_string()]
+        );
+        // At sc-02: cumulative through sc-02.
+        assert_eq!(
+            proj.referenceable_entities("main", "sc-02"),
+            vec!["bunok".to_string(), "jiun".to_string(), "tide".to_string()]
+        );
+        // At sc-03: STILL only bunok/jiun/tide — `ghost` (withheld) is excluded.
+        assert_eq!(
+            proj.referenceable_entities("main", "sc-03"),
+            vec!["bunok".to_string(), "jiun".to_string(), "tide".to_string()]
+        );
+        // A section this world does not walk: empty (no at-or-before).
+        assert!(proj.referenceable_entities("main", "sc-99").is_empty());
     }
 }

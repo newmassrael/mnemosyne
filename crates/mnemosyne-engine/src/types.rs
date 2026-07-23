@@ -307,6 +307,30 @@ pub struct Rung {
     pub needs: Vec<String>,
 }
 
+/// A consumer-declared reference from an interactive CHOICE to a store entity
+/// (Round 757, B1) — "at `section`, my `choice` offers/names `entity`". The
+/// consumer declares these so the kernel can gate them: a choice may only name an
+/// entity the discourse has already DISCLOSED at-or-before its spot
+/// ([`PlayableProjection::referenceable_entities`](crate::PlayableProjection::referenceable_entities)),
+/// which makes a hand-built parallel-identity choice — the field-report class
+/// where a consumer offered strangers the player never met — a fail-loud
+/// [`GateViolation::ChoiceReferencesUndisclosedEntity`](crate::GateViolation::ChoiceReferencesUndisclosedEntity)
+/// for ANY consumer that declares its refs (the `journal_predicates` contract:
+/// the kernel enforces, the consumer declares). A CONSUMER INPUT (authored data),
+/// so it is plainly constructible; the guarantee is that the gate rejects an
+/// undisclosed reference, not that the ref is unconstructible.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChoiceEntityRef {
+    /// The section the choice is offered at.
+    pub section: String,
+    /// The store entity id the choice names (must be disclosed at-or-before this
+    /// section on the walk).
+    pub entity: String,
+    /// The choice's label — carried for the diagnostic (which choice leaked); not
+    /// gated.
+    pub choice: String,
+}
+
 /// The consumer-authored interactive layer over a store: per-section ladders
 /// (authored Q&A) plus the set of examinable objects. The kernel OPERATES on
 /// it; loading it (from files or a trait) is a consumer override built in a

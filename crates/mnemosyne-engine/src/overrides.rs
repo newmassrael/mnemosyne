@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use crate::Interactivity;
+use crate::{ChoiceEntityRef, Interactivity};
 
 /// What a consumer supplies to the kernel beyond the store: the authored
 /// interactive layer and the journal-predicate policy. CONTENT only —
@@ -34,6 +34,20 @@ pub trait EngineOverrides {
     /// contract as [`journal_predicates`](EngineOverrides::journal_predicates).
     /// Default: none (no completability gate).
     fn quest_precondition_predicates(&self) -> &[String] {
+        &[]
+    }
+
+    /// Choice→entity references the consumer DECLARES (Round 757, B1): the
+    /// entities each interactive choice names, so the kernel can gate them
+    /// against what the discourse has disclosed at-or-before the choice's spot
+    /// ([`GateViolation::ChoiceReferencesUndisclosedEntity`](crate::GateViolation::ChoiceReferencesUndisclosedEntity)).
+    /// The consumer declares its refs; the kernel enforces the disclosure
+    /// invariant, the same contract as
+    /// [`journal_predicates`](EngineOverrides::journal_predicates). Default: none
+    /// (a consumer that declares no refs is not gated — a hand-built parallel
+    /// identity is only inexpressible once its refs are declared, which B2 does
+    /// for tide's call/substitute choices).
+    fn choice_entity_refs(&self) -> &[ChoiceEntityRef] {
         &[]
     }
 }
@@ -77,6 +91,10 @@ pub struct StaticOverrides {
     /// The quest completion-precondition predicate policy (e.g. `["opened_by"]`).
     #[serde(default)]
     pub quest_precondition_predicates: Vec<String>,
+    /// The consumer's declared choice→entity references (Round 757, B1) — gated
+    /// against the disclosure invariant.
+    #[serde(default)]
+    pub choice_entity_refs: Vec<ChoiceEntityRef>,
 }
 
 impl StaticOverrides {
@@ -112,6 +130,10 @@ impl EngineOverrides for StaticOverrides {
 
     fn quest_precondition_predicates(&self) -> &[String] {
         &self.quest_precondition_predicates
+    }
+
+    fn choice_entity_refs(&self) -> &[ChoiceEntityRef] {
+        &self.choice_entity_refs
     }
 }
 
