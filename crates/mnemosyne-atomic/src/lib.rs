@@ -3406,10 +3406,23 @@ pub struct ContentExcerptImport {
 /// allowed (no frozen-ledger gate).
 ///
 /// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
+/// Normalize a line for grounding comparison: collapse whitespace runs and trim.
+/// Dep-free (NO Unicode normalization) — an excerpt line is a trimmed copy of a
+/// source line from the SAME content-SSOT, so a whitespace-collapse absorbs the
+/// only variance (trim/spacing); a different Unicode composition would mean the
+/// excerpt did NOT come from this source, which is exactly what grounding rejects.
+/// Public so a caller builds the source line-set with the same normalization the
+/// grounding check applies to each excerpt line.
+#[must_use]
+pub fn normalize_grounding(line: &str) -> String {
+    line.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 pub fn import_content_excerpts(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     excerpts: &[ContentExcerptImport],
+    grounding: Option<&std::collections::HashSet<String>>,
 ) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
     // Validate every entry BEFORE mutating, so a malformed one never leaves a
     // partially-applied store (the import_epub_excerpts fail-before-save rule).
@@ -3419,6 +3432,26 @@ pub fn import_content_excerpts(
                 "import_content_excerpts: {} has an empty text or anchor source",
                 e.section_id
             )));
+        }
+        // Round 758 — grounding: when the consumer supplies its raw content-SSOT
+        // line-set, EVERY excerpt line must occur in it, so the store rejects an
+        // excerpt carrying prose the source does not (invented prose). This is the
+        // "no invented narrative" invariant enforced by the default engine for
+        // EVERY consumer, not re-implemented per novel: mnemosyne JUDGES; the
+        // consumer supplies the evidence (it owns the medium parser, mnemosyne does
+        // not). Absent `grounding`, the import trusts the supplied text as before.
+        if let Some(source_lines) = grounding {
+            for line in e.text.split('\n') {
+                let n = normalize_grounding(line);
+                if !n.is_empty() && !source_lines.contains(&n) {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_content_excerpts: {} carries a line absent from the \
+                         grounding source (invented prose?): {}",
+                        e.section_id,
+                        n.chars().take(48).collect::<String>()
+                    )));
+                }
+            }
         }
     }
     let mut applied = 0usize;
@@ -9552,7 +9585,7 @@ mod tests {
                 text: text.to_string(),
             },
         ];
-        let (_, unmatched) = import_content_excerpts(&mut store, &sidecar, &imports).unwrap();
+        let (_, unmatched) = import_content_excerpts(&mut store, &sidecar, &imports, None).unwrap();
         assert_eq!(unmatched, vec!["nope".to_string()]);
         let ex = store.sections["d01-nat"].content_excerpt.as_ref().unwrap();
         assert_eq!(ex.text, text);
@@ -9566,9 +9599,57 @@ mod tests {
             text: String::new(),
         }];
         assert!(matches!(
-            import_content_excerpts(&mut store, &sidecar, &bad),
+            import_content_excerpts(&mut store, &sidecar, &bad, None),
             Err(AtomicMutateError::Validation(_))
         ));
+    }
+
+    #[test]
+    fn import_content_excerpts_grounding_rejects_invented_prose() {
+        // Round 758 — the default engine enforces "no invented prose" for EVERY
+        // consumer: when the consumer supplies its raw content-SSOT line-set, an
+        // excerpt line absent from it is rejected BEFORE any save. Injection-proven
+        // non-vacuous: a grounded excerpt imports; the SAME excerpt plus one invented
+        // line is rejected against the SAME source.
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let anchor = mnemosyne_core::ContentAnchor {
+            source: "MANUSCRIPT.md".to_string(),
+            locator: mnemosyne_core::Locator::Prefix("지운은".to_string()),
+        };
+        // The raw source the consumer supplies, normalized the same way the check
+        // normalizes each excerpt line.
+        let source = "지운은 둑에 발을 올렸다.\n뒤에서 문 닫히는 소리가 났다.\n무선은 말이 없었다.";
+        let grounding: std::collections::HashSet<String> = source
+            .split('\n')
+            .map(normalize_grounding)
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        // A grounded two-line excerpt (both lines are real source lines) imports.
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "d01-nat");
+        let good = vec![ContentExcerptImport {
+            section_id: "d01-nat".to_string(),
+            anchor: anchor.clone(),
+            text: "지운은 둑에 발을 올렸다.\n뒤에서 문 닫히는 소리가 났다.".to_string(),
+        }];
+        assert!(import_content_excerpts(&mut store, &sidecar, &good, Some(&grounding)).is_ok());
+
+        // The same excerpt plus one invented line is rejected against the same source.
+        let mut store2 = AtomicStore::default();
+        seed_section(&mut store2, "d01-nat");
+        let bad = vec![ContentExcerptImport {
+            section_id: "d01-nat".to_string(),
+            anchor,
+            text: "지운은 둑에 발을 올렸다.\n엔진이 지어낸 가짜 줄 하나.".to_string(),
+        }];
+        assert!(matches!(
+            import_content_excerpts(&mut store2, &sidecar, &bad, Some(&grounding)),
+            Err(AtomicMutateError::Validation(_))
+        ));
+        // And the rejected import left NO content_excerpt (fail-before-save).
+        assert!(store2.sections["d01-nat"].content_excerpt.is_none());
     }
 
     #[test]

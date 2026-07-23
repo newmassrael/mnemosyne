@@ -2440,6 +2440,7 @@ pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Re
     }
     let mut map_path: Option<String> = None;
     let mut sidecar: Option<String> = None;
+    let mut grounding_paths: Vec<String> = Vec::new();
     let mut json = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -2458,6 +2459,14 @@ pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Re
                         .clone(),
                 )
             }
+            // Round 758 — the consumer's raw content-SSOT (repeatable for a
+            // multi-file manuscript). When given, the store rejects any excerpt
+            // line absent from it (no invented prose), enforced for EVERY consumer.
+            "--grounding-source" => grounding_paths.push(
+                iter.next()
+                    .ok_or_else(|| anyhow!("--grounding-source missing"))?
+                    .clone(),
+            ),
             "--json" => json = true,
             other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
@@ -2475,9 +2484,33 @@ pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Re
             text: e.text,
         })
         .collect();
+    // Build the grounding line-set from the consumer's raw content-SSOT files, if
+    // supplied — normalized the same way the store's grounding check normalizes each
+    // excerpt line. Absent, the import trusts the supplied text (pre-758 behavior).
+    let grounding: Option<std::collections::HashSet<String>> = if grounding_paths.is_empty() {
+        None
+    } else {
+        let mut set = std::collections::HashSet::new();
+        for path in &grounding_paths {
+            let raw = fs::read_to_string(path)
+                .with_context(|| format!("read grounding source {}", path))?;
+            for line in raw.split('\n') {
+                let n = mnemosyne_atomic::normalize_grounding(line);
+                if !n.is_empty() {
+                    set.insert(n);
+                }
+            }
+        }
+        Some(set)
+    };
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
-    let outcome = mnemosyne_atomic::import_content_excerpts(&mut store, &sidecar_path, &imports);
+    let outcome = mnemosyne_atomic::import_content_excerpts(
+        &mut store,
+        &sidecar_path,
+        &imports,
+        grounding.as_ref(),
+    );
     if let Ok((_, unmatched)) = &outcome {
         if !unmatched.is_empty() {
             eprintln!(
