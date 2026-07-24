@@ -424,6 +424,68 @@ impl PlayableProjection {
     pub fn cast_at(&self, section: &str) -> &[CastMember] {
         self.cast.get(section).map_or(&[][..], Vec::as_slice)
     }
+
+    /// The doors at a spot that are LIVE for a reader who already holds `known`
+    /// (R762 P4b — the disclose-freshness rule for the doors the kernel BUILDS).
+    /// A disclose-door (`Examine`/`Ask`) is kept only while it still discloses a
+    /// fact the reader does not hold ([`fresh_disclosure`] of its
+    /// [`discloses`](Door::discloses) is non-empty); a `Fork` door passes through
+    /// unchanged, because a navigational door discloses no fact and its liveness
+    /// (not-taken) is the consumer's, never disclosure-relative. This is why the
+    /// tide field-report §5 dead-door class cannot recur through the kernel's own
+    /// doors: a door that would surface nothing new is not offered.
+    ///
+    /// A consumer applies the SAME [`fresh_disclosure`] to the doors IT builds
+    /// (tide's `go` door, whose reachable facts the kernel never sees), so one
+    /// rule governs every disclose-door and the invariant cannot be half-enforced.
+    ///
+    /// Read-side (R643/R337): `known` is a QUERY COORDINATE like `world`/
+    /// `section` — `f(frozen_store, coords) -> view`. The projection stores no
+    /// session state and computes no successor; a door filtered out here is not
+    /// mutated away, and a different `known` yields a different answer from the
+    /// same immutable projection.
+    #[must_use]
+    pub fn live_doors_at(&self, world: &str, section: &str, known: &HashSet<String>) -> Vec<Door> {
+        self.doors_at(world, section)
+            .into_iter()
+            .filter(|door| match door {
+                // Navigational: discloses nothing; its liveness is the consumer's
+                // (not-taken), so it is never dropped by the disclosure filter.
+                Door::Fork { .. } => true,
+                // Disclose-door: live iff it still surfaces a not-known fact.
+                Door::Examine { .. } | Door::Ask { .. } => {
+                    !fresh_disclosure(door.discloses(), known).is_empty()
+                }
+            })
+            .collect()
+    }
+}
+
+/// The fresh disclosure a door offers a reader who already holds `known` — the
+/// door's [`discloses`](Door::discloses) set minus what the reader already knows,
+/// preserving the door's own order. An empty result means the door is DEAD (it
+/// would surface nothing new).
+///
+/// THE universal disclose-freshness rule (R762 P4b). The kernel applies it to its
+/// own `Examine`/`Ask` doors in
+/// [`live_doors_at`](PlayableProjection::live_doors_at); a consumer applies the
+/// SAME function to the reveal-set of a door IT builds (tide's `go` door, whose
+/// destination-reachable facts the kernel never holds), so every disclose-door —
+/// kernel-built or consumer-built — obeys one definition of "live" and the
+/// half-enforced-invariant class (a builder that forgets the known-check) is
+/// structurally impossible.
+///
+/// Read-side: a pure set-difference over a query coordinate; no state, no store
+/// access. It does not price or record the disclosure (a consumer's own reveal
+/// path — tide's `reveal_probe` — remains the sole writer of `known`); it only
+/// answers "what here is still new?".
+#[must_use]
+pub fn fresh_disclosure<'a>(reveals: &'a [String], known: &HashSet<String>) -> Vec<&'a str> {
+    reveals
+        .iter()
+        .filter(|r| !known.contains(r.as_str()))
+        .map(String::as_str)
+        .collect()
 }
 
 /// Resolve a rung's rendered question, fail-loud (R759 P3c-2). An UN-ANCHORED rung
@@ -470,8 +532,8 @@ mod tests {
         begin, branch, cast_scene, journal_begin, locator, presence, report, rung, scene,
     };
     use crate::{
-        ContentAnchor, DefaultOverrides, Door, EngineError, Interactivity, Locator, Modality,
-        Passage, PlayableProjection, Rung, RungQuestionFault, StaticOverrides,
+        fresh_disclosure, ContentAnchor, DefaultOverrides, Door, EngineError, Interactivity,
+        Locator, Modality, Passage, PlayableProjection, Rung, RungQuestionFault, StaticOverrides,
     };
 
     #[test]
@@ -685,6 +747,132 @@ mod tests {
                 label: "run".into(),
             }]
         );
+    }
+
+    // ---- R762 P4b: the disclose-freshness rule ----
+
+    #[test]
+    fn discloses_reports_each_door_kinds_disclosure() {
+        // A navigational door discloses no fact; a disclose-door discloses its
+        // reveals (Examine the whole set, Ask a one-element slice).
+        let fork = Door::Fork {
+            world: "flee".into(),
+            label: "run".into(),
+        };
+        assert!(fork.discloses().is_empty());
+
+        let examine = Door::Examine {
+            object: "tide-table".into(),
+            reveals: vec!["f-a".into(), "f-b".into()],
+        };
+        assert_eq!(examine.discloses(), ["f-a".to_string(), "f-b".to_string()]);
+
+        let ask = Door::Ask {
+            question: "Whose name?".into(),
+            reveals: "f-name".into(),
+        };
+        assert_eq!(ask.discloses(), ["f-name".to_string()]); // one-element slice
+    }
+
+    #[test]
+    fn fresh_disclosure_is_the_not_known_subset_in_order() {
+        let reveals = vec!["f-a".to_string(), "f-b".to_string(), "f-c".to_string()];
+        // Nothing known: the whole set, in the door's own order.
+        assert_eq!(
+            fresh_disclosure(&reveals, &HashSet::new()),
+            vec!["f-a", "f-b", "f-c"]
+        );
+        // The middle one known: dropped, order preserved.
+        let known = HashSet::from(["f-b".to_string()]);
+        assert_eq!(fresh_disclosure(&reveals, &known), vec!["f-a", "f-c"]);
+        // All known: empty -> the door is dead.
+        let all = HashSet::from(["f-a".to_string(), "f-b".to_string(), "f-c".to_string()]);
+        assert!(fresh_disclosure(&reveals, &all).is_empty());
+    }
+
+    /// The kernel's own disclose-doors (`Examine`/`Ask`) are dropped once the
+    /// reader holds all they would reveal, while a `Fork` always survives — the
+    /// tide field-report §5 dead-`go`-door made structurally unofferable through
+    /// the doors the kernel builds. `known` is a bare query coordinate: the same
+    /// immutable projection answers three different `known` sets.
+    #[test]
+    fn live_doors_at_drops_a_fully_known_disclose_door_but_keeps_fork() {
+        let overrides = StaticOverrides {
+            interactivity: Interactivity {
+                objects: HashSet::from(["tide-table".to_string()]),
+                ladders: HashMap::from([(
+                    "sc-01".to_string(),
+                    vec![rung("Whose name?", "f-name", &[])],
+                )]),
+                free_investigate: false,
+            },
+            journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
+        };
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dawn",
+                vec![
+                    begin(
+                        "f-table",
+                        "the tide table hangs there",
+                        "ground-truth",
+                        &["tide-table"],
+                    ),
+                    begin("f-name", "the name is Yeonggeun", "ground-truth", &[]),
+                ],
+            )],
+            vec![
+                locator("f-table", "sc-01", DisclosureMode::State),
+                locator("f-name", "sc-01", DisclosureMode::Hint),
+            ],
+            ForkTreeReport {
+                branches: vec![branch("flee", "run", "main", "sc-01", &[])],
+                ..Default::default()
+            },
+        );
+        let proj = PlayableProjection::from_report(r, &overrides).unwrap();
+
+        let fork = Door::Fork {
+            world: "flee".into(),
+            label: "run".into(),
+        };
+        let examine = Door::Examine {
+            object: "tide-table".into(),
+            reveals: vec!["f-table".into()],
+        };
+        let ask = Door::Ask {
+            question: "Whose name?".into(),
+            reveals: "f-name".into(),
+        };
+
+        // Nothing known: all three doors are live (the stateless `scene` set).
+        let all_live = proj.live_doors_at("main", "sc-01", &HashSet::new());
+        assert_eq!(all_live.len(), 3);
+        assert!(all_live.contains(&fork));
+        assert!(all_live.contains(&examine));
+        assert!(all_live.contains(&ask));
+
+        // `f-table` known: the examine door is DEAD (its only reveal is held),
+        // the ask (`f-name`) stays live, and the fork always passes.
+        let known_table = HashSet::from(["f-table".to_string()]);
+        let live = proj.live_doors_at("main", "sc-01", &known_table);
+        assert!(live.contains(&fork));
+        assert!(live.contains(&ask));
+        assert!(
+            !live.contains(&examine),
+            "a fully-known examine door is not offered"
+        );
+        assert_eq!(live.len(), 2);
+
+        // Both facts known: both disclose-doors are dead, only the fork survives
+        // — the §5 dead-door is unofferable while navigation remains.
+        let known_both = HashSet::from(["f-table".to_string(), "f-name".to_string()]);
+        let nav_only = proj.live_doors_at("main", "sc-01", &known_both);
+        assert_eq!(nav_only, vec![fork]);
     }
 
     // ---- R759 P3c-2: the anchored ladder question resolves from the store ----

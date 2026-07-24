@@ -361,6 +361,28 @@ pub enum Door {
     },
 }
 
+impl Door {
+    /// The `fact_id`s this door would disclose to the reader. `Examine` returns
+    /// the facts examining its object reveals; `Ask` returns its single answer
+    /// fact (a one-element slice); `Fork` returns an empty slice (a navigational
+    /// door discloses no fact — its liveness is not-taken, never disclosure).
+    ///
+    /// This is the uniform surface the disclose-freshness rule reads
+    /// ([`fresh_disclosure`](crate::fresh_disclosure), R762 P4b): every
+    /// disclose-door — the kernel's own and a consumer's — obeys ONE liveness
+    /// definition (a door is LIVE only if it discloses a not-yet-known fact), so
+    /// the half-enforced-invariant class (a door-builder that forgets the
+    /// known-check, the tide field-report §5 dead-`go`-door) cannot recur.
+    #[must_use]
+    pub fn discloses(&self) -> &[String] {
+        match self {
+            Door::Fork { .. } => &[],
+            Door::Examine { reveals, .. } => reveals,
+            Door::Ask { reveals, .. } => std::slice::from_ref(reveals),
+        }
+    }
+}
+
 /// One authored step of a ladder — a question whose answer reveals a store
 /// fact, optionally gated behind preconditions. A CONSUMER INPUT (authored
 /// data), so it is plainly constructible: the provenance guarantee is that the
