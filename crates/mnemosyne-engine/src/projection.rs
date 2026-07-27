@@ -265,17 +265,32 @@ impl PlayableProjection {
             .map_or(&[][..], Vec::as_slice)
     }
 
-    /// The one spot bundled as a [`SceneView`]: disclosed `lines` plus `doors`
-    /// (fork choices + examine objects + authored ladder rungs, from the
-    /// projection's configured interactivity). Narrative content is exclusively
-    /// the provenance-bound `lines`; a door reveals `fact_id`s, never free text.
+    /// The one spot bundled as a [`SceneView`]: disclosed `lines` plus the LIVE
+    /// `doors` for a reader who already holds `known` (fork choices + examine
+    /// objects + authored ladder rungs, from the projection's configured
+    /// interactivity). Narrative content is exclusively the provenance-bound
+    /// `lines`; a door reveals `fact_id`s, never free text.
+    ///
+    /// It took `known` from Round 779 onward, and the reason is the shape of the
+    /// bug it removed rather than a new feature. This handed out UNFILTERED doors
+    /// while [`live_doors_at`](Self::live_doors_at) filtered them, so the same
+    /// datum had two public read paths under two different invariants and the
+    /// dead-door class R762/R763 closed was reachable through the kernel's own
+    /// most convenient accessor — the one a renderer reaches for first. A shared
+    /// rule that one caller can decline is not a shared rule. There is now a
+    /// single filtered path, so the guarantee holds by construction instead of by
+    /// the caller picking the careful function.
+    ///
+    /// A reader with no session state passes an empty set, which says "this
+    /// reader holds nothing" rather than leaving the question unasked — and
+    /// filters nothing, since freshness is a set difference.
     #[must_use]
-    pub fn scene(&self, world: &str, section: &str) -> SceneView {
+    pub fn scene(&self, world: &str, section: &str, known: &HashSet<String>) -> SceneView {
         SceneView::new(
             section.to_string(),
             self.title(section).map(str::to_string),
             self.lines(world, section).to_vec(),
-            self.doors_at(world, section),
+            self.live_doors_at(world, section, known),
         )
     }
 
@@ -480,8 +495,11 @@ impl PlayableProjection {
     /// [`discloses`](Door::discloses) is non-empty); a `Fork` door passes through
     /// unchanged, because a navigational door discloses no fact and its liveness
     /// (not-taken) is the consumer's, never disclosure-relative. This is why the
-    /// tide field-report sec 5 dead-door class cannot recur through the kernel's own
-    /// doors: a door that would surface nothing new is not offered.
+    /// tide field-report sec 5 dead-door class cannot recur through the kernel's
+    /// own doors: a door that would surface nothing new is not offered, and since
+    /// Round 779 there is no public path that skips this — [`scene`](Self::scene)
+    /// used to be one, which made the claim in this sentence false for as long as
+    /// it stood.
     ///
     /// A consumer applies the SAME [`fresh_disclosure`] to the doors IT builds
     /// (tide's `go` door, whose reachable facts the kernel never sees), so one
@@ -843,7 +861,7 @@ mod tests {
         assert_eq!(proj.cursor_of("sc-02"), Some(1));
         assert_eq!(proj.telling(), "reader");
 
-        let view = proj.scene("main", "sc-01");
+        let view = proj.scene("main", "sc-01", &HashSet::new());
         assert_eq!(view.section, "sc-01");
         assert_eq!(view.title.as_deref(), Some("Dawn"));
         assert_eq!(view.lines.len(), 1);
@@ -971,7 +989,7 @@ mod tests {
             choice_entity_refs: Vec::new(),
         };
         let proj = PlayableProjection::from_report(build(), &overrides).unwrap();
-        let view = proj.scene("main", "sc-01");
+        let view = proj.scene("main", "sc-01", &HashSet::new());
 
         assert!(view.doors.contains(&Door::Fork {
             world: "flee".into(),
@@ -990,7 +1008,7 @@ mod tests {
         // With no interactivity (DefaultOverrides): only the native fork door.
         let bare = PlayableProjection::from_report(build(), &DefaultOverrides::default()).unwrap();
         assert_eq!(
-            bare.scene("main", "sc-01").doors,
+            bare.scene("main", "sc-01", &HashSet::new()).doors,
             vec![Door::Fork {
                 world: "flee".into(),
                 label: "run".into(),
@@ -1122,7 +1140,22 @@ mod tests {
         // remains.
         let known_both = HashSet::from(["f-table".to_string(), "f-name".to_string()]);
         let nav_only = proj.live_doors_at("main", "sc-01", &known_both);
-        assert_eq!(nav_only, vec![fork]);
+        assert_eq!(nav_only, vec![fork.clone()]);
+
+        // Round 779 — and `scene` gives the SAME answer, because it is the same
+        // path. It used to hand out the unfiltered set, which made this crate's
+        // own claim (that a dead door cannot be offered through the kernel's
+        // doors) false through the accessor a renderer reaches for first: a
+        // shared rule one caller can decline is not a shared rule. Asserted at
+        // every `known` this test already established, so a future short-cut back
+        // to the unfiltered set fails here rather than in a consumer's chrome.
+        for known in [HashSet::new(), known_table, known_both] {
+            assert_eq!(
+                proj.scene("main", "sc-01", &known).doors,
+                proj.live_doors_at("main", "sc-01", &known),
+                "the bundled scene must not be a second, laxer door path"
+            );
+        }
     }
 
     // ---- R759 P3c-2: the anchored ladder question resolves from the store ----
@@ -1196,7 +1229,7 @@ mod tests {
             sc01_passages(),
         )
         .expect("the declared anchor matches the section's excerpt");
-        let view = proj.scene("main", "sc-01");
+        let view = proj.scene("main", "sc-01", &HashSet::new());
         // The rendered question IS the store prose.
         assert!(view.doors.contains(&Door::Ask {
             question: "지운은 그 이름을 물었다.".into(),
@@ -1318,7 +1351,7 @@ mod tests {
         )
         .expect("a mid-scene hold resolves against the section's own prose");
         let labels: Vec<String> = proj
-            .scene("main", "sc-01")
+            .scene("main", "sc-01", &HashSet::new())
             .doors
             .into_iter()
             .filter_map(|door| match door {
@@ -1438,7 +1471,10 @@ mod tests {
                     baked.forks_at(section, world),
                     live.forks_at(section, world)
                 );
-                assert_eq!(baked.scene(world, section), live.scene(world, section));
+                assert_eq!(
+                    baked.scene(world, section, &HashSet::new()),
+                    live.scene(world, section, &HashSet::new())
+                );
                 assert_eq!(
                     baked.referenceable_entities(world, section),
                     live.referenceable_entities(world, section)
@@ -1453,10 +1489,13 @@ mod tests {
         // The ask doors survive with their RESOLVED labels: baking happens after
         // resolution, so the store prose is in the artifact and the runtime never
         // re-resolves it (nor could it — it has no store).
-        assert!(baked.scene("main", "sc-01").doors.contains(&Door::Ask {
-            question: "이름을 물었다.".into(),
-            reveals: "f-name".into(),
-        }));
+        assert!(baked
+            .scene("main", "sc-01", &HashSet::new())
+            .doors
+            .contains(&Door::Ask {
+                question: "이름을 물었다.".into(),
+                reveals: "f-name".into(),
+            }));
         // And the emit is deterministic: the same projection parts twice over.
         assert_eq!(live.to_parts(), baked.to_parts());
     }
@@ -1476,7 +1515,7 @@ mod tests {
         )
         .expect("two rungs at one hold are the same hold, not a duplicated coordinate");
         let labels: Vec<String> = proj
-            .scene("main", "sc-01")
+            .scene("main", "sc-01", &HashSet::new())
             .doors
             .into_iter()
             .filter_map(|door| match door {
@@ -1569,7 +1608,7 @@ mod tests {
             sc01_passages(),
         )
         .expect("an un-anchored rung never resolves against the store");
-        let view = proj.scene("main", "sc-01");
+        let view = proj.scene("main", "sc-01", &HashSet::new());
         assert!(view.doors.contains(&Door::Ask {
             question: "FABRICATED — a free label that must never be shown".into(),
             reveals: "f-name".into(),

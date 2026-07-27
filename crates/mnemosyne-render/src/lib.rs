@@ -119,8 +119,16 @@ pub fn render_playthrough(
     theme: &impl Theme,
 ) -> String {
     let mut out = String::new();
+    // A playthrough rendering is a READING surface: it lays out the whole
+    // declared walk at once, so there is no reader partway through it holding
+    // anything. The empty set states that rather than leaving it unasked
+    // (Round 779), and filters nothing, freshness being a set difference.
+    let holds_nothing = std::collections::HashSet::new();
     for section in projection.walk(world) {
-        out.push_str(&render_scene(&projection.scene(world, section), theme));
+        out.push_str(&render_scene(
+            &projection.scene(world, section, &holds_nothing),
+            theme,
+        ));
         out.push('\n');
     }
     out
@@ -204,7 +212,10 @@ mod tests {
     #[test]
     fn plain_theme_renders_text_and_doors_unstyled() {
         let proj = demo();
-        let out = render_scene(&proj.scene("main", "sc-01"), &PlainTheme);
+        let out = render_scene(
+            &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
+            &PlainTheme,
+        );
         assert!(out.contains("Dawn"));
         assert!(out.contains("the tide pulls out"));
         assert!(out.contains("Bunok guesses a name")); // belief unmarked in plain
@@ -216,7 +227,10 @@ mod tests {
     #[test]
     fn marker_theme_styles_by_semantic_axis() {
         let proj = demo();
-        let out = render_scene(&proj.scene("main", "sc-01"), &MarkerTheme);
+        let out = render_scene(
+            &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
+            &MarkerTheme,
+        );
         // ground truth stays plain; belief is set apart; quote wrapped; count shown.
         assert!(out.contains("\nthe tide pulls out\n")); // ground truth unmarked
         assert!(out.contains("~ Bunok guesses a name")); // is_belief -> "~ "

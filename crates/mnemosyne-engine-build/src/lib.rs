@@ -226,7 +226,9 @@ mod tests {
         // Cast, forks, and all three door kinds survive.
         assert_eq!(proj.cast_at("sc-01")[0].entity(), "ent-jongdeuk");
         assert_eq!(proj.forks_at("sc-01", "main")[0].world, "dark");
-        let doors = proj.scene("main", "sc-01").doors;
+        let doors = proj
+            .scene("main", "sc-01", &std::collections::HashSet::new())
+            .doors;
         assert!(doors.iter().any(|d| matches!(
             d,
             mnemosyne_engine::Door::Ask { question, .. } if question == nasty
