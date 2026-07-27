@@ -88,6 +88,13 @@
 //! )
 //! .unwrap();
 //! ```
+//!
+//! Both `include!`s may sit in the SAME module (Round 781). An artifact walls its
+//! generated internals behind a module named for the public item it defines, so
+//! two artifacts share no private name; before that they both named their chunk
+//! functions `__mn_0` onward and splicing the pair together was `E0428` once per
+//! chunk. A module apiece is needed only to bake the same axis twice, where the
+//! PUBLIC item is what collides.
 
 use std::path::Path;
 
@@ -192,12 +199,17 @@ mod tests {
     /// this module exists at all is the gate: if `render` emitted Rust that does
     /// not compile, or named a kernel type that changed shape, the build fails
     /// here — the same failure a consumer would get, caught in this workspace.
+    ///
+    /// BOTH artifacts land in ONE module (Round 781), which is the arrangement
+    /// this crate's own docs describe and the only one that exercises the axis
+    /// added in R774: an emitter names its chunk functions from a counter that
+    /// restarts at zero, so two artifacts define the same private names and
+    /// splicing them together was `E0428` once per chunk. Until this round every
+    /// `include!` in this workspace — here and the six in the stack probe — sat in
+    /// a module of its own, so nothing here could see it and the first consumer
+    /// found it instead. A pair kept apart proves only that they compile.
     mod baked {
         include!(concat!(env!("OUT_DIR"), "/fixture_playable.rs"));
-    }
-
-    /// The same gate for the quest axis (Round 774).
-    mod baked_quest {
         include!(concat!(env!("OUT_DIR"), "/fixture_quest.rs"));
     }
 
@@ -289,7 +301,7 @@ mod tests {
     fn the_generated_quest_source_rebuilds_the_projection_it_was_baked_from() {
         // Compiling was the hard part; this asserts the VALUES survived, so a
         // generator that emitted syntactically valid but wrong code still fails.
-        let proj = baked_quest::quest_projection();
+        let proj = baked::quest_projection();
         assert_eq!(proj.telling(), "reader");
         assert_eq!(proj.quests().len(), 2);
 
@@ -382,6 +394,68 @@ mod tests {
         );
         // And the growth went where it was supposed to go.
         assert!(big.matches("fn __mn_").count() > small.matches("fn __mn_").count());
+    }
+
+    /// One quest — the journal-axis sibling of [`parts_with_lines`], sized only to
+    /// make the emitter produce a chunk function.
+    fn parts_with_quests() -> QuestProjectionParts {
+        QuestProjectionParts {
+            telling: "reader".to_string(),
+            quests: vec![QuestPart {
+                quest_id: "q-1".to_string(),
+                objective: "a quest".to_string(),
+                actors: Vec::new(),
+                prerequisites: Vec::new(),
+                per_world: vec![(
+                    "main".to_string(),
+                    QuestWorldPart {
+                        state: QuestState::Open,
+                        completions: Vec::new(),
+                    },
+                )],
+                preconditions: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn the_two_artifacts_define_the_same_private_names_and_compose_anyway() {
+        // Round 781. `mod baked` above splices both artifacts into one module, and
+        // that is a COMPILE-time claim — which is also what two empty files would
+        // satisfy. This is the arm that makes it non-vacuous, and it is here rather
+        // than in a file of its own for the Round 780 reason: split apart, the
+        // composition could report green while the hazard it absorbs had quietly
+        // stopped being present.
+        let playable = crate::render(&parts_with_lines(1));
+        let quest = crate::render_quest(&parts_with_quests());
+
+        // The hazard: the counter restarts per render, so both really do define
+        // `__mn_0`. If either stopped, `mod baked` would prove nothing.
+        for (what, src) in [("playable", &playable), ("quest", &quest)] {
+            assert!(
+                src.contains("fn __mn_0("),
+                "the {what} artifact defines no `__mn_0`, so the name collision the \
+                 module wall absorbs is not present and `mod baked` compiling says \
+                 nothing about it:\n{src}"
+            );
+        }
+
+        // The wall: derived from the public item each artifact defines, so it is
+        // distinct exactly when the two are composable at all. Asserted as a
+        // DIFFERENCE rather than against the two spellings — a test that named them
+        // would restate the emitter instead of checking it.
+        let wall = |src: &str| {
+            src.lines()
+                .find(|l| l.starts_with("mod __mn_"))
+                .expect("the artifact walls its chunk functions in a module")
+                .to_string()
+        };
+        assert_ne!(
+            wall(&playable),
+            wall(&quest),
+            "both artifacts wall their identical private names behind the SAME \
+             module name, so the wall does not separate them"
+        );
     }
 
     #[test]
