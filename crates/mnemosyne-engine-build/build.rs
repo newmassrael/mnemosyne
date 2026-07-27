@@ -24,6 +24,13 @@
 //! grown ones — each at a size and its quadruple, plus a deliberately unbounded
 //! control — for `tests/projection_stack.rs`. See that file for what the pair
 //! buys; here it is enough that a fixture nothing grows cannot measure growth.
+//!
+//! Round 782 added a THIRD family on a third axis. `alloc_fixtures` emits the
+//! same data held three ways — owned as shipped, borrowed from `.rodata`, and
+//! assembled entirely from `static`s — because the first consumer asked for
+//! projection types that can borrow and nobody had measured what borrowing costs.
+//! `tests/projection_alloc.rs` weighs them; the shipped types are untouched,
+//! since what they should become is the decision those numbers are for.
 
 use std::collections::{HashMap, HashSet};
 
@@ -210,14 +217,19 @@ fn main() {
     .expect("write the generated quest fixture");
 
     stack_fixtures(&out_dir);
+    alloc_fixtures(&out_dir);
 }
 
-/// The gate's small size, and its quadruple. Neither number means anything on
-/// its own — the assertion is that the artifact costs the SAME stack at both,
+/// A gate's small size, and its quadruple. Neither number means anything on its
+/// own — every assertion built on them is that some cost is the SAME at both,
 /// which is a claim only a pair can make (Round 780, the Round 775 scaling
 /// assertion moved from the emitted text to the running artifact).
-const STACK_SMALL: usize = 200;
-const STACK_BIG: usize = 800;
+///
+/// One pair for both gates rather than one apiece: the stack gate and the
+/// allocation gate make the same shape of claim about the same emitter, and two
+/// pairs would be two places for "four times the store" to drift apart.
+const SMALL: usize = 200;
+const BIG: usize = 800;
 
 /// Emit the grown fixtures `tests/projection_stack.rs` measures, plus the build
 /// facts it needs to say what it measured.
@@ -239,7 +251,7 @@ fn stack_fixtures(out_dir: &str) {
         .expect("write a stack fixture");
     };
 
-    for (tag, n) in [("small", STACK_SMALL), ("big", STACK_BIG)] {
+    for (tag, n) in [("small", SMALL), ("big", BIG)] {
         let parts = lines_parts(n);
         write(&format!("playable_{tag}"), render(&parts));
         write(&format!("control_{tag}"), render_bounded(&parts, unbounded));
@@ -253,8 +265,8 @@ fn stack_fixtures(out_dir: &str) {
     // case and needs this to say WHY.
     let facts = format!(
         "pub const OPT_LEVEL: &str = {:?};\n\
-         pub const SMALL: usize = {STACK_SMALL};\n\
-         pub const BIG: usize = {STACK_BIG};\n",
+         pub const SMALL: usize = {SMALL};\n\
+         pub const BIG: usize = {BIG};\n",
         std::env::var("OPT_LEVEL").expect("OPT_LEVEL")
     );
     std::fs::write(
@@ -262,6 +274,153 @@ fn stack_fixtures(out_dir: &str) {
         facts,
     )
     .expect("write the stack build facts");
+}
+
+/// Emit the controlled trio `tests/projection_alloc.rs` weighs (Round 782).
+///
+/// # What is being decided
+///
+/// The first consumer's third field report measured 34,825 allocations and
+/// 2.78 MB per startup — the baked artifact BUILDS values that already sit in
+/// `.rodata` as literals — and asked for projection types that can borrow
+/// `&'static` instead of owning `String`. Round 775's lesson is that the emitted
+/// SHAPE is measured before it is chosen, and nobody has measured what borrowing
+/// costs rustc. These fixtures are that measurement.
+///
+/// # Why a controlled trio rather than the shipped types
+///
+/// The shipped `LinePart` cannot borrow today; changing it is the decision these
+/// numbers are FOR, so the pair holds every other thing equal instead — the same
+/// literal content, the same field count and order, the same chunk bound, the
+/// same two sizes — and varies only how the data is held:
+///
+/// - `owned` — `String` / `Vec<String>` / `Option<String>`, the shape shipped now
+/// - `borrowed` — `&'static str` in the same `Vec`-of-chunks assembly, the
+///   consumer's literal request: fields that can point at `.rodata`
+/// - `static_slice` — the consumer's own sketch taken all the way, chunk
+///   `static`s plus a `static` of slices over them. It keeps Round 775's bound
+///   (no single body holds the store) while materializing nothing at all
+///
+/// The middle arm is the one worth having on its own: it says what stopping
+/// halfway buys, because the `Vec` spine survives it and the strings do not.
+fn alloc_fixtures(out_dir: &str) {
+    let write = |name: &str, source: String| {
+        std::fs::write(
+            std::path::Path::new(out_dir).join(format!("alloc_{name}.rs")),
+            source,
+        )
+        .expect("write an alloc fixture");
+    };
+    for (tag, n) in [("small", SMALL), ("big", BIG)] {
+        write(&format!("owned_{tag}"), render_owned_lines(n));
+        write(&format!("borrowed_{tag}"), render_borrowed_lines(n));
+        write(&format!("static_slice_{tag}"), render_static_lines(n));
+    }
+}
+
+/// The literal content every arm carries, so the three differ in how the data is
+/// HELD and in nothing else. Returned as already-quoted Rust literals because
+/// that is the one form all three emitters need.
+fn measured_line_literals(i: usize) -> (String, String, String, String) {
+    (
+        format!("{:?}", format!("f-{i:06}")),
+        format!("{:?}", "그는 \"셈\"이라 했다."),
+        format!("{:?}", "ground-truth"),
+        format!("{:?}", "ent-a"),
+    )
+}
+
+/// Arm one: the shape shipped today — every field owned, assembled through
+/// `Vec`-returning chunk functions.
+fn render_owned_lines(n: usize) -> String {
+    let ty = "::std::vec::Vec<crate::OwnedLine>";
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..n).collect::<Vec<_>>().chunks(CHUNK.get()).enumerate() {
+        let body: Vec<String> = group
+            .iter()
+            .map(|i| {
+                let (fact, text, frame, entity) = measured_line_literals(*i);
+                format!(
+                    "crate::OwnedLine {{ fact_id: {fact}.to_string(), text: {text}.to_string(), \
+                     mode: ::mnemosyne_engine::DisclosureMode::State, frame: {frame}.to_string(), \
+                     entities: vec![{entity}.to_string()], carrier: None, typed_predicate: None, \
+                     quote: None, count: None }}"
+                )
+            })
+            .collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, ty, &names)
+}
+
+/// Arm two: the same assembly, with every string pointing at `.rodata`. The
+/// `Vec` spine is deliberately kept — it is the residual this arm exists to
+/// price.
+fn render_borrowed_lines(n: usize) -> String {
+    let ty = "::std::vec::Vec<crate::BorrowedLine>";
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..n).collect::<Vec<_>>().chunks(CHUNK.get()).enumerate() {
+        let body: Vec<String> = group.iter().map(|i| borrowed_literal(*i)).collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, ty, &names)
+}
+
+/// Arm three: chunk `static`s and a `static` of slices over them. Round 775's
+/// bound still holds — no single item carries the whole store — and nothing is
+/// built at run time, so the answer this arm gives is a count, not a ratio.
+fn render_static_lines(n: usize) -> String {
+    let mut out = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..n).collect::<Vec<_>>().chunks(CHUNK.get()).enumerate() {
+        let body: Vec<String> = group.iter().map(|i| borrowed_literal(*i)).collect();
+        let name = format!("__MN_{c}");
+        let _ = writeln!(
+            out,
+            "static {name}: &[crate::BorrowedLine] = &[{}];",
+            body.join(", ")
+        );
+        names.push(name);
+    }
+    let _ = writeln!(
+        out,
+        "static __MN_ALL: &[&[crate::BorrowedLine]] = &[{}];",
+        names.join(", ")
+    );
+    out.push_str("pub fn build() -> &'static [&'static [crate::BorrowedLine]] { __MN_ALL }\n");
+    out
+}
+
+fn borrowed_literal(i: usize) -> String {
+    let (fact, text, frame, entity) = measured_line_literals(i);
+    format!(
+        "crate::BorrowedLine {{ fact_id: {fact}, text: {text}, \
+         mode: ::mnemosyne_engine::DisclosureMode::State, frame: {frame}, \
+         entities: &[{entity}], carrier: None, typed_predicate: None, quote: None, \
+         count: None }}"
+    )
+}
+
+/// The `Vec` reassembly both allocating arms share, so the only thing that
+/// differs between them is the element type.
+fn vec_assembly(fns: &str, ty: &str, names: &[String]) -> String {
+    let mut out = String::from(fns);
+    let (first, rest) = names.split_first().expect("a non-empty fixture chunks");
+    let extends: String = rest
+        .iter()
+        .map(|name| format!(" v.extend({name}());"))
+        .collect();
+    let _ = writeln!(
+        out,
+        "pub fn build() -> {ty} {{ let mut v = {first}();{extends} v }}"
+    );
+    out
 }
 
 /// `n` lines in one section — parts that GROW, for the scaling assertion.
