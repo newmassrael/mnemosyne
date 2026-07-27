@@ -187,6 +187,26 @@ pub fn section_content_excerpts(
         .collect())
 }
 
+/// Read every section's authored ladder (Round 768) — `section_id ->
+/// SectionLadder` over the sections that declare one, the interactive sibling of
+/// [`section_content_excerpts`]. Sections with no ladder are omitted (a scene the
+/// reader only reads is not an empty ladder, it is no ladder).
+///
+/// # Errors
+///
+/// [`OpError`] if the store (or its sidecar) cannot be read.
+pub fn section_ladders(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<BTreeMap<String, mnemosyne_atomic::SectionLadder>, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    Ok(store
+        .sections
+        .iter()
+        .filter_map(|(id, s)| s.ladder.as_ref().map(|l| (id.clone(), l.clone())))
+        .collect())
+}
+
 /// The `[continuity]` policy view both read ops resolve from ONE config
 /// discovery (Round 435 single-path rule, the `workspace_entry_id_prefix`
 /// precedent; folded to a single `discover_config` in Round 436).

@@ -506,10 +506,21 @@ fn resolve_ladder_questions(
     // Un-anchored rungs keep their authored question (interactive chrome the
     // store never claimed). If NONE is anchored there is no store prose to
     // consult, so a section without an excerpt is not yet a fault.
-    let anchored: Vec<&ContentAnchor> = rungs
+    // DEDUPED, and that is load-bearing (Round 768): the kernel prices a rung per
+    // revealed fact while an author writes one hold, so a hold that opens three
+    // facts arrives as three rungs sharing ONE anchor. They are the same hold, and
+    // the slicer — which rightly refuses a duplicated coordinate from a single
+    // declaration (R766) — must see it once. Order is preserved, so the sequence
+    // judged against the prose is the sequence of distinct HOLDS.
+    let mut anchored: Vec<&ContentAnchor> = Vec::new();
+    for anchor in rungs
         .iter()
         .filter_map(|rung| rung.question_anchor.as_ref())
-        .collect();
+    {
+        if !anchored.contains(&anchor) {
+            anchored.push(anchor);
+        }
+    }
     if anchored.is_empty() {
         return Ok(rungs.iter().map(|rung| rung.question.clone()).collect());
     }
@@ -1129,6 +1140,40 @@ mod tests {
             labels,
             vec!["이름을 물었다.".to_string(), "물때를 물었다.".to_string()],
             "each hold is named by the line it starts at"
+        );
+    }
+
+    #[test]
+    fn one_hold_priced_per_fact_resolves_rather_than_reading_as_a_duplicate() {
+        // Round 768 — the kernel prices a rung per revealed fact while an author
+        // writes ONE hold, so a hold opening two facts arrives as two rungs
+        // sharing one anchor. The slicer rightly refuses a duplicated coordinate
+        // from a single declaration (R766), so the resolver must see the distinct
+        // HOLDS: it dedupes. Without that, `store_interactivity`'s very first
+        // multi-fact hold would have failed as DuplicateAnchor.
+        let proj = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("이름을"), at("물때를"), at("물때를")]),
+            sc01_multi_line_passages(),
+        )
+        .expect("two rungs at one hold are the same hold, not a duplicated coordinate");
+        let labels: Vec<String> = proj
+            .scene("main", "sc-01")
+            .doors
+            .into_iter()
+            .filter_map(|door| match door {
+                Door::Ask { question, .. } => Some(question),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                "이름을 물었다.".to_string(),
+                "물때를 물었다.".to_string(),
+                "물때를 물었다.".to_string(),
+            ],
+            "each priced rung carries its hold's line"
         );
     }
 

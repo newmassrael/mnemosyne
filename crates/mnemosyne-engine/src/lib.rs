@@ -145,13 +145,16 @@ impl std::error::Error for EngineError {}
 /// Read every registered entity's declared kind from the store — `entity_id ->
 /// kind` over the whole registry.
 ///
-/// The engine never classifies entities by kind for its OWN logic — a consumer
-/// splits its registries by kind ([`Interactivity::objects`] is FED, not derived
-/// here). This is the raw store read a consumer needs to VALIDATE its kind
-/// registry against the store: tide's object/place gates ask "does every store
-/// `kind:object` have a screen name, and is every named id a real store object
-/// of that kind." A read-through of [`mnemosyne_ops::entity_kinds`] so the
-/// consumer talks only to its kernel, not past it into `ops`.
+/// The raw kind registry, for a consumer that needs the whole map: which entities
+/// have screen names, which are places, which its own registries must agree with.
+/// A read-through of [`mnemosyne_ops::entity_kinds`] so a consumer talks to its
+/// kernel rather than past it into `ops`.
+///
+/// This said "[`Interactivity::objects`] is FED, not derived here" until Round
+/// 768, which is no longer true and was never load-bearing: the objects axis IS
+/// derived from this registry now, by [`store_interactivity`]. The consumer gate
+/// that used to prove its hand-fed set equalled the store's `kind:object` set is
+/// what showed the derivation was exact in the first place.
 ///
 /// # Errors
 ///
@@ -191,10 +194,166 @@ pub fn store_passages(
         .collect())
 }
 
+/// The consumer's interactive layer, DERIVED FROM THE STORE (Round 768) — the
+/// half of [`Interactivity`] that is world structure rather than consumer policy.
+///
+/// Before this, a consumer built its own `Interactivity` from its own files and
+/// handed it in, which meant the interactive layer lived in a coordinate space
+/// the kernel could not see and, worse, that baking the projection at build time
+/// required the consumer to run its own derivation in a build script. Both halves
+/// come from the store now:
+///
+/// - `objects` = every registered entity of kind `object`. This was already exact
+///   without anyone relying on it: the first consumer's own gate asserts its
+///   object-id set EQUALS the store's `kind:object` set in both directions, so
+///   reading it here reproduces that set by construction rather than by
+///   agreement. Object NAMES stay the consumer's — a name is a word of the novel,
+///   not world structure.
+/// - `ladders` = each section's authored [`SectionLadder`](mnemosyne_atomic::SectionLadder)
+///   (R765), expanded into the kernel's rung model. Only DIALOGUE ladders (a
+///   carrier is named) become ask-ladders: an observation ladder's facts are
+///   opened by examining its object, which is the objects axis, and offering them
+///   as questions would put one fact behind two doors.
+///
+/// A declared rung that reveals N facts becomes N kernel rungs sharing one
+/// question ANCHOR — the kernel prices a rung per fact, the author writes one
+/// hold. The question text is not resolved here: the anchor travels into
+/// [`PlayableProjection::from_workspace`], which resolves every ladder against
+/// its section's own prose (R767). So this function reads coordinates and the
+/// projection reads prose, the same split R765 drew in the store.
+///
+/// `free_investigate` is left at its default: it is policy about how a consumer's
+/// own investigate verb behaves, not world structure, so the caller sets it —
+/// `Interactivity { free_investigate: true, ..store_interactivity(root)? }`.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the store (or its sidecar) cannot be read.
+pub fn store_interactivity(workspace_root: &std::path::Path) -> Result<Interactivity, EngineError> {
+    let objects = store_entity_kinds(workspace_root)?
+        .into_iter()
+        .filter(|(_, kind)| kind == "object")
+        .map(|(id, _)| id)
+        .collect();
+    let declared = mnemosyne_ops::section_ladders(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))?;
+    let ladders = declared
+        .into_iter()
+        // An observation ladder (no carrier) is opened by examining its rungs'
+        // objects, so it is the objects axis and never an ask-ladder.
+        .filter(|(_, ladder)| ladder.carrier.is_some())
+        .filter_map(|(section, ladder)| {
+            let rungs: Vec<Rung> = ladder
+                .rungs
+                .iter()
+                .flat_map(|declared| {
+                    declared.reveals.iter().map(move |fact| Rung {
+                        // Never rendered: an anchored rung's label is resolved
+                        // from the section's prose at projection (R767). Empty
+                        // rather than a plausible-looking placeholder, so a bug
+                        // that skipped resolution would show as a blank door
+                        // rather than as an invented sentence.
+                        question: String::new(),
+                        question_anchor: Some(declared.anchor.clone()),
+                        reveals: fact.clone(),
+                        needs: declared.needs.clone(),
+                    })
+                })
+                .collect();
+            // A dialogue ladder whose every rung reveals nothing carries no gate
+            // and no door; it is prose, and prose is already the projection's.
+            (!rungs.is_empty()).then_some((section, rungs))
+        })
+        .collect();
+    Ok(Interactivity {
+        objects,
+        ladders,
+        free_investigate: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{store_entity_kinds, store_passages};
+    use super::{store_entity_kinds, store_interactivity, store_passages};
     use tempfile::TempDir;
+
+    /// Round 768 — a store holding one DIALOGUE ladder (a carrier, two holds, the
+    /// second opening two facts), one OBSERVATION ladder (no carrier), and two
+    /// entity kinds.
+    fn laddered_store(root: &std::path::Path) {
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":43,"frames":{},"narrative_facts":{},
+               "entities":{"ent-post":{"kind":"object"},"ent-weir":{"kind":"place"}},
+               "sections":{
+                 "d01-nat":{"ladder":{"carrier":"ent-jongdeuk","rungs":[
+                   {"anchor":{"source":"M.md","locator":{"Prefix":"이름을"}},
+                    "reveals":["f-name"]},
+                   {"anchor":{"source":"M.md","locator":{"Prefix":"물때를"}},
+                    "needs":["f-name"],"reveals":["f-tide","f-count"]}
+                 ]}},
+                 "d02-nat":{"ladder":{"rungs":[
+                   {"anchor":{"source":"M.md","locator":{"Prefix":"말뚝을"}},
+                    "reveals":["f-post"],"object":"ent-post"}
+                 ]}}
+               }}"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn store_interactivity_derives_objects_and_dialogue_ladders_from_the_store() {
+        // Round 768 — the interactive layer stops being consumer-built. Objects
+        // are the store's kind:object entities; ladders are the store's authored
+        // holds expanded to the kernel's per-fact rung model.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        laddered_store(root);
+        let interactivity = store_interactivity(root).expect("kernel derives the layer");
+
+        // Objects are exactly the store's kind:object — a place is not examinable
+        // furniture, and nothing here is fed in by a consumer.
+        assert_eq!(
+            interactivity.objects,
+            std::collections::HashSet::from(["ent-post".to_string()])
+        );
+
+        // The OBSERVATION ladder (no carrier) is not an ask-ladder: its fact is
+        // opened by examining ent-post, and offering it as a question too would
+        // put one fact behind two doors.
+        assert!(
+            !interactivity.ladders.contains_key("d02-nat"),
+            "an observation ladder must not become an ask-ladder"
+        );
+
+        // The DIALOGUE ladder fans out per revealed fact: 1 + 2 facts = 3 rungs,
+        // in declared order, each carrying its hold's anchor and needs.
+        let rungs = &interactivity.ladders["d01-nat"];
+        assert_eq!(rungs.len(), 3);
+        let reveals: Vec<&str> = rungs.iter().map(|r| r.reveals.as_str()).collect();
+        assert_eq!(reveals, vec!["f-name", "f-tide", "f-count"]);
+        assert!(rungs[0].needs.is_empty());
+        assert_eq!(rungs[1].needs, vec!["f-name".to_string()]);
+        assert_eq!(rungs[2].needs, vec!["f-name".to_string()]);
+        // The two rungs of the SECOND hold share ONE anchor — they are the same
+        // hold, priced twice. The projection's resolver must therefore tolerate a
+        // repeated anchor (it dedupes) even though the store rejects a duplicated
+        // one within a single declaration.
+        assert_eq!(rungs[1].question_anchor, rungs[2].question_anchor);
+        assert_ne!(rungs[0].question_anchor, rungs[1].question_anchor);
+        // No question text is invented here: the label comes from the section's
+        // own prose at projection, so a bug that skipped resolution shows as a
+        // blank door rather than as a sentence nobody wrote.
+        assert!(rungs.iter().all(|r| r.question.is_empty()));
+
+        // free_investigate is the consumer's knob, not world structure.
+        assert!(!interactivity.free_investigate);
+    }
 
     /// The kernel's read-through of the store's entity registry — `id -> kind`
     /// for the whole registry, what a consumer validates its own kind registry
