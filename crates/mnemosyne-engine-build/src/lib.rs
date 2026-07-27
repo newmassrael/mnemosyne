@@ -21,8 +21,12 @@
 //! # Why the artifact cannot go stale
 //!
 //! [`emit_playable_projection`] prints `cargo:rerun-if-changed` for every input
-//! it read, so cargo regenerates whenever the store moves, and the output belongs
-//! in `OUT_DIR` where it is never committed. The anti-drift property a runtime
+//! it read — RESOLVED through the workspace's own config rather than assumed,
+//! which is the correction Round 772 made after R770 assumed them and named a
+//! store the first real consumer does not use. Cargo regenerates whenever the
+//! store moves, and the output belongs in `OUT_DIR` where it is never committed.
+//! A declared input that is not the file the loader opens is worse than no claim
+//! at all: it reads as watched. The anti-drift property a runtime
 //! read was chosen for comes from DERIVING FROM THE STORE, not from the timing of
 //! the derivation. The honest residual: a pre-built binary is pinned to the store
 //! revision it was built from, the same trade a consumer already makes pinning
@@ -86,22 +90,28 @@ pub fn emit_playable_projection(
     telling: &str,
     overrides: &impl EngineOverrides,
 ) -> Result<String, EngineError> {
+    declare_inputs(workspace_root)?;
     let projection = PlayableProjection::from_workspace(workspace_root, telling, overrides)?;
-    for input in rerun_inputs(workspace_root) {
-        println!("cargo:rerun-if-changed={}", input.display());
-    }
     Ok(render(&projection.to_parts()))
 }
 
-/// The paths a bake depends on — the workspace config and the atomic sidecar it
-/// names. Listed conservatively: a path that does not exist is still declared, so
-/// CREATING it triggers a rebuild rather than being silently ignored.
-fn rerun_inputs(workspace_root: &Path) -> Vec<std::path::PathBuf> {
-    vec![
-        workspace_root.join("mnemosyne.toml"),
-        workspace_root.join("docs/.atomic/workspace.atomic.json"),
-        workspace_root.join("canon-order.json"),
-    ]
+/// Tell cargo which files the bake depends on, so a store edit regenerates it.
+///
+/// The paths are RESOLVED through the same config the loader reads
+/// ([`mnemosyne_engine::projection_inputs`]), never assumed. R770 assumed them,
+/// naming the built-in default sidecar; the first real consumer declares
+/// `[atomic] sidecar_path`, so the store the bake actually read was never
+/// watched and rebuilding it left the artifact silently stale — the one failure
+/// this crate's "cannot go stale" claim is about.
+///
+/// Declared BEFORE the projection runs: the dependency is registered even when
+/// the projection then fails, so a fixed store is picked up as an edit rather
+/// than relying on cargo re-running a script that errored.
+fn declare_inputs(workspace_root: &Path) -> Result<(), EngineError> {
+    for input in mnemosyne_engine::projection_inputs(workspace_root)? {
+        println!("cargo:rerun-if-changed={}", input.display());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

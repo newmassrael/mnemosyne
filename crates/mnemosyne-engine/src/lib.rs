@@ -198,6 +198,26 @@ pub fn store_entity_kinds(
         .map_err(|e| EngineError::Projection(e.to_string()))
 }
 
+/// The FILES this workspace's projections read (Round 772) — the discovered
+/// config, the atomic sidecar it names, the canon-order file it declares. A
+/// read-through of [`mnemosyne_ops::projection_inputs`], so a consumer talks to
+/// its kernel rather than past it into `ops`.
+///
+/// A build-time bake declares these to cargo (`cargo:rerun-if-changed`) so a
+/// store edit regenerates the artifact. The list is RESOLVED rather than assumed
+/// — see the `ops` doc for the staleness R770 shipped by assuming it.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the config cannot be read or the sidecar
+/// cannot be resolved.
+pub fn projection_inputs(
+    workspace_root: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, EngineError> {
+    mnemosyne_ops::projection_inputs(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))
+}
+
 /// Provenance-bound narrative prose FROM THE STORE (R757 P3b) — `section_id ->
 /// Passage`. Reads each section's `content_excerpt` (R756 P3a) via
 /// [`mnemosyne_ops::section_content_excerpts`] and projects it with

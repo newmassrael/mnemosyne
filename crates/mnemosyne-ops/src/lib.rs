@@ -87,6 +87,55 @@ pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&Path>) -> anyhow::Result<
     cascade::resolve_sidecar(anchor, s.as_deref())
 }
 
+/// The FILES a store projection reads, resolved (Round 772) — the discovered
+/// config, the atomic sidecar that config names, and the canon-order file it
+/// declares. Exactly the inputs [`playable_world_report`] and
+/// [`quest_graph_report`] open, by the same resolution they use.
+///
+/// This exists for a build-time bake, which must declare its inputs to cargo so
+/// an edit regenerates the artifact. Declaring them by GUESS is what R770 did
+/// and it was wrong for the first real consumer: the built-in default sidecar
+/// was named while the workspace declared `[atomic] sidecar_path`, so the store
+/// the projection actually read was never watched and a rebuilt store left the
+/// bake silently stale. A declared input has to be the file the loader OPENS, so
+/// it is derived from the loader's own resolver here rather than restated.
+///
+/// A workspace with no config yet still gets its would-be `mnemosyne.toml`
+/// declared: CREATING one moves the sidecar, and an undeclared creation is the
+/// same staleness one step later.
+///
+/// # Errors
+///
+/// [`OpError`] if the config cannot be read or the sidecar cannot be resolved —
+/// the same failures the projection would hit, raised before it runs.
+pub fn projection_inputs(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<Vec<PathBuf>, OpError> {
+    let mut inputs = Vec::new();
+    match mnemosyne_config::discover_config(workspace_root)? {
+        Some(loaded) => {
+            inputs.push(loaded.config_path);
+            if let Some(order) = loaded
+                .config
+                .continuity
+                .as_ref()
+                .and_then(|c| c.canon_order_path.as_ref())
+            {
+                let declared = PathBuf::from(order);
+                inputs.push(if declared.is_absolute() {
+                    declared
+                } else {
+                    loaded.workspace_root.join(declared)
+                });
+            }
+        }
+        None => inputs.push(workspace_root.join("mnemosyne.toml")),
+    }
+    inputs.push(resolve_sidecar(workspace_root, sidecar)?);
+    Ok(inputs)
+}
+
 /// Run an atomic mutate primitive in-process: load the store, invoke the
 /// supplied closure against it, and return the receipt. The closure
 /// persists the store itself (`save_with_receipt`); the atomic store is the
@@ -1635,6 +1684,55 @@ mod tests {
             load_atomic_store(tmp.path(), None).is_err(),
             "corrupt sidecar must fail loud, not silently empty"
         );
+    }
+
+    /// R772 — a bake declares the files it read, and the declaration must be the
+    /// path the loader OPENS. The oracle is that resolver itself, never a second
+    /// hand-written list: a hand-written list is a copy of exactly the class of
+    /// bug being killed here (R770 hand-wrote the built-in default and the first
+    /// real consumer declares `[atomic] sidecar_path`, so the store it actually
+    /// read went unwatched).
+    #[test]
+    fn projection_inputs_name_the_files_the_loader_resolves() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \".atomic/tide.atomic.json\"\n\
+             \n[continuity]\ncanon_order_path = \"canon-order.json\"\n",
+        )
+        .unwrap();
+
+        let inputs = projection_inputs(root, None).expect("resolve the declared inputs");
+
+        // Derived: whatever the loader would open must be declared.
+        let opened = resolve_sidecar(root, None).expect("the loader's own resolution");
+        assert!(
+            inputs.contains(&opened),
+            "the sidecar the loader opens ({}) is not declared: {inputs:?}",
+            opened.display()
+        );
+        assert!(inputs.contains(&root.join("mnemosyne.toml")));
+        assert!(inputs.contains(&root.join("canon-order.json")));
+
+        // Non-vacuity: the built-in default is NOT this workspace's store, so a
+        // declaration that still named it would pass every assertion above while
+        // watching a file that does not exist.
+        assert!(
+            !inputs.contains(&AtomicStore::default_sidecar_path(root)),
+            "the built-in default is declared though the config moved the store"
+        );
+    }
+
+    /// A workspace with no config yet declares its would-be config anyway:
+    /// creating one moves the sidecar, and an undeclared creation is the same
+    /// staleness one step later.
+    #[test]
+    fn projection_inputs_declare_the_config_that_does_not_exist_yet() {
+        let tmp = TempDir::new().unwrap();
+        let inputs = projection_inputs(tmp.path(), None).expect("no config is not an error");
+        assert!(inputs.contains(&tmp.path().join("mnemosyne.toml")));
+        assert!(inputs.contains(&AtomicStore::default_sidecar_path(tmp.path())));
     }
 
     /// No config file = nothing to scan = an empty hit set, not an error.
