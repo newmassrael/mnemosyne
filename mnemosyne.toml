@@ -77,25 +77,18 @@ max_section_body_length = 5000
 # tests/ stays out of [plugins.set_equality_validator].paths; review-time human judgment carries
 # the residual policing duty. Cross-asset symmetry is sacrificed deliberately
 # in favor of single-responsibility per asset class.
+#
+# Round 777 — this was a HAND LIST of sixteen sibling directories, and it had
+# drifted from the tree by four crates: mnemosyne-engine, mnemosyne-engine-build,
+# mnemosyne-render and mnemosyne-plugin-tree-sitter-cpp were never scanned, so
+# their `Round NNN` citations were never checked while CLAUDE.md told every agent
+# the gate covered `crates/*/src/`. A list restates the tree and then drifts from
+# it in silence, because a path merely absent looks the same as a path
+# deliberately excluded. The pattern below DERIVES the set instead — a new crate
+# is gated the day it exists — and `*/src/` still leaves tests/ out, which is a
+# policy (above), not an oversight.
 [plugins.set_equality_validator]
-paths = [
- "crates/mnemosyne-atomic/src/",
- "crates/mnemosyne-cascade/src/",
- "crates/mnemosyne-cli/src/",
- "crates/mnemosyne-config/src/",
- "crates/mnemosyne-core/src/",
- "crates/mnemosyne-facts/src/",
- "crates/mnemosyne-index/src/",
- "crates/mnemosyne-mcp/src/",
- "crates/mnemosyne-ops/src/",
- "crates/mnemosyne-plugin-tree-sitter-rust/src/",
- "crates/mnemosyne-projection/src/",
- "crates/mnemosyne-query/src/",
- "crates/mnemosyne-server/src/",
- "crates/mnemosyne-store/src/",
- "crates/mnemosyne-style/src/",
- "crates/mnemosyne-validate/src/",
- ]
+paths = ["crates/*/src/"]
 severity_missing = "reject"
 severity_binding = "reject"
 comment_only = true

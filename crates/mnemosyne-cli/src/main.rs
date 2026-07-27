@@ -5636,6 +5636,22 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let binding_count = citation_unbound_count + binding_unbacked_count + symbol_mismatch_count;
     let coverage_count = impl_missing_count;
 
+    // Round 777 — report the COVERAGE, not the configuration. `cfg.paths` may
+    // hold a `*` pattern, and printing the pattern would answer "what were you
+    // told to scan" when the only question that ever mattered is "what did you
+    // scan". The drift this replaced went four crates deep behind a report that
+    // looked complete because it echoed its own input.
+    let scanned_paths: Vec<String> = mnemosyne_validate::code_refs::expand_paths(&root, &cfg.paths)
+        .iter()
+        .map(|p| {
+            p.strip_prefix(&root)
+                .unwrap_or(p)
+                .display()
+                .to_string()
+                .replace('\\', "/")
+        })
+        .collect();
+
     if json {
         // Flat per-violation shape via `CodeRefViolation::to_cli_json` —
         // the stable CLI JSON contract. The default Serialize derive on
@@ -5648,7 +5664,8 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "{}",
             serde_json::json!({
             "primitive": "validate-code-refs",
-            "scanned_paths": cfg.paths,
+            "configured_paths": cfg.paths,
+            "scanned_paths": scanned_paths,
             "valid_entry_count": valid_entry_count,
             "valid_section_count": store.sections.len(),
             "valid_inventory_count": store.inventory_entries.len(),
@@ -5683,12 +5700,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     } else {
         println!("=== mnemosyne-cli validate-code-refs ===");
         println!(
-            "prefix={:?} valid_entries={} valid_sections={} valid_inventory={} scanned_paths={:?}",
+            "prefix={:?} valid_entries={} valid_sections={} valid_inventory={} \
+             configured_paths={:?} scanned_paths={:?}",
             prefix,
             store.changelog_entries.len(),
             store.sections.len(),
             store.inventory_entries.len(),
-            cfg.paths
+            cfg.paths,
+            scanned_paths
         );
         if !cfg.inventory_prefixes.is_empty() {
             println!(

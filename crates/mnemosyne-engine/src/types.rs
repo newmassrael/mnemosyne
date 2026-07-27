@@ -372,7 +372,7 @@ impl Door {
     /// disclose-door — the kernel's own and a consumer's — obeys ONE liveness
     /// definition (a door is LIVE only if it discloses a not-yet-known fact), so
     /// the half-enforced-invariant class (a door-builder that forgets the
-    /// known-check, the tide field-report §5 dead-`go`-door) cannot recur.
+    /// known-check, the tide field-report sec 5 dead-`go`-door) cannot recur.
     #[must_use]
     pub fn discloses(&self) -> &[String] {
         match self {

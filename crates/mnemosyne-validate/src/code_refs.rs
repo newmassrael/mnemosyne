@@ -746,22 +746,128 @@ pub enum ViolationKind {
 
 /// Walk configured paths under `root`, collecting all readable files.
 ///
+/// A path may name a `*` as a WHOLE segment (`crates/*/src/`, Round 777), which
+/// matches every directory sitting at that position. This exists because the
+/// alternative — a hand-enumerated list of sibling directories — is a copy of
+/// the very bug class this validator was built to catch: the list drifts from
+/// the tree the moment a sibling is added, and it drifts SILENTLY, because a
+/// path that is merely absent from the list looks exactly like a path deliberately
+/// excluded. It had already drifted by four crates when this was found, one of
+/// them the crate that a dozen consecutive rounds had been landing in, so their
+/// `Round NNN` citations were never checked while the documented contract said
+/// they were. A pattern derives the set from the tree; a list restates it and
+/// hopes.
+///
 /// Skips hidden directories (`.git/`, `.mnemosyne/`), `target/`, and
-/// `node_modules/` — these never carry author-written citations.
-/// Non-existent configured paths are silently skipped (warned by the
-/// caller); the design gives external users a way to declare intent for
-/// a path that may exist in some checkouts but not others.
+/// `node_modules/` — these never carry author-written citations, and a `*` skips
+/// them too, through the same predicate rather than a second copy of the rule.
+/// SOME non-existent configured paths are silently skipped; the design gives
+/// external users a way to declare intent for a path that may exist in some
+/// checkouts but not others. ALL of them resolving to nothing is different and
+/// is an error (Round 777): a configured-but-empty scan set means the validator
+/// examines no file and therefore reports no violation, which is the same
+/// "clean" a genuinely clean tree produces. A pattern makes that reachable in a
+/// new way — an older binary with no `*` support reads `crates/*/src/` as a
+/// literal path, finds nothing, and gates vacuously — so the vacuity is refused
+/// where the paths are resolved rather than left for each caller to notice.
+///
+/// # Errors
+///
+/// [`std::io::ErrorKind::NotFound`] if `paths` is non-empty and no entry
+/// resolves to anything on disk; any I/O error while descending.
 pub fn walk_paths(root: &Path, paths: &[String]) -> std::io::Result<Vec<PathBuf>> {
+    let roots = expand_paths(root, paths);
+    if !paths.is_empty() && roots.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "configured scan paths resolve to nothing under {}: {paths:?} — \
+                 a validator with no file to read reports the same clean as a clean tree",
+                root.display()
+            ),
+        ));
+    }
     let mut out = Vec::new();
-    for p in paths {
-        let abs = root.join(p);
-        if !abs.exists() {
-            continue;
-        }
+    for abs in roots {
         collect_files(&abs, &mut out, true)?;
     }
     out.sort();
+    out.dedup();
     Ok(out)
+}
+
+/// The concrete roots a configured path list resolves to under `root` (Round
+/// 777) — every `*` already expanded and every non-existent entry dropped, i.e.
+/// exactly what [`walk_paths`] will descend into.
+///
+/// Public because a reporter must be able to print the COVERAGE rather than the
+/// configuration. That distinction is not cosmetic: the drift this round fixed
+/// was invisible for as long as it was, because every report showed the list it
+/// had been handed and never the tree that list covered. Same function as the
+/// walk uses, so the printed answer cannot drift from the scanned one either.
+#[must_use]
+pub fn expand_paths(root: &Path, paths: &[String]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = paths
+        .iter()
+        .flat_map(|p| expand_segments(root, p))
+        .filter(|p| p.exists())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Never carries author-written citations: a VCS/tool directory, a build
+/// artifact tree, or a vendored dependency. One home for the rule, read both
+/// when descending into a directory and when expanding a `*` segment — two
+/// copies would let a `*` scan what a walk skips.
+fn is_skipped_dir(name: &str) -> bool {
+    name.starts_with('.') || name == "target" || name == "node_modules"
+}
+
+/// Expand a configured path into the concrete paths it names, resolving each
+/// `*` segment against the tree (Round 777). A path with no `*` yields itself,
+/// so the non-pattern case is unchanged.
+fn expand_segments(root: &Path, pattern: &str) -> Vec<PathBuf> {
+    let segments: Vec<&str> = pattern
+        .split(['/', '\\'])
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !segments.contains(&"*") {
+        return vec![root.join(pattern)];
+    }
+    let mut out = Vec::new();
+    expand_into(root.to_path_buf(), &segments, &mut out);
+    out
+}
+
+fn expand_into(base: PathBuf, segments: &[&str], out: &mut Vec<PathBuf>) {
+    let Some((head, rest)) = segments.split_first() else {
+        out.push(base);
+        return;
+    };
+    if *head != "*" {
+        expand_into(base.join(head), rest, out);
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(&base) else {
+        return;
+    };
+    let mut matched: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter(|p| {
+            !p.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(is_skipped_dir)
+        })
+        .collect();
+    // Deterministic: the scan order must not depend on the filesystem's.
+    matched.sort();
+    for dir in matched {
+        expand_into(dir, rest, out);
+    }
 }
 
 fn collect_files(p: &Path, out: &mut Vec<PathBuf>, is_root: bool) -> std::io::Result<()> {
@@ -774,7 +880,7 @@ fn collect_files(p: &Path, out: &mut Vec<PathBuf>, is_root: bool) -> std::io::Re
     }
     if !is_root {
         let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if name.starts_with('.') || name == "target" || name == "node_modules" {
+        if is_skipped_dir(name) {
             return Ok(());
         }
     }
@@ -2718,6 +2824,114 @@ mod tests {
     };
     use mnemosyne_core::VerificationExpectation;
     use tempfile::TempDir;
+
+    /// Round 777 — a `*` segment DERIVES the sibling set from the tree, which is
+    /// the whole reason it exists: the hand list it replaced had silently stopped
+    /// covering four crates. The non-vacuity is the second half of this test, not
+    /// the first — a pattern that merely finds today's directories proves nothing
+    /// a list could not also do, so a NEW sibling is created after the first scan
+    /// and must appear without the pattern being touched.
+    #[test]
+    fn a_star_segment_derives_the_sibling_set_including_ones_added_later() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        for crate_name in ["alpha", "beta"] {
+            std::fs::create_dir_all(root.join("crates").join(crate_name).join("src")).unwrap();
+            std::fs::write(
+                root.join("crates").join(crate_name).join("src/lib.rs"),
+                "// Round 1\n",
+            )
+            .unwrap();
+            // tests/ sits beside src/ and must stay OUT: `*/src/` is a policy
+            // boundary, not just a convenience.
+            std::fs::create_dir_all(root.join("crates").join(crate_name).join("tests")).unwrap();
+            std::fs::write(
+                root.join("crates").join(crate_name).join("tests/it.rs"),
+                "// Round 2\n",
+            )
+            .unwrap();
+        }
+        // A build tree under the star position must not be scanned — the skip
+        // predicate is shared with the walk rather than copied for the glob.
+        std::fs::create_dir_all(root.join("crates/target/src")).unwrap();
+        std::fs::write(root.join("crates/target/src/junk.rs"), "// Round 3\n").unwrap();
+
+        let pattern = vec!["crates/*/src/".to_string()];
+        let found = walk_paths(root, &pattern).unwrap();
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.strip_prefix(root).unwrap().display().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "crates/alpha/src/lib.rs".to_string(),
+                "crates/beta/src/lib.rs".to_string(),
+            ],
+            "the star matches every crate's src/, and only that"
+        );
+
+        // The half a hand list cannot pass: a sibling that did not exist when the
+        // pattern was written is scanned anyway, with nothing edited.
+        std::fs::create_dir_all(root.join("crates/gamma/src")).unwrap();
+        std::fs::write(root.join("crates/gamma/src/lib.rs"), "// Round 4\n").unwrap();
+        let after = walk_paths(root, &pattern).unwrap();
+        assert!(
+            after.contains(&root.join("crates/gamma/src/lib.rs")),
+            "a crate added after the pattern was written must still be gated"
+        );
+        assert_eq!(after.len(), 3);
+    }
+
+    /// Round 777 — a path with no `*` resolves exactly as it always did, so the
+    /// pattern support is additive rather than a re-specification of every
+    /// existing config in the wild.
+    #[test]
+    fn a_path_without_a_star_is_unchanged() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("crates/alpha/src")).unwrap();
+        std::fs::write(root.join("crates/alpha/src/lib.rs"), "// Round 1\n").unwrap();
+
+        let found = walk_paths(root, &["crates/alpha/src/".to_string()]).unwrap();
+        assert_eq!(found, vec![root.join("crates/alpha/src/lib.rs")]);
+        // SOME configured path missing is still skipped rather than erroring —
+        // the declared-intent-for-optional-checkouts behaviour, unchanged.
+        let partial = walk_paths(
+            root,
+            &[
+                "crates/alpha/src/".to_string(),
+                "crates/nowhere/src/".to_string(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(partial, vec![root.join("crates/alpha/src/lib.rs")]);
+    }
+
+    /// Round 777 — a scan set that resolves to NOTHING is an error, not zero
+    /// violations. Both spellings of it: a pattern that matches no directory
+    /// (what an older binary without `*` support does to `crates/*/src/`, reading
+    /// it as a literal path) and a plain path that is simply not there. Either
+    /// way the validator would read no file and report the same clean a clean
+    /// tree reports, which is the failure mode this whole round is about.
+    #[test]
+    fn a_scan_set_that_resolves_to_nothing_is_an_error_not_a_clean_report() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+
+        for empty in [
+            vec!["crates/*/src/".to_string()],
+            vec!["crates/mnemosyne-gone/src/".to_string()],
+        ] {
+            let err = walk_paths(root, &empty).expect_err("an empty scan set must fail loud");
+            assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        }
+        // Non-vacuity: an EMPTY config is not an empty scan set — it is a
+        // workspace that declared no paths, and the callers already return early
+        // on that rather than treating it as a fault.
+        assert!(walk_paths(root, &[]).unwrap().is_empty());
+    }
 
     /// Test-only wrapper that drives `SetEqualityValidator::scan` with no
     /// SymbolResolver registry — i.e., pre-R306 set-equality-only mode.

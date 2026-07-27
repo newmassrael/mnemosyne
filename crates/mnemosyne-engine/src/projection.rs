@@ -429,11 +429,11 @@ impl PlayableProjection {
     /// The entities the discourse has DISCLOSED at-or-before `section` on
     /// `world`'s walk (Round 757, B1) — the union of every disclosed
     /// [`Line`]'s entities from the world's first spot through `section`,
-    /// inclusive. Sorted, unique. The §5 discourse-order invariant: an entity is
-    /// referenceable at a spot only once the player has MET it (it appeared in a
-    /// disclosed line there or earlier), so a consumer's choice may name only
-    /// these — a reference to anything else is the field-report parallel-identity
-    /// class, caught by
+    /// inclusive. Sorted, unique. The field-report sec 5 discourse-order
+    /// invariant: an entity is referenceable at a spot only once the player has
+    /// MET it (it appeared in a disclosed line there or earlier), so a consumer's
+    /// choice may name only these — a reference to anything else is the
+    /// field-report parallel-identity class, caught by
     /// [`GateViolation::ChoiceReferencesUndisclosedEntity`](crate::GateViolation::ChoiceReferencesUndisclosedEntity).
     /// Empty when `world` does not walk `section` (there is no at-or-before).
     /// A withheld fact emits no line, so a withheld entity is not referenceable —
@@ -480,7 +480,7 @@ impl PlayableProjection {
     /// [`discloses`](Door::discloses) is non-empty); a `Fork` door passes through
     /// unchanged, because a navigational door discloses no fact and its liveness
     /// (not-taken) is the consumer's, never disclosure-relative. This is why the
-    /// tide field-report §5 dead-door class cannot recur through the kernel's own
+    /// tide field-report sec 5 dead-door class cannot recur through the kernel's own
     /// doors: a door that would surface nothing new is not offered.
     ///
     /// A consumer applies the SAME [`fresh_disclosure`] to the doors IT builds
@@ -1041,7 +1041,7 @@ mod tests {
 
     /// The kernel's own disclose-doors (`Examine`/`Ask`) are dropped once the
     /// reader holds all they would reveal, while a `Fork` always survives — the
-    /// tide field-report §5 dead-`go`-door made structurally unofferable through
+    /// tide field-report sec 5 dead-`go`-door made structurally unofferable through
     /// the doors the kernel builds. `known` is a bare query coordinate: the same
     /// immutable projection answers three different `known` sets.
     #[test]
@@ -1118,7 +1118,8 @@ mod tests {
         assert_eq!(live.len(), 2);
 
         // Both facts known: both disclose-doors are dead, only the fork survives
-        // — the §5 dead-door is unofferable while navigation remains.
+        // — the field-report sec 5 dead-door is unofferable while navigation
+        // remains.
         let known_both = HashSet::from(["f-table".to_string(), "f-name".to_string()]);
         let nav_only = proj.live_doors_at("main", "sc-01", &known_both);
         assert_eq!(nav_only, vec![fork]);
@@ -1615,9 +1616,9 @@ mod tests {
 
     #[test]
     fn referenceable_entities_accumulate_disclosed_entities_in_walk_order() {
-        // R757 B1 — the §5 discourse-order invariant. `ghost` is authored on a
-        // WITHHELD fact (no locator), so it is never disclosed and never
-        // referenceable — disclosure is additive here too (non-vacuous exclusion).
+        // R757 B1 — the field-report sec 5 discourse-order invariant. `ghost` is
+        // authored on a WITHHELD fact (no locator), so it is never disclosed and
+        // never referenceable — disclosure is additive too (non-vacuous exclusion).
         let r = report(
             "main",
             vec![
