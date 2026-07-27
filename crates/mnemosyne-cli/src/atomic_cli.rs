@@ -2597,6 +2597,74 @@ pub fn cmd_import_scene_cast(workspace_root: &Path, args: &[String]) -> Result<(
     finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
+/// Round 765 — bulk-set narrative `ladder` from a consumer's `ladder-map/v1`
+/// (`{ladders: [{section_id, carrier, rungs: [{anchor, needs, reveals,
+/// object}]}]}`). The consumer authored each hold against ITS manuscript and
+/// resolved every name to a store id; the store checks that each fact and entity
+/// exists before saving. Each section's ladder is REPLACED by its entry.
+pub fn cmd_import_ladders(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    #[derive(serde::Deserialize)]
+    struct LadderEntry {
+        section_id: String,
+        #[serde(default)]
+        carrier: Option<String>,
+        rungs: Vec<mnemosyne_atomic::LadderRung>,
+    }
+    #[derive(serde::Deserialize)]
+    struct LadderMap {
+        ladders: Vec<LadderEntry>,
+    }
+    let mut map_path: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--ladders" => {
+                map_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--ladders missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let path = map_path.ok_or_else(|| anyhow!("--ladders <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read ladders {}", path))?;
+    let map: LadderMap =
+        serde_json::from_str(&raw).with_context(|| format!("parse {} (ladder-map/v1)", path))?;
+    let imports: Vec<mnemosyne_atomic::LadderImport> = map
+        .ladders
+        .into_iter()
+        .map(|l| mnemosyne_atomic::LadderImport {
+            section_id: l.section_id,
+            carrier: l.carrier,
+            rungs: l.rungs,
+        })
+        .collect();
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    let outcome = mnemosyne_atomic::import_ladders(&mut store, &sidecar_path, &imports);
+    if let Ok((_, unmatched)) = &outcome {
+        if !unmatched.is_empty() {
+            eprintln!(
+                "note: {} ladder section_id(s) matched no section in the store",
+                unmatched.len()
+            );
+        }
+    }
+    finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
+}
+
 /// Round 287 — outline setter CLI surface. set_section_title sets the
 /// heading text on an existing Section (Phase C primitive).
 pub fn cmd_set_section_title(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {

@@ -230,6 +230,18 @@ pub struct AtomicSection {
     /// spec sections / until ingested.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scene_cast: Vec<ScenePresence>,
+
+    /// The interactive ladder dug at this scene (Round 765) — the SUB-SECTION
+    /// half of the playable layer. `content_excerpt` says what prose this scene
+    /// holds and `scene_cast` says who stands in it; this says where inside that
+    /// prose the reader may take hold, and what each hold is priced in. Every
+    /// field is a store coordinate (a carrier entity, a `Locator::Prefix` into
+    /// THIS section's own excerpt, fact ids for the gate) — no rendered word, so
+    /// the declaration cannot carry prose the excerpt does not already own. Set
+    /// by `import-ladders`. `None` (default) for spec sections and for any scene
+    /// the reader only reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ladder: Option<SectionLadder>,
 }
 
 /// serde `skip_serializing_if` predicate for [`AtomicSection::coverage_expectation`]:
@@ -356,6 +368,72 @@ pub struct ScenePresence {
     /// as `content_excerpt` (a `ContentAnchor` + verbatim projected text + drift
     /// hash). An un-resolvable quote is an un-assertable presence.
     pub excerpt: ContentExcerpt,
+}
+
+/// One hold on a section's ladder (Round 765) — an entry of
+/// [`SectionLadder::rungs`]. The store's coordinates stop at the section
+/// ([`AtomicSection`] refs, `content_excerpt` anchors, `DisclosureReveal`
+/// coords); a playable layer needs to say "this fact opens HERE, part-way down
+/// this scene", which is what `anchor` carries: a [`Locator::Prefix`] naming the
+/// line of THIS section's `content_excerpt` where the rung begins. The rung's
+/// prose is therefore never stored — it is the excerpt's own text from that line
+/// to the next rung's, so a rung cannot say a sentence the store does not
+/// already hold (the `Line`/`Passage` provenance invariant carried down one
+/// resolution).
+///
+/// `needs` / `reveals` are the gate, not a second disclosure axis: the store's
+/// [`DisclosureReveal`](mnemosyne_core::DisclosureReveal) says a fact is revealed
+/// at a SECTION, and this says at which hold inside it and what the reader must
+/// already carry to take that hold.
+///
+/// [`Locator::Prefix`]: mnemosyne_core::Locator::Prefix
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct LadderRung {
+    /// Where the rung begins inside this section's `content_excerpt`: a
+    /// [`Locator::Prefix`](mnemosyne_core::Locator::Prefix) whose `source` is the
+    /// excerpt's own source. A non-prefix locator is rejected at import — a
+    /// sub-section coordinate into authored narrative prose is a prefix today,
+    /// and silently accepting a CFI would store a coordinate nothing can resolve.
+    pub anchor: mnemosyne_core::ContentAnchor,
+    /// Facts the reader must already hold before this rung is takeable — the
+    /// precondition half of the gate. Each is a `narrative_facts` key, checked
+    /// present at import (a rung gated on a fact that does not exist is a gate
+    /// that never opens).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub needs: Vec<String>,
+    /// Facts this rung discloses when taken. Each is a `narrative_facts` key,
+    /// checked present at import. Empty is legitimate: a rung may carry story
+    /// without disclosing a declared fact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reveals: Vec<String>,
+    /// The object entity an OBSERVATION rung hangs on — examining it is what
+    /// takes the hold. `None` for a spoken rung (the carrier's mouth takes it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object: Option<String>,
+}
+
+/// The interactive ladder dug at one scene (Round 765) — [`AtomicSection::ladder`].
+///
+/// A ladder is store-owed STRUCTURE, not craft: it is a carrier entity, a set of
+/// sub-section coordinates into the scene's own prose, and a gating relation over
+/// declared facts. Nothing in it is a rendered word, so promoting it into the
+/// store takes no authored prose away from the consumer — it takes away the
+/// consumer's need to hold a parallel coordinate space the kernel cannot see.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct SectionLadder {
+    /// The entity carrying the ladder — the mouth the reader questions. `None`
+    /// marks an OBSERVATION ladder: no one speaks it, the scene is looked at
+    /// rather than asked, and its rungs are taken by examining their `object`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<String>,
+    /// The holds, in the order the author declares them. Order is meaningful and
+    /// is preserved verbatim; whether it must agree with the prose order is a
+    /// RESOLUTION rule (the engine slices the excerpt at these anchors), not a
+    /// storage rule, so the store keeps what was declared and the kernel is the
+    /// one place that judges it.
+    pub rungs: Vec<LadderRung>,
 }
 
 /// EPUB-SSOT locator (R393) — where this Section lives inside the workspace's
@@ -1582,11 +1660,22 @@ pub enum AtomicStoreError {
 // dropped, no data invented, never panics. Backward-compat is exact: the same
 // text + hash + upstream origin, now positioned under one substrate. A pre-R759
 // binary reading a v42 store hits the monotone `> CURRENT` guard.
+// v42→v43 adds `AtomicSection.ladder` (Round 765) — the store-owned interactive
+// ladder: a carrier entity + ordered rungs, each a `Locator::Prefix` coordinate
+// into the section's OWN `content_excerpt` plus the `needs`/`reveals` gate, so a
+// consumer stops holding a parallel sub-section coordinate space the kernel
+// cannot see. Same declarative new-field-default pattern as v39→v40
+// content_excerpt and v40→v41 scene_cast: a pre-v43 section has no `ladder` key,
+// serde `#[serde(default)]` fills `None`, and serialization skips it when `None`
+// — byte-identical behavior for any store that has not ingested a ladder. So
+// there is deliberately NO `schema_version < 43` arm in `load`, and no migration
+// report is needed. A pre-R765 binary reading a v43 store hits the monotone
+// `> CURRENT` guard.
 /// The store schema generation the current binary writes and validates
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 42;
+pub const CURRENT_SCHEMA_VERSION: u32 = 43;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -3728,6 +3817,149 @@ pub fn import_scene_cast(
         store,
         sidecar_path,
         "import_scene_cast",
+        "sections",
+        &applied.to_string(),
+    )?;
+    Ok((receipt, unmatched))
+}
+
+/// One entry for [`import_ladders`]: a Section's whole ladder — the carrier and
+/// its ordered rungs. The list a consumer supplies REPLACES that section's
+/// ladder, so a partial edit is expressed by re-supplying the whole ladder (the
+/// [`import_scene_cast`] rule).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LadderImport {
+    pub section_id: String,
+    pub carrier: Option<String>,
+    pub rungs: Vec<LadderRung>,
+}
+
+/// Round 765 — bulk-set narrative [`AtomicSection::ladder`] from a consumer that
+/// authored the holds against ITS manuscript. Each existing section's `ladder` is
+/// REPLACED by its entry (idempotent on re-import); sections absent from the
+/// store are returned as `unmatched` (the caller decides whether that is an
+/// error). One in-memory pass + one save, like [`import_scene_cast`].
+///
+/// EVERY reference is checked present BEFORE the save (never a partial import),
+/// because a ladder whose coordinates dangle is a gate that silently never
+/// opens: `needs` / `reveals` must be `narrative_facts` keys, `carrier` and a
+/// rung's `object` must be registered `entities`, and each rung's `anchor` must
+/// be a non-empty [`Locator::Prefix`](mnemosyne_core::Locator::Prefix) naming a
+/// non-empty source. Two rungs of one ladder may not declare the SAME anchor —
+/// an ambiguous coordinate would resolve to one slice and silently swallow the
+/// other.
+///
+/// What this does NOT check is deliberate: whether each prefix actually occurs in
+/// the section's `content_excerpt`, exactly once, in the declared order. That is
+/// the RESOLUTION rule, it is the kernel's (the engine slices the excerpt at
+/// these anchors), and duplicating it here would make the same invariant answer
+/// to two write paths — the half-enforced-invariant class. The store stores
+/// coordinates; the engine judges whether they land.
+pub fn import_ladders(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    ladders: &[LadderImport],
+) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    for l in ladders {
+        let where_ = &l.section_id;
+        if l.rungs.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_ladders: {where_} declares a ladder with no rungs"
+            )));
+        }
+        if let Some(carrier) = &l.carrier {
+            if carrier.trim().is_empty() {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_ladders: {where_} has a blank carrier (omit it for an observation ladder)"
+                )));
+            }
+            if !store.entities.contains_key(carrier) {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_ladders: {where_} carrier `{carrier}` is not a registered entity"
+                )));
+            }
+        }
+        // `ContentAnchor` is `Hash` but not `Ord`, so the duplicate guard is a
+        // hash set (the anchor is the whole coordinate: source + locator).
+        let mut seen: std::collections::HashSet<&mnemosyne_core::ContentAnchor> =
+            std::collections::HashSet::new();
+        for rung in &l.rungs {
+            if rung.anchor.source.trim().is_empty() {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_ladders: {where_} has a rung whose anchor names no source"
+                )));
+            }
+            match &rung.anchor.locator {
+                mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {}
+                mnemosyne_core::Locator::Prefix(_) => {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} has a rung with an empty prefix anchor"
+                    )));
+                }
+                mnemosyne_core::Locator::Cfi(cfi) => {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} anchors a rung by CFI (`{cfi}`); a sub-section \
+                         coordinate into narrative prose is a prefix"
+                    )));
+                }
+            }
+            if !seen.insert(&rung.anchor) {
+                return Err(AtomicMutateError::Validation(format!(
+                    "import_ladders: {where_} declares two rungs at the same anchor — \
+                     an ambiguous hold resolves to one slice and swallows the other"
+                )));
+            }
+            for fact in rung.needs.iter().chain(rung.reveals.iter()) {
+                if fact.trim().is_empty() {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} has a rung naming a blank fact"
+                    )));
+                }
+                if !store.narrative_facts.contains_key(fact) {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} rung references fact `{fact}`, which the store \
+                         does not hold"
+                    )));
+                }
+            }
+            if let Some(object) = &rung.object {
+                if object.trim().is_empty() {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} has a rung with a blank object"
+                    )));
+                }
+                if !store.entities.contains_key(object) {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} rung object `{object}` is not a registered entity"
+                    )));
+                }
+            }
+        }
+    }
+
+    let mut applied = 0usize;
+    let mut unmatched = Vec::new();
+    for l in ladders {
+        match store.sections.get_mut(&l.section_id) {
+            Some(section) => {
+                section.ladder = Some(SectionLadder {
+                    carrier: l.carrier.clone(),
+                    rungs: l.rungs.clone(),
+                });
+                applied += 1;
+            }
+            None => unmatched.push(l.section_id.clone()),
+        }
+    }
+    if applied == 0 {
+        return Err(AtomicMutateError::NotFound(
+            "import_ladders: no ladder matched a section in the store".to_string(),
+        ));
+    }
+    let receipt = save_with_receipt(
+        store,
+        sidecar_path,
+        "import_ladders",
         "sections",
         &applied.to_string(),
     )?;
@@ -9896,6 +10128,210 @@ mod tests {
             import_scene_cast(&mut store, &sidecar, &bad),
             Err(AtomicMutateError::Validation(_))
         ));
+    }
+
+    /// Round 765 — a ladder fixture: one rung anchored at `prefix`.
+    fn rung(prefix: &str) -> LadderRung {
+        LadderRung {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "MANUSCRIPT.md".to_string(),
+                locator: mnemosyne_core::Locator::Prefix(prefix.to_string()),
+            },
+            needs: Vec::new(),
+            reveals: Vec::new(),
+            object: None,
+        }
+    }
+
+    /// Round 765 — seed the referents a ladder points at, so the import's
+    /// dangling-ref checks are exercised against a store that really holds them.
+    fn seed_ladder_referents(store: &mut AtomicStore, sidecar: &Path) {
+        seed_section(store, "d02-nat");
+        seed_chapters(store);
+        store
+            .entities
+            .insert("ent-jongdeuk".to_string(), Entity::default());
+        store
+            .entities
+            .insert("ent-ledger".to_string(), Entity::default());
+        store.frames.insert("gt".to_string(), Frame::default());
+        // Real facts through the real write path, so the import's presence check
+        // is exercised against facts the store actually declares.
+        for id in ["f-tide", "f-name"] {
+            add_fact(store, sidecar, &sample_fact(id, "gt")).unwrap();
+        }
+    }
+
+    #[test]
+    fn import_ladders_sets_field_and_replaces_on_reimport() {
+        // Round 765 — the ladder write path: the store REPLACES a section's
+        // ladder with the supplied one, keeps the declared rung ORDER verbatim
+        // (order is the author's; whether it agrees with the prose is the
+        // engine's resolution rule, not the store's), and reports an unmatched
+        // section id rather than erroring on it.
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+
+        let mut second = rung("물때는");
+        second.needs = vec!["f-tide".to_string()];
+        second.reveals = vec!["f-name".to_string()];
+        second.object = Some("ent-ledger".to_string());
+        let imports = vec![
+            LadderImport {
+                section_id: "d02-nat".to_string(),
+                carrier: Some("ent-jongdeuk".to_string()),
+                rungs: vec![rung("셈은"), second],
+            },
+            LadderImport {
+                section_id: "nope".to_string(),
+                carrier: None,
+                rungs: vec![rung("셈은")],
+            },
+        ];
+        let (_, unmatched) = import_ladders(&mut store, &sidecar, &imports).unwrap();
+        assert_eq!(unmatched, vec!["nope".to_string()]);
+
+        let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+        assert_eq!(ladder.carrier.as_deref(), Some("ent-jongdeuk"));
+        assert_eq!(ladder.rungs.len(), 2);
+        assert_eq!(
+            ladder.rungs[0].anchor.locator,
+            mnemosyne_core::Locator::Prefix("셈은".to_string())
+        );
+        assert_eq!(ladder.rungs[1].needs, vec!["f-tide".to_string()]);
+        assert_eq!(ladder.rungs[1].reveals, vec!["f-name".to_string()]);
+        assert_eq!(ladder.rungs[1].object.as_deref(), Some("ent-ledger"));
+
+        // Re-import REPLACES the whole ladder (idempotent), never appends.
+        let shorter = vec![LadderImport {
+            section_id: "d02-nat".to_string(),
+            carrier: None,
+            rungs: vec![rung("셈은")],
+        }];
+        import_ladders(&mut store, &sidecar, &shorter).unwrap();
+        let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+        assert_eq!(ladder.rungs.len(), 1);
+        assert!(
+            ladder.carrier.is_none(),
+            "an observation ladder has no mouth"
+        );
+    }
+
+    #[test]
+    fn import_ladders_rejects_every_dangling_or_ambiguous_coordinate() {
+        // Round 765 — a ladder whose coordinates dangle is a gate that silently
+        // never opens, so EVERY reference is checked before the save. Each arm
+        // below is injected separately and must fail-before-save: the section
+        // keeps whatever ladder it already had.
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+        let good = vec![LadderImport {
+            section_id: "d02-nat".to_string(),
+            carrier: Some("ent-jongdeuk".to_string()),
+            rungs: vec![rung("셈은")],
+        }];
+        import_ladders(&mut store, &sidecar, &good).unwrap();
+
+        let one = |carrier: Option<&str>, rungs: Vec<LadderRung>| {
+            vec![LadderImport {
+                section_id: "d02-nat".to_string(),
+                carrier: carrier.map(str::to_string),
+                rungs,
+            }]
+        };
+        let mut unknown_fact = rung("물때는");
+        unknown_fact.reveals = vec!["f-ghost".to_string()];
+        let mut unknown_need = rung("물때는");
+        unknown_need.needs = vec!["f-ghost".to_string()];
+        let mut unknown_object = rung("물때는");
+        unknown_object.object = Some("ent-ghost".to_string());
+        let cfi = LadderRung {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "MANUSCRIPT.md".to_string(),
+                locator: mnemosyne_core::Locator::Cfi("/6/4[c]!/4/2".to_string()),
+            },
+            ..rung("물때는")
+        };
+        let sourceless = LadderRung {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: String::new(),
+                locator: mnemosyne_core::Locator::Prefix("물때는".to_string()),
+            },
+            ..rung("물때는")
+        };
+        let rejected = vec![
+            ("no rungs", one(None, Vec::new())),
+            (
+                "unknown carrier",
+                one(Some("ent-ghost"), vec![rung("셈은")]),
+            ),
+            ("blank carrier", one(Some("  "), vec![rung("셈은")])),
+            ("unknown revealed fact", one(None, vec![unknown_fact])),
+            ("unknown needed fact", one(None, vec![unknown_need])),
+            ("unknown object", one(None, vec![unknown_object])),
+            ("cfi locator", one(None, vec![cfi])),
+            ("blank prefix", one(None, vec![rung("   ")])),
+            ("sourceless anchor", one(None, vec![sourceless])),
+            (
+                "two rungs at one anchor",
+                one(None, vec![rung("셈은"), rung("셈은")]),
+            ),
+        ];
+        for (why, bad) in rejected {
+            assert!(
+                matches!(
+                    import_ladders(&mut store, &sidecar, &bad),
+                    Err(AtomicMutateError::Validation(_))
+                ),
+                "{why}: expected a validation reject"
+            );
+            // Fail-BEFORE-save: the good ladder from the top is still intact.
+            let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+            assert_eq!(ladder.rungs.len(), 1, "{why}: the store was mutated anyway");
+            assert_eq!(
+                ladder.carrier.as_deref(),
+                Some("ent-jongdeuk"),
+                "{why}: the store was mutated anyway"
+            );
+        }
+    }
+
+    #[test]
+    fn ladder_absent_is_byte_identical_and_survives_round_trip() {
+        // Round 765 — the v42→v43 additive-field contract: a store with no
+        // ladder serializes WITHOUT the key (so an un-laddered store is
+        // byte-identical to what a pre-v43 binary wrote), and a store WITH one
+        // round-trips through save/load unchanged. This is why v43 needs no
+        // migration arm.
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+        store.save(&sidecar).unwrap();
+        let bare = fs::read_to_string(&sidecar).unwrap();
+        assert!(
+            !bare.contains("\"ladder\""),
+            "an un-laddered section must not emit the key"
+        );
+
+        let mut rung = rung("셈은");
+        rung.reveals = vec!["f-tide".to_string()];
+        let imports = vec![LadderImport {
+            section_id: "d02-nat".to_string(),
+            carrier: Some("ent-jongdeuk".to_string()),
+            rungs: vec![rung],
+        }];
+        import_ladders(&mut store, &sidecar, &imports).unwrap();
+        let reloaded = AtomicStore::load(&sidecar).unwrap();
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            reloaded.sections["d02-nat"].ladder, store.sections["d02-nat"].ladder,
+            "the ladder must survive the round trip verbatim"
+        );
     }
 
     // R416 — confirmation-event fixture. Claim targets section "sec".

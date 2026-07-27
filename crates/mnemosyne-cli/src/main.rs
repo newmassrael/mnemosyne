@@ -417,6 +417,18 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_import_scene_cast(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "import-ladders",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-ladders --ladders <ladder-map.json> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 765 — bulk-set the section ladder from {ladders:[{section_id,carrier,rungs:[{anchor,needs,reveals,object}]}]};",
+            "   rungs are Prefix coordinates into the section's own content_excerpt, every fact/entity ref checked present before save",
+        ],
+        run: |c| atomic_cli::cmd_import_ladders(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "import-facts",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
