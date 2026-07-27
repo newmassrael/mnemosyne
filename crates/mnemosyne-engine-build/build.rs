@@ -17,6 +17,13 @@
 //! Round 774 added the quest fixture on the same terms: all three `QuestState`
 //! variants, a completion with an actor and one without, and a quest spanning two
 //! roads.
+//!
+//! Round 780 added a SECOND family of fixtures on a different axis: the ones
+//! above prove the emitted forms are right, and are far too small to say anything
+//! about how much STACK the artifact costs to build. `stack_fixtures` emits
+//! grown ones — each at a size and its quadruple, plus a deliberately unbounded
+//! control — for `tests/projection_stack.rs`. See that file for what the pair
+//! buys; here it is enough that a fixture nothing grows cannot measure growth.
 
 use std::collections::{HashMap, HashSet};
 
@@ -201,4 +208,119 @@ fn main() {
         render_quest(&quests),
     )
     .expect("write the generated quest fixture");
+
+    stack_fixtures(&out_dir);
+}
+
+/// The gate's small size, and its quadruple. Neither number means anything on
+/// its own — the assertion is that the artifact costs the SAME stack at both,
+/// which is a claim only a pair can make (Round 780, the Round 775 scaling
+/// assertion moved from the emitted text to the running artifact).
+const STACK_SMALL: usize = 200;
+const STACK_BIG: usize = 800;
+
+/// Emit the grown fixtures `tests/projection_stack.rs` measures, plus the build
+/// facts it needs to say what it measured.
+///
+/// Three families at two sizes each: the playable artifact as shipped, the quest
+/// artifact as shipped (repeated rather than assumed from the playable one — the
+/// R774 discipline, since `render_quest` is free to stop calling `chunked` while
+/// `render` still does), and an unbounded CONTROL that is the shipped emitter
+/// with one difference, its bound. The control is what makes the other two
+/// meaningful: it grows, so a run that reports no growth is reporting that the
+/// instrument works.
+fn stack_fixtures(out_dir: &str) {
+    let unbounded = NonZeroUsize::new(usize::MAX).expect("usize::MAX is not zero");
+    let write = |name: &str, source: String| {
+        std::fs::write(
+            std::path::Path::new(out_dir).join(format!("stack_{name}.rs")),
+            source,
+        )
+        .expect("write a stack fixture");
+    };
+
+    for (tag, n) in [("small", STACK_SMALL), ("big", STACK_BIG)] {
+        let parts = lines_parts(n);
+        write(&format!("playable_{tag}"), render(&parts));
+        write(&format!("control_{tag}"), render_bounded(&parts, unbounded));
+        write(&format!("quest_{tag}"), render_quest(&quest_parts(n)));
+    }
+
+    // What the gate measured, from the one place that knows it. `OPT_LEVEL` is a
+    // build-script variable, and the difference matters: at any level above 0 the
+    // optimizer folds the temporaries this gate weighs, so a green run would mean
+    // "not measured here" rather than "flat". The test refuses to pass in that
+    // case and needs this to say WHY.
+    let facts = format!(
+        "pub const OPT_LEVEL: &str = {:?};\n\
+         pub const SMALL: usize = {STACK_SMALL};\n\
+         pub const BIG: usize = {STACK_BIG};\n",
+        std::env::var("OPT_LEVEL").expect("OPT_LEVEL")
+    );
+    std::fs::write(
+        std::path::Path::new(out_dir).join("stack_build_facts.rs"),
+        facts,
+    )
+    .expect("write the stack build facts");
+}
+
+/// `n` lines in one section — parts that GROW, for the scaling assertion.
+fn lines_parts(n: usize) -> ProjectionParts {
+    ProjectionParts {
+        telling: "reader".to_string(),
+        by_world: vec![(
+            "main".to_string(),
+            vec![(
+                "sc-01".to_string(),
+                (0..n)
+                    .map(|i| LinePart {
+                        fact_id: format!("f-{i:06}"),
+                        text: "그는 \"셈\"이라 했다.".to_string(),
+                        mode: DisclosureMode::State,
+                        frame: "ground-truth".to_string(),
+                        entities: vec!["ent-a".to_string()],
+                        carrier: None,
+                        typed_predicate: None,
+                        quote: None,
+                        count: None,
+                    })
+                    .collect(),
+            )],
+        )],
+        walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+        titles: Vec::new(),
+        cast: Vec::new(),
+        forks: Vec::new(),
+        divergent_endings: Vec::new(),
+        interactivity: Interactivity::default(),
+        choice_entity_refs: Vec::new(),
+        ask_doors: Vec::new(),
+    }
+}
+
+/// `n` quests, the journal-axis sibling of [`lines_parts`].
+fn quest_parts(n: usize) -> QuestProjectionParts {
+    QuestProjectionParts {
+        telling: "reader".to_string(),
+        quests: (0..n)
+            .map(|i| QuestPart {
+                quest_id: format!("q-{i:06}"),
+                objective: "그는 \"셈\"이라 했다.".to_string(),
+                actors: vec!["ent-a".to_string()],
+                prerequisites: Vec::new(),
+                per_world: vec![(
+                    "main".to_string(),
+                    QuestWorldPart {
+                        state: mnemosyne_engine::QuestState::Done,
+                        completions: vec![QuestCompletionPart {
+                            fact: format!("f-{i:06}"),
+                            scene: "sc-01".to_string(),
+                            actor: None,
+                        }],
+                    },
+                )],
+                preconditions: Vec::new(),
+            })
+            .collect(),
+    }
 }

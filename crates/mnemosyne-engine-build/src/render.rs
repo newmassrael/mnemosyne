@@ -7,6 +7,7 @@
 // where an `include!` splices it.
 
 use std::fmt::Write as _;
+use std::num::NonZeroUsize;
 
 use mnemosyne_engine::{
     CastPart, ContentAnchor, DoorPart, ForkPart, Interactivity, LinePart, Locator, ProjectionParts,
@@ -36,21 +37,34 @@ fn header(out: &mut String) {
 /// one-body case to 9.0s, so doubling the input cost 3.2x the time. 50 is the
 /// chunk that measurement used. Anything that keeps bodies small works; nothing
 /// that leaves one body unbounded does.
-const CHUNK: usize = 50;
+const CHUNK: NonZeroUsize = NonZeroUsize::new(50).unwrap();
 
-/// The chunk functions emitted so far, plus the counter that keeps their names
-/// unique. Threaded through the renderers because a list at ANY depth may be the
-/// one that grows.
+/// The chunk functions emitted so far, the counter that keeps their names
+/// unique, and the bound they obey. Threaded through the renderers because a
+/// list at ANY depth may be the one that grows.
 struct Chunks {
     fns: String,
     next: usize,
+    /// Literals per generated function. A field rather than a read of [`CHUNK`]
+    /// so the bound is a value this crate's own gate can SET: the stack gate
+    /// compiles a deliberately unbounded control beside the bounded artifact and
+    /// asserts the two behave differently, which is a claim no test can make
+    /// while the bound is welded to one number. `NonZeroUsize` because
+    /// `slice::chunks(0)` panics — a zero bound is unrepresentable rather than a
+    /// runtime surprise.
+    bound: NonZeroUsize,
 }
 
 impl Chunks {
     fn new() -> Self {
+        Self::bounded(CHUNK)
+    }
+
+    fn bounded(bound: NonZeroUsize) -> Self {
         Self {
             fns: String::new(),
             next: 0,
+            bound,
         }
     }
 }
@@ -80,7 +94,8 @@ fn chunked<T>(
         bodies.push(each(chunks, item));
     }
     let mut names: Vec<String> = Vec::new();
-    for group in bodies.chunks(CHUNK) {
+    let bound = chunks.bound.get();
+    for group in bodies.chunks(bound) {
         let name = format!("__mn_{}", chunks.next);
         chunks.next += 1;
         let _ = writeln!(
@@ -141,7 +156,21 @@ const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
 /// structure, never the prose.
 #[must_use]
 pub fn render(parts: &ProjectionParts) -> String {
-    let mut c = Chunks::new();
+    render_bounded(parts, CHUNK)
+}
+
+/// [`render`] at a CALLER-CHOSEN bound — the seam this crate's stack gate needs
+/// and the only reason the bound is a value rather than a constant read.
+///
+/// The gate compiles the same parts twice, once at [`CHUNK`] and once unbounded,
+/// and asserts the bounded artifact builds inside a small stack while the
+/// unbounded one does not. Without a way to EMIT the unbounded shape, that second
+/// half could only ever be a comment claiming someone checked once — and a gate
+/// that cannot demonstrate it discriminates is the shape Rounds 776-779 spent
+/// four rounds removing. Deliberately not `pub`: a consumer has no business
+/// choosing a bound, and the one caller that does lives in this crate.
+pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> String {
+    let mut c = Chunks::bounded(bound);
     let by_world = chunked(&mut c, WORLD_TY, &parts.by_world, |c, (world, sections)| {
         let sections = chunked(c, SECTION_LINES_TY, sections, |c, (section, lines)| {
             let lines = chunked(c, LINE_TY, lines, |_, l| line(l));
