@@ -96,8 +96,8 @@ max_section_body_length = 5000
 # mode — validate-workspace now fails on any `.rs` in neither list, so a tree
 # merely absent is loud and only a tree written down stays out.
 [plugins.set_equality_validator]
-paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/"]
-scan_exclusions = ["crates/*/tests/", "tools/*/tests/", "bench/", "studio/"]
+paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/", "studio/"]
+scan_exclusions = ["crates/*/tests/", "tools/*/tests/", "bench/"]
 severity_missing = "reject"
 severity_binding = "reject"
 comment_only = true
@@ -116,20 +116,19 @@ comment_only = true
 # would demand rewriting a closed artifact to satisfy a gate that learns nothing
 # from it.
 #
-# `studio/` — a separate workspace the root gates never compile (by design: it is
-# the only crate that depends on pinion). Round 783 scanned it briefly and that
-# was enough to find three design-doc references written as `§3` / `§6.3`, which
-# this gate reads as store section ids and which this workspace spells `sec 3`.
-# They are NOT fixed here, and the reason is worth recording rather than
-# retrying: staging a `studio/*.rs` edit makes the pre-commit hook build that
-# workspace, and it DOES NOT COMPILE — `mnemosyne_query::list_changelog` grew a
-# second parameter and changed its return type, and pinion's `WidgetCore` no
-# longer has `focusable_tags`. The pinion half cannot be repaired from here while
-# that sibling repository is mid-flight. Repairing studio is its own round; until
-# then this exclusion is what keeps the omission written down instead of silent.
-#
 # NOT excluded, deliberately: `tools/*/src/` cites 4 rounds and ALL FOUR resolve,
 # so it costs nothing to gate and is live code.
+#
+# `studio/` is scanned too, which took Round 784 to make possible. It is a
+# separate workspace the root gates never compile (by design: it is the only
+# crate depending on pinion), and bringing it into the scan surfaced three
+# design-doc references written as `§3` / `§6.3` — which this gate reads as store
+# section ids and which this workspace spells `sec 3`. Staging the fix then
+# revealed the larger thing: studio had stopped compiling entirely, against both
+# `mnemosyne_query::list_changelog` (which grew a parameter and changed its return
+# type) and a pinion trait method that no longer exists. Being outside the root
+# workspace meant being outside every gate, including the one that would have said
+# it was broken. See Round 784.
 
 # ============================================================================
 # Round 305 — publishable_override_ledger

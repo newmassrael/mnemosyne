@@ -1,4 +1,4 @@
-//! `mnemosyne-studio` — the Layer-3 pinion native viewer (ARCHITECTURE.md §3).
+//! `mnemosyne-studio` — the Layer-3 pinion native viewer (ARCHITECTURE.md sec 3).
 //!
 //! First screen: the **changelog timeline**. Reads the whole ledger via
 //! [`mnemosyne_query::list_changelog`] (round-number order) and renders it as a
@@ -106,7 +106,7 @@ fn build_row(index: usize, theme: &Theme) -> Scene {
     )
 }
 
-/// view-fn (§6.3): pure sync `() -> Scene`. The dataset is virtual —
+/// view-fn (ARCHITECTURE.md sec 6.3): pure sync `() -> Scene`. The dataset is virtual —
 /// `view_virtual_list` invokes [`build_row`] only for the indices in the
 /// current scroll window.
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -182,10 +182,6 @@ impl WidgetCore for StudioView {
         "__internal__"
     }
 
-    fn focusable_tags() -> Vec<&'static str> {
-        Vec::new()
-    }
-
     fn title() -> &'static str {
         "Mnemosyne Studio — changelog timeline"
     }
@@ -225,7 +221,7 @@ impl WidgetView for StudioView {
 fn load_changelog(path: &str) {
     match mnemosyne_atomic::AtomicStore::load(std::path::Path::new(path)) {
         Ok(store) => {
-            let _ = CHANGELOG.set(mnemosyne_query::list_changelog(&store));
+            let _ = CHANGELOG.set(mnemosyne_query::list_changelog(&store, None).entries);
         }
         Err(e) => {
             eprintln!("mnemosyne-studio: failed to load atomic store at {path}: {e}");
@@ -325,7 +321,10 @@ mod tests {
         fn walk(scene: &Scene, n: &mut usize) {
             match scene {
                 Scene::Container(c) => {
-                    if c.tag.as_deref().is_some_and(|t| t.starts_with("changelog#")) {
+                    if c.tag
+                        .as_deref()
+                        .is_some_and(|t| t.starts_with("changelog#"))
+                    {
                         *n += 1;
                     }
                     for child in &c.children {
@@ -353,7 +352,7 @@ mod tests {
                 mnemosyne_atomic::AtomicChangelogEntry::default(),
             );
         }
-        let _ = CHANGELOG.set(mnemosyne_query::list_changelog(&store));
+        let _ = CHANGELOG.set(mnemosyne_query::list_changelog(&store, None).entries);
         assert_eq!(changelog().len(), 40);
 
         let scene = Owner::new().run(|| view((), &Frame::default()));
