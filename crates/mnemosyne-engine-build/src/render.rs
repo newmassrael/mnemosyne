@@ -207,6 +207,11 @@ const SECTION_LINES_TY: &str =
 /// generating.
 const WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::SectionLines)";
 const WALK_TY: &str = "(::std::string::String, ::std::vec::Vec<::std::string::String>)";
+/// `world -> (section -> the journal-routed fact ids there)` (Round 787). Named
+/// through the kernel's alias for the same reason `SectionLines` is: the emitted
+/// chunk signature is the parts type spelled out, and two spellings of one type
+/// is the drift this crate exists downstream to catch.
+const WORLD_OFFERS_TY: &str = "(::std::string::String, ::mnemosyne_engine::SectionJournalOffers)";
 const TITLE_TY: &str = "(::std::string::String, ::std::string::String)";
 const CAST_TY: &str = "::mnemosyne_engine::CastPart";
 const SECTION_CAST_TY: &str =
@@ -289,6 +294,17 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
             format!("({}, {})", string(section), doors)
         },
     );
+    let journal_offers = chunked(
+        &mut c,
+        WORLD_OFFERS_TY,
+        &parts.journal_offers,
+        |c, (world, sections)| {
+            let sections = chunked(c, WALK_TY, sections, |c, (section, ids)| {
+                format!("({}, {})", string(section), strings(c, ids))
+            });
+            format!("({}, {})", string(world), sections)
+        },
+    );
 
     let mut build = String::new();
     build.push_str("    ::mnemosyne_engine::PlayableProjection::from_parts(\n");
@@ -306,6 +322,7 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
         "            choice_entity_refs: {choice_entity_refs},"
     );
     let _ = writeln!(build, "            ask_doors: {ask_doors},");
+    let _ = writeln!(build, "            journal_offers: {journal_offers},");
     build.push_str("        },\n    )\n");
     artifact(FN_NAME, PLAYABLE_PROJECTION_TY, &c, &build)
 }

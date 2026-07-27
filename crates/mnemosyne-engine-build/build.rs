@@ -147,6 +147,13 @@ fn main() {
                 },
             ],
         )],
+        // Round 787 — a journal-routed offer, so the knowledge axis is CARRIED by
+        // the fixture the downstream-constructibility test compiles. An empty one
+        // would emit `vec![]` and prove nothing about the field.
+        journal_offers: vec![(
+            "main".to_string(),
+            vec![("sc-01".to_string(), vec!["f-leg".to_string()])],
+        )],
     };
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
@@ -454,6 +461,9 @@ fn lines_parts(n: usize) -> ProjectionParts {
         interactivity: Interactivity::default(),
         choice_entity_refs: Vec::new(),
         ask_doors: Vec::new(),
+        // The scaling fixture prices LINE growth; the journal axis is not what it
+        // varies, so it carries none (Round 787).
+        journal_offers: Vec::new(),
     }
 }
 

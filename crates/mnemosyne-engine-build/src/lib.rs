@@ -150,6 +150,7 @@ pub use render::{render, render_quest};
 /// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
 /// #         divergent_endings: Vec::new(), interactivity: Default::default(),
 /// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
+/// #         journal_offers: Vec::new(),
 /// #     }
 /// # }
 /// fn keep_forever(_: &'static str) {}
@@ -165,6 +166,7 @@ pub use render::{render, render_quest};
 /// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
 /// #         divergent_endings: Vec::new(), interactivity: Default::default(),
 /// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
+/// #         journal_offers: Vec::new(),
 /// #     }
 /// # }
 /// fn keep_forever(_: &'static str) {}
@@ -309,6 +311,18 @@ mod tests {
         assert!(doors
             .iter()
             .any(|d| matches!(d, mnemosyne_engine::Door::Examine { object, .. } if object == "ent-ledger")));
+
+        // Round 787 — the knowledge axis survives the bake. Asserted HERE and not
+        // only inside the kernel, for the reason Round 774 named: the engine's own
+        // round trip never goes through this emitter, so a field the generator
+        // silently drops looks identical to a field that is empty. `f-leg` is
+        // offered and is NOT a line, so a bake that emitted the prose stream alone
+        // could not fake it.
+        assert!(
+            proj.offers("main", "sc-01", "f-leg"),
+            "the generator dropped the journal-offer axis"
+        );
+        assert!(!lines.iter().any(|l| l.fact_id() == "f-leg"));
     }
 
     #[test]
@@ -353,9 +367,17 @@ mod tests {
                     reveals: "f-a".to_string(),
                 }],
             )],
+            journal_offers: vec![(
+                "main".to_string(),
+                vec![("sc-01".to_string(), vec!["f-leg".to_string()])],
+            )],
         };
         let proj = PlayableProjection::from_parts(parts);
         assert_eq!(proj.lines("main", "sc-01").len(), 1);
+        // Round 787 — the knowledge axis is constructible from outside the kernel
+        // too: plain `String`s, so this arm stays a compile-time statement about
+        // the parts type rather than a value check that happens to pass.
+        assert!(proj.offers("main", "sc-01", "f-leg"));
     }
 
     #[test]
@@ -465,6 +487,9 @@ mod tests {
             interactivity: Interactivity::default(),
             choice_entity_refs: Vec::new(),
             ask_doors: Vec::new(),
+            // This fixture varies LINE count; the journal axis is not what it
+            // scales, so it carries none (Round 787).
+            journal_offers: Vec::new(),
         }
     }
 

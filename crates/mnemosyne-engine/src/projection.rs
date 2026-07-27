@@ -39,6 +39,13 @@ pub struct PlayableProjection {
     /// question. World-independent (ladders + excerpts are both keyed by section),
     /// so `doors_at` appends these regardless of world.
     ask_doors: HashMap<String, Vec<Door>>,
+    /// `world -> section -> the fact ids the consumer's journal policy routed OUT
+    /// of the prose stream there` (Round 787). Disjoint from `by_world` by
+    /// construction — a disclosed locator becomes a [`Line`] or lands here, never
+    /// both — so together they are everything the telling offers at a spot, which
+    /// is what [`Self::offers`] resolves. EMPTY for a consumer that declares no
+    /// journal predicates, which is every consumer but the first game.
+    journal_offers: HashMap<String, HashMap<String, Vec<String>>>,
 }
 
 impl PlayableProjection {
@@ -117,6 +124,7 @@ impl PlayableProjection {
             worlds,
         } = report;
         let mut by_world = HashMap::new();
+        let mut journal_offers: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
         let mut walks = HashMap::new();
         let mut titles = HashMap::new();
         let mut cast: HashMap<String, Vec<CastMember>> = HashMap::new();
@@ -139,6 +147,7 @@ impl PlayableProjection {
             // epigraph carries `begins: []`).
             let mut facts: HashMap<String, ManuscriptFactEvent> = HashMap::new();
             let mut by_section: HashMap<String, Vec<Line>> = HashMap::new();
+            let mut routed: HashMap<String, Vec<String>> = HashMap::new();
             for scene in &world.manuscript.scenes {
                 if !scene.title.is_empty() {
                     titles
@@ -175,11 +184,18 @@ impl PlayableProjection {
                             fact_id: locator.fact_id.clone(),
                         })?;
                 // Journal facts (quest legs) are the game's own ledger, not
-                // world prose — route them out of the line stream (still
-                // queryable elsewhere). The fail-loud join above runs FIRST, so
-                // a stale journal locator is still caught.
+                // world prose — route them out of the line stream. The fail-loud
+                // join above runs FIRST, so a stale journal locator is still
+                // caught. They are RECORDED rather than dropped (Round 787):
+                // the telling still offers the fact here, and a gate that asks
+                // what the audience can KNOW must not read a stream that answers
+                // what the audience is SHOWN.
                 if let Some(typed) = &begin.typed {
                     if journal.contains(&typed.predicate) {
+                        routed
+                            .entry(locator.scene.clone())
+                            .or_default()
+                            .push(locator.fact_id.clone());
                         continue;
                     }
                 }
@@ -189,6 +205,11 @@ impl PlayableProjection {
                     .push(Line::from_disclosed(locator, begin));
             }
 
+            for ids in routed.values_mut() {
+                ids.sort();
+                ids.dedup();
+            }
+            journal_offers.insert(world_name.clone(), routed);
             by_world.insert(world_name, by_section);
         }
 
@@ -245,6 +266,7 @@ impl PlayableProjection {
             interactivity: overrides.interactivity().clone(),
             choice_entity_refs: overrides.choice_entity_refs().to_vec(),
             ask_doors,
+            journal_offers,
         })
     }
 
@@ -263,6 +285,63 @@ impl PlayableProjection {
             .get(world)
             .and_then(|w| w.get(section))
             .map_or(&[][..], Vec::as_slice)
+    }
+
+    /// Does the telling OFFER `fact_id` to the audience at this spot (Round 787)?
+    ///
+    /// This is the knowledge axis, and it is deliberately not [`Self::lines`].
+    /// A fact is offered where it has a locator — where the audience meets it —
+    /// and the consumer's
+    /// [`journal_predicates`](EngineOverrides::journal_predicates) policy decides
+    /// only which STREAM carries it, never whether it was met. So the split the
+    /// kernel draws is: **`lines` is what the audience is SHOWN, `offers` is what
+    /// the audience can KNOW**, and every gate asking whether knowledge is
+    /// reachable in time must resolve through here.
+    ///
+    /// Withholding still narrows this, which is the narrowing that was always
+    /// intended: a withheld fact emits no locator, so it is offered nowhere and
+    /// this answers `false` for it at every spot.
+    ///
+    /// Round 778 recorded the alternative reading — that "offered" is
+    /// disclosed-as-prose — as an honest limitation, and it produced a FALSE
+    /// [`QuestGateViolation::PreconditionUnreachable`](crate::QuestGateViolation::PreconditionUnreachable)
+    /// for any consumer routing a precondition fact into its journal. A gate's
+    /// verdict must be about the store's facts, not about a consumer's rendering
+    /// policy.
+    ///
+    /// Answers `false` for an unknown world or section — an accessor reporting
+    /// "nothing here" is an answer, not a verdict (the Round 776 distinction).
+    /// A GATE must establish the world separately, as
+    /// [`QuestProjection::completability`](crate::QuestProjection::completability)
+    /// does with [`Self::knows_world`].
+    #[must_use]
+    pub fn offers(&self, world: &str, section: &str, fact_id: &str) -> bool {
+        self.offered_at(world, section).any(|id| id == fact_id)
+    }
+
+    /// Every fact id the telling offers at this spot — the prose stream and the
+    /// journal-routed ids, which are disjoint by construction (Round 787).
+    ///
+    /// The ONE place that computes that union. [`Self::offers`] is this plus a
+    /// membership test, and the ladder gate's `earliest_offer` index is this
+    /// scanned in walk order — so the two gates cannot drift into two readings of
+    /// "offered", which is the shape Round 779 removed one layer down.
+    ///
+    /// Crate-private: the public knowledge-axis surface is the predicate. A
+    /// consumer needing to enumerate has not asked, and an enumeration is the
+    /// harder thing to take back.
+    pub(crate) fn offered_at(&self, world: &str, section: &str) -> impl Iterator<Item = &str> {
+        self.lines(world, section)
+            .iter()
+            .map(|line| line.fact_id())
+            .chain(
+                self.journal_offers
+                    .get(world)
+                    .and_then(|sections| sections.get(section))
+                    .map_or(&[][..], Vec::as_slice)
+                    .iter()
+                    .map(String::as_str),
+            )
     }
 
     /// The one spot bundled as a [`SceneView`]: disclosed `lines` plus the LIVE
@@ -566,6 +645,11 @@ pub fn fresh_disclosure<'a>(reveals: &'a [String], known: &HashSet<String>) -> V
 /// there, in section order (Round 769).
 pub type SectionLines = Vec<(String, Vec<LinePart>)>;
 
+/// One world's baked journal-routed offers: each section paired with the fact ids
+/// the consumer's journal policy took out of the prose stream there, in section
+/// order (Round 787). Empty for a consumer that declares no journal predicates.
+pub type SectionJournalOffers = Vec<(String, Vec<String>)>;
+
 /// A whole [`PlayableProjection`] as plain data (Round 769) — what a build-time
 /// bake writes out and reads back.
 ///
@@ -598,6 +682,11 @@ pub struct ProjectionParts {
     pub choice_entity_refs: Vec<ChoiceEntityRef>,
     /// `section -> the ask doors dug there, questions ALREADY resolved`.
     pub ask_doors: Vec<(String, Vec<DoorPart>)>,
+    /// `world -> section -> the fact ids the journal policy routed out of the
+    /// prose stream` (Round 787). Empty for a consumer with no journal policy;
+    /// carried because [`PlayableProjection::offers`] reads it, so a bake that
+    /// dropped it would answer a different question from the live projection.
+    pub journal_offers: Vec<(String, SectionJournalOffers)>,
 }
 
 impl PlayableProjection {
@@ -648,6 +737,10 @@ impl PlayableProjection {
             ask_doors: sorted(&self.ask_doors)
                 .into_iter()
                 .map(|(section, doors)| (section, doors.iter().map(Door::to_part).collect()))
+                .collect(),
+            journal_offers: sorted(&self.journal_offers)
+                .into_iter()
+                .map(|(world, sections)| (world, sorted(&sections)))
                 .collect(),
         }
     }
@@ -700,6 +793,11 @@ impl PlayableProjection {
                 .ask_doors
                 .into_iter()
                 .map(|(section, doors)| (section, doors.into_iter().map(Door::from_part).collect()))
+                .collect(),
+            journal_offers: parts
+                .journal_offers
+                .into_iter()
+                .map(|(world, sections)| (world, sections.into_iter().collect()))
                 .collect(),
         }
     }
@@ -1387,12 +1485,15 @@ mod tests {
                     vec![cast_scene(
                         "sc-01",
                         "Dawn",
-                        vec![begin(
-                            "f-name",
-                            "the name is Yeonggeun",
-                            "ground-truth",
-                            &["ent-a"],
-                        )],
+                        vec![
+                            begin(
+                                "f-name",
+                                "the name is Yeonggeun",
+                                "ground-truth",
+                                &["ent-a"],
+                            ),
+                            journal_begin("f-leg", "pursues the vault key", "pursues"),
+                        ],
                         vec![presence(
                             "ent-jongdeuk",
                             Modality::Observed,
@@ -1400,7 +1501,10 @@ mod tests {
                             "종득은 섰다.",
                         )],
                     )],
-                    vec![locator("f-name", "sc-01", DisclosureMode::Hint)],
+                    vec![
+                        locator("f-name", "sc-01", DisclosureMode::Hint),
+                        locator("f-leg", "sc-01", DisclosureMode::State),
+                    ],
                 ),
                 (
                     // The SAME scene_cast: presence is authored on the shared
@@ -1412,12 +1516,10 @@ mod tests {
                     vec![cast_scene(
                         "sc-01",
                         "Dawn",
-                        vec![begin(
-                            "f-name",
-                            "the name is Yeonggeun",
-                            "ground-truth",
-                            &[],
-                        )],
+                        vec![
+                            begin("f-name", "the name is Yeonggeun", "ground-truth", &[]),
+                            journal_begin("f-leg", "pursues the vault key", "pursues"),
+                        ],
                         vec![presence(
                             "ent-jongdeuk",
                             Modality::Observed,
@@ -1425,14 +1527,24 @@ mod tests {
                             "종득은 섰다.",
                         )],
                     )],
-                    vec![locator("f-name", "sc-01", DisclosureMode::State)],
+                    vec![
+                        locator("f-name", "sc-01", DisclosureMode::State),
+                        locator("f-leg", "sc-01", DisclosureMode::State),
+                    ],
                 ),
             ],
             fork_tree,
         );
         let live = PlayableProjection::from_report_and_passages(
             thick,
-            &ladder_of(&[at("이름을"), at("물때를")]),
+            &StaticOverrides {
+                // Round 787 — the fixture routes a fact out of the prose stream so
+                // the journal-offer axis is CARRIED across the seam here. Without
+                // it that field is empty on both sides and the round trip agrees
+                // about nothing.
+                journal_predicates: vec!["pursues".to_string()],
+                ..ladder_of(&[at("이름을"), at("물때를")])
+            },
             sc01_multi_line_passages(),
         )
         .expect("the live projection");
@@ -1442,6 +1554,14 @@ mod tests {
         assert!(
             !live.forks_at("sc-01", "main").is_empty(),
             "fixture must carry a fork"
+        );
+        assert!(
+            live.offers("main", "sc-01", "f-leg")
+                && !live
+                    .lines("main", "sc-01")
+                    .iter()
+                    .any(|l| l.fact_id == "f-leg"),
+            "fixture must carry a journal-routed offer — offered, and not a line"
         );
         let baked = PlayableProjection::from_parts(live.to_parts());
 
@@ -1479,6 +1599,15 @@ mod tests {
                     baked.referenceable_entities(world, section),
                     live.referenceable_entities(world, section)
                 );
+                // Round 787 — the knowledge axis crosses the seam too. Compared
+                // over the LIVE offers rather than a hand-written fact list, for
+                // the reason `worlds()` is derived above.
+                for fact_id in live.offered_at(world, section) {
+                    assert!(
+                        baked.offers(world, section, fact_id),
+                        "baked lost an offer: {world}/{section}/{fact_id}"
+                    );
+                }
                 let known = HashSet::new();
                 assert_eq!(
                     baked.live_doors_at(world, section, &known),

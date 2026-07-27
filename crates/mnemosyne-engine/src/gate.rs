@@ -110,13 +110,21 @@ impl PlayableProjection {
         }
         let walk = self.walk(world);
 
-        // For G6: the earliest walk index at which each fact is offered (a fact
+        // For G6: the earliest walk index at which each fact is OFFERED (a fact
         // may be offered at several spots; the first wins — we scan in walk
         // order and `or_insert` keeps the earliest).
+        //
+        // Round 787 — through `offered_at`, not `lines`. G6 asks what the reader
+        // can KNOW by this spot, and a precondition the consumer routes into its
+        // journal is known there just as a prose line is. Reading the prose
+        // stream made this the same false finding the quest gate had. The prose
+        // checks below (G5 leak, G5 unreachable) deliberately stay on `lines`:
+        // those ask what the ladder can SHOW, which is a different question about
+        // the same spot.
         let mut earliest_offer: HashMap<&str, usize> = HashMap::new();
         for (index, section) in walk.iter().enumerate() {
-            for line in self.lines(world, section) {
-                earliest_offer.entry(line.fact_id.as_str()).or_insert(index);
+            for fact_id in self.offered_at(world, section) {
+                earliest_offer.entry(fact_id).or_insert(index);
             }
         }
 
@@ -531,6 +539,82 @@ mod tests {
             section: "sc-01".into(),
             needs: "f-late".into(),
         }));
+    }
+
+    /// Round 787 — G6 asks what the reader can KNOW by a spot, so a precondition
+    /// the consumer routes into its journal is met there. This is the quest gate's
+    /// defect on the ladder axis, and it is checked here rather than inferred from
+    /// that fix because both gates reaching one resolver is the whole claim.
+    ///
+    /// A controlled pair over one store: only the journal policy varies, and only
+    /// the LEG is routed — `f-a`, which the same rung reveals as prose, is
+    /// untouched, so the prose checks stay honest beside it.
+    #[test]
+    fn g6_a_journal_routed_precondition_is_known_in_time() {
+        let build = || {
+            report(
+                "main",
+                vec![
+                    scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![
+                            begin("f-a", "x", "ground-truth", &[]),
+                            crate::test_support::journal_begin("f-leg", "pursues it", "pursues"),
+                        ],
+                    ),
+                    scene("sc-02", "Noon", Vec::new()),
+                ],
+                vec![
+                    locator("f-a", "sc-01", DisclosureMode::State),
+                    locator("f-leg", "sc-01", DisclosureMode::State),
+                ],
+                ForkTreeReport::default(),
+            )
+        };
+        let ladder = || ladder_at("sc-01", vec![rung("q", "f-a", &["f-leg"])]);
+        let unreachable = GateViolation::PreconditionUnreachable {
+            world: "main".into(),
+            section: "sc-01".into(),
+            needs: "f-leg".into(),
+        };
+
+        // CONTROL — no journal policy: f-leg is a prose line at sc-01 and G6 is
+        // satisfied. The pair below differs from this by the policy alone.
+        let shown = PlayableProjection::from_report(build(), &ladder()).unwrap();
+        assert!(!shown.gate("main").contains(&unreachable));
+
+        // The leg is routed into the journal. It is still MET at sc-01.
+        let routed = PlayableProjection::from_report(
+            build(),
+            &StaticOverrides {
+                journal_predicates: vec!["pursues".to_string()],
+                ..ladder()
+            },
+        )
+        .unwrap();
+        assert!(
+            !routed.gate("main").contains(&unreachable),
+            "a journal-routed precondition is known at this spot"
+        );
+
+        // NON-VACUITY — a need that is offered NOWHERE still fires under the same
+        // policy, so the arm above is a reading and not a silenced gate.
+        let ghost = PlayableProjection::from_report(
+            build(),
+            &StaticOverrides {
+                journal_predicates: vec!["pursues".to_string()],
+                ..ladder_at("sc-01", vec![rung("q", "f-a", &["f-nowhere"])])
+            },
+        )
+        .unwrap();
+        assert!(ghost
+            .gate("main")
+            .contains(&GateViolation::PreconditionUnreachable {
+                world: "main".into(),
+                section: "sc-01".into(),
+                needs: "f-nowhere".into(),
+            }));
     }
 
     // ── G7 (R757 B1): a declared choice referencing an undisclosed entity ──

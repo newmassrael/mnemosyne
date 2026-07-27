@@ -206,6 +206,11 @@ mod tests {
             interactivity: Interactivity::default(),
             choice_entity_refs: Vec::new(),
             ask_doors: Vec::new(),
+            // This renderer draws the PROSE stream, which is the half a journal
+            // policy routes facts out of (Round 787). None here, and that is a
+            // statement rather than a stub: a renderer showing a journal-routed
+            // fact would be showing what the telling withheld from prose.
+            journal_offers: Vec::new(),
         })
     }
 

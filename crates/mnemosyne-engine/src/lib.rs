@@ -84,7 +84,9 @@ pub use gate::GateViolation;
 pub use mnemosyne_core::{DisclosureMode, Modality, MAIN_BRANCH};
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
-pub use projection::{fresh_disclosure, PlayableProjection, ProjectionParts, SectionLines};
+pub use projection::{
+    fresh_disclosure, PlayableProjection, ProjectionParts, SectionJournalOffers, SectionLines,
+};
 pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
 pub use quest::{
     QuestCompletionPart, QuestCompletionView, QuestGateViolation, QuestPart, QuestProjection,

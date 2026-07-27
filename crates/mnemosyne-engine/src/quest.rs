@@ -277,16 +277,20 @@ impl QuestProjection {
     /// and nothing else; a quest world the playable projection does not carry is
     /// [`QuestGateViolation::WorldNotWalked`] rather than a silently skipped road.
     ///
-    /// What "OFFERED" means here is worth stating exactly, because it is narrower
-    /// than it reads: a fact is offered at a spot when it is a disclosed
-    /// [`Line`](crate::Line) there. A withheld fact emits no locator and so no
-    /// line, which is the intended narrowing. But a consumer's
-    /// [`journal_predicates`](EngineOverrides::journal_predicates) policy ALSO
-    /// removes facts from that stream, so a precondition fact that is itself a
-    /// typed journal leg is offered by the store and invisible here, and would be
-    /// reported unreachable when it is not. No consumer pairs a journal-routing
-    /// playable projection with this gate today; the honest statement is that
-    /// "offered" is "disclosed as prose", not "diggable under this telling".
+    /// What "OFFERED" means here is resolved by
+    /// [`PlayableProjection::offers`](crate::PlayableProjection::offers) and
+    /// nowhere else (Round 787): the telling offers a fact where the audience
+    /// MEETS it, whichever stream the consumer routes it to. Withholding still
+    /// narrows it — a withheld fact emits no locator and is offered nowhere,
+    /// which is the intended narrowing.
+    ///
+    /// Round 778 read "offered" as disclosed-as-prose and recorded the
+    /// consequence honestly: a consumer whose
+    /// [`journal_predicates`](EngineOverrides::journal_predicates) policy routes a
+    /// precondition fact into its journal got a FALSE
+    /// [`QuestGateViolation::PreconditionUnreachable`] for knowledge the store
+    /// offers in time. A gate's verdict is about the store's facts, never about a
+    /// consumer's rendering policy, so the reading moved rather than the doc.
     #[must_use]
     pub fn completability(&self, playable: &PlayableProjection) -> Vec<QuestGateViolation> {
         if self.telling != playable.telling() {
@@ -325,18 +329,15 @@ impl QuestProjection {
                 };
                 for need in &quest.preconditions {
                     // Offered STRICTLY BEFORE the completion scene — the
-                    // knowledge must be dug before the quest discharges. A
-                    // withheld fact emits no line, which is the narrowing this
-                    // wants. Round 778 corrected the sentence that used to sit
-                    // here: "offered" is NOT exactly "diggable under this
-                    // telling", because the consumer's journal policy removes
-                    // facts from this stream too (see the doc above).
-                    let in_time = walk.iter().take(deadline).any(|section| {
-                        playable
-                            .lines(world, section)
-                            .iter()
-                            .any(|l| l.fact_id() == need)
-                    });
+                    // knowledge must be dug before the quest discharges.
+                    // `offers` is the knowledge axis (Round 787), not the prose
+                    // stream: a precondition the consumer routes into its journal
+                    // is still met on this walk, and reading `lines` here made
+                    // this gate report it unreachable when it was not.
+                    let in_time = walk
+                        .iter()
+                        .take(deadline)
+                        .any(|section| playable.offers(world, section, need));
                     if !in_time {
                         violations.push(QuestGateViolation::PreconditionUnreachable {
                             world: world.clone(),
@@ -550,7 +551,8 @@ mod tests {
     use mnemosyne_validate::continuity::{ForkTreeReport, QuestState};
 
     use crate::test_support::{
-        begin, completion, locator, quest_node, quest_report, report, report_worlds, scene,
+        begin, completion, journal_begin, locator, quest_node, quest_report, report, report_worlds,
+        scene,
     };
     use crate::{PlayableProjection, QuestGateViolation, QuestProjection, StaticOverrides};
 
@@ -628,6 +630,88 @@ mod tests {
                 completion_scene: "sc-02".into(),
                 needs: "f-clue".into(),
             }],
+        );
+    }
+
+    /// Round 787 — "offered" is what the store OFFERS, not what the prose stream
+    /// shows. A controlled trio over one quest layer: only the journal policy and
+    /// the precondition's locator scene vary.
+    ///
+    /// The middle arm is the defect Round 778 recorded and left open, and the
+    /// third is why the fix is not simply the gate going quiet — a precondition
+    /// that really is out of reach still fires under the same journal policy.
+    #[test]
+    fn a_journal_routed_precondition_is_offered_and_a_late_one_still_is_not() {
+        let quests = QuestProjection::from_report(
+            quest_report(vec![quest_node(
+                "q-x",
+                "the sin",
+                &[],
+                vec![(
+                    "main",
+                    QuestState::Done,
+                    vec![completion("f-done", "sc-02", None)],
+                )],
+            )]),
+            &preconditions(&[("q-x", &["f-clue"])]),
+        );
+        // `f-clue` is itself a typed journal leg, and `met_at` is the scene whose
+        // locator discloses it — the only two things that vary below.
+        let build = |met_at: &str| {
+            report(
+                "main",
+                vec![
+                    scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![journal_begin("f-clue", "pursues the vault key", "pursues")],
+                    ),
+                    scene("sc-02", "Gut", Vec::new()),
+                ],
+                vec![locator("f-clue", met_at, DisclosureMode::State)],
+                ForkTreeReport::default(),
+            )
+        };
+        let routing = || StaticOverrides {
+            journal_predicates: vec!["pursues".to_string()],
+            ..StaticOverrides::default()
+        };
+
+        // CONTROL — no journal policy: the fact is a prose line at sc-01 and the
+        // gate is clean. Same store, same quest layer, same walk. Without this
+        // arm the middle one would also pass on a gate that had stopped checking.
+        let shown =
+            PlayableProjection::from_report(build("sc-01"), &StaticOverrides::default()).unwrap();
+        assert_eq!(
+            quests.completability(&shown),
+            vec![],
+            "prose-disclosed in time: clean"
+        );
+
+        // THE DEFECT — the consumer routes `pursues` into its journal. The store
+        // still offers f-clue at sc-01, strictly before the sc-02 completion;
+        // only the stream carrying it changed. Reading `lines` here reported
+        // PreconditionUnreachable for knowledge that is reachable.
+        let routed = PlayableProjection::from_report(build("sc-01"), &routing()).unwrap();
+        assert_eq!(
+            quests.completability(&routed),
+            vec![],
+            "a journal-routed precondition is still MET on this walk"
+        );
+
+        // NON-VACUITY — same journal policy, precondition met only AT the
+        // completion scene, so it is not in time. The gate must still fire, or
+        // the arm above is just silence.
+        let late = PlayableProjection::from_report(build("sc-02"), &routing()).unwrap();
+        assert_eq!(
+            quests.completability(&late),
+            vec![QuestGateViolation::PreconditionUnreachable {
+                world: "main".into(),
+                quest: "q-x".into(),
+                completion_scene: "sc-02".into(),
+                needs: "f-clue".into(),
+            }],
+            "not-in-time must still fire under the same journal policy"
         );
     }
 
