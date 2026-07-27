@@ -393,6 +393,24 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub paths: Vec<String>,
 
+    /// Rust trees deliberately left OUT of the citation gate (Round 783).
+    ///
+    /// `paths` says what is scanned; this says what is knowingly not, and
+    /// `validate-workspace` fails on any `.rs` that is in neither — so a tree
+    /// merely absent from the config is loud, while a tree someone wrote down
+    /// stays quiet. That inversion is the point: Round 777 fixed a scan list
+    /// that had drifted from the tree in silence, and `paths` alone is the same
+    /// shape of claim one level up.
+    ///
+    /// An entry matching no file is reported as stale, the same rule the
+    /// orphan-ledger axis already applies to a row whose orphan resolved.
+    ///
+    /// Empty by default: the check costs an adopter nothing until they declare
+    /// something, and a workspace that has declared nothing is told about every
+    /// unscanned tree it has rather than silently passing.
+    #[serde(default)]
+    pub scan_exclusions: Vec<String>,
+
     /// Severity for hallucination-class violations:
     /// - `Missing` — Round NNN entry_id not in `changelog_entries`
     /// - `SectionMissing` — §<id> not in atomic section_id set

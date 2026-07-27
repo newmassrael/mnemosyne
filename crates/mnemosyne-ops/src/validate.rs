@@ -40,6 +40,10 @@ pub struct ValidateWorkspaceReport {
     pub publishable_ledger_rows: usize,
     pub publishable_unmatched: Vec<String>,
     pub store_registry_violations: usize,
+    pub scan_considered: usize,
+    pub scan_scanned: usize,
+    pub scan_unscanned: Vec<String>,
+    pub scan_stale_exclusions: Vec<String>,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -225,8 +229,44 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // set (the R675 half-enforced-invariant rule, now over the whole registry).
     let registry_violations = mnemosyne_atomic::store_registry_violations(&atomic_store);
 
+    // Citation-gate COVERAGE (Round 783): every Rust source is either scanned or
+    // declared out. Round 777 derived the scan set inside `crates/`, which left
+    // the claim about WHICH trees hold citations still a hand list — and it had
+    // drifted, silently, by four build scripts and all of `tools/`.
+    let scan = {
+        let cfg = loaded
+            .config
+            .plugins
+            .as_ref()
+            .and_then(|p| p.set_equality_validator.as_ref());
+        let paths = cfg.map(|c| c.paths.clone()).unwrap_or_default();
+        let exclusions = cfg.map(|c| c.scan_exclusions.clone()).unwrap_or_default();
+        mnemosyne_validate::code_refs::scan_coverage(workspace_root, &paths, &exclusions)
+            .map_err(|e| OpError::from(anyhow::anyhow!("scan coverage: {e}")))?
+    };
+    let rel = |p: &std::path::Path| {
+        p.strip_prefix(workspace_root)
+            .unwrap_or(p)
+            .display()
+            .to_string()
+    };
+    let scan_unscanned: Vec<String> = scan.unscanned.iter().map(|p| rel(p)).collect();
+
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
+    if !scan_unscanned.is_empty() {
+        failure_reasons.push(format!(
+            "{} Rust source(s) neither scanned by [plugins.set_equality_validator].paths \
+             nor declared in scan_exclusions — add a path or declare the exclusion",
+            scan_unscanned.len()
+        ));
+    }
+    if !scan.stale_exclusions.is_empty() {
+        failure_reasons.push(format!(
+            "{} scan_exclusions entry(ies) match no file — delete them",
+            scan.stale_exclusions.len()
+        ));
+    }
     if !registry_violations.is_empty() {
         let sample = registry_violations
             .iter()
@@ -308,6 +348,10 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         publishable_ledger_rows,
         publishable_unmatched,
         store_registry_violations: registry_violations.len(),
+        scan_considered: scan.considered,
+        scan_scanned: scan.scanned,
+        scan_unscanned,
+        scan_stale_exclusions: scan.stale_exclusions,
         failed,
         failure_reasons,
     })
@@ -381,6 +425,22 @@ impl ValidateWorkspaceReport {
             "store registry integrity: {} out-of-band violation(s) (Round 677)",
             self.store_registry_violations
         );
+        // The considered count is the non-vacuity figure: "0 unscanned" out of 0
+        // sources is what a broken walk reports, so both numbers are printed.
+        let _ = writeln!(
+            out,
+            "citation-gate coverage: {} rust source(s), {} scanned, {} unscanned, {} stale exclusion(s) (Round 783)",
+            self.scan_considered,
+            self.scan_scanned,
+            self.scan_unscanned.len(),
+            self.scan_stale_exclusions.len(),
+        );
+        for p in &self.scan_unscanned {
+            let _ = writeln!(out, "  unscanned: {}", p);
+        }
+        for e in &self.scan_stale_exclusions {
+            let _ = writeln!(out, "  stale exclusion: {}", e);
+        }
         let _ = writeln!(
             out,
             "publishable / audit divergence: entries={} ledger_rows={}",

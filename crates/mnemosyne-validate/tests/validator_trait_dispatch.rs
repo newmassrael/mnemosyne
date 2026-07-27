@@ -27,6 +27,7 @@ use tempfile::TempDir;
 fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
     SetEqualityValidator {
         config: SetEqualityValidatorConfig {
+            scan_exclusions: Vec::new(),
             paths: vec!["src/".into()],
             severity_missing: mnemosyne_config::Severity::Reject,
             severity_binding: mnemosyne_config::Severity::Reject,

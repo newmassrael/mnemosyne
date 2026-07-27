@@ -87,11 +87,49 @@ max_section_body_length = 5000
 # deliberately excluded. The pattern below DERIVES the set instead — a new crate
 # is gated the day it exists — and `*/src/` still leaves tests/ out, which is a
 # policy (above), not an oversight.
+#
+# Round 783 — `crates/*/src/` fixed the drift one level DOWN and left it one
+# level up. That glob is itself a claim about which TREES hold citations, and it
+# had gone stale the same silent way: every `crates/*/build.rs` (four files of
+# production code, one of them the emitter's own build script) and all of
+# `tools/*/src/` were never scanned. `scan_exclusions` below inverts the failure
+# mode — validate-workspace now fails on any `.rs` in neither list, so a tree
+# merely absent is loud and only a tree written down stays out.
 [plugins.set_equality_validator]
-paths = ["crates/*/src/"]
+paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/"]
+scan_exclusions = ["crates/*/tests/", "tools/*/tests/", "bench/", "studio/"]
 severity_missing = "reject"
 severity_binding = "reject"
 comment_only = true
+
+# Why each exclusion, so the next round does not have to re-derive it:
+#
+# `crates/*/tests/` + `tools/*/tests/` — the policy stated above: test files hold
+# invented round numbers as fixture DATA on purpose (`atomic_store_view_parity`
+# inserts `Round 999`; `validate_code_refs_smoke` feeds the gate numbers it made
+# up). Measured at Round 780: 104 distinct rounds live outside `src/`, 38 of
+# which do not resolve. The boundary is real, not an oversight.
+#
+# `bench/` — the Phase -1A measurement spike, a CLOSED historical artifact with
+# its own workspace. Measured at Round 783: 47 distinct rounds cited, 46 of them
+# unresolvable because they are pre-252 and off-main by construction. Gating it
+# would demand rewriting a closed artifact to satisfy a gate that learns nothing
+# from it.
+#
+# `studio/` — a separate workspace the root gates never compile (by design: it is
+# the only crate that depends on pinion). Round 783 scanned it briefly and that
+# was enough to find three design-doc references written as `§3` / `§6.3`, which
+# this gate reads as store section ids and which this workspace spells `sec 3`.
+# They are NOT fixed here, and the reason is worth recording rather than
+# retrying: staging a `studio/*.rs` edit makes the pre-commit hook build that
+# workspace, and it DOES NOT COMPILE — `mnemosyne_query::list_changelog` grew a
+# second parameter and changed its return type, and pinion's `WidgetCore` no
+# longer has `focusable_tags`. The pinion half cannot be repaired from here while
+# that sibling repository is mid-flight. Repairing studio is its own round; until
+# then this exclusion is what keeps the omission written down instead of silent.
+#
+# NOT excluded, deliberately: `tools/*/src/` cites 4 rounds and ALL FOUR resolve,
+# so it costs nothing to gate and is live code.
 
 # ============================================================================
 # Round 305 — publishable_override_ledger

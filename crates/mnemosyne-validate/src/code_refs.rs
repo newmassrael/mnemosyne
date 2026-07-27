@@ -817,6 +817,94 @@ pub fn expand_paths(root: &Path, paths: &[String]) -> Vec<PathBuf> {
     out
 }
 
+/// What the configured scan paths cover, and what they leave out (Round 783).
+///
+/// # Why this exists
+///
+/// Round 777 replaced a hand list of sixteen scan directories with a derived
+/// `crates/*/src/`, because a list restates the tree and then drifts from it in
+/// silence. The derivation fixed the drift one level down and left it one level
+/// up: `crates/*/src/` is itself a claim about WHICH trees hold citations, and
+/// that claim went stale the same silent way. Every `crates/*/build.rs` — four
+/// files of production code — and all of `tools/*/src/` were unscanned, and the
+/// only reason anyone noticed is that a round went looking.
+///
+/// The fix is not another path. It is making the omission LOUD: every Rust
+/// source in the workspace is either covered by a scan path or named by a
+/// declared exclusion, and anything else is reported. A tree merely absent from
+/// the config now fails; only a tree someone wrote down stays out.
+///
+/// # Why stale exclusions are reported too
+///
+/// An exclusion that matches nothing is a rotting entry, and the workspace
+/// already treats that as a failure on the orphan-ledger axis (a ledger row
+/// whose orphan resolved must be deleted). The same rule here keeps the
+/// exclusion list from accumulating names of trees that no longer exist —
+/// otherwise the list decays into folklore that reads as policy.
+pub struct ScanCoverage {
+    /// Rust sources found under `root`. A run that considered none proves
+    /// nothing, so the count is reported rather than assumed.
+    pub considered: usize,
+    /// Of those, the ones a configured scan path covers.
+    pub scanned: usize,
+    /// Rust sources neither scanned nor excluded — the drift this catches.
+    pub unscanned: Vec<PathBuf>,
+    /// Declared exclusions that match no file under `root`.
+    pub stale_exclusions: Vec<String>,
+}
+
+/// Compute [`ScanCoverage`] for `root` under the configured `paths` and
+/// `exclusions`.
+///
+/// Uses [`walk_paths`] for all three sets rather than a second traversal, so the
+/// files judged "covered" are exactly the files the gate will read — the R777
+/// discipline that a reporter and a walk must not be able to disagree.
+///
+/// # Errors
+///
+/// Whatever the underlying directory walk fails with.
+pub fn scan_coverage(
+    root: &Path,
+    paths: &[String],
+    exclusions: &[String],
+) -> std::io::Result<ScanCoverage> {
+    let is_rust = |p: &PathBuf| p.extension().is_some_and(|e| e == "rs");
+    let all: Vec<PathBuf> = walk_paths(root, &[String::new()])?
+        .into_iter()
+        .filter(is_rust)
+        .collect();
+    let scanned: BTreeSet<PathBuf> = walk_paths(root, paths)?
+        .into_iter()
+        .filter(is_rust)
+        .collect();
+
+    let mut excluded: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut stale_exclusions = Vec::new();
+    for one in exclusions {
+        let hit: Vec<PathBuf> = walk_paths(root, std::slice::from_ref(one))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(is_rust)
+            .collect();
+        if hit.is_empty() {
+            stale_exclusions.push(one.clone());
+        }
+        excluded.extend(hit);
+    }
+
+    let unscanned: Vec<PathBuf> = all
+        .iter()
+        .filter(|p| !scanned.contains(*p) && !excluded.contains(*p))
+        .cloned()
+        .collect();
+    Ok(ScanCoverage {
+        considered: all.len(),
+        scanned: scanned.len(),
+        unscanned,
+        stale_exclusions,
+    })
+}
+
 /// Never carries author-written citations: a VCS/tool directory, a build
 /// artifact tree, or a vendored dependency. One home for the rule, read both
 /// when descending into a directory and when expanding a `*` segment — two
@@ -2825,6 +2913,62 @@ mod tests {
     use mnemosyne_core::VerificationExpectation;
     use tempfile::TempDir;
 
+    /// Round 783 — the coverage check exists because `paths` is itself a claim
+    /// about which trees hold citations, and that claim drifted exactly the way
+    /// the hand list Round 777 removed had drifted.
+    ///
+    /// Both halves matter. A tree that is neither scanned nor declared must be
+    /// REPORTED, and a tree that is declared must then be silent — a check that
+    /// only ever answered "unscanned" would be as useless as one that only ever
+    /// answered "clean", and it is the same file asserting both so neither can
+    /// pass while the other is broken.
+    #[test]
+    fn a_tree_that_is_neither_scanned_nor_declared_is_reported() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("crates/alpha/src")).unwrap();
+        std::fs::write(root.join("crates/alpha/src/lib.rs"), "// Round 1\n").unwrap();
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+        std::fs::write(root.join("elsewhere/stray.rs"), "// Round 2\n").unwrap();
+
+        let paths = vec!["crates/*/src/".to_string()];
+        let found = scan_coverage(root, &paths, &[]).unwrap();
+        assert_eq!(found.considered, 2, "both sources must be counted");
+        assert_eq!(found.scanned, 1);
+        assert_eq!(
+            found.unscanned,
+            vec![root.join("elsewhere/stray.rs")],
+            "a Rust source outside every configured path must be named"
+        );
+
+        // Declared: the same tree, now written down, must go quiet. Nothing else
+        // changed, so this isolates the exclusion as the cause.
+        let declared = vec!["elsewhere/".to_string()];
+        let after = scan_coverage(root, &paths, &declared).unwrap();
+        assert!(after.unscanned.is_empty(), "a declared tree must be silent");
+        assert!(after.stale_exclusions.is_empty());
+    }
+
+    /// An exclusion that matches nothing is a rotting entry, and the workspace
+    /// already fails on the same shape one axis over (an orphan-ledger row whose
+    /// orphan resolved must be deleted). Without this the list decays into
+    /// folklore that still reads as policy.
+    #[test]
+    fn an_exclusion_matching_no_file_is_reported_as_stale() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("crates/alpha/src")).unwrap();
+        std::fs::write(root.join("crates/alpha/src/lib.rs"), "// Round 1\n").unwrap();
+
+        let paths = vec!["crates/*/src/".to_string()];
+        let found = scan_coverage(root, &paths, &["gone/".to_string()]).unwrap();
+        assert_eq!(found.stale_exclusions, vec!["gone/".to_string()]);
+        assert!(
+            found.unscanned.is_empty(),
+            "a stale exclusion must not also manufacture an unscanned file"
+        );
+    }
+
     /// Round 777 — a `*` segment DERIVES the sibling set from the tree, which is
     /// the whole reason it exists: the hand list it replaced had silently stopped
     /// covering four crates. The non-vacuity is the second half of this test, not
@@ -2988,6 +3132,7 @@ mod tests {
         use mnemosyne_core::AtomicStoreView;
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
+                scan_exclusions: Vec::new(),
                 paths: paths.to_vec(),
                 severity_missing: mnemosyne_config::Severity::Reject,
                 severity_binding: mnemosyne_config::Severity::Reject,
@@ -3301,6 +3446,7 @@ mod tests {
 
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
+                scan_exclusions: Vec::new(),
                 paths: vec!["src/".to_string()],
                 severity_missing: mnemosyne_config::Severity::Reject,
                 severity_binding: mnemosyne_config::Severity::Reject,
@@ -3567,6 +3713,7 @@ mod tests {
         use mnemosyne_core::AtomicStoreView;
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
+                scan_exclusions: Vec::new(),
                 paths: vec![],
                 severity_missing: mnemosyne_config::Severity::Reject,
                 severity_binding: mnemosyne_config::Severity::Reject,

@@ -1,10 +1,22 @@
-// Round 91 — tonic-build wires the proto schema in proto/mnemosyne.proto into
-// the generated `mnemosyne.v1` Rust module that `src/grpc.rs` includes via
+// tonic-build wires the proto schema in proto/mnemosyne.proto into the
+// generated `mnemosyne.v1` Rust module that `src/grpc.rs` includes via
 // `tonic::include_proto!`. The .proto file path is tracked explicitly so a
 // schema mutation triggers a rebuild.
 //
-// Round 96 — emit a FileDescriptorSet binary alongside the generated Rust so
-// the gRPC reflection service can serve the proto schema at runtime.
+// It also emits a FileDescriptorSet binary alongside the generated Rust, so the
+// gRPC reflection service can serve the proto schema at runtime.
+//
+// This file carried two pre-252 round anchors until Round 783 brought build
+// scripts inside the citation gate. Both were off-main, so neither could be
+// verified against the store — and CLAUDE.md is explicit that a citation to such
+// a round must not be written as though it could. They were not registered as
+// known-stale either: an allow-list for unverifiable citations would
+// institutionalise exactly what the gate exists to prevent, and unlike a frozen
+// ledger entry a comment can simply be corrected. What those rounds decided is
+// what the code below does, which is why deleting the anchors costs nothing.
+//
+// Naming them here would have re-created the citations verbatim — the gate said
+// so on the first run of this round, which is the rule working.
 
 use std::path::PathBuf;
 

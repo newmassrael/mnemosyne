@@ -84,6 +84,7 @@ fn build_validator(
 ) -> SetEqualityValidator {
     SetEqualityValidator {
         config: SetEqualityValidatorConfig {
+            scan_exclusions: Vec::new(),
             paths: vec!["src/".to_string()],
             severity_missing: mnemosyne_config::Severity::Reject,
             severity_binding: mnemosyne_config::Severity::Reject,
