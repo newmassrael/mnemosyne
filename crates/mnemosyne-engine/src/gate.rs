@@ -58,6 +58,20 @@ pub enum GateViolation {
         /// The `fact_id` the rung needs but the walk never offers in time.
         needs: String,
     },
+    /// G8 (Round 776) — the gate was asked about a world this projection does not
+    /// carry: a typo'd, stale, or foreign world name. Reported rather than
+    /// answered "clean".
+    ///
+    /// Every other finding here is a statement ABOUT a walk, and an unknown world
+    /// has no walk, so the loop that produces them never ran and the verdict came
+    /// back empty — which this gate's own contract defines as "play-clean". A
+    /// question the gate cannot answer must not be answered with the word for
+    /// SAFE. The projection's [`worlds`](PlayableProjection::worlds) is the
+    /// authoritative list to ask instead.
+    UnknownWorld {
+        /// The world name the caller asked about.
+        world: String,
+    },
     /// G7 (Round 757, B1) — a consumer-DECLARED interactive choice names an
     /// entity the discourse has NOT disclosed at-or-before this spot: the choice
     /// offers a stranger the player has never met (the field-report
@@ -81,8 +95,19 @@ impl PlayableProjection {
     /// configured interactivity: G4 (empty spot), G5 (leak + unreachable), G6
     /// (precondition timing). Returns every violation in walk order — an empty
     /// vec means the interactive layer is play-clean. Pure read; never mutates.
+    ///
+    /// A world this projection does not carry is [`GateViolation::UnknownWorld`]
+    /// (Round 776) and nothing else: with no walk there is nothing the remaining
+    /// checks could examine, so continuing would spend them all on emptiness and
+    /// return the clean verdict. Enumerate [`worlds`](Self::worlds) to gate them
+    /// all without holding a hand-written list.
     #[must_use]
     pub fn gate(&self, world: &str) -> Vec<GateViolation> {
+        if !self.knows_world(world) {
+            return vec![GateViolation::UnknownWorld {
+                world: world.to_string(),
+            }];
+        }
         let walk = self.walk(world);
 
         // For G6: the earliest walk index at which each fact is offered (a fact
@@ -203,7 +228,7 @@ mod tests {
     use mnemosyne_validate::continuity::ForkTreeReport;
 
     use crate::gate::GateViolation;
-    use crate::test_support::{begin, locator, report, rung, scene};
+    use crate::test_support::{begin, locator, report, report_worlds, rung, scene};
     use crate::{ChoiceEntityRef, Interactivity, PlayableProjection, Rung, StaticOverrides};
 
     fn ladder_at(section: &str, rungs: Vec<Rung>) -> StaticOverrides {
@@ -230,6 +255,88 @@ mod tests {
             quest_precondition_predicates: Vec::new(),
             choice_entity_refs: Vec::new(),
         }
+    }
+
+    /// Round 776 — a world the projection does not carry is a VIOLATION, where it
+    /// used to be an empty vec, i.e. this gate's own word for play-clean. Asserted
+    /// in BOTH directions against one projection: the real world still reports its
+    /// real finding (so the new arm is not swallowing the walk), and the typo
+    /// reports the new one (so the finding is not vacuous).
+    #[test]
+    fn an_unknown_world_is_a_violation_never_a_clean_verdict() {
+        let r = report(
+            "main",
+            vec![
+                scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin("f-a", "x", "ground-truth", &[])],
+                ),
+                scene("sc-02", "Void", Vec::new()),
+            ],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &StaticOverrides::default()).unwrap();
+
+        assert_eq!(
+            proj.gate("main"),
+            vec![GateViolation::EmptySpot {
+                world: "main".into(),
+                section: "sc-02".into(),
+            }],
+            "the known world must still report its own finding"
+        );
+        assert_eq!(
+            proj.gate("mian"),
+            vec![GateViolation::UnknownWorld {
+                world: "mian".into()
+            }],
+            "a typo'd world must not gate clean"
+        );
+    }
+
+    /// Round 776 — the distinction the check turns on, and the reason it asks the
+    /// world MAP rather than the walk's length: a registered world whose walk is
+    /// empty is KNOWN with nothing on it (a clean verdict, honestly earned), while
+    /// an unknown name is a question the gate cannot answer. Written the lazy way
+    /// (`walk(world).is_empty()`) these two collapse into one answer, and it is
+    /// the wrong one for both.
+    #[test]
+    fn a_registered_world_with_an_empty_walk_is_known_and_gates_clean() {
+        let proj = PlayableProjection::from_report(
+            report_worlds(
+                vec![
+                    (
+                        "main",
+                        vec![scene(
+                            "sc-01",
+                            "Dawn",
+                            vec![begin("f-a", "x", "ground-truth", &[])],
+                        )],
+                        vec![locator("f-a", "sc-01", DisclosureMode::State)],
+                    ),
+                    ("ghost", Vec::new(), Vec::new()),
+                ],
+                ForkTreeReport::default(),
+            ),
+            &StaticOverrides::default(),
+        )
+        .unwrap();
+
+        assert_eq!(proj.worlds(), vec!["ghost", "main"], "both are projected");
+        assert!(proj.walk("ghost").is_empty(), "and one walks nowhere");
+        assert!(
+            proj.gate("ghost").is_empty(),
+            "a registered empty world is clean, not unknown"
+        );
+        assert_eq!(
+            proj.gate("nowhere"),
+            vec![GateViolation::UnknownWorld {
+                world: "nowhere".into()
+            }],
+            "an unregistered name is unknown, not clean"
+        );
     }
 
     #[test]

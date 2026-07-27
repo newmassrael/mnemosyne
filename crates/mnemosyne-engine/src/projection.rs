@@ -345,6 +345,43 @@ impl PlayableProjection {
         self.interactivity.free_investigate
     }
 
+    /// Every world-line this projection carries, sorted (Round 776) — the
+    /// AUTHORITATIVE set, and the list a consumer runs its per-world gates over.
+    ///
+    /// It existed only privately until now, and the first consumer paid for that:
+    /// with no way to ask, it rebuilt the list by walking the fork graph from
+    /// `main` through [`walk`](Self::walk) + [`forks_at`](Self::forks_at). That is
+    /// a DIFFERENT definition — "fork-reachable from the trunk" rather than "in
+    /// the projection" — so a registered world-line that no fork edge points at
+    /// would never have been gated, and nothing could have said so. This is the
+    /// mistake R766 refused to make on the prose axis, where the slicer exposes
+    /// [`in_prose_order`](crate::PrefixSlices::in_prose_order) precisely so an
+    /// ordered caller never re-implements the search and drifts from it; the world
+    /// set had no such door.
+    ///
+    /// A world with an EMPTY walk is still a world and is listed: the store
+    /// registered it, and "carries no scene under this telling" is an answer, not
+    /// an absence. That distinction is what [`gate`](Self::gate) turns on.
+    #[must_use]
+    pub fn worlds(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self.walks.keys().map(String::as_str).collect();
+        out.sort_unstable();
+        out
+    }
+
+    /// Does this projection carry `world`? The membership half of
+    /// [`worlds`](Self::worlds), reading the same map so the enumeration and the
+    /// test can never disagree.
+    ///
+    /// Deliberately NOT `walk(world).is_empty()`: `walks` holds an entry for every
+    /// world in the report, so a registered world whose walk is empty is KNOWN
+    /// with nothing on it, while an unknown name has no entry at all. The gate
+    /// must tell those apart — one is a clean verdict, the other is a question it
+    /// cannot answer.
+    pub(crate) fn knows_world(&self, world: &str) -> bool {
+        self.walks.contains_key(world)
+    }
+
     /// The store-declared walk for a world-line — the section sequence the
     /// player's own traversal must match (the reachability yardstick). Empty for
     /// an unknown world.
@@ -1376,7 +1413,16 @@ mod tests {
 
         assert_eq!(baked.telling(), live.telling());
         assert_eq!(baked.spine(), live.spine());
-        for world in ["main", "dark"] {
+        // Round 776 — the world list is DERIVED from the projection rather than
+        // hand-written here, which is the same correction the accessor exists for:
+        // a hand list silently stops covering a world the fixture gains.
+        assert_eq!(baked.worlds(), live.worlds());
+        assert_eq!(
+            live.worlds(),
+            vec!["dark", "main"],
+            "the fixture's two roads"
+        );
+        for world in live.worlds() {
             assert_eq!(baked.walk(world), live.walk(world));
             assert_eq!(
                 baked.is_divergent_ending(world),
