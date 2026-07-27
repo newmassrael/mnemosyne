@@ -109,6 +109,39 @@ pub enum QuestGateViolation {
         /// The precondition `fact_id` the walk never offers before completion.
         needs: String,
     },
+    /// A quest names a world-line the paired [`PlayableProjection`] does not
+    /// carry (Round 778), so this quest's preconditions went UNCHECKED on that
+    /// road. Until now the road was skipped in silence, which spent the gate's
+    /// clean verdict on a check it never performed.
+    ///
+    /// The two projections are built by separate calls and joined only here, so
+    /// nothing but this makes a divergence visible: a quest layer read from one
+    /// store or telling against a walk from another, or a baked pair whose two
+    /// emitter invocations disagreed. The first consumer's store has the two sets
+    /// identical at seven worlds, which is the point — a check that fires only on
+    /// a misconfiguration is the one worth having.
+    WorldNotWalked {
+        /// The world-line the quest declares.
+        world: String,
+        /// The quest whose preconditions were not checked there.
+        quest: String,
+    },
+    /// The quest projection and the playable projection it was handed were cut
+    /// for DIFFERENT tellings (Round 778) — a quest layer judged against a walk
+    /// that was never its own.
+    ///
+    /// Both projections carry the telling they were resolved under and nothing
+    /// compared them, while every constructor takes its telling as a separate
+    /// argument (twice over for a build-time bake, which invokes the playable and
+    /// quest emitters independently). Reported alone, because a pair this far
+    /// apart makes every finding below it a statement about the wrong world, and
+    /// a list of those would read as work done.
+    TellingMismatch {
+        /// The telling the quest projection was resolved under.
+        quest_telling: String,
+        /// The telling the playable projection was resolved under.
+        playable_telling: String,
+    },
 }
 
 /// The quest-graph projection for one telling — the quests the store declares
@@ -235,14 +268,49 @@ impl QuestProjection {
     /// never legitimately complete by play. A quest that is OPEN in a world (no
     /// completion beat there) has no deadline, so it is not gated. Pure read;
     /// never mutates. Returns violations in quest-then-world order.
+    ///
+    /// This is the ONE place the two projections meet, and Round 778 made the
+    /// meeting checked. They are built by separate calls, each taking its own
+    /// `telling`, and a build-time bake invokes the two emitters independently —
+    /// so a mismatched pair was not only possible but unremarkable to produce.
+    /// A pair cut for different tellings is [`QuestGateViolation::TellingMismatch`]
+    /// and nothing else; a quest world the playable projection does not carry is
+    /// [`QuestGateViolation::WorldNotWalked`] rather than a silently skipped road.
+    ///
+    /// What "OFFERED" means here is worth stating exactly, because it is narrower
+    /// than it reads: a fact is offered at a spot when it is a disclosed
+    /// [`Line`](crate::Line) there. A withheld fact emits no locator and so no
+    /// line, which is the intended narrowing. But a consumer's
+    /// [`journal_predicates`](EngineOverrides::journal_predicates) policy ALSO
+    /// removes facts from that stream, so a precondition fact that is itself a
+    /// typed journal leg is offered by the store and invisible here, and would be
+    /// reported unreachable when it is not. No consumer pairs a journal-routing
+    /// playable projection with this gate today; the honest statement is that
+    /// "offered" is "disclosed as prose", not "diggable under this telling".
     #[must_use]
     pub fn completability(&self, playable: &PlayableProjection) -> Vec<QuestGateViolation> {
+        if self.telling != playable.telling() {
+            return vec![QuestGateViolation::TellingMismatch {
+                quest_telling: self.telling.clone(),
+                playable_telling: playable.telling().to_string(),
+            }];
+        }
         let mut violations = Vec::new();
         for quest in &self.quests {
             if quest.preconditions.is_empty() {
                 continue;
             }
             for (world, wv) in &quest.per_world {
+                // A road the playable projection never heard of: the walk would
+                // come back empty, every position lookup below would miss, and
+                // the quest would leave this gate looking checked.
+                if !playable.knows_world(world) {
+                    violations.push(QuestGateViolation::WorldNotWalked {
+                        world: world.clone(),
+                        quest: quest.quest_id.clone(),
+                    });
+                    continue;
+                }
                 let walk = playable.walk(world);
                 // The deadline = the earliest completion scene index on this
                 // world's walk. No completion on this walk (open here, or a
@@ -258,8 +326,11 @@ impl QuestProjection {
                 for need in &quest.preconditions {
                     // Offered STRICTLY BEFORE the completion scene — the
                     // knowledge must be dug before the quest discharges. A
-                    // withheld fact emits no line, so "offered" is exactly
-                    // "diggable under this telling".
+                    // withheld fact emits no line, which is the narrowing this
+                    // wants. Round 778 corrected the sentence that used to sit
+                    // here: "offered" is NOT exactly "diggable under this
+                    // telling", because the consumer's journal policy removes
+                    // facts from this stream too (see the doc above).
                     let in_time = walk.iter().take(deadline).any(|section| {
                         playable
                             .lines(world, section)
@@ -493,6 +564,143 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    /// Round 778 — a quest road the playable projection does not carry used to be
+    /// skipped in silence, so the gate returned its clean verdict about a check it
+    /// never ran. Both directions on ONE quest layer: paired with a projection
+    /// that lacks the road it reports WorldNotWalked, paired with one that walks
+    /// it it reports the real precondition finding. Either answer is fine; the
+    /// empty vec was not.
+    #[test]
+    fn a_quest_road_the_playable_projection_lacks_is_reported_not_skipped() {
+        let quests = QuestProjection::from_report(
+            quest_report(vec![quest_node(
+                "q-x",
+                "the sin",
+                &[],
+                vec![(
+                    "braid",
+                    QuestState::Done,
+                    vec![completion("f-done", "sc-02", None)],
+                )],
+            )]),
+            &preconditions(&[("q-x", &["f-clue"])]),
+        );
+        let scenes = || {
+            vec![
+                scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin("f-a", "x", "ground-truth", &[])],
+                ),
+                scene("sc-02", "Gut", Vec::new()),
+            ]
+        };
+        let locs = || vec![locator("f-a", "sc-01", DisclosureMode::State)];
+
+        let only_main = PlayableProjection::from_report(
+            report("main", scenes(), locs(), ForkTreeReport::default()),
+            &StaticOverrides::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            quests.completability(&only_main),
+            vec![QuestGateViolation::WorldNotWalked {
+                world: "braid".into(),
+                quest: "q-x".into(),
+            }],
+            "a road the pair does not share must not pass as checked"
+        );
+
+        // The same quest layer against a projection that DOES walk braid: the
+        // real finding comes back, so the new arm is not standing in for it.
+        let with_braid = PlayableProjection::from_report(
+            report_worlds(vec![("braid", scenes(), locs())], ForkTreeReport::default()),
+            &StaticOverrides::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            quests.completability(&with_braid),
+            vec![QuestGateViolation::PreconditionUnreachable {
+                world: "braid".into(),
+                quest: "q-x".into(),
+                completion_scene: "sc-02".into(),
+                needs: "f-clue".into(),
+            }],
+        );
+    }
+
+    /// Round 778 — the two projections each carry the telling they were resolved
+    /// under and nothing compared them, though every constructor takes it as its
+    /// own argument. A mismatched pair reports the mismatch ALONE: the findings it
+    /// would otherwise produce are statements about the wrong world, and a list of
+    /// those reads as work done.
+    #[test]
+    fn two_projections_cut_for_different_tellings_report_the_mismatch_alone() {
+        let quests = QuestProjection::from_report(
+            quest_report(vec![quest_node(
+                "q-x",
+                "the sin",
+                &[],
+                vec![(
+                    "main",
+                    QuestState::Done,
+                    vec![completion("f-done", "sc-02", None)],
+                )],
+            )]),
+            &preconditions(&[("q-x", &["f-clue"])]),
+        );
+        let mut other = report(
+            "main",
+            vec![
+                scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin("f-a", "x", "ground-truth", &[])],
+                ),
+                scene("sc-02", "Gut", Vec::new()),
+            ],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        // Same store, same walk, same quest — only the telling differs, which is
+        // exactly the pair a bake produces from two emitter calls.
+        other.telling = "player".to_string();
+        let playable = PlayableProjection::from_report(other, &StaticOverrides::default()).unwrap();
+
+        assert_eq!(
+            quests.completability(&playable),
+            vec![QuestGateViolation::TellingMismatch {
+                quest_telling: "reader".into(),
+                playable_telling: "player".into(),
+            }],
+            "the mismatch is the only thing worth reporting about this pair"
+        );
+        // Non-vacuity: matched tellings and the SAME walk still produce the real
+        // finding, so the guard is not swallowing the gate.
+        let matched = PlayableProjection::from_report(
+            report(
+                "main",
+                vec![
+                    scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![begin("f-a", "x", "ground-truth", &[])],
+                    ),
+                    scene("sc-02", "Gut", Vec::new()),
+                ],
+                vec![locator("f-a", "sc-01", DisclosureMode::State)],
+                ForkTreeReport::default(),
+            ),
+            &StaticOverrides::default(),
+        )
+        .unwrap();
+        assert_eq!(quests.completability(&matched).len(), 1);
+        assert!(matches!(
+            quests.completability(&matched)[0],
+            QuestGateViolation::PreconditionUnreachable { .. }
+        ));
     }
 
     #[test]
