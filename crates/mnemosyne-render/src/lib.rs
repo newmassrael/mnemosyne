@@ -130,105 +130,75 @@ pub fn render_playthrough(
 mod tests {
     use super::{render_playthrough, render_scene, MarkerTheme, PlainTheme};
 
-    use std::collections::BTreeMap;
-
     use mnemosyne_core::DisclosureMode;
-    use mnemosyne_engine::{DefaultOverrides, PlayableProjection};
-    use mnemosyne_validate::continuity::{
-        ForkTreeBranch, ForkTreeEdge, ForkTreeReport, ManuscriptFactEvent, ManuscriptScene,
-        MapLocator, PlayableWorld, PlayableWorldReport, WorldManuscript,
+    use mnemosyne_engine::{
+        ForkPart, Interactivity, LinePart, PlayableProjection, ProjectionParts,
     };
 
-    fn begin(
+    fn line(
         fact_id: &str,
-        claim: &str,
+        text: &str,
         frame: &str,
         quote: Option<&str>,
         count: Option<i64>,
-    ) -> ManuscriptFactEvent {
-        ManuscriptFactEvent {
+    ) -> LinePart {
+        LinePart {
             fact_id: fact_id.into(),
+            text: text.into(),
+            mode: DisclosureMode::State,
             frame: frame.into(),
-            claim: claim.into(),
             entities: Vec::new(),
-            canon_from: "sc-01".into(),
-            canon_to: None,
-            evidence: Vec::new(),
-            typed: None,
+            carrier: None,
+            typed_predicate: None,
             quote: quote.map(str::to_string),
             count,
-            disclosure: None,
         }
     }
 
-    fn locator(fact_id: &str) -> MapLocator {
-        MapLocator {
-            world_line: "main".into(),
-            fact_id: fact_id.into(),
-            scene: "sc-01".into(),
-            scene_ordinal: None,
-            object: None,
-            mode: DisclosureMode::State,
-            first_at: None,
-        }
-    }
-
+    /// Round 771 — the render fixture is built from [`ProjectionParts`], the
+    /// kernel's ONE ingestion door now that `from_report` is crate-private. This
+    /// is also a second downstream crate exercising that door: if parts ever
+    /// readmit a type a foreign crate cannot construct, this stops compiling.
     fn demo() -> PlayableProjection {
-        let scene = ManuscriptScene {
-            section: "sc-01".into(),
-            title: "Dawn".into(),
-            epub_locator: None,
-            begins: vec![
-                begin("f-truth", "the tide pulls out", "ground-truth", None, None),
-                begin(
-                    "f-belief",
-                    "Bunok guesses a name",
-                    "frame-bunok",
-                    None,
-                    None,
-                ),
-                begin(
-                    "f-quote",
-                    "he said it plainly",
-                    "ground-truth",
-                    Some("I crossed at two"),
-                    Some(3),
-                ),
-            ],
-            ends: Vec::new(),
-            holding_count: 0,
-            scene_cast: Vec::new(),
-        };
-        let mut worlds = BTreeMap::new();
-        worlds.insert(
-            "main".to_string(),
-            PlayableWorld {
-                manuscript: WorldManuscript {
-                    scenes: vec![scene],
-                    ..Default::default()
-                },
-                locators: vec![locator("f-truth"), locator("f-belief"), locator("f-quote")],
-            },
-        );
-        let fork_tree = ForkTreeReport {
-            branches: vec![ForkTreeBranch {
-                branch_id: "flee".into(),
-                description: "run".into(),
-                fork: Some(ForkTreeEdge {
-                    parent: "main".into(),
-                    at: "sc-01".into(),
-                    at_placed: true,
-                }),
-                converges: Vec::new(),
-            }],
-            ..Default::default()
-        };
-        let report = PlayableWorldReport {
+        PlayableProjection::from_parts(ProjectionParts {
             telling: "reader".into(),
-            fork_tree,
-            worlds,
-        };
-        PlayableProjection::from_report(report, &DefaultOverrides::default()).unwrap()
+            by_world: vec![(
+                "main".to_string(),
+                vec![(
+                    "sc-01".to_string(),
+                    vec![
+                        line("f-truth", "the tide pulls out", "ground-truth", None, None),
+                        line(
+                            "f-belief",
+                            "Bunok guesses a name",
+                            "frame-bunok",
+                            None,
+                            None,
+                        ),
+                        line(
+                            "f-quote",
+                            "he said it plainly",
+                            "ground-truth",
+                            Some("I crossed at two"),
+                            Some(3),
+                        ),
+                    ],
+                )],
+            )],
+            walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+            titles: vec![("sc-01".to_string(), "Dawn".to_string())],
+            cast: Vec::new(),
+            forks: vec![ForkPart {
+                at: "sc-01".into(),
+                parent: "main".into(),
+                world: "flee".into(),
+                label: "run".into(),
+            }],
+            divergent_endings: Vec::new(),
+            interactivity: Interactivity::default(),
+            choice_entity_refs: Vec::new(),
+            ask_doors: Vec::new(),
+        })
     }
 
     #[test]

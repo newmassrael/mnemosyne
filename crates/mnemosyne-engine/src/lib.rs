@@ -21,6 +21,35 @@
 //! This is the R643 detectable->unrepresentable doctrine moved to the engine's
 //! type boundary.
 //!
+//! That promise was true of the RENDER side and false of the INGEST side until
+//! Round 771. `from_report` was public and every type in a `PlayableWorldReport`
+//! is a pub-field struct, so a downstream crate could hand the kernel a
+//! fabricated world and receive real `Line`s minted from it — the guard sat one
+//! layer above the hole (R764 found it while reviewing a request to make that
+//! same boundary `Deserialize`). `from_report` is now crate-private, leaving
+//! [`ProjectionParts`] as the single ingestion door: still plain data by
+//! necessity (generated code cannot construct a `#[non_exhaustive]` type), but
+//! ONE door instead of two, and one whose contents a build generates from the
+//! store rather than a hand writes. What remains is what the threat model always
+//! allowed: an author who edits their own build script forges their own game.
+//!
+//! The narrowing is proven by a PAIR of doctests, because a lone `compile_fail`
+//! passes when the snippet fails for any reason at all — a typo'd path would
+//! "prove" the guard while proving nothing. The positive half must compile, so a
+//! wrong path breaks the suite instead of faking a pass:
+//!
+//! ```
+//! // The ingestion door that IS public.
+//! let _open = mnemosyne_engine::PlayableProjection::from_parts;
+//! ```
+//!
+//! and the negative half must not, with the SAME path spelling:
+//!
+//! ```compile_fail
+//! let _open = mnemosyne_engine::PlayableProjection::from_parts;
+//! let _shut = mnemosyne_engine::PlayableProjection::from_report;
+//! ```
+//!
 //! A withheld fact emits no locator, so it never becomes a [`Line`]: the store
 //! filters disclosure additively, and this kernel never re-implements a
 //! subtractive withhold filter.

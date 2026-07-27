@@ -72,13 +72,21 @@ impl PlayableProjection {
     /// concern (the store owns the prose); the report path renders only
     /// un-anchored questions.
     ///
+    /// TEST-ONLY since Round 771, and gated rather than merely narrowed because
+    /// that is what it now is: taking it off the public API (see the crate docs
+    /// for why — it was the ingestion hole under a render-side guarantee) left it
+    /// with no caller outside tests, which the dead-code lint said plainly. A
+    /// consumer supplies a whole projection through
+    /// [`ProjectionParts`](crate::ProjectionParts) instead.
+    ///
     /// # Errors
     ///
     /// [`EngineError::LocatorFactMissing`] if any locator names a `fact_id` no
     /// `begins` event carries (a stale report), never a silent drop;
     /// [`EngineError::RungQuestionUnresolvable`] if any rung declares a
     /// `question_anchor` (unresolvable here — no store prose).
-    pub fn from_report(
+    #[cfg(test)]
+    pub(crate) fn from_report(
         report: PlayableWorldReport,
         overrides: &impl EngineOverrides,
     ) -> Result<Self, EngineError> {

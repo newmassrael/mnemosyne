@@ -2,9 +2,21 @@
 //! JOURNAL-axis sibling of [`PlayableProjection`](crate::PlayableProjection).
 //!
 //! Reads the store's universal quest graph (`report-quest-graph`, the R559/R568
-//! projection) at runtime and exposes it as a presentation-agnostic quest layer:
-//! every quest is store-derived (the kernel invents none), so the compile-time
-//! snapshot a consumer would otherwise bake in cannot drift from the store.
+//! projection) and exposes it as a presentation-agnostic quest layer: every quest
+//! is store-derived (the kernel invents none), so a consumer's quest list cannot
+//! drift from the store.
+//!
+//! This said the read happens "at runtime" and justified that by the staleness of
+//! "the compile-time snapshot a consumer would otherwise bake in". Round 771
+//! corrects it: the anti-drift property comes from DERIVING FROM THE STORE, not
+//! from the timing of the derivation. A projection baked at build time under
+//! `cargo:rerun-if-changed` and never committed cannot go stale either, and it
+//! carries a check a runtime read cannot — change a kernel type and the generated
+//! source stops compiling (see `mnemosyne-engine-build`, R770). The residual
+//! difference is honest and small: a pre-built binary is pinned to the store
+//! revision it was built from, the same trade a consumer already makes pinning
+//! this workspace by git rev. The quest axis has no baked path yet; when it wants
+//! one, nothing here argues against it.
 //!
 //! The completability gate generalizes a consumer's investigation-openability
 //! check: a quest's completion-PRECONDITION facts (the `opened_by`-class edges,
