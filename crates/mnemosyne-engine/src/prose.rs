@@ -152,6 +152,27 @@ pub enum ProseError {
         /// The source document.
         source: String,
     },
+    /// A [`Locator::Prefix`] prefix occurs MORE THAN ONCE in the source document
+    /// (Round 766): the coordinate is ambiguous, and picking an occurrence would
+    /// be picking a slice on the reader's behalf. A prefix that must be extended
+    /// to name one place is an authoring fix, not something to guess at.
+    PrefixAmbiguous {
+        /// The source document.
+        source: String,
+        /// The verbatim prefix that occurs more than once.
+        prefix: String,
+        /// How many times it occurs.
+        occurrences: usize,
+    },
+    /// Two anchors declare the SAME coordinate (Round 766) — one slice would
+    /// silently overwrite the other in the resolved map, so the duplicate is
+    /// refused instead of swallowed.
+    DuplicateAnchor {
+        /// The source document.
+        source: String,
+        /// The verbatim prefix declared twice.
+        prefix: String,
+    },
 }
 
 impl fmt::Display for ProseError {
@@ -172,6 +193,20 @@ impl fmt::Display for ProseError {
                 f,
                 "document `{source}` cannot resolve this locator kind (no CFI resolver yet)"
             ),
+            ProseError::PrefixAmbiguous {
+                source,
+                prefix,
+                occurrences,
+            } => write!(
+                f,
+                "prefix `{prefix}` occurs {occurrences} times in document `{source}` — \
+                 the coordinate names no single place; extend it"
+            ),
+            ProseError::DuplicateAnchor { source, prefix } => write!(
+                f,
+                "prefix `{prefix}` is declared twice for document `{source}` — \
+                 one slice would swallow the other"
+            ),
         }
     }
 }
@@ -180,7 +215,7 @@ impl std::error::Error for ProseError {}
 
 /// The engine's [`ContentSource`] for the manuscript-anchor model: one
 /// content-SSOT document (its text) sliced by its [`Locator::Prefix`] anchors.
-/// Each anchor's passage runs from the first occurrence of its verbatim prefix to
+/// Each anchor's passage runs from the sole occurrence of its verbatim prefix to
 /// the next anchor's prefix (or the document end). This is the derive-prose
 /// slicing discipline (tide's `derive-prose.py`) brought into the kernel: the
 /// slice text is verbatim from the supplied document, so a passage cannot carry a
@@ -188,12 +223,22 @@ impl std::error::Error for ProseError {}
 ///
 /// Slicing + verification happen at construction (order-independent input — the
 /// anchors are sorted by where their prefix occurs); [`resolve`](ContentSource::resolve)
-/// is then a lookup. A prefix the document lacks is a fail-loud construction
-/// error, never a silent drop.
+/// is then a lookup. THREE construction faults are loud rather than silent: a
+/// prefix the document lacks ([`ProseError::PrefixNotFound`]), a prefix naming
+/// more than one place ([`ProseError::PrefixAmbiguous`], Round 766), and the same
+/// anchor declared twice ([`ProseError::DuplicateAnchor`], Round 766).
+///
+/// Whether a caller's DECLARED order must agree with the prose order is not asked
+/// here — an anchor set may legitimately arrive unordered (from a map), and only
+/// a caller with ordered semantics can say. Such a caller reads
+/// [`in_prose_order`](Self::in_prose_order) and judges for itself.
 #[derive(Debug, Clone)]
 pub struct PrefixSlices {
     source: String,
     slices: HashMap<ContentAnchor, String>,
+    /// The anchors in the order their prefixes occur in the document — computed
+    /// during the one locate pass so an ordered caller never repeats the search.
+    in_prose_order: Vec<ContentAnchor>,
 }
 
 impl PrefixSlices {
@@ -208,7 +253,17 @@ impl PrefixSlices {
     /// [`ProseError::PrefixNotFound`] if a prefix does not occur in `text`.
     pub fn new(source: &str, text: &str, anchors: &[ContentAnchor]) -> Result<Self, ProseError> {
         // Resolve each anchor to the byte offset where its prefix begins, failing
-        // loud on a mismatch or a missing prefix.
+        // loud on a mismatch, a missing prefix, or an AMBIGUOUS one.
+        //
+        // Round 766 — this used to take `text.find(prefix)`, i.e. the FIRST
+        // occurrence, and to `sort_by_key` the anchors into prose order. Both were
+        // silent: a prefix naming two places resolved to whichever came first, and
+        // a declaration order disagreeing with the document was quietly rewritten.
+        // The first consumer's own slicer rejected all three cases (ambiguous
+        // prefix, out-of-order declaration, duplicate anchor), so promoting its
+        // rule into this primitive without these checks would have moved a rule
+        // into a weaker home — a regression wearing a promotion's clothes. The
+        // three invariants live HERE now, once, for every consumer.
         let mut placed: Vec<(usize, &ContentAnchor, &str)> = Vec::with_capacity(anchors.len());
         for anchor in anchors {
             if anchor.source != source {
@@ -222,17 +277,38 @@ impl PrefixSlices {
                     source: source.to_string(),
                 });
             };
-            let offset = text
-                .find(prefix.as_str())
-                .ok_or_else(|| ProseError::PrefixNotFound {
+            let mut hits = text.match_indices(prefix.as_str()).map(|(at, _)| at);
+            let Some(offset) = hits.next() else {
+                return Err(ProseError::PrefixNotFound {
                     source: source.to_string(),
                     prefix: prefix.clone(),
-                })?;
+                });
+            };
+            if hits.next().is_some() {
+                return Err(ProseError::PrefixAmbiguous {
+                    source: source.to_string(),
+                    prefix: prefix.clone(),
+                    // The first two are already counted; finish the walk only to
+                    // report a truthful number in the error.
+                    occurrences: 2 + hits.count(),
+                });
+            }
+            if placed.iter().any(|(_, seen, _)| *seen == anchor) {
+                return Err(ProseError::DuplicateAnchor {
+                    source: source.to_string(),
+                    prefix: prefix.clone(),
+                });
+            }
             placed.push((offset, anchor, prefix.as_str()));
         }
         // Order by where each prefix occurs — the segment of anchor i runs to the
-        // start of anchor i+1 (or the document end). Sort is by offset only; a
-        // stable tie-break is irrelevant because a zero-length slice is harmless.
+        // start of anchor i+1 (or the document end). The INPUT order is
+        // deliberately free: an anchor set may arrive from a map, and a generic
+        // slicer has no business demanding the caller's iteration order match a
+        // document. Whether a DECLARED order must agree with the prose order is a
+        // question only a caller with ordered semantics (a ladder's rungs) can
+        // ask, so it asks it with `in_prose_order` rather than being answered
+        // here for every caller.
         placed.sort_by_key(|(offset, _, _)| *offset);
 
         let mut slices = HashMap::with_capacity(placed.len());
@@ -243,7 +319,21 @@ impl PrefixSlices {
         Ok(Self {
             source: source.to_string(),
             slices,
+            in_prose_order: placed
+                .into_iter()
+                .map(|(_, anchor, _)| anchor.clone())
+                .collect(),
         })
+    }
+
+    /// The anchors this source holds, in the order their prefixes occur in the
+    /// document (Round 766). The locating is done once, here, so a caller with
+    /// ORDERED semantics — a ladder, whose nth rung must be the nth passage —
+    /// judges its declared order against the prose without re-implementing the
+    /// search and drifting from it.
+    #[must_use]
+    pub fn in_prose_order(&self) -> &[ContentAnchor] {
+        &self.in_prose_order
     }
 
     /// The document id this source slices.
@@ -360,6 +450,67 @@ mod tests {
             Passage::resolve(dangling, &source),
             Err(ProseError::PrefixNotFound { .. })
         ));
+    }
+
+    #[test]
+    fn a_prefix_naming_two_places_is_rejected_not_silently_first() {
+        // Round 766 — the slicer used to take `text.find`, i.e. the FIRST
+        // occurrence, so an ambiguous coordinate quietly got a slice. Picking one
+        // is picking on the author's behalf; the fix is to extend the prefix.
+        const TWICE: &str = "The tide pulls out. Bunok counts. The tide returns.";
+        let err = PrefixSlices::new(DOC, TWICE, &[prefix("The tide")]).unwrap_err();
+        assert_eq!(
+            err,
+            ProseError::PrefixAmbiguous {
+                source: DOC.to_string(),
+                prefix: "The tide".to_string(),
+                occurrences: 2,
+            }
+        );
+        // Extending it to name one place is accepted — the ambiguity was real,
+        // not an artefact of rejecting repeats of a common word.
+        assert!(PrefixSlices::new(DOC, TWICE, &[prefix("The tide returns")]).is_ok());
+    }
+
+    #[test]
+    fn the_same_anchor_declared_twice_is_rejected_not_overwritten() {
+        // Round 766 — the slice map is keyed by anchor, so a duplicate used to
+        // overwrite its twin silently: two declared holds, one surviving slice.
+        let err =
+            PrefixSlices::new(DOC, TEXT, &[prefix("The tide"), prefix("The tide")]).unwrap_err();
+        assert_eq!(
+            err,
+            ProseError::DuplicateAnchor {
+                source: DOC.to_string(),
+                prefix: "The tide".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn in_prose_order_reports_the_document_order_whatever_the_input_order() {
+        // Round 766 — the ordering an ordered caller (a ladder) judges against.
+        // The locating happens once here, so that caller never re-implements the
+        // search and cannot drift from it. Input order stays free.
+        let source = PrefixSlices::new(
+            DOC,
+            TEXT,
+            &[
+                prefix("Night falls"),
+                prefix("The tide"),
+                prefix("Bunok counts"),
+            ],
+        )
+        .unwrap();
+        let order: Vec<&Locator> = source.in_prose_order().iter().map(|a| &a.locator).collect();
+        assert_eq!(
+            order,
+            vec![
+                &Locator::Prefix("The tide".to_string()),
+                &Locator::Prefix("Bunok counts".to_string()),
+                &Locator::Prefix("Night falls".to_string()),
+            ]
+        );
     }
 
     #[test]
