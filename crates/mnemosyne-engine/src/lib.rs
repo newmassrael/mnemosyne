@@ -85,9 +85,18 @@ pub enum RungQuestionFault {
     /// The section carries no store `content_excerpt`, so there is no prose to
     /// anchor the question to.
     SectionHasNoExcerpt,
-    /// The section HAS an excerpt, but it is anchored elsewhere than the rung
-    /// declared — the rung's provenance claim is false.
-    AnchorMismatch,
+    /// The section HAS an excerpt, but the rung's anchor does not locate inside
+    /// it (Round 767) — a different document, a prefix the prose does not carry,
+    /// a prefix naming more than one place, or the same hold declared twice. The
+    /// [`ProseError`] says which; the rung's provenance claim is false either way.
+    /// Boxed so carrying the cause does not widen every `Result` on the read path
+    /// (`clippy::result_large_err`): the fault is rare, the return is not.
+    Unlocatable(Box<ProseError>),
+    /// The ladder's declared rung order is not the order its anchors occur in the
+    /// section's prose (Round 767) — the author's nth hold is not the nth
+    /// passage, so the numbering does not describe the scene as written. A
+    /// LADDER invariant, deliberately not the generic slicer's (R766).
+    OutOfProseOrder,
 }
 
 impl fmt::Display for EngineError {
@@ -109,9 +118,15 @@ impl fmt::Display for EngineError {
                 let why = match reason {
                     RungQuestionFault::SectionHasNoExcerpt => {
                         "the section has no store content excerpt to bind the question to"
+                            .to_string()
                     }
-                    RungQuestionFault::AnchorMismatch => {
-                        "the anchor does not match the section's content excerpt"
+                    RungQuestionFault::Unlocatable(err) => {
+                        format!("it does not locate in the section's content excerpt: {err}")
+                    }
+                    RungQuestionFault::OutOfProseOrder => {
+                        "the ladder's declared rung order is not the order its anchors occur in \
+                         the section's prose"
+                            .to_string()
                     }
                 };
                 write!(

@@ -10,8 +10,8 @@ use mnemosyne_core::MAIN_BRANCH;
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
 use crate::{
-    CastMember, ChoiceEntityRef, Door, EngineError, EngineOverrides, Fork, Interactivity, Line,
-    Passage, Rung, RungQuestionFault, SceneView,
+    CastMember, ChoiceEntityRef, ContentAnchor, Door, EngineError, EngineOverrides, Fork,
+    Interactivity, Line, Passage, PrefixSlices, Rung, RungQuestionFault, SceneView,
 };
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
@@ -213,13 +213,15 @@ impl PlayableProjection {
         // read path infallible and localizes the provenance failure to construction.
         let mut ask_doors: HashMap<String, Vec<Door>> = HashMap::new();
         for (section, rungs) in &overrides.interactivity().ladders {
-            let mut resolved = Vec::with_capacity(rungs.len());
-            for rung in rungs {
-                resolved.push(Door::Ask {
-                    question: resolve_rung_question(section, rung, &passages)?,
+            let questions = resolve_ladder_questions(section, rungs, &passages)?;
+            let resolved = rungs
+                .iter()
+                .zip(questions)
+                .map(|(rung, question)| Door::Ask {
+                    question,
                     reveals: rung.reveals.clone(),
-                });
-            }
+                })
+                .collect();
             ask_doors.insert(section.clone(), resolved);
         }
 
@@ -496,29 +498,76 @@ pub fn fresh_disclosure<'a>(reveals: &'a [String], known: &HashSet<String>) -> V
 /// [`EngineError::RungQuestionUnresolvable`], never a silent fall-back to the free
 /// string. This is the store-resolution that makes a fabricated door label
 /// inexpressible for a provenance-bound consumer.
-fn resolve_rung_question(
+fn resolve_ladder_questions(
     section: &str,
-    rung: &Rung,
+    rungs: &[Rung],
     passages: &HashMap<String, Passage>,
-) -> Result<String, EngineError> {
-    let Some(anchor) = &rung.question_anchor else {
-        return Ok(rung.question.clone());
-    };
+) -> Result<Vec<String>, EngineError> {
+    // Un-anchored rungs keep their authored question (interactive chrome the
+    // store never claimed). If NONE is anchored there is no store prose to
+    // consult, so a section without an excerpt is not yet a fault.
+    let anchored: Vec<&ContentAnchor> = rungs
+        .iter()
+        .filter_map(|rung| rung.question_anchor.as_ref())
+        .collect();
+    if anchored.is_empty() {
+        return Ok(rungs.iter().map(|rung| rung.question.clone()).collect());
+    }
+
+    let fault =
+        |anchor: &ContentAnchor, reason: RungQuestionFault| EngineError::RungQuestionUnresolvable {
+            section: section.to_string(),
+            anchor: anchor.clone(),
+            reason,
+        };
     let passage = passages
         .get(section)
-        .ok_or_else(|| EngineError::RungQuestionUnresolvable {
-            section: section.to_string(),
-            anchor: anchor.clone(),
-            reason: RungQuestionFault::SectionHasNoExcerpt,
-        })?;
-    if passage.anchor() != anchor {
-        return Err(EngineError::RungQuestionUnresolvable {
-            section: section.to_string(),
-            anchor: anchor.clone(),
-            reason: RungQuestionFault::AnchorMismatch,
-        });
+        .ok_or_else(|| fault(anchored[0], RungQuestionFault::SectionHasNoExcerpt))?;
+
+    // Round 767 — the anchor no longer has to EQUAL the section's excerpt anchor.
+    // That rule (R761) made a hold part-way down a scene inexpressible: a rung
+    // question IS a line of the section's prose, not the whole section, so a
+    // provenance-bound consumer had to declare no anchor at all and the guarantee
+    // never reached a real ladder. The anchor must now name the SAME document and
+    // LOCATE within its text — which is the R766-tightened slicer's job, so an
+    // ambiguous or duplicated hold is refused there rather than guessed at here.
+    let owned: Vec<ContentAnchor> = anchored.iter().map(|a| (*a).clone()).collect();
+    let slices = PrefixSlices::new(&passage.anchor().source, passage.text(), &owned)
+        .map_err(|err| fault(anchored[0], RungQuestionFault::Unlocatable(Box::new(err))))?;
+
+    // Order is the ladder's own invariant (R766 deliberately kept it out of the
+    // generic slicer): the nth declared hold must be the nth passage, or the
+    // author's numbering does not describe the scene they wrote.
+    let prose_order = slices.in_prose_order();
+    if prose_order.len() == owned.len() && prose_order != owned.as_slice() {
+        let at = owned
+            .iter()
+            .zip(prose_order)
+            .position(|(declared, actual)| declared != actual)
+            .unwrap_or(0);
+        return Err(fault(&owned[at], RungQuestionFault::OutOfProseOrder));
     }
-    Ok(passage.text().to_string())
+
+    rungs
+        .iter()
+        .map(|rung| {
+            let Some(anchor) = &rung.question_anchor else {
+                return Ok(rung.question.clone());
+            };
+            let slice = Passage::resolve(anchor.clone(), &slices)
+                .map_err(|err| fault(anchor, RungQuestionFault::Unlocatable(Box::new(err))))?;
+            // A hold is named by the LINE it starts at: the slice runs to the next
+            // hold and so carries whatever follows the question, which is the
+            // scene's business and not the door's label.
+            Ok(slice
+                .text()
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim_end()
+                .to_string())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -979,8 +1028,8 @@ mod tests {
     }
 
     #[test]
-    fn anchored_rung_question_with_a_mismatched_anchor_is_rejected() {
-        // The rung claims an anchor the section's excerpt does not carry — a false
+    fn anchored_rung_question_the_prose_does_not_carry_is_rejected() {
+        // The rung claims a prefix the section's excerpt does not carry — a false
         // provenance claim, rejected rather than silently resolved to the excerpt.
         let wrong = ContentAnchor {
             source: "MANUSCRIPT.md".into(),
@@ -997,9 +1046,154 @@ mod tests {
             EngineError::RungQuestionUnresolvable {
                 section: "sc-01".into(),
                 anchor: wrong,
-                reason: RungQuestionFault::AnchorMismatch,
+                reason: RungQuestionFault::Unlocatable(Box::new(
+                    crate::ProseError::PrefixNotFound {
+                        source: "MANUSCRIPT.md".into(),
+                        prefix: "존재하지".into(),
+                    }
+                )),
             }
         );
+    }
+
+    /// A multi-line `sc-01` excerpt — a scene with THREE holds in it, which is
+    /// what the R761 anchor-equality rule could not address (Round 767).
+    fn sc01_multi_line_passages() -> HashMap<String, Passage> {
+        let excerpt = mnemosyne_atomic::ContentExcerpt {
+            anchor: store_anchor(),
+            text: "지운은 둑에 섰다.\n이름을 물었다.\n종득은 답하지 않았다.\n물때를 물었다.\n\
+                   종득은 셈을 폈다."
+                .into(),
+            text_sha256: String::new(),
+        };
+        HashMap::from([("sc-01".to_string(), Passage::from_excerpt(&excerpt))])
+    }
+
+    fn at(prefix: &str) -> ContentAnchor {
+        ContentAnchor {
+            source: "MANUSCRIPT.md".into(),
+            locator: Locator::Prefix(prefix.into()),
+        }
+    }
+
+    /// A `sc-01` ladder of N rungs, each with a FABRICATED free question and the
+    /// given anchor, so a passing test proves the store prose won.
+    fn ladder_of(anchors: &[ContentAnchor]) -> StaticOverrides {
+        StaticOverrides {
+            interactivity: Interactivity {
+                objects: HashSet::new(),
+                ladders: HashMap::from([(
+                    "sc-01".to_string(),
+                    anchors
+                        .iter()
+                        .map(|anchor| Rung {
+                            question: "FABRICATED — a free label that must never be shown".into(),
+                            question_anchor: Some(anchor.clone()),
+                            reveals: "f-name".into(),
+                            needs: Vec::new(),
+                        })
+                        .collect(),
+                )]),
+                free_investigate: false,
+            },
+            journal_predicates: Vec::new(),
+            quest_precondition_predicates: Vec::new(),
+            choice_entity_refs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_rung_anchored_part_way_down_a_scene_renders_that_line() {
+        // Round 767 — THE capability R761 lacked. Under anchor-equality the only
+        // expressible anchor was the section's own, so a hold mid-scene could not
+        // be declared at all and a provenance-bound consumer had to pass None.
+        // Here two rungs take hold at two different lines of one excerpt, and each
+        // door's label is ITS line — not the free string, not the whole excerpt,
+        // and not the first line for both.
+        let proj = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("이름을"), at("물때를")]),
+            sc01_multi_line_passages(),
+        )
+        .expect("a mid-scene hold resolves against the section's own prose");
+        let labels: Vec<String> = proj
+            .scene("main", "sc-01")
+            .doors
+            .into_iter()
+            .filter_map(|door| match door {
+                Door::Ask { question, .. } => Some(question),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            vec!["이름을 물었다.".to_string(), "물때를 물었다.".to_string()],
+            "each hold is named by the line it starts at"
+        );
+    }
+
+    #[test]
+    fn a_ladder_declared_out_of_prose_order_is_rejected() {
+        // Round 767 — the LADDER invariant the generic slicer deliberately does
+        // not carry (R766): the nth declared hold must be the nth passage, or the
+        // author's numbering does not describe the scene they wrote.
+        let err = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("물때를"), at("이름을")]),
+            sc01_multi_line_passages(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            EngineError::RungQuestionUnresolvable {
+                section: "sc-01".into(),
+                anchor: at("물때를"),
+                reason: RungQuestionFault::OutOfProseOrder,
+            }
+        );
+        // ...and the SAME two holds in prose order are accepted, so the reject is
+        // the order and not the anchors.
+        assert!(PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("이름을"), at("물때를")]),
+            sc01_multi_line_passages(),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_rung_anchored_ambiguously_is_rejected_not_guessed() {
+        // Round 767 — the R766 tightening reaching its first real caller: a prefix
+        // naming two lines of the scene resolves to neither. Before R766 this
+        // silently took the first.
+        let err = PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("종득은")]),
+            sc01_multi_line_passages(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            EngineError::RungQuestionUnresolvable {
+                section: "sc-01".into(),
+                anchor: at("종득은"),
+                reason: RungQuestionFault::Unlocatable(Box::new(
+                    crate::ProseError::PrefixAmbiguous {
+                        source: "MANUSCRIPT.md".into(),
+                        prefix: "종득은".into(),
+                        occurrences: 2,
+                    }
+                )),
+            }
+        );
+        // Extending the prefix to name one line is accepted — the ambiguity was
+        // real, not a refusal to anchor on a recurring name.
+        assert!(PlayableProjection::from_report_and_passages(
+            name_report(),
+            &ladder_of(&[at("종득은 셈을")]),
+            sc01_multi_line_passages(),
+        )
+        .is_ok());
     }
 
     #[test]
