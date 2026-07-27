@@ -25,13 +25,169 @@ fn header(out: &mut String) {
     out.push_str("// Baked from the store at build time; regenerated whenever the store moves.\n");
 }
 
+/// How many literals one generated function may hold (Round 775).
+///
+/// The number that matters is not this one but the fact that a bound EXISTS:
+/// rustc's per-body work is superlinear, so an emitter that puts a whole store in
+/// one function body pays worse than proportionally as the store grows. Measured
+/// on a controlled pair — the same literals, the same types, the same bytes, in
+/// one body versus many — 5,000 element literals took 29.1s and 1.21GB in one
+/// body and 5.5s and 0.57GB in 100 bodies; halving the input to 2,500 took the
+/// one-body case to 9.0s, so doubling the input cost 3.2x the time. 50 is the
+/// chunk that measurement used. Anything that keeps bodies small works; nothing
+/// that leaves one body unbounded does.
+const CHUNK: usize = 50;
+
+/// The chunk functions emitted so far, plus the counter that keeps their names
+/// unique. Threaded through the renderers because a list at ANY depth may be the
+/// one that grows.
+struct Chunks {
+    fns: String,
+    next: usize,
+}
+
+impl Chunks {
+    fn new() -> Self {
+        Self {
+            fns: String::new(),
+            next: 0,
+        }
+    }
+}
+
+/// Emit `items` as chunk FUNCTIONS of at most [`CHUNK`] literals each and return
+/// the expression that reassembles them, instead of returning one `vec![..]`
+/// literal (Round 775).
+///
+/// `ty` is the element type as generated Rust — the thing that keeps this a typed
+/// bake rather than a table of strings. It is written out rather than inferred
+/// because a function signature cannot infer, and getting it wrong is a build
+/// failure in this crate's own fixture, not a silent one downstream.
+///
+/// `each` takes the emitter too, so a nested list chunks itself: the bound holds
+/// at every depth, not only at the top.
+fn chunked<T>(
+    chunks: &mut Chunks,
+    ty: &str,
+    items: &[T],
+    each: impl Fn(&mut Chunks, &T) -> String,
+) -> String {
+    if items.is_empty() {
+        return "::std::vec::Vec::new()".to_string();
+    }
+    let mut bodies: Vec<String> = Vec::with_capacity(items.len());
+    for item in items {
+        bodies.push(each(chunks, item));
+    }
+    let mut names: Vec<String> = Vec::new();
+    for group in bodies.chunks(CHUNK) {
+        let name = format!("__mn_{}", chunks.next);
+        chunks.next += 1;
+        let _ = writeln!(
+            chunks.fns,
+            "fn {name}() -> ::std::vec::Vec<{ty}> {{ vec![{}] }}",
+            group.join(", ")
+        );
+        names.push(name);
+    }
+    let (first, rest) = names.split_first().expect("a non-empty item list chunks");
+    if rest.is_empty() {
+        return format!("{first}()");
+    }
+    let extends: String = rest
+        .iter()
+        .map(|name| format!(" v.extend({name}());"))
+        .collect();
+    format!("{{ let mut v = {first}();{extends} v }}")
+}
+
+/// The element types the generated chunk functions declare. Named rather than
+/// inlined so the nested ones stay readable — a `by_world` element is a world
+/// paired with its sections paired with their lines.
+const STRING_TY: &str = "::std::string::String";
+const LINE_TY: &str = "::mnemosyne_engine::LinePart";
+const SECTION_LINES_TY: &str =
+    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::LinePart>)";
+/// Spelled with the kernel's own [`SectionLines`](mnemosyne_engine::SectionLines)
+/// alias rather than expanded. Not cosmetic: expanded, this is four levels of
+/// nesting and `clippy::type_complexity` REJECTS it — in the generated file, in a
+/// consumer's build, under the `-D warnings` a consumer is entitled to run. A
+/// generator whose output does not survive its consumer's lints has not finished
+/// generating.
+const WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::SectionLines)";
+const WALK_TY: &str = "(::std::string::String, ::std::vec::Vec<::std::string::String>)";
+const TITLE_TY: &str = "(::std::string::String, ::std::string::String)";
+const CAST_TY: &str = "::mnemosyne_engine::CastPart";
+const SECTION_CAST_TY: &str =
+    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::CastPart>)";
+const FORK_TY: &str = "::mnemosyne_engine::ForkPart";
+const CHOICE_REF_TY: &str = "::mnemosyne_engine::ChoiceEntityRef";
+const DOOR_TY: &str = "::mnemosyne_engine::DoorPart";
+const SECTION_DOORS_TY: &str =
+    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::DoorPart>)";
+const RUNG_TY: &str = "::mnemosyne_engine::Rung";
+const SECTION_RUNGS_TY: &str = "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::Rung>)";
+const QUEST_TY: &str = "::mnemosyne_engine::QuestPart";
+const QUEST_WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::QuestWorldPart)";
+const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
+
 /// Render parts as Rust source. Deterministic — [`ProjectionParts`] is emitted in
 /// sorted key order (R769), so an unchanged store yields a byte-identical file
 /// and a no-op rebuild churns nothing downstream.
+///
+/// Every list becomes [`chunked`] functions rather than one literal (R775), so no
+/// function body grows with the store. The one body that still scales with the
+/// world is `playable_projection` itself, and it holds one CALL per chunk — the
+/// structure, never the prose.
 #[must_use]
 pub fn render(parts: &ProjectionParts) -> String {
+    let mut c = Chunks::new();
+    let by_world = chunked(&mut c, WORLD_TY, &parts.by_world, |c, (world, sections)| {
+        let sections = chunked(c, SECTION_LINES_TY, sections, |c, (section, lines)| {
+            let lines = chunked(c, LINE_TY, lines, |_, l| line(l));
+            format!("({}, {})", string(section), lines)
+        });
+        format!("({}, {})", string(world), sections)
+    });
+    let walks = chunked(&mut c, WALK_TY, &parts.walks, |c, (world, walk)| {
+        format!("({}, {})", string(world), strings(c, walk))
+    });
+    let titles = chunked(&mut c, TITLE_TY, &parts.titles, |_, (section, title)| {
+        format!("({}, {})", string(section), string(title))
+    });
+    let cast = chunked(
+        &mut c,
+        SECTION_CAST_TY,
+        &parts.cast,
+        |c, (section, members)| {
+            let members = chunked(c, CAST_TY, members, |_, m| cast(m));
+            format!("({}, {})", string(section), members)
+        },
+    );
+    let forks = chunked(&mut c, FORK_TY, &parts.forks, |_, f| fork(f));
+    let divergent_endings = strings(&mut c, &parts.divergent_endings);
+    let interactivity = interactivity(&mut c, &parts.interactivity);
+    let choice_entity_refs = chunked(&mut c, CHOICE_REF_TY, &parts.choice_entity_refs, |_, r| {
+        format!(
+            "::mnemosyne_engine::ChoiceEntityRef {{ section: {}, entity: {}, choice: {} }}",
+            string(&r.section),
+            string(&r.entity),
+            string(&r.choice)
+        )
+    });
+    let ask_doors = chunked(
+        &mut c,
+        SECTION_DOORS_TY,
+        &parts.ask_doors,
+        |c, (section, doors)| {
+            let doors = chunked(c, DOOR_TY, doors, |_, d| door(d));
+            format!("({}, {})", string(section), doors)
+        },
+    );
+
     let mut out = String::new();
     header(&mut out);
+    out.push_str(&c.fns);
     let _ = writeln!(
         out,
         "pub fn {FN_NAME}() -> ::mnemosyne_engine::PlayableProjection {{"
@@ -39,78 +195,15 @@ pub fn render(parts: &ProjectionParts) -> String {
     out.push_str("    ::mnemosyne_engine::PlayableProjection::from_parts(\n");
     out.push_str("        ::mnemosyne_engine::ProjectionParts {\n");
     let _ = writeln!(out, "            telling: {},", string(&parts.telling));
-    let _ = writeln!(
-        out,
-        "            by_world: {},",
-        vec_of(&parts.by_world, |(world, sections)| {
-            format!(
-                "({}, {})",
-                string(world),
-                vec_of(sections, |(section, lines)| format!(
-                    "({}, {})",
-                    string(section),
-                    vec_of(lines, line)
-                ))
-            )
-        })
-    );
-    let _ = writeln!(
-        out,
-        "            walks: {},",
-        vec_of(&parts.walks, |(world, walk)| format!(
-            "({}, {})",
-            string(world),
-            strings(walk)
-        ))
-    );
-    let _ = writeln!(
-        out,
-        "            titles: {},",
-        vec_of(&parts.titles, |(section, title)| format!(
-            "({}, {})",
-            string(section),
-            string(title)
-        ))
-    );
-    let _ = writeln!(
-        out,
-        "            cast: {},",
-        vec_of(&parts.cast, |(section, members)| format!(
-            "({}, {})",
-            string(section),
-            vec_of(members, cast)
-        ))
-    );
-    let _ = writeln!(out, "            forks: {},", vec_of(&parts.forks, fork));
-    let _ = writeln!(
-        out,
-        "            divergent_endings: {},",
-        strings(&parts.divergent_endings)
-    );
-    let _ = writeln!(
-        out,
-        "            interactivity: {},",
-        interactivity(&parts.interactivity)
-    );
-    let _ = writeln!(
-        out,
-        "            choice_entity_refs: {},",
-        vec_of(&parts.choice_entity_refs, |r| format!(
-            "::mnemosyne_engine::ChoiceEntityRef {{ section: {}, entity: {}, choice: {} }}",
-            string(&r.section),
-            string(&r.entity),
-            string(&r.choice)
-        ))
-    );
-    let _ = writeln!(
-        out,
-        "            ask_doors: {},",
-        vec_of(&parts.ask_doors, |(section, doors)| format!(
-            "({}, {})",
-            string(section),
-            vec_of(doors, door)
-        ))
-    );
+    let _ = writeln!(out, "            by_world: {by_world},");
+    let _ = writeln!(out, "            walks: {walks},");
+    let _ = writeln!(out, "            titles: {titles},");
+    let _ = writeln!(out, "            cast: {cast},");
+    let _ = writeln!(out, "            forks: {forks},");
+    let _ = writeln!(out, "            divergent_endings: {divergent_endings},");
+    let _ = writeln!(out, "            interactivity: {interactivity},");
+    let _ = writeln!(out, "            choice_entity_refs: {choice_entity_refs},");
+    let _ = writeln!(out, "            ask_doors: {ask_doors},");
     out.push_str("        },\n    )\n}\n");
     out
 }
@@ -124,8 +217,11 @@ pub fn render(parts: &ProjectionParts) -> String {
 /// nothing is sorted on the way out here either.
 #[must_use]
 pub fn render_quest(parts: &QuestProjectionParts) -> String {
+    let mut c = Chunks::new();
+    let quests = chunked(&mut c, QUEST_TY, &parts.quests, quest);
     let mut out = String::new();
     header(&mut out);
+    out.push_str(&c.fns);
     let _ = writeln!(
         out,
         "pub fn {QUEST_FN_NAME}() -> ::mnemosyne_engine::QuestProjection {{"
@@ -133,33 +229,36 @@ pub fn render_quest(parts: &QuestProjectionParts) -> String {
     out.push_str("    ::mnemosyne_engine::QuestProjection::from_parts(\n");
     out.push_str("        ::mnemosyne_engine::QuestProjectionParts {\n");
     let _ = writeln!(out, "            telling: {},", string(&parts.telling));
-    let _ = writeln!(out, "            quests: {},", vec_of(&parts.quests, quest));
+    let _ = writeln!(out, "            quests: {quests},");
     out.push_str("        },\n    )\n}\n");
     out
 }
 
-fn quest(part: &QuestPart) -> String {
+fn quest(chunks: &mut Chunks, part: &QuestPart) -> String {
+    let per_world = chunked(
+        chunks,
+        QUEST_WORLD_TY,
+        &part.per_world,
+        |chunks, (world, state)| format!("({}, {})", string(world), quest_world(chunks, state)),
+    );
     format!(
         "::mnemosyne_engine::QuestPart {{ quest_id: {}, objective: {}, actors: {}, \
-         prerequisites: {}, per_world: {}, preconditions: {} }}",
+         prerequisites: {}, per_world: {per_world}, preconditions: {} }}",
         string(&part.quest_id),
         string(&part.objective),
-        strings(&part.actors),
-        strings(&part.prerequisites),
-        vec_of(&part.per_world, |(world, state)| format!(
-            "({}, {})",
-            string(world),
-            quest_world(state)
-        )),
-        strings(&part.preconditions),
+        inline_strings(&part.actors),
+        inline_strings(&part.prerequisites),
+        inline_strings(&part.preconditions),
     )
 }
 
-fn quest_world(part: &QuestWorldPart) -> String {
+fn quest_world(chunks: &mut Chunks, part: &QuestWorldPart) -> String {
     format!(
         "::mnemosyne_engine::QuestWorldPart {{ state: {}, completions: {} }}",
         quest_state(part.state),
-        vec_of(&part.completions, quest_completion),
+        chunked(chunks, QUEST_COMPLETION_TY, &part.completions, |_, c| {
+            quest_completion(c)
+        }),
     )
 }
 
@@ -189,20 +288,24 @@ fn string(s: &str) -> String {
     format!("{s:?}.to_string()")
 }
 
-fn strings(items: &[String]) -> String {
-    vec_of(items, |s| string(s))
-}
-
-fn vec_of<T>(items: &[T], each: impl Fn(&T) -> String) -> String {
-    if items.is_empty() {
-        return "::std::vec::Vec::new()".to_string();
-    }
-    let body: Vec<String> = items.iter().map(each).collect();
-    format!("vec![{}]", body.join(", "))
+fn strings(chunks: &mut Chunks, items: &[String]) -> String {
+    chunked(chunks, STRING_TY, items, |_, s| string(s))
 }
 
 fn option(inner: Option<String>) -> String {
     inner.map_or_else(|| "None".to_string(), |value| format!("Some({value})"))
+}
+
+/// A line's own string lists are emitted INLINE rather than chunked: a line names
+/// a handful of entities, and a chunk function per line would cost more items
+/// than it bounds. The bound that matters is on the list OF lines, which
+/// [`render`] chunks.
+fn inline_strings(items: &[String]) -> String {
+    if items.is_empty() {
+        return "::std::vec::Vec::new()".to_string();
+    }
+    let body: Vec<String> = items.iter().map(|s| string(s)).collect();
+    format!("vec![{}]", body.join(", "))
 }
 
 fn line(part: &LinePart) -> String {
@@ -213,7 +316,7 @@ fn line(part: &LinePart) -> String {
         string(&part.text),
         disclosure_mode(part.mode),
         string(&part.frame),
-        strings(&part.entities),
+        inline_strings(&part.entities),
         option(part.carrier.as_deref().map(string)),
         option(part.typed_predicate.as_deref().map(string)),
         option(part.quote.as_deref().map(string)),
@@ -251,7 +354,7 @@ fn door(part: &DoorPart) -> String {
         DoorPart::Examine { object, reveals } => format!(
             "::mnemosyne_engine::DoorPart::Examine {{ object: {}, reveals: {} }}",
             string(object),
-            strings(reveals)
+            inline_strings(reveals)
         ),
         DoorPart::Ask { question, reveals } => format!(
             "::mnemosyne_engine::DoorPart::Ask {{ question: {}, reveals: {} }}",
@@ -261,20 +364,28 @@ fn door(part: &DoorPart) -> String {
     }
 }
 
-fn interactivity(layer: &Interactivity) -> String {
-    let mut ladders: Vec<(&String, &Vec<Rung>)> = layer.ladders.iter().collect();
-    ladders.sort_by(|a, b| a.0.cmp(b.0));
-    let mut objects: Vec<&String> = layer.objects.iter().collect();
+fn interactivity(chunks: &mut Chunks, layer: &Interactivity) -> String {
+    let mut ladders: Vec<(String, Vec<Rung>)> = layer
+        .ladders
+        .iter()
+        .map(|(section, rungs)| (section.clone(), rungs.clone()))
+        .collect();
+    ladders.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut objects: Vec<String> = layer.objects.iter().cloned().collect();
     objects.sort();
+    let ladders = chunked(
+        chunks,
+        SECTION_RUNGS_TY,
+        &ladders,
+        |chunks, (section, rungs)| {
+            let rungs = chunked(chunks, RUNG_TY, rungs, |_, r| rung(r));
+            format!("({}, {})", string(section), rungs)
+        },
+    );
+    let objects = strings(chunks, &objects);
     format!(
-        "::mnemosyne_engine::Interactivity {{ ladders: {}.into_iter().collect(), \
-         objects: {}.into_iter().collect(), free_investigate: {} }}",
-        vec_of(&ladders, |(section, rungs)| format!(
-            "({}, {})",
-            string(section),
-            vec_of(rungs, rung)
-        )),
-        vec_of(&objects, |id| string(id)),
+        "::mnemosyne_engine::Interactivity {{ ladders: {ladders}.into_iter().collect(), \
+         objects: {objects}.into_iter().collect(), free_investigate: {} }}",
         layer.free_investigate,
     )
 }
@@ -285,7 +396,7 @@ fn rung(r: &Rung) -> String {
         string(&r.question),
         option(r.question_anchor.as_ref().map(anchor)),
         string(&r.reveals),
-        strings(&r.needs),
+        inline_strings(&r.needs),
     )
 }
 

@@ -314,6 +314,74 @@ mod tests {
         assert_eq!(done[1].actor, None);
     }
 
+    /// Parts carrying `n` lines in one section — a fixture that GROWS, for the
+    /// scaling assertion below.
+    fn parts_with_lines(n: usize) -> ProjectionParts {
+        ProjectionParts {
+            telling: "reader".to_string(),
+            by_world: vec![(
+                "main".to_string(),
+                vec![(
+                    "sc-01".to_string(),
+                    (0..n)
+                        .map(|i| LinePart {
+                            fact_id: format!("f-{i:06}"),
+                            text: "그는 \"셈\"이라 했다.".to_string(),
+                            mode: DisclosureMode::State,
+                            frame: "ground-truth".to_string(),
+                            entities: vec!["ent-a".to_string()],
+                            carrier: None,
+                            typed_predicate: None,
+                            quote: None,
+                            count: None,
+                        })
+                        .collect(),
+                )],
+            )],
+            walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+            titles: Vec::new(),
+            cast: Vec::new(),
+            forks: Vec::new(),
+            divergent_endings: Vec::new(),
+            interactivity: Interactivity::default(),
+            choice_entity_refs: Vec::new(),
+            ask_doors: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_bigger_store_makes_more_functions_not_a_bigger_one() {
+        // Round 775 — the emitter's contract, and the reason it exists: rustc's
+        // per-body work is superlinear, so a generator that puts a whole store in
+        // one function body pays worse than proportionally as the store grows.
+        // Measured on a controlled pair (same literals, same types, same bytes):
+        // 29.1s / 1.21GB in one body against 5.5s / 0.57GB in a hundred, and
+        // halving the input took the one-body case to 9.0s — 2x the input for
+        // 3.2x the time. On the first consumer's real store the emitted file went
+        // from 34.5s / 1.13GB to 7.5s / 0.53GB.
+        //
+        // The assertion is the SCALING, not a byte threshold: quadruple the store
+        // and the file must grow while the largest single body must not. Before
+        // this round the largest line WAS the file — 98% of it.
+        let longest = |src: &str| src.lines().map(str::len).max().unwrap_or(0);
+        let small = crate::render(&parts_with_lines(200));
+        let big = crate::render(&parts_with_lines(800));
+        assert!(
+            big.len() > 3 * small.len(),
+            "the fixture must actually grow: {} vs {}",
+            small.len(),
+            big.len()
+        );
+        assert!(
+            longest(&big) < 2 * longest(&small),
+            "a function body grew with the store: {} -> {}",
+            longest(&small),
+            longest(&big)
+        );
+        // And the growth went where it was supposed to go.
+        assert!(big.matches("fn __mn_").count() > small.matches("fn __mn_").count());
+    }
+
     #[test]
     fn quest_parts_are_constructible_from_a_downstream_crate() {
         // The check an IN-CRATE test structurally cannot make, and the reason it
