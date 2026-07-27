@@ -13,6 +13,10 @@
 //! carrying quotes, newlines, backslashes and non-ASCII. The escaping claim in
 //! `render`'s docs ("`{:?}` on a `&str` is exactly Rust literal escaping") is
 //! therefore proven by rustc rather than asserted.
+//!
+//! Round 774 added the quest fixture on the same terms: all three `QuestState`
+//! variants, a completion with an actor and one without, and a quest spanning two
+//! roads.
 
 use std::collections::{HashMap, HashSet};
 
@@ -131,7 +135,70 @@ fn main() {
         )],
     };
 
-    let out = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR"))
-        .join("fixture_playable.rs");
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
+    let out = std::path::Path::new(&out_dir).join("fixture_playable.rs");
     std::fs::write(&out, render(&parts)).expect("write the generated fixture");
+
+    // The quest axis, dogfooded the same way (Round 774). Every emitted form
+    // again: all three QuestState variants, an actor present and absent, two
+    // roads on one quest, and the nasty string in the objective — a quest
+    // objective is authored prose and quotes it just as freely as a line does.
+    let quests = QuestProjectionParts {
+        telling: "reader".to_string(),
+        quests: vec![
+            QuestPart {
+                quest_id: "q-knot-1".to_string(),
+                objective: nasty.to_string(),
+                actors: vec!["ent-jiun".to_string()],
+                prerequisites: vec!["q-salt".to_string()],
+                per_world: vec![
+                    (
+                        "dark".to_string(),
+                        QuestWorldPart {
+                            state: mnemosyne_engine::QuestState::Unknown,
+                            completions: Vec::new(),
+                        },
+                    ),
+                    (
+                        "main".to_string(),
+                        QuestWorldPart {
+                            state: mnemosyne_engine::QuestState::Done,
+                            completions: vec![
+                                QuestCompletionPart {
+                                    fact: "f-confess".to_string(),
+                                    scene: "sc-gut".to_string(),
+                                    actor: Some("ent-eldest".to_string()),
+                                },
+                                QuestCompletionPart {
+                                    fact: "f-second".to_string(),
+                                    scene: "sc-gut".to_string(),
+                                    actor: None,
+                                },
+                            ],
+                        },
+                    ),
+                ],
+                preconditions: vec!["f-clue".to_string()],
+            },
+            QuestPart {
+                quest_id: "q-salt".to_string(),
+                objective: "the salt debt".to_string(),
+                actors: Vec::new(),
+                prerequisites: Vec::new(),
+                per_world: vec![(
+                    "main".to_string(),
+                    QuestWorldPart {
+                        state: mnemosyne_engine::QuestState::Open,
+                        completions: Vec::new(),
+                    },
+                )],
+                preconditions: Vec::new(),
+            },
+        ],
+    };
+    std::fs::write(
+        std::path::Path::new(&out_dir).join("fixture_quest.rs"),
+        render_quest(&quests),
+    )
+    .expect("write the generated quest fixture");
 }

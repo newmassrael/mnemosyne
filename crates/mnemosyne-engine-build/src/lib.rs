@@ -1,4 +1,4 @@
-//! mnemosyne-engine-build — bake a playable projection at BUILD time (Round 770).
+//! mnemosyne-engine-build — bake a store projection at BUILD time (Round 770).
 //!
 //! A consumer used to project the store on every run. That is correct and it is
 //! also work done once per launch for an answer that only changes when the store
@@ -8,6 +8,11 @@
 //! no store read, no parse, and no `Result`
 //! ([`PlayableProjection::from_parts`](mnemosyne_engine::PlayableProjection::from_parts)
 //! is infallible, R769).
+//!
+//! BOTH axes bake (Round 774): [`emit_playable_projection`] for the narrative
+//! one, [`emit_quest_projection`] for the journal one. A consumer that calls both
+//! opens the store zero times at startup, which is the whole of "everything at
+//! compile time" rather than the half of it one emitter buys.
 //!
 //! # Why the checks did not go away
 //!
@@ -61,13 +66,35 @@
 //! ```
 //!
 //! and the crate does `include!(concat!(env!("OUT_DIR"), "/playable.rs"));`.
+//!
+//! The quest axis is the same shape, with the consumer's own precondition
+//! predicate the one thing it must declare (the kernel does not know a
+//! predicate's name):
+//!
+//! ```no_run
+//! let overrides = mnemosyne_engine::StaticOverrides {
+//!     quest_precondition_predicates: vec!["opened_by".to_string()],
+//!     ..Default::default()
+//! };
+//! let source = mnemosyne_engine_build::emit_quest_projection(
+//!     std::path::Path::new("."),
+//!     "reader",
+//!     &overrides,
+//! )
+//! .expect("bake the quest projection");
+//! std::fs::write(
+//!     std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("quests.rs"),
+//!     source,
+//! )
+//! .unwrap();
+//! ```
 
 use std::path::Path;
 
-use mnemosyne_engine::{EngineError, EngineOverrides, PlayableProjection};
+use mnemosyne_engine::{EngineError, EngineOverrides, PlayableProjection, QuestProjection};
 
 mod render;
-pub use render::render;
+pub use render::{render, render_quest};
 
 /// Project the workspace at build time and return Rust source defining
 /// `pub fn playable_projection() -> PlayableProjection`.
@@ -95,6 +122,45 @@ pub fn emit_playable_projection(
     Ok(render(&projection.to_parts()))
 }
 
+/// Project the workspace's QUEST graph at build time and return Rust source
+/// defining `pub fn quest_projection() -> QuestProjection` (Round 774) — the
+/// JOURNAL-axis sibling of [`emit_playable_projection`], and the same trade: a
+/// consumer that baked both opens the store zero times at startup.
+///
+/// # What moves and what does not
+///
+/// The DERIVATION of the quest layer moves to the build; the EVALUATION of quest
+/// rules does not. R764 said quest preconditions are game rules over player state
+/// and stay at runtime, and that is untouched here — a baked
+/// [`QuestProjection`](mnemosyne_engine::QuestProjection) still answers
+/// `completability` against a playable projection whenever it is asked, because
+/// the gate is a question, not a field.
+///
+/// # Why there is no order override
+///
+/// [`QuestProjection::from_workspace`](mnemosyne_engine::QuestProjection::from_workspace)
+/// takes one; this does not, and passes `None`. An `--order` override is
+/// CWD-relative CLI semantics with no meaning in a build script, and worse, it
+/// would read a canon order this crate did not DECLARE to cargo — which is
+/// exactly the divergence between the file declared and the file opened that
+/// R772 closed. Declaration and read stay one thing by leaving no way to split
+/// them.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the quest-graph read fails — an unregistered
+/// world, a typo'd telling, a malformed quest predicate, an unreadable store.
+/// Each is a BUILD failure; the consumer's runtime never sees them.
+pub fn emit_quest_projection(
+    workspace_root: &Path,
+    telling: &str,
+    overrides: &impl EngineOverrides,
+) -> Result<String, EngineError> {
+    declare_inputs(workspace_root)?;
+    let projection = QuestProjection::from_workspace(workspace_root, telling, None, overrides)?;
+    Ok(render_quest(&projection.to_parts()))
+}
+
 /// Tell cargo which files the bake depends on, so a store edit regenerates it.
 ///
 /// The paths are RESOLVED through the same config the loader reads
@@ -118,6 +184,8 @@ fn declare_inputs(workspace_root: &Path) -> Result<(), EngineError> {
 mod tests {
     use mnemosyne_engine::{
         DisclosureMode, DoorPart, Interactivity, LinePart, PlayableProjection, ProjectionParts,
+        QuestCompletionPart, QuestPart, QuestProjection, QuestProjectionParts, QuestState,
+        QuestWorldPart,
     };
 
     /// The generator's own output, compiled INTO this crate by `build.rs`. That
@@ -126,6 +194,11 @@ mod tests {
     /// here — the same failure a consumer would get, caught in this workspace.
     mod baked {
         include!(concat!(env!("OUT_DIR"), "/fixture_playable.rs"));
+    }
+
+    /// The same gate for the quest axis (Round 774).
+    mod baked_quest {
+        include!(concat!(env!("OUT_DIR"), "/fixture_quest.rs"));
     }
 
     #[test]
@@ -208,5 +281,71 @@ mod tests {
         };
         let proj = PlayableProjection::from_parts(parts);
         assert_eq!(proj.lines("main", "sc-01").len(), 1);
+    }
+
+    #[test]
+    fn the_generated_quest_source_rebuilds_the_projection_it_was_baked_from() {
+        // Compiling was the hard part; this asserts the VALUES survived, so a
+        // generator that emitted syntactically valid but wrong code still fails.
+        let proj = baked_quest::quest_projection();
+        assert_eq!(proj.telling(), "reader");
+        assert_eq!(proj.quests().len(), 2);
+
+        let knot = proj.quest("q-knot-1").expect("the quest is baked");
+        // The nasty string round-tripped through a Rust literal: a quest
+        // objective is authored prose and quotes as freely as a line does.
+        assert_eq!(knot.objective, "그는 \"셈\"이라 했다.\n뒤에 \\ 하나.");
+        assert_eq!(knot.actors, ["ent-jiun".to_string()]);
+        assert_eq!(knot.prerequisites, ["q-salt".to_string()]);
+        assert_eq!(knot.preconditions, ["f-clue".to_string()]);
+
+        // Two roads on one quest, and all three states across the fixture.
+        assert_eq!(knot.per_world["main"].state, QuestState::Done);
+        assert_eq!(knot.per_world["dark"].state, QuestState::Unknown);
+        assert_eq!(
+            proj.quest("q-salt").expect("the second quest").per_world["main"].state,
+            QuestState::Open
+        );
+
+        // Option in both states, on the completions that carry the actor.
+        let done = &knot.per_world["main"].completions;
+        assert_eq!(done[0].actor.as_deref(), Some("ent-eldest"));
+        assert_eq!(done[0].scene, "sc-gut");
+        assert_eq!(done[1].actor, None);
+    }
+
+    #[test]
+    fn quest_parts_are_constructible_from_a_downstream_crate() {
+        // The check an IN-CRATE test structurally cannot make, and the reason it
+        // is repeated on this axis rather than assumed from the playable one:
+        // every QuestView type is `#[non_exhaustive]`, so a literal for any of
+        // them fails to compile OUTSIDE mnemosyne-engine — while R773's
+        // round-trip test lives INSIDE it and would not notice. This crate is
+        // downstream, so if QuestProjectionParts ever readmits a member no
+        // foreign crate can build, THIS stops compiling. That is exactly how the
+        // R769 defect survived until R770 caught it from here.
+        let parts = QuestProjectionParts {
+            telling: "reader".to_string(),
+            quests: vec![QuestPart {
+                quest_id: "q-1".to_string(),
+                objective: "a quest".to_string(),
+                actors: Vec::new(),
+                prerequisites: Vec::new(),
+                per_world: vec![(
+                    "main".to_string(),
+                    QuestWorldPart {
+                        state: QuestState::Done,
+                        completions: vec![QuestCompletionPart {
+                            fact: "f-done".to_string(),
+                            scene: "sc-01".to_string(),
+                            actor: None,
+                        }],
+                    },
+                )],
+                preconditions: Vec::new(),
+            }],
+        };
+        let proj = QuestProjection::from_parts(parts);
+        assert_eq!(proj.quests().len(), 1);
     }
 }
