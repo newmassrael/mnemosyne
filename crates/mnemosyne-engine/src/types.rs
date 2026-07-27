@@ -447,7 +447,7 @@ pub struct ChoiceEntityRef {
 /// it; loading it (from files or a trait) is a consumer override built in a
 /// later phase. `Default` = no interactivity (only fork doors, all narrative
 /// shown directly).
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Interactivity {
     /// Section id -> the authored rung chain dug at that spot.
     pub ladders: HashMap<String, Vec<Rung>>,
@@ -470,4 +470,109 @@ pub struct Interactivity {
     /// is stranded). A modal consumer that forgets a door still fails loud.
     #[serde(default)]
     pub free_investigate: bool,
+}
+
+/// A [`Line`] as plain data (Round 769) — the emit/ingest shape of the one type
+/// a downstream crate may READ but never FABRICATE.
+///
+/// `Line` keeps crate-private fields on purpose (invention is unrepresentable),
+/// which also means generated code in another crate cannot construct one. So a
+/// baked projection carries THIS instead: a pub-field mirror the engine converts
+/// back inside the crate, where the private constructor is reachable. The guard
+/// it does not weaken is the one that matters — a RENDERER still cannot mint a
+/// sentence, because a renderer holds a `Line` and never a part. The guard it
+/// does move is the ingestion one, which was already open at the report boundary
+/// (R764 weak point 1): a build-time forger and a report forger are the same
+/// forger, and neither is the threat model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinePart {
+    /// Provenance — the `narrative_facts` key this line projects.
+    pub fact_id: String,
+    /// The authored claim from the store.
+    pub text: String,
+    /// How the telling surfaces it; never [`DisclosureMode::Withhold`].
+    pub mode: DisclosureMode,
+    /// Whose knowledge this is (the store's epistemic frame).
+    pub frame: String,
+    /// The store entities the fact names.
+    pub entities: Vec<String>,
+    /// The diegetic carrier the disclosure rides on.
+    pub carrier: Option<String>,
+    /// The typed leg's predicate, when the fact carries one.
+    pub typed_predicate: Option<String>,
+    /// The authored quote backing the fact.
+    pub quote: Option<String>,
+    /// The asserted multiplicity riding the fact.
+    pub count: Option<i64>,
+}
+
+/// A [`CastMember`] as plain data (Round 769) — the emit/ingest mirror, for the
+/// same reason as [`LinePart`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CastPart {
+    /// The store entity present in the scene.
+    pub entity: String,
+    /// The authored evidentiary stance behind the presence.
+    pub modality: Modality,
+    /// Whether this presence can answer the reckoner's questions.
+    pub can_answer: bool,
+    /// The manuscript quote proving the presence.
+    pub quote: String,
+}
+
+impl Line {
+    /// Ingest a [`LinePart`] — crate-private, so the only way a part becomes a
+    /// `Line` is through the engine (Round 769).
+    pub(crate) fn from_part(part: LinePart) -> Self {
+        Self {
+            fact_id: part.fact_id,
+            text: part.text,
+            mode: part.mode,
+            frame: part.frame,
+            entities: part.entities,
+            carrier: part.carrier,
+            typed_predicate: part.typed_predicate,
+            quote: part.quote,
+            count: part.count,
+        }
+    }
+
+    /// Emit this line as plain data (Round 769) — what a build-time bake writes.
+    #[must_use]
+    pub fn to_part(&self) -> LinePart {
+        LinePart {
+            fact_id: self.fact_id.clone(),
+            text: self.text.clone(),
+            mode: self.mode,
+            frame: self.frame.clone(),
+            entities: self.entities.clone(),
+            carrier: self.carrier.clone(),
+            typed_predicate: self.typed_predicate.clone(),
+            quote: self.quote.clone(),
+            count: self.count,
+        }
+    }
+}
+
+impl CastMember {
+    /// Ingest a [`CastPart`] — crate-private (Round 769).
+    pub(crate) fn from_part(part: CastPart) -> Self {
+        Self {
+            entity: part.entity,
+            modality: part.modality,
+            can_answer: part.can_answer,
+            quote: part.quote,
+        }
+    }
+
+    /// Emit this cast member as plain data (Round 769).
+    #[must_use]
+    pub fn to_part(&self) -> CastPart {
+        CastPart {
+            entity: self.entity.clone(),
+            modality: self.modality,
+            can_answer: self.can_answer,
+            quote: self.quote.clone(),
+        }
+    }
 }

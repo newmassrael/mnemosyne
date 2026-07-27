@@ -38,12 +38,15 @@ pub use gate::GateViolation;
 pub use mnemosyne_core::{DisclosureMode, Modality, MAIN_BRANCH};
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
-pub use projection::{fresh_disclosure, PlayableProjection};
+pub use projection::{fresh_disclosure, PlayableProjection, ProjectionParts, SectionLines};
 pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
 pub use quest::{
     QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
 };
-pub use types::{CastMember, ChoiceEntityRef, Door, Fork, Interactivity, Line, Rung, SceneView};
+pub use types::{
+    CastMember, CastPart, ChoiceEntityRef, Door, Fork, Interactivity, Line, LinePart, Rung,
+    SceneView,
+};
 
 use std::fmt;
 

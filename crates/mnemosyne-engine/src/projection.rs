@@ -10,8 +10,8 @@ use mnemosyne_core::MAIN_BRANCH;
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
 use crate::{
-    CastMember, ChoiceEntityRef, ContentAnchor, Door, EngineError, EngineOverrides, Fork,
-    Interactivity, Line, Passage, PrefixSlices, Rung, RungQuestionFault, SceneView,
+    CastMember, CastPart, ChoiceEntityRef, ContentAnchor, Door, EngineError, EngineOverrides, Fork,
+    Interactivity, Line, LinePart, Passage, PrefixSlices, Rung, RungQuestionFault, SceneView,
 };
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
@@ -498,6 +498,142 @@ pub fn fresh_disclosure<'a>(reveals: &'a [String], known: &HashSet<String>) -> V
 /// [`EngineError::RungQuestionUnresolvable`], never a silent fall-back to the free
 /// string. This is the store-resolution that makes a fabricated door label
 /// inexpressible for a provenance-bound consumer.
+/// One world's baked narrative: each section paired with the lines disclosed
+/// there, in section order (Round 769).
+pub type SectionLines = Vec<(String, Vec<LinePart>)>;
+
+/// A whole [`PlayableProjection`] as plain data (Round 769) — what a build-time
+/// bake writes out and reads back.
+///
+/// Every field is already resolved: the store read, the locator join, and the
+/// ladder-question resolution all happened when this was produced. So
+/// [`PlayableProjection::from_parts`] takes no `Result` — there is nothing left
+/// to check, because there is no untrusted input left to check it against. That
+/// is the whole shape of the build-time move (R764): the checks do not get
+/// deleted, they get discharged where the store is, and what remains at runtime
+/// is data the compiler has already type-checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectionParts {
+    /// The telling this projection was resolved under.
+    pub telling: String,
+    /// `world -> section -> the disclosed lines there`.
+    pub by_world: Vec<(String, SectionLines)>,
+    /// `world -> its declared scene walk`.
+    pub walks: Vec<(String, Vec<String>)>,
+    /// `section -> its skeleton title`.
+    pub titles: Vec<(String, String)>,
+    /// `section -> the store-owned cast standing there`.
+    pub cast: Vec<(String, Vec<CastPart>)>,
+    /// The cross-world choice graph.
+    pub forks: Vec<Fork>,
+    /// World-lines whose ending diverges.
+    pub divergent_endings: Vec<String>,
+    /// The consumer's interactive layer, as it was at bake time.
+    pub interactivity: Interactivity,
+    /// Declared choice-to-entity references.
+    pub choice_entity_refs: Vec<ChoiceEntityRef>,
+    /// `section -> the ask doors dug there, questions ALREADY resolved`.
+    pub ask_doors: Vec<(String, Vec<Door>)>,
+}
+
+impl PlayableProjection {
+    /// Emit this projection as plain data (Round 769) — the bake half of the
+    /// build-time seam. Deterministic: every map is emitted in sorted key order,
+    /// so the same store produces byte-identical generated source and a rebuild
+    /// that changed nothing changes nothing.
+    #[must_use]
+    pub fn to_parts(&self) -> ProjectionParts {
+        fn sorted<T: Clone>(map: &HashMap<String, T>) -> Vec<(String, T)> {
+            let mut out: Vec<(String, T)> = map
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            out.sort_by(|a, b| a.0.cmp(&b.0));
+            out
+        }
+        let mut divergent_endings: Vec<String> = self.divergent_endings.iter().cloned().collect();
+        divergent_endings.sort();
+        ProjectionParts {
+            telling: self.telling.clone(),
+            by_world: sorted(&self.by_world)
+                .into_iter()
+                .map(|(world, sections)| {
+                    (
+                        world,
+                        sorted(&sections)
+                            .into_iter()
+                            .map(|(section, lines)| {
+                                (section, lines.iter().map(Line::to_part).collect())
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+            walks: sorted(&self.walks),
+            titles: sorted(&self.titles),
+            cast: sorted(&self.cast)
+                .into_iter()
+                .map(|(section, members)| {
+                    (section, members.iter().map(CastMember::to_part).collect())
+                })
+                .collect(),
+            forks: self.forks.clone(),
+            divergent_endings,
+            interactivity: self.interactivity.clone(),
+            choice_entity_refs: self.choice_entity_refs.clone(),
+            ask_doors: sorted(&self.ask_doors),
+        }
+    }
+
+    /// Ingest baked parts (Round 769) — the read half, and INFALLIBLE by
+    /// construction rather than by optimism.
+    ///
+    /// There is no `Result` because there is no check left to run: a locator join
+    /// that could dangle already happened, a ladder question that could fail to
+    /// resolve already resolved, and a store that could be unreadable was read at
+    /// bake time. A consumer built this way does no validation at startup because
+    /// it takes in no input that could be wrong — the artifact is generated from
+    /// the store by its own build and type-checked by its own compiler.
+    #[must_use]
+    pub fn from_parts(parts: ProjectionParts) -> Self {
+        Self {
+            telling: parts.telling,
+            by_world: parts
+                .by_world
+                .into_iter()
+                .map(|(world, sections)| {
+                    (
+                        world,
+                        sections
+                            .into_iter()
+                            .map(|(section, lines)| {
+                                (section, lines.into_iter().map(Line::from_part).collect())
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+            walks: parts.walks.into_iter().collect(),
+            titles: parts.titles.into_iter().collect(),
+            cast: parts
+                .cast
+                .into_iter()
+                .map(|(section, members)| {
+                    (
+                        section,
+                        members.into_iter().map(CastMember::from_part).collect(),
+                    )
+                })
+                .collect(),
+            forks: parts.forks,
+            divergent_endings: parts.divergent_endings.into_iter().collect(),
+            interactivity: parts.interactivity,
+            choice_entity_refs: parts.choice_entity_refs,
+            ask_doors: parts.ask_doors.into_iter().collect(),
+        }
+    }
+}
+
 fn resolve_ladder_questions(
     section: &str,
     rungs: &[Rung],
@@ -1141,6 +1277,125 @@ mod tests {
             vec!["이름을 물었다.".to_string(), "물때를 물었다.".to_string()],
             "each hold is named by the line it starts at"
         );
+    }
+
+    #[test]
+    fn a_baked_projection_answers_exactly_as_the_projected_one() {
+        // Round 769 — the build-time seam's whole claim, stated as a test: a
+        // projection that went out through `to_parts` and came back through the
+        // INFALLIBLE `from_parts` answers every public query identically. If this
+        // holds, moving the projection to build time costs a consumer nothing but
+        // the store read it wanted to stop paying.
+        // A world thick enough that every part-carrying field is POPULATED —
+        // an empty `cast` or `forks` would let a dropped field pass unnoticed.
+        let mut fork_tree = ForkTreeReport::default();
+        fork_tree
+            .branches
+            .push(branch("dark", "돌아선다", "main", "sc-01", &[]));
+        fork_tree.branch_count = 1;
+        let thick = crate::test_support::report_worlds(
+            vec![
+                (
+                    "main",
+                    vec![cast_scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![begin(
+                            "f-name",
+                            "the name is Yeonggeun",
+                            "ground-truth",
+                            &["ent-a"],
+                        )],
+                        vec![presence(
+                            "ent-jongdeuk",
+                            Modality::Observed,
+                            true,
+                            "종득은 섰다.",
+                        )],
+                    )],
+                    vec![locator("f-name", "sc-01", DisclosureMode::Hint)],
+                ),
+                (
+                    // The SAME scene_cast: presence is authored on the shared
+                    // section, so every world walking it sees one cast. Giving
+                    // one world a cast and the other none would be a state the
+                    // store cannot produce, and the projection (first world to
+                    // carry a section fixes its cast) would read the empty one.
+                    "dark",
+                    vec![cast_scene(
+                        "sc-01",
+                        "Dawn",
+                        vec![begin(
+                            "f-name",
+                            "the name is Yeonggeun",
+                            "ground-truth",
+                            &[],
+                        )],
+                        vec![presence(
+                            "ent-jongdeuk",
+                            Modality::Observed,
+                            true,
+                            "종득은 섰다.",
+                        )],
+                    )],
+                    vec![locator("f-name", "sc-01", DisclosureMode::State)],
+                ),
+            ],
+            fork_tree,
+        );
+        let live = PlayableProjection::from_report_and_passages(
+            thick,
+            &ladder_of(&[at("이름을"), at("물때를")]),
+            sc01_multi_line_passages(),
+        )
+        .expect("the live projection");
+        // The fixture must actually exercise the fields, or the test proves
+        // nothing about them.
+        assert!(!live.cast_at("sc-01").is_empty(), "fixture must carry cast");
+        assert!(
+            !live.forks_at("sc-01", "main").is_empty(),
+            "fixture must carry a fork"
+        );
+        let baked = PlayableProjection::from_parts(live.to_parts());
+
+        assert_eq!(baked.telling(), live.telling());
+        assert_eq!(baked.spine(), live.spine());
+        for world in ["main", "dark"] {
+            assert_eq!(baked.walk(world), live.walk(world));
+            assert_eq!(
+                baked.is_divergent_ending(world),
+                live.is_divergent_ending(world)
+            );
+            for section in live.walk(world) {
+                assert_eq!(baked.lines(world, section), live.lines(world, section));
+                assert_eq!(baked.title(section), live.title(section));
+                assert_eq!(baked.cursor_of(section), live.cursor_of(section));
+                assert_eq!(baked.cast_at(section), live.cast_at(section));
+                assert_eq!(
+                    baked.forks_at(section, world),
+                    live.forks_at(section, world)
+                );
+                assert_eq!(baked.scene(world, section), live.scene(world, section));
+                assert_eq!(
+                    baked.referenceable_entities(world, section),
+                    live.referenceable_entities(world, section)
+                );
+                let known = HashSet::new();
+                assert_eq!(
+                    baked.live_doors_at(world, section, &known),
+                    live.live_doors_at(world, section, &known)
+                );
+            }
+        }
+        // The ask doors survive with their RESOLVED labels: baking happens after
+        // resolution, so the store prose is in the artifact and the runtime never
+        // re-resolves it (nor could it — it has no store).
+        assert!(baked.scene("main", "sc-01").doors.contains(&Door::Ask {
+            question: "이름을 물었다.".into(),
+            reveals: "f-name".into(),
+        }));
+        // And the emit is deterministic: the same projection parts twice over.
+        assert_eq!(live.to_parts(), baked.to_parts());
     }
 
     #[test]
