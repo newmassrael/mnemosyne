@@ -67,6 +67,14 @@
 //!
 //! and the crate does `include!(concat!(env!("OUT_DIR"), "/playable.rs"));`.
 //!
+//! The generated item hands back a BORROW that lives as long as the process —
+//! `playable_projection() -> &'static PlayableProjection` (Round 786) — so a
+//! consumer holds the handle rather than the projection, and every `&str` an
+//! accessor returns is a `&'static str` without one signature changing. Storing
+//! the returned value in a struct and reading out of it was self-referential
+//! while the entry point handed over ownership, which is why the first consumer
+//! copied the whole projection into types of its own instead.
+//!
 //! The quest axis is the same shape, with the consumer's own precondition
 //! predicate the one thing it must declare (the kernel does not know a
 //! predicate's name):
@@ -104,13 +112,65 @@ mod render;
 pub use render::{render, render_quest};
 
 /// Project the workspace at build time and return Rust source defining
-/// `pub fn playable_projection() -> PlayableProjection`.
+/// `pub fn playable_projection() -> &'static PlayableProjection`.
 ///
 /// Also prints the `cargo:rerun-if-changed` lines for the inputs the projection
 /// read, so a store edit regenerates the artifact. Printing them is why this runs
 /// from a build script rather than a binary: those lines are a build-script
 /// protocol, and emitting them here is what keeps the consumer's own script free
 /// of logic.
+///
+/// # The lifetime the entry point hands out (Round 786)
+///
+/// The item returns a borrow of a projection built once per process, not a value.
+/// Nothing in the kernel moved: lifetime elision already reads
+/// `pub fn text(&self) -> &str` as `fn text<'s>(&'s self) -> &'s str`, so given a
+/// `&'static` receiver those same accessors yield `&'static str`, and
+/// `PlayableProjection::walk`, `::spine` and `Line::entities` yield
+/// `&'static [String]`. What blocked the first consumer was never the accessor
+/// signature it named — it was that this entry point handed back something it had
+/// to OWN, so reading out of the copy its own struct held would have been
+/// self-referential.
+///
+/// A consumer that stored the projection and rebuilt it into types of its own can
+/// stop: hold the `&'static` and let the borrows flow. Note that this CHANGES the
+/// generated signature, so a consumer bumping past Round 786 adapts one line.
+///
+/// The property is gated by
+/// `the_baked_artifacts_hand_out_process_lifetime_borrows` in this crate's tests,
+/// which feeds real accessor output into parameters that accept only `&'static`.
+/// What follows is the pair proving that feed DISCRIMINATES rather than accepting
+/// anything: the two blocks differ in exactly one visible line, whether the
+/// projection is held for the process, and the second must not compile.
+///
+/// ```
+/// # fn parts() -> mnemosyne_engine::ProjectionParts {
+/// #     mnemosyne_engine::ProjectionParts {
+/// #         telling: "reader".to_string(), by_world: Vec::new(), walks: Vec::new(),
+/// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
+/// #         divergent_endings: Vec::new(), interactivity: Default::default(),
+/// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
+/// #     }
+/// # }
+/// fn keep_forever(_: &'static str) {}
+/// let projection = mnemosyne_engine::PlayableProjection::from_parts(parts());
+/// let held: &'static mnemosyne_engine::PlayableProjection = Box::leak(Box::new(projection));
+/// keep_forever(held.telling());
+/// ```
+///
+/// ```compile_fail
+/// # fn parts() -> mnemosyne_engine::ProjectionParts {
+/// #     mnemosyne_engine::ProjectionParts {
+/// #         telling: "reader".to_string(), by_world: Vec::new(), walks: Vec::new(),
+/// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
+/// #         divergent_endings: Vec::new(), interactivity: Default::default(),
+/// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
+/// #     }
+/// # }
+/// fn keep_forever(_: &'static str) {}
+/// let held = mnemosyne_engine::PlayableProjection::from_parts(parts());
+/// keep_forever(held.telling());
+/// ```
 ///
 /// # Errors
 ///
@@ -130,9 +190,10 @@ pub fn emit_playable_projection(
 }
 
 /// Project the workspace's QUEST graph at build time and return Rust source
-/// defining `pub fn quest_projection() -> QuestProjection` (Round 774) — the
-/// JOURNAL-axis sibling of [`emit_playable_projection`], and the same trade: a
-/// consumer that baked both opens the store zero times at startup.
+/// defining `pub fn quest_projection() -> &'static QuestProjection` (Round 774,
+/// borrowing since Round 786) — the JOURNAL-axis sibling of
+/// [`emit_playable_projection`], and the same trade: a consumer that baked both
+/// opens the store zero times at startup.
 ///
 /// # What moves and what does not
 ///
@@ -326,6 +387,50 @@ mod tests {
         assert_eq!(done[0].actor.as_deref(), Some("ent-eldest"));
         assert_eq!(done[0].scene, "sc-gut");
         assert_eq!(done[1].actor, None);
+    }
+
+    /// Feeds that accept ONLY a borrow living as long as the process. Free
+    /// functions rather than `let _: &'static str = ..` bindings, because a
+    /// parameter's lifetime is a requirement on the caller while a binding's can
+    /// be satisfied by inference reading the annotation as the goal.
+    fn keep_forever(_: &'static str) {}
+    fn keep_slice_forever(_: &'static [String]) {}
+
+    #[test]
+    fn the_baked_artifacts_hand_out_process_lifetime_borrows() {
+        // Round 786 — the round's whole property, and it is a claim about TYPES,
+        // so the gate is that this compiles: revert the emitter to handing back a
+        // value and `proj` is a local, its borrows die with the function, and
+        // every line below is an error. There is no vacuous reading of a
+        // lifetime constraint the way an empty `Vec<Violation>` reads as clean.
+        //
+        // The other half — that these feeds discriminate rather than accepting
+        // anything — is the doctest pair on `emit_playable_projection`, where the
+        // same accessor on an owned projection is required NOT to compile.
+        let proj = baked::playable_projection();
+        keep_forever(proj.telling());
+        keep_forever(proj.title("sc-01").expect("the fixture titles sc-01"));
+        keep_slice_forever(proj.walk("main"));
+        keep_slice_forever(proj.spine());
+
+        let line = &proj.lines("main", "sc-01")[0];
+        keep_forever(line.text());
+        keep_forever(line.fact_id());
+        keep_forever(
+            line.carrier()
+                .expect("the fixture's first line has a carrier"),
+        );
+        keep_slice_forever(line.entities());
+
+        // The quest axis, repeated rather than inferred from the playable one —
+        // the R774 discipline. Both emitters end in the same `artifact`, and that
+        // is exactly the assumption worth not making: `render_quest` is free to
+        // stop calling it while `render` still does.
+        let quests = baked::quest_projection();
+        keep_forever(quests.telling());
+        let knot = quests.quest("q-knot-1").expect("the quest is baked");
+        keep_forever(&knot.objective);
+        keep_slice_forever(&knot.actors);
     }
 
     /// Parts carrying `n` lines in one section — a fixture that GROWS, for the

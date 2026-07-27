@@ -57,6 +57,14 @@
 //! control's curve (playable 92 KiB to 332 KiB, quest 76 KiB to 272 KiB) and
 //! turned every assertion below red, which is how those assertions are known to
 //! be live rather than merely green.
+//!
+//! Round 786 moved one of those figures and left the rest untouched: with the
+//! baked entry point handing back a `&'static` instead of the projection by
+//! value, the quest artifact went from 28 KiB at both sizes to under one page at
+//! both, while playable stayed at 32 KiB and the control at 96 then 344 KiB.
+//! Measured by rebuilding the probe against both emitter shapes with nothing
+//! else changed. Why the quest axis moved and the playable one did not is NOT
+//! explained here, because it was not measured — only that it did.
 
 use std::process::Command;
 
@@ -109,11 +117,21 @@ fn builds_within(fixture: &str, stack: usize) -> bool {
 /// a measurement, and a gate built on one would fail intermittently — which is
 /// how a gate gets called flaky and then gets ignored.
 ///
-/// The OS rounds a too-small request up to its own minimum, so a result at or
-/// below that minimum reads as "at most this much". Every assertion below is an
-/// upper bound or a ratio between figures well above it, so that costs nothing;
-/// it is stated because an exact-looking number that is really a platform floor
-/// would otherwise be quoted as one.
+/// [`GRAIN`] is the smallest figure this can report, and the OS rounds a
+/// too-small request up to its own minimum on top of that — so a result AT
+/// `GRAIN` means "at most one page", not "one page". It is a real upper bound
+/// (the probe genuinely ran within that request and returned 0), and it is not a
+/// measurement of the cost.
+///
+/// Round 780 wrote that every assertion here is an upper bound or a ratio
+/// between figures well above the floor. That stopped being true of the quest
+/// arm in Round 786: handing back a `&'static` rather than the projection by
+/// value took the quest artifact from 28 KiB at both sizes to under one page at
+/// both, so its ratio is now drawn between two floor readings. The ratio still
+/// discriminates — a quest artifact wanting 8 KiB at `BIG` fails it, and that is
+/// four times MORE sensitive than the same assertion was at 28 KiB — but it is
+/// blind to growth that stays entirely under a page, and the honest name for a
+/// 4096 in that arm is a resolution limit rather than a cost.
 fn stack_needed(fixture: &str) -> usize {
     let measure = || {
         assert!(
@@ -183,6 +201,11 @@ fn the_baked_artifact_costs_one_stack_however_big_the_store_gets() {
     // `render_quest` is free to stop calling the shared chunker while `render`
     // still calls it, and assuming across that seam is how the Round 769 defect
     // survived to Round 770.
+    //
+    // Both figures sit at GRAIN since Round 786 — see `stack_needed` for what a
+    // floor reading is and is not. The ratio is kept rather than swapped for
+    // `quest_big <= GRAIN`, because that would be a threshold fitted to today's
+    // store, which is the thing this test refuses to assert anywhere else.
     let quest_small = stack_needed("quest_small");
     let quest_big = stack_needed("quest_big");
     assert!(

@@ -60,6 +60,29 @@ fn header(out: &mut String) {
 /// three lines and 128 bytes for the whole artifact however large the store gets.
 /// Measured on the 800-line stack fixture, neither moves the LONGEST line: that
 /// is a chunk body at 15,120 bytes against a reassembly of 332.
+///
+/// # Why the public item hands back a borrow (Round 786)
+///
+/// It returns `&'static {ty}` from a `OnceLock` rather than the projection by
+/// value, and that one change is what lets a consumer stop copying. Lifetime
+/// elision writes `pub fn text(&self) -> &str` as `fn text<'s>(&'s self) -> &'s
+/// str`, so a projection borrowed for the process yields `&'static str` from
+/// accessors nobody touched. The first consumer transforms 4,612 lines into its
+/// own type today for one reason: the projection was a VALUE it had to own, its
+/// struct held that value, and borrowing out of it would have been
+/// self-referential. Handing back a `&'static` removes the reason rather than
+/// widening the API.
+///
+/// `OnceLock` rather than a true `static` because a `static` needs const
+/// construction, which admits no `HashMap`, `Vec` or `String` — and this
+/// projection is five maps and a set. The init runs `build` on the CALLING
+/// thread, so the Round 780 stack gate still weighs the same frame.
+///
+/// `CELL` sits inside the function body, which is the scope that keeps Round
+/// 781's composition rule intact: two artifacts spliced into one module define
+/// two same-named statics, and a body-scoped `static` is private to its own
+/// function. The wall above walls the chunk functions; this one needs no wall
+/// because it was never in shared scope.
 fn artifact(fn_name: &str, ty: &str, chunks: &Chunks, build: &str) -> String {
     let module = format!("__mn_{fn_name}");
     let mut out = String::new();
@@ -69,7 +92,13 @@ fn artifact(fn_name: &str, ty: &str, chunks: &Chunks, build: &str) -> String {
     let _ = writeln!(out, "pub fn build() -> {ty} {{");
     out.push_str(build);
     out.push_str("}\n}\n");
-    let _ = writeln!(out, "pub fn {fn_name}() -> {ty} {{ {module}::build() }}");
+    let _ = writeln!(out, "pub fn {fn_name}() -> &'static {ty} {{");
+    let _ = writeln!(
+        out,
+        "static CELL: ::std::sync::OnceLock<{ty}> = ::std::sync::OnceLock::new();"
+    );
+    let _ = writeln!(out, "CELL.get_or_init({module}::build)");
+    out.push_str("}\n");
     out
 }
 
@@ -282,7 +311,7 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
 }
 
 /// Render quest parts as Rust source (Round 774) — the JOURNAL-axis sibling of
-/// [`render`], emitting `pub fn quest_projection() -> QuestProjection`.
+/// [`render`], emitting `pub fn quest_projection() -> &'static QuestProjection`.
 ///
 /// Deterministic for a reason worth keeping separate from the playable one:
 /// [`QuestProjectionParts`] is already ordered at its source (a `BTreeSet`-derived
