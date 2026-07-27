@@ -152,8 +152,17 @@ impl QuestProjection {
     /// Index an already-projected quest graph + a precondition map (quest id ->
     /// its completion-precondition fact ids) — the testable core
     /// ([`Self::from_workspace`] is the store-reading wrapper).
+    ///
+    /// CRATE-PRIVATE since Round 773, for the reason R771 closed the playable
+    /// axis's twin: a [`QuestGraphReport`] is a pub-field struct, so a public
+    /// constructor over one let a downstream crate hand the kernel quests the
+    /// store never declared — while this module's opening line promises the
+    /// opposite ("every quest is store-derived, the kernel invents none"). The
+    /// promise now holds by construction. A consumer supplies a whole projection
+    /// through [`QuestProjectionParts`] instead, which a build fills from the
+    /// store.
     #[must_use]
-    pub fn from_report(
+    pub(crate) fn from_report(
         report: QuestGraphReport,
         preconditions: &BTreeMap<String, Vec<String>>,
     ) -> Self {
@@ -272,6 +281,160 @@ impl QuestProjection {
     }
 }
 
+/// A [`QuestCompletionView`] as plain data (Round 773) — the emit/ingest mirror,
+/// for the same reason as [`LinePart`](crate::LinePart): the view is
+/// `#[non_exhaustive]`, so generated code in another crate cannot construct one,
+/// and a baked projection carries this instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestCompletionPart {
+    /// The fact discharging the quest on this road.
+    pub fact: String,
+    /// The scene the quest completes at on this road.
+    pub scene: String,
+    /// The discharging actor the store names, when it names one.
+    pub actor: Option<String>,
+}
+
+/// A [`QuestWorldView`] as plain data (Round 773).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestWorldPart {
+    /// The derived verdict on this road.
+    pub state: QuestState,
+    /// The completion beat(s) discharging the quest here; empty when open.
+    pub completions: Vec<QuestCompletionPart>,
+}
+
+/// A [`QuestView`] as plain data (Round 773).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestPart {
+    /// The quest entity id.
+    pub quest_id: String,
+    /// The quest objective.
+    pub objective: String,
+    /// The actor entities that lead the quest, sorted.
+    pub actors: Vec<String>,
+    /// Prerequisite quest ids, sorted.
+    pub prerequisites: Vec<String>,
+    /// `world -> the quest's state + completion beat(s) there`, in world order.
+    pub per_world: Vec<(String, QuestWorldPart)>,
+    /// Completion-precondition facts, sorted + deduped.
+    pub preconditions: Vec<String>,
+}
+
+/// A whole [`QuestProjection`] as plain data (Round 773) — the JOURNAL-axis
+/// sibling of [`ProjectionParts`](crate::ProjectionParts), and the same shape for
+/// the same reason.
+///
+/// Every field is already resolved: the quest-graph read and the precondition
+/// join both happened when this was produced. So [`QuestProjection::from_parts`]
+/// takes no `Result` — there is no untrusted input left to check it against. The
+/// completability gate is NOT baked in and deliberately so: it is a question
+/// asked of a [`PlayableProjection`] at call time, and R764 drew that line
+/// already — a quest precondition evaluated against player state is a game rule
+/// that stays at runtime. What moves to the build is the DERIVATION of the quest
+/// layer, never the evaluation of its rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestProjectionParts {
+    /// The telling this projection was resolved under.
+    pub telling: String,
+    /// Every quest the store declares, in quest-id order.
+    pub quests: Vec<QuestPart>,
+}
+
+impl QuestProjection {
+    /// Emit this projection as plain data (Round 773) — the bake half of the
+    /// build-time seam.
+    ///
+    /// Deterministic without sorting anything here, which is worth stating rather
+    /// than leaving to be rediscovered: `quests` arrives in quest-id order because
+    /// the graph derives it from a `BTreeSet`, `per_world` is a `BTreeMap`, and
+    /// `preconditions` were sorted and deduped at ingestion. The playable seam
+    /// sorts because it holds `HashMap`s; this one would only be re-sorting sorted
+    /// input.
+    #[must_use]
+    pub fn to_parts(&self) -> QuestProjectionParts {
+        QuestProjectionParts {
+            telling: self.telling.clone(),
+            quests: self
+                .quests
+                .iter()
+                .map(|q| QuestPart {
+                    quest_id: q.quest_id.clone(),
+                    objective: q.objective.clone(),
+                    actors: q.actors.clone(),
+                    prerequisites: q.prerequisites.clone(),
+                    per_world: q
+                        .per_world
+                        .iter()
+                        .map(|(world, wv)| {
+                            (
+                                world.clone(),
+                                QuestWorldPart {
+                                    state: wv.state,
+                                    completions: wv
+                                        .completions
+                                        .iter()
+                                        .map(|c| QuestCompletionPart {
+                                            fact: c.fact.clone(),
+                                            scene: c.scene.clone(),
+                                            actor: c.actor.clone(),
+                                        })
+                                        .collect(),
+                                },
+                            )
+                        })
+                        .collect(),
+                    preconditions: q.preconditions.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Ingest baked parts (Round 773) — the read half, INFALLIBLE for the same
+    /// reason [`PlayableProjection::from_parts`] is: the store read and the
+    /// precondition join already ran, so what arrives is the RESULT of the checks
+    /// rather than their input. This is the crate's single public ingestion door
+    /// on the quest axis; [`Self::from_report`] closed with it.
+    #[must_use]
+    pub fn from_parts(parts: QuestProjectionParts) -> Self {
+        Self {
+            telling: parts.telling,
+            quests: parts
+                .quests
+                .into_iter()
+                .map(|q| QuestView {
+                    quest_id: q.quest_id,
+                    objective: q.objective,
+                    actors: q.actors,
+                    prerequisites: q.prerequisites,
+                    per_world: q
+                        .per_world
+                        .into_iter()
+                        .map(|(world, wp)| {
+                            (
+                                world,
+                                QuestWorldView {
+                                    state: wp.state,
+                                    completions: wp
+                                        .completions
+                                        .into_iter()
+                                        .map(|c| QuestCompletionView {
+                                            fact: c.fact,
+                                            scene: c.scene,
+                                            actor: c.actor,
+                                        })
+                                        .collect(),
+                                },
+                            )
+                        })
+                        .collect(),
+                    preconditions: q.preconditions,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Read a consumer's completion-precondition claims from the store: for each
 /// declared precondition predicate, collect its typed claims keyed by subject
 /// (the quest) -> the object's fact id, the typed `opened_by = f-*` fact bridge
@@ -362,6 +525,99 @@ mod tests {
         assert_eq!(wv.completions[0].actor.as_deref(), Some("ent-eldest"));
         assert_eq!(proj.telling(), "reader");
         assert_eq!(proj.quests().len(), 1);
+    }
+
+    /// Round 773 — the build-time seam's whole claim on the quest axis: a
+    /// projection that went out through `to_parts` and came back through the
+    /// INFALLIBLE `from_parts` answers every public query identically, INCLUDING
+    /// the completability gate, which is the one that matters — the gate is not
+    /// baked (it is a rule evaluated at call time against a playable projection),
+    /// so a baked quest layer must still be able to answer it.
+    #[test]
+    fn a_baked_quest_projection_answers_exactly_as_the_projected_one() {
+        // Thick enough that every part-carrying field is POPULATED: two quests,
+        // two roads, a completion with an actor and one without, prerequisites,
+        // actors, and preconditions. An empty field would let a dropped one pass.
+        let mut node = quest_node(
+            "q-knot-1",
+            "the first sin",
+            &["q-salt"],
+            vec![
+                (
+                    "main",
+                    QuestState::Done,
+                    vec![completion("f-confess", "sc-gut", Some("ent-eldest"))],
+                ),
+                (
+                    "fork",
+                    QuestState::Done,
+                    vec![completion("f-confess", "sc-gut", None)],
+                ),
+            ],
+        );
+        node.actors = vec!["ent-jiun".to_string()];
+        let live = QuestProjection::from_report(
+            quest_report(vec![
+                node,
+                quest_node(
+                    "q-salt",
+                    "the salt debt",
+                    &[],
+                    vec![("main", QuestState::Open, Vec::new())],
+                ),
+            ]),
+            &preconditions(&[("q-knot-1", &["f-clue"])]),
+        );
+        assert!(
+            !live.quests()[0].actors.is_empty() && !live.quests()[0].preconditions.is_empty(),
+            "fixture must carry actors and preconditions"
+        );
+
+        let baked = QuestProjection::from_parts(live.to_parts());
+        assert_eq!(baked.telling(), live.telling());
+        assert_eq!(baked.quests(), live.quests());
+        for q in live.quests() {
+            assert_eq!(baked.quest(&q.quest_id), live.quest(&q.quest_id));
+        }
+
+        // The gate agrees on a REAL verdict, not on two empty vectors: `main`
+        // digs the clue before the gut, `fork` never does, so the same
+        // one-violation answer must come out of both.
+        let playable = PlayableProjection::from_report(
+            report_worlds(
+                vec![
+                    (
+                        "main",
+                        vec![
+                            scene(
+                                "sc-01",
+                                "Dawn",
+                                vec![begin("f-clue", "the clue", "ground-truth", &[])],
+                            ),
+                            scene("sc-gut", "Gut", Vec::new()),
+                        ],
+                        vec![locator("f-clue", "sc-01", DisclosureMode::State)],
+                    ),
+                    (
+                        "fork",
+                        vec![
+                            scene("sc-01", "Dawn", Vec::new()),
+                            scene("sc-gut", "Gut", Vec::new()),
+                        ],
+                        Vec::new(),
+                    ),
+                ],
+                ForkTreeReport::default(),
+            ),
+            &StaticOverrides::default(),
+        )
+        .unwrap();
+        let verdict = live.completability(&playable);
+        assert_eq!(verdict.len(), 1, "the fixture must produce a real verdict");
+        assert_eq!(baked.completability(&playable), verdict);
+
+        // And the emit is deterministic: the same parts twice over.
+        assert_eq!(live.to_parts(), baked.to_parts());
     }
 
     /// A quest whose precondition is offered before the completion scene is

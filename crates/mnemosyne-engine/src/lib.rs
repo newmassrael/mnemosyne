@@ -50,6 +50,23 @@
 //! let _shut = mnemosyne_engine::PlayableProjection::from_report;
 //! ```
 //!
+//! Round 773 closed the same door on the QUEST axis, where the same promise was
+//! written and the same hole was open: [`quest`]'s opening line says every quest
+//! is store-derived and the kernel invents none, while `QuestProjection::from_report`
+//! was public over a pub-field `QuestGraphReport`. Proven the same paired way —
+//! the positive half compiles:
+//!
+//! ```
+//! let _open = mnemosyne_engine::QuestProjection::from_parts;
+//! ```
+//!
+//! and the negative half must not, with the same path spelling:
+//!
+//! ```compile_fail
+//! let _open = mnemosyne_engine::QuestProjection::from_parts;
+//! let _shut = mnemosyne_engine::QuestProjection::from_report;
+//! ```
+//!
 //! A withheld fact emits no locator, so it never becomes a [`Line`]: the store
 //! filters disclosure additively, and this kernel never re-implements a
 //! subtractive withhold filter.
@@ -70,7 +87,8 @@ pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, Static
 pub use projection::{fresh_disclosure, PlayableProjection, ProjectionParts, SectionLines};
 pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
 pub use quest::{
-    QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
+    QuestCompletionPart, QuestCompletionView, QuestGateViolation, QuestPart, QuestProjection,
+    QuestProjectionParts, QuestView, QuestWorldPart, QuestWorldView,
 };
 pub use types::{
     CastMember, CastPart, ChoiceEntityRef, Door, DoorPart, Fork, ForkPart, Interactivity, Line,
