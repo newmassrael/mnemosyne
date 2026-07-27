@@ -44,8 +44,8 @@ pub use quest::{
     QuestCompletionView, QuestGateViolation, QuestProjection, QuestView, QuestWorldView,
 };
 pub use types::{
-    CastMember, CastPart, ChoiceEntityRef, Door, Fork, Interactivity, Line, LinePart, Rung,
-    SceneView,
+    CastMember, CastPart, ChoiceEntityRef, Door, DoorPart, Fork, ForkPart, Interactivity, Line,
+    LinePart, Rung, SceneView,
 };
 
 use std::fmt;

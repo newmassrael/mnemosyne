@@ -19,6 +19,7 @@ members = [
  "crates/mnemosyne-index",
  "crates/mnemosyne-projection",
  "crates/mnemosyne-engine",
+ "crates/mnemosyne-engine-build",
  "crates/mnemosyne-render",
 ]
 

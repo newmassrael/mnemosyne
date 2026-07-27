@@ -576,3 +576,102 @@ impl CastMember {
         }
     }
 }
+
+/// A [`Fork`] as plain data (Round 770) — the emit/ingest mirror.
+///
+/// `Fork` is `#[non_exhaustive]`, which stops a downstream crate from writing a
+/// struct literal. That guard is right for a type a renderer READS, and it is
+/// also why generated code cannot build one: a baked projection therefore
+/// carries this instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForkPart {
+    /// The section the choice opens at.
+    pub at: String,
+    /// The world-line the choice forks from.
+    pub parent: String,
+    /// The world-line it leads to.
+    pub world: String,
+    /// The authored choice label.
+    pub label: String,
+}
+
+/// A [`Door`] as plain data (Round 770) — the emit/ingest mirror, for the same
+/// reason as [`ForkPart`]: `Door` is `#[non_exhaustive]`, so a downstream crate
+/// cannot name its variants in a literal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DoorPart {
+    /// A branch choice.
+    Fork {
+        /// The world-line this choice leads to.
+        world: String,
+        /// The authored choice label.
+        label: String,
+    },
+    /// Examine a diegetic object.
+    Examine {
+        /// The examinable entity id.
+        object: String,
+        /// The offered `fact_id`s examining it reveals.
+        reveals: Vec<String>,
+    },
+    /// Ask a ladder question, its prose ALREADY resolved.
+    Ask {
+        /// The resolved question — the door's label.
+        question: String,
+        /// The `fact_id` the answer reveals.
+        reveals: String,
+    },
+}
+
+impl Fork {
+    /// Ingest a [`ForkPart`] — crate-private (Round 770).
+    pub(crate) fn from_part(part: ForkPart) -> Self {
+        Self {
+            at: part.at,
+            parent: part.parent,
+            world: part.world,
+            label: part.label,
+        }
+    }
+
+    /// Emit this fork as plain data (Round 770).
+    #[must_use]
+    pub fn to_part(&self) -> ForkPart {
+        ForkPart {
+            at: self.at.clone(),
+            parent: self.parent.clone(),
+            world: self.world.clone(),
+            label: self.label.clone(),
+        }
+    }
+}
+
+impl Door {
+    /// Ingest a [`DoorPart`] — crate-private (Round 770).
+    pub(crate) fn from_part(part: DoorPart) -> Self {
+        match part {
+            DoorPart::Fork { world, label } => Door::Fork { world, label },
+            DoorPart::Examine { object, reveals } => Door::Examine { object, reveals },
+            DoorPart::Ask { question, reveals } => Door::Ask { question, reveals },
+        }
+    }
+
+    /// Emit this door as plain data (Round 770).
+    #[must_use]
+    pub fn to_part(&self) -> DoorPart {
+        match self {
+            Door::Fork { world, label } => DoorPart::Fork {
+                world: world.clone(),
+                label: label.clone(),
+            },
+            Door::Examine { object, reveals } => DoorPart::Examine {
+                object: object.clone(),
+                reveals: reveals.clone(),
+            },
+            Door::Ask { question, reveals } => DoorPart::Ask {
+                question: question.clone(),
+                reveals: reveals.clone(),
+            },
+        }
+    }
+}

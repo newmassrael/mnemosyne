@@ -1071,6 +1071,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-engine-build"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-engine",
+ "tempfile",
+]
+
+[[package]]
 name = "mnemosyne-facts"
 version = "0.1.0"
 dependencies = [

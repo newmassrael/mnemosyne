@@ -10,8 +10,9 @@ use mnemosyne_core::MAIN_BRANCH;
 use mnemosyne_validate::continuity::{ManuscriptFactEvent, PlayableWorldReport};
 
 use crate::{
-    CastMember, CastPart, ChoiceEntityRef, ContentAnchor, Door, EngineError, EngineOverrides, Fork,
-    Interactivity, Line, LinePart, Passage, PrefixSlices, Rung, RungQuestionFault, SceneView,
+    CastMember, CastPart, ChoiceEntityRef, ContentAnchor, Door, DoorPart, EngineError,
+    EngineOverrides, Fork, ForkPart, Interactivity, Line, LinePart, Passage, PrefixSlices, Rung,
+    RungQuestionFault, SceneView,
 };
 
 /// Per-world, per-section disclosed narrative + the declared walk + fork
@@ -525,7 +526,7 @@ pub struct ProjectionParts {
     /// `section -> the store-owned cast standing there`.
     pub cast: Vec<(String, Vec<CastPart>)>,
     /// The cross-world choice graph.
-    pub forks: Vec<Fork>,
+    pub forks: Vec<ForkPart>,
     /// World-lines whose ending diverges.
     pub divergent_endings: Vec<String>,
     /// The consumer's interactive layer, as it was at bake time.
@@ -533,7 +534,7 @@ pub struct ProjectionParts {
     /// Declared choice-to-entity references.
     pub choice_entity_refs: Vec<ChoiceEntityRef>,
     /// `section -> the ask doors dug there, questions ALREADY resolved`.
-    pub ask_doors: Vec<(String, Vec<Door>)>,
+    pub ask_doors: Vec<(String, Vec<DoorPart>)>,
 }
 
 impl PlayableProjection {
@@ -577,11 +578,14 @@ impl PlayableProjection {
                     (section, members.iter().map(CastMember::to_part).collect())
                 })
                 .collect(),
-            forks: self.forks.clone(),
+            forks: self.forks.iter().map(Fork::to_part).collect(),
             divergent_endings,
             interactivity: self.interactivity.clone(),
             choice_entity_refs: self.choice_entity_refs.clone(),
-            ask_doors: sorted(&self.ask_doors),
+            ask_doors: sorted(&self.ask_doors)
+                .into_iter()
+                .map(|(section, doors)| (section, doors.iter().map(Door::to_part).collect()))
+                .collect(),
         }
     }
 
@@ -625,11 +629,15 @@ impl PlayableProjection {
                     )
                 })
                 .collect(),
-            forks: parts.forks,
+            forks: parts.forks.into_iter().map(Fork::from_part).collect(),
             divergent_endings: parts.divergent_endings.into_iter().collect(),
             interactivity: parts.interactivity,
             choice_entity_refs: parts.choice_entity_refs,
-            ask_doors: parts.ask_doors.into_iter().collect(),
+            ask_doors: parts
+                .ask_doors
+                .into_iter()
+                .map(|(section, doors)| (section, doors.into_iter().map(Door::from_part).collect()))
+                .collect(),
         }
     }
 }
