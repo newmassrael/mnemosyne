@@ -557,6 +557,26 @@ impl PlayableProjection {
         self.spine().position(|s| s == section)
     }
 
+    /// The spine section at `cursor` — the inverse of [`Self::cursor_of`], and
+    /// `None` past the end (Round 812).
+    ///
+    /// A cursor is a number and a section is a name, so a consumer holding one
+    /// needs to reach the other in BOTH directions; only name-to-cursor was
+    /// public, while number-to-name lived behind the crate-private resolver
+    /// because Round 804 surveyed the indexing callers inside this workspace
+    /// and found none outside it. That survey could not see the first playable
+    /// consumer, which indexes the spine by cursor on every step to answer
+    /// "where am I standing" — the one shape Round 795's notice promised we
+    /// would build an accessor for rather than have a consumer route around.
+    ///
+    /// Derived from [`Self::walk_raw`], the same single resolver [`Self::walk`]
+    /// and [`Self::spine`] derive from, so the representation stays behind one
+    /// door and the pair cannot drift into two answers about the same sequence.
+    #[must_use]
+    pub fn section_at(&self, cursor: usize) -> Option<&str> {
+        self.walk_raw(MAIN_BRANCH).get(cursor).map(Cow::as_ref)
+    }
+
     /// The store section title for a section id (world-independent).
     #[must_use]
     pub fn title(&self, section: &str) -> Option<&str> {
@@ -1032,6 +1052,61 @@ mod tests {
         assert_eq!(view.title.as_deref(), Some("Dawn"));
         assert_eq!(view.lines.len(), 1);
         assert!(view.doors.is_empty()); // no fork tree, no interactivity
+    }
+
+    /// Round 812 — cursor and section are one pair, so the round trip must
+    /// close in BOTH directions on every seat of the spine, not just on the one
+    /// a spot check happens to pick.
+    ///
+    /// NON-VACUITY is asserted first: the spine must be non-empty and the loop
+    /// must actually run, because every assertion below is trivially satisfied
+    /// by a spine with nothing on it — which is exactly what a projection built
+    /// from an empty store would hand this test.
+    #[test]
+    fn cursor_and_section_are_inverses_at_every_seat_r812() {
+        let r = report(
+            "main",
+            vec![
+                scene(
+                    "sc-01",
+                    "Dawn",
+                    vec![begin(
+                        "f-a",
+                        "the tide pulls out",
+                        "ground-truth",
+                        &["tide"],
+                    )],
+                ),
+                scene("sc-02", "Noon", vec![]),
+                scene("sc-03", "Dusk", vec![]),
+            ],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &DefaultOverrides::default()).unwrap();
+        let spine: Vec<&str> = proj.spine().collect();
+        assert!(!spine.is_empty(), "an empty spine proves nothing below");
+        let mut seats = 0usize;
+        for (i, section) in spine.iter().enumerate() {
+            assert_eq!(proj.section_at(i), Some(*section));
+            assert_eq!(proj.cursor_of(section), Some(i));
+            // And the round trip through each direction lands where it started.
+            assert_eq!(
+                proj.section_at(proj.cursor_of(section).unwrap()),
+                Some(*section)
+            );
+            assert_eq!(proj.cursor_of(proj.section_at(i).unwrap()), Some(i));
+            seats += 1;
+        }
+        assert_eq!(seats, spine.len());
+        // Past the end is None, not a panic and not the last seat — the half
+        // that an index-returning accessor gets wrong when it is written as a
+        // slice index instead of a lookup.
+        assert_eq!(proj.section_at(spine.len()), None);
+        assert_eq!(proj.section_at(usize::MAX), None);
+        // The name half stays symmetric: a section that is not on the spine has
+        // no cursor, exactly as a cursor past the end has no section.
+        assert_eq!(proj.cursor_of("not-a-section"), None);
     }
 
     #[test]
