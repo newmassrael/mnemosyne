@@ -1405,8 +1405,47 @@ pub fn extract_section_citations(
 /// only chain separators? See [`is_chain_separator`] for the set and why it
 /// is a closed one; a comma, word, or any other char breaks the chain so a
 /// distinct cite after `, ` / ` and ` is still validated as internal.
+///
+/// Round 808 — a PARENTHETICAL GLOSS on a cite does not break the chain:
+/// `설계 §2-1(구역 개폐)·§2-4(마을=데이터)·§4` is one document enumerated
+/// three times, exactly like the un-glossed form Round 801 closed. The rule
+/// is the Round 380 one applied to the gap with its balanced groups removed:
+/// **strip balanced `(…)` runs, and what remains must still be a non-empty
+/// run of chain separators.** So a gloss chains, and a WORD outside the gloss
+/// still breaks (`§A(x) 그리고 §B`) — the annotation is subordinate to the
+/// cite it follows, while a bare word starts a new thought.
+///
+/// Two deliberate conservatisms, because widening this predicate is the same
+/// false-negative surface [`is_chain_separator`] warns about — the cite
+/// BEHIND the gap stops being checked at all:
+///
+/// - **Unbalanced breaks.** An unclosed `(` leaves no way to know where the
+///   gloss ends, so the chain dies rather than swallowing the rest of the line.
+/// - **ASCII parens only.** Every measured instance in the reporting corpus
+///   and in this one uses `(` / `)`; `（）` / `[]` / `【】` have ZERO. Adding
+///   them by symmetry is precisely the move Round 801 refused for `-` —
+///   resume on a measured instance, not on the shape of the rule.
+///
+/// This is the chain-side of the Round 802 correction: what a shape selects is
+/// where the prefix's slice ENDS, not which axis is allowed. Reported by the
+/// same downstream workspace as Round 801, whose remaining two violations were
+/// this one line, and reproduced here before it was believed.
 fn gap_is_chain_only(gap: &str) -> bool {
-    !gap.is_empty() && gap.chars().all(is_chain_separator)
+    let mut depth = 0usize;
+    let mut outside = String::with_capacity(gap.len());
+    for c in gap.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => match depth.checked_sub(1) {
+                Some(d) => depth = d,
+                // A close with nothing open: the gap is not a glossed chain.
+                None => return false,
+            },
+            _ if depth > 0 => {}
+            _ => outside.push(c),
+        }
+    }
+    depth == 0 && !outside.is_empty() && outside.chars().all(is_chain_separator)
 }
 
 /// Round 801 — does `c` join two citations of the SAME document, rather
@@ -5842,6 +5881,76 @@ mod tests {
                 "gap {gap:?} ends the thought and must break the chain"
             );
         }
+    }
+
+    /// Round 808 — a parenthetical gloss is subordinate to the cite it follows,
+    /// so it chains; anything OUTSIDE the gloss obeys the Round 380 rule
+    /// unchanged. Both classes are pinned, the Round 801 discipline for a set
+    /// that cannot derive its own oracle.
+    #[test]
+    fn a_parenthetical_gloss_chains_but_never_widens_what_follows_it() {
+        for gap in [
+            "(\u{ad6c}\u{c5ed} \u{ac1c}\u{d3d0})\u{b7}", // the reported gap, verbatim
+            "(x) ",
+            " (x) ",
+            "(x)(y) ",      // two glosses in one gap
+            "(a (b) c)/",   // nested groups
+            "(a, b)\u{b7}", // a comma INSIDE the gloss does not end the outer thought
+        ] {
+            assert!(
+                gap_is_chain_only(gap),
+                "gap {gap:?} annotates the preceding cite and must chain"
+            );
+        }
+        for gap in [
+            "(x)",      // a gloss alone is not a separator
+            "(x) and ", // a WORD outside the gloss still breaks
+            "(x), ",    // a comma outside still breaks
+            "(x",       // unbalanced open: no way to know where the gloss ends
+            "\u{b7}(x", // separator THEN an unclosed gloss — the balance
+            // check is what breaks this one (the outside run
+            // is a legal separator, so nothing else would)
+            "x)",         // unbalanced close
+            ")(",         // closed before opened
+            "(a) - (b) ", // a dash outside is still a dash
+        ] {
+            assert!(!gap_is_chain_only(gap), "gap {gap:?} must break the chain");
+        }
+    }
+
+    /// Round 808 — the downstream workspace's remaining two violations, end to
+    /// end and verbatim (`engine/src/places.rs:1`). Before this round the gloss
+    /// broke the chain, so `\u{a7}2-4` and `\u{a7}4` fell to the bare axis and were
+    /// returned as `SectionMissing` — the hallucination class, at
+    /// `severity_missing = reject`, which blocks the commit. The un-glossed
+    /// control on the line above is what Round 801 already closed: both must be
+    /// empty, and only the gloss distinguishes them.
+    #[test]
+    fn extract_chains_across_a_glossed_cjk_list_r808() {
+        let bare = vec!["\u{c124}\u{acc4}".to_string()];
+        let control = "//! \u{c124}\u{acc4} \u{a7}2-1\u{b7}\u{a7}2-4\u{b7}\u{a7}4\n";
+        assert!(
+            extract_section_citations(control, &[], &bare).is_empty(),
+            "the un-glossed chain was already closed by Round 801; got: {:?}",
+            extract_section_citations(control, &[], &bare)
+        );
+        let glossed = "//! \u{c7a5}\u{c18c} \u{aca9}\u{c790} \u{2014} \u{c124}\u{acc4} \
+                       \u{a7}2-1(\u{ad6c}\u{c5ed} \u{ac1c}\u{d3d0})\u{b7}\
+                       \u{a7}2-4(\u{b9c8}\u{c744}=\u{b370}\u{c774}\u{d130})\u{b7}\u{a7}4\u{c758} \u{cd95}.\n";
+        assert!(
+            extract_section_citations(glossed, &[], &bare).is_empty(),
+            "a glossed chain names one document too; got: {:?}",
+            extract_section_citations(glossed, &[], &bare)
+        );
+        // The other half: a WORD between the gloss and the next cite still ends
+        // the thought, so that cite stays under this ledger's jurisdiction.
+        let broken =
+            "//! \u{c124}\u{acc4} \u{a7}2-1(\u{ad6c}\u{c5ed}) \u{adf8}\u{b9ac}\u{ace0} \u{a7}2-4\n";
+        assert_eq!(
+            extract_section_citations(broken, &[], &bare),
+            vec![(1usize, "2-4".to_string())],
+            "a word outside the gloss must break the chain"
+        );
     }
 
     /// Round 801 — the reported shape end to end: a Korean bare prefix names
