@@ -353,6 +353,9 @@ fn stack_fixtures(out_dir: &str) {
 ///
 /// The middle arm is the one worth having on its own: it says what stopping
 /// halfway buys, because the `Vec` spine survives it and the strings do not.
+///
+/// Round 794 added two more, `cow` and `cow_list`, because none of the three
+/// above is a shape the shipped type can HOLD — see [`render_cow_lines`].
 fn alloc_fixtures(out_dir: &str) {
     let write = |name: &str, source: String| {
         std::fs::write(
@@ -366,6 +369,16 @@ fn alloc_fixtures(out_dir: &str) {
         write(&format!("owned_{tag}"), render_owned_lines(n));
         write(&format!("borrowed_{tag}"), render_borrowed_lines(n));
         write(&format!("static_slice_{tag}"), render_static_lines(n));
+        write(
+            &format!("cow_{tag}"),
+            render_cow_lines(n, "CowLine", &|entity| format!("vec![{COW}({entity})]")),
+        );
+        write(
+            &format!("cow_list_{tag}"),
+            render_cow_lines(n, "CowListLine", &|entity| {
+                format!("{COW}(&[{COW}({entity})])")
+            }),
+        );
     }
 }
 
@@ -456,6 +469,65 @@ fn borrowed_literal(i: usize) -> String {
          entities: &[{entity}], carrier: None, typed_predicate: None, quote: None, \
          count: None }}"
     )
+}
+
+/// The path a generated `Cow::Borrowed` is written through, spelled absolutely
+/// because generated code lands in a module whose imports it does not control.
+const COW: &str = "::std::borrow::Cow::Borrowed";
+
+/// Arms four and five: the shape a shipped `LinePart` could actually take
+/// (Round 794).
+///
+/// Round 782's borrowed arm is `&'static str`, which the shipped type CANNOT be:
+/// `from_workspace` derives at run time and must own, so one type holding both
+/// modes means `Cow<'static, str>`. That is a different arm, and Round 792 is the
+/// round that established what happens when a design reasons about an arm it did
+/// not measure — the arithmetic was right on bytes and wrong on calls, and only
+/// measuring the arm separated them.
+///
+/// The two arms differ in ONE fragment, how the entity list is held, which is
+/// also the one decision Round 785 deliberately left to the build round:
+///
+/// - `cow` — `Vec<Cow<'static, str>>`. The strings point at `.rodata` and the
+///   list spine is still built per line.
+/// - `cow_list` — `Cow<'static, [Cow<'static, str>]>`. The list points at the
+///   binary too, so a baked line materializes nothing at all.
+///
+/// `entities` is passed as a closure rather than duplicated into two emitters, so
+/// "everything else is equal" is true by construction rather than by review.
+///
+/// # The inline slice is `'static` and that was checked, not assumed
+///
+/// `cow_list` writes `Cow::Borrowed(&[Cow::Borrowed("ent-a")])` inline rather
+/// than naming a `static` per line. Rvalue static promotion covers it — verified
+/// by compiling both halves of the discrimination: the literal form builds, and
+/// the same shape holding a runtime `String` fails with `E0515`, so the probe can
+/// tell the two apart. It matters for what is being priced: a named `static` per
+/// line would add an ITEM per line, and Round 789 measured that rustc charges per
+/// item rather than per byte.
+fn render_cow_lines(n: usize, struct_name: &str, entities: &dyn Fn(&str) -> String) -> String {
+    let ty = format!("::std::vec::Vec<crate::{struct_name}>");
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..n).collect::<Vec<_>>().chunks(CHUNK.get()).enumerate() {
+        let body: Vec<String> = group
+            .iter()
+            .map(|i| {
+                let (fact, text, frame, entity) = measured_line_literals(*i);
+                format!(
+                    "crate::{struct_name} {{ fact_id: {COW}({fact}), text: {COW}({text}), \
+                     mode: ::mnemosyne_engine::DisclosureMode::State, frame: {COW}({frame}), \
+                     entities: {}, carrier: None, typed_predicate: None, quote: None, \
+                     count: None }}",
+                    entities(&entity)
+                )
+            })
+            .collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, &ty, &names)
 }
 
 /// The `Vec` reassembly both allocating arms share, so the only thing that

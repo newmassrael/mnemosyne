@@ -493,11 +493,18 @@ fn string(s: &str) -> String {
 ///
 /// It is a separate function rather than a flag on [`string`] because the two
 /// produce different TYPES, and a boolean deciding a type at a call site is the
-/// thing that reads correct while being wrong. Also worth naming: `.to_string()`
-/// is a method call rustc resolves, typechecks and codegens once per literal —
-/// Round 782 measured that as most of the 5.5x compile gap between an owned and a
-/// borrowed artifact — so every field that moves to this form gets cheaper to
-/// compile as well as to build.
+/// thing that reads correct while being wrong.
+///
+/// This carried a second claim, that dropping `.to_string()` is also most of the
+/// 5.5x compile gap Round 782 measured between an owned and a borrowed artifact.
+/// Round 794 separated the causes with arms that vary one at a time, and it is
+/// the smaller half by a wide margin: removing four `.to_string()`s per line
+/// moved rustc from 0.46s to 0.43s, while removing the one `vec![..]` beside them
+/// moved it from 0.43s to 0.20s. What rustc charges for is the per-line
+/// CONSTRUCTOR CALL, and `.to_string()` was the most visible instance rather than
+/// the expensive one. This function still writes the cheaper literal and still
+/// removes an allocation per field; what it does not do is buy the compile time
+/// the sentence it replaces promised.
 fn str_literal(s: &str) -> String {
     format!("{s:?}")
 }

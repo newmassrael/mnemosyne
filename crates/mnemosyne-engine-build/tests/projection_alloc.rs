@@ -60,6 +60,57 @@
 //! allocation being the same shape that reduces compile cost is worth stating
 //! plainly rather than leaving for someone to rediscover.
 //!
+//! **The 5.5x is right and the sentence explaining it is wrong** — Round 794
+//! measured the cause and it is not mostly `.to_string()`. The step from `owned`
+//! to `borrowed` changes two things at once, the strings AND the per-line
+//! `vec![..]`, so this trio could not separate them; the arms below can, and the
+//! `vec!` is six times the larger half. See the second table.
+//!
+//! # What Round 794 added, and what it changed
+//!
+//! None of the three arms above is a shape the shipped type can HOLD.
+//! `from_workspace` derives at run time and must own, so one type carrying both a
+//! live and a baked projection is a `Cow<'static, str>` — neither `String` nor
+//! `&'static str`. Round 785 designed step two on the assumption that this is
+//! "exactly the arm Round 782 measured"; two arms were added to check, differing
+//! from each other in ONE field, how the entity list is held.
+//!
+//! | arm | allocs 200 / 800 | bytes built (800) | emitted (800) | rustc user (800) | peak RSS (800) |
+//! |---|---|---|---|---|---|
+//! | owned | 1,006 / 4,020 | 501,600 | 232,520 | 0.46s | +83 MB |
+//! | cow | 206 / 820 | 460,800 | 288,486 | 0.43s | +81 MB |
+//! | cow_list | 6 / 20 | 441,600 | 313,354 | 0.20s | +70 MB |
+//! | borrowed | 6 / 20 | 312,800 | 194,171 | 0.09s | +59 MB |
+//! | static_slice | 0 / 0 | 0 | 193,749 | 0.06s | +22 MB |
+//!
+//! Compile figures out of band as above, `rustc` at `opt-level = 0`, median of
+//! three, against a baseline of 0.01s and 77,312 KB. The setup reproduces Round
+//! 782's marginal memory to within a megabyte on all three of its arms, which is
+//! what licenses comparing the new rows to the old ones.
+//!
+//! ON ALLOCATION CALLS THE DESIGN WAS EXACTLY RIGHT. It predicted 80% of the win
+//! for a plain `Vec` and 99% for a borrowable list; measured, 80.0% and 100.0%,
+//! with `cow_list` landing not near the fully borrowed arm but ON it, 20 and 20.
+//!
+//! ON COMPILE IT WAS NOT. The 5.5x does not carry to the arm the kernel can take:
+//! `cow` is 1.07x, which is nothing, and `cow_list` is 2.3x. What separates them
+//! is one `vec![..]` per line — dropping four `.to_string()`s per line moved 0.46s
+//! to 0.43s, and dropping the `vec!` moved 0.43s to 0.20s. The per-line
+//! CONSTRUCTOR CALL is what rustc charges for, and `.to_string()` was only the
+//! most visible instance of it.
+//!
+//! ON BYTES BUILT it is worse than the trio suggests and for a structural reason:
+//! `Cow<'static, str>` is 24 bytes where `&'static str` is 16, so the element the
+//! `Vec` copies is larger. Borrowing everything cuts 38% of the bytes; the
+//! kernel's reachable arm cuts 12%. It takes the whole call win and under a third
+//! of the byte win, which is the axis the first consumer asked about and the axis
+//! it did not.
+//!
+//! And the emitted source GROWS — 232 KB owned to 313 KB for `cow_list` — while
+//! compiling 2.3x faster, because `::std::borrow::Cow::Borrowed(..)` is longer
+//! text than `.to_string()` and rustc is not charging for text. That is Round
+//! 789's finding (per item, not per byte) reappearing on a different axis.
+//!
 //! # Why the counter is thread-local
 //!
 //! A global allocator sees every thread, and the test harness runs tests in
@@ -71,6 +122,7 @@
 //! allocator it is installed in.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::borrow::Cow;
 use std::cell::Cell;
 
 use mnemosyne_engine::DisclosureMode;
@@ -107,6 +159,56 @@ pub struct BorrowedLine {
     pub typed_predicate: Option<&'static str>,
     pub quote: Option<&'static str>,
     pub count: Option<i64>,
+}
+
+/// The shape a shipped `LinePart` could actually take (Round 794): every string
+/// a `Cow<'static, str>`, the entity list still a `Vec`.
+///
+/// Neither arm above is that shape. `from_workspace` derives at run time and must
+/// OWN, so one type carrying both a live and a baked projection is a `Cow` — and
+/// `Cow<'static, str>` is not `&'static str` any more than it is `String`. This
+/// arm is here because Round 792 is the round that established what happens when
+/// a design reasons about an arm it did not measure.
+pub struct CowLine {
+    pub fact_id: Cow<'static, str>,
+    pub text: Cow<'static, str>,
+    pub mode: DisclosureMode,
+    pub frame: Cow<'static, str>,
+    pub entities: Vec<Cow<'static, str>>,
+    pub carrier: Option<Cow<'static, str>>,
+    pub typed_predicate: Option<Cow<'static, str>>,
+    pub quote: Option<Cow<'static, str>>,
+    pub count: Option<i64>,
+}
+
+/// The same, with the entity LIST borrowable too — the one decision Round 785
+/// left to the build round, made measurable.
+///
+/// The arms differ in this field and nothing else, so the gap between them is the
+/// list holding and is not confounded with the scalar one.
+pub struct CowListLine {
+    pub fact_id: Cow<'static, str>,
+    pub text: Cow<'static, str>,
+    pub mode: DisclosureMode,
+    pub frame: Cow<'static, str>,
+    pub entities: Cow<'static, [Cow<'static, str>]>,
+    pub carrier: Option<Cow<'static, str>>,
+    pub typed_predicate: Option<Cow<'static, str>>,
+    pub quote: Option<Cow<'static, str>>,
+    pub count: Option<i64>,
+}
+
+mod cow_small {
+    include!(concat!(env!("OUT_DIR"), "/alloc_cow_small.rs"));
+}
+mod cow_big {
+    include!(concat!(env!("OUT_DIR"), "/alloc_cow_big.rs"));
+}
+mod cow_list_small {
+    include!(concat!(env!("OUT_DIR"), "/alloc_cow_list_small.rs"));
+}
+mod cow_list_big {
+    include!(concat!(env!("OUT_DIR"), "/alloc_cow_list_big.rs"));
 }
 
 mod owned_small {
@@ -397,5 +499,111 @@ fn borrowing_prose_removes_what_borrowing_lines_could_not() {
         "prose borrow {PROSE_SMALL}: {borrowed_small_n} allocs / {borrowed_small_b} B \
          | {PROSE_BIG}: {borrowed_big_n} / {borrowed_big_b}  (bytes -{:.1}%)",
         byte_cut * 100.0
+    );
+}
+
+/// Round 794 — the arm the shipped type can actually take, and the list decision
+/// Round 785 left open.
+///
+/// Round 782's `borrowed` arm is `&'static str`, which the shipped `LinePart`
+/// cannot be: `from_workspace` derives at run time and must own, so one type
+/// carrying both a live and a baked projection is a `Cow<'static, str>`. Round
+/// 785's design then wrote that step two "is exactly the arm Round 782 measured".
+/// It is not — it is a third holding, and Round 792 is the round that established
+/// what this crate gets wrong when it reasons about an arm instead of measuring
+/// it. So the arm gets measured.
+///
+/// It also settles the ONE thing that design deliberately deferred: whether the
+/// entity list has to be borrowable too. Both arms here carry identical literals
+/// and differ in that field alone.
+#[test]
+fn the_cow_arm_pays_for_its_lists_and_nothing_else() {
+    // The instrument first, and for this test's own license: the shipped shape
+    // must charge more at four times the store, or nothing below can be read.
+    let (owned_small_n, _) = cost_of(owned_small::build);
+    let (owned_big_n, owned_big_b) = cost_of(owned_big::build);
+    assert!(
+        owned_big_n > 3 * owned_small_n,
+        "the owned arm charged {owned_big_n} allocations at {BIG} lines against \
+         {owned_small_n} at {SMALL}: it did not grow with the store, so the \
+         counter is not seeing the work"
+    );
+
+    let (cow_small_n, cow_small_b) = cost_of(cow_small::build);
+    let (cow_big_n, cow_big_b) = cost_of(cow_big::build);
+    let (list_small_n, list_small_b) = cost_of(cow_list_small::build);
+    let (list_big_n, list_big_b) = cost_of(cow_list_big::build);
+    let (borrowed_big_n, borrowed_big_b) = cost_of(borrowed_big::build);
+
+    // Each arm asserts its OWN shape before it is compared to anything (the Round
+    // 792 discipline). `cow` holds a `Vec` per line, so it must still charge at
+    // least once per line — otherwise it is not the arm it is named for and the
+    // gap measured below is a gap between something else.
+    assert!(
+        cow_small_n >= SMALL && cow_big_n >= BIG,
+        "the cow arm charged under one allocation per line ({cow_small_n} at \
+         {SMALL}, {cow_big_n} at {BIG}), so its per-line `Vec` is not there and \
+         this is not the arm being priced"
+    );
+    // And `cow_list` holds no per-line list at all, so it must charge FEWER than
+    // one per line. The complement of the assertion above, so the two together
+    // say exactly where the residual sits rather than quoting a fitted constant.
+    assert!(
+        list_small_n < SMALL && list_big_n < BIG,
+        "the cow_list arm still charged at least one allocation per line \
+         ({list_small_n} at {SMALL}, {list_big_n} at {BIG}): its residual is not \
+         the per-chunk spine it should be"
+    );
+
+    // THE FINDING THE SHAPE TURNS ON. A `Cow` costs nothing to hold borrowed, so
+    // the arm the kernel can actually take must land on the fully borrowed arm's
+    // count — not near it, ON it, because what remains in both is the same `Vec`
+    // of chunks over the same number of elements. Equality rather than a ratio:
+    // there is no threshold to pick and no room to be approximately right.
+    assert_eq!(
+        list_big_n, borrowed_big_n,
+        "the cow_list arm charged {list_big_n} allocations against the fully \
+         borrowed arm's {borrowed_big_n} over identical data: `Cow::Borrowed` is \
+         not free after all, and the design's step two does not inherit Round \
+         782's result"
+    );
+
+    // What each arm keeps of the win, which is the number the deferred decision
+    // was deferred FOR. Round 785 predicted 80% for the plain `Vec` and 99% for
+    // the borrowable list; both are asserted, so a prediction that missed shows
+    // up here rather than in a summary.
+    let full_win = (owned_big_n - borrowed_big_n) as f64;
+    let cow_kept = (owned_big_n - cow_big_n) as f64 / full_win;
+    let list_kept = (owned_big_n - list_big_n) as f64 / full_win;
+    assert!(
+        cow_kept < 0.90,
+        "the plain-`Vec` arm kept {:.1}% of the allocation win, which is not the \
+         partial result the design costed the list decision against",
+        cow_kept * 100.0
+    );
+    assert!(
+        list_kept > 0.99,
+        "the borrowable-list arm kept only {:.1}% of the allocation win: the list \
+         is not the whole remainder, so something else is still allocating per \
+         line and the shape decision has to be re-made against that",
+        list_kept * 100.0
+    );
+
+    println!(
+        "line owned    {SMALL}: {owned_small_n} allocs | {BIG}: {owned_big_n} / {owned_big_b} B"
+    );
+    println!(
+        "line cow      {SMALL}: {cow_small_n} allocs / {cow_small_b} B | {BIG}: \
+         {cow_big_n} / {cow_big_b}  (keeps {:.1}% of the call win)",
+        cow_kept * 100.0
+    );
+    println!(
+        "line cow_list {SMALL}: {list_small_n} allocs / {list_small_b} B | {BIG}: \
+         {list_big_n} / {list_big_b}  (keeps {:.1}% of the call win)",
+        list_kept * 100.0
+    );
+    println!(
+        "line borrow   {BIG}: {borrowed_big_n} allocs / {borrowed_big_b} B  (the \
+         `&'static str` arm the shipped type cannot be)"
     );
 }
