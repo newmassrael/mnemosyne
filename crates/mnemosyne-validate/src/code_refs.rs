@@ -1067,7 +1067,8 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 /// Round 380 — external context also propagates across two citation
 /// scopes wider than a single immediately-preceding prefix: (c) same-line
 /// chains (`<prefix> §A / §B / §C` — cites after the first inherit when
-/// separated only by `/` or whitespace; a comma or word breaks the chain)
+/// separated only by a chain separator, i.e. whitespace, `/`, or the CJK
+/// list joiners `·` / `・` (Round 801); a comma or word breaks the chain)
 /// and (d) comment-block wraps (a sigil that is the first content on its
 /// line inherits when the previous comment line *ends with* the prefix,
 /// e.g. `/// WAI-ARIA 1.2` then `/// §6.6.6`). Both still require a
@@ -1350,7 +1351,7 @@ pub fn extract_section_citations(
             // R380), all still gated on a verbatim-registered prefix:
             //  - direct: `<prefix>` immediately precedes the sigil (R277/284)
             //  - chained (c): the previous same-line cite was external and
-            //    only chain separators (`/`, whitespace) sit between
+            //    only chain separators sit between (`is_chain_separator`)
             //  - carried (d): the sigil is the first content on its line and
             //    the previous comment line ends with the prefix (wrapped)
             let is_external = external_enabled
@@ -1401,11 +1402,48 @@ pub fn extract_section_citations(
 }
 
 /// Round 380 — is `gap` (the text between two same-line `§` cites) made of
-/// only chain separators? `/` and whitespace chain (`§A / §B`, `§A/§B`);
-/// a comma, word, or any other char breaks the chain so a distinct cite
-/// after `, ` / ` and ` is still validated as internal.
+/// only chain separators? See [`is_chain_separator`] for the set and why it
+/// is a closed one; a comma, word, or any other char breaks the chain so a
+/// distinct cite after `, ` / ` and ` is still validated as internal.
 fn gap_is_chain_only(gap: &str) -> bool {
-    !gap.is_empty() && gap.chars().all(|c| c.is_whitespace() || c == '/')
+    !gap.is_empty() && gap.chars().all(is_chain_separator)
+}
+
+/// Round 801 — does `c` join two citations of the SAME document, rather
+/// than end the thought that named it?
+///
+/// This set is SEMANTIC, which is what separates it from the id charset
+/// [`is_section_id_char`], whose interior-only rule Round 800 could derive
+/// mechanically (no id may begin or end with a separator, whichever the
+/// separator is). No such derivation exists here: `/` joins two sections of
+/// one standard and `.` ends a sentence, and nothing about either character
+/// says which. So the set stays a closed list and its test pins BOTH
+/// classes — what chains and what breaks — since a rule that cannot derive
+/// its oracle has to state the contrast instead.
+///
+/// Widening it is a FALSE-NEGATIVE surface: every char added here stops the
+/// cite behind it from being checked at all. That is the mirror of the id
+/// charset, where a wrong widening costs false positives, which are at least
+/// visible. It is also why this set is deliberately not workspace-
+/// configurable — a workspace could otherwise disable the axis by listing
+/// `.` and never see a violation again.
+///
+/// `·` (U+00B7) and `・` (U+30FB) are the Korean and Japanese list joiner:
+/// `첫날 §4·§6·§7·§13` enumerates one document, the exact role `/` plays in
+/// `UAX #9 §6.6.8 / §6.6.9`. Reported by a downstream workspace whose prose
+/// is Korean, where the ASCII-only set turned a correct enumeration into
+/// three `SectionMissing` hallucination verdicts. `、` (U+3001) is the CJK
+/// comma and is NOT here, matching the `,` rule Round 380 already stated.
+///
+/// `-` is NOT here either, though Round 800 did add it to the id charset's
+/// interior rule. A spaced hyphen is a dash — `RFC 2131 §3 - our §5-4` is
+/// two documents, not two sections of one — so chaining it would silently
+/// stop checking the cite after every dash in a comment; and the corpus
+/// that reported this gap holds 5 `·` chains and 0 `-` chains. Resume on a
+/// measured instance, not on the symmetry with Round 800 — that round's
+/// lesson was about a structural rule and does not transfer to this one.
+fn is_chain_separator(c: char) -> bool {
+    c.is_whitespace() || c == '/' || c == '·' || c == '・'
 }
 
 /// Round 380 — is the text before a `§` only a comment marker (leading
@@ -5720,6 +5758,63 @@ mod tests {
             vec![(1usize, "5.16".to_string())],
             "comma must break the chain; got: {:?}",
             out
+        );
+    }
+
+    /// Round 801 — the chain set cannot derive its oracle the way Round 800's
+    /// id-separator rule could, so this test states the CONTRAST instead: what
+    /// joins one document's sections, and what ends the thought that named it.
+    ///
+    /// Both columns are asserted because the two failure directions are not
+    /// symmetric. A char wrongly missing from the joining column costs a
+    /// visible false positive; a char wrongly reaching it turns the axis OFF
+    /// for every cite behind it, and nothing reports that. Only the second
+    /// column can catch the second kind.
+    #[test]
+    fn chain_separator_joins_a_list_and_never_a_thought() {
+        for gap in [" ", "  ", "/", " / ", "·", " · ", "・", "·・", " ·"] {
+            assert!(
+                gap_is_chain_only(gap),
+                "gap {gap:?} joins sections of one document and must chain"
+            );
+        }
+        for gap in [
+            "", ",", ", ", ".", ". ", "、", "-", " - ", " and ", ";", "_",
+        ] {
+            assert!(
+                !gap_is_chain_only(gap),
+                "gap {gap:?} ends the thought and must break the chain"
+            );
+        }
+    }
+
+    /// Round 801 — the reported shape end to end: a Korean bare prefix names
+    /// one document, then four sections joined by the CJK list dot. Before
+    /// this round the ASCII-only set returned three of them as
+    /// `SectionMissing` — the hallucination class — against a comment that
+    /// had cited one document correctly.
+    #[test]
+    fn extract_chains_across_cjk_list_joiner_r801() {
+        let bare = vec!["첫날".to_string()];
+        let joined = "// 첫날 \u{a7}4\u{b7}\u{a7}6\u{b7}\u{a7}7\u{b7}\u{a7}13\n";
+        assert!(
+            extract_section_citations(joined, &[], &bare).is_empty(),
+            "the list joiner must chain; got: {:?}",
+            extract_section_citations(joined, &[], &bare)
+        );
+        let katakana = "// 첫날 \u{a7}4\u{30fb}\u{a7}6\n";
+        assert!(
+            extract_section_citations(katakana, &[], &bare).is_empty(),
+            "the katakana joiner must chain too; got: {:?}",
+            extract_section_citations(katakana, &[], &bare)
+        );
+        // The other half: the CJK comma is a comma, so the cite after it is a
+        // distinct claim and stays under this ledger's jurisdiction.
+        let comma = "// 첫날 \u{a7}4\u{3001}\u{a7}6\n";
+        assert_eq!(
+            extract_section_citations(comma, &[], &bare),
+            vec![(1usize, "6".to_string())],
+            "the CJK comma must break the chain"
         );
     }
 
