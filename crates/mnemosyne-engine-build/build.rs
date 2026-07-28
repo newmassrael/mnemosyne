@@ -225,6 +225,7 @@ fn main() {
 
     stack_fixtures(&out_dir);
     alloc_fixtures(&out_dir);
+    prose_fixtures(&out_dir);
 }
 
 /// A gate's small size, and its quadruple. Neither number means anything on its
@@ -502,4 +503,129 @@ fn quest_parts(n: usize) -> QuestProjectionParts {
             })
             .collect(),
     }
+}
+
+/// A gate's prose sizes: the first consumer's actual spot count, and its
+/// quadruple (Round 788+). Chars per spot is their measured mean.
+///
+/// Separate from [`sizes`] on purpose. That pair counts LINES — many short
+/// strings — and this one counts SPOTS, which are few and long. They are the two
+/// opposite shapes the same emitter would have to hold, and one pair cannot
+/// stand for both.
+const PROSE_SMALL: usize = 56;
+const PROSE_BIG: usize = 224;
+const PROSE_CHARS: usize = 2655;
+
+/// Emit the prose-shaped arms `tests/projection_alloc.rs` weighs (Round 788+).
+///
+/// # What is being decided
+///
+/// The first consumer's third lift request asks the kernel to BAKE its passages:
+/// `store_passages` parses a 1.2 MB sidecar at every startup, 38,913 allocations
+/// and 48% of what remains of their startup, and they cannot bake it themselves
+/// because `Passage::from_excerpt` is crate-private as a forgery guard they say
+/// they do not want opened. Before any shape is chosen, Round 775's rule applies:
+/// measure.
+///
+/// # Why these arms and not Round 782's
+///
+/// Round 782 weighed 4,612 lines of a few dozen characters each and found the
+/// strings were not the memory — the ELEMENTS were, so borrowing removed 99.5% of
+/// the allocation calls and only 38% of the bytes. Prose is the opposite shape:
+/// 56 spots averaging 2,655 characters. Whether the same conclusion holds when
+/// the strings ARE most of the bytes is exactly what has not been measured, and
+/// assuming it would carry over is how a measured round becomes a guessed one.
+///
+/// The fixture mirrors `Passage` field for field — the anchor's `source`, its
+/// `Prefix` locator, and the text — because a passage is three strings, one of
+/// them long, and a stand-in with one string would price a different type.
+fn prose_fixtures(out_dir: &str) {
+    let write = |name: &str, source: String| {
+        std::fs::write(
+            std::path::Path::new(out_dir).join(format!("prose_{name}.rs")),
+            source,
+        )
+        .expect("write a prose fixture");
+    };
+    for (tag, spots) in [("small", PROSE_SMALL), ("big", PROSE_BIG)] {
+        write(&format!("owned_{tag}"), render_owned_prose(spots));
+        write(&format!("borrowed_{tag}"), render_borrowed_prose(spots));
+    }
+    let facts = format!(
+        "pub const PROSE_SMALL: usize = {PROSE_SMALL};\n\
+         pub const PROSE_BIG: usize = {PROSE_BIG};\n\
+         pub const PROSE_CHARS: usize = {PROSE_CHARS};\n"
+    );
+    std::fs::write(
+        std::path::Path::new(out_dir).join("prose_build_facts.rs"),
+        facts,
+    )
+    .expect("write the prose build facts");
+}
+
+/// One spot's three literals, already quoted. The text is Korean so a character
+/// is three bytes — the first consumer's prose is Korean, and a fixture in ASCII
+/// would price a third of the bytes it claims to.
+fn prose_literals(i: usize) -> (String, String, String) {
+    let sentence = "물때가 셈한다. 그는 자리에 서서 물이 나가는 것을 보았다. ";
+    let text: String = sentence.chars().cycle().take(PROSE_CHARS).collect();
+    (
+        format!("{:?}", format!("manuscript/ch-{i:03}.md")),
+        format!("{:?}", format!("d{i:02}-여기서 시작한다")),
+        format!("{:?}", text),
+    )
+}
+
+/// Arm one: the shape `store_passages` returns today — every string owned.
+fn render_owned_prose(spots: usize) -> String {
+    let ty = "::std::vec::Vec<crate::OwnedPassage>";
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..spots)
+        .collect::<Vec<_>>()
+        .chunks(CHUNK.get())
+        .enumerate()
+    {
+        let body: Vec<String> = group
+            .iter()
+            .map(|i| {
+                let (source, prefix, text) = prose_literals(*i);
+                format!(
+                    "crate::OwnedPassage {{ source: {source}.to_string(), \
+                     prefix: {prefix}.to_string(), text: {text}.to_string() }}"
+                )
+            })
+            .collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, ty, &names)
+}
+
+/// Arm two: the same three fields pointing at the literals instead of copying
+/// them. `Vec` assembly is kept identical, so the arms differ in HOLDING only.
+fn render_borrowed_prose(spots: usize) -> String {
+    let ty = "::std::vec::Vec<crate::BorrowedPassage>";
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..spots)
+        .collect::<Vec<_>>()
+        .chunks(CHUNK.get())
+        .enumerate()
+    {
+        let body: Vec<String> = group
+            .iter()
+            .map(|i| {
+                let (source, prefix, text) = prose_literals(*i);
+                format!(
+                    "crate::BorrowedPassage {{ source: {source}, prefix: {prefix}, text: {text} }}"
+                )
+            })
+            .collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, ty, &names)
 }

@@ -128,6 +128,38 @@ mod static_slice_big {
     include!(concat!(env!("OUT_DIR"), "/alloc_static_slice_big.rs"));
 }
 
+// The PROSE shape, which is the opposite one (Round 788+). `PROSE_SMALL` is the
+// first consumer's actual spot count and `PROSE_BIG` its quadruple.
+include!(concat!(env!("OUT_DIR"), "/prose_build_facts.rs"));
+
+/// A passage as `store_passages` returns it — the anchor's source, its `Prefix`
+/// locator, and the text. Three owned strings, one of them long.
+pub struct OwnedPassage {
+    pub source: String,
+    pub prefix: String,
+    pub text: String,
+}
+
+/// The same three fields pointing at the literals instead of copying them.
+pub struct BorrowedPassage {
+    pub source: &'static str,
+    pub prefix: &'static str,
+    pub text: &'static str,
+}
+
+mod prose_owned_small {
+    include!(concat!(env!("OUT_DIR"), "/prose_owned_small.rs"));
+}
+mod prose_owned_big {
+    include!(concat!(env!("OUT_DIR"), "/prose_owned_big.rs"));
+}
+mod prose_borrowed_small {
+    include!(concat!(env!("OUT_DIR"), "/prose_borrowed_small.rs"));
+}
+mod prose_borrowed_big {
+    include!(concat!(env!("OUT_DIR"), "/prose_borrowed_big.rs"));
+}
+
 thread_local! {
     static ALLOCS: Cell<usize> = const { Cell::new(0) };
     static BYTES: Cell<usize> = const { Cell::new(0) };
@@ -246,5 +278,71 @@ fn borrowing_removes_the_per_line_allocation_and_static_removes_all_of_it() {
          than their count ratio ({owned_big_n} to {borrowed_big_n}): borrowing \
          removed the copies as thoroughly as it removed the calls, which would \
          make the static arm unnecessary"
+    );
+}
+
+/// Round 788+ — the prose axis, which is the shape Round 782 did NOT measure.
+///
+/// The third lift request asks the kernel to bake the passages `store_passages`
+/// parses at every startup. Round 782's answer for the projection was that
+/// borrowing removes nearly all the allocation CALLS and only 38% of the bytes,
+/// because the strings were never the memory — the elements were. Prose inverts
+/// the proportions: `PROSE_SMALL` spots of `PROSE_CHARS` characters each, where
+/// the strings ARE most of the bytes. Whether the same conclusion carries is not
+/// something to assume on the way to picking a shape.
+///
+/// The instrument is checked first, as in the test above: the owned arm must
+/// charge more at four times the prose, or every figure here is vacuous.
+#[test]
+fn borrowing_prose_removes_what_borrowing_lines_could_not() {
+    let (owned_small_n, owned_small_b) = cost_of(prose_owned_small::build);
+    let (owned_big_n, owned_big_b) = cost_of(prose_owned_big::build);
+    assert!(
+        owned_big_n > owned_small_n && owned_big_b > owned_small_b,
+        "the owned arm charged {owned_big_n} allocations / {owned_big_b} bytes at \
+         {PROSE_BIG} spots against {owned_small_n} / {owned_small_b} at \
+         {PROSE_SMALL}: it did not grow, so this run measured nothing"
+    );
+    // Three strings per spot is the shape being priced, so the count must track
+    // the spots rather than sit at some constant the Vec spine explains.
+    assert!(
+        owned_big_n >= PROSE_BIG * 3,
+        "the owned arm charged {owned_big_n} for {PROSE_BIG} spots of three \
+         strings each: that is not the per-spot shape this claims to weigh"
+    );
+
+    let (borrowed_small_n, borrowed_small_b) = cost_of(prose_borrowed_small::build);
+    let (borrowed_big_n, borrowed_big_b) = cost_of(prose_borrowed_big::build);
+
+    // The claim: with the text borrowed, what remains is the `Vec` spine — a
+    // handful of reallocations, NOT a per-spot cost.
+    assert!(
+        borrowed_big_n < PROSE_BIG,
+        "the borrowed arm still charged {borrowed_big_n} allocations for \
+         {PROSE_BIG} spots, so it is still paying per spot"
+    );
+
+    // AND THE BYTES, which is where prose parts company with lines. Round 782
+    // measured a 38% byte reduction on the line shape and said the strings were
+    // never the memory. Here they are: the reduction must be far deeper, or the
+    // line result carried over and this axis needed no separate decision.
+    let byte_cut = 1.0 - (borrowed_big_b as f64 / owned_big_b as f64);
+    assert!(
+        byte_cut > 0.90,
+        "borrowing prose cut only {:.1}% of the bytes ({owned_big_b} to \
+         {borrowed_big_b}); on the line shape Round 782 measured 38%, and a \
+         result that close would mean prose needs no decision of its own",
+        byte_cut * 100.0
+    );
+
+    // Reported so a reader of the log sees the pair the decision rests on.
+    println!(
+        "prose owned  {PROSE_SMALL}: {owned_small_n} allocs / {owned_small_b} B \
+         | {PROSE_BIG}: {owned_big_n} / {owned_big_b}"
+    );
+    println!(
+        "prose borrow {PROSE_SMALL}: {borrowed_small_n} allocs / {borrowed_small_b} B \
+         | {PROSE_BIG}: {borrowed_big_n} / {borrowed_big_b}  (bytes -{:.1}%)",
+        byte_cut * 100.0
     );
 }
