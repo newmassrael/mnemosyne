@@ -1507,6 +1507,25 @@ pub enum ContinuityViolation {
         prefix: String,
         miss: RungMiss,
     },
+    /// A ladder's rungs are declared in an order the section's prose does not
+    /// run in (Round 821). Every rung RESOLVES — this is the fault that survives
+    /// the Round 817 check and is invisible to it, because that one asks each
+    /// coordinate a question about itself and order is a property of the SET.
+    /// The engine's projection already refuses to build such a ladder
+    /// (`RungQuestionFault::OutOfProseOrder`), so this is the Round 440 boundary
+    /// half: a re-imported excerpt can reorder the prose under rungs that stay
+    /// exactly as authored, and until the scan reads it the store reports every
+    /// rung resolved, which reads as a sound ladder. Judged by
+    /// `mnemosyne_core::declared_order_break`, the same function the projection
+    /// calls. Structural.
+    LadderRungsOutOfProseOrder {
+        section: String,
+        /// The hold declared out of place — the one an author has to move.
+        prefix: String,
+        /// Its position in the declared sequence of DISTINCT holds, so a repair
+        /// can name it when two holds carry similar prose.
+        declared_at: usize,
+    },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
     /// Succession edges close a loop (Round 463; out-of-band edit — every
@@ -3178,6 +3197,18 @@ pub fn scan_continuity(
                 });
             continue;
         };
+        // Round 821 — the offsets in DECLARED order, kept so the set can be judged
+        // once the rungs have each been judged alone.
+        //
+        // NOT deduped, and that is the difference from the projection, which does
+        // dedup (Round 768). The two are looking at different things: the kernel
+        // prices an engine rung per revealed fact, so one authored hold arrives
+        // there as several rungs sharing an anchor — while HERE, in the store,
+        // `import_ladders` rejects two rungs at one anchor outright (Round 765),
+        // so a hold is a rung. Copying the projection's dedup would have imported
+        // a rule from a representation this side does not have.
+        let mut holds: Vec<(String, usize)> = Vec::new();
+        let mut every_rung_landed = true;
         for rung in &ladder.rungs {
             let (prefix, miss) = match &rung.anchor.locator {
                 mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {
@@ -3192,7 +3223,10 @@ pub fn scan_continuity(
                         )
                     } else {
                         let miss = match mnemosyne_core::resolve_prefix(&excerpt.text, prefix) {
-                            mnemosyne_core::PrefixResolution::Unique(_) => None,
+                            mnemosyne_core::PrefixResolution::Unique(at) => {
+                                holds.push((prefix.clone(), at));
+                                None
+                            }
                             mnemosyne_core::PrefixResolution::NotFound => Some(RungMiss::Absent),
                             mnemosyne_core::PrefixResolution::Ambiguous(n) => {
                                 Some(RungMiss::Ambiguous { occurrences: n })
@@ -3216,12 +3250,30 @@ pub fn scan_continuity(
                 ),
             };
             if let Some(miss) = miss {
+                every_rung_landed = false;
                 report
                     .violations
                     .push(ContinuityViolation::LadderRungStranded {
                         section: sid.clone(),
                         prefix,
                         miss,
+                    });
+            }
+        }
+        // Order is judged only when every rung landed. A ladder with a stranded
+        // rung has no order to speak of — the missing hold has no position, so
+        // any verdict about the sequence would be about the holds that happen to
+        // remain. Accusing it of both would also name one fault twice and send
+        // the author to the wrong repair.
+        if every_rung_landed {
+            let offsets: Vec<usize> = holds.iter().map(|(_, at)| *at).collect();
+            if let Some(at) = mnemosyne_core::declared_order_break(&offsets) {
+                report
+                    .violations
+                    .push(ContinuityViolation::LadderRungsOutOfProseOrder {
+                        section: sid.clone(),
+                        prefix: holds[at].0.clone(),
+                        declared_at: at,
                     });
             }
         }
@@ -7477,6 +7529,195 @@ mod tests {
             "one verdict for the section, not one per rung"
         );
         assert_eq!(report.ladder_rungs_resolved, 0);
+    }
+
+    /// Round 821 — the fault that SURVIVES the Round 817 check: every rung
+    /// resolves and the ladder is still wrong, because order is a property of
+    /// the set and Round 817 asks each coordinate a question about itself.
+    ///
+    /// The ACCEPT is asserted first, and with it `ladder_rungs_resolved`, because
+    /// the misleading green this round exists to remove is exactly "all N rungs
+    /// resolved" printed over a ladder whose holds open in the wrong sequence.
+    /// The load-bearing case is the SECOND — the prose is re-imported through the
+    /// real primitive with the rungs untouched, so the reordering happens the way
+    /// a consumer's wipe-and-replay build does it, not by editing the ladder.
+    #[test]
+    fn a_ladder_whose_holds_run_against_its_prose_is_named_r821() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let mut store = store_with(vec![fact("f-a", "seward", "ch-1", None)]);
+        let excerpt = |text: &str| mnemosyne_atomic::ContentExcerptImport {
+            section_id: "ch-1".to_string(),
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "M.md".to_string(),
+                locator: mnemosyne_core::Locator::Prefix("The bell".to_string()),
+            },
+            text: text.to_string(),
+        };
+        let rung = |prefix: &str| mnemosyne_atomic::LadderRung {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "M.md".to_string(),
+                locator: mnemosyne_core::Locator::Prefix(prefix.to_string()),
+            },
+            needs: vec![],
+            reveals: vec![],
+            object: None,
+        };
+        let import = |store: &mut _, rungs: Vec<mnemosyne_atomic::LadderRung>| {
+            mnemosyne_atomic::import_ladders(
+                store,
+                &path,
+                &[mnemosyne_atomic::LadderImport {
+                    section_id: "ch-1".to_string(),
+                    carrier: None,
+                    rungs,
+                }],
+            )
+            .unwrap();
+        };
+        let out_of_order = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::LadderRungsOutOfProseOrder {
+                        prefix,
+                        declared_at,
+                        ..
+                    } => Some((prefix.clone(), *declared_at)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "The bell stopped.\nSeward counted the silence.\nThe tide went out.",
+            )],
+            None,
+        )
+        .unwrap();
+        import(&mut store, vec![rung("Seward counted"), rung("The tide")]);
+        // ACCEPT — the declaration runs with the prose, and the axis ran.
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(out_of_order(&report).is_empty(), "{:?}", report.violations);
+        assert_eq!(report.ladder_rungs_resolved, 2);
+        // THE CASE: the excerpt is re-imported with its two lines swapped, the
+        // ladder untouched. Both rungs still resolve — Round 817 sees nothing —
+        // but the second hold is now the one the prose reaches first.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "The bell stopped.\nThe tide went out.\nSeward counted the silence.",
+            )],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            report
+                .violations
+                .iter()
+                .filter(|v| matches!(v, ContinuityViolation::LadderRungStranded { .. }))
+                .count(),
+            0,
+            "every rung still resolves — this is the fault R817 cannot see"
+        );
+        assert_eq!(report.ladder_rungs_resolved, 2);
+        assert_eq!(
+            out_of_order(&report),
+            vec![("Seward counted".to_string(), 0)],
+            "the hold declared where the later one belongs is the one to move"
+        );
+        // A STRANDED rung is not also accused of being out of order: the missing
+        // hold has no position, so a sequence verdict would be about the holds
+        // that happen to remain, and the author would be sent to the wrong repair.
+        //
+        // The SURVIVING holds are deliberately out of order here. A fixture where
+        // only one hold survives cannot tell the guard from its absence — one
+        // hold runs in any order — so it would report a passing check while
+        // testing nothing.
+        //
+        // The ladder is declared against prose that holds all three lines (the
+        // write path resolves every rung since Round 815, so a stranded rung is
+        // only reachable by moving the prose afterwards), and THEN the excerpt is
+        // re-imported with the first line gone and the other two swapped.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "A stake was found.\nThe bell stopped.\nSeward counted the silence.\n\
+                 The tide went out.",
+            )],
+            None,
+        )
+        .unwrap();
+        import(
+            &mut store,
+            vec![rung("A stake"), rung("Seward counted"), rung("The tide")],
+        );
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "The bell stopped.\nThe tide went out.\nSeward counted the silence.",
+            )],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::LadderRungStranded { .. })),
+            "{:?}",
+            report.violations
+        );
+        assert!(
+            out_of_order(&report).is_empty(),
+            "a ladder with a stranded rung has no order to judge"
+        );
+        // THREE HOLDS, and only the LAST is out of place: the leading run that
+        // already agrees with the prose is not accused, so the report names the
+        // one hold to move rather than every hold after the first disagreement.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "The bell stopped.\nSeward counted the silence.\nThe tide went out.",
+            )],
+            None,
+        )
+        .unwrap();
+        import(
+            &mut store,
+            vec![rung("The bell"), rung("The tide"), rung("Seward counted")],
+        );
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            out_of_order(&report),
+            vec![("The tide".to_string(), 1)],
+            "the break is the hold declared before one the prose reaches first"
+        );
+        // Two rungs at ONE anchor is a shape `import_ladders` rejects outright
+        // (Round 765), so the store can only hold it through an out-of-band edit.
+        // The order axis must not turn that into a false accusation: the two
+        // coordinates are equal, not inverted, and equal offsets run in any order.
+        let section = store.sections.get_mut("ch-1").unwrap();
+        section.ladder.as_mut().unwrap().rungs = vec![
+            rung("Seward counted"),
+            rung("Seward counted"),
+            rung("The tide"),
+        ];
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            out_of_order(&report).is_empty(),
+            "a duplicated anchor is not an inverted one — see this round's carry"
+        );
     }
 
     /// Round 811 — the fact layer's half of the Round 758 guarantee, walked

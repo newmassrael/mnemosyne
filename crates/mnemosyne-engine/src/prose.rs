@@ -342,6 +342,9 @@ pub struct PrefixSlices {
     /// The anchors in the order their prefixes occur in the document — computed
     /// during the one locate pass so an ordered caller never repeats the search.
     in_prose_order: Vec<ContentAnchor>,
+    /// The offsets of the anchors as `new` received them — see
+    /// [`declared_offsets`](Self::declared_offsets).
+    declared_offsets: Vec<usize>,
 }
 
 impl PrefixSlices {
@@ -416,6 +419,11 @@ impl PrefixSlices {
         // question only a caller with ordered semantics (a ladder's rungs) can
         // ask, so it asks it with `in_prose_order` rather than being answered
         // here for every caller.
+        // Captured BEFORE the sort: the offsets as the caller declared them, which
+        // is what an ordered caller judges with (Round 821). Recording the input
+        // order is a fact about the input, not a rule about it — the rule stays
+        // out of this generic slicer exactly as Round 766 decided.
+        let declared_offsets: Vec<usize> = placed.iter().map(|(offset, _, _)| *offset).collect();
         placed.sort_by_key(|(offset, _, _)| *offset);
 
         let mut slices = HashMap::with_capacity(placed.len());
@@ -426,11 +434,27 @@ impl PrefixSlices {
         Ok(Self {
             source: source.to_string(),
             slices,
+            declared_offsets,
             in_prose_order: placed
                 .into_iter()
                 .map(|(_, anchor, _)| anchor.clone())
                 .collect(),
         })
+    }
+
+    /// Where each anchor GIVEN TO [`new`](Self::new) begins, in the order it was
+    /// given (Round 821). The companion to [`in_prose_order`](Self::in_prose_order):
+    /// that one answers "what order does the document put these in", this one
+    /// answers "where did the ones I declared land", and an ordered caller needs
+    /// both halves to judge its declaration.
+    ///
+    /// It exists so the judgement can be made by
+    /// [`mnemosyne_core::declared_order_break`] — the one home for the ladder-order
+    /// rule, shared with the scan that re-reads the stored ladder — rather than by
+    /// each caller comparing sequences for itself.
+    #[must_use]
+    pub fn declared_offsets(&self) -> &[usize] {
+        &self.declared_offsets
     }
 
     /// The anchors this source holds, in the order their prefixes occur in the

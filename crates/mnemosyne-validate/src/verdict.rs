@@ -433,6 +433,27 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 message,
             )
         }
+        ContinuityViolation::LadderRungsOutOfProseOrder {
+            section,
+            prefix,
+            declared_at,
+        } => action(
+            "ladder_rungs_out_of_prose_order",
+            ViolationLocus {
+                field: Some("ladder".to_string()),
+                at: Some(section.clone()),
+                ..Default::default()
+            },
+            "a ladder's nth hold must be the nth passage of the prose it addresses".to_string(),
+            "re-declare the rungs in the order the section's prose reaches them, or re-anchor \
+             this hold at the line it actually means — never reorder the excerpt to match the \
+             ladder"
+                .to_string(),
+            format!(
+                "section `{section}` declares its hold at {prefix:?} in position {declared_at}, \
+                 which its prose reaches later than the hold declared after it"
+            ),
+        ),
         ContinuityViolation::SuccessionTargetMissing { fact_id, target } => action(
             "succession_target_missing",
             ViolationLocus {

@@ -61,6 +61,36 @@ pub fn resolve_prefix(text: &str, prefix: &str) -> PrefixResolution {
     PrefixResolution::Unique(offset)
 }
 
+/// Where a DECLARED sequence of prefix coordinates first disagrees with the
+/// order the document puts them in (Round 821), or `None` when the declaration
+/// runs the way the prose does.
+///
+/// THE ladder-order rule, and it lives here for the reason [`resolve_prefix`]
+/// does. Round 766 deliberately kept it out of the generic slicer — an anchor
+/// set may arrive from a map, and a slicer has no business demanding a caller's
+/// iteration order match a document — and said an ordered caller "judges its
+/// declared order against that". There are now TWO such callers: the engine's
+/// projection, which refuses to build a ladder whose numbering does not describe
+/// the scene, and the scan, which re-reads the final store because a re-imported
+/// excerpt moves the prose under rungs that stay exactly as authored. Two homes
+/// for one invariant is the half-enforced class, so the judgement is one
+/// function and each caller supplies the offsets its own single resolve pass
+/// already produced.
+///
+/// `offsets` are the coordinates in DECLARED order. The answer is the first
+/// index at which that sequence differs from the same offsets in document order
+/// — the hold that is out of place, rather than the one that follows it, which
+/// is the position a reader has to move.
+#[must_use]
+pub fn declared_order_break(offsets: &[usize]) -> Option<usize> {
+    let mut in_prose_order = offsets.to_vec();
+    in_prose_order.sort_unstable();
+    offsets
+        .iter()
+        .zip(&in_prose_order)
+        .position(|(declared, actual)| declared != actual)
+}
+
 /// The position of a passage within its content-SSOT document.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -72,4 +102,31 @@ pub enum Locator {
     Prefix(String),
     /// An EPUB Canonical Fragment Identifier (R755 Phase 4 — no resolver yet).
     Cfi(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::declared_order_break;
+
+    #[test]
+    fn a_declaration_that_runs_with_the_prose_has_no_break() {
+        assert_eq!(declared_order_break(&[0, 10, 40]), None);
+        // Degenerate inputs are agreements, not faults: a ladder of one hold and
+        // a ladder of none both describe their scene correctly.
+        assert_eq!(declared_order_break(&[7]), None);
+        assert_eq!(declared_order_break(&[]), None);
+    }
+
+    #[test]
+    fn the_break_names_the_hold_that_is_out_of_place_not_the_one_after_it() {
+        // Two holds declared back-to-front. The answer is 0 — the hold sitting
+        // where the later one belongs — because that is the one the author has
+        // to move. Naming index 1 would point at the hold that is already where
+        // the prose puts it.
+        assert_eq!(declared_order_break(&[40, 10]), Some(0));
+        // A leading run that already agrees is not accused: the first hold is
+        // where the prose puts it, and the break is the SECOND, declared before
+        // a hold the document reaches first.
+        assert_eq!(declared_order_break(&[0, 10, 5]), Some(1));
+    }
 }

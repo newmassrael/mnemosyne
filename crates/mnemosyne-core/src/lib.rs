@@ -49,7 +49,9 @@ mod section_ref;
 pub use section_ref::{numeric_section_refs, strip_section_marker};
 
 mod content_anchor;
-pub use content_anchor::{resolve_prefix, ContentAnchor, Locator, PrefixResolution};
+pub use content_anchor::{
+    declared_order_break, resolve_prefix, ContentAnchor, Locator, PrefixResolution,
+};
 
 mod scene;
 pub use scene::Modality;

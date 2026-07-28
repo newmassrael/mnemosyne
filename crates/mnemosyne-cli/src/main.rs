@@ -2866,9 +2866,14 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         // they address. Printed for the same reason as the two lines above: a
         // store with no ladders and a store whose every rung lands both produce
         // zero findings, and only this number tells them apart.
+        // Round 821 — and the SET is judged too, not only each coordinate alone.
+        // The line said "resolved" while a ladder whose every rung resolves can
+        // still open its holds against the prose order, which is exactly the
+        // reading this number invites when it stands alone.
         println!(
-            "  ladder rungs: {} coordinate(s) resolved against current prose \
-             (a stranded rung is reported as a violation)",
+            "  ladder rungs: {} coordinate(s) resolved against current prose, and each \
+             ladder's declared order judged against it (a stranded rung or an \
+             out-of-order ladder is reported as a violation)",
             report.ladder_rungs_resolved
         );
         println!(

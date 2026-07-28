@@ -944,13 +944,15 @@ fn resolve_ladder_questions(
     // Order is the ladder's own invariant (R766 deliberately kept it out of the
     // generic slicer): the nth declared hold must be the nth passage, or the
     // author's numbering does not describe the scene they wrote.
-    let prose_order = slices.in_prose_order();
-    if prose_order.len() == owned.len() && prose_order != owned.as_slice() {
-        let at = owned
-            .iter()
-            .zip(prose_order)
-            .position(|(declared, actual)| declared != actual)
-            .unwrap_or(0);
+    //
+    // Round 821 — the judgement itself is `mnemosyne_core::declared_order_break`,
+    // not written here, because the scan asks the same question of the same
+    // ladders when it re-reads the final store. It was hand-rolled here while
+    // this was the only ordered caller; a second copy in the scan would have
+    // made one invariant answer to two homes. The offsets come from the ONE
+    // locate pass the slicer already ran, so the rule is shared without a second
+    // search (the R766 in_prose_order discipline, one level up).
+    if let Some(at) = mnemosyne_core::declared_order_break(slices.declared_offsets()) {
         return Err(fault(&owned[at], RungQuestionFault::OutOfProseOrder));
     }
 
