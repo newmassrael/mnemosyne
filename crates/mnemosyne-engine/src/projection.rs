@@ -410,12 +410,12 @@ impl PlayableProjection {
         // the reveals are a subset of the disclosed lines, so they cannot leak.
         let mut by_object: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for line in self.lines(world, section) {
-            for entity in &line.entities {
+            for entity in line.entities() {
                 if self.interactivity.objects.contains(entity) {
                     by_object
-                        .entry(entity.as_str())
+                        .entry(entity)
                         .or_default()
-                        .push(line.fact_id.clone());
+                        .push(line.fact_id().to_string());
                 }
             }
         }
@@ -558,8 +558,8 @@ impl PlayableProjection {
         let mut set: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
         for s in &walk[..=pos] {
             for line in self.lines(world, s) {
-                for entity in &line.entities {
-                    set.insert(entity.as_str());
+                for entity in line.entities() {
+                    set.insert(entity);
                 }
             }
         }
@@ -914,6 +914,7 @@ fn resolve_ladder_questions(
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::collections::{HashMap, HashSet};
 
     use mnemosyne_core::DisclosureMode;
@@ -1906,5 +1907,99 @@ mod tests {
         // A scene with no authored presence, and an unknown section: empty cast.
         assert!(proj.cast_at("sc-02").is_empty());
         assert!(proj.cast_at("sc-99").is_empty());
+    }
+
+    /// Round 795 — the ingestion door must PRESERVE a line's borrow, on BOTH
+    /// fields that can carry one.
+    ///
+    /// This is the half that regresses in silence, and the prose axis already
+    /// paid to learn it (Round 793). `Cow` compares by CONTENT, so the
+    /// `to_parts()` round trip, the live-to-baked equality and the emitter's own
+    /// fixture all pass identically whether a baked line points at its literals or
+    /// copied them. A door written `part.text.into_owned().into()` looks correct
+    /// and undoes the round; only the discriminant sees it.
+    ///
+    /// The list is asserted separately from the text because they are separately
+    /// losable: Round 794 measured that borrowing the strings while rebuilding the
+    /// `Vec` is 80% of the win, which is exactly what a door that forgot the list
+    /// would silently ship.
+    ///
+    /// Both directions, so the door carries what it was GIVEN rather than
+    /// normalizing everything to one representation.
+    #[test]
+    fn the_line_door_carries_the_borrow_it_was_given() {
+        fn one_line(part: crate::LinePart) -> PlayableProjection {
+            PlayableProjection::from_parts(crate::ProjectionParts {
+                telling: "reader".to_string(),
+                by_world: vec![("main".to_string(), vec![("sc-01".to_string(), vec![part])])],
+                walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+                titles: Vec::new(),
+                cast: Vec::new(),
+                forks: Vec::new(),
+                divergent_endings: Vec::new(),
+                interactivity: Interactivity::default(),
+                choice_entity_refs: Vec::new(),
+                ask_doors: Vec::new(),
+                journal_offers: Vec::new(),
+            })
+        }
+
+        let borrowed = one_line(crate::LinePart {
+            fact_id: Cow::Borrowed("f-a"),
+            text: Cow::Borrowed("물때가 셈한다."),
+            mode: DisclosureMode::State,
+            frame: Cow::Borrowed("ground-truth"),
+            entities: Cow::Borrowed(&[Cow::Borrowed("ent-a")]),
+            carrier: None,
+            typed_predicate: None,
+            quote: None,
+            count: None,
+        });
+        let line = &borrowed.lines("main", "sc-01")[0];
+        assert!(
+            matches!(line.text, Cow::Borrowed(_)),
+            "a baked line copied its text instead of pointing at it, which no \
+             content assertion in this workspace can see"
+        );
+        assert!(
+            matches!(line.entities, Cow::Borrowed(_)),
+            "a baked line rebuilt its entity list instead of pointing at it — the \
+             80%-of-the-win regression Round 794 priced"
+        );
+
+        let owned = one_line(crate::LinePart {
+            fact_id: Cow::Owned("f-a".to_string()),
+            text: Cow::Owned("물때가 셈한다.".to_string()),
+            mode: DisclosureMode::State,
+            frame: Cow::Owned("ground-truth".to_string()),
+            entities: Cow::Owned(vec![Cow::Owned("ent-a".to_string())]),
+            carrier: None,
+            typed_predicate: None,
+            quote: None,
+            count: None,
+        });
+        let owned_line = &owned.lines("main", "sc-01")[0];
+        assert!(matches!(owned_line.text, Cow::Owned(_)));
+        assert!(matches!(owned_line.entities, Cow::Owned(_)));
+
+        // And the two are equal, which is exactly why the discriminant needed its
+        // own assertion.
+        assert_eq!(
+            borrowed.lines("main", "sc-01"),
+            owned.lines("main", "sc-01")
+        );
+    }
+
+    /// Round 795 — the run-time constructor still OWNS, because it derives its
+    /// strings from a store read rather than pointing at a literal. Asserted so
+    /// the `Cow` cannot drift into a doc claiming everything borrows.
+    #[test]
+    fn the_runtime_line_constructor_still_owns() {
+        let line = crate::Line::from_disclosed(
+            &locator("f-a", "sc-01", DisclosureMode::State),
+            &begin("f-a", "물때가 셈한다.", "ground-truth", &["ent-a"]),
+        );
+        assert!(matches!(line.text, Cow::Owned(_)));
+        assert!(matches!(line.entities, Cow::Owned(_)));
     }
 }

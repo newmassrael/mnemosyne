@@ -430,11 +430,11 @@ mod tests {
                 vec![(
                     "sc-01".to_string(),
                     vec![LinePart {
-                        fact_id: "f-a".to_string(),
-                        text: "a line".to_string(),
+                        fact_id: "f-a".into(),
+                        text: "a line".into(),
                         mode: DisclosureMode::State,
-                        frame: String::new(),
-                        entities: Vec::new(),
+                        frame: String::new().into(),
+                        entities: Vec::new().into(),
                         carrier: None,
                         typed_predicate: None,
                         quote: None,
@@ -506,6 +506,11 @@ mod tests {
     /// be satisfied by inference reading the annotation as the goal.
     fn keep_forever(_: &'static str) {}
     fn keep_slice_forever(_: &'static [String]) {}
+    /// The same requirement for an accessor that hands out an ITERATOR rather
+    /// than a slice (Round 795, `Line::entities`). Binding the item type to
+    /// `&'static str` is the identical constraint on the caller: the sequence may
+    /// be lazy, but what it yields still has to outlive the process.
+    fn keep_items_forever(_: impl Iterator<Item = &'static str>) {}
 
     #[test]
     fn the_baked_artifacts_hand_out_process_lifetime_borrows() {
@@ -531,7 +536,7 @@ mod tests {
             line.carrier()
                 .expect("the fixture's first line has a carrier"),
         );
-        keep_slice_forever(line.entities());
+        keep_items_forever(line.entities());
 
         // The quest axis, repeated rather than inferred from the playable one —
         // the R774 discipline. Both emitters end in the same `artifact`, and that
@@ -555,11 +560,11 @@ mod tests {
                     "sc-01".to_string(),
                     (0..n)
                         .map(|i| LinePart {
-                            fact_id: format!("f-{i:06}"),
-                            text: "그는 \"셈\"이라 했다.".to_string(),
+                            fact_id: format!("f-{i:06}").into(),
+                            text: "그는 \"셈\"이라 했다.".into(),
                             mode: DisclosureMode::State,
-                            frame: "ground-truth".to_string(),
-                            entities: vec!["ent-a".to_string()],
+                            frame: "ground-truth".into(),
+                            entities: vec!["ent-a".into()].into(),
                             carrier: None,
                             typed_predicate: None,
                             quote: None,

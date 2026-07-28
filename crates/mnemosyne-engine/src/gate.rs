@@ -141,7 +141,7 @@ impl PlayableProjection {
                 });
             }
 
-            let offered: HashSet<&str> = lines.iter().map(|l| l.fact_id.as_str()).collect();
+            let offered: HashSet<&str> = lines.iter().map(|l| l.fact_id()).collect();
             let mut reachable: HashSet<&str> = HashSet::new();
             for door in &doors {
                 match door {
@@ -187,11 +187,11 @@ impl PlayableProjection {
             // `offered` set.
             if !rungs.is_empty() && !self.free_investigate() {
                 for line in lines {
-                    if !reachable.contains(line.fact_id.as_str()) {
+                    if !reachable.contains(line.fact_id()) {
                         violations.push(GateViolation::OfferedFactUnreachable {
                             world: world.to_string(),
                             section: section.clone(),
-                            fact_id: line.fact_id.clone(),
+                            fact_id: line.fact_id().to_string(),
                         });
                     }
                 }

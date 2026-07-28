@@ -1,5 +1,6 @@
 //! The provenance-bound value types the kernel hands the presentation layer.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use mnemosyne_atomic::ScenePresence;
@@ -28,14 +29,18 @@ use mnemosyne_validate::continuity::{ManuscriptFactEvent, MapLocator};
 ///
 /// ```compile_fail
 /// use mnemosyne_engine::{DisclosureMode, Line};
-/// // The fields are crate-private (and `Line` is #[non_exhaustive]), so a
-/// // struct literal from another crate does not compile.
+/// // `Line` is #[non_exhaustive], so a struct literal from another crate does
+/// // not compile. The values are `todo!()` ON PURPOSE: `!` coerces to any type,
+/// // so the only thing this can fail on is the guard, whatever the fields are
+/// // declared to hold. Round 795 changed those types and found the earlier
+/// // version of this test failing on four type mismatches instead — a
+/// // `compile_fail` that would have stayed green with the guard removed.
 /// let _ = Line {
-///     fact_id: "f-invented".to_string(),
-///     text: "the engine made this up".to_string(),
+///     fact_id: todo!(),
+///     text: todo!(),
 ///     mode: DisclosureMode::State,
-///     frame: String::new(),
-///     entities: Vec::new(),
+///     frame: todo!(),
+///     entities: todo!(),
 ///     carrier: None,
 ///     typed_predicate: None,
 ///     quote: None,
@@ -43,16 +48,18 @@ use mnemosyne_validate::continuity::{ManuscriptFactEvent, MapLocator};
 /// };
 /// ```
 ///
-/// Nor does clone-and-overwrite — a real seed line is freely available (every
-/// `SceneView.lines` hands them out), but its content cannot be mutated:
+/// That one proves the `#[non_exhaustive]` half. The PRIVACY half is the
+/// clone-and-overwrite below — a real seed line is freely available (every
+/// `SceneView.lines` hands them out), but its content cannot be mutated, and this
+/// is the test that reports `E0616`, field is private:
 ///
 /// ```compile_fail
 /// // `text` is crate-private, so overwriting it on an owned clone does not
 /// // compile — a downstream crate cannot fake a line's content.
 /// fn forge(seed: &mnemosyne_engine::Line) -> String {
 ///     let mut forged = seed.clone();
-///     forged.text = "the engine made this up".to_string();
-///     forged.text
+///     forged.text = todo!();
+///     forged.text.into_owned()
 /// }
 /// ```
 ///
@@ -67,35 +74,51 @@ use mnemosyne_validate::continuity::{ManuscriptFactEvent, MapLocator};
 /// (quest legs). The visual mapping and any theme OVERRIDE live in the
 /// presentation layer, never here — the kernel supplies meaning, the renderer
 /// supplies looks.
+///
+/// # How the strings are held (Round 795)
+///
+/// Every string here is a `Cow<'static, str>` and the entity list a
+/// `Cow<'static, [Cow<'static, str>]>`, which is an IMPLEMENTATION DETAIL — the
+/// accessors below still hand out `&str`, so no consumer learns the
+/// representation. What it buys is that a BAKED line points at the literals in
+/// the binary instead of copying them, while [`Line::from_disclosed`] keeps
+/// owning because it derives its text at run time. One type with two ownership
+/// modes rather than two types, the Round 785 decision.
+///
+/// The list is a `Cow` and not a `Vec<Cow<'static, str>>` because Round 794
+/// measured the difference and it is the whole remainder: a `Vec` spine costs one
+/// allocation per line whatever the strings do, which is 80% of the win rather
+/// than 100%. It costs nothing at the API, since both forms expose exactly the
+/// same accessor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Line {
     /// Provenance — the `narrative_facts` key this line projects.
-    pub(crate) fact_id: String,
+    pub(crate) fact_id: Cow<'static, str>,
     /// The authored claim from the store (the fact's own words).
-    pub(crate) text: String,
+    pub(crate) text: Cow<'static, str>,
     /// `state`/`hint`/`imply` — never [`DisclosureMode::Withhold`] (a withheld
     /// fact emits no locator, so it never reaches here).
     pub(crate) mode: DisclosureMode,
     /// Whose knowledge — the store's epistemic frame. `"ground-truth"` = the
     /// world asserts it; anything else = a named character believes/says it
     /// (see [`Line::is_belief`]). May be empty when the store left it unframed.
-    pub(crate) frame: String,
+    pub(crate) frame: Cow<'static, str>,
     /// The entities the store attached to this fact (people/objects/places
     /// mixed; splitting them by kind is the consumer's job via its registries).
-    pub(crate) entities: Vec<String>,
+    pub(crate) entities: Cow<'static, [Cow<'static, str>]>,
     /// The diegetic carrier the disclosure rides on (`surface.object`), when an
     /// authored surface names one; often `None`.
-    pub(crate) carrier: Option<String>,
+    pub(crate) carrier: Option<Cow<'static, str>>,
     /// The typed-claim predicate (e.g. `pursues`/`requires`/`completed_by`) when
     /// this fact is a typed leg — surfaced so a consumer can route quest-journal
     /// facts out of the prose stream without the kernel guessing a policy (that
     /// policy is a consumer override, never a kernel default).
-    pub(crate) typed_predicate: Option<String>,
+    pub(crate) typed_predicate: Option<Cow<'static, str>>,
     /// The store's verbatim quote for this fact, when authored (vs the
     /// paraphrased `text`/claim) — a styling axis a renderer may set in
     /// quotation treatment. `None` = no authored quote.
-    pub(crate) quote: Option<String>,
+    pub(crate) quote: Option<Cow<'static, str>>,
     /// The asserted multiplicity riding this fact (R731 `fact_counts`), when
     /// authored — a renderer may annotate it (e.g. "×3"). Never summed; `None`
     /// = no authored multiplicity.
@@ -148,9 +171,27 @@ impl Line {
     }
 
     /// The entities the store attached to this fact.
-    #[must_use]
-    pub fn entities(&self) -> &[String] {
-        &self.entities
+    ///
+    /// # Why an iterator and not a slice (Round 795)
+    ///
+    /// This is the one accessor whose form the Round 785 design left open, on the
+    /// grounds that it needs the call sites. With them in hand there is exactly
+    /// one caller outside this crate, so ergonomics did not decide it — the
+    /// design's own commitment did. `Cow` is meant to stay an implementation
+    /// detail, and `&[Cow<'static, str>]` would publish it in the signature of
+    /// the most-read accessor on the most-read type; every consumer would then
+    /// match on a representation the kernel reserves the right to change.
+    ///
+    /// An iterator of `&str` hides it completely, and hides it for BOTH holdings:
+    /// Round 794 verified by compilation that a `Vec<Cow<..>>` and a
+    /// `Cow<'static, [Cow<..>]>` yield the identical `&str` sequence, so this
+    /// signature does not pin the field either. It also keeps Round 786's
+    /// property, since a `&'static self` yields `&'static str` items by the same
+    /// elision that made the handle work.
+    ///
+    /// `ExactSizeIterator` so a caller that only wants the count does not collect.
+    pub fn entities(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.entities.iter().map(AsRef::as_ref)
     }
 
     /// The diegetic carrier the disclosure rides on (`surface.object`).
@@ -183,14 +224,17 @@ impl Line {
     /// begins index.
     pub(crate) fn from_disclosed(locator: &MapLocator, begin: &ManuscriptFactEvent) -> Self {
         Self {
-            fact_id: locator.fact_id.clone(),
-            text: begin.claim.clone(),
+            fact_id: Cow::Owned(locator.fact_id.clone()),
+            text: Cow::Owned(begin.claim.clone()),
             mode: locator.mode,
-            frame: begin.frame.clone(),
-            entities: begin.entities.clone(),
-            carrier: locator.object.clone(),
-            typed_predicate: begin.typed.as_ref().map(|t| t.predicate.clone()),
-            quote: begin.quote.clone(),
+            frame: Cow::Owned(begin.frame.clone()),
+            entities: Cow::Owned(begin.entities.iter().cloned().map(Cow::Owned).collect()),
+            carrier: locator.object.clone().map(Cow::Owned),
+            typed_predicate: begin
+                .typed
+                .as_ref()
+                .map(|t| Cow::Owned(t.predicate.clone())),
+            quote: begin.quote.clone().map(Cow::Owned),
             count: begin.count,
         }
     }
@@ -485,23 +529,30 @@ pub struct Interactivity {
 /// (R764 weak point 1): a build-time forger and a report forger are the same
 /// forger, and neither is the threat model.
 #[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The fields are `Cow<'static, _>` since Round 795, mirroring [`Line`]: a BAKED
+/// part carries `Cow::Borrowed` of the literals the emitter wrote, and
+/// [`Line::to_part`] on a live line yields `Cow::Owned`. The two compare equal by
+/// CONTENT, which is what keeps the live-to-baked round trip an equality rather
+/// than a shape check — and is also why the gate that guards the borrow has to
+/// assert the DISCRIMINANT rather than the value.
 pub struct LinePart {
     /// Provenance — the `narrative_facts` key this line projects.
-    pub fact_id: String,
+    pub fact_id: Cow<'static, str>,
     /// The authored claim from the store.
-    pub text: String,
+    pub text: Cow<'static, str>,
     /// How the telling surfaces it; never [`DisclosureMode::Withhold`].
     pub mode: DisclosureMode,
     /// Whose knowledge this is (the store's epistemic frame).
-    pub frame: String,
+    pub frame: Cow<'static, str>,
     /// The store entities the fact names.
-    pub entities: Vec<String>,
+    pub entities: Cow<'static, [Cow<'static, str>]>,
     /// The diegetic carrier the disclosure rides on.
-    pub carrier: Option<String>,
+    pub carrier: Option<Cow<'static, str>>,
     /// The typed leg's predicate, when the fact carries one.
-    pub typed_predicate: Option<String>,
+    pub typed_predicate: Option<Cow<'static, str>>,
     /// The authored quote backing the fact.
-    pub quote: Option<String>,
+    pub quote: Option<Cow<'static, str>>,
     /// The asserted multiplicity riding the fact.
     pub count: Option<i64>,
 }

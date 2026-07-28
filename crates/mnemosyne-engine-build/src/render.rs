@@ -6,6 +6,7 @@
 // comments rather than `//!` module docs: an inner doc comment cannot appear
 // where an `include!` splices it.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::num::NonZeroUsize;
 
@@ -529,18 +530,43 @@ fn inline_strings(items: &[String]) -> String {
     format!("vec![{}]", body.join(", "))
 }
 
+/// A `Cow::Borrowed` of the literal — what a baked field carries so the line
+/// POINTS at the binary instead of copying it (Round 795).
+fn cow(s: &str) -> String {
+    format!("::std::borrow::Cow::Borrowed({})", str_literal(s))
+}
+
+/// A line's entity list as a BORROWED slice of borrowed strings.
+///
+/// The slice is written inline rather than through a named `static`, relying on
+/// rvalue static promotion — checked by compilation in Round 794, together with
+/// the discriminating half (the same shape holding a runtime `String` fails
+/// `E0515`), because a named `static` per line would add an ITEM per line and
+/// Round 789 measured that rustc charges per item.
+///
+/// Borrowing the list and not only its strings is what Round 794 measured as the
+/// difference between 80% and 100% of the allocation win: a `Vec` spine costs one
+/// allocation per line whatever the strings do.
+fn inline_cow_strings(items: &[Cow<'static, str>]) -> String {
+    if items.is_empty() {
+        return "::std::borrow::Cow::Borrowed(&[])".to_string();
+    }
+    let body: Vec<String> = items.iter().map(|s| cow(s)).collect();
+    format!("::std::borrow::Cow::Borrowed(&[{}])", body.join(", "))
+}
+
 fn line(part: &LinePart) -> String {
     format!(
         "::mnemosyne_engine::LinePart {{ fact_id: {}, text: {}, mode: {}, frame: {}, \
          entities: {}, carrier: {}, typed_predicate: {}, quote: {}, count: {} }}",
-        string(&part.fact_id),
-        string(&part.text),
+        cow(&part.fact_id),
+        cow(&part.text),
         disclosure_mode(part.mode),
-        string(&part.frame),
-        inline_strings(&part.entities),
-        option(part.carrier.as_deref().map(string)),
-        option(part.typed_predicate.as_deref().map(string)),
-        option(part.quote.as_deref().map(string)),
+        cow(&part.frame),
+        inline_cow_strings(&part.entities),
+        option(part.carrier.as_deref().map(cow)),
+        option(part.typed_predicate.as_deref().map(cow)),
+        option(part.quote.as_deref().map(cow)),
         option(part.count.map(|c| format!("{c}i64"))),
     )
 }

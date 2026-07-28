@@ -151,14 +151,14 @@ mod tests {
         count: Option<i64>,
     ) -> LinePart {
         LinePart {
-            fact_id: fact_id.into(),
-            text: text.into(),
+            fact_id: fact_id.to_string().into(),
+            text: text.to_string().into(),
             mode: DisclosureMode::State,
-            frame: frame.into(),
-            entities: Vec::new(),
+            frame: frame.to_string().into(),
+            entities: Vec::new().into(),
             carrier: None,
             typed_predicate: None,
-            quote: quote.map(str::to_string),
+            quote: quote.map(|q| q.to_string().into()),
             count,
         }
     }
