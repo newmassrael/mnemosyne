@@ -75,6 +75,7 @@ use std::path::{Path, PathBuf};
 
 use mnemosyne_config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
 use mnemosyne_core::DecisionStatus;
+use serde::Serialize;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
 /// file. `entry_id` retains the cite shape verbatim (`""` or
@@ -905,6 +906,189 @@ pub fn scan_coverage(
         unscanned,
         stale_exclusions,
     })
+}
+
+/// One store id cited in code that the store does not hold (Round 819) — an
+/// ADVISORY finding, never a violation. See [`scan_id_citations`] for why the
+/// axis stops at advisory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IdCiteFinding {
+    pub file: PathBuf,
+    pub line: usize,
+    /// The token as written. The report never guesses what was meant.
+    pub token: String,
+}
+
+/// What the fact/entity citation axis saw (Round 819) — counted every run,
+/// because an axis that quietly covers nothing reads exactly like an axis that
+/// passes (the Round 807/811 rule).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+pub struct IdCiteReport {
+    /// Namespace prefixes DERIVED from the store's own key space, with the
+    /// number of ids each covers. Empty = the axis has nothing to run on.
+    pub namespaces: BTreeMap<String, usize>,
+    pub files_scanned: usize,
+    /// Files holding at least one citation of a store id.
+    pub files_citing: usize,
+    pub fact_sites: usize,
+    pub entity_sites: usize,
+    /// Distinct ids cited, over the store's total, per axis.
+    pub facts_cited: usize,
+    pub facts_total: usize,
+    pub entities_cited: usize,
+    pub entities_total: usize,
+    /// Tokens carrying a derived namespace that name nothing in the store.
+    pub unknown: Vec<IdCiteFinding>,
+}
+
+/// Derive namespace prefixes from a store's own key space (Round 819).
+///
+/// A prefix must cover at least TWO ids: one id does not establish a namespace,
+/// and admitting it would put every hyphenated word in the corpus on the axis.
+/// Derived rather than configured because a hand list is itself a claim about
+/// which namespaces exist, and it goes stale silently — the Round 783 lesson,
+/// applied one axis over.
+fn derive_id_namespaces<'a>(ids: impl Iterator<Item = &'a str>) -> BTreeMap<String, usize> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for id in ids {
+        let Some(cut) = id.find('-') else { continue };
+        let head = &id[..cut];
+        if !head.is_empty() && head.chars().all(|c| c.is_ascii_lowercase()) {
+            *counts.entry(format!("{head}-")).or_insert(0) += 1;
+        }
+    }
+    counts.retain(|_, n| *n >= 2);
+    counts
+}
+
+/// Every store-id-shaped token in `content`, as `(line, token)`.
+///
+/// A store id is lowercase, hyphenated, and bounded by something that is not an
+/// identifier character — which is what keeps `f-jiun-holds` inside
+/// `some_ident-f-jiun` from being read as a citation, and what lets a token
+/// sitting against Korean prose be read as one. Hand-rolled rather than a regex
+/// because the boundary rule needs lookaround the regex crate does not have.
+fn id_shaped_tokens(content: &str) -> Vec<(usize, String)> {
+    let is_id_char = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    let mut out = Vec::new();
+    for (idx, raw) in content.lines().enumerate() {
+        let chars: Vec<char> = raw.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if !chars[i].is_ascii_lowercase() || (i > 0 && is_id_char(chars[i - 1])) {
+                i += 1;
+                continue;
+            }
+            let start = i;
+            while i < chars.len()
+                && (chars[i].is_ascii_lowercase() || chars[i].is_ascii_digit() || chars[i] == '-')
+            {
+                i += 1;
+            }
+            // An identifier character just past the run means this was part of a
+            // longer name (`f-x_y`), never a bare id.
+            let clean_end = i >= chars.len() || !is_id_char(chars[i]);
+            let token: String = chars[start..i].iter().collect();
+            if clean_end && token.contains('-') && !token.ends_with('-') {
+                out.push((idx + 1, token));
+            }
+        }
+    }
+    out
+}
+
+/// The fact/entity citation axis (Round 819) — ADVISORY, never gating.
+///
+/// Round 803 named the gap: the citation gate covers sections, rounds and
+/// inventory, while the north-star consumer cites FACTS, so an invented `f-…`
+/// in a `.rs` file draws no violation at all.
+///
+/// This is the unmarked half of the Round 819 design and it is advisory by
+/// EVIDENCE, not by timidity. Measured on the first playable consumer: of the
+/// ten id-shaped tokens in its sources that name nothing in its store, eight are
+/// ids invented on purpose to test rejection (`ent-does-not-exist` and its
+/// kind), and a deliberately invented id is indistinguishable BY SHAPE from a
+/// hallucinated one. A ninth is the shared prefix of four real ids, used to
+/// assert that no id leaks to the screen — and the prefix of a real id is itself
+/// id-shaped, so no shape rule avoids it. The tenth was a real decayed citation.
+/// Gating on that ratio would switch the gate off; naming it costs nothing.
+///
+/// There is deliberately NO suppression device. An id allow-list would
+/// institutionalize the gate's reason for existing (the Round 783 refusal), and
+/// a per-file fixture declaration is worse: the same test file cites real ids two
+/// lines above its invented one, so silencing the file opens a false-negative
+/// surface by config — and a false positive is visible where a false negative is
+/// not.
+///
+/// The scan boundary is inherited, not invented: [`walk_paths`] already skips
+/// build artifacts, which is what keeps a baked projection's thousands of
+/// emitted ids out of an axis about what an author wrote.
+///
+/// # Errors
+///
+/// Whatever the underlying directory walk fails with.
+pub fn scan_id_citations(
+    root: &Path,
+    paths: &[String],
+    comment_only: bool,
+    facts: &BTreeSet<String>,
+    entities: &BTreeSet<String>,
+) -> std::io::Result<IdCiteReport> {
+    let mut report = IdCiteReport {
+        facts_total: facts.len(),
+        entities_total: entities.len(),
+        namespaces: derive_id_namespaces(facts.iter().chain(entities).map(String::as_str)),
+        ..IdCiteReport::default()
+    };
+    if report.namespaces.is_empty() {
+        return Ok(report);
+    }
+    let mut facts_seen: BTreeSet<&str> = BTreeSet::new();
+    let mut entities_seen: BTreeSet<&str> = BTreeSet::new();
+    for abs in walk_paths(root, paths)? {
+        if abs.extension().is_none_or(|e| e != "rs") {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&abs) else {
+            continue;
+        };
+        report.files_scanned += 1;
+        let content = if comment_only {
+            strip_to_comments(&raw, comment_syntax_for(&abs))
+        } else {
+            raw
+        };
+        let rel = abs
+            .strip_prefix(root)
+            .map_or_else(|_| abs.clone(), Path::to_path_buf);
+        let mut cited_here = false;
+        for (line, token) in id_shaped_tokens(&content) {
+            if !report.namespaces.keys().any(|p| token.starts_with(p)) {
+                continue;
+            }
+            if let Some(id) = facts.get(&token) {
+                report.fact_sites += 1;
+                facts_seen.insert(id);
+                cited_here = true;
+            } else if let Some(id) = entities.get(&token) {
+                report.entity_sites += 1;
+                entities_seen.insert(id);
+                cited_here = true;
+            } else {
+                report.unknown.push(IdCiteFinding {
+                    file: rel.clone(),
+                    line,
+                    token,
+                });
+            }
+        }
+        if cited_here {
+            report.files_citing += 1;
+        }
+    }
+    report.facts_cited = facts_seen.len();
+    report.entities_cited = entities_seen.len();
+    Ok(report)
 }
 
 /// Never carries author-written citations: a VCS/tool directory, a build
@@ -6056,6 +6240,104 @@ mod tests {
     /// so it chains; anything OUTSIDE the gloss obeys the Round 380 rule
     /// unchanged. Both classes are pinned, the Round 801 discipline for a set
     /// that cannot derive its own oracle.
+    #[test]
+    fn the_fact_axis_names_what_the_store_lacks_and_stays_quiet_otherwise_r820() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        // A namespace needs TWO ids; `pro-` has one, so a token carrying it is
+        // not on the axis at all — asserted below, since a rule that admitted it
+        // would put every hyphenated word in a comment on this axis.
+        let facts: BTreeSet<String> = ["f-bell-six", "f-tide-out", "pro-lonely"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let entities: BTreeSet<String> = ["ent-seward", "ent-bell"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        std::fs::write(
+            root.join("src/a.rs"),
+            "//! f-bell-six 은 종이 여섯을 친다는 선언이고, ent-seward 가 그걸 센다.\n\
+             //! 이 줄은 f-bell-seven 을 인용하는데 스토어에 없다.\n\
+             //! `ent-bell` 은 backtick 안에서도 한 자리다.\n\
+             //! pro-lonely 는 접두사가 하나뿐이라 축에 오르지 않는다.\n\
+             //! f-bell-six_tail 은 더 긴 이름이지 인용이 아니다.\n\
+             fn f() { let _some_ident-f-bell-six = 0; }\n",
+        )
+        .unwrap();
+        // Never scanned: the axis inherits walk_paths, which skips build trees —
+        // the boundary that separates ten findings from a baked projection's
+        // thousands of emitted ids.
+        std::fs::create_dir_all(root.join("target/debug")).unwrap();
+        std::fs::write(
+            root.join("target/debug/baked.rs"),
+            "// f-invented-in-a-bake\n",
+        )
+        .unwrap();
+        let paths = vec!["src".to_string()];
+        let r = scan_id_citations(root, &paths, true, &facts, &entities).unwrap();
+        assert_eq!(
+            r.namespaces,
+            [("ent-".to_string(), 2), ("f-".to_string(), 2)]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            "a prefix is derived from the store and needs two ids"
+        );
+        // The ACCEPT first: real ids are counted, so a report of zero findings
+        // cannot be confused with an axis that read nothing.
+        assert_eq!((r.fact_sites, r.entity_sites), (1, 2));
+        assert_eq!((r.facts_cited, r.facts_total), (1, 3));
+        assert_eq!((r.entities_cited, r.entities_total), (2, 2));
+        assert_eq!((r.files_citing, r.files_scanned), (1, 1));
+        let unknown: Vec<(usize, &str)> = r
+            .unknown
+            .iter()
+            .map(|f| (f.line, f.token.as_str()))
+            .collect();
+        assert_eq!(
+            unknown,
+            vec![(2, "f-bell-seven")],
+            "only the id-shaped token carrying a derived namespace that names nothing"
+        );
+        // With comment_only off the code line joins the scan, and the token
+        // welded to an identifier is still not a citation.
+        let whole = scan_id_citations(root, &paths, false, &facts, &entities).unwrap();
+        assert_eq!(
+            whole
+                .unknown
+                .iter()
+                .map(|f| f.token.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-bell-seven"],
+            "`_some_ident-f-bell-six` is one name, never a cite"
+        );
+        // The boundary, asserted where it can fail: scanning the ROOT reaches the
+        // build tree by path, and only `walk_paths`' skip rule keeps the baked
+        // id out. Configuring `src` alone would have proved nothing here.
+        let whole_root =
+            scan_id_citations(root, &[String::new()], true, &facts, &entities).unwrap();
+        assert_eq!(
+            whole_root.files_scanned, 1,
+            "a build tree is not authorship"
+        );
+        assert_eq!(
+            whole_root
+                .unknown
+                .iter()
+                .map(|f| f.token.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-bell-seven"],
+            "a baked id must never reach the advisory list"
+        );
+        // A store with no id namespaces reports the axis as inapplicable rather
+        // than returning a clean run — this workspace is that store.
+        let bare =
+            scan_id_citations(root, &paths, true, &BTreeSet::new(), &BTreeSet::new()).unwrap();
+        assert!(bare.namespaces.is_empty() && bare.unknown.is_empty());
+        assert_eq!(bare.files_scanned, 0, "no namespace means no walk at all");
+    }
+
     #[test]
     fn a_parenthetical_gloss_chains_but_never_widens_what_follows_it() {
         for gap in [

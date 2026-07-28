@@ -5758,6 +5758,47 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 cfg.inventory_prefixes
             );
         }
+        // Round 819 tier B — the fact/entity axis, ADVISORY. Printed every run
+        // including when it covers nothing, because a store with no facts and a
+        // store whose every citation lands produce the same silence otherwise.
+        let ids = mnemosyne_validate::code_refs::scan_id_citations(
+            &root,
+            &cfg.paths,
+            cfg.comment_only,
+            &store.narrative_facts.keys().cloned().collect(),
+            &store.entities.keys().cloned().collect(),
+        )?;
+        if ids.namespaces.is_empty() {
+            println!(
+                "fact/entity citations: axis not applicable — the store holds {} fact(s) and \
+                 {} entity(ies), which derive no namespace prefix (a prefix needs two ids)",
+                ids.facts_total, ids.entities_total
+            );
+        } else {
+            println!(
+                "fact/entity citations (advisory, Round 819): namespaces={:?} \
+                 {} fact + {} entity site(s) over {} of {} scanned file(s); \
+                 {}/{} facts and {}/{} entities cited; {} shape-match(es) not in the store",
+                ids.namespaces,
+                ids.fact_sites,
+                ids.entity_sites,
+                ids.files_citing,
+                ids.files_scanned,
+                ids.facts_cited,
+                ids.facts_total,
+                ids.entities_cited,
+                ids.entities_total,
+                ids.unknown.len()
+            );
+            for f in &ids.unknown {
+                println!(
+                    "  advisory: {}:{} cites `{}`, which the store does not hold",
+                    f.file.display(),
+                    f.line,
+                    f.token
+                );
+            }
+        }
         if !cfg.inventory_path_prefixes.is_empty() {
             println!(
                 "inventory_path_prefixes={:?} (Round 302 section-path axis)",
