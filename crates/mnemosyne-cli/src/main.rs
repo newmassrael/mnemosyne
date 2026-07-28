@@ -5698,6 +5698,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "inventory_path_prefixes": cfg.inventory_path_prefixes,
             "external_section_prefixes": cfg.external_section_prefixes,
             "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
+            "external_changelog_prefixes": cfg.external_changelog_prefixes,
             "missing_count": missing_count,
             "section_missing_count": section_missing_count,
             "citation_unbound_count": citation_unbound_count,
@@ -5756,6 +5757,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             println!(
                 "external_section_prefixes_bare={:?} (Round 284 doc-name mode)",
                 cfg.external_section_prefixes_bare
+            );
+        }
+        if !cfg.external_changelog_prefixes.is_empty() {
+            println!(
+                "external_changelog_prefixes={:?} (Round 810 external-ledger mode)",
+                cfg.external_changelog_prefixes
             );
         }
         if let Some(ref fid) = filter_id {

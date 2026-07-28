@@ -984,7 +984,21 @@ fn collect_files(p: &Path, out: &mut Vec<PathBuf>, is_root: bool) -> std::io::Re
 /// Extract every `<prefix><digits>(.<digits>)?` citation candidate from
 /// `content`, with 1-indexed line numbers. The `prefix` argument is the
 /// `[schema].entry_id_prefix` value (default `"Round "`).
-pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
+///
+/// Round 810 — `external_ledgers` gives this axis the external escape hatch the
+/// section axis has had since Round 277. A citation whose same-line prose ends
+/// with a registered ledger name (`mnemosyne Round 780`) names ANOTHER
+/// project's ledger and is not a candidate here at all; without it, a consumer
+/// citing an upstream round got a `Missing` — the hallucination class — with no
+/// way to say whose ledger it meant. The verdict is [`is_external_section_cite`]
+/// itself rather than a second matcher, so both axes answer "is this citation
+/// external?" the same way and cannot drift apart. Empty slice = every citation
+/// resolves locally (the pre-Round-810 behavior).
+pub fn extract_citations(
+    prefix: &str,
+    content: &str,
+    external_ledgers: &[String],
+) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     if prefix.is_empty() {
         return out;
@@ -1023,7 +1037,11 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
                             .next()
                             .map(|c| c.is_alphanumeric() || c == '_')
                             .unwrap_or(false);
-                    if next_ok {
+                    // Round 810 — the numeric axis is passed empty: a round
+                    // number IS the citation, so there is no `<name> <number>
+                    // Round <n>` shape for it to answer.
+                    let external = is_external_section_cite(&line[..i], &[], external_ledgers);
+                    if next_ok && !external {
                         out.push((line_idx + 1, format!("{}{}", prefix, num)));
                     }
                     start = next_idx;
@@ -2366,7 +2384,9 @@ impl SetEqualityValidator {
             let rel_str = rel.to_string_lossy().to_string();
 
             // ---- Round NNN axis ----
-            for (line, entry_id) in extract_citations(prefix, &content) {
+            for (line, entry_id) in
+                extract_citations(prefix, &content, &self.config.external_changelog_prefixes)
+            {
                 let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
                 let is_missing = !valid_entry_ids.contains(&entry_id);
                 let kind = if matches_filter {
@@ -3306,6 +3326,7 @@ mod tests {
                 inventory_prefixes: inventory_prefixes.to_vec(),
                 external_section_prefixes: external_section_prefixes_numeric.to_vec(),
                 external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
+                external_changelog_prefixes: vec![],
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
                 section_namespace: section_namespace.map(String::from),
             },
@@ -3415,7 +3436,7 @@ mod tests {
     #[test]
     fn extract_citations_basic() {
         let src = "// Round 254 carry\n// see Round 33.5 for sub-round\n";
-        let out = extract_citations("Round ", src);
+        let out = extract_citations("Round ", src, &[]);
         assert_eq!(
             out,
             vec![(1, "Round 254".to_string()), (2, "Round 33.5".to_string())]
@@ -3425,21 +3446,21 @@ mod tests {
     #[test]
     fn extract_citations_skips_identifier_like() {
         let src = "TestRound254Helper\nlet round_254_helper = 1;\n";
-        let out = extract_citations("Round ", src);
+        let out = extract_citations("Round ", src, &[]);
         assert_eq!(out, vec![]);
     }
 
     #[test]
     fn extract_citations_post_boundary_excludes_alphanumeric_tail() {
         let src = "see Round 254a here\n";
-        let out = extract_citations("Round ", src);
+        let out = extract_citations("Round ", src, &[]);
         assert_eq!(out, vec![]);
     }
 
     #[test]
     fn extract_citations_brackets_and_parens_ok() {
         let src = "(Round 254) [Round 100] {Round 1}\n";
-        let out = extract_citations("Round ", src);
+        let out = extract_citations("Round ", src, &[]);
         assert_eq!(
             out,
             vec![
@@ -3453,7 +3474,7 @@ mod tests {
     #[test]
     fn extract_citations_external_prefix() {
         let src = "ADR-0042 implements ADR-7\n";
-        let out = extract_citations("ADR-", src);
+        let out = extract_citations("ADR-", src, &[]);
         assert_eq!(
             out,
             vec![(1, "ADR-0042".to_string()), (1, "ADR-7".to_string())]
@@ -3462,7 +3483,50 @@ mod tests {
 
     #[test]
     fn extract_citations_empty_prefix_yields_empty() {
-        assert!(extract_citations("", "Round 254\n").is_empty());
+        assert!(extract_citations("", "Round 254\n", &[]).is_empty());
+    }
+
+    /// Round 810 — the `Round NNN` axis gains the external escape hatch the
+    /// section axis has had since Round 277. Both classes are pinned, and the
+    /// LOCAL half is what makes the widening safe: an unnamed round still
+    /// resolves against this workspace's ledger, so a genuinely hallucinated
+    /// round is still caught.
+    #[test]
+    fn a_named_ledger_takes_a_round_out_of_this_workspaces_jurisdiction_r810() {
+        let ledgers = vec!["mnemosyne".to_string()];
+        // Named: another project's ledger, not a candidate here at all.
+        let named = "//! mnemosyne Round 780 baked the projection.\n";
+        assert!(
+            extract_citations("Round ", named, &ledgers).is_empty(),
+            "a named ledger must leave this axis; got: {:?}",
+            extract_citations("Round ", named, &ledgers)
+        );
+        // THE GUARD: the same line without the name is ours, and stays ours.
+        let unnamed = "//! Round 780 baked the projection.\n";
+        assert_eq!(
+            extract_citations("Round ", unnamed, &ledgers),
+            vec![(1usize, "Round 780".to_string())],
+            "an unnamed round is this ledger's and must still be checked"
+        );
+        // An UNREGISTERED name does not skip — the registry is the permission,
+        // exactly as on the section axis.
+        let other = "//! elsewhere Round 780 baked the projection.\n";
+        assert_eq!(
+            extract_citations("Round ", other, &ledgers),
+            vec![(1usize, "Round 780".to_string())]
+        );
+        // And with no registry at all the axis is off: every round is local,
+        // the pre-Round-810 behavior exactly.
+        assert_eq!(
+            extract_citations("Round ", named, &[]),
+            vec![(1usize, "Round 780".to_string())]
+        );
+        // Two ledgers on one line, one named and one not.
+        let mixed = "//! mnemosyne Round 780 is why Round 12 moved.\n";
+        assert_eq!(
+            extract_citations("Round ", mixed, &ledgers),
+            vec![(1usize, "Round 12".to_string())]
+        );
     }
 
     #[test]
@@ -3474,7 +3538,7 @@ mod tests {
         // panicked. The first occurrence is a clean citation; the second is
         // glued to `x` and must be skipped — without panicking.
         let src = "라운드 254 and x라운드 7\n";
-        let out = extract_citations("라운드 ", src);
+        let out = extract_citations("라운드 ", src, &[]);
         assert_eq!(out, vec![(1, "라운드 254".to_string())]);
     }
 
@@ -3709,6 +3773,7 @@ mod tests {
                 inventory_prefixes: vec![],
                 external_section_prefixes: vec![],
                 external_section_prefixes_bare: vec![],
+                external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
                 section_namespace: None,
             },
@@ -3977,6 +4042,7 @@ mod tests {
                 inventory_prefixes: vec![],
                 external_section_prefixes: vec![],
                 external_section_prefixes_bare: vec![],
+                external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
                 section_namespace: None,
             },

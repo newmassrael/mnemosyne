@@ -578,6 +578,29 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub external_section_prefixes_bare: Vec<String>,
 
+    /// Round 810 — external *ledger* prefixes for the `Round NNN` axis.
+    ///
+    /// The section axis has carried an external escape hatch since Round 277,
+    /// and this one carried none: a `<entry_id_prefix><number>` citation was
+    /// always resolved against THIS workspace's changelog, so a consumer that
+    /// cites an upstream project's round number in its own code had no way to
+    /// say whose ledger it meant, and got a `Missing` — the hallucination
+    /// class, at reject severity. Reported by a downstream workspace citing
+    /// this project's rounds.
+    ///
+    /// Citation form is `<PREFIX> <entry_id_prefix><number>`, e.g.
+    /// `mnemosyne Round 780`. Only this bare shape exists, and deliberately so:
+    /// on the section axis a document needs both a NAME and a NUMBER, while
+    /// here the round number IS the citation, so there is nothing for a numeric
+    /// sibling key to hold.
+    ///
+    /// Empty list = the axis is disabled and every `Round NNN` resolves locally
+    /// (the pre-Round-810 behavior exactly). Naming the ledger is a TRUE
+    /// declaration, not a matcher-appeasing twist — which is why the fix is a
+    /// registry rather than a heuristic such as "inside quotes means external".
+    #[serde(default)]
+    pub external_changelog_prefixes: Vec<String>,
+
     /// Inventory citation prefixes with *section-path* tail shape
     /// (Phase 0 hardening, RFC-002 FR-4 narrow extension).
     ///
