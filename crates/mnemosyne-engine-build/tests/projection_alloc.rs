@@ -160,6 +160,22 @@ mod prose_borrowed_big {
     include!(concat!(env!("OUT_DIR"), "/prose_borrowed_big.rs"));
 }
 
+/// The text borrowed, the ANCHOR still owned (Round 792) — the shape a real
+/// `Passage` could take without touching `mnemosyne-core`, where `ContentAnchor`
+/// lives with its serde derives and its `String` fields, shared with the store.
+pub struct TextBorrowedPassage {
+    pub source: String,
+    pub prefix: String,
+    pub text: &'static str,
+}
+
+mod prose_text_only_small {
+    include!(concat!(env!("OUT_DIR"), "/prose_text_only_small.rs"));
+}
+mod prose_text_only_big {
+    include!(concat!(env!("OUT_DIR"), "/prose_text_only_big.rs"));
+}
+
 thread_local! {
     static ALLOCS: Cell<usize> = const { Cell::new(0) };
     static BYTES: Cell<usize> = const { Cell::new(0) };
@@ -335,7 +351,44 @@ fn borrowing_prose_removes_what_borrowing_lines_could_not() {
         byte_cut * 100.0
     );
 
+    // ARM THREE (Round 792) — text borrowed, anchor still OWNED, which is the
+    // shape a real `Passage` can take without touching `mnemosyne-core`. Round
+    // 790 argued from arithmetic that this keeps nearly all of arm two's win
+    // because the text is ~99% of the bytes. Arithmetic is what this crate keeps
+    // being wrong about, so it is measured rather than reasoned.
+    let (text_only_small_n, text_only_small_b) = cost_of(prose_text_only_small::build);
+    let (text_only_big_n, text_only_big_b) = cost_of(prose_text_only_big::build);
+
+    // It must still pay per spot — two owned anchor strings each — or the arm is
+    // not the shape it claims to be and the comparison below is against the
+    // wrong thing.
+    assert!(
+        text_only_big_n >= PROSE_BIG * 2,
+        "the text-only arm charged {text_only_big_n} for {PROSE_BIG} spots of two \
+         owned anchor strings each: that is not the shape being priced"
+    );
+
+    // The claim the design rests on: on BYTES it lands with arm two, not with
+    // arm one. Stated as a fraction of the win rather than as a threshold on the
+    // count, because the count is where it deliberately differs.
+    let full_win = (owned_big_b - borrowed_big_b) as f64;
+    let text_only_win = (owned_big_b - text_only_big_b) as f64;
+    let kept = text_only_win / full_win;
+    assert!(
+        kept > 0.95,
+        "borrowing the text alone kept only {:.1}% of what borrowing everything \
+         buys ({owned_big_b} owned, {text_only_big_b} text-only, \
+         {borrowed_big_b} borrowed): the anchor is not the cheap half the design \
+         assumed, and the shape decision has to be re-made against these numbers",
+        kept * 100.0
+    );
+
     // Reported so a reader of the log sees the pair the decision rests on.
+    println!(
+        "prose text-only {PROSE_SMALL}: {text_only_small_n} allocs / {text_only_small_b} B \
+         | {PROSE_BIG}: {text_only_big_n} / {text_only_big_b}  (keeps {:.1}% of the byte win)",
+        kept * 100.0
+    );
     println!(
         "prose owned  {PROSE_SMALL}: {owned_small_n} allocs / {owned_small_b} B \
          | {PROSE_BIG}: {owned_big_n} / {owned_big_b}"

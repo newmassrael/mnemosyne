@@ -583,6 +583,7 @@ fn prose_fixtures(out_dir: &str) {
     for (tag, spots) in [("small", PROSE_SMALL), ("big", PROSE_BIG)] {
         write(&format!("owned_{tag}"), render_owned_prose(spots));
         write(&format!("borrowed_{tag}"), render_borrowed_prose(spots));
+        write(&format!("text_only_{tag}"), render_text_only_prose(spots));
     }
     let facts = format!(
         "pub const PROSE_SMALL: usize = {PROSE_SMALL};\n\
@@ -626,6 +627,42 @@ fn render_owned_prose(spots: usize) -> String {
                 format!(
                     "crate::OwnedPassage {{ source: {source}.to_string(), \
                      prefix: {prefix}.to_string(), text: {text}.to_string() }}"
+                )
+            })
+            .collect();
+        let name = format!("__mn_{c}");
+        let _ = writeln!(fns, "fn {name}() -> {ty} {{ vec![{}] }}", body.join(", "));
+        names.push(name);
+    }
+    vec_assembly(&fns, ty, &names)
+}
+
+/// Arm three: the text borrowed, the ANCHOR still owned (Round 792) — the shape
+/// a real `Passage` can take without touching `mnemosyne-core`.
+///
+/// Arm two answers what borrowing EVERYTHING buys, and Round 790 argued from
+/// arithmetic that nearly all of it survives borrowing the text alone, since the
+/// text is ~99% of the bytes. Arithmetic is what this crate keeps being wrong
+/// about, so it gets an arm. The distinction is not academic: `ContentAnchor` and
+/// its `Locator` live in `mnemosyne-core` with serde derives and are shared with
+/// the store, so the arm that leaves them owned is the one that costs nothing
+/// outside the engine.
+fn render_text_only_prose(spots: usize) -> String {
+    let ty = "::std::vec::Vec<crate::TextBorrowedPassage>";
+    let mut fns = String::new();
+    let mut names = Vec::new();
+    for (c, group) in (0..spots)
+        .collect::<Vec<_>>()
+        .chunks(CHUNK.get())
+        .enumerate()
+    {
+        let body: Vec<String> = group
+            .iter()
+            .map(|i| {
+                let (source, prefix, text) = prose_literals(*i);
+                format!(
+                    "crate::TextBorrowedPassage {{ source: {source}.to_string(), \
+                     prefix: {prefix}.to_string(), text: {text} }}"
                 )
             })
             .collect();
