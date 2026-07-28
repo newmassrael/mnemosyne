@@ -2854,6 +2854,14 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
              (import-evidence-reviews records one; an unaffirmed claim cannot go stale)",
             report.evidence_unreviewed
         );
+        // Round 811 — quotes the fact layer could not check because an evidence
+        // section holds no prose. Same reason the line above is printed: an axis
+        // that quietly covers nothing reads exactly like an axis that passes.
+        println!(
+            "  fact quotes: {} unverifiable (an evidence section holds no prose, so the \
+             quote could live exactly there)",
+            report.fact_quotes_uncheckable
+        );
         println!(
             "  violations: {} (structural={} interval={})",
             report.violation_count, structural_count, report.interval_violation_count

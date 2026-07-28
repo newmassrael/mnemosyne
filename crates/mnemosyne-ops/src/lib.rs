@@ -375,6 +375,9 @@ pub struct ContinuityScanReport {
     /// affirmation (Round 806) — the claim was never judged against a
     /// fingerprint. Not a violation, always reported.
     pub evidence_unreviewed: usize,
+    /// Facts whose quote membership could not be decided because an evidence
+    /// section holds no prose (Round 811). Not a violation, always reported.
+    pub fact_quotes_uncheckable: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file).
     pub rules: usize,
     /// Of `rules`, how many are INTERVAL-class (Round 491): a nonzero count
@@ -450,6 +453,7 @@ pub fn continuity_scan(
         cross_scope_pairs: report.cross_scope_pairs,
         unordered_pairs: report.unordered_pairs,
         evidence_unreviewed: report.evidence_unreviewed,
+        fact_quotes_uncheckable: report.fact_quotes_uncheckable,
         rules: report.rules,
         interval_rules: report.interval_rules,
         undeclared_roads: report.undeclared_roads.clone(),

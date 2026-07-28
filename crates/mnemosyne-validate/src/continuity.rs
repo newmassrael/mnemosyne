@@ -1478,6 +1478,15 @@ pub enum ContinuityViolation {
     /// does not hold. The write path rejects this; the scan re-checks the
     /// out-of-band-edited store (the Round 440 boundary doctrine).
     EvidenceReviewUnanchored { fact_id: String, section: String },
+    /// A fact's `quote` — its declared VERBATIM backing — does not occur in
+    /// the prose under any of its evidence sections (Round 811). Round 758
+    /// closed invented prose at the Section boundary (`import_content_excerpts`
+    /// rejects an excerpt line absent from the consumer's manuscript), and that
+    /// guarantee never reached the fact layer: a quote was stored with its
+    /// sha256 and no relation to the prose it claims to quote. Fires only when
+    /// EVERY evidence section carries an excerpt, so a partly-excerpted claim is
+    /// counted as uncheckable rather than accused. Structural.
+    FactQuoteAbsentFromEvidence { fact_id: String, quote: String },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
     /// Succession edges close a loop (Round 463; out-of-band edit — every
@@ -1837,6 +1846,14 @@ pub struct ContinuityReport {
     /// excerpt is excluded — there is no prose to outlive, which is every spec
     /// section.
     pub evidence_unreviewed: usize,
+    /// Facts carrying a `quote` whose membership could NOT be decided, because
+    /// at least one evidence section holds no prose (Round 811) — the missing
+    /// excerpt could be exactly where the quote lives, so accusing the claim
+    /// would be a false positive.
+    ///
+    /// Counted and printed for the same reason `evidence_unreviewed` is: an
+    /// axis that quietly covers nothing looks identical to an axis that passes.
+    pub fact_quotes_uncheckable: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
     /// the gate's pre-Round-449 behavior exactly).
     pub rules: usize,
@@ -3025,6 +3042,53 @@ pub fn scan_continuity(
                 }
                 (_, Some(_)) => {}
             }
+        }
+    }
+    // Round 811 — the fact layer's half of the Round 758 guarantee. A `quote`
+    // declares VERBATIM backing, so it must actually occur in the prose under
+    // the sections cited as its evidence. Whitespace-normalized on both sides
+    // via the SAME `normalize_grounding` the R758 import check uses, so the two
+    // ends of one guarantee cannot disagree about what "the same text" means.
+    for (fid, fact) in facts {
+        let Some(quote) = fact.quote.as_deref() else {
+            continue;
+        };
+        let needle = mnemosyne_atomic::normalize_grounding(quote);
+        if needle.is_empty() {
+            continue;
+        }
+        let mut found = false;
+        let mut any_unexcerpted = false;
+        for e in &fact.evidence {
+            match store
+                .sections
+                .get(&e.section)
+                .and_then(|sec| sec.content_excerpt.as_ref())
+            {
+                None => any_unexcerpted = true,
+                Some(x) => {
+                    if mnemosyne_atomic::normalize_grounding(&x.text).contains(&needle) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if found {
+            continue;
+        }
+        // Absent from every excerpt we HAVE. If some evidence section holds no
+        // prose at all, the quote could live exactly there — count it, never
+        // accuse it.
+        if any_unexcerpted {
+            report.fact_quotes_uncheckable += 1;
+        } else {
+            report
+                .violations
+                .push(ContinuityViolation::FactQuoteAbsentFromEvidence {
+                    fact_id: fid.clone(),
+                    quote: quote.to_string(),
+                });
         }
     }
     let conflict_worlds = query_worlds(store);
@@ -7113,6 +7177,93 @@ mod tests {
         store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(kinds(&report), (0, 1), "{:?}", report.violations);
+    }
+
+    /// Round 811 — the fact layer's half of the Round 758 guarantee, walked
+    /// across all three outcomes on one store.
+    ///
+    /// The load-bearing case is the THIRD: a fact whose evidence is only partly
+    /// excerpted must be COUNTED, never accused, because the missing excerpt
+    /// could hold exactly the quoted words. Without that branch the check would
+    /// manufacture false positives on every store mid-ingest, which is the one
+    /// way a gate of this kind gets switched off for good.
+    #[test]
+    fn a_fact_quote_must_occur_in_its_evidence_unless_the_prose_is_missing_r811() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let text = "\u{c774}\u{d310}\u{c218}\u{ac00} \u{b300}\u{b2f5}\u{d558}\u{c9c0} \
+                    \u{b9d0}\u{b77c}\u{ace0} \u{c77c}\u{b800}\u{b2e4}.";
+        let quoted = |id: &str, quote: &str, evidence: Vec<&str>| {
+            let mut f = fact(id, "seward", "ch-1", None);
+            f.quote = Some(quote.to_string());
+            f.evidence = evidence.into_iter().map(str::to_string).collect();
+            f
+        };
+        let mut store = store_with(vec![
+            quoted("f-real", text, vec!["ch-1"]),
+            quoted(
+                "f-invented",
+                "\u{b0a0}\u{c870}\u{b41c} \u{bb38}\u{c7a5}",
+                vec!["ch-1"],
+            ),
+            quoted(
+                "f-partly",
+                "\u{b0a0}\u{c870}\u{b41c} \u{bb38}\u{c7a5}",
+                vec!["ch-1", "ch-2"],
+            ),
+        ]);
+        let absent = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::FactQuoteAbsentFromEvidence { fact_id, .. } => {
+                        Some(fact_id.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // No prose anywhere yet: nothing is decidable, so nothing is accused —
+        // and all three are COUNTED rather than passing silently.
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(absent(&report).is_empty());
+        assert_eq!(report.fact_quotes_uncheckable, 3);
+        // ch-1 gains the prose the first fact quotes. Now: f-real is clean,
+        // f-invented is ACCUSED (every section it cites is excerpted and none
+        // holds its words), and f-partly is still only counted because ch-2 —
+        // which it also cites — holds nothing.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::ContentExcerptImport {
+                section_id: "ch-1".to_string(),
+                anchor: mnemosyne_core::ContentAnchor {
+                    source: "M.md".to_string(),
+                    locator: mnemosyne_core::Locator::Prefix("\u{c774}".to_string()),
+                },
+                text: text.to_string(),
+            }],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(absent(&report), vec!["f-invented".to_string()]);
+        assert_eq!(
+            report.fact_quotes_uncheckable, 1,
+            "the partly-excerpted claim is counted, never accused"
+        );
+        // A quote that is a FRAGMENT of the prose still counts as occurring in
+        // it — verbatim means the characters are there, not that they fill a
+        // line — and whitespace differences do not decide the verdict, because
+        // both sides run the same R758 normalization.
+        let mut fragment = fact("f-fragment", "seward", "ch-1", None);
+        fragment.quote =
+            Some("  \u{b300}\u{b2f5}\u{d558}\u{c9c0}\n\u{b9d0}\u{b77c}\u{ace0}  ".to_string());
+        mnemosyne_atomic::add_fact(&mut store, &path, &fragment).unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(absent(&report), vec!["f-invented".to_string()]);
     }
 
     /// Round 440 — out-of-band corruption fails LOUD as an `Err` from both

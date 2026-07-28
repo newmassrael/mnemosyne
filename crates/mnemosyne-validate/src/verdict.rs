@@ -347,6 +347,21 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 "fact `{fact_id}` affirms a review of `{section}`, which carries no content_excerpt"
             ),
         ),
+        ContinuityViolation::FactQuoteAbsentFromEvidence { fact_id, quote } => action(
+            "fact_quote_absent_from_evidence",
+            ViolationLocus {
+                facts: vec![fact_id.clone()],
+                field: Some("quote".to_string()),
+                ..Default::default()
+            },
+            "a fact's quote is its VERBATIM backing and must occur in the prose under its \
+             evidence"
+                .to_string(),
+            "fix the quote to the words the manuscript actually holds, or cite the section \
+             that holds them — never edit the excerpt to match the quote"
+                .to_string(),
+            format!("fact `{fact_id}` quotes text no evidence section contains: {quote:?}"),
+        ),
         ContinuityViolation::SuccessionTargetMissing { fact_id, target } => action(
             "succession_target_missing",
             ViolationLocus {
