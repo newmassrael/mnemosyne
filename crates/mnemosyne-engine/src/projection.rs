@@ -3,6 +3,7 @@
 //! topology. The generalization of tide's `narrative.rs` — content-, telling-,
 //! and presentation-agnostic.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
@@ -38,16 +39,22 @@ use crate::{
 /// need. Do not re-derive it for convenience.
 #[derive(Debug)]
 pub struct PlayableProjection {
-    telling: String,
-    by_world: HashMap<String, HashMap<String, Vec<Line>>>,
-    walks: HashMap<String, Vec<String>>,
-    titles: HashMap<String, String>,
+    telling: Cow<'static, str>,
+    by_world: HashMap<Cow<'static, str>, HashMap<Cow<'static, str>, Vec<Line>>>,
+    /// `world -> its declared scene walk`. The STRINGS borrow; the spine `Vec`
+    /// does not (Round 798). Round 794's rule is about where the count is, and
+    /// here it is in the strings: a borrowable spine costs a second nesting at
+    /// every touch and buys one allocation per WORLD, of which there are a
+    /// handful — where [`Line::entities`](crate::Line::entities) borrows its
+    /// spine because there is one per LINE and there are thousands.
+    walks: HashMap<Cow<'static, str>, Vec<Cow<'static, str>>>,
+    titles: HashMap<Cow<'static, str>, Cow<'static, str>>,
     /// Section id -> the store-owned cast present there (Round 757, B1b). Keyed by
     /// section: presence is authored world-truth on the shared section, so it is
     /// world-independent (every world walking a section sees the same cast).
-    cast: HashMap<String, Vec<CastMember>>,
+    cast: HashMap<Cow<'static, str>, Vec<CastMember>>,
     forks: Vec<Fork>,
-    divergent_endings: HashSet<String>,
+    divergent_endings: HashSet<Cow<'static, str>>,
     interactivity: Interactivity,
     choice_entity_refs: Vec<ChoiceEntityRef>,
     /// Section id -> the resolved ask doors dug there (R759 P3c-2). Built once at
@@ -55,15 +62,24 @@ pub struct PlayableProjection {
     /// store `content_excerpt` (fail-loud), an un-anchored rung keeps its free
     /// question. World-independent (ladders + excerpts are both keyed by section),
     /// so `doors_at` appends these regardless of world.
-    ask_doors: HashMap<String, Vec<Door>>,
+    ask_doors: HashMap<Cow<'static, str>, Vec<Door>>,
     /// `world -> section -> the fact ids the consumer's journal policy routed OUT
     /// of the prose stream there` (Round 787). Disjoint from `by_world` by
     /// construction — a disclosed locator becomes a [`Line`] or lands here, never
     /// both — so together they are everything the telling offers at a spot, which
     /// is what [`Self::offers`] resolves. EMPTY for a consumer that declares no
     /// journal predicates, which is every consumer but the first game.
-    journal_offers: HashMap<String, HashMap<String, Vec<String>>>,
+    journal_offers: JournalOffers,
 }
+
+/// `world -> section -> the journal-routed fact ids there`, as the LIVE
+/// projection holds it — the indexed sibling of the baked
+/// [`SectionJournalOffers`].
+///
+/// Named for the same reason that one is: expanded, this is four levels of
+/// nesting and `clippy::type_complexity` rejects it under the `-D warnings`
+/// this workspace runs. Crate-private, because it is the representation.
+type JournalOffers = HashMap<Cow<'static, str>, HashMap<Cow<'static, str>, Vec<Cow<'static, str>>>>;
 
 impl PlayableProjection {
     /// Project the workspace store under `telling`, reading the playable world
@@ -140,20 +156,26 @@ impl PlayableProjection {
             fork_tree,
             worlds,
         } = report;
+        // Every key and scalar here is `Cow::Owned` (Round 798): this constructor
+        // derives the projection at run time from a store read, so it OWNS what it
+        // builds — exactly as `Line::from_disclosed` does. The baked door is the
+        // other holding mode of the same type, and a borrowed key and an owned key
+        // of the same content are ONE map entry, which is why the two answer
+        // identically.
         let mut by_world = HashMap::new();
-        let mut journal_offers: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        let mut journal_offers: JournalOffers = HashMap::new();
         let mut walks = HashMap::new();
         let mut titles = HashMap::new();
-        let mut cast: HashMap<String, Vec<CastMember>> = HashMap::new();
+        let mut cast: HashMap<Cow<'static, str>, Vec<CastMember>> = HashMap::new();
 
         for (world_name, world) in worlds {
             walks.insert(
-                world_name.clone(),
+                Cow::Owned(world_name.clone()),
                 world
                     .manuscript
                     .scenes
                     .iter()
-                    .map(|s| s.section.clone())
+                    .map(|s| Cow::Owned(s.section.clone()))
                     .collect(),
             );
 
@@ -163,26 +185,29 @@ impl PlayableProjection {
             // section slots are kept: a fact-less spot is still a spot (a part
             // epigraph carries `begins: []`).
             let mut facts: HashMap<String, ManuscriptFactEvent> = HashMap::new();
-            let mut by_section: HashMap<String, Vec<Line>> = HashMap::new();
-            let mut routed: HashMap<String, Vec<String>> = HashMap::new();
+            let mut by_section: HashMap<Cow<'static, str>, Vec<Line>> = HashMap::new();
+            let mut routed: HashMap<Cow<'static, str>, Vec<Cow<'static, str>>> = HashMap::new();
             for scene in &world.manuscript.scenes {
                 if !scene.title.is_empty() {
                     titles
-                        .entry(scene.section.clone())
-                        .or_insert_with(|| scene.title.clone());
+                        .entry(Cow::Owned(scene.section.clone()))
+                        .or_insert_with(|| Cow::Owned(scene.title.clone()));
                 }
-                by_section.entry(scene.section.clone()).or_default();
+                by_section
+                    .entry(Cow::Owned(scene.section.clone()))
+                    .or_default();
                 // Presence is world-independent (authored on the shared section),
                 // so the first world to carry a section fixes its cast; later
                 // worlds see identical scene_cast. Provenance-bound via
                 // `CastMember::from_presence`.
-                cast.entry(scene.section.clone()).or_insert_with(|| {
-                    scene
-                        .scene_cast
-                        .iter()
-                        .map(CastMember::from_presence)
-                        .collect()
-                });
+                cast.entry(Cow::Owned(scene.section.clone()))
+                    .or_insert_with(|| {
+                        scene
+                            .scene_cast
+                            .iter()
+                            .map(CastMember::from_presence)
+                            .collect()
+                    });
                 for begin in &scene.begins {
                     facts.insert(begin.fact_id.clone(), begin.clone());
                 }
@@ -210,14 +235,14 @@ impl PlayableProjection {
                 if let Some(typed) = &begin.typed {
                     if journal.contains(&typed.predicate) {
                         routed
-                            .entry(locator.scene.clone())
+                            .entry(Cow::Owned(locator.scene.clone()))
                             .or_default()
-                            .push(locator.fact_id.clone());
+                            .push(Cow::Owned(locator.fact_id.clone()));
                         continue;
                     }
                 }
                 by_section
-                    .entry(locator.scene.clone())
+                    .entry(Cow::Owned(locator.scene.clone()))
                     .or_default()
                     .push(Line::from_disclosed(locator, begin));
             }
@@ -226,8 +251,8 @@ impl PlayableProjection {
                 ids.sort();
                 ids.dedup();
             }
-            journal_offers.insert(world_name.clone(), routed);
-            by_world.insert(world_name, by_section);
+            journal_offers.insert(Cow::Owned(world_name.clone()), routed);
+            by_world.insert(Cow::Owned(world_name), by_section);
         }
 
         // A divergent ending = a world that forks and never reconverges (no one
@@ -239,11 +264,11 @@ impl PlayableProjection {
             .iter()
             .flat_map(|b| b.converges.iter().map(|e| e.parent.as_str()))
             .collect();
-        let divergent_endings: HashSet<String> = fork_tree
+        let divergent_endings: HashSet<Cow<'static, str>> = fork_tree
             .branches
             .iter()
             .filter(|b| b.fork.is_some() && !converge_parents.contains(b.branch_id.as_str()))
-            .map(|b| b.branch_id.clone())
+            .map(|b| Cow::Owned(b.branch_id.clone()))
             .collect();
         let forks = fork_tree
             .branches
@@ -258,7 +283,7 @@ impl PlayableProjection {
         // the section's store prose (never the free string), a bare rung keeps its
         // authored question. Building here (not lazily in `doors_at`) keeps the
         // read path infallible and localizes the provenance failure to construction.
-        let mut ask_doors: HashMap<String, Vec<Door>> = HashMap::new();
+        let mut ask_doors: HashMap<Cow<'static, str>, Vec<Door>> = HashMap::new();
         for (section, rungs) in &overrides.interactivity().ladders {
             let questions = resolve_ladder_questions(section, rungs, &passages)?;
             let resolved = rungs
@@ -269,11 +294,11 @@ impl PlayableProjection {
                     reveals: rung.reveals.clone(),
                 })
                 .collect();
-            ask_doors.insert(section.clone(), resolved);
+            ask_doors.insert(Cow::Owned(section.clone()), resolved);
         }
 
         Ok(Self {
-            telling,
+            telling: Cow::Owned(telling),
             by_world,
             walks,
             titles,
@@ -357,7 +382,7 @@ impl PlayableProjection {
                     .and_then(|sections| sections.get(section))
                     .map_or(&[][..], Vec::as_slice)
                     .iter()
-                    .map(String::as_str),
+                    .map(Cow::as_ref),
             )
     }
 
@@ -475,7 +500,7 @@ impl PlayableProjection {
     /// an absence. That distinction is what [`gate`](Self::gate) turns on.
     #[must_use]
     pub fn worlds(&self) -> Vec<&str> {
-        let mut out: Vec<&str> = self.walks.keys().map(String::as_str).collect();
+        let mut out: Vec<&str> = self.walks.keys().map(Cow::as_ref).collect();
         out.sort_unstable();
         out
     }
@@ -496,28 +521,46 @@ impl PlayableProjection {
     /// The store-declared walk for a world-line — the section sequence the
     /// player's own traversal must match (the reachability yardstick). Empty for
     /// an unknown world.
-    #[must_use]
-    pub fn walk(&self, world: &str) -> &[String] {
+    ///
+    /// An ITERATOR rather than a slice (Round 798), for the reason Round 795
+    /// gave one to [`Line::entities`](crate::Line::entities) and not for
+    /// ergonomics: this crate's own design promises that `Cow` is an
+    /// implementation detail, and `&[Cow<'static, str>]` publishes the
+    /// representation in the signature of the accessor read most often. An
+    /// iterator hides BOTH holding modes, so the field is free to change again
+    /// without the callers moving.
+    ///
+    /// The indexing callers are all in-crate and read [`Self::walk_raw`], the one
+    /// resolver this view is derived from — one datum with one read path and a
+    /// projection of it, not two read paths (the Round 787 shape).
+    pub fn walk(&self, world: &str) -> impl ExactSizeIterator<Item = &str> {
+        self.walk_raw(world).iter().map(Cow::as_ref)
+    }
+
+    /// THE resolver behind [`Self::walk`] and [`Self::spine`] — the walk as it is
+    /// held. Crate-private: it is the representation, and the in-crate callers
+    /// that index (the gate's deadline, `referenceable_entities`' at-or-before
+    /// slice) are the reason it exists at all.
+    pub(crate) fn walk_raw(&self, world: &str) -> &[Cow<'static, str>] {
         self.walks.get(world).map_or(&[][..], Vec::as_slice)
     }
 
     /// The main trunk's walk — the spine every world-line shares (each differs
     /// only in what is true at each spot, not in the section order).
-    #[must_use]
-    pub fn spine(&self) -> &[String] {
+    pub fn spine(&self) -> impl ExactSizeIterator<Item = &str> {
         self.walk(MAIN_BRANCH)
     }
 
     /// The index of `section` on the spine, if present.
     #[must_use]
     pub fn cursor_of(&self, section: &str) -> Option<usize> {
-        self.spine().iter().position(|s| s == section)
+        self.spine().position(|s| s == section)
     }
 
     /// The store section title for a section id (world-independent).
     #[must_use]
     pub fn title(&self, section: &str) -> Option<&str> {
-        self.titles.get(section).map(String::as_str)
+        self.titles.get(section).map(Cow::as_ref)
     }
 
     /// Is this world-line a divergent ending (a fork that never reconverges)?
@@ -551,7 +594,7 @@ impl PlayableProjection {
     /// disclosure is additive here too.
     #[must_use]
     pub fn referenceable_entities(&self, world: &str, section: &str) -> Vec<String> {
-        let walk = self.walk(world);
+        let walk = self.walk_raw(world);
         let Some(pos) = walk.iter().position(|s| s == section) else {
             return Vec::new();
         };
@@ -660,12 +703,12 @@ pub fn fresh_disclosure<'a>(reveals: &'a [String], known: &HashSet<String>) -> V
 /// inexpressible for a provenance-bound consumer.
 /// One world's baked narrative: each section paired with the lines disclosed
 /// there, in section order (Round 769).
-pub type SectionLines = Vec<(String, Vec<LinePart>)>;
+pub type SectionLines = Vec<(Cow<'static, str>, Vec<LinePart>)>;
 
 /// One world's baked journal-routed offers: each section paired with the fact ids
 /// the consumer's journal policy took out of the prose stream there, in section
 /// order (Round 787). Empty for a consumer that declares no journal predicates.
-pub type SectionJournalOffers = Vec<(String, Vec<String>)>;
+pub type SectionJournalOffers = Vec<(Cow<'static, str>, Vec<Cow<'static, str>>)>;
 
 /// A whole [`PlayableProjection`] as plain data (Round 769) — what a build-time
 /// bake writes out and reads back.
@@ -685,30 +728,30 @@ pub type SectionJournalOffers = Vec<(String, Vec<String>)>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectionParts {
     /// The telling this projection was resolved under.
-    pub telling: String,
+    pub telling: Cow<'static, str>,
     /// `world -> section -> the disclosed lines there`.
-    pub by_world: Vec<(String, SectionLines)>,
+    pub by_world: Vec<(Cow<'static, str>, SectionLines)>,
     /// `world -> its declared scene walk`.
-    pub walks: Vec<(String, Vec<String>)>,
+    pub walks: Vec<(Cow<'static, str>, Vec<Cow<'static, str>>)>,
     /// `section -> its skeleton title`.
-    pub titles: Vec<(String, String)>,
+    pub titles: Vec<(Cow<'static, str>, Cow<'static, str>)>,
     /// `section -> the store-owned cast standing there`.
-    pub cast: Vec<(String, Vec<CastPart>)>,
+    pub cast: Vec<(Cow<'static, str>, Vec<CastPart>)>,
     /// The cross-world choice graph.
     pub forks: Vec<ForkPart>,
     /// World-lines whose ending diverges.
-    pub divergent_endings: Vec<String>,
+    pub divergent_endings: Vec<Cow<'static, str>>,
     /// The consumer's interactive layer, as it was at bake time.
     pub interactivity: Interactivity,
     /// Declared choice-to-entity references.
     pub choice_entity_refs: Vec<ChoiceEntityRef>,
     /// `section -> the ask doors dug there, questions ALREADY resolved`.
-    pub ask_doors: Vec<(String, Vec<DoorPart>)>,
+    pub ask_doors: Vec<(Cow<'static, str>, Vec<DoorPart>)>,
     /// `world -> section -> the fact ids the journal policy routed out of the
     /// prose stream` (Round 787). Empty for a consumer with no journal policy;
     /// carried because [`PlayableProjection::offers`] reads it, so a bake that
     /// dropped it would answer a different question from the live projection.
-    pub journal_offers: Vec<(String, SectionJournalOffers)>,
+    pub journal_offers: Vec<(Cow<'static, str>, SectionJournalOffers)>,
 }
 
 impl PlayableProjection {
@@ -718,15 +761,16 @@ impl PlayableProjection {
     /// that changed nothing changes nothing.
     #[must_use]
     pub fn to_parts(&self) -> ProjectionParts {
-        fn sorted<T: Clone>(map: &HashMap<String, T>) -> Vec<(String, T)> {
-            let mut out: Vec<(String, T)> = map
+        fn sorted<T: Clone>(map: &HashMap<Cow<'static, str>, T>) -> Vec<(Cow<'static, str>, T)> {
+            let mut out: Vec<(Cow<'static, str>, T)> = map
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             out.sort_by(|a, b| a.0.cmp(&b.0));
             out
         }
-        let mut divergent_endings: Vec<String> = self.divergent_endings.iter().cloned().collect();
+        let mut divergent_endings: Vec<Cow<'static, str>> =
+            self.divergent_endings.iter().cloned().collect();
         divergent_endings.sort();
         ProjectionParts {
             telling: self.telling.clone(),
@@ -978,10 +1022,7 @@ mod tests {
         assert_eq!(sc01[0].quote, None); // styling hooks default when unauthored
         assert_eq!(sc01[0].count, None);
 
-        assert_eq!(
-            proj.walk("main"),
-            &["sc-01".to_string(), "sc-02".to_string()]
-        );
+        assert_eq!(proj.walk("main").collect::<Vec<_>>(), ["sc-01", "sc-02"]);
         assert_eq!(proj.title("sc-01"), Some("Dawn"));
         assert_eq!(proj.cursor_of("sc-02"), Some(1));
         assert_eq!(proj.telling(), "reader");
@@ -1593,7 +1634,10 @@ mod tests {
         let baked = PlayableProjection::from_parts(live.to_parts());
 
         assert_eq!(baked.telling(), live.telling());
-        assert_eq!(baked.spine(), live.spine());
+        assert_eq!(
+            baked.spine().collect::<Vec<_>>(),
+            live.spine().collect::<Vec<_>>()
+        );
         // Round 776 — the world list is DERIVED from the projection rather than
         // hand-written here, which is the same correction the accessor exists for:
         // a hand list silently stops covering a world the fixture gains.
@@ -1604,7 +1648,10 @@ mod tests {
             "the fixture's two roads"
         );
         for world in live.worlds() {
-            assert_eq!(baked.walk(world), live.walk(world));
+            assert_eq!(
+                baked.walk(world).collect::<Vec<_>>(),
+                live.walk(world).collect::<Vec<_>>()
+            );
             assert_eq!(
                 baked.is_divergent_ending(world),
                 live.is_divergent_ending(world)
@@ -1930,9 +1977,9 @@ mod tests {
     fn the_line_door_carries_the_borrow_it_was_given() {
         fn one_line(part: crate::LinePart) -> PlayableProjection {
             PlayableProjection::from_parts(crate::ProjectionParts {
-                telling: "reader".to_string(),
-                by_world: vec![("main".to_string(), vec![("sc-01".to_string(), vec![part])])],
-                walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+                telling: "reader".into(),
+                by_world: vec![("main".into(), vec![("sc-01".into(), vec![part])])],
+                walks: vec![("main".into(), vec!["sc-01".into()])],
                 titles: Vec::new(),
                 cast: Vec::new(),
                 forks: Vec::new(),
@@ -2002,11 +2049,11 @@ mod tests {
     fn the_cast_door_carries_the_borrow_it_was_given() {
         fn one_member(part: crate::CastPart) -> PlayableProjection {
             PlayableProjection::from_parts(crate::ProjectionParts {
-                telling: "reader".to_string(),
+                telling: "reader".into(),
                 by_world: Vec::new(),
                 walks: Vec::new(),
                 titles: Vec::new(),
-                cast: vec![("sc-01".to_string(), vec![part])],
+                cast: vec![("sc-01".into(), vec![part])],
                 forks: Vec::new(),
                 divergent_endings: Vec::new(),
                 interactivity: Interactivity::default(),
@@ -2053,5 +2100,155 @@ mod tests {
         );
         assert!(matches!(line.text, Cow::Owned(_)));
         assert!(matches!(line.entities, Cow::Owned(_)));
+    }
+
+    /// Every moved scalar in one projection, labelled by where it sits — the
+    /// enumeration the Round 804 gate walks.
+    ///
+    /// It reaches KEYS, and that is the point rather than an incidental: Round
+    /// 798 attributed 938 of the 1,316 moved strings to map keys, so a door that
+    /// rebuilt only its keys would pass any assertion written over values.
+    fn moved_scalars(p: &PlayableProjection) -> Vec<(&'static str, &Cow<'static, str>)> {
+        let mut out = vec![("telling", &p.telling)];
+        for (world, sections) in &p.by_world {
+            out.push(("by_world world key", world));
+            out.extend(sections.keys().map(|s| ("by_world section key", s)));
+        }
+        for (world, walk) in &p.walks {
+            out.push(("walks world key", world));
+            out.extend(walk.iter().map(|s| ("walks element", s)));
+        }
+        for (section, title) in &p.titles {
+            out.push(("titles section key", section));
+            out.push(("titles value", title));
+        }
+        out.extend(p.cast.keys().map(|s| ("cast section key", s)));
+        out.extend(
+            p.divergent_endings
+                .iter()
+                .map(|w| ("divergent_endings element", w)),
+        );
+        out.extend(p.ask_doors.keys().map(|s| ("ask_doors section key", s)));
+        for (world, sections) in &p.journal_offers {
+            out.push(("journal_offers world key", world));
+            for (section, ids) in sections {
+                out.push(("journal_offers section key", section));
+                out.extend(ids.iter().map(|id| ("journal_offers element", id)));
+            }
+        }
+        out
+    }
+
+    /// Round 804 — the projection's own keys and lists carry the borrow they were
+    /// given, on a KEY as well as on a value.
+    ///
+    /// The same discriminant gate the line door (Round 795) and the cast door
+    /// (Round 796) carry, and here for the same reason: `Cow` compares by
+    /// CONTENT, so the `to_parts()` round trip, the baked-equals-live assertion
+    /// and every accessor in this file answer identically whether the map keys
+    /// point at the binary or copied it. A door written `key.into_owned().into()`
+    /// looks correct and undoes the round.
+    ///
+    /// What is new here is the KEY. Round 798 attributed 938 of the 1,316 moved
+    /// strings to keys, so a value-only assertion would have watched 29% of the
+    /// change and reported on the whole of it.
+    ///
+    /// Both directions, so the door carries what it was GIVEN rather than
+    /// normalizing everything to one representation — which is what makes a live
+    /// projection and a baked one two holding modes of one type instead of two
+    /// types.
+    #[test]
+    fn the_projection_door_carries_the_borrow_on_its_keys_too() {
+        fn one_of_each(hold: fn(&'static str) -> Cow<'static, str>) -> PlayableProjection {
+            PlayableProjection::from_parts(crate::ProjectionParts {
+                telling: hold("reader"),
+                by_world: vec![(hold("main"), vec![(hold("sc-01"), Vec::new())])],
+                walks: vec![(hold("main"), vec![hold("sc-01")])],
+                titles: vec![(hold("sc-01"), hold("첫날"))],
+                cast: vec![(hold("sc-01"), Vec::new())],
+                forks: Vec::new(),
+                divergent_endings: vec![hold("dark")],
+                interactivity: Interactivity::default(),
+                choice_entity_refs: Vec::new(),
+                ask_doors: vec![(hold("sc-01"), Vec::new())],
+                journal_offers: vec![(hold("main"), vec![(hold("sc-01"), vec![hold("f-leg")])])],
+            })
+        }
+
+        let borrowed = one_of_each(Cow::Borrowed);
+        let owned = one_of_each(|s| Cow::Owned(s.to_string()));
+
+        // Non-vacuity: a fixture that stopped populating a field would quietly
+        // shrink the walk below, and every assertion under it would still pass.
+        assert_eq!(
+            moved_scalars(&borrowed).len(),
+            13,
+            "the fixture no longer reaches every moved field; the counts are one \
+             telling, two by_world, two walks, two titles, one cast, one \
+             divergent ending, one ask door and three journal offers"
+        );
+
+        for (what, cow) in moved_scalars(&borrowed) {
+            assert!(
+                matches!(cow, Cow::Borrowed(_)),
+                "the baked door copied {what} instead of pointing at it, which no \
+                 content assertion in this workspace can see"
+            );
+        }
+        for (what, cow) in moved_scalars(&owned) {
+            assert!(
+                matches!(cow, Cow::Owned(_)),
+                "the door normalized {what} to a borrow it was not given"
+            );
+        }
+
+        // And the two answer identically, which is exactly why the discriminant
+        // needed its own assertion. A borrowed key and an owned key of the same
+        // content are ONE map entry — the property Round 798 compiled before
+        // designing on it — so these lookups cannot tell them apart.
+        assert_eq!(borrowed.telling(), owned.telling());
+        assert_eq!(borrowed.title("sc-01"), owned.title("sc-01"));
+        assert_eq!(
+            borrowed.walk("main").collect::<Vec<_>>(),
+            owned.walk("main").collect::<Vec<_>>()
+        );
+        assert_eq!(borrowed.worlds(), owned.worlds());
+        assert!(borrowed.is_divergent_ending("dark") && owned.is_divergent_ending("dark"));
+        assert!(
+            borrowed.offers("main", "sc-01", "f-leg") && owned.offers("main", "sc-01", "f-leg"),
+            "the journal-routed id is reachable through both holdings"
+        );
+    }
+
+    /// Round 804 — and the run-time constructor still OWNS every one of them,
+    /// because it derives its keys from a store read rather than pointing at a
+    /// literal. The other half of the door: without this, a change that made
+    /// `from_parts` normalize to `Cow::Owned` would pass the gate above by
+    /// making both arms owned.
+    #[test]
+    fn the_runtime_projection_constructor_still_owns() {
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "첫날",
+                vec![begin("f-a", "물때가 셈한다.", "ground-truth", &["ent-a"])],
+            )],
+            vec![locator("f-a", "sc-01", DisclosureMode::State)],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &DefaultOverrides::default()).unwrap();
+        let scalars = moved_scalars(&proj);
+        assert!(
+            !scalars.is_empty(),
+            "a live projection with no moved scalars would make the loop below vacuous"
+        );
+        for (what, cow) in scalars {
+            assert!(
+                matches!(cow, Cow::Owned(_)),
+                "a live projection borrowed {what}, but it derived it from a store \
+                 read and has nothing to point at"
+            );
+        }
     }
 }

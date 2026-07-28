@@ -43,16 +43,69 @@ mod control_big {
     include!(concat!(env!("OUT_DIR"), "/stack_control_big.rs"));
 }
 
+/// One fixture per function, and `#[inline(never)]` to keep it that way
+/// (Round 804).
+///
+/// These were six arms of one `match` until this round, and at `opt-level = 0`
+/// that is ONE frame holding every arm's temporaries at once — so the figure
+/// reported for any fixture carried what the others wanted. Round 804 found it
+/// by changing only the playable projection's accessor types and watching the
+/// QUEST reading move from 8 KiB to 28 KiB, past the ratio
+/// `tests/projection_stack.rs` asserts, while every compiled frame in the quest
+/// artifact stayed byte-identical — the emitted quest source did not change by
+/// one character.
+///
+/// That is the failure mode the test's own header warns about one level up: a
+/// gate that cannot say WHICH artifact it is weighing reports on the union and
+/// calls it the part. Splitting the arms puts each measurement back on its own
+/// artifact, and `#[inline(never)]` is what stops the arms from being pooled
+/// again at a profile where the optimizer would.
+mod arm {
+    #[inline(never)]
+    pub fn playable_small() -> usize {
+        super::playable_small::playable_projection()
+            .walk("main")
+            .len()
+    }
+    #[inline(never)]
+    pub fn playable_big() -> usize {
+        super::playable_big::playable_projection()
+            .walk("main")
+            .len()
+    }
+    #[inline(never)]
+    pub fn quest_small() -> usize {
+        super::quest_small::quest_projection().quests().len()
+    }
+    #[inline(never)]
+    pub fn quest_big() -> usize {
+        super::quest_big::quest_projection().quests().len()
+    }
+    #[inline(never)]
+    pub fn control_small() -> usize {
+        super::control_small::playable_projection()
+            .walk("main")
+            .len()
+    }
+    #[inline(never)]
+    pub fn control_big() -> usize {
+        super::control_big::playable_projection().walk("main").len()
+    }
+}
+
 /// Build the named artifact, returning a count so the work cannot be optimized
 /// away as dead. `None` = no such fixture.
+///
+/// Dispatch only: the work is in [`arm`], one function per fixture, so this
+/// frame is a string comparison rather than the union of six artifacts.
 fn build(fixture: &str) -> Option<usize> {
     Some(match fixture {
-        "playable_small" => playable_small::playable_projection().walk("main").len(),
-        "playable_big" => playable_big::playable_projection().walk("main").len(),
-        "quest_small" => quest_small::quest_projection().quests().len(),
-        "quest_big" => quest_big::quest_projection().quests().len(),
-        "control_small" => control_small::playable_projection().walk("main").len(),
-        "control_big" => control_big::playable_projection().walk("main").len(),
+        "playable_small" => arm::playable_small(),
+        "playable_big" => arm::playable_big(),
+        "quest_small" => arm::quest_small(),
+        "quest_big" => arm::quest_big(),
+        "control_small" => arm::control_small(),
+        "control_big" => arm::control_big(),
         _ => return None,
     })
 }

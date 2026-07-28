@@ -49,11 +49,11 @@ fn main() {
     let nasty = "그는 \"셈\"이라 했다.\n뒤에 \\ 하나.";
 
     let parts = ProjectionParts {
-        telling: "reader".to_string(),
+        telling: "reader".into(),
         by_world: vec![(
-            "main".to_string(),
+            "main".into(),
             vec![(
-                "sc-01".to_string(),
+                "sc-01".into(),
                 vec![
                     LinePart {
                         fact_id: "f-a".into(),
@@ -80,10 +80,10 @@ fn main() {
                 ],
             )],
         )],
-        walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
-        titles: vec![("sc-01".to_string(), nasty.to_string())],
+        walks: vec![("main".into(), vec!["sc-01".into()])],
+        titles: vec![("sc-01".into(), nasty.into())],
         cast: vec![(
-            "sc-01".to_string(),
+            "sc-01".into(),
             vec![CastPart {
                 entity: "ent-jongdeuk".into(),
                 modality: Modality::Observed,
@@ -97,7 +97,7 @@ fn main() {
             world: "dark".to_string(),
             label: nasty.to_string(),
         }],
-        divergent_endings: vec!["dark".to_string()],
+        divergent_endings: vec!["dark".into()],
         interactivity: Interactivity {
             ladders: HashMap::from([(
                 "sc-01".to_string(),
@@ -131,7 +131,7 @@ fn main() {
             choice: nasty.to_string(),
         }],
         ask_doors: vec![(
-            "sc-01".to_string(),
+            "sc-01".into(),
             vec![
                 DoorPart::Ask {
                     question: nasty.to_string(),
@@ -150,10 +150,7 @@ fn main() {
         // Round 787 — a journal-routed offer, so the knowledge axis is CARRIED by
         // the fixture the downstream-constructibility test compiles. An empty one
         // would emit `vec![]` and prove nothing about the field.
-        journal_offers: vec![(
-            "main".to_string(),
-            vec![("sc-01".to_string(), vec!["f-leg".to_string()])],
-        )],
+        journal_offers: vec![("main".into(), vec![("sc-01".into(), vec!["f-leg".into()])])],
     };
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
@@ -549,11 +546,11 @@ fn vec_assembly(fns: &str, ty: &str, names: &[String]) -> String {
 /// `n` lines in one section — parts that GROW, for the scaling assertion.
 fn lines_parts(n: usize) -> ProjectionParts {
     ProjectionParts {
-        telling: "reader".to_string(),
+        telling: "reader".into(),
         by_world: vec![(
-            "main".to_string(),
+            "main".into(),
             vec![(
-                "sc-01".to_string(),
+                "sc-01".into(),
                 (0..n)
                     .map(|i| LinePart {
                         fact_id: format!("f-{i:06}").into(),
@@ -569,7 +566,7 @@ fn lines_parts(n: usize) -> ProjectionParts {
                     .collect(),
             )],
         )],
-        walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+        walks: vec![("main".into(), vec!["sc-01".into()])],
         titles: Vec::new(),
         cast: Vec::new(),
         forks: Vec::new(),

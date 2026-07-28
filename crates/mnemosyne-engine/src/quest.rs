@@ -320,7 +320,7 @@ impl QuestProjection {
                     });
                     continue;
                 }
-                let walk = playable.walk(world);
+                let walk = playable.walk_raw(world);
                 // The deadline = the earliest completion scene index on this
                 // world's walk. No completion on this walk (open here, or a
                 // completion scene off the walk) = no deadline = not gated.
@@ -347,7 +347,7 @@ impl QuestProjection {
                         violations.push(QuestGateViolation::PreconditionUnreachable {
                             world: world.clone(),
                             quest: quest.quest_id.clone(),
-                            completion_scene: walk[deadline].clone(),
+                            completion_scene: walk[deadline].to_string(),
                             needs: need.clone(),
                         });
                     }

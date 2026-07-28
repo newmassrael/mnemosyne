@@ -284,31 +284,36 @@ fn chunked<T>(
 /// inlined so the nested ones stay readable — a `by_world` element is a world
 /// paired with its sections paired with their lines.
 const STRING_TY: &str = "::std::string::String";
+/// The borrowed scalar every moved projection key and list element now carries
+/// (Round 798). Spelled in full because a generated file has no `use`.
+const COW_TY: &str = "::std::borrow::Cow<'static, str>";
 const LINE_TY: &str = "::mnemosyne_engine::LinePart";
 const SECTION_LINES_TY: &str =
-    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::LinePart>)";
+    "(::std::borrow::Cow<'static, str>, ::std::vec::Vec<::mnemosyne_engine::LinePart>)";
 /// Spelled with the kernel's own [`SectionLines`](mnemosyne_engine::SectionLines)
 /// alias rather than expanded. Not cosmetic: expanded, this is four levels of
 /// nesting and `clippy::type_complexity` REJECTS it — in the generated file, in a
 /// consumer's build, under the `-D warnings` a consumer is entitled to run. A
 /// generator whose output does not survive its consumer's lints has not finished
 /// generating.
-const WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::SectionLines)";
-const WALK_TY: &str = "(::std::string::String, ::std::vec::Vec<::std::string::String>)";
+const WORLD_TY: &str = "(::std::borrow::Cow<'static, str>, ::mnemosyne_engine::SectionLines)";
+const WALK_TY: &str =
+    "(::std::borrow::Cow<'static, str>, ::std::vec::Vec<::std::borrow::Cow<'static, str>>)";
 /// `world -> (section -> the journal-routed fact ids there)` (Round 787). Named
 /// through the kernel's alias for the same reason `SectionLines` is: the emitted
 /// chunk signature is the parts type spelled out, and two spellings of one type
 /// is the drift this crate exists downstream to catch.
-const WORLD_OFFERS_TY: &str = "(::std::string::String, ::mnemosyne_engine::SectionJournalOffers)";
-const TITLE_TY: &str = "(::std::string::String, ::std::string::String)";
+const WORLD_OFFERS_TY: &str =
+    "(::std::borrow::Cow<'static, str>, ::mnemosyne_engine::SectionJournalOffers)";
+const TITLE_TY: &str = "(::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)";
 const CAST_TY: &str = "::mnemosyne_engine::CastPart";
 const SECTION_CAST_TY: &str =
-    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::CastPart>)";
+    "(::std::borrow::Cow<'static, str>, ::std::vec::Vec<::mnemosyne_engine::CastPart>)";
 const FORK_TY: &str = "::mnemosyne_engine::ForkPart";
 const CHOICE_REF_TY: &str = "::mnemosyne_engine::ChoiceEntityRef";
 const DOOR_TY: &str = "::mnemosyne_engine::DoorPart";
 const SECTION_DOORS_TY: &str =
-    "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::DoorPart>)";
+    "(::std::borrow::Cow<'static, str>, ::std::vec::Vec<::mnemosyne_engine::DoorPart>)";
 const RUNG_TY: &str = "::mnemosyne_engine::Rung";
 const SECTION_RUNGS_TY: &str = "(::std::string::String, ::std::vec::Vec<::mnemosyne_engine::Rung>)";
 const QUEST_TY: &str = "::mnemosyne_engine::QuestPart";
@@ -343,15 +348,15 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
     let by_world = chunked(&mut c, WORLD_TY, &parts.by_world, |c, (world, sections)| {
         let sections = chunked(c, SECTION_LINES_TY, sections, |c, (section, lines)| {
             let lines = chunked(c, LINE_TY, lines, |_, l| line(l));
-            format!("({}, {})", string(section), lines)
+            format!("({}, {})", cow(section), lines)
         });
-        format!("({}, {})", string(world), sections)
+        format!("({}, {})", cow(world), sections)
     });
     let walks = chunked(&mut c, WALK_TY, &parts.walks, |c, (world, walk)| {
-        format!("({}, {})", string(world), strings(c, walk))
+        format!("({}, {})", cow(world), cow_strings(c, walk))
     });
     let titles = chunked(&mut c, TITLE_TY, &parts.titles, |_, (section, title)| {
-        format!("({}, {})", string(section), string(title))
+        format!("({}, {})", cow(section), cow(title))
     });
     let cast = chunked(
         &mut c,
@@ -359,11 +364,11 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
         &parts.cast,
         |c, (section, members)| {
             let members = chunked(c, CAST_TY, members, |_, m| cast(m));
-            format!("({}, {})", string(section), members)
+            format!("({}, {})", cow(section), members)
         },
     );
     let forks = chunked(&mut c, FORK_TY, &parts.forks, |_, f| fork(f));
-    let divergent_endings = strings(&mut c, &parts.divergent_endings);
+    let divergent_endings = cow_strings(&mut c, &parts.divergent_endings);
     let interactivity = interactivity(&mut c, &parts.interactivity);
     let choice_entity_refs = chunked(&mut c, CHOICE_REF_TY, &parts.choice_entity_refs, |_, r| {
         format!(
@@ -379,7 +384,7 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
         &parts.ask_doors,
         |c, (section, doors)| {
             let doors = chunked(c, DOOR_TY, doors, |_, d| door(d));
-            format!("({}, {})", string(section), doors)
+            format!("({}, {})", cow(section), doors)
         },
     );
     let journal_offers = chunked(
@@ -388,16 +393,16 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
         &parts.journal_offers,
         |c, (world, sections)| {
             let sections = chunked(c, WALK_TY, sections, |c, (section, ids)| {
-                format!("({}, {})", string(section), strings(c, ids))
+                format!("({}, {})", cow(section), cow_strings(c, ids))
             });
-            format!("({}, {})", string(world), sections)
+            format!("({}, {})", cow(world), sections)
         },
     );
 
     let mut build = String::new();
     build.push_str("    ::mnemosyne_engine::PlayableProjection::from_parts(\n");
     build.push_str("        ::mnemosyne_engine::ProjectionParts {\n");
-    let _ = writeln!(build, "            telling: {},", string(&parts.telling));
+    let _ = writeln!(build, "            telling: {},", cow(&parts.telling));
     let _ = writeln!(build, "            by_world: {by_world},");
     let _ = writeln!(build, "            walks: {walks},");
     let _ = writeln!(build, "            titles: {titles},");
@@ -512,6 +517,15 @@ fn str_literal(s: &str) -> String {
 
 fn strings(chunks: &mut Chunks, items: &[String]) -> String {
     chunked(chunks, STRING_TY, items, |_, s| string(s))
+}
+
+/// The borrowed sibling of [`strings`] (Round 798) — a chunked list whose
+/// elements POINT at the binary. CHUNKED rather than inline, unlike a line's
+/// entity list: a walk is one list per world and grows with the store, which is
+/// the shape the chunk bound exists for, while an entity list is a handful per
+/// line and a chunk function each would cost more items than it bounds.
+fn cow_strings(chunks: &mut Chunks, items: &[Cow<'static, str>]) -> String {
+    chunked(chunks, COW_TY, items, |_, s| cow(s))
 }
 
 fn option(inner: Option<String>) -> String {

@@ -108,8 +108,6 @@ impl PlayableProjection {
                 world: world.to_string(),
             }];
         }
-        let walk = self.walk(world);
-
         // For G6: the earliest walk index at which each fact is OFFERED (a fact
         // may be offered at several spots; the first wins — we scan in walk
         // order and `or_insert` keeps the earliest).
@@ -122,14 +120,14 @@ impl PlayableProjection {
         // those ask what the ladder can SHOW, which is a different question about
         // the same spot.
         let mut earliest_offer: HashMap<&str, usize> = HashMap::new();
-        for (index, section) in walk.iter().enumerate() {
+        for (index, section) in self.walk(world).enumerate() {
             for fact_id in self.offered_at(world, section) {
                 earliest_offer.entry(fact_id).or_insert(index);
             }
         }
 
         let mut violations = Vec::new();
-        for (index, section) in walk.iter().enumerate() {
+        for (index, section) in self.walk(world).enumerate() {
             let lines = self.lines(world, section);
             let doors = self.doors_at(world, section);
 
@@ -137,7 +135,7 @@ impl PlayableProjection {
             if lines.is_empty() && doors.is_empty() {
                 violations.push(GateViolation::EmptySpot {
                     world: world.to_string(),
-                    section: section.clone(),
+                    section: section.to_string(),
                 });
             }
 
@@ -161,7 +159,7 @@ impl PlayableProjection {
                 if !offered.contains(rung.reveals.as_str()) {
                     violations.push(GateViolation::RungRevealsUnofferedFact {
                         world: world.to_string(),
-                        section: section.clone(),
+                        section: section.to_string(),
                         fact_id: rung.reveals.clone(),
                     });
                 }
@@ -173,7 +171,7 @@ impl PlayableProjection {
                     if !in_time {
                         violations.push(GateViolation::PreconditionUnreachable {
                             world: world.to_string(),
-                            section: section.clone(),
+                            section: section.to_string(),
                             needs: need.clone(),
                         });
                     }
@@ -190,7 +188,7 @@ impl PlayableProjection {
                     if !reachable.contains(line.fact_id()) {
                         violations.push(GateViolation::OfferedFactUnreachable {
                             world: world.to_string(),
-                            section: section.clone(),
+                            section: section.to_string(),
                             fact_id: line.fact_id().to_string(),
                         });
                     }
@@ -216,7 +214,7 @@ impl PlayableProjection {
                     if !referenceable.contains(&cref.entity) {
                         violations.push(GateViolation::ChoiceReferencesUndisclosedEntity {
                             world: world.to_string(),
-                            section: section.clone(),
+                            section: section.to_string(),
                             choice: cref.choice.clone(),
                             entity: cref.entity.clone(),
                         });
@@ -333,7 +331,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(proj.worlds(), vec!["ghost", "main"], "both are projected");
-        assert!(proj.walk("ghost").is_empty(), "and one walks nowhere");
+        assert_eq!(proj.walk("ghost").len(), 0, "and one walks nowhere");
         assert!(
             proj.gate("ghost").is_empty(),
             "a registered empty world is clean, not unknown"

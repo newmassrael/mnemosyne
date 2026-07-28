@@ -146,7 +146,7 @@ pub use render::{render, render_passages, render_quest};
 /// ```
 /// # fn parts() -> mnemosyne_engine::ProjectionParts {
 /// #     mnemosyne_engine::ProjectionParts {
-/// #         telling: "reader".to_string(), by_world: Vec::new(), walks: Vec::new(),
+/// #         telling: "reader".into(), by_world: Vec::new(), walks: Vec::new(),
 /// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
 /// #         divergent_endings: Vec::new(), interactivity: Default::default(),
 /// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
@@ -162,7 +162,7 @@ pub use render::{render, render_passages, render_quest};
 /// ```compile_fail
 /// # fn parts() -> mnemosyne_engine::ProjectionParts {
 /// #     mnemosyne_engine::ProjectionParts {
-/// #         telling: "reader".to_string(), by_world: Vec::new(), walks: Vec::new(),
+/// #         telling: "reader".into(), by_world: Vec::new(), walks: Vec::new(),
 /// #         titles: Vec::new(), cast: Vec::new(), forks: Vec::new(),
 /// #         divergent_endings: Vec::new(), interactivity: Default::default(),
 /// #         choice_entity_refs: Vec::new(), ask_doors: Vec::new(),
@@ -371,7 +371,7 @@ mod tests {
         // generator that emitted syntactically valid but wrong code still fails.
         let proj = baked::playable_projection();
         assert_eq!(proj.telling(), "reader");
-        assert_eq!(proj.walk("main"), ["sc-01".to_string()]);
+        assert_eq!(proj.walk("main").collect::<Vec<_>>(), ["sc-01"]);
         assert!(proj.is_divergent_ending("dark"));
 
         // The nasty string round-tripped through a Rust literal: an embedded
@@ -424,11 +424,11 @@ mod tests {
         // `ForkPart` / `DoorPart`). This crate is downstream, so if the parts type
         // ever readmits a non-constructible member, THIS stops compiling.
         let parts = ProjectionParts {
-            telling: "reader".to_string(),
+            telling: "reader".into(),
             by_world: vec![(
-                "main".to_string(),
+                "main".into(),
                 vec![(
-                    "sc-01".to_string(),
+                    "sc-01".into(),
                     vec![LinePart {
                         fact_id: "f-a".into(),
                         text: "a line".into(),
@@ -442,7 +442,7 @@ mod tests {
                     }],
                 )],
             )],
-            walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+            walks: vec![("main".into(), vec!["sc-01".into()])],
             titles: Vec::new(),
             cast: Vec::new(),
             forks: Vec::new(),
@@ -450,16 +450,13 @@ mod tests {
             interactivity: Interactivity::default(),
             choice_entity_refs: Vec::new(),
             ask_doors: vec![(
-                "sc-01".to_string(),
+                "sc-01".into(),
                 vec![DoorPart::Ask {
                     question: "물었다".to_string(),
                     reveals: "f-a".to_string(),
                 }],
             )],
-            journal_offers: vec![(
-                "main".to_string(),
-                vec![("sc-01".to_string(), vec!["f-leg".to_string()])],
-            )],
+            journal_offers: vec![("main".into(), vec![("sc-01".into(), vec!["f-leg".into()])])],
         };
         let proj = PlayableProjection::from_parts(parts);
         assert_eq!(proj.lines("main", "sc-01").len(), 1);
@@ -526,8 +523,8 @@ mod tests {
         let proj = baked::playable_projection();
         keep_forever(proj.telling());
         keep_forever(proj.title("sc-01").expect("the fixture titles sc-01"));
-        keep_slice_forever(proj.walk("main"));
-        keep_slice_forever(proj.spine());
+        keep_items_forever(proj.walk("main"));
+        keep_items_forever(proj.spine());
 
         let line = &proj.lines("main", "sc-01")[0];
         keep_forever(line.text());
@@ -553,11 +550,11 @@ mod tests {
     /// scaling assertion below.
     fn parts_with_lines(n: usize) -> ProjectionParts {
         ProjectionParts {
-            telling: "reader".to_string(),
+            telling: "reader".into(),
             by_world: vec![(
-                "main".to_string(),
+                "main".into(),
                 vec![(
-                    "sc-01".to_string(),
+                    "sc-01".into(),
                     (0..n)
                         .map(|i| LinePart {
                             fact_id: format!("f-{i:06}").into(),
@@ -573,7 +570,7 @@ mod tests {
                         .collect(),
                 )],
             )],
-            walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
+            walks: vec![("main".into(), vec!["sc-01".into()])],
             titles: Vec::new(),
             cast: Vec::new(),
             forks: Vec::new(),

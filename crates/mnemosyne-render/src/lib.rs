@@ -171,9 +171,9 @@ mod tests {
         PlayableProjection::from_parts(ProjectionParts {
             telling: "reader".into(),
             by_world: vec![(
-                "main".to_string(),
+                "main".into(),
                 vec![(
-                    "sc-01".to_string(),
+                    "sc-01".into(),
                     vec![
                         line("f-truth", "the tide pulls out", "ground-truth", None, None),
                         line(
@@ -193,8 +193,8 @@ mod tests {
                     ],
                 )],
             )],
-            walks: vec![("main".to_string(), vec!["sc-01".to_string()])],
-            titles: vec![("sc-01".to_string(), "Dawn".to_string())],
+            walks: vec![("main".into(), vec!["sc-01".into()])],
+            titles: vec![("sc-01".into(), "Dawn".into())],
             cast: Vec::new(),
             forks: vec![ForkPart {
                 at: "sc-01".into(),
