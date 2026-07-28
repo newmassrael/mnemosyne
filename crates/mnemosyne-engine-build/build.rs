@@ -223,6 +223,39 @@ fn main() {
     )
     .expect("write the generated quest fixture");
 
+    // The passage axis, dogfooded on the same terms (Round 791): both locator
+    // kinds, and prose carrying the quote / newline / backslash / non-ASCII that
+    // authored text carries — the escaping claim is proven by rustc here too.
+    let passages = PassagesParts {
+        passages: vec![
+            (
+                "sc-01".to_string(),
+                mnemosyne_engine::PassagePart {
+                    anchor: ContentAnchor {
+                        source: "M.md".to_string(),
+                        locator: Locator::Prefix("이름을".to_string()),
+                    },
+                    text: nasty.to_string(),
+                },
+            ),
+            (
+                "sc-02".to_string(),
+                mnemosyne_engine::PassagePart {
+                    anchor: ContentAnchor {
+                        source: "book.epub".to_string(),
+                        locator: Locator::Cfi("/6/4[c]!/4/2".to_string()),
+                    },
+                    text: "plain".to_string(),
+                },
+            ),
+        ],
+    };
+    std::fs::write(
+        std::path::Path::new(&out_dir).join("fixture_passages.rs"),
+        render_passages(&passages),
+    )
+    .expect("write the generated passage fixture");
+
     stack_fixtures(&out_dir);
     alloc_fixtures(&out_dir);
     prose_fixtures(&out_dir);

@@ -672,11 +672,16 @@ pub type SectionJournalOffers = Vec<(String, Vec<String>)>;
 ///
 /// Every field is already resolved: the store read, the locator join, and the
 /// ladder-question resolution all happened when this was produced. So
-/// [`PlayableProjection::from_parts`] takes no `Result` — there is nothing left
-/// to check, because there is no untrusted input left to check it against. That
-/// is the whole shape of the build-time move (R764): the checks do not get
-/// deleted, they get discharged where the store is, and what remains at runtime
-/// is data the compiler has already type-checked.
+/// [`PlayableProjection::from_parts`] takes no `Result` — the checks do not get
+/// deleted, they get discharged where the store is (R764), and what remains at
+/// run time is data the compiler has already type-checked.
+///
+/// This type said, until Round 791, that the door needs no `Result` because
+/// "there is no untrusted input left to check it against". The input IS
+/// untrusted — its fields are public and a consumer can type them. What is true
+/// is that there is nothing left to check it AGAINST at run time, because the
+/// store is not there. See [`crate::baked_ingestion`], which owns that contract
+/// for all three doors so it cannot be restated three ways again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectionParts {
     /// The telling this projection was resolved under.
@@ -762,15 +767,19 @@ impl PlayableProjection {
         }
     }
 
-    /// Ingest baked parts (Round 769) — the read half, and INFALLIBLE by
-    /// construction rather than by optimism.
+    /// Ingest baked parts (Round 769) — the read half.
     ///
-    /// There is no `Result` because there is no check left to run: a locator join
+    /// There is no `Result` because there is no check left to RUN: a locator join
     /// that could dangle already happened, a ladder question that could fail to
     /// resolve already resolved, and a store that could be unreadable was read at
     /// bake time. A consumer built this way does no validation at startup because
-    /// it takes in no input that could be wrong — the artifact is generated from
-    /// the store by its own build and type-checked by its own compiler.
+    /// the artifact is generated from the store by its own build and type-checked
+    /// by its own compiler.
+    ///
+    /// **This is a baked-ingestion door.** The contract every such door carries —
+    /// including what it opens, which this doc claimed for two rounds that it did
+    /// not — is stated once in [`crate::baked_ingestion`], and this one adds
+    /// nothing to it.
     #[must_use]
     pub fn from_parts(parts: ProjectionParts) -> Self {
         Self {

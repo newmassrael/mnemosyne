@@ -467,11 +467,15 @@ impl QuestProjection {
         }
     }
 
-    /// Ingest baked parts (Round 773) — the read half, INFALLIBLE for the same
-    /// reason [`PlayableProjection::from_parts`] is: the store read and the
-    /// precondition join already ran, so what arrives is the RESULT of the checks
-    /// rather than their input. This is the crate's single public ingestion door
-    /// on the quest axis; [`Self::from_report`] closed with it.
+    /// Ingest baked parts (Round 773) — the read half, with no `Result` for the
+    /// same reason [`PlayableProjection::from_parts`] has none: the store read
+    /// and the precondition join already ran at bake time.
+    ///
+    /// This doc said what arrives "is the RESULT of the checks rather than their
+    /// input", which is true of emitted parts and false of typed ones — the same
+    /// sentence Round 791 corrected on the playable axis, in the same words, one
+    /// module over. **This is a baked-ingestion door**; its contract is stated
+    /// once in [`crate::baked_ingestion`] and this one adds nothing to it.
     #[must_use]
     pub fn from_parts(parts: QuestProjectionParts) -> Self {
         Self {

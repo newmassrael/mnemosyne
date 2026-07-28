@@ -10,8 +10,8 @@ use std::fmt::Write as _;
 use std::num::NonZeroUsize;
 
 use mnemosyne_engine::{
-    CastPart, ContentAnchor, DoorPart, ForkPart, Interactivity, LinePart, Locator, ProjectionParts,
-    QuestCompletionPart, QuestPart, QuestProjectionParts, QuestWorldPart, Rung,
+    CastPart, ContentAnchor, DoorPart, ForkPart, Interactivity, LinePart, Locator, PassagesParts,
+    ProjectionParts, QuestCompletionPart, QuestPart, QuestProjectionParts, QuestWorldPart, Rung,
 };
 
 /// The item the generated playable source defines, and the type it returns.
@@ -21,6 +21,13 @@ const PLAYABLE_PROJECTION_TY: &str = "::mnemosyne_engine::PlayableProjection";
 /// The item the generated quest source defines, and the type it returns (Round 774).
 const QUEST_FN_NAME: &str = "quest_projection";
 const QUEST_PROJECTION_TY: &str = "::mnemosyne_engine::QuestProjection";
+
+/// The item the generated passage source defines, and the type it returns
+/// (Round 791). A map rather than a kernel struct, because that is what
+/// `store_passages` returns and the bake replaces that call, not a type.
+const PASSAGES_FN_NAME: &str = "passages";
+const PASSAGES_TY: &str =
+    "::std::collections::HashMap<::std::string::String, ::mnemosyne_engine::Passage>";
 
 /// The banner both generated files carry.
 fn header(out: &mut String) {
@@ -592,6 +599,45 @@ fn rung(r: &Rung) -> String {
         inline_strings(&r.needs),
     )
 }
+
+/// Render a baked passage set as Rust source (Round 791) — the third emitter,
+/// and the third to end in [`artifact`], so the composition rule and the
+/// `&'static` handle hold on this axis without being re-derived.
+///
+/// Deterministic for the same reason the other two are: [`passages_to_parts`]
+/// sorts by section id, so the same store emits byte-identical source.
+///
+/// # Why the passage set is chunked at all
+///
+/// Round 789 measured this axis before it was shaped, and found the opposite of
+/// what both sides expected. Prose is FEW and LONG — 56 spots of ~2,655
+/// characters in the first consumer's store — so the emitted longest line is
+/// enormous (319 KB) and costs nothing: rustc charges per ITEM, and the whole
+/// 1.43 MB artifact compiles in 0.05s against 2.47s for a line artifact of
+/// nearly the same bytes in 4,612 items. [`CHUNK`] is therefore already the
+/// right bound here, unchanged, and the Round 775 regression test passes because
+/// it asserts a RATIO rather than a byte threshold. Nothing about this emitter
+/// needed a special case; the measurement is what established that.
+pub fn render_passages(parts: &PassagesParts) -> String {
+    let mut c = Chunks::new();
+    let entries = chunked(&mut c, PASSAGE_ENTRY_TY, &parts.passages, |_, (id, p)| {
+        format!(
+            "({}, ::mnemosyne_engine::PassagePart {{ anchor: {}, text: {} }})",
+            string(id),
+            anchor(&p.anchor),
+            string(&p.text)
+        )
+    });
+    let mut build = String::new();
+    build.push_str("    ::mnemosyne_engine::passages_from_parts(\n");
+    build.push_str("        ::mnemosyne_engine::PassagesParts {\n");
+    let _ = writeln!(build, "            passages: {entries},");
+    build.push_str("        },\n    )\n");
+    artifact(PASSAGES_FN_NAME, PASSAGES_TY, &c, &build)
+}
+
+/// One baked passage entry, as generated Rust.
+const PASSAGE_ENTRY_TY: &str = "(::std::string::String, ::mnemosyne_engine::PassagePart)";
 
 fn anchor(a: &ContentAnchor) -> String {
     let locator = match &a.locator {

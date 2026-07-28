@@ -109,7 +109,7 @@ use std::path::Path;
 use mnemosyne_engine::{EngineError, EngineOverrides, PlayableProjection, QuestProjection};
 
 mod render;
-pub use render::{render, render_quest};
+pub use render::{render, render_passages, render_quest};
 
 /// Project the workspace at build time and return Rust source defining
 /// `pub fn playable_projection() -> &'static PlayableProjection`.
@@ -231,6 +231,54 @@ pub fn emit_quest_projection(
     Ok(render_quest(&projection.to_parts()))
 }
 
+/// Project the workspace's authored PASSAGES at build time and return Rust source
+/// defining `pub fn passages() -> &'static HashMap<String, Passage>` (Round 791)
+/// — the third emitter, and the one that takes the last store read out of a
+/// consumer's startup.
+///
+/// # What this replaces
+///
+/// [`store_passages`](mnemosyne_engine::store_passages), which parses the whole
+/// sidecar on every launch. The first consumer measured that call at 38,913
+/// allocations and 7.85 MB — 48% of everything left in its startup after it had
+/// moved three other axes itself — and could not bake it: `Passage`'s only
+/// constructors are crate-private, on purpose. So the baking has to happen here,
+/// which is what they asked for.
+///
+/// # The door this opens, and why it is opened deliberately
+///
+/// The emitted source calls
+/// [`passages_from_parts`](mnemosyne_engine::passages_from_parts), a public door
+/// over a parts type with public fields — so a consumer CAN hand the kernel prose
+/// the store never held. That is inherent to baking rather than a concession
+/// made here: generated source is spliced into the consumer's own crate and can
+/// hold no capability the consumer lacks. The playable axis has carried the same
+/// opening since Round 769. **The contract is stated once**, in
+/// [`mnemosyne_engine::baked_ingestion`]; Round 790 chose to say it plainly
+/// rather than to build a token that would only look like a lock.
+///
+/// # Why no telling, and no overrides
+///
+/// Passages are anchored authored prose, not a disclosure of it: a
+/// [`Passage`](mnemosyne_engine::Passage) is the same text under every telling,
+/// because what a telling varies is which FACTS surface, not what the manuscript
+/// says. Taking a telling here would emit an artifact whose name implies a
+/// narrowing it does not perform — the Round 774 reason `emit_quest_projection`
+/// takes no order override, on a different axis.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the content-excerpt read fails — an unreadable
+/// store, or a sidecar the config does not resolve. A BUILD failure; the
+/// consumer's runtime never sees it.
+pub fn emit_passages(workspace_root: &Path) -> Result<String, EngineError> {
+    declare_inputs(workspace_root)?;
+    let passages = mnemosyne_engine::store_passages(workspace_root)?;
+    Ok(render_passages(&mnemosyne_engine::passages_to_parts(
+        &passages,
+    )))
+}
+
 /// Tell cargo which files the bake depends on, so a store edit regenerates it.
 ///
 /// The paths are RESOLVED through the same config the loader reads
@@ -310,6 +358,11 @@ mod tests {
     mod baked {
         include!(concat!(env!("OUT_DIR"), "/fixture_playable.rs"));
         include!(concat!(env!("OUT_DIR"), "/fixture_quest.rs"));
+        // The THIRD artifact, and the one Round 781 said its own gate could not
+        // stand in for: two composing does not prove N compose, and the only way
+        // to learn was for a third emitter to exist. It does now, and it went in
+        // here rather than beside here.
+        include!(concat!(env!("OUT_DIR"), "/fixture_passages.rs"));
     }
 
     #[test]
@@ -585,19 +638,30 @@ mod tests {
     }
 
     #[test]
-    fn the_two_artifacts_define_the_same_private_names_and_compose_anyway() {
+    fn the_artifacts_define_the_same_private_names_and_compose_anyway() {
         // Round 781. `mod baked` above splices both artifacts into one module, and
         // that is a COMPILE-time claim — which is also what two empty files would
         // satisfy. This is the arm that makes it non-vacuous, and it is here rather
         // than in a file of its own for the Round 780 reason: split apart, the
         // composition could report green while the hazard it absorbs had quietly
         // stopped being present.
+        // Round 791 — THREE now, which is the thing Round 781's carry said this
+        // gate could not stand in for: two artifacts composing does not prove N
+        // do, and the only way to learn was for a third emitter to exist. It
+        // does, it went into the same `mod baked`, and the wall held with no
+        // change to it — the derivation was right rather than lucky.
         let playable = crate::render(&parts_with_lines(1));
         let quest = crate::render_quest(&parts_with_quests());
+        let passages = crate::render_passages(&parts_with_passages());
 
-        // The hazard: the counter restarts per render, so both really do define
-        // `__mn_0`. If either stopped, `mod baked` would prove nothing.
-        for (what, src) in [("playable", &playable), ("quest", &quest)] {
+        // The hazard: the counter restarts per render, so all three really do
+        // define `__mn_0`. If any stopped, `mod baked` would prove less than it
+        // looks like it proves.
+        for (what, src) in [
+            ("playable", &playable),
+            ("quest", &quest),
+            ("passages", &passages),
+        ] {
             assert!(
                 src.contains("fn __mn_0("),
                 "the {what} artifact defines no `__mn_0`, so the name collision the \
@@ -616,11 +680,100 @@ mod tests {
                 .expect("the artifact walls its chunk functions in a module")
                 .to_string()
         };
-        assert_ne!(
-            wall(&playable),
-            wall(&quest),
-            "both artifacts wall their identical private names behind the SAME \
-             module name, so the wall does not separate them"
+        // Pairwise across all three, not just the first two: a wall that
+        // separated playable from quest and collided with a third would be the
+        // same defect one artifact later, and checking only the original pair is
+        // how a gate stops growing with what it guards.
+        let walls = [
+            ("playable", wall(&playable)),
+            ("quest", wall(&quest)),
+            ("passages", wall(&passages)),
+        ];
+        for (i, (a_name, a)) in walls.iter().enumerate() {
+            for (b_name, b) in walls.iter().skip(i + 1) {
+                assert_ne!(
+                    a, b,
+                    "the {a_name} and {b_name} artifacts wall their identical \
+                     private names behind the SAME module name, so the wall does \
+                     not separate them"
+                );
+            }
+        }
+    }
+
+    /// The passage fixture, as a downstream crate must be able to build it.
+    fn parts_with_passages() -> mnemosyne_engine::PassagesParts {
+        mnemosyne_engine::PassagesParts {
+            passages: vec![(
+                "sc-01".to_string(),
+                mnemosyne_engine::PassagePart {
+                    anchor: mnemosyne_engine::ContentAnchor {
+                        source: "M.md".to_string(),
+                        locator: mnemosyne_engine::Locator::Prefix("이름을".to_string()),
+                    },
+                    text: "그는 \"셈\"이라 했다.".to_string(),
+                },
+            )],
+        }
+    }
+
+    /// Round 791 — the passage axis's round trip, asserted HERE rather than
+    /// inferred from the other two.
+    ///
+    /// The three emitters share one `artifact` assembler, and that shared ending
+    /// is exactly the assumption not worth making: Round 774 repeated this test
+    /// on the quest axis for the same reason, and Round 787 found a field the
+    /// generator could silently drop while the kernel's own round trip stayed
+    /// green. The engine's tests never go through this emitter.
+    #[test]
+    fn the_generated_passage_source_rebuilds_the_set_it_was_baked_from() {
+        let passages = baked::passages();
+        assert_eq!(passages.len(), 2);
+
+        // The nasty string survived a Rust literal — quote, newline, backslash,
+        // non-ASCII — and so did BOTH locator kinds, which is what a passage
+        // carries that a line does not.
+        let nasty = "그는 \"셈\"이라 했다.\n뒤에 \\ 하나.";
+        let one = passages.get("sc-01").expect("the prefix-anchored passage");
+        assert_eq!(one.text(), nasty);
+        assert_eq!(one.anchor().source, "M.md");
+        assert_eq!(
+            one.anchor().locator,
+            mnemosyne_engine::Locator::Prefix("이름을".to_string())
+        );
+
+        let two = passages.get("sc-02").expect("the cfi-anchored passage");
+        assert_eq!(two.text(), "plain");
+        assert_eq!(
+            two.anchor().locator,
+            mnemosyne_engine::Locator::Cfi("/6/4[c]!/4/2".to_string())
+        );
+
+        // The Round 786 property on this axis: the entry point hands back a
+        // borrow that outlives the call, so a consumer holds it rather than
+        // copying out of it. A value-returning emitter would not compile here.
+        fn keep_forever(_: &'static mnemosyne_engine::Passage) {}
+        keep_forever(one);
+    }
+
+    /// Round 791 — the passage parts must be constructible from OUTSIDE the
+    /// kernel, repeated on this axis for the reason the other two repeat it: the
+    /// engine's own tests are inside the crate where every private field is
+    /// reachable, so only a downstream crate can find a parts type that readmits
+    /// one. This is also the test that demonstrates the ingestion door described
+    /// in `mnemosyne_engine::baked_ingestion` — the text below is invented, and
+    /// the kernel takes it.
+    #[test]
+    fn passage_parts_are_constructible_from_a_downstream_crate() {
+        let built = mnemosyne_engine::passages_from_parts(parts_with_passages());
+        assert_eq!(built["sc-01"].text(), "그는 \"셈\"이라 했다.");
+
+        // And the round trip is closed the other way: what the kernel emits from
+        // a passage set is what the kernel ingests, so `to_part` and the door
+        // cannot drift into two shapes of the same datum.
+        assert_eq!(
+            mnemosyne_engine::passages_to_parts(&built),
+            parts_with_passages()
         );
     }
 

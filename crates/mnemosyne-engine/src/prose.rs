@@ -9,14 +9,24 @@
 //! no world-fact). This closes the kernel's "no invented narrative" guarantee
 //! over the story prose, not only the fact-clue overlay.
 //!
-//! # The provenance contract (invention is unrepresentable, for prose)
+//! # The provenance contract (invention is unreachable by reading, for prose)
 //!
 //! `Passage` has crate-private fields, no public constructor, and no
-//! `Deserialize`. The ONLY path to one is [`Passage::resolve`], which joins an
-//! anchor to its verbatim text through a [`ContentSource`] — so a downstream
-//! crate can READ a passage but can never build one from a free string. The
-//! `text` is what the content-SSOT holds at the anchor, not an invented sentence
-//! (the R643 `Line` forgery guard, applied to prose).
+//! `Deserialize`. No READING path constructs one, and a downstream crate cannot
+//! write a struct literal or overwrite a clone — both are compile errors, proven
+//! below. The `text` is what the content-SSOT holds at the anchor, not an
+//! invented sentence (the R643 `Line` forgery guard, applied to prose).
+//!
+//! Until Round 791 this section was headed "invention is unrepresentable, for
+//! prose" and said [`Passage::resolve`] was the ONLY path to one. That stopped
+//! being true when this round added [`passages_from_parts`] so the kernel could
+//! bake a consumer's passages — the same opening the line axis has carried since
+//! Round 769 without recording it. Baking cannot be done without it: generated
+//! source lands in the consumer's crate, so it can hold no capability the
+//! consumer lacks. **The full contract is stated once in
+//! [`crate::baked_ingestion`]**; what survives here is that invention is
+//! unreachable by reading, impossible by accident, and visible in the consumer's
+//! own source when it happens.
 //!
 //! Phase 1 is the type + the fail-loud resolution + the manuscript
 //! (`Locator::Prefix`) resolver; the consumer SUPPLIES the content-SSOT. Later
@@ -35,9 +45,13 @@ pub use mnemosyne_core::{ContentAnchor, Locator};
 
 /// A provenance-bound unit of authored narration — the prose sibling of
 /// [`Line`](crate::Line). Crate-private fields, no public constructor, no
-/// `Deserialize`: the sole path to one is [`Passage::resolve`], so a downstream
-/// crate READS a passage but can never fabricate one from a free string. The
-/// forgery guard is proven by two `compile_fail` doctests.
+/// `Deserialize`: no reading path builds one, so a downstream crate READS a
+/// passage rather than writing its content. Two `compile_fail` doctests prove it.
+///
+/// **What those doctests do NOT cover** (Round 791): the baked-ingestion door
+/// [`passages_from_parts`], whose parts type has public fields. They remain worth
+/// having — they close the paths a consumer reaches for by accident — but they
+/// are not the whole guard, and [`crate::baked_ingestion`] states what is.
 ///
 /// Struct-literal construction does not compile from another crate:
 ///
@@ -109,6 +123,73 @@ impl Passage {
     pub fn anchor(&self) -> &ContentAnchor {
         &self.anchor
     }
+
+    /// Emit this passage as plain data (Round 791) — the bake half of the
+    /// build-time seam, the sibling of [`Line::to_part`](crate::Line::to_part).
+    #[must_use]
+    pub fn to_part(&self) -> PassagePart {
+        PassagePart {
+            anchor: self.anchor.clone(),
+            text: self.text.clone(),
+        }
+    }
+}
+
+/// A [`Passage`] as plain data (Round 791) — the emit/ingest mirror, for the same
+/// reason [`LinePart`](crate::LinePart) exists: `Passage` has crate-private
+/// fields, so generated code in another crate cannot construct one, and a baked
+/// artifact carries this instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassagePart {
+    /// The content-SSOT anchor — the passage's provenance.
+    pub anchor: ContentAnchor,
+    /// The authored text at that anchor.
+    pub text: String,
+}
+
+/// A whole passage set as plain data (Round 791) — what a build-time bake writes
+/// out and reads back, keyed by section id.
+///
+/// Deterministic: [`passages_to_parts`] emits in sorted key order, so the same
+/// store produces byte-identical generated source and a rebuild that changed
+/// nothing changes nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PassagesParts {
+    /// `section id -> the passage anchored there`, in sorted key order.
+    pub passages: Vec<(String, PassagePart)>,
+}
+
+/// Emit a passage set as plain data (Round 791) — the bake half.
+#[must_use]
+pub fn passages_to_parts(passages: &HashMap<String, Passage>) -> PassagesParts {
+    let mut out: Vec<(String, PassagePart)> = passages
+        .iter()
+        .map(|(section, passage)| (section.clone(), passage.to_part()))
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    PassagesParts { passages: out }
+}
+
+/// Ingest baked passage parts (Round 791) — the read half.
+///
+/// **This is a baked-ingestion door. The contract every such door carries is
+/// stated once, in [`crate::baked_ingestion`], and this one adds nothing to
+/// it.** Read that before calling this, and before adding a fourth door.
+#[must_use]
+pub fn passages_from_parts(parts: PassagesParts) -> HashMap<String, Passage> {
+    parts
+        .passages
+        .into_iter()
+        .map(|(section, part)| {
+            (
+                section,
+                Passage {
+                    anchor: part.anchor,
+                    text: part.text,
+                },
+            )
+        })
+        .collect()
 }
 
 /// The authored content-SSOT a consumer supplies — a manuscript / EPUB the kernel

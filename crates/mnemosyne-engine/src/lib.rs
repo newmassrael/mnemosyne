@@ -71,6 +71,7 @@
 //! filters disclosure additively, and this kernel never re-implements a
 //! subtractive withhold filter.
 
+pub mod baked_ingestion;
 mod gate;
 mod overrides;
 mod projection;
@@ -87,7 +88,10 @@ pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, Static
 pub use projection::{
     fresh_disclosure, PlayableProjection, ProjectionParts, SectionJournalOffers, SectionLines,
 };
-pub use prose::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
+pub use prose::{
+    passages_from_parts, passages_to_parts, ContentAnchor, ContentSource, Locator, Passage,
+    PassagePart, PassagesParts, PrefixSlices, ProseError,
+};
 pub use quest::{
     QuestCompletionPart, QuestCompletionView, QuestGateViolation, QuestPart, QuestProjection,
     QuestProjectionParts, QuestView, QuestWorldPart, QuestWorldView,
