@@ -1581,9 +1581,25 @@ fn is_external_section_cite(
     // trailing letters (`802.11ax`); the prose *before* it must end with a
     // registered numeric prefix (which may itself be multi-word, e.g.
     // `CSS Color`).
-    if !prefixes_numeric.is_empty() && is_document_number_token(last_token) {
+    //
+    // Round 809 — the slice before the number is matched against BOTH registries,
+    // not only the numeric one. Which registry a document's NAME is declared in
+    // says how it is usually written, not whether it may ever carry an instance
+    // number: `필드 리포트 ③ §4.5` names a bare-registered document and numbers
+    // it, and before this round that shape reached NEITHER axis — the numeric one
+    // declined because the name is not in its registry, and the bare one saw
+    // prose ending in the number rather than in the name. This is the same
+    // correction Round 802 made one level down (what a shape selects is where the
+    // prefix's slice ENDS, never which axis is allowed); Round 802 closed it for
+    // a prefix whose own last token looks like a number, and this closes it for a
+    // prefix followed by a separate number token. Still bounded by an explicit
+    // act of the workspace: the slice must end with a VERBATIM-registered prefix.
+    if is_document_number_token(last_token) {
         let before_num = trimmed[..last_token_start].trim_end();
-        if !before_num.is_empty() && prose_ends_with_prefix(before_num, prefixes_numeric) {
+        if !before_num.is_empty()
+            && (prose_ends_with_prefix(before_num, prefixes_numeric)
+                || prose_ends_with_prefix(before_num, prefixes_bare))
+        {
             return true;
         }
     }
@@ -1608,8 +1624,34 @@ fn is_external_section_cite(
 /// the registered prefix. Widening it is only safe because the caller no
 /// longer treats the two modes as exclusive: a bare prefix that carries
 /// digits still resolves on the bare axis after the numeric one declines.
+/// Round 809 — is `c` a circled digit (`①` … `⑳`, U+2460..=U+2473)?
+///
+/// One glyph that IS a number, so a token made of them is a document number
+/// the way `3` is. Unlike the chain-separator set (whose members had to be
+/// enumerated one measured instance at a time because `/` joins and `.` ends
+/// and nothing about either character says which), this range is DERIVABLE:
+/// every member is the same character class with the same reading, and there
+/// is no `②`-versus-`③` distinction to be drawn. So taking the whole
+/// contiguous block is not the add-by-symmetry move Round 801 refused for the
+/// dash — that one traded a semantic judgment for a shape.
+///
+/// Other numeric glyph families (parenthesized `⑴`, fullwidth `３`) are NOT
+/// here: they are different classes, and neither corpus holds one.
+fn is_circled_digit(c: char) -> bool {
+    ('\u{2460}'..='\u{2473}').contains(&c)
+}
+
 fn is_document_number_token(tok: &str) -> bool {
     let body = tok.strip_prefix('#').unwrap_or(tok);
+    // Round 809 — a circled-digit run is a document number written as glyphs.
+    // The reporting corpus writes its own ledgers that way (`필드 리포트 ③`),
+    // and the enumeration reading of the same character never collides here:
+    // an enumeration marker is not preceded by a registered document name, and
+    // measured across that corpus, its enumeration markers are never followed
+    // by a section sigil at all.
+    if !body.is_empty() && body.chars().all(is_circled_digit) {
+        return true;
+    }
     let number = body.trim_start_matches(|c: char| c.is_ascii_alphabetic());
     number.starts_with(|c: char| c.is_ascii_digit())
         && body.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
@@ -5784,6 +5826,67 @@ mod tests {
         assert!(is_external_section_cite("// pinion R1345 ", &numeric, &[]));
         // The prefix is still required verbatim: the name alone does not skip.
         assert!(!is_external_section_cite("// see R1345 ", &numeric, &[]));
+    }
+
+    /// Round 809 — a circled digit is a document NUMBER, and the slice before
+    /// a document number is matched against BOTH registries. Both classes are
+    /// pinned: what counts as the glyph-number, and what the widening still
+    /// refuses.
+    #[test]
+    fn a_circled_digit_numbers_a_document_and_the_name_may_be_bare_r809() {
+        for tok in ["\u{2461}", "\u{2462}", "\u{2460}", "\u{2473}"] {
+            assert!(
+                is_document_number_token(tok),
+                "{tok:?} is a number written as one glyph"
+            );
+        }
+        // Different glyph classes, and neither corpus holds one — a token that
+        // merely LOOKS numeric to a reader is not admitted on that basis.
+        for tok in ["\u{2474}", "\u{ff13}", "\u{2462}a", "a\u{2462}", ""] {
+            assert!(
+                !is_document_number_token(tok),
+                "{tok:?} is not a circled-digit document number"
+            );
+        }
+        let numeric = vec!["pinion".to_string()];
+        let bare = vec!["\u{d544}\u{b4dc} \u{b9ac}\u{d3ec}\u{d2b8}".to_string()]; // 필드 리포트
+                                                                                  // The reported shape: a BARE-registered name carrying an instance number.
+        assert!(is_external_section_cite(
+            "// \u{d544}\u{b4dc} \u{b9ac}\u{d3ec}\u{d2b8} \u{2462} ",
+            &numeric,
+            &bare
+        ));
+        // Same name WITHOUT the number still resolves on its own axis — the
+        // control that shows only the number token was ever the problem.
+        assert!(is_external_section_cite(
+            "// \u{d544}\u{b4dc} \u{b9ac}\u{d3ec}\u{d2b8} ",
+            &numeric,
+            &bare
+        ));
+        // An ASCII number after a bare-registered name, the same shape in the
+        // other script. Round 802 closed the case where the PREFIX ends in a
+        // number; this is a prefix FOLLOWED by a separate number token.
+        let design = vec!["\u{c124}\u{acc4}".to_string()]; // 설계
+        assert!(is_external_section_cite(
+            "// \u{c124}\u{acc4} 1.2 ",
+            &[],
+            &design
+        ));
+        // THE GUARD, and what bounds the widening: an UNREGISTERED name with a
+        // circled number does not skip. The workspace's verbatim declaration is
+        // the whole permission, exactly as for every other prefix shape.
+        assert!(!is_external_section_cite(
+            "// \u{c694}\u{cc2d} \u{2461} ", // 요청 ② — never declared
+            &numeric,
+            &bare
+        ));
+        // And an enumeration marker in running prose is not preceded by a
+        // registered document name, so it never reaches the skip either.
+        assert!(!is_external_section_cite(
+            "// \u{ae4c}\u{b2ed} \u{b458}: \u{2460} \u{ac78} \u{bb38}\u{c774} \u{c788}\u{ace0} \u{2461} ",
+            &numeric,
+            &bare
+        ));
     }
 
     /// Round 802 — and the widening is only safe because the axes stopped
