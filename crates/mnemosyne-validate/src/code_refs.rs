@@ -1296,19 +1296,28 @@ pub fn extract_section_citations(
                     last_byte = j + t.len_utf8();
                     continue;
                 }
-                // `/` is INTERIOR-ONLY, for the same reason `.` is (Round 799).
-                // A slash slug is a real id shape here — this store holds
-                // `code-citation-defense/bidirectional-binding` — so the
-                // character cannot simply leave the set. But `§1/§3` is how a
-                // human writes `§1` and `§3`, and an unconstrained `/` swallowed
-                // the separator into the id, reporting `1/` as SectionMissing:
-                // a HALLUCINATION verdict on a comment that cited two real
-                // sections correctly. The grammar was also inconsistent with
-                // itself, since the `§3` after the same slash parsed fine.
+                // EVERY separator in the id charset is INTERIOR-ONLY, which is
+                // the rule `.` above already had in a stricter form (Round 799
+                // for `/`, generalized in Round 800).
                 //
-                // Interior means flanked: a slug never starts or ends with the
-                // separator, and a separator between two cites never is.
-                if t == '/' {
+                // The charset carries four non-alphanumerics — `.`, `_`, `/`,
+                // `-` — and each is also how a human separates two cites.
+                // Unconstrained, `§1/§3` parsed as `1/` and `3`: the first is no
+                // section, so the gate returned SectionMissing, the HALLUCINATION
+                // class, against a comment that had cited two real sections
+                // correctly. The grammar was inconsistent with itself too, since
+                // the second cite past the same separator parsed fine.
+                //
+                // Naming ONE separator here would be a hand list of one, and the
+                // next reader would meet `§1-§3` — a range, more common in prose
+                // than the slash — with the same defect. So the test is on the
+                // CHARACTER CLASS: an id may not begin or end with a separator,
+                // whichever it is. Slugs are unaffected because a slug never
+                // starts or ends with one, and a separator between two cites
+                // never has an id char on its far side.
+                // Separators only — a character OUTSIDE the charset still ends
+                // the id outright, which is what the terminator below is for.
+                if !t.is_ascii_alphanumeric() && is_section_id_char(t) {
                     let prev_ok = idx > 0 && is_section_id_char(tail_chars[idx - 1].1);
                     let next_ok = tail_chars
                         .get(idx + 1)
@@ -3418,6 +3427,37 @@ mod tests {
         }
     }
 
+    /// Round 800 — the rule is on the character CLASS, and the oracle for that
+    /// is derived from the class rather than typed out.
+    ///
+    /// Round 799 fixed `/` alone, which was a hand list of one: `-` had the
+    /// identical defect and is the MORE common prose separator, since `§1-§3`
+    /// is how a range is written. A test naming the separators it checks would
+    /// have passed then too. This one asks `is_section_id_char` which characters
+    /// are separators and checks every one, so a character added to the charset
+    /// later arrives here already covered.
+    #[test]
+    fn extract_section_citations_no_separator_may_end_an_id() {
+        let separators: Vec<char> = (0u8..=127)
+            .map(char::from)
+            .filter(|c| !c.is_ascii_alphanumeric() && is_section_id_char(*c))
+            .collect();
+        assert_eq!(
+            separators,
+            vec!['-', '.', '/', '_'],
+            "the charset moved; this test derives from it, but the assertion \
+             below documents what it derived"
+        );
+        for sep in separators {
+            let src = format!("// §1{sep}§3\n");
+            let got: Vec<String> = extract_section_citations(&src, &[], &[])
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect();
+            assert_eq!(got, vec!["1", "3"], "separator {sep:?} was swallowed");
+        }
+    }
+
     /// Round 799 — and the slug still parses whole, which is the half that
     /// stops the fix from being a different false positive. `§1/x` stays one id
     /// for the same reason: with an id char on both sides the slash IS interior,
@@ -3434,6 +3474,12 @@ mod tests {
                 vec!["code-citation-defense/bidirectional-binding"],
             ),
             ("// c §1/x trailing\n", vec!["1/x"]),
+            // Round 800 — the kebab shape is what the `-` half must not cost.
+            (
+                "// §atomic-store-mutate-api\n",
+                vec!["atomic-store-mutate-api"],
+            ),
+            ("// §5.39 fractional\n", vec!["5.39"]),
         ] {
             let got: Vec<String> = extract_section_citations(src, &[], &[])
                 .into_iter()
