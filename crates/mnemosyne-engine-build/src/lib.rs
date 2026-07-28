@@ -258,6 +258,42 @@ mod tests {
         QuestWorldPart,
     };
 
+    use crate::render::fixture_sizes;
+
+    /// Round 788 — the fixture sizes moved from `const`s to a resolved pair so the
+    /// first consumer can run these gates at its own scale, and the resolution is
+    /// tested HERE because `build.rs` `include!`s this module's source: the code
+    /// the build script runs is the code this test compiles, with no second copy.
+    ///
+    /// The PAIR is the property, not either number. A consumer able to set the two
+    /// ends apart could produce a fixture pair whose "same cost at four times the
+    /// store" assertions compare sizes that are not four times apart — green while
+    /// asserting nothing — so `small` is derived, and a big that cannot yield an
+    /// exact quarter is refused rather than truncated.
+    #[test]
+    fn the_fixture_pair_stays_four_to_one_or_is_refused() {
+        // Unset measures exactly what Round 780 and Round 782 measured.
+        assert_eq!(fixture_sizes(None), Ok((200, 800)));
+
+        // The consumer's own scale: 4,612 baked lines is the store that asked.
+        assert_eq!(fixture_sizes(Some("4612")), Ok((1153, 4612)));
+        assert_eq!(fixture_sizes(Some(" 4612 ")), Ok((1153, 4612)));
+
+        // Every accepted pair IS four to one — the invariant, not a sample.
+        for big in [4usize, 800, 4612, 40_000] {
+            let (small, resolved) = fixture_sizes(Some(&big.to_string())).expect("a legal size");
+            assert_eq!(resolved, big);
+            assert_eq!(small * 4, resolved, "the pair drifted off four to one");
+        }
+
+        // Refused, each for its own reason, and the ratio one names BOTH
+        // neighbours rather than leaving the caller to guess which way to move.
+        assert!(fixture_sizes(Some("0")).is_err());
+        assert!(fixture_sizes(Some("many")).is_err());
+        let err = fixture_sizes(Some("4610")).expect_err("not a quarter of anything");
+        assert!(err.contains("4608") && err.contains("4612"), "{err}");
+    }
+
     /// The generator's own output, compiled INTO this crate by `build.rs`. That
     /// this module exists at all is the gate: if `render` emitted Rust that does
     /// not compile, or named a kernel type that changed shape, the build fails

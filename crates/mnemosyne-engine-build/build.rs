@@ -235,8 +235,16 @@ fn main() {
 /// One pair for both gates rather than one apiece: the stack gate and the
 /// allocation gate make the same shape of claim about the same emitter, and two
 /// pairs would be two places for "four times the store" to drift apart.
-const SMALL: usize = 200;
-const BIG: usize = 800;
+///
+/// Resolved rather than hardcoded since Round 788, so a consumer can run these
+/// fixtures at ITS scale — see [`fixture_sizes`] for why the knob is one number
+/// naming the big end. Defaults to the 200/800 pair Round 780 and Round 782
+/// measured at, so an unset environment measures exactly what they did.
+fn sizes() -> (usize, usize) {
+    println!("cargo:rerun-if-env-changed={FIXTURE_LINES_ENV}");
+    let raw = std::env::var(FIXTURE_LINES_ENV).ok();
+    fixture_sizes(raw.as_deref()).unwrap_or_else(|e| panic!("{e}"))
+}
 
 /// Emit the grown fixtures `tests/projection_stack.rs` measures, plus the build
 /// facts it needs to say what it measured.
@@ -258,7 +266,8 @@ fn stack_fixtures(out_dir: &str) {
         .expect("write a stack fixture");
     };
 
-    for (tag, n) in [("small", SMALL), ("big", BIG)] {
+    let (small, big) = sizes();
+    for (tag, n) in [("small", small), ("big", big)] {
         let parts = lines_parts(n);
         write(&format!("playable_{tag}"), render(&parts));
         write(&format!("control_{tag}"), render_bounded(&parts, unbounded));
@@ -272,8 +281,8 @@ fn stack_fixtures(out_dir: &str) {
     // case and needs this to say WHY.
     let facts = format!(
         "pub const OPT_LEVEL: &str = {:?};\n\
-         pub const SMALL: usize = {SMALL};\n\
-         pub const BIG: usize = {BIG};\n",
+         pub const SMALL: usize = {small};\n\
+         pub const BIG: usize = {big};\n",
         std::env::var("OPT_LEVEL").expect("OPT_LEVEL")
     );
     std::fs::write(
@@ -318,7 +327,8 @@ fn alloc_fixtures(out_dir: &str) {
         )
         .expect("write an alloc fixture");
     };
-    for (tag, n) in [("small", SMALL), ("big", BIG)] {
+    let (small, big) = sizes();
+    for (tag, n) in [("small", small), ("big", big)] {
         write(&format!("owned_{tag}"), render_owned_lines(n));
         write(&format!("borrowed_{tag}"), render_borrowed_lines(n));
         write(&format!("static_slice_{tag}"), render_static_lines(n));

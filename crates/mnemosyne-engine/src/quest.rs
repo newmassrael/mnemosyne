@@ -148,7 +148,12 @@ pub enum QuestGateViolation {
 /// (each store-derived) plus the consumer's completion-precondition edges. The
 /// JOURNAL-axis sibling of [`PlayableProjection`]; the completability gate reads
 /// a [`PlayableProjection`] for the walk + disclosed facts it checks against.
-#[derive(Debug, Clone)]
+/// Not `Clone`, for the reason
+/// [`PlayableProjection`](crate::PlayableProjection) is not (Round 788): the
+/// quest emitter hands back `&'static Self` too, so a derived `Clone` would make
+/// the compiler's suggested repair a silent deep copy on this axis as well. The
+/// two artifacts share one assembler and must share this.
+#[derive(Debug)]
 pub struct QuestProjection {
     telling: String,
     quests: Vec<QuestView>,

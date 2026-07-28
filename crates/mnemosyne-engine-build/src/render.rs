@@ -83,6 +83,18 @@ fn header(out: &mut String) {
 /// two same-named statics, and a body-scoped `static` is private to its own
 /// function. The wall above walls the chunk functions; this one needs no wall
 /// because it was never in shared scope.
+///
+/// # It looks like a leak to a heap profiler, and is not (Round 788)
+///
+/// The projection lives in a `OnceLock` for the life of the process, so it is
+/// never dropped and its allocations are never freed. A consumer measuring
+/// startup with valgrind sees allocs and frees diverge sharply — the first one
+/// measured 35,559 frees before this change and 104 after, with `in use at exit`
+/// reporting the whole projection, 2.8 MB. That is the intended shape of a
+/// process-lifetime value rather than a lost pointer: it is reachable from the
+/// `OnceLock` at exit, so it is "still reachable", not "definitely lost". They
+/// knew why and were not alarmed; a consumer who does not would read it as a
+/// regression this crate introduced.
 fn artifact(fn_name: &str, ty: &str, chunks: &Chunks, build: &str) -> String {
     let module = format!("__mn_{fn_name}");
     let mut out = String::new();
@@ -114,6 +126,74 @@ fn artifact(fn_name: &str, ty: &str, chunks: &Chunks, build: &str) -> String {
 /// chunk that measurement used. Anything that keeps bodies small works; nothing
 /// that leaves one body unbounded does.
 const CHUNK: NonZeroUsize = NonZeroUsize::new(50).unwrap();
+
+/// The environment variable that moves the gate fixtures to a consumer's own
+/// scale (Round 788), naming the LARGER of the pair.
+///
+/// `dead_code` is allowed on this and the two items below for one reason, and it
+/// is the same reason this file exists: `build.rs` `include!`s it, so the caller
+/// is real but invisible to the lib build. Removing the allow would mean moving
+/// the logic into the build script, which is exactly the second copy the header
+/// of this file refuses.
+#[allow(dead_code)]
+pub(crate) const FIXTURE_LINES_ENV: &str = "MN_FIXTURE_LINES";
+
+/// The default larger fixture size — the one Round 780 and Round 782 measured at.
+#[allow(dead_code)]
+const DEFAULT_BIG: usize = 800;
+
+/// Resolve the `(small, big)` fixture pair from an optional override.
+///
+/// # Why an override exists (Round 788)
+///
+/// Round 782 measured the allocation and compile arms at 800 lines, and Round 785
+/// carried forward that the first consumer's store is roughly forty times that
+/// with the ratios at that scale unmeasured. That consumer then reported it CANNOT
+/// answer the question: the sizes were `const`s in this crate's build script, so
+/// running the fixtures at its own scale meant editing somebody else's repository.
+/// The measurement it offered to run is the only real answer to the carry, so the
+/// knob is the cheaper half of it.
+///
+/// # Why ONE number, and why it names the big end
+///
+/// The pair is not two independent sizes. Every assertion built on it says some
+/// cost is the SAME at both, which is a claim only a fixed multiple can make, so
+/// a consumer able to set them apart could produce a pair that reads green while
+/// asserting nothing. `small` is DERIVED, and the 4:1 ratio every doc in this
+/// crate states stays true by construction rather than by agreement.
+///
+/// It names the big end because that is the size the arms are compared AT — the
+/// 5.5x compile figure is owned against borrowed at `big`, so a consumer matching
+/// its store size matches it there.
+///
+/// # Errors
+///
+/// A `String` naming the problem, for a build script to panic with: unparseable,
+/// zero, or not divisible by four. The last is refused rather than truncated —
+/// a `big` of 4,610 would silently give a 3.998:1 pair while every doc here says
+/// four times, which is the drift this crate exists downstream to catch.
+#[allow(dead_code)]
+pub(crate) fn fixture_sizes(override_raw: Option<&str>) -> Result<(usize, usize), String> {
+    let big = match override_raw {
+        None => DEFAULT_BIG,
+        Some(raw) => raw
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| format!("{FIXTURE_LINES_ENV}={raw:?} is not a line count: {e}"))?,
+    };
+    if big == 0 {
+        return Err(format!("{FIXTURE_LINES_ENV}=0 has no pair to compare"));
+    }
+    if big % 4 != 0 {
+        return Err(format!(
+            "{FIXTURE_LINES_ENV}={big} is not divisible by 4, and the gates assert \
+             a cost is unchanged at FOUR times the store — pick {} or {}",
+            big - (big % 4),
+            big + (4 - big % 4)
+        ));
+    }
+    Ok((big / 4, big))
+}
 
 /// The chunk functions emitted so far, the counter that keeps their names
 /// unique, and the bound they obey. Threaded through the renderers because a

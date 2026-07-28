@@ -19,7 +19,24 @@ use crate::{
 /// topology, projected from one `report-playable-world` read and configured with
 /// the consumer's interactive layer. Everything narrative comes from the store;
 /// the kernel adds no authoritative state.
-#[derive(Debug, Clone)]
+///
+/// # Why this is NOT `Clone` (Round 788)
+///
+/// Because cloning it silently undoes Round 786. The baked entry point hands back
+/// `&'static Self` so a consumer can BORROW out of it forever instead of copying;
+/// a consumer assigning that into an owned field gets `expected PlayableProjection,
+/// found &PlayableProjection`, and with a derived `Clone` the compiler's own
+/// suggested repair is `.clone()` — which compiles, deep-copies the whole
+/// projection, and reverts the round without a word. The first consumer reported
+/// receiving exactly that suggestion and declining it by hand.
+///
+/// Removing the derive makes that repair a type error instead of a silent one:
+/// `&Self` is itself `Clone`, so `.clone()` on the handle now yields another
+/// `&Self` and the mismatch stands until the field is fixed. Nothing in this
+/// workspace cloned a projection, and nothing should — an owned one comes from
+/// [`Self::from_workspace`], a borrowed one from the bake, and there is no third
+/// need. Do not re-derive it for convenience.
+#[derive(Debug)]
 pub struct PlayableProjection {
     telling: String,
     by_world: HashMap<String, HashMap<String, Vec<Line>>>,
