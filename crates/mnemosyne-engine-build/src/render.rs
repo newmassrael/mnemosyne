@@ -574,10 +574,10 @@ fn line(part: &LinePart) -> String {
 fn cast(part: &CastPart) -> String {
     format!(
         "::mnemosyne_engine::CastPart {{ entity: {}, modality: {}, can_answer: {}, quote: {} }}",
-        string(&part.entity),
+        cow(&part.entity),
         modality(part.modality),
         part.can_answer,
-        string(&part.quote),
+        cow(&part.quote),
     )
 }
 

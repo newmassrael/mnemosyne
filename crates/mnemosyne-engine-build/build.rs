@@ -85,10 +85,10 @@ fn main() {
         cast: vec![(
             "sc-01".to_string(),
             vec![CastPart {
-                entity: "ent-jongdeuk".to_string(),
+                entity: "ent-jongdeuk".into(),
                 modality: Modality::Observed,
                 can_answer: true,
-                quote: nasty.to_string(),
+                quote: nasty.into(),
             }],
         )],
         forks: vec![ForkPart {

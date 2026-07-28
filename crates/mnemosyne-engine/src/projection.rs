@@ -1990,6 +1990,58 @@ mod tests {
         );
     }
 
+    /// Round 796 — the cast door carries its borrow too.
+    ///
+    /// Same shape as the line door above and the prose door in `prose.rs`, and
+    /// here for the same reason: `Cow` compares by content, so nothing else in
+    /// this workspace can tell a baked cast member that points at its literals
+    /// from one that copied them. Round 796 measured the cast at 158 of the 1,329
+    /// owned strings still emitted from the first consumer's store, the largest
+    /// share of any part type by an order of magnitude.
+    #[test]
+    fn the_cast_door_carries_the_borrow_it_was_given() {
+        fn one_member(part: crate::CastPart) -> PlayableProjection {
+            PlayableProjection::from_parts(crate::ProjectionParts {
+                telling: "reader".to_string(),
+                by_world: Vec::new(),
+                walks: Vec::new(),
+                titles: Vec::new(),
+                cast: vec![("sc-01".to_string(), vec![part])],
+                forks: Vec::new(),
+                divergent_endings: Vec::new(),
+                interactivity: Interactivity::default(),
+                choice_entity_refs: Vec::new(),
+                ask_doors: Vec::new(),
+                journal_offers: Vec::new(),
+            })
+        }
+
+        let borrowed = one_member(crate::CastPart {
+            entity: Cow::Borrowed("ent-jongdeuk"),
+            modality: Modality::Observed,
+            can_answer: true,
+            quote: Cow::Borrowed("종득은 문간에 서 있었다."),
+        });
+        let member = &borrowed.cast_at("sc-01")[0];
+        assert!(
+            matches!(member.entity, Cow::Borrowed(_)) && matches!(member.quote, Cow::Borrowed(_)),
+            "a baked cast member copied its strings instead of pointing at them"
+        );
+
+        let owned = one_member(crate::CastPart {
+            entity: Cow::Owned("ent-jongdeuk".to_string()),
+            modality: Modality::Observed,
+            can_answer: true,
+            quote: Cow::Owned("종득은 문간에 서 있었다.".to_string()),
+        });
+        let owned_member = &owned.cast_at("sc-01")[0];
+        assert!(
+            matches!(owned_member.entity, Cow::Owned(_))
+                && matches!(owned_member.quote, Cow::Owned(_))
+        );
+        assert_eq!(borrowed.cast_at("sc-01"), owned.cast_at("sc-01"));
+    }
+
     /// Round 795 — the run-time constructor still OWNS, because it derives its
     /// strings from a store read rather than pointing at a literal. Asserted so
     /// the `Cow` cannot drift into a doc claiming everything borrows.

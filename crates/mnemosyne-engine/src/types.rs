@@ -263,13 +263,18 @@ impl Line {
 #[non_exhaustive]
 pub struct CastMember {
     /// The store entity id present in the scene.
-    pub(crate) entity: String,
+    pub(crate) entity: Cow<'static, str>,
     /// The authored evidentiary stance behind the presence (world-truth).
     pub(crate) modality: Modality,
     /// The authored judgment: can this presence answer the reckoner's questions?
     pub(crate) can_answer: bool,
     /// The manuscript quote proving the presence (the store excerpt text).
-    pub(crate) quote: String,
+    ///
+    /// `Cow<'static, str>` since Round 796, on the same terms as [`Line`]: an
+    /// implementation detail behind an accessor that still returns `&str`, so a
+    /// baked cast member points at the literal while
+    /// [`CastMember::from_presence`] keeps owning what it reads from the store.
+    pub(crate) quote: Cow<'static, str>,
 }
 
 impl CastMember {
@@ -303,10 +308,10 @@ impl CastMember {
     /// who is present.
     pub(crate) fn from_presence(p: &ScenePresence) -> Self {
         Self {
-            entity: p.entity.clone(),
+            entity: Cow::Owned(p.entity.clone()),
             modality: p.modality,
             can_answer: p.can_answer,
-            quote: p.excerpt.text.clone(),
+            quote: Cow::Owned(p.excerpt.text.clone()),
         }
     }
 }
@@ -562,13 +567,13 @@ pub struct LinePart {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CastPart {
     /// The store entity present in the scene.
-    pub entity: String,
+    pub entity: Cow<'static, str>,
     /// The authored evidentiary stance behind the presence.
     pub modality: Modality,
     /// Whether this presence can answer the reckoner's questions.
     pub can_answer: bool,
     /// The manuscript quote proving the presence.
-    pub quote: String,
+    pub quote: Cow<'static, str>,
 }
 
 impl Line {
