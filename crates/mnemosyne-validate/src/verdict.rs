@@ -19,7 +19,7 @@
 
 use serde::Serialize;
 
-use crate::continuity::ContinuityViolation;
+use crate::continuity::{ContinuityViolation, RungMiss};
 
 /// Where a violation is anchored — the fact(s), and the field / scope
 /// coordinates that apply. Sparse: only the coordinates a given rule implicates
@@ -362,6 +362,77 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 .to_string(),
             format!("fact `{fact_id}` quotes text no evidence section contains: {quote:?}"),
         ),
+        ContinuityViolation::LadderUnanchored { section } => action(
+            "ladder_unanchored",
+            ViolationLocus {
+                field: Some("ladder".to_string()),
+                at: Some(section.clone()),
+                ..Default::default()
+            },
+            "a ladder's rungs address the section's own prose, so the section must hold an \
+             excerpt"
+                .to_string(),
+            "import the section's content_excerpt, or drop the ladder — every rung on it \
+             currently addresses prose the store does not hold"
+                .to_string(),
+            format!("section `{section}` carries a ladder but no content_excerpt"),
+        ),
+        ContinuityViolation::LadderRungStranded {
+            section,
+            prefix,
+            miss,
+        } => {
+            let (repair, message) = match miss {
+                RungMiss::Absent => (
+                    "re-anchor the rung at prose the section NOW holds, or restore the excerpt \
+                     that moved — never widen the prefix until it happens to hit something"
+                        .to_string(),
+                    format!(
+                        "section `{section}` has a rung at {prefix:?}, which no longer occurs in \
+                         its prose"
+                    ),
+                ),
+                RungMiss::Ambiguous { occurrences } => (
+                    "lengthen the prefix until it names ONE place in the section's prose"
+                        .to_string(),
+                    format!(
+                        "section `{section}` has a rung at {prefix:?}, which occurs {occurrences} \
+                         times in its prose"
+                    ),
+                ),
+                RungMiss::ForeignSource {
+                    rung_source,
+                    prose_source,
+                } => (
+                    "anchor the rung in the document the section's excerpt comes from, or import \
+                     the excerpt the rung means"
+                        .to_string(),
+                    format!(
+                        "section `{section}` has a rung anchored in `{rung_source}` while its \
+                         prose comes from `{prose_source}`"
+                    ),
+                ),
+                RungMiss::NotAPrefix { locator } => (
+                    "re-author the rung's anchor as a non-empty prefix — a sub-section coordinate \
+                     into narrative prose is a prefix, and this shape reached the store \
+                     out-of-band"
+                        .to_string(),
+                    format!("section `{section}` has a rung whose anchor is not a usable prefix ({locator})"),
+                ),
+            };
+            action(
+                "ladder_rung_stranded",
+                ViolationLocus {
+                    field: Some("ladder".to_string()),
+                    at: Some(section.clone()),
+                    ..Default::default()
+                },
+                "a rung's coordinate must resolve to exactly one place in the prose it addresses"
+                    .to_string(),
+                repair,
+                message,
+            )
+        }
         ContinuityViolation::SuccessionTargetMissing { fact_id, target } => action(
             "succession_target_missing",
             ViolationLocus {

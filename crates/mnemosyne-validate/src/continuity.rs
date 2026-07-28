@@ -1487,6 +1487,26 @@ pub enum ContinuityViolation {
     /// EVERY evidence section carries an excerpt, so a partly-excerpted claim is
     /// counted as uncheckable rather than accused. Structural.
     FactQuoteAbsentFromEvidence { fact_id: String, quote: String },
+    /// A section carries a ladder but no `content_excerpt` (Round 817): every
+    /// rung addresses prose the store does not hold, so the whole ladder is
+    /// unanchored and naming each rung separately would report the same missing
+    /// thing N times. The write path rejects this; the scan re-reads the FINAL
+    /// store, which is where an excerpt REMOVED after the ladder landed shows
+    /// up. Structural.
+    LadderUnanchored { section: String },
+    /// A rung's coordinate no longer lands in the prose it addresses (Round
+    /// 817). Round 815 made the write path resolve it, and a resolution is only
+    /// true of the text it was resolved against: re-importing the section's
+    /// excerpt moves the prose under every rung on it, exactly as it moves the
+    /// prose under an evidence affirmation (the Round 440 boundary doctrine —
+    /// what a write path enforces, the scan re-reads). The `miss` says which
+    /// way it fails to land, because naming one when it is another lies about
+    /// what has to be repaired. Structural.
+    LadderRungStranded {
+        section: String,
+        prefix: String,
+        miss: RungMiss,
+    },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
     /// Succession edges close a loop (Round 463; out-of-band edit — every
@@ -1763,6 +1783,38 @@ pub enum ContinuityViolation {
     },
 }
 
+/// Which way a ladder rung's coordinate fails to land in its section's prose
+/// (Round 817) — the payload of [`ContinuityViolation::LadderRungStranded`].
+///
+/// These are the write path's own rejects, re-read on the final store: the four
+/// are kept apart rather than flattened into "stranded" because each names a
+/// DIFFERENT missing thing and therefore a different repair — move the rung,
+/// lengthen the prefix, point at this document, or re-author a coordinate a
+/// resolver can use at all. The three resolution outcomes mirror
+/// [`mnemosyne_core::PrefixResolution`], the one rule both the store and the
+/// engine's slicer call (Round 815).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RungMiss {
+    /// The prefix does not occur in the section's current prose — the shape a
+    /// re-imported or edited excerpt produces.
+    Absent,
+    /// The prefix occurs more than once, so it names two places and therefore
+    /// neither. Carries the count, because "twice" and "eleven times" are
+    /// different repairs.
+    Ambiguous { occurrences: usize },
+    /// The rung anchors in a different source document than the section's own
+    /// excerpt — a coordinate that would resolve, if at all, by accident.
+    ForeignSource {
+        rung_source: String,
+        prose_source: String,
+    },
+    /// The rung's locator is not a usable prefix (a CFI, or blank). The write
+    /// path rejects this shape outright, so it can only reach the store by an
+    /// out-of-band edit; silently skipping it would leave that rung on no axis
+    /// at all.
+    NotAPrefix { locator: String },
+}
+
 impl ContinuityViolation {
     /// Whether this is an INTERVAL (timeline) violation, which rides the
     /// separate `interval_severity` class (Round 491) rather than `severity`.
@@ -1854,6 +1906,15 @@ pub struct ContinuityReport {
     /// Counted and printed for the same reason `evidence_unreviewed` is: an
     /// axis that quietly covers nothing looks identical to an axis that passes.
     pub fact_quotes_uncheckable: usize,
+    /// Ladder rungs whose coordinate was RESOLVED against its section's current
+    /// prose this run (Round 817) — the denominator the stranded verdicts are
+    /// drawn from.
+    ///
+    /// Counted and printed for the reason `evidence_unreviewed` and
+    /// `fact_quotes_uncheckable` are: a store holding no ladders, or ladders on
+    /// sections holding no prose, produces zero findings and reads exactly like
+    /// a store whose every rung lands.
+    pub ladder_rungs_resolved: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
     /// the gate's pre-Round-449 behavior exactly).
     pub rules: usize,
@@ -3089,6 +3150,80 @@ pub fn scan_continuity(
                     fact_id: fid.clone(),
                     quote: quote.to_string(),
                 });
+        }
+    }
+    // Round 817 — the scan half of the Round 815 rung check. The write path
+    // resolves a rung's prefix against the section's excerpt at import, and a
+    // resolution is only true of the text it was resolved against: re-importing
+    // that excerpt moves the prose under every rung on it while the rungs stay
+    // exactly as authored. That is the same way an evidence affirmation goes
+    // stale, and the Round 440 boundary doctrine gives it the same answer — the
+    // scan re-reads the FINAL store, so a stranded rung is named whether it was
+    // stranded by a re-import or by an out-of-band edit.
+    //
+    // `mnemosyne_core::resolve_prefix` is called here too, not re-implemented:
+    // one rule, now three callers (the store's write path, the engine's slicer,
+    // this scan), so a rung the gate calls landed is a rung the slicer can place.
+    for (sid, section) in &store.sections {
+        let Some(ladder) = section.ladder.as_ref() else {
+            continue;
+        };
+        let Some(excerpt) = section.content_excerpt.as_ref() else {
+            // One verdict for the section, not one per rung: the missing thing
+            // is the same prose every rung on it addresses.
+            report
+                .violations
+                .push(ContinuityViolation::LadderUnanchored {
+                    section: sid.clone(),
+                });
+            continue;
+        };
+        for rung in &ladder.rungs {
+            let (prefix, miss) = match &rung.anchor.locator {
+                mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {
+                    report.ladder_rungs_resolved += 1;
+                    if rung.anchor.source != excerpt.anchor.source {
+                        (
+                            prefix.clone(),
+                            Some(RungMiss::ForeignSource {
+                                rung_source: rung.anchor.source.clone(),
+                                prose_source: excerpt.anchor.source.clone(),
+                            }),
+                        )
+                    } else {
+                        let miss = match mnemosyne_core::resolve_prefix(&excerpt.text, prefix) {
+                            mnemosyne_core::PrefixResolution::Unique(_) => None,
+                            mnemosyne_core::PrefixResolution::NotFound => Some(RungMiss::Absent),
+                            mnemosyne_core::PrefixResolution::Ambiguous(n) => {
+                                Some(RungMiss::Ambiguous { occurrences: n })
+                            }
+                        };
+                        (prefix.clone(), miss)
+                    }
+                }
+                // A shape the write path rejects outright, so it is here only by
+                // an out-of-band edit. It is NOT resolved (nothing to resolve),
+                // so it is not counted as one — but it is still named, because a
+                // rung on no axis at all is the silent-vacuity class.
+                other => (
+                    String::new(),
+                    Some(RungMiss::NotAPrefix {
+                        locator: match other {
+                            mnemosyne_core::Locator::Cfi(cfi) => format!("cfi:{cfi}"),
+                            mnemosyne_core::Locator::Prefix(p) => format!("prefix:{p:?}"),
+                        },
+                    }),
+                ),
+            };
+            if let Some(miss) = miss {
+                report
+                    .violations
+                    .push(ContinuityViolation::LadderRungStranded {
+                        section: sid.clone(),
+                        prefix,
+                        miss,
+                    });
+            }
         }
     }
     let conflict_worlds = query_worlds(store);
@@ -7177,6 +7312,171 @@ mod tests {
         store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(kinds(&report), (0, 1), "{:?}", report.violations);
+    }
+
+    /// Round 817 — the scan half of the Round 815 rung check, walked across
+    /// every verdict on one store.
+    ///
+    /// The ACCEPT is asserted FIRST and the resolved count with it: a check that
+    /// stranded every rung would satisfy each rejection assertion below it, and
+    /// a store whose ladders were never read would satisfy them by holding no
+    /// ladder at all. The load-bearing case is the SECOND — the excerpt is
+    /// re-imported through the real primitive, with the rungs untouched, which
+    /// is exactly how a rung goes stale in a consumer's build and the one shape
+    /// the write path structurally cannot see.
+    #[test]
+    fn a_rung_stranded_by_the_prose_moving_under_it_is_named_r817() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let mut store = store_with(vec![fact("f-a", "seward", "ch-1", None)]);
+        let prose = "The bell stopped.\nSeward counted the silence.\nThe tide went out.";
+        let excerpt = |source: &str, text: &str| mnemosyne_atomic::ContentExcerptImport {
+            section_id: "ch-1".to_string(),
+            anchor: mnemosyne_core::ContentAnchor {
+                source: source.to_string(),
+                locator: mnemosyne_core::Locator::Prefix("The bell".to_string()),
+            },
+            text: text.to_string(),
+        };
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt("M.md", prose)],
+            None,
+        )
+        .unwrap();
+        let rung = |prefix: &str| mnemosyne_atomic::LadderRung {
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "M.md".to_string(),
+                locator: mnemosyne_core::Locator::Prefix(prefix.to_string()),
+            },
+            needs: vec![],
+            reveals: vec![],
+            object: None,
+        };
+        mnemosyne_atomic::import_ladders(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::LadderImport {
+                section_id: "ch-1".to_string(),
+                carrier: None,
+                rungs: vec![rung("Seward counted"), rung("The tide")],
+            }],
+        )
+        .unwrap();
+        let misses = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::LadderRungStranded { miss, .. } => Some(miss.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // ACCEPT — both rungs land, and the count says the axis ran.
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(misses(&report).is_empty(), "{:?}", report.violations);
+        assert_eq!(report.ladder_rungs_resolved, 2);
+        // The prose moves under the rungs: the excerpt is re-imported through
+        // the real primitive, which knows nothing about ladders. The first rung
+        // is now absent, the second still lands — a partial strand, so the
+        // report must not collapse to "the ladder is broken".
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt("M.md", "The bell stopped.\nThe tide went out.")],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(misses(&report), vec![RungMiss::Absent]);
+        assert_eq!(report.ladder_rungs_resolved, 2, "both were still resolved");
+        // The same prefix twice: a coordinate that names two places names
+        // neither, and the count is carried because two and eleven are
+        // different repairs.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt(
+                "M.md",
+                "Seward counted the silence.\nSeward counted again.\nThe tide went out.",
+            )],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            misses(&report),
+            vec![RungMiss::Ambiguous { occurrences: 2 }]
+        );
+        // The section's prose is replaced by another document's. Every rung
+        // still names `M.md`, so each one now addresses a document this section
+        // does not hold — reported as the foreign source it is, not as absence.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt("OTHER.md", prose)],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            misses(&report),
+            vec![
+                RungMiss::ForeignSource {
+                    rung_source: "M.md".to_string(),
+                    prose_source: "OTHER.md".to_string(),
+                };
+                2
+            ]
+        );
+        // Out-of-band edits, which the write path rejects and therefore only the
+        // scan can meet: a rung anchored by CFI, and a section whose excerpt was
+        // deleted from under a ladder.
+        let section = store.sections.get_mut("ch-1").unwrap();
+        section.ladder.as_mut().unwrap().rungs[1].anchor = mnemosyne_core::ContentAnchor {
+            source: "OTHER.md".to_string(),
+            locator: mnemosyne_core::Locator::Cfi("/6/4[c01]!/4/2".to_string()),
+        };
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            misses(&report),
+            vec![
+                RungMiss::ForeignSource {
+                    rung_source: "M.md".to_string(),
+                    prose_source: "OTHER.md".to_string(),
+                },
+                RungMiss::NotAPrefix {
+                    locator: "cfi:/6/4[c01]!/4/2".to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            report.ladder_rungs_resolved, 1,
+            "a CFI rung is named, never counted as resolved"
+        );
+        store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::LadderUnanchored { section } if section == "ch-1")),
+            "{:?}",
+            report.violations
+        );
+        assert_eq!(
+            report
+                .violations
+                .iter()
+                .filter(|v| matches!(v, ContinuityViolation::LadderRungStranded { .. }))
+                .count(),
+            0,
+            "one verdict for the section, not one per rung"
+        );
+        assert_eq!(report.ladder_rungs_resolved, 0);
     }
 
     /// Round 811 — the fact layer's half of the Round 758 guarantee, walked

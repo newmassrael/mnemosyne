@@ -2862,6 +2862,15 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
              quote could live exactly there)",
             report.fact_quotes_uncheckable
         );
+        // Round 817 — rungs whose coordinate was re-resolved against the prose
+        // they address. Printed for the same reason as the two lines above: a
+        // store with no ladders and a store whose every rung lands both produce
+        // zero findings, and only this number tells them apart.
+        println!(
+            "  ladder rungs: {} coordinate(s) resolved against current prose \
+             (a stranded rung is reported as a violation)",
+            report.ladder_rungs_resolved
+        );
         println!(
             "  violations: {} (structural={} interval={})",
             report.violation_count, structural_count, report.interval_violation_count

@@ -378,6 +378,10 @@ pub struct ContinuityScanReport {
     /// Facts whose quote membership could not be decided because an evidence
     /// section holds no prose (Round 811). Not a violation, always reported.
     pub fact_quotes_uncheckable: usize,
+    /// Ladder rungs whose coordinate was resolved against its section's current
+    /// prose (Round 817) — the denominator of the stranded verdicts. Not a
+    /// violation, always reported.
+    pub ladder_rungs_resolved: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file).
     pub rules: usize,
     /// Of `rules`, how many are INTERVAL-class (Round 491): a nonzero count
@@ -454,6 +458,7 @@ pub fn continuity_scan(
         unordered_pairs: report.unordered_pairs,
         evidence_unreviewed: report.evidence_unreviewed,
         fact_quotes_uncheckable: report.fact_quotes_uncheckable,
+        ladder_rungs_resolved: report.ladder_rungs_resolved,
         rules: report.rules,
         interval_rules: report.interval_rules,
         undeclared_roads: report.undeclared_roads.clone(),
