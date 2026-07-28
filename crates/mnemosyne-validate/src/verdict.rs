@@ -433,6 +433,28 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 message,
             )
         }
+        ContinuityViolation::LadderDuplicateAnchor {
+            section,
+            locator,
+            occurrences,
+        } => action(
+            "ladder_duplicate_anchor",
+            ViolationLocus {
+                field: Some("ladder".to_string()),
+                at: Some(section.clone()),
+                ..Default::default()
+            },
+            "each hold of a ladder is its own coordinate — two rungs at one anchor resolve to \
+             one slice and the other is swallowed"
+                .to_string(),
+            "give each hold its own anchor, or merge them into ONE rung carrying both facts — \
+             the kernel already prices a single hold per revealed fact, so a hold that opens \
+             two facts does not need two rungs"
+                .to_string(),
+            format!(
+                "section `{section}` declares {occurrences} rungs at the same anchor {locator:?}"
+            ),
+        ),
         ContinuityViolation::LadderRungsOutOfProseOrder {
             section,
             prefix,

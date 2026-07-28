@@ -2872,8 +2872,9 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         // reading this number invites when it stands alone.
         println!(
             "  ladder rungs: {} coordinate(s) resolved against current prose, and each \
-             ladder's declared order judged against it (a stranded rung or an \
-             out-of-order ladder is reported as a violation)",
+             ladder's declared order and distinctness judged against it (a stranded \
+             rung, an out-of-order ladder, or two rungs at one anchor is reported as \
+             a violation)",
             report.ladder_rungs_resolved
         );
         println!(

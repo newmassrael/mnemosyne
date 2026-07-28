@@ -1518,6 +1518,27 @@ pub enum ContinuityViolation {
     /// rung resolved, which reads as a sound ladder. Judged by
     /// `mnemosyne_core::declared_order_break`, the same function the projection
     /// calls. Structural.
+    /// Two or more of a ladder's rungs declare the SAME anchor (Round 822).
+    /// `import_ladders` rejects this outright (Round 765 — an ambiguous hold
+    /// resolves to one slice and swallows the other), so it reaches the store
+    /// only out-of-band, which is the door every other verdict in this family
+    /// exists for.
+    ///
+    /// The scan is the ONLY place that can see it. Round 768 expands each store
+    /// rung into one engine rung per revealed fact, so a single hold opening two
+    /// facts and two holds illegally sharing an anchor produce the identical
+    /// engine rung sequence — the projection dedups both and cannot tell them
+    /// apart, by construction. A hold is a rung on this side and nowhere else.
+    /// Structural.
+    LadderDuplicateAnchor {
+        section: String,
+        /// The repeated coordinate, rendered — a bare prefix, or `cfi:…` for the
+        /// shape the write path refuses.
+        locator: String,
+        /// How many rungs declare it. Two and eleven are different repairs, the
+        /// reason `RungMiss::Ambiguous` carries its count.
+        occurrences: usize,
+    },
     LadderRungsOutOfProseOrder {
         section: String,
         /// The hold declared out of place — the one an author has to move.
@@ -3209,6 +3230,32 @@ pub fn scan_continuity(
         // a rule from a representation this side does not have.
         let mut holds: Vec<(String, usize)> = Vec::new();
         let mut every_rung_landed = true;
+        // Round 822 — the write path's LAST unscanned ladder rule: two rungs at
+        // one anchor (Round 765 rejects it, so it is here out-of-band only).
+        // Counted over the whole declaration and reported once per repeated
+        // coordinate, in declared order — N copies are one fault, not N-1 of them.
+        // Independent of whether the coordinate lands, because a duplicate is a
+        // duplicate either way.
+        let mut declared: Vec<(&mnemosyne_core::ContentAnchor, usize)> = Vec::new();
+        for rung in &ladder.rungs {
+            if let Some(seen) = declared.iter_mut().find(|(a, _)| *a == &rung.anchor) {
+                seen.1 += 1;
+            } else {
+                declared.push((&rung.anchor, 1));
+            }
+        }
+        for (anchor, occurrences) in declared.iter().filter(|(_, n)| *n > 1) {
+            report
+                .violations
+                .push(ContinuityViolation::LadderDuplicateAnchor {
+                    section: sid.clone(),
+                    locator: match &anchor.locator {
+                        mnemosyne_core::Locator::Prefix(p) => p.clone(),
+                        mnemosyne_core::Locator::Cfi(cfi) => format!("cfi:{cfi}"),
+                    },
+                    occurrences: *occurrences,
+                });
+        }
         for rung in &ladder.rungs {
             let (prefix, miss) = match &rung.anchor.locator {
                 mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {
@@ -3265,6 +3312,13 @@ pub fn scan_continuity(
         // any verdict about the sequence would be about the holds that happen to
         // remain. Accusing it of both would also name one fault twice and send
         // the author to the wrong repair.
+        //
+        // A DUPLICATED anchor (Round 822) does NOT suppress this, and the line is
+        // the same one drawn precisely: a stranded coordinate has no position, a
+        // duplicated one has the SAME position twice. The sequence is therefore
+        // still fully positioned and the other holds' order is a real question —
+        // equal offsets simply run in any order, so the duplicate cannot become a
+        // false accusation here while a genuine inversion elsewhere is still named.
         if every_rung_landed {
             let offsets: Vec<usize> = holds.iter().map(|(_, at)| *at).collect();
             if let Some(at) = mnemosyne_core::declared_order_break(&offsets) {
@@ -7716,7 +7770,167 @@ mod tests {
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
             out_of_order(&report).is_empty(),
-            "a duplicated anchor is not an inverted one — see this round's carry"
+            "a duplicated anchor is not an inverted one"
+        );
+    }
+
+    /// Round 822 — the last of the Round 765 write-path ladder rules to reach the
+    /// scan: two rungs at one anchor. `import_ladders` rejects it, so every case
+    /// below is built by an out-of-band edit, which is the only way it exists.
+    ///
+    /// This axis is the scan's ALONE. Round 768 expands each store rung into one
+    /// engine rung per revealed fact, so one hold opening two facts and two holds
+    /// sharing an anchor reach the projection as the identical rung sequence — it
+    /// dedups both and cannot tell them apart. A hold is a rung on this side only.
+    #[test]
+    fn two_rungs_at_one_anchor_are_named_by_the_scan_alone_r822() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let mut store = store_with(vec![fact("f-a", "seward", "ch-1", None)]);
+        let anchor = |prefix: &str| mnemosyne_core::ContentAnchor {
+            source: "M.md".to_string(),
+            locator: mnemosyne_core::Locator::Prefix(prefix.to_string()),
+        };
+        let rung = |prefix: &str| mnemosyne_atomic::LadderRung {
+            anchor: anchor(prefix),
+            needs: vec![],
+            reveals: vec![],
+            object: None,
+        };
+        let dupes = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::LadderDuplicateAnchor {
+                        locator,
+                        occurrences,
+                        ..
+                    } => Some((locator.clone(), *occurrences)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let out_of_order = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .filter(|v| matches!(v, ContinuityViolation::LadderRungsOutOfProseOrder { .. }))
+                .count()
+        };
+        let set_rungs = |store: &mut mnemosyne_atomic::AtomicStore,
+                         rungs: Vec<mnemosyne_atomic::LadderRung>| {
+            store
+                .sections
+                .get_mut("ch-1")
+                .unwrap()
+                .ladder
+                .as_mut()
+                .unwrap()
+                .rungs = rungs;
+        };
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::ContentExcerptImport {
+                section_id: "ch-1".to_string(),
+                anchor: anchor("The bell"),
+                text: "The bell stopped.\nSeward counted the silence.\nThe tide went out."
+                    .to_string(),
+            }],
+            None,
+        )
+        .unwrap();
+        mnemosyne_atomic::import_ladders(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::LadderImport {
+                section_id: "ch-1".to_string(),
+                carrier: None,
+                rungs: vec![rung("The bell"), rung("Seward counted"), rung("The tide")],
+            }],
+        )
+        .unwrap();
+        // ACCEPT FIRST — three distinct holds on a real ladder, so the axis has
+        // something to be clean ABOUT rather than being clean by holding nothing.
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(dupes(&report).is_empty(), "{:?}", report.violations);
+        assert_eq!(report.ladder_rungs_resolved, 3);
+        // THE WRITE PATH STILL REFUSES IT, which is why the scan is the only door:
+        // the same declaration cannot be imported.
+        let err = mnemosyne_atomic::import_ladders(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::LadderImport {
+                section_id: "ch-1".to_string(),
+                carrier: None,
+                rungs: vec![rung("The bell"), rung("The bell")],
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("two rungs at the same anchor"),
+            "{err:?}"
+        );
+        // Out of band, once — named with its count.
+        set_rungs(
+            &mut store,
+            vec![rung("The bell"), rung("The bell"), rung("The tide")],
+        );
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(dupes(&report), vec![("The bell".to_string(), 2)]);
+        // THREE copies are ONE fault, not two. A per-extra-rung report would say
+        // "two problems" about a single coordinate an author has to fix once.
+        set_rungs(
+            &mut store,
+            vec![
+                rung("The bell"),
+                rung("The bell"),
+                rung("The bell"),
+                rung("The tide"),
+            ],
+        );
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(dupes(&report), vec![("The bell".to_string(), 3)]);
+        // Two different coordinates each repeated: both named, in DECLARED order,
+        // because a report that names one and stops hides half the repair.
+        set_rungs(
+            &mut store,
+            vec![
+                rung("Seward counted"),
+                rung("The bell"),
+                rung("Seward counted"),
+                rung("The bell"),
+            ],
+        );
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(
+            dupes(&report),
+            vec![
+                ("Seward counted".to_string(), 2),
+                ("The bell".to_string(), 2)
+            ]
+        );
+        // THE LINE THIS ROUND DRAWS: a duplicate does NOT suppress the order
+        // verdict, unlike a stranded rung. A stranded coordinate has NO position;
+        // a duplicated one has the same position TWICE, so the sequence is still
+        // fully positioned and an inversion elsewhere is still a real question.
+        // Here `The bell` is declared last and the prose reaches it first.
+        set_rungs(
+            &mut store,
+            vec![
+                rung("Seward counted"),
+                rung("Seward counted"),
+                rung("The bell"),
+            ],
+        );
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(dupes(&report), vec![("Seward counted".to_string(), 2)]);
+        assert_eq!(
+            out_of_order(&report),
+            1,
+            "a duplicate has a position, so the rest of the sequence is still judged"
         );
     }
 
