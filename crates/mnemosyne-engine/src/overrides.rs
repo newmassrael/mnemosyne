@@ -55,6 +55,27 @@ pub trait EngineOverrides {
 /// The zero-config override: no interactivity, no journal policy. A store plays
 /// with every fact shown as prose and only fork doors — the batteries-included
 /// default so any store is renderable without consumer wiring.
+///
+/// # It is not a neutral instrument, and Round 797 paid for learning that
+///
+/// This is ONE consumer configuration — the empty one — and not a view of what a
+/// store holds. Projecting through it yields no [`Rung`](crate::Rung), no ask
+/// [`Door`](crate::Door) and no journal offer, whatever the store contains,
+/// because those axes are built from the override rather than read straight out
+/// of the sidecar.
+///
+/// So a MEASUREMENT taken through it reports zero on exactly the axes a consumer
+/// supplies, and reports it as a property of the store. Round 796 attributed the
+/// first consumer's remaining owned strings that way, concluded that `Door` and
+/// `Rung` emit nothing, and put the published-field share at 1.8%. Baked with
+/// that consumer's actual arguments it is 12.2%, seven times more — and the
+/// sentence Round 796 wrote to explain the zero ("they come from a
+/// consumer-loaded overrides file rather than from the store") was false as well:
+/// [`store_interactivity`](crate::store_interactivity) DERIVES the layer from the
+/// store, so the ladders and objects were in the sidecar the whole time.
+///
+/// To ask what a store actually offers, build the layer with
+/// [`store_interactivity`](crate::store_interactivity) rather than taking this.
 #[derive(Debug, Clone, Default)]
 pub struct DefaultOverrides {
     interactivity: Interactivity,
