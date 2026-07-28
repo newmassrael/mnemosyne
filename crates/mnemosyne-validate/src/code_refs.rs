@@ -23,7 +23,9 @@
 //!
 //! `§<id>`-shaped citations use a fixed `§` sigil + opaque token shape
 //! `[A-Za-z0-9._/-]+` (covers numeric ids ``, fractional ``,
-//! kebab + slash slugs `§atomic-store/changelog-atomic-ledger`):
+//! kebab + slash slugs `§atomic-store/changelog-atomic-ledger`), with `.`
+//! and `/` INTERIOR-only — a separator that is not flanked ends the id
+//! rather than joining it, so `§1/§3` is two cites (Round 799):
 //!
 //! ```text
 //! §[A-Za-z0-9._/-]+ (trailing `.` not consumed)
@@ -1037,9 +1039,11 @@ pub fn extract_citations(prefix: &str, content: &str) -> Vec<(usize, String)> {
 
 /// extract every `§<id>` citation candidate from `content`.
 ///
-/// Token shape: `§` followed by 1+ chars from `[A-Za-z0-9._/-]`. Tail
-/// trailing `.` is not consumed (mirrors `scan_round_number` so `.` at
-/// end of sentence yields `39`, not `39.`). Returned entries use the bare
+/// Token shape: `§` followed by 1+ chars from `[A-Za-z0-9._/-]`, in which
+/// `.` and `/` are INTERIOR-only. Tail trailing `.` is not consumed
+/// (mirrors `scan_round_number` so `.` at end of sentence yields `39`, not
+/// `39.`), and a `/` not flanked by id chars ends the id instead of joining
+/// it, so `§1/§3` reads as two cites rather than `1/` and `3` (Round 799). Returned entries use the bare
 /// id (no `§` prefix) so callers can directly index `AtomicSection` keys.
 /// Line numbers are 1-indexed.
 ///
@@ -1287,6 +1291,29 @@ pub fn extract_section_citations(
                         .map(|(_, c)| c.is_ascii_digit())
                         .unwrap_or(false);
                     if !(prev_is_digit && next_is_digit) {
+                        break;
+                    }
+                    last_byte = j + t.len_utf8();
+                    continue;
+                }
+                // `/` is INTERIOR-ONLY, for the same reason `.` is (Round 799).
+                // A slash slug is a real id shape here — this store holds
+                // `code-citation-defense/bidirectional-binding` — so the
+                // character cannot simply leave the set. But `§1/§3` is how a
+                // human writes `§1` and `§3`, and an unconstrained `/` swallowed
+                // the separator into the id, reporting `1/` as SectionMissing:
+                // a HALLUCINATION verdict on a comment that cited two real
+                // sections correctly. The grammar was also inconsistent with
+                // itself, since the `§3` after the same slash parsed fine.
+                //
+                // Interior means flanked: a slug never starts or ends with the
+                // separator, and a separator between two cites never is.
+                if t == '/' {
+                    let prev_ok = idx > 0 && is_section_id_char(tail_chars[idx - 1].1);
+                    let next_ok = tail_chars
+                        .get(idx + 1)
+                        .is_some_and(|(_, c)| is_section_id_char(*c));
+                    if !(prev_ok && next_ok) {
                         break;
                     }
                     last_byte = j + t.len_utf8();
@@ -3362,6 +3389,58 @@ mod tests {
             out,
             vec![(1, "atomic-store/changelog-atomic-ledger".to_string())]
         );
+    }
+
+    /// Round 799 — `§1/§3` is two cites, not one broken id and one good one.
+    ///
+    /// Reported by a downstream workspace, which met it as a `SectionMissing`
+    /// violation — the HALLUCINATION class — on a comment that cited two real
+    /// sections. Their recommended repair was to close the id charset to
+    /// numerics, which would have broken the slash slugs this very store uses;
+    /// the rule landed instead is that a separator is interior or it is not part
+    /// of the id. The slug case below is what the narrower rule would have cost.
+    #[test]
+    fn extract_section_citations_slash_between_cites_is_a_separator() {
+        for (src, want) in [
+            ("// a §1/§3 pair\n", vec!["1", "3"]),
+            ("// b §1 / §3 spaced\n", vec!["1", "3"]),
+            ("// d (§2/§4)\n", vec!["2", "4"]),
+            // The shape this workspace's own ids take.
+            ("// e §5.39/§6.3 pair\n", vec!["5.39", "6.3"]),
+            // A trailing slash at end of line has nothing after it either.
+            ("// f §7/\n", vec!["7"]),
+        ] {
+            let got: Vec<String> = extract_section_citations(src, &[], &[])
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect();
+            assert_eq!(got, want, "for {src:?}");
+        }
+    }
+
+    /// Round 799 — and the slug still parses whole, which is the half that
+    /// stops the fix from being a different false positive. `§1/x` stays one id
+    /// for the same reason: with an id char on both sides the slash IS interior,
+    /// and nothing in the token can tell a two-segment slug from a pair.
+    #[test]
+    fn extract_section_citations_interior_slash_still_belongs_to_the_id() {
+        for (src, want) in [
+            (
+                "// §atomic-store/changelog-atomic-ledger anchor\n",
+                vec!["atomic-store/changelog-atomic-ledger"],
+            ),
+            (
+                "// §code-citation-defense/bidirectional-binding\n",
+                vec!["code-citation-defense/bidirectional-binding"],
+            ),
+            ("// c §1/x trailing\n", vec!["1/x"]),
+        ] {
+            let got: Vec<String> = extract_section_citations(src, &[], &[])
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect();
+            assert_eq!(got, want, "for {src:?}");
+        }
     }
 
     #[test]
