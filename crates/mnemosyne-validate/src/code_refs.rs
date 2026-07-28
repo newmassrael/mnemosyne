@@ -1476,32 +1476,6 @@ fn prev_line_ends_with_prefix(
     is_external_section_cite(&ctx, prefixes_numeric, prefixes_bare)
 }
 
-/// Round 277 + 284 — detect external-standard context preceding a `§`
-/// sigil.
-///
-/// Two recognized forms, mutually exclusive on the shape of the token
-/// immediately before the `§`:
-///
-/// - **Numeric mode** (R277): `<prefix> <numeric> §<id>` where
-/// `<numeric>` is digits + dots (`2131`, `802.3`, `14882`). Prefix
-/// matched verbatim against `prefixes_numeric` after punctuation
-/// strip (R281). Used by RFC / IEEE / ISO/IEC.
-/// - **Bare mode** (R284): `<prefix> §<id>` — no numeric between
-/// prefix and sigil. Prefix matched verbatim against
-/// `prefixes_bare` after punctuation strip. Used by AUTOSAR family
-/// (TR_SOMEIP, SOMEIPSD, SWS_SD) and other doc-name-only standards.
-///
-/// Mode selection is by *last token shape*: if the last token (closest
-/// to the sigil) is numeric, the numeric path runs; otherwise the bare
-/// path runs. The two axes are independent — same prefix may be
-/// registered in both if the standard supports both forms; matching
-/// tries the relevant axis.
-///
-/// Round 379 — prefixes may be multi-word (`"CSS Color"`, `"Unicode
-/// Standard"`): the prose before the document-number (numeric mode) or
-/// before the sigil (bare mode) is matched against each registered
-/// prefix as a token-boundary *suffix*. Document-number tokens may carry
-/// a leading `#` (`UAX #9`) or trailing letters (`802.11ax`).
 /// Byte offset of the start of the last whitespace-delimited token in `s`.
 /// Splits on the last Unicode-whitespace char and advances past its full
 /// UTF-8 width (not a hardcoded +1): `char::is_whitespace` matches multibyte
@@ -1516,6 +1490,36 @@ fn last_whitespace_token_start(s: &str) -> usize {
         .unwrap_or(0)
 }
 
+/// Round 277 + 284 — detect external-standard context preceding a `§`
+/// sigil.
+///
+/// Two recognized forms, keyed on the shape of the token immediately
+/// before the `§`:
+///
+/// - **Numeric mode** (R277): `<prefix> <number> §<id>` where `<number>`
+/// is a document-number token (`2131`, `802.3`, `14882`, `R1345`).
+/// Prefix matched verbatim against `prefixes_numeric` after punctuation
+/// strip (R281). Used by RFC / IEEE / ISO/IEC.
+/// - **Bare mode** (R284): `<prefix> §<id>` — no document number between
+/// prefix and sigil. Prefix matched verbatim against `prefixes_bare`
+/// after punctuation strip. Used by AUTOSAR family (TR_SOMEIP,
+/// SOMEIPSD, SWS_SD) and other doc-name-only standards.
+///
+/// Round 802 — THE TOKEN SHAPE SELECTS WHICH SLICE A PREFIX MUST END,
+/// NOT WHICH AXIS IS ALLOWED. The two modes were mutually exclusive, so a
+/// document-number-shaped last token committed to the numeric axis and
+/// returned false there rather than trying bare — which made a registered
+/// bare prefix that happens to carry digits (`ISO9001 §3`) unusable, and
+/// made widening the token shape impossible without breaking it. Numeric
+/// is tried where the shape allows and bare answers otherwise. The axis
+/// invariant is untouched: neither path skips a citation without a
+/// verbatim-registered prefix, so the widening is bounded by an explicit
+/// act of the workspace rather than coming for free.
+///
+/// Round 379 — prefixes may be multi-word (`"CSS Color"`, `"Unicode
+/// Standard"`): the prose before the document-number (numeric mode) or
+/// before the sigil (bare mode) is matched against each registered
+/// prefix as a token-boundary *suffix*.
 fn is_external_section_cite(
     line_before_sigil: &str,
     prefixes_numeric: &[String],
@@ -1533,43 +1537,43 @@ fn is_external_section_cite(
     if last_token.is_empty() {
         return false;
     }
-    if is_document_number_token(last_token) {
-        // Numeric mode (R277, widened R379). The document-number token may
-        // carry a leading `#` (`UAX #9`) or trailing letters (`802.11ax`);
-        // the prose *before* it must end with a registered numeric prefix
-        // (which may itself be multi-word, e.g. `CSS Color`).
-        if prefixes_numeric.is_empty() {
-            return false;
-        }
+    // Numeric mode (R277, widened R379). The document-number token may
+    // carry a leading `#` (`UAX #9`), a leading name (`R1345`), or
+    // trailing letters (`802.11ax`); the prose *before* it must end with a
+    // registered numeric prefix (which may itself be multi-word, e.g.
+    // `CSS Color`).
+    if !prefixes_numeric.is_empty() && is_document_number_token(last_token) {
         let before_num = trimmed[..last_token_start].trim_end();
-        if before_num.is_empty() {
-            return false;
+        if !before_num.is_empty() && prose_ends_with_prefix(before_num, prefixes_numeric) {
+            return true;
         }
-        prose_ends_with_prefix(before_num, prefixes_numeric)
-    } else {
-        // Bare mode (R284, widened R379). The prose must end with a
-        // registered bare prefix (which may be multi-word, e.g.
-        // `Unicode Standard`).
-        if prefixes_bare.is_empty() {
-            return false;
-        }
-        prose_ends_with_prefix(trimmed, prefixes_bare)
     }
+    // Bare mode (R284, widened R379). The prose must end with a registered
+    // bare prefix (which may be multi-word, e.g. `Unicode Standard`).
+    !prefixes_bare.is_empty() && prose_ends_with_prefix(trimmed, prefixes_bare)
 }
 
 /// Round 379 — does `tok` look like a standard's *document-number* token?
 ///
-/// Accepts an optional leading `#` (Unicode Annex form `UAX #9`), then
-/// requires a leading ASCII digit and an all-alphanumeric-or-dot body
-/// (`791`, `802.3`, `1.2`, `9`, `802.11ax`). Rejects names (`Color`,
-/// `Standard`) and hyphenated tokens (`WAI-ARIA`), which select bare mode.
+/// Accepts an optional leading `#` (Unicode Annex form `UAX #9`), then an
+/// optional ASCII-alphabetic run, then requires an ASCII digit, over an
+/// all-alphanumeric-or-dot body (`791`, `802.3`, `1.2`, `9`, `802.11ax`,
+/// `R1345`). Rejects names (`Color`, `Standard`) and hyphenated tokens
+/// (`WAI-ARIA`), which select bare mode.
+///
+/// Round 802 — the leading-name run is what admits `pinion R1345 §5`.
+/// `R` plus digits is the standard document-name shape in this ecosystem,
+/// the way `#9` is Unicode's and `802.11ax` is IEEE's, and requiring the
+/// token to *start* with a digit read it as a name and sent the citation
+/// down the bare axis, where the prose ends with `R1345` rather than with
+/// the registered prefix. Widening it is only safe because the caller no
+/// longer treats the two modes as exclusive: a bare prefix that carries
+/// digits still resolves on the bare axis after the numeric one declines.
 fn is_document_number_token(tok: &str) -> bool {
     let body = tok.strip_prefix('#').unwrap_or(tok);
-    let mut chars = body.chars();
-    if !matches!(chars.next(), Some(c) if c.is_ascii_digit()) {
-        return false;
-    }
-    body.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+    let number = body.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+    number.starts_with(|c: char| c.is_ascii_digit())
+        && body.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
 /// Round 379 — does `prose` end with one of `prefixes` on a token
@@ -5714,6 +5718,58 @@ mod tests {
         // Negative: suffix must match on a token boundary (SCSS is not CSS).
         let css = vec!["CSS".to_string()];
         assert!(!is_external_section_cite("// SCSS 3 ", &css, &[]));
+    }
+
+    /// Round 802 — a document number may be NAMED. `R` plus digits is this
+    /// ecosystem's document-name shape the way `#9` is Unicode's, and the
+    /// leading-digit requirement read it as a name and sent the citation to
+    /// the bare axis, where the prose ends with the number rather than with
+    /// the registered prefix.
+    #[test]
+    fn is_document_number_token_admits_a_leading_name_r802() {
+        for tok in [
+            "791", "802.3", "1.2", "9", "#9", "802.11ax", "R1345", "ISO9001",
+        ] {
+            assert!(
+                is_document_number_token(tok),
+                "{tok:?} is a document number and must select the numeric axis"
+            );
+        }
+        for tok in ["Color", "Standard", "WAI-ARIA", "R", "", "설계", "-3"] {
+            assert!(
+                !is_document_number_token(tok),
+                "{tok:?} is a name and must select the bare axis"
+            );
+        }
+        let numeric = vec!["pinion".to_string()];
+        assert!(is_external_section_cite("// pinion R1345 ", &numeric, &[]));
+        // The prefix is still required verbatim: the name alone does not skip.
+        assert!(!is_external_section_cite("// see R1345 ", &numeric, &[]));
+    }
+
+    /// Round 802 — and the widening is only safe because the axes stopped
+    /// being exclusive. A bare prefix carrying digits is itself
+    /// document-number-shaped, so under the old dispatch it committed to the
+    /// numeric axis and returned false there instead of ever reaching the
+    /// list it was registered in.
+    #[test]
+    fn bare_prefix_that_looks_like_a_number_still_resolves_r802() {
+        let bare = vec!["ISO9001".to_string()];
+        assert!(is_external_section_cite("// ISO9001 ", &[], &bare));
+        // Both axes registered, each answering for its own shape.
+        let numeric = vec!["pinion".to_string()];
+        assert!(is_external_section_cite("// ISO9001 ", &numeric, &bare));
+        assert!(is_external_section_cite(
+            "// pinion R1345 ",
+            &numeric,
+            &bare
+        ));
+        // Neither axis matching is still not external.
+        assert!(!is_external_section_cite(
+            "// other R1345 ",
+            &numeric,
+            &bare
+        ));
     }
 
     #[test]
