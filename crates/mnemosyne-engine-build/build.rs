@@ -63,6 +63,7 @@ fn main() {
                         entities: vec!["ent-a".into()].into(),
                         carrier: Some("ent-ledger".into()),
                         typed_predicate: Some("did".into()),
+                        typed_quantity: None,
                         quote: Some(nasty.into()),
                         count: Some(3),
                     },
@@ -74,6 +75,7 @@ fn main() {
                         entities: Vec::new().into(),
                         carrier: None,
                         typed_predicate: None,
+                        typed_quantity: None,
                         quote: None,
                         count: None,
                     },
@@ -560,6 +562,7 @@ fn lines_parts(n: usize) -> ProjectionParts {
                         entities: vec!["ent-a".into()].into(),
                         carrier: None,
                         typed_predicate: None,
+                        typed_quantity: None,
                         quote: None,
                         count: None,
                     })

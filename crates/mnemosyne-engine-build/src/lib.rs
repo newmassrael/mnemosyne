@@ -437,6 +437,7 @@ mod tests {
                         entities: Vec::new().into(),
                         carrier: None,
                         typed_predicate: None,
+                        typed_quantity: None,
                         quote: None,
                         count: None,
                     }],
@@ -564,6 +565,7 @@ mod tests {
                             entities: vec!["ent-a".into()].into(),
                             carrier: None,
                             typed_predicate: None,
+                            typed_quantity: None,
                             quote: None,
                             count: None,
                         })

@@ -115,6 +115,11 @@ pub struct Line {
     /// facts out of the prose stream without the kernel guessing a policy (that
     /// policy is a consumer override, never a kernel default).
     pub(crate) typed_predicate: Option<Cow<'static, str>>,
+    /// The typed leg's QUANTITY object when the fact carries one (Round 814):
+    /// the number and its registered unit, held together because half of a
+    /// quantity is not a quantity. Crate-private like every other field —
+    /// [`Line::typed_quantity`] is the read path.
+    pub(crate) typed_quantity: Option<(i64, Cow<'static, str>)>,
     /// The store's verbatim quote for this fact, when authored (vs the
     /// paraphrased `text`/claim) — a styling axis a renderer may set in
     /// quotation treatment. `None` = no authored quote.
@@ -206,6 +211,28 @@ impl Line {
         self.typed_predicate.as_deref()
     }
 
+    /// The typed leg's quantity — the number and its registered unit — when the
+    /// fact's typed object is a `Quantity` (Round 814).
+    ///
+    /// Narrow ON PURPOSE. Exposing the whole typed object would publish a core
+    /// enum in the signature of the most-read type, and every consumer would
+    /// then hold match arms over a shape the kernel reserves the right to
+    /// extend — the Round 796 boundary (hidden versus published), which is why
+    /// `Line`'s fields are crate-private in the first place. This returns plain
+    /// data instead, so a new object variant costs no consumer anything.
+    ///
+    /// Requested with one call site by the first playable consumer, whose
+    /// doomsday clock is currently a COPY of the store's countdown chain kept
+    /// in step by a test. Reading the chain is what lets that copy go away.
+    /// Re-open the wider question when a SECOND variant is asked for; one
+    /// measured need is not evidence about the others.
+    #[must_use]
+    pub fn typed_quantity(&self) -> Option<(i64, &str)> {
+        self.typed_quantity
+            .as_ref()
+            .map(|(n, unit)| (*n, unit.as_ref()))
+    }
+
     /// The store's verbatim quote for this fact, when authored.
     #[must_use]
     pub fn quote(&self) -> Option<&str> {
@@ -234,6 +261,12 @@ impl Line {
                 .typed
                 .as_ref()
                 .map(|t| Cow::Owned(t.predicate.clone())),
+            typed_quantity: begin.typed.as_ref().and_then(|t| match &t.object {
+                mnemosyne_core::TypedObject::Quantity { n, unit } => {
+                    Some((*n, Cow::Owned(unit.clone())))
+                }
+                _ => None,
+            }),
             quote: begin.quote.clone().map(Cow::Owned),
             count: begin.count,
         }
@@ -556,6 +589,8 @@ pub struct LinePart {
     pub carrier: Option<Cow<'static, str>>,
     /// The typed leg's predicate, when the fact carries one.
     pub typed_predicate: Option<Cow<'static, str>>,
+    /// The typed leg's quantity object, when the fact carries one.
+    pub typed_quantity: Option<(i64, Cow<'static, str>)>,
     /// The authored quote backing the fact.
     pub quote: Option<Cow<'static, str>>,
     /// The asserted multiplicity riding the fact.
@@ -588,6 +623,7 @@ impl Line {
             entities: part.entities,
             carrier: part.carrier,
             typed_predicate: part.typed_predicate,
+            typed_quantity: part.typed_quantity,
             quote: part.quote,
             count: part.count,
         }
@@ -604,6 +640,7 @@ impl Line {
             entities: self.entities.clone(),
             carrier: self.carrier.clone(),
             typed_predicate: self.typed_predicate.clone(),
+            typed_quantity: self.typed_quantity.clone(),
             quote: self.quote.clone(),
             count: self.count,
         }

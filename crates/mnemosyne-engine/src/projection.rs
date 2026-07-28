@@ -1109,6 +1109,78 @@ mod tests {
         assert_eq!(proj.cursor_of("not-a-section"), None);
     }
 
+    /// Round 814 — the typed leg's quantity reaches the consumer, and only a
+    /// quantity does.
+    ///
+    /// The negative half is the load-bearing one: a fact typed with a NON-quantity
+    /// object must read `None` here, not a zero and not the predicate's name.
+    /// A quantity accessor that answers for every typed leg would hand a consumer
+    /// a number that was never authored, which is the class this engine makes
+    /// unrepresentable everywhere else.
+    #[test]
+    fn a_typed_quantity_reaches_the_line_and_nothing_else_does_r814() {
+        use crate::Line;
+        use mnemosyne_validate::continuity::ManuscriptFactEvent;
+        let quantity = |fact: &str, n: i64, unit: &str| ManuscriptFactEvent {
+            typed: Some(mnemosyne_core::TypedClaim {
+                subject: "bell".into(),
+                predicate: "remaining-count".into(),
+                object: mnemosyne_core::TypedObject::Quantity {
+                    n,
+                    unit: unit.into(),
+                },
+            }),
+            ..begin(fact, "the bell stops at six", "ground-truth", &[])
+        };
+        let r = report(
+            "main",
+            vec![scene(
+                "sc-01",
+                "Dusk",
+                vec![
+                    quantity("f-six", 6, "name"),
+                    // A typed leg whose object is NOT a quantity.
+                    journal_begin("f-quest", "the reckoner pursues it", "pursues"),
+                    // No typed leg at all.
+                    begin("f-plain", "the tide pulls out", "ground-truth", &[]),
+                ],
+            )],
+            vec![
+                locator("f-six", "sc-01", DisclosureMode::State),
+                locator("f-quest", "sc-01", DisclosureMode::State),
+                locator("f-plain", "sc-01", DisclosureMode::State),
+            ],
+            ForkTreeReport::default(),
+        );
+        let proj = PlayableProjection::from_report(r, &DefaultOverrides::default()).unwrap();
+        let lines = proj.lines("main", "sc-01");
+        let by = |id: &str| {
+            lines
+                .iter()
+                .find(|l| l.fact_id == id)
+                .unwrap_or_else(|| panic!("{id} not projected"))
+        };
+        assert_eq!(by("f-six").typed_quantity(), Some((6, "name")));
+        assert_eq!(
+            by("f-quest").typed_quantity(),
+            None,
+            "a token object is not a quantity"
+        );
+        assert_eq!(by("f-plain").typed_quantity(), None);
+        // The predicate axis is untouched by any of it — the two reads are
+        // independent, and a quantity fact still names its predicate.
+        assert_eq!(by("f-six").typed_predicate(), Some("remaining-count"));
+        assert_eq!(by("f-quest").typed_predicate(), Some("pursues"));
+        // Round-trips through the bake mirror unchanged, so a baked projection
+        // answers what a live one answers.
+        let part = by("f-six").to_part();
+        assert_eq!(
+            part.typed_quantity,
+            Some((6, std::borrow::Cow::Owned("name".to_string())))
+        );
+        assert_eq!(Line::from_part(part).typed_quantity(), Some((6, "name")));
+    }
+
     #[test]
     fn a_stale_locator_is_a_hard_error_never_a_silent_drop() {
         let r = report(
@@ -2074,6 +2146,7 @@ mod tests {
             entities: Cow::Borrowed(&[Cow::Borrowed("ent-a")]),
             carrier: None,
             typed_predicate: None,
+            typed_quantity: None,
             quote: None,
             count: None,
         });
@@ -2097,6 +2170,7 @@ mod tests {
             entities: Cow::Owned(vec![Cow::Owned("ent-a".to_string())]),
             carrier: None,
             typed_predicate: None,
+            typed_quantity: None,
             quote: None,
             count: None,
         });

@@ -572,7 +572,8 @@ fn inline_cow_strings(items: &[Cow<'static, str>]) -> String {
 fn line(part: &LinePart) -> String {
     format!(
         "::mnemosyne_engine::LinePart {{ fact_id: {}, text: {}, mode: {}, frame: {}, \
-         entities: {}, carrier: {}, typed_predicate: {}, quote: {}, count: {} }}",
+         entities: {}, carrier: {}, typed_predicate: {}, typed_quantity: {}, \
+         quote: {}, count: {} }}",
         cow(&part.fact_id),
         cow(&part.text),
         disclosure_mode(part.mode),
@@ -580,6 +581,11 @@ fn line(part: &LinePart) -> String {
         inline_cow_strings(&part.entities),
         option(part.carrier.as_deref().map(cow)),
         option(part.typed_predicate.as_deref().map(cow)),
+        option(
+            part.typed_quantity
+                .as_ref()
+                .map(|(n, unit)| format!("({n}i64, {})", cow(unit))),
+        ),
         option(part.quote.as_deref().map(cow)),
         option(part.count.map(|c| format!("{c}i64"))),
     )

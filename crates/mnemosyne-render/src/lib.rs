@@ -158,6 +158,7 @@ mod tests {
             entities: Vec::new().into(),
             carrier: None,
             typed_predicate: None,
+            typed_quantity: None,
             quote: quote.map(|q| q.to_string().into()),
             count,
         }
