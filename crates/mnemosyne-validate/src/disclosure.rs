@@ -463,7 +463,7 @@ mod tests {
             claim: "c".to_string(),
             canon_from: canon_from.to_string(),
             canon_to: None,
-            evidence: vec![canon_from.to_string()],
+            evidence: vec![mnemosyne_core::EvidenceRef::unreviewed(canon_from)],
             conflicts_with: vec![],
             supersedes_in_frame: None,
             payoff_expectation: PayoffExpectation::Unmarked,

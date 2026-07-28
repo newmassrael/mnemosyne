@@ -417,6 +417,50 @@ pub struct ConflictAssertion {
     pub target_claim_sha256: String,
 }
 
+/// One evidence ref: the structure section backing a claim, plus the
+/// fingerprint of the prose the author affirms they judged the claim
+/// against (Round 806).
+///
+/// The affirmation is **authored, never computed** — the deliberate
+/// inversion of the [`ConflictAssertion`] rule directly above, and the
+/// whole point of the mechanism. A conflict pin points at another fact's
+/// claim, which is IN THE STORE at write time, so computing it is correct.
+/// An evidence affirmation points at prose the author READ: an act the
+/// machine cannot observe. A computed value would not record a review, it
+/// would assert one that never happened — and a consumer that rebuilds its
+/// store from a script (the shape the first narrative consumer has) would
+/// re-assert every claim against whatever the prose says today, making the
+/// cheapest command in its repo a total pin refresh. That is the failure
+/// the mechanism exists to prevent, so the machine adjudicates the
+/// affirmation and never manufactures it.
+///
+/// Empty = no affirmation on record: the claim was never judged against a
+/// fingerprint. That is NOT staleness (an empty hash certifies nothing, the
+/// Round 402 unrevalidatable model) — it is counted and reported on its own
+/// axis, never silently clean.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceRef {
+    /// Structure-section id evidencing the claim.
+    pub section: String,
+    /// sha256 of that section's `content_excerpt.text` the author affirms
+    /// they judged this claim against. Set by exactly ONE primitive
+    /// (`import_evidence_reviews`); the fact-creating primitives always
+    /// write it empty, so the field has a single write path.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reviewed_excerpt_sha256: String,
+}
+
+impl EvidenceRef {
+    /// An evidence ref with no affirmation on record — what every
+    /// fact-creating primitive writes.
+    pub fn unreviewed(section: impl Into<String>) -> Self {
+        Self {
+            section: section.into(),
+            reviewed_excerpt_sha256: String::new(),
+        }
+    }
+}
+
 /// One narrative entity (registry entry, Round 437 — design sec 7.10 gap 4).
 /// Keyed by entity id in `AtomicStore.entities`; every
 /// [`NarrativeFact::entities`] ref must name a registered id (fail-loud at
@@ -924,10 +968,11 @@ pub struct NarrativeFact {
     /// the successor's `canon_from` and this stays `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canon_to: Option<String>,
-    /// Structure-section ids evidencing the claim (≥ 1, fail-loud at the
+    /// Structure sections evidencing the claim (≥ 1, fail-loud at the
     /// mutate primitive). Multi-ref by design — a claim's evidence usually
-    /// spans sections.
-    pub evidence: Vec<String>,
+    /// spans sections. Each ref carries the review affirmation for the prose
+    /// under it (Round 806); see [`EvidenceRef`].
+    pub evidence: Vec<EvidenceRef>,
     /// Recorded conflict assertions. Contradiction is a semantic judgment,
     /// so edges are recorded — never derived from claim text. The
     /// continuity gate evaluates them world-scoped: same-scope overlapping

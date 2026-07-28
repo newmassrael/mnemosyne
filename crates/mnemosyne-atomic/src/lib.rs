@@ -38,9 +38,9 @@ pub use redact::*;
 use mnemosyne_core::{
     sha256_hex, strip_section_marker, Branch, BranchFork, ConflictAssertion, DecisionStatus,
     DisclosureMode, DisclosureOverride, DisclosurePlan, DisclosureReveal, DisclosureSurface,
-    EdgeCost, Entity, EntityKind, Frame, IntervalOp, InventoryStatus, NarrativeFact, Parameter,
-    ParameterGate, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim, TypedObject,
-    Unit,
+    EdgeCost, Entity, EntityKind, EvidenceRef, Frame, IntervalOp, InventoryStatus, NarrativeFact,
+    Parameter, ParameterGate, PayoffExpectation, Predicate, PredicateObjectKind, TypedClaim,
+    TypedObject, Unit,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1675,7 +1675,16 @@ pub enum AtomicStoreError {
 /// against (bumped on a breaking shape change). Public so the medium-neutral
 /// authoring contract (`describe-schema`, R587) can report which generation it
 /// describes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 43;
+// v43→v44 moves `NarrativeFact.evidence` from `Vec<String>` to
+// `Vec<EvidenceRef>` (Round 806) — each evidence ref now carries the sha256 of
+// the prose the author affirms they judged the claim against, so a claim whose
+// evidence moved is detectable instead of silently outliving it. A typed parse
+// of a v43 store would FAIL (a string where an object is expected), so `load`
+// runs `migrate_evidence_to_refs` on the raw JSON when `schema_version < 44`;
+// it writes an EMPTY affirmation, never the live excerpt hash (seeding would
+// assert reviews that never happened). A pre-R806 binary reading a v44 store
+// hits the monotone `> CURRENT` guard.
+pub const CURRENT_SCHEMA_VERSION: u32 = 44;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -1773,6 +1782,44 @@ fn migrate_disclosure_first_at_to_reveal(raw: &mut serde_json::Value) {
 /// only repositioned; nothing is dropped or invented, and a missing/odd field is a
 /// no-op skip (the typed parse reports any real corruption). Idempotent: a
 /// `normative_excerpt` already carrying `excerpt` is left untouched.
+/// Round 806 (v43→v44 migration): rewrite each `NarrativeFact.evidence` entry
+/// from a bare section-id string to the [`EvidenceRef`] object, run by `load`
+/// BEFORE the typed parse (which would otherwise fail on a string where an
+/// object is expected).
+///
+/// The affirmation is written EMPTY, never seeded from the section's live
+/// `content_excerpt`. Seeding would assert that every migrated claim was
+/// reviewed against today's prose — reviews that never happened, the exact lie
+/// the mechanism exists to prevent. An empty affirmation is "never judged
+/// against a fingerprint", reported on its own axis (the Round 402
+/// unrevalidatable model), which is the truth.
+///
+/// Idempotent + defensive: an entry already an object is left untouched; a
+/// non-object fact, a missing `evidence` key, or a non-array value is a no-op
+/// skip (the typed parse reports any real corruption).
+fn migrate_evidence_to_refs(raw: &mut serde_json::Value) {
+    let Some(facts) = raw
+        .get_mut("narrative_facts")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    for fact in facts.values_mut() {
+        let Some(evidence) = fact
+            .get_mut("evidence")
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            continue;
+        };
+        for entry in evidence.iter_mut() {
+            let Some(section) = entry.as_str() else {
+                continue;
+            };
+            *entry = serde_json::json!({ "section": section });
+        }
+    }
+}
+
 fn migrate_normative_excerpt_to_wrapped(raw: &mut serde_json::Value) {
     let Some(sections) = raw
         .get_mut("sections")
@@ -1944,6 +1991,12 @@ impl AtomicStore {
         // would otherwise FAIL on a missing `excerpt` sub-object.
         if on_disk_version < 42 {
             migrate_normative_excerpt_to_wrapped(&mut raw);
+        }
+        // v43→v44 (Round 806): NarrativeFact.evidence String → the EvidenceRef
+        // object. Rewrite the raw JSON before the typed parse, which would
+        // otherwise FAIL on a string where an object is expected.
+        if on_disk_version < 44 {
+            migrate_evidence_to_refs(&mut raw);
         }
         let mut store: AtomicStore = match serde_json::from_value(raw) {
             Ok(store) => store,
@@ -2598,7 +2651,7 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
         if fact.canon_to.as_deref() == Some(section_id) {
             refs.push(format!("fact `{fid}` (via canon_to)"));
         }
-        if fact.evidence.iter().any(|e| e == section_id) {
+        if fact.evidence.iter().any(|e| e.section == section_id) {
             refs.push(format!("fact `{fid}` (via evidence)"));
         }
     }
@@ -3750,6 +3803,133 @@ pub struct ScenePresenceImport {
 /// that is an error). One in-memory pass + one save (single write path, like
 /// [`import_content_excerpts`]).
 ///
+/// One entry for [`import_evidence_reviews`]: the author's affirmation that
+/// they judged `fact`'s claim against the prose currently under `section`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceReviewImport {
+    pub fact_id: String,
+    pub section_id: String,
+    /// sha256 of that section's `content_excerpt.text` at the moment of review.
+    pub reviewed_excerpt_sha256: String,
+}
+
+/// Round 806 — record the author's evidence reviews: THE one primitive that
+/// writes `EvidenceRef::reviewed_excerpt_sha256`. Every fact-creating primitive
+/// writes that field empty, so it has a single write path and the
+/// multi-write-path parity rule has nothing to reconcile.
+///
+/// The affirmation is AUTHORED, never computed (see [`EvidenceRef`]): the store
+/// cannot observe a human reading prose, so computing the value would assert a
+/// review that never happened. What the store CAN do is adjudicate the claim,
+/// and it does so here, fail-before-save on every entry:
+///
+/// - the fact must exist, and must list `section` among its `evidence`
+///   (affirming prose that does not back the claim is a typo, not a review);
+/// - the section must carry a `content_excerpt` — an affirmation against a
+///   section holding no prose is REJECTED, never skipped. A skip would make the
+///   check silently vacuous whenever this import ran before the excerpts, which
+///   is the reachability defect this design exists to avoid;
+/// - the affirmed sha must equal the excerpt's live `text_sha256`. A mismatch is
+///   the ratchet firing at build time: the author affirms prose that is no
+///   longer there, and the message names both hashes so the fix is to RE-READ,
+///   then affirm the value the message prints.
+///
+/// Re-affirming an unchanged review is an idempotent no-op (no write). The scan
+/// re-checks the same relation on the final store, for out-of-band edits and for
+/// a consumer that re-imports excerpts after affirming (the Round 440 boundary
+/// doctrine) — one shared predicate, two surfaces.
+pub fn import_evidence_reviews(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    reviews: &[EvidenceReviewImport],
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    if reviews.is_empty() {
+        return Err(AtomicMutateError::Validation(
+            "import_evidence_reviews: no reviews supplied".to_string(),
+        ));
+    }
+    // Validate EVERY entry before mutating anything (fail-before-save, the
+    // import_content_excerpts rule): a rejected batch leaves no partial record of
+    // reviews that were never affirmed.
+    let mut staged: Vec<(String, usize, String)> = Vec::with_capacity(reviews.len());
+    for r in reviews {
+        let fact_id = r.fact_id.trim();
+        let section_id = r.section_id.trim();
+        let sha = r.reviewed_excerpt_sha256.trim();
+        if sha.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_evidence_reviews: fact `{fact_id}` / section `{section_id}`: \
+                 reviewed_excerpt_sha256 mandatory (an empty affirmation is not a review; \
+                 omit the entry instead)"
+            )));
+        }
+        let Some(fact) = store.narrative_facts.get(fact_id) else {
+            return Err(AtomicMutateError::NotFound(format!(
+                "import_evidence_reviews: fact `{fact_id}` not present in atomic store"
+            )));
+        };
+        let Some(pos) = fact.evidence.iter().position(|e| e.section == section_id) else {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_evidence_reviews: fact `{fact_id}` does not list section \
+                 `{section_id}` among its evidence — a review affirms prose that BACKS \
+                 the claim"
+            )));
+        };
+        let Some(section) = store.sections.get(section_id) else {
+            return Err(AtomicMutateError::NotFound(format!(
+                "import_evidence_reviews: section `{section_id}` not present in atomic store"
+            )));
+        };
+        let Some(excerpt) = section.content_excerpt.as_ref() else {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_evidence_reviews: section `{section_id}` carries no content_excerpt \
+                 — nothing to affirm against (import content excerpts first; this is a \
+                 reject, never a skip, so the check is never silently vacuous)"
+            )));
+        };
+        if excerpt.text_sha256 != sha {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_evidence_reviews: fact `{fact_id}`: affirmed sha `{sha}` for section \
+                 `{section_id}`, whose prose now hashes to `{}` — the prose moved since that \
+                 review. Re-read the section, then affirm `{}`",
+                excerpt.text_sha256, excerpt.text_sha256
+            )));
+        }
+        staged.push((fact_id.to_string(), pos, sha.to_string()));
+    }
+    let mut applied = 0usize;
+    for (fact_id, pos, sha) in staged {
+        // Total: the fact + index were resolved above and nothing mutates the
+        // map in between.
+        let slot = &mut store
+            .narrative_facts
+            .get_mut(&fact_id)
+            .expect("validated present")
+            .evidence[pos];
+        if slot.reviewed_excerpt_sha256 == sha {
+            continue;
+        }
+        slot.reviewed_excerpt_sha256 = sha;
+        applied += 1;
+    }
+    if applied == 0 {
+        return Ok(AtomicMutateReceipt {
+            primitive: "import_evidence_reviews".to_string(),
+            target_kind: "narrative_fact",
+            target_id: format!("{} review(s) (no-op)", reviews.len()),
+            sidecar_path: sidecar_path.display().to_string(),
+            written_bytes: 0,
+        });
+    }
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "import_evidence_reviews",
+        "narrative_fact",
+        &format!("{applied} review(s) recorded"),
+    )
+}
+
 /// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
 pub fn import_scene_cast(
     store: &mut AtomicStore,
@@ -5113,7 +5293,7 @@ fn build_candidate_fact(
                 "fact `{fact_id}`: evidence `{e}` not present as a section"
             ));
         }
-        evidence.push(e.to_string());
+        evidence.push(EvidenceRef::unreviewed(e));
     }
     let mut conflicts_with = Vec::with_capacity(entry.conflicts_with.len());
     for c in &entry.conflicts_with {
@@ -7242,7 +7422,7 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
         refs.push((FactRefFacet::CanonTo, to.as_str()));
     }
     for e in &fact.evidence {
-        refs.push((FactRefFacet::Evidence, e.as_str()));
+        refs.push((FactRefFacet::Evidence, e.section.as_str()));
     }
     if let Some(claim) = &fact.typed {
         refs.push((FactRefFacet::TypedPredicate, claim.predicate.as_str()));
@@ -10008,6 +10188,200 @@ mod tests {
             import_content_excerpts(&mut store, &sidecar, &bad, None),
             Err(AtomicMutateError::Validation(_))
         ));
+    }
+
+    /// A minimal narrative fact import (test-local; `FactImport` deliberately has
+    /// no `Default` — every authored field is stated at the call site).
+    fn fact_import(fact_id: &str, claim: &str, section: &str) -> FactImport {
+        FactImport {
+            fact_id: fact_id.to_string(),
+            frame: "jiun".to_string(),
+            branch: None,
+            entities: vec![],
+            claim: claim.to_string(),
+            canon_from: section.to_string(),
+            canon_to: None,
+            evidence: vec![section.to_string()],
+            conflicts_with: vec![],
+            supersedes_in_frame: None,
+            payoff_expectation: None,
+            pays_off: vec![],
+            typed: None,
+            quote: None,
+        }
+    }
+
+    /// Round 806 — the affirmation write path. The prose the author says they
+    /// judged a claim against is AUTHORED (the store cannot watch a human read),
+    /// so the primitive adjudicates it rather than computing it: it must name a
+    /// real fact, a section that fact actually cites, a section that HOLDS prose,
+    /// and the hash that prose currently has.
+    #[test]
+    fn evidence_review_records_the_affirmation_and_rejects_a_moved_one() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "d01-bam");
+        seed_section(&mut store, "d02-nat");
+        store.frames.insert("jiun".to_string(), Frame::default());
+        let text = "이판수가 대답하지 말라고 일렀다.";
+        import_content_excerpts(
+            &mut store,
+            &sidecar,
+            &[ContentExcerptImport {
+                section_id: "d01-bam".to_string(),
+                anchor: mnemosyne_core::ContentAnchor {
+                    source: "MANUSCRIPT.md".to_string(),
+                    locator: mnemosyne_core::Locator::Prefix("이판수가".to_string()),
+                },
+                text: text.to_string(),
+            }],
+            None,
+        )
+        .unwrap();
+        add_fact(
+            &mut store,
+            &sidecar,
+            &fact_import(
+                "f-silence",
+                "Jiun holds silence suffices, because Ipansu TOLD them so",
+                "d01-bam",
+            ),
+        )
+        .unwrap();
+        // The fact-creating path never affirms — one write path for the field.
+        assert_eq!(
+            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256,
+            ""
+        );
+        let sha = sha256_hex(text.as_bytes());
+        let review = |fact: &str, section: &str, sha: &str| EvidenceReviewImport {
+            fact_id: fact.to_string(),
+            section_id: section.to_string(),
+            reviewed_excerpt_sha256: sha.to_string(),
+        };
+        import_evidence_reviews(
+            &mut store,
+            &sidecar,
+            &[review("f-silence", "d01-bam", &sha)],
+        )
+        .unwrap();
+        assert_eq!(
+            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256,
+            sha
+        );
+        // Re-affirming the same review writes nothing (idempotent no-op).
+        let receipt = import_evidence_reviews(
+            &mut store,
+            &sidecar,
+            &[review("f-silence", "d01-bam", &sha)],
+        )
+        .unwrap();
+        assert_eq!(receipt.written_bytes, 0);
+        // A section the fact does not cite is a typo, not a review.
+        let err = import_evidence_reviews(
+            &mut store,
+            &sidecar,
+            &[review("f-silence", "d02-nat", &sha)],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("among its evidence"), "{err}");
+        // The RATCHET at write time: the prose moved, so the affirmation is a
+        // review of text that is no longer there. The message names the hash to
+        // affirm AFTER re-reading — never a silent restamp.
+        import_content_excerpts(
+            &mut store,
+            &sidecar,
+            &[ContentExcerptImport {
+                section_id: "d01-bam".to_string(),
+                anchor: mnemosyne_core::ContentAnchor {
+                    source: "MANUSCRIPT.md".to_string(),
+                    locator: mnemosyne_core::Locator::Prefix("담배".to_string()),
+                },
+                text: "담배 문 노인이 반쪽만 흘리고 삼켰다.".to_string(),
+            }],
+            None,
+        )
+        .unwrap();
+        let err = import_evidence_reviews(
+            &mut store,
+            &sidecar,
+            &[review("f-silence", "d01-bam", &sha)],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("the prose moved since"), "{err}");
+    }
+
+    /// Round 806 — a section holding NO prose is a REJECT, never a skip. A skip
+    /// would make the whole check silently vacuous for any consumer whose build
+    /// affirms before importing excerpts, which is the reachability defect this
+    /// design exists to avoid (the first narrative consumer's build creates 1,000
+    /// facts thousands of lines before its excerpts land).
+    #[test]
+    fn evidence_review_against_a_section_holding_no_prose_is_rejected_not_skipped() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_section(&mut store, "d01-bam");
+        store.frames.insert("jiun".to_string(), Frame::default());
+        add_fact(
+            &mut store,
+            &sidecar,
+            &fact_import("f-silence", "a claim", "d01-bam"),
+        )
+        .unwrap();
+        let err = import_evidence_reviews(
+            &mut store,
+            &sidecar,
+            &[EvidenceReviewImport {
+                fact_id: "f-silence".to_string(),
+                section_id: "d01-bam".to_string(),
+                reviewed_excerpt_sha256: sha256_hex(b"whatever"),
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("carries no content_excerpt"),
+            "{err}"
+        );
+        assert_eq!(
+            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256, "",
+            "a rejected batch records nothing"
+        );
+    }
+
+    /// Round 806 (v43→v44) — a pre-v44 store's bare-string evidence migrates to
+    /// the EvidenceRef object with an EMPTY affirmation.
+    ///
+    /// The empty is the POINT, and this test pins the decision rather than the
+    /// shape: the section below carries live prose, so a migration that "helpfully"
+    /// seeded the current hash would look correct and would assert that this claim
+    /// was reviewed against text nobody read. Unreviewed is the truth.
+    #[test]
+    fn evidence_migration_writes_an_empty_affirmation_never_the_live_hash() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let text = "이판수가 대답하지 말라고 일렀다.";
+        let raw = serde_json::json!({
+            "schema_version": 43,
+            "sections": { "d01-bam": { "content_excerpt": {
+                "anchor": { "source": "M.md", "locator": { "Prefix": "이판수가" } },
+                "text": text, "text_sha256": sha256_hex(text.as_bytes()) } } },
+            "changelog_entries": {},
+            "frames": { "jiun": {} },
+            "narrative_facts": { "f-silence": {
+                "frame": "jiun", "claim": "c", "canon_from": "d01-bam",
+                "evidence": ["d01-bam"] } }
+        });
+        std::fs::write(&sidecar, serde_json::to_string_pretty(&raw).unwrap()).unwrap();
+        let store = AtomicStore::load(&sidecar).unwrap();
+        let ev = &store.narrative_facts["f-silence"].evidence;
+        assert_eq!(ev.len(), 1);
+        assert_eq!(ev[0].section, "d01-bam");
+        assert_eq!(
+            ev[0].reviewed_excerpt_sha256, "",
+            "migration must not assert a review that never happened"
+        );
     }
 
     #[test]
@@ -20302,7 +20676,7 @@ mod tests {
             (
                 "evidence-section",
                 Some(FactRefFacet::Evidence),
-                |f| f.evidence = vec!["ghost".into()],
+                |f| f.evidence = vec![EvidenceRef::unreviewed("ghost")],
                 "evidence `ghost`",
             ),
             (
@@ -20528,7 +20902,7 @@ mod tests {
             claim: "c".to_string(),
             canon_from: "ch-1".to_string(),
             canon_to: Some("ch-2".to_string()),
-            evidence: vec!["ch-1".to_string()],
+            evidence: vec![EvidenceRef::unreviewed("ch-1")],
             conflicts_with: vec![],
             supersedes_in_frame: None,
             payoff_expectation: PayoffExpectation::default(),

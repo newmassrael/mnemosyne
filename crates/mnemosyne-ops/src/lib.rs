@@ -371,6 +371,10 @@ pub struct ContinuityScanReport {
     pub conflict_pairs_checked: usize,
     pub cross_scope_pairs: usize,
     pub unordered_pairs: usize,
+    /// Evidence refs whose section holds prose but which carry no review
+    /// affirmation (Round 806) — the claim was never judged against a
+    /// fingerprint. Not a violation, always reported.
+    pub evidence_unreviewed: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file).
     pub rules: usize,
     /// Of `rules`, how many are INTERVAL-class (Round 491): a nonzero count
@@ -445,6 +449,7 @@ pub fn continuity_scan(
         conflict_pairs_checked: report.conflict_pairs_checked,
         cross_scope_pairs: report.cross_scope_pairs,
         unordered_pairs: report.unordered_pairs,
+        evidence_unreviewed: report.evidence_unreviewed,
         rules: report.rules,
         interval_rules: report.interval_rules,
         undeclared_roads: report.undeclared_roads.clone(),
@@ -1523,7 +1528,7 @@ pub fn entity_dossier(
             claim: f.claim.clone(),
             canon_from: f.canon_from.clone(),
             canon_to: f.canon_to.clone(),
-            evidence: f.evidence.clone(),
+            evidence: f.evidence.iter().map(|e| e.section.clone()).collect(),
             typed: f.typed.clone(),
             quote: f.quote.clone(),
             count: store.fact_counts.get(fid).copied(),

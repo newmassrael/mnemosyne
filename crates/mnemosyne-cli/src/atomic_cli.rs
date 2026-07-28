@@ -2522,6 +2522,74 @@ pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Re
     finalize_mutate(outcome.map(|(receipt, _)| receipt), json)
 }
 
+/// Round 806 — record the author's evidence reviews from an
+/// `evidence-reviews/v1` artifact (`{reviews: [{fact, section,
+/// reviewed_excerpt_sha256}]}`).
+///
+/// A file rather than flags on `add-fact`, for four reasons: JSON keys need no
+/// separator convention (section ids in this very store already contain `/`, so
+/// an inline `section@sha` rebuilds the id-swallowing bug class); it keeps the
+/// affirmation to exactly ONE write path; it is one tracked artifact instead of
+/// an edit to every fact-creating line; and it runs after the excerpts exist, so
+/// the store can actually adjudicate it.
+pub fn cmd_import_evidence_reviews(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ReviewEntry {
+        fact: String,
+        section: String,
+        reviewed_excerpt_sha256: String,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ReviewMap {
+        reviews: Vec<ReviewEntry>,
+    }
+    let mut map_path: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--reviews" => {
+                map_path = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--reviews missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let path = map_path.ok_or_else(|| anyhow!("--reviews <path> arg required"))?;
+    let raw = fs::read_to_string(&path).with_context(|| format!("read reviews {}", path))?;
+    let map: ReviewMap = serde_json::from_str(&raw)
+        .with_context(|| format!("parse {} (evidence-reviews/v1)", path))?;
+    let imports: Vec<mnemosyne_atomic::EvidenceReviewImport> = map
+        .reviews
+        .into_iter()
+        .map(|r| mnemosyne_atomic::EvidenceReviewImport {
+            fact_id: r.fact,
+            section_id: r.section,
+            reviewed_excerpt_sha256: r.reviewed_excerpt_sha256,
+        })
+        .collect();
+    let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::import_evidence_reviews(&mut store, &sidecar_path, &imports),
+        json,
+    )
+}
+
 /// R757 (B0) — bulk-set narrative `scene_cast` from a consumer's
 /// `scene-cast-map/v1` (`{presences: [{section_id, entity, modality, can_answer,
 /// anchor, text}]}`). The consumer resolved each manuscript form → store id and

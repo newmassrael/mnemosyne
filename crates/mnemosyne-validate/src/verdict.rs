@@ -304,6 +304,49 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 short_sha(current_sha256)
             ),
         ),
+        ContinuityViolation::EvidenceStale {
+            fact_id,
+            section,
+            reviewed_sha256,
+            current_sha256,
+        } => action(
+            "evidence_stale",
+            ViolationLocus {
+                facts: vec![fact_id.clone()],
+                field: Some("evidence".to_string()),
+                at: Some(section.clone()),
+                ..Default::default()
+            },
+            "a claim must be affirmed against the prose its evidence section CURRENTLY holds"
+                .to_string(),
+            "re-READ the section and re-affirm the review (import-evidence-reviews with the \
+             current hash) — refreshing the hash without re-reading is the one move that \
+             defeats the mechanism"
+                .to_string(),
+            format!(
+                "fact `{fact_id}` was judged against prose in `{section}` that has since moved \
+                 (reviewed {} vs current {})",
+                short_sha(reviewed_sha256),
+                short_sha(current_sha256)
+            ),
+        ),
+        ContinuityViolation::EvidenceReviewUnanchored { fact_id, section } => action(
+            "evidence_review_unanchored",
+            ViolationLocus {
+                facts: vec![fact_id.clone()],
+                field: Some("evidence".to_string()),
+                at: Some(section.clone()),
+                ..Default::default()
+            },
+            "a review affirmation must name a section that HOLDS the prose it certifies"
+                .to_string(),
+            "import the section's content_excerpt, or drop the affirmation — it currently \
+             certifies prose the store does not hold"
+                .to_string(),
+            format!(
+                "fact `{fact_id}` affirms a review of `{section}`, which carries no content_excerpt"
+            ),
+        ),
         ContinuityViolation::SuccessionTargetMissing { fact_id, target } => action(
             "succession_target_missing",
             ViolationLocus {

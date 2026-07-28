@@ -403,6 +403,20 @@ static COMMANDS: &[Command] = &[
         run: |c| atomic_cli::cmd_import_content_excerpts(&c.anchor()?, c.rest()),
     },
     Command {
+        name: "import-evidence-reviews",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["import-evidence-reviews --reviews <evidence-reviews.json> [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 806 — record which prose each claim was judged against, from",
+            "   {reviews:[{fact,section,reviewed_excerpt_sha256}]}; the affirmation is AUTHORED",
+            "   (the store cannot watch a human read), and the import REJECTS one whose sha no",
+            "   longer matches the section's content_excerpt — re-read, then affirm the new hash",
+        ],
+        run: |c| atomic_cli::cmd_import_evidence_reviews(&c.anchor()?, c.rest()),
+    },
+    Command {
         name: "import-scene-cast",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -2829,6 +2843,17 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                  `describe-schema` documents the classes and the wire."
             );
         }
+        // Round 806 — evidence refs whose section holds prose but which carry no
+        // review affirmation. Never a violation (an absent affirmation certifies
+        // nothing, so nothing can drift from it) and ALWAYS printed: a knob may
+        // decide whether an axis fails, never whether it is measured. Silence
+        // here would read as "every claim is affirmed", which is what a store
+        // that has never affirmed one looks like.
+        println!(
+            "  evidence reviews: {} ref(s) with prose but no affirmation \
+             (import-evidence-reviews records one; an unaffirmed claim cannot go stale)",
+            report.evidence_unreviewed
+        );
         println!(
             "  violations: {} (structural={} interval={})",
             report.violation_count, structural_count, report.interval_violation_count

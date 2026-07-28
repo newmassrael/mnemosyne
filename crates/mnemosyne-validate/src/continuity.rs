@@ -64,6 +64,13 @@ use mnemosyne_config::Severity;
 use mnemosyne_core::{IntervalOp, NarrativeFact};
 use serde::{Deserialize, Serialize};
 
+/// A fact's evidence as bare section ids — what the read-side views report.
+/// The review affirmation beside each ref (Round 806) is a gate concern, not a
+/// view concern, so the view JSON keeps its shape.
+fn evidence_sections(fact: &NarrativeFact) -> Vec<String> {
+    fact.evidence.iter().map(|e| e.section.clone()).collect()
+}
+
 /// The `canon-order/v1` contract — consumer/medium-adapter generated
 /// (guardrail B-1: an explicit declaration, e.g. a chapter chain for a
 /// linear novel, a quest DAG for a game). Extra JSON fields are ignored
@@ -1454,6 +1461,23 @@ pub enum ContinuityViolation {
         stamped_sha256: String,
         current_sha256: String,
     },
+    /// The prose under an evidence section moved since the author affirmed
+    /// they judged this claim against it (Round 806) — the claim outlived its
+    /// evidence. A paraphrasing claim is not a substring of the prose it
+    /// summarizes, so no membership check can see this; only the affirmation
+    /// can. The fix is to RE-READ the section and re-affirm, never to refresh
+    /// the hash. Structural (rides `severity`).
+    EvidenceStale {
+        fact_id: String,
+        section: String,
+        reviewed_sha256: String,
+        current_sha256: String,
+    },
+    /// A review affirmation names an evidence section carrying NO
+    /// `content_excerpt` (Round 806): the affirmation certifies prose the store
+    /// does not hold. The write path rejects this; the scan re-checks the
+    /// out-of-band-edited store (the Round 440 boundary doctrine).
+    EvidenceReviewUnanchored { fact_id: String, section: String },
     /// `supersedes_in_frame` names a fact that no longer exists.
     SuccessionTargetMissing { fact_id: String, target: String },
     /// Succession edges close a loop (Round 463; out-of-band edit — every
@@ -1802,6 +1826,17 @@ pub struct ContinuityReport {
     /// COULD NOT make it. The number is carried so the comparison the reader
     /// makes anyway is made here, correctly.
     pub sections: usize,
+    /// Evidence refs whose section HOLDS prose but which carry no review
+    /// affirmation (Round 806): the claim was never judged against a
+    /// fingerprint, so nothing can have moved under it.
+    ///
+    /// NOT a violation — an absent affirmation certifies nothing, so nothing
+    /// can drift from it (the Round 402 unrevalidatable model). But it is
+    /// ALWAYS counted and printed: a knob may decide whether an axis fails,
+    /// never whether it is measured. An evidence ref whose section carries no
+    /// excerpt is excluded — there is no prose to outlive, which is every spec
+    /// section.
+    pub evidence_unreviewed: usize,
     /// Declared narrative rules evaluated (Round 449; 0 = no rules file =
     /// the gate's pre-Round-449 behavior exactly).
     pub rules: usize,
@@ -2783,8 +2818,8 @@ pub fn scan_continuity(
             .get(&fact.branch)
             .filter(|b| b.is_confluence()) // Round 747 — the shared definition
             .map(|b| b.converges_from.as_slice());
-        for e in &fact.evidence {
-            if !positioned.contains(e.as_str()) {
+        for e in fact.evidence.iter().map(|e| e.section.as_str()) {
+            if !positioned.contains(e) {
                 continue;
             }
             // "Could this world have SEEN that scene, by now?" = it TRAVELS it
@@ -2799,7 +2834,7 @@ pub fn scan_continuity(
                             .push(ContinuityViolation::EvidenceUnreachable {
                                 fact: id.clone(),
                                 branch: fact.branch.clone(),
-                                evidence: e.clone(),
+                                evidence: e.to_string(),
                                 canon_from: fact.canon_from.clone(),
                             });
                     }
@@ -2812,7 +2847,7 @@ pub fn scan_continuity(
                                     fact: id.clone(),
                                     confluence: fact.branch.clone(),
                                     parent: parent.branch.clone(),
-                                    evidence: e.clone(),
+                                    evidence: e.to_string(),
                                     canon_from: fact.canon_from.clone(),
                                 },
                             );
@@ -2955,6 +2990,43 @@ pub fn scan_continuity(
         }
     }
     report.conflict_pairs_checked = pairs.len();
+    // Evidence review affirmations (Round 806): does the prose under each cited
+    // section still hash to what the author affirms they judged the claim
+    // against? The write path (`import_evidence_reviews`) rejects a stale
+    // affirmation at build time; this re-reads the FINAL store, which catches an
+    // out-of-band edit and the consumer who re-imports excerpts after affirming
+    // (the Round 440 boundary doctrine). One shared relation, two surfaces.
+    for (fid, fact) in facts {
+        for e in &fact.evidence {
+            // A section holding no prose is not an evidence axis at all (every
+            // spec section) — absent an affirmation there is nothing to say.
+            let excerpt = store
+                .sections
+                .get(&e.section)
+                .and_then(|sec| sec.content_excerpt.as_ref());
+            match (e.reviewed_excerpt_sha256.as_str(), excerpt) {
+                ("", None) => {}
+                ("", Some(_)) => report.evidence_unreviewed += 1,
+                (_, None) => {
+                    report
+                        .violations
+                        .push(ContinuityViolation::EvidenceReviewUnanchored {
+                            fact_id: fid.clone(),
+                            section: e.section.clone(),
+                        });
+                }
+                (reviewed, Some(x)) if reviewed != x.text_sha256 => {
+                    report.violations.push(ContinuityViolation::EvidenceStale {
+                        fact_id: fid.clone(),
+                        section: e.section.clone(),
+                        reviewed_sha256: reviewed.to_string(),
+                        current_sha256: x.text_sha256.clone(),
+                    });
+                }
+                (_, Some(_)) => {}
+            }
+        }
+    }
     let conflict_worlds = query_worlds(store);
     for (aid, bid) in &pairs {
         let (a, b) = (&facts[aid], &facts[bid]);
@@ -3984,7 +4056,7 @@ pub fn frame_view(
                 entities: fact.entities.clone(),
                 canon_from: fact.canon_from.clone(),
                 canon_to: fact.canon_to.clone(),
-                evidence: fact.evidence.clone(),
+                evidence: evidence_sections(fact),
                 typed: fact.typed.clone(),
                 quote: fact.quote.clone(),
                 count: store.fact_counts.get(id).copied(),
@@ -4843,7 +4915,7 @@ pub fn playthrough_manuscript(
                         entities: fact.entities.clone(),
                         canon_from: fact.canon_from.clone(),
                         canon_to: fact.canon_to.clone(),
-                        evidence: fact.evidence.clone(),
+                        evidence: evidence_sections(fact),
                         typed: fact.typed.clone(),
                         quote: fact.quote.clone(),
                         count: store.fact_counts.get(id).copied(),
@@ -6947,6 +7019,100 @@ mod tests {
         mnemosyne_atomic::amend_fact(&mut store, &path, &owner, "re-affirm edges").unwrap();
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(stale_count(&report), 0, "{:?}", report.violations);
+    }
+
+    /// Round 806 — the scan's leg of the evidence-review relation, walked across
+    /// all four states with the SAME store so each verdict is shown to be
+    /// reachable and distinct, not merely defined.
+    ///
+    /// NON-VACUITY is asserted explicitly at each step: the unreviewed COUNT must
+    /// reach a nonzero value (a scan that silently counted nothing would satisfy
+    /// every "no violation" assertion here), and the section carrying no prose
+    /// must contribute to neither axis (that is every spec section, and counting
+    /// them would drown the signal the count exists to carry).
+    #[test]
+    fn evidence_review_scan_separates_unreviewed_from_stale_from_no_prose() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let kinds = |report: &ContinuityReport| {
+            (
+                report
+                    .violations
+                    .iter()
+                    .filter(|v| matches!(v, ContinuityViolation::EvidenceStale { .. }))
+                    .count(),
+                report
+                    .violations
+                    .iter()
+                    .filter(|v| matches!(v, ContinuityViolation::EvidenceReviewUnanchored { .. }))
+                    .count(),
+            )
+        };
+        // (1) ch-1 holds no prose: neither a violation nor an unreviewed ref.
+        // Every spec section is this state, and it must stay off both axes.
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(kinds(&report), (0, 0));
+        assert_eq!(
+            report.evidence_unreviewed, 0,
+            "no prose = nothing to review"
+        );
+        // (2) prose arrives, still unaffirmed: counted, never a violation.
+        let text = "the prose the claim was written from";
+        let excerpt = |text: &str| mnemosyne_atomic::ContentExcerptImport {
+            section_id: "ch-1".to_string(),
+            anchor: mnemosyne_core::ContentAnchor {
+                source: "M.md".to_string(),
+                locator: mnemosyne_core::Locator::Prefix("the".to_string()),
+            },
+            text: text.to_string(),
+        };
+        mnemosyne_atomic::import_content_excerpts(&mut store, &path, &[excerpt(text)], None)
+            .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(kinds(&report), (0, 0));
+        assert_eq!(
+            report.evidence_unreviewed, 1,
+            "an unaffirmed claim over live prose must be COUNTED, not silently clean"
+        );
+        // (3) affirmed: clean on both axes, and off the unreviewed count.
+        let sha = mnemosyne_core::sha256_hex(text.as_bytes());
+        mnemosyne_atomic::import_evidence_reviews(
+            &mut store,
+            &path,
+            &[mnemosyne_atomic::EvidenceReviewImport {
+                fact_id: "f1".to_string(),
+                section_id: "ch-1".to_string(),
+                reviewed_excerpt_sha256: sha.clone(),
+            }],
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(kinds(&report), (0, 0));
+        assert_eq!(report.evidence_unreviewed, 0);
+        // (4) the prose moves AFTER the affirmation — the case the write path
+        // cannot see, because the excerpt import is a legitimate mutation that
+        // updates text and hash together. This is the reported hole.
+        mnemosyne_atomic::import_content_excerpts(
+            &mut store,
+            &path,
+            &[excerpt("prose that says something else entirely")],
+            None,
+        )
+        .unwrap();
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(kinds(&report), (1, 0), "{:?}", report.violations);
+        assert_eq!(
+            report.evidence_unreviewed, 0,
+            "a STALE affirmation is not an ABSENT one"
+        );
+        // (5) the excerpt is dropped out of band, leaving an affirmation that
+        // certifies prose the store no longer holds (the R440 boundary: the write
+        // path rejects it, the scan re-reads the edited store).
+        store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert_eq!(kinds(&report), (0, 1), "{:?}", report.violations);
     }
 
     /// Round 440 — out-of-band corruption fails LOUD as an `Err` from both
