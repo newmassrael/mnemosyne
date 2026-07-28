@@ -469,6 +469,49 @@ binaries and a packaged GitHub Action are intentionally deferred — add
 them only when a non-Rust consumer appears or CI compile time becomes a
 measured cost.
 
+**Local development, where the pin is NOT enforced by anything (Round
+823).** The CI recipe above is safe because a CI runner is fresh and has
+one consumer. A developer machine is neither: `cargo install` writes
+`~/.cargo/bin/mnemosyne-cli`, a slot every checkout on that machine
+shares, so the last `cargo install` wins and a project silently runs its
+gates with another project's tool. This is not hypothetical — Mnemosyne's
+own repo overwrote a consumer's pinned binary with an uncommitted local
+build, and the consumer's gates measured with it.
+
+Cargo pins your *library* dependencies (`Cargo.lock`) but it does not pin
+a binary you invoke by name. So resolve the binary FROM YOUR PIN rather
+than from `PATH`, and install per-rev so several pins coexist:
+
+```bash
+# consumer-side: derive the path from the pin, provision it if absent.
+MN_PIN="<PINNED_SHA>"
+MN_ROOT="${MN_ROOT:-$HOME/.local/mn}/$MN_PIN"
+if [[ ! -x "$MN_ROOT/bin/mnemosyne-cli" ]]; then
+  cargo install --git https://github.com/newmassrael/mnemosyne \
+    --rev "$MN_PIN" --locked mnemosyne-cli --root "$MN_ROOT"
+fi
+MN="${MN:-$MN_ROOT/bin/mnemosyne-cli}"
+```
+
+`$MN` is then independent of `PATH` and of every other checkout, bumping
+`MN_PIN` provisions the new binary by itself, and the old one stays put
+for whatever still pins it.
+
+Keep an assertion anyway, and run it wherever the tool is used — not only
+where the store is built. `mnemosyne-cli --version` prints
+`0.1.0 (<short-sha>)`, with a `-dirty` suffix when the tree it was built
+from had uncommitted changes; a `-dirty` build corresponds to no
+revision, so it must never be accepted as one:
+
+```bash
+rev="$("$MN" --version | sed -n 's/.*(\([0-9a-f]\{7,\}\)).*/\1/p')"
+[[ "$rev" == "$MN_PIN" ]] || { echo "mnemosyne-cli is $rev, pinned $MN_PIN" >&2; exit 1; }
+```
+
+A build script and a test harness that resolve the tool differently will
+eventually measure with different tools, and the numbers they report are
+then not comparable — put both halves behind one resolver.
+
 To bind a section to a code file (so the binding axis recognizes the cite
 as backed), use `add-section-binding` with an explicit `--kind`:
 

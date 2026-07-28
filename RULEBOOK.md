@@ -62,7 +62,9 @@ until a gate.
 - **Before** — citation hygiene: verify every `Round NNN` / `§id` exists before
   writing it (`CLAUDE.md`, the R255 rule).
 - **During** — build-error-first; no `vN` version-postfix; no legacy carry;
-  SSOT (one resolver per semantic, one home per datum).
+  SSOT (one resolver per semantic, one home per datum). Run the CLI as
+  `scripts/mn` — never `cargo install` into `~/.cargo/bin`, which is a slot
+  shared with the consumer checkouts on this machine (Round 823).
 - **After** — the changelog entry is self-contained (R452); `validate-workspace`
   clean; commit per `COMMIT_FORMAT.md` (no `Co-Authored-By`; ≤ 72-byte lines;
   1–3 contiguous bullets; English); update the RESUME memory + the topic memory

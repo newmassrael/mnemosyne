@@ -20,6 +20,20 @@ fn main() {
         .unwrap_or_else(|| "unknown".to_string());
 
     println!("cargo:rustc-env=BUILD_GIT_HASH={}", hash);
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/index");
+    // Round 823 — ABSOLUTE, because a rerun path resolves against the PACKAGE
+    // root and `.git` is at the workspace root. See the mnemosyne-cli build
+    // script for the full account; the bare paths named files that do not
+    // exist, which cargo reads as "changed", so this reran on every build.
+    if let Some(git_dir) = std::process::Command::new("git")
+        .args(["rev-parse", "--absolute-git-dir"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        println!("cargo:rerun-if-changed={git_dir}/HEAD");
+        println!("cargo:rerun-if-changed={git_dir}/index");
+    }
 }

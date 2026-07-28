@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# mn — run THIS working tree's mnemosyne-cli, always built from the current
+# source, never resolved from `~/.cargo/bin`.
+#
+# THE ONE RESOLVER for "the CLI of this checkout". Before Round 823 there were
+# three: `.githooks/pre-commit` and `.githooks/pre-push` each carried a
+# byte-identical chain (release binary if present -> PATH -> `cargo run`), and
+# interactive use just typed `mnemosyne-cli`, which is the PATH entry. Both of
+# those resolutions could hand back the wrong tool:
+#
+#   - `target/release/mnemosyne-cli` was preferred WITHOUT a freshness check, so
+#     a binary from an older build could silently gate a commit;
+#   - `~/.cargo/bin/mnemosyne-cli` is a SHARED slot. A sibling checkout installs
+#     its own pinned rev there and we overwrite it with ours (that collision is
+#     real and was ours: on 2026-07-29 this repo's `cargo install --path --force`
+#     replaced a consumer's pinned `75eddce5` with an uncommitted local build).
+#     A tool nobody agreed on builds a store nobody can reproduce.
+#
+# So: no PATH, no install, no preference for a stale artifact. Ask cargo, which
+# already owns the question "is this build current" — never re-implement
+# staleness here, that would be a second answer free to drift from cargo's.
+#
+# DEBUG, not release, and that is measured rather than assumed (Round 823). A
+# hook runs immediately after `git add`, so the git index has just moved and the
+# version stamp must be recomputed; from there a release build costs ~50s while
+# debug costs ~4s, and debug shares its artifacts with the clippy run the
+# pre-commit hook already does. Release wins only on execution (0.19s vs 1.0s on
+# this store), which does not repay a 46s build. If a caller ever needs the fast
+# binary for a long run, build it explicitly — this script is about being RIGHT.
+#
+# Usage:  scripts/mn <any mnemosyne-cli args>
+#         scripts/mn validate-workspace
+#
+# The build happens in this repo; the command runs in the CALLER's directory, so
+# `scripts/mn validate-workspace` from a consumer's workspace validates THEIRS.
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+(cd "$repo" && cargo build -q -p mnemosyne-cli)
+exec "$repo/target/debug/mnemosyne-cli" "$@"

@@ -57,14 +57,10 @@ if [[ "$delete_only" -eq 1 ]]; then
     exit 0
 fi
 
-# Prefer the release binary if it exists (much faster than `cargo run`).
-if [[ -x "target/release/mnemosyne-cli" ]]; then
-    cli=(target/release/mnemosyne-cli)
-elif command -v mnemosyne-cli >/dev/null 2>&1; then
-    cli=(mnemosyne-cli)
-else
-    cli=(cargo run -q -p mnemosyne-cli --)
-fi
+# Round 823 — ONE resolver, `scripts/mn`, the same one pre-commit uses. See that
+# hook for why the release-then-PATH chain that stood here was two ways to get
+# the wrong tool.
+cli=(scripts/mn)
 
 echo "pre-push: ${cli[*]} validate-workspace ..." >&2
 if ! "${cli[@]}" validate-workspace; then

@@ -58,16 +58,14 @@ cd "$repo_root"
 
 ATOMIC_SIDECAR="docs/.atomic/workspace.atomic.json"
 
-# Prefer the release binary if it exists (much faster than `cargo run`).
-# Falls back to `cargo run -q -p mnemosyne-cli --` so the hook still works
-# pre-first-build (e.g., a fresh clone running its first commit).
-if [[ -x "target/release/mnemosyne-cli" ]]; then
-    cli=(target/release/mnemosyne-cli)
-elif command -v mnemosyne-cli >/dev/null 2>&1; then
-    cli=(mnemosyne-cli)
-else
-    cli=(cargo run -q -p mnemosyne-cli --)
-fi
+# Round 823 — ONE resolver, `scripts/mn`, shared with pre-push and with
+# interactive use. This hook used to prefer `target/release/mnemosyne-cli` if it
+# existed and fall back to the PATH entry, and both could hand back the wrong
+# tool: the release artifact was taken WITHOUT a freshness check, so an older
+# build could gate a commit, and `~/.cargo/bin` is a slot shared with every other
+# checkout on the machine. `scripts/mn` asks cargo instead, which is cheap now
+# that the build script stops rerunning on every build.
+cli=(scripts/mn)
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
 
