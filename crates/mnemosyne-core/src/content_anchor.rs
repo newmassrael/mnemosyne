@@ -26,6 +26,41 @@ pub struct ContentAnchor {
     pub locator: Locator,
 }
 
+/// Where a [`Locator::Prefix`] lands in a document (Round 815).
+///
+/// THE resolution rule for a prefix coordinate, shared by everything that holds
+/// one. It was born inside the engine's slicer, where Round 766 established the
+/// three-way verdict: a prefix naming NO place and a prefix naming TWO are both
+/// failures, and only a unique hit is a coordinate. It lives here because the
+/// store holds prefix coordinates too — the section ladder's rungs — and had no
+/// way to ask this question without depending on the engine, so it asked
+/// nothing and accepted a rung pointing at prose that does not exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrefixResolution {
+    /// Exactly one occurrence, at this byte offset.
+    Unique(usize),
+    /// No occurrence — the coordinate names prose the document does not hold.
+    NotFound,
+    /// More than one occurrence, so the coordinate does not say WHICH. The count
+    /// is truthful (the walk finishes) rather than a bare "several".
+    Ambiguous(usize),
+}
+
+/// Resolve `prefix` against `text` — see [`PrefixResolution`].
+#[must_use]
+pub fn resolve_prefix(text: &str, prefix: &str) -> PrefixResolution {
+    let mut hits = text.match_indices(prefix).map(|(at, _)| at);
+    let Some(offset) = hits.next() else {
+        return PrefixResolution::NotFound;
+    };
+    if hits.next().is_some() {
+        // The first two are already counted; finish the walk only to report a
+        // truthful number.
+        return PrefixResolution::Ambiguous(2 + hits.count());
+    }
+    PrefixResolution::Unique(offset)
+}
+
 /// The position of a passage within its content-SSOT document.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]

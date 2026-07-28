@@ -380,22 +380,26 @@ impl PrefixSlices {
                     source: source.to_string(),
                 });
             };
-            let mut hits = text.match_indices(prefix.as_str()).map(|(at, _)| at);
-            let Some(offset) = hits.next() else {
-                return Err(ProseError::PrefixNotFound {
-                    source: source.to_string(),
-                    prefix: prefix.clone(),
-                });
+            // Round 815 — the three-way verdict moved to `mnemosyne_core` so the
+            // STORE can ask it too (its ladder rungs are prefix coordinates and
+            // it had no way to check them). Same rule, one home; this arm only
+            // dresses the verdict in this crate's error type.
+            let offset = match mnemosyne_core::resolve_prefix(text, prefix.as_str()) {
+                mnemosyne_core::PrefixResolution::Unique(at) => at,
+                mnemosyne_core::PrefixResolution::NotFound => {
+                    return Err(ProseError::PrefixNotFound {
+                        source: source.to_string(),
+                        prefix: prefix.clone(),
+                    });
+                }
+                mnemosyne_core::PrefixResolution::Ambiguous(occurrences) => {
+                    return Err(ProseError::PrefixAmbiguous {
+                        source: source.to_string(),
+                        prefix: prefix.clone(),
+                        occurrences,
+                    });
+                }
             };
-            if hits.next().is_some() {
-                return Err(ProseError::PrefixAmbiguous {
-                    source: source.to_string(),
-                    prefix: prefix.clone(),
-                    // The first two are already counted; finish the walk only to
-                    // report a truthful number in the error.
-                    occurrences: 2 + hits.count(),
-                });
-            }
             if placed.iter().any(|(_, seen, _)| *seen == anchor) {
                 return Err(ProseError::DuplicateAnchor {
                     source: source.to_string(),

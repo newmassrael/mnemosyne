@@ -4029,12 +4029,24 @@ pub struct LadderImport {
 /// an ambiguous coordinate would resolve to one slice and silently swallow the
 /// other.
 ///
-/// What this does NOT check is deliberate: whether each prefix actually occurs in
-/// the section's `content_excerpt`, exactly once, in the declared order. That is
-/// the RESOLUTION rule, it is the kernel's (the engine slices the excerpt at
-/// these anchors), and duplicating it here would make the same invariant answer
-/// to two write paths — the half-enforced-invariant class. The store stores
-/// coordinates; the engine judges whether they land.
+/// Round 815 — each rung's prefix IS resolved here: it must occur in the
+/// section's own `content_excerpt`, exactly once, from the same source document.
+///
+/// Round 765 deferred this deliberately, reasoning that duplicating the
+/// resolution rule would make one invariant answer to two write paths. That
+/// objection is sound and this does not duplicate: the rule moved to
+/// `mnemosyne_core::resolve_prefix`, and both the store's check and the engine's
+/// slicer call it. One home, two callers — the shape the objection asks for.
+///
+/// The deferral also assumed the engine would judge what the store merely
+/// stored. It cannot: the engine judges only when a consumer RUNS the slicer, so
+/// a rung that is never sliced is never judged, and a probe confirmed a rung
+/// naming prose the section does not hold imports clean with `validate-workspace`
+/// green. A judgment no gate can reach is not a judgment.
+///
+/// Declared ORDER is still not checked here, and that part of Round 765's
+/// reasoning stands: order is a property of the anchor SET against the document,
+/// which is what the slicer computes when it places them.
 pub fn import_ladders(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -4059,6 +4071,28 @@ pub fn import_ladders(
                 )));
             }
         }
+        // Round 815 — the prose a rung addresses, resolved ONCE per ladder.
+        //
+        // Three states, kept apart because saying one when it is the other is a
+        // lie about which thing is missing: a section ABSENT from the store is
+        // the documented `unmatched` outcome (reported below, never an error),
+        // a section PRESENT with no excerpt is a reject (a coordinate into prose
+        // the store does not hold), and a section with an excerpt is what the
+        // rung anchors get resolved against.
+        let section_prose = match store.sections.get(&l.section_id) {
+            None => None,
+            Some(sec) => match sec.content_excerpt.as_ref() {
+                Some(excerpt) => Some(excerpt),
+                None => {
+                    return Err(AtomicMutateError::Validation(format!(
+                        "import_ladders: {where_} anchors a rung into a section carrying \
+                         no content_excerpt — there is no prose to address (import \
+                         content excerpts first; this is a reject, never a skip, so the \
+                         check is never silently vacuous)"
+                    )));
+                }
+            },
+        };
         // `ContentAnchor` is `Hash` but not `Ord`, so the duplicate guard is a
         // hash set (the anchor is the whole coordinate: source + locator).
         let mut seen: std::collections::HashSet<&mnemosyne_core::ContentAnchor> =
@@ -4070,7 +4104,44 @@ pub fn import_ladders(
                 )));
             }
             match &rung.anchor.locator {
-                mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {}
+                mnemosyne_core::Locator::Prefix(prefix) if !prefix.trim().is_empty() => {
+                    // Round 815 — RESOLVE the coordinate, do not merely shape-check
+                    // it. This block validated that a prefix was non-empty and not a
+                    // CFI and then stored it, so a rung could name prose the section
+                    // does not hold and no gate ever said so. The section's own
+                    // excerpt is the document a rung addresses (this primitive's
+                    // contract), and `mnemosyne_core::resolve_prefix` is THE rule for
+                    // landing a prefix in a document — the same one the engine's
+                    // slicer applies, so a rung the store accepts is a rung the
+                    // slicer can place.
+                    let Some(excerpt) = section_prose else {
+                        continue; // section absent — the unmatched path reports it
+                    };
+                    if excerpt.anchor.source != rung.anchor.source {
+                        return Err(AtomicMutateError::Validation(format!(
+                            "import_ladders: {where_} anchors a rung in `{}` while the \
+                             section's prose comes from `{}` — a coordinate into another \
+                             document would resolve, if at all, by accident",
+                            rung.anchor.source, excerpt.anchor.source
+                        )));
+                    }
+                    match mnemosyne_core::resolve_prefix(&excerpt.text, prefix) {
+                        mnemosyne_core::PrefixResolution::Unique(_) => {}
+                        mnemosyne_core::PrefixResolution::NotFound => {
+                            return Err(AtomicMutateError::Validation(format!(
+                                "import_ladders: {where_} anchors a rung at `{prefix}`, \
+                                 which does not occur in the section's prose"
+                            )));
+                        }
+                        mnemosyne_core::PrefixResolution::Ambiguous(n) => {
+                            return Err(AtomicMutateError::Validation(format!(
+                                "import_ladders: {where_} anchors a rung at `{prefix}`, \
+                                 which occurs {n} times in the section's prose — a \
+                                 coordinate that names two places names neither"
+                            )));
+                        }
+                    }
+                }
                 mnemosyne_core::Locator::Prefix(_) => {
                     return Err(AtomicMutateError::Validation(format!(
                         "import_ladders: {where_} has a rung with an empty prefix anchor"
@@ -10519,6 +10590,28 @@ mod tests {
 
     /// Round 765 — seed the referents a ladder points at, so the import's
     /// dangling-ref checks are exercised against a store that really holds them.
+    /// Round 815 — the prose a ladder's rungs address. The fixtures anchor at
+    /// `셈은` and `물때는`, so the section must actually hold both, exactly once:
+    /// the store now RESOLVES a rung's coordinate instead of only shaping it.
+    const LADDER_PROSE: &str = "셈은 돌아오지 않는다.\n물때는 제 시각을 안다.";
+
+    fn seed_ladder_prose(store: &mut AtomicStore, sidecar: &Path, section_id: &str) {
+        import_content_excerpts(
+            store,
+            sidecar,
+            &[ContentExcerptImport {
+                section_id: section_id.to_string(),
+                anchor: mnemosyne_core::ContentAnchor {
+                    source: "MANUSCRIPT.md".to_string(),
+                    locator: mnemosyne_core::Locator::Prefix("셈은".to_string()),
+                },
+                text: LADDER_PROSE.to_string(),
+            }],
+            None,
+        )
+        .unwrap();
+    }
+
     fn seed_ladder_referents(store: &mut AtomicStore, sidecar: &Path) {
         seed_section(store, "d02-nat");
         seed_chapters(store);
@@ -10534,6 +10627,81 @@ mod tests {
         for id in ["f-tide", "f-name"] {
             add_fact(store, sidecar, &sample_fact(id, "gt")).unwrap();
         }
+        seed_ladder_prose(store, sidecar, "d02-nat");
+    }
+
+    /// Round 815 — the store RESOLVES a rung's coordinate instead of only shaping
+    /// it. Round 765 deferred this on the reasoning that duplicating the rule
+    /// would give one invariant two write paths; the rule now lives once in
+    /// `mnemosyne_core::resolve_prefix` and both callers use it, so the objection
+    /// is answered by construction rather than overridden.
+    ///
+    /// All four verdicts are walked, and the ACCEPT is asserted first: a check
+    /// that rejected everything would satisfy every rejection assertion below.
+    #[test]
+    fn a_rung_must_land_in_the_prose_it_addresses_r815() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+        let ladder = |r: LadderRung| {
+            vec![LadderImport {
+                section_id: "d02-nat".to_string(),
+                carrier: None,
+                rungs: vec![r],
+            }]
+        };
+        // ACCEPT: a prefix the section's prose holds exactly once.
+        import_ladders(&mut store, &sidecar, &ladder(rung("물때는"))).unwrap();
+        assert!(store.sections["d02-nat"].ladder.is_some());
+        // REJECT: prose the section does not hold — the probed defect.
+        let err =
+            import_ladders(&mut store, &sidecar, &ladder(rung("어디에도 없는 문장"))).unwrap_err();
+        assert!(err.to_string().contains("does not occur"), "{err}");
+        // REJECT: a prefix naming two places names neither, with a truthful count.
+        let err = import_ladders(&mut store, &sidecar, &ladder(rung("."))).unwrap_err();
+        assert!(err.to_string().contains("occurs 2 times"), "{err}");
+        // REJECT: a coordinate into another document would resolve, if at all,
+        // by accident — so the rung's source must be the excerpt's source.
+        let mut elsewhere = rung("물때는");
+        elsewhere.anchor.source = "OTHER.md".to_string();
+        let err = import_ladders(&mut store, &sidecar, &ladder(elsewhere)).unwrap_err();
+        assert!(err.to_string().contains("another document"), "{err}");
+        // REJECT: a section holding no prose is not a skip (the vacuity guard).
+        seed_section(&mut store, "d09-bam");
+        let err = import_ladders(
+            &mut store,
+            &sidecar,
+            &[LadderImport {
+                section_id: "d09-bam".to_string(),
+                carrier: None,
+                rungs: vec![rung("물때는")],
+            }],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("no content_excerpt"), "{err}");
+        // And a section ABSENT from the store stays the documented `unmatched`
+        // outcome — a different missing thing, reported not rejected.
+        // (paired with a matching entry, since a batch matching NOTHING is its
+        // own `NotFound` — the pre-existing contract, unrelated to this check)
+        let (_, unmatched) = import_ladders(
+            &mut store,
+            &sidecar,
+            &[
+                LadderImport {
+                    section_id: "d02-nat".to_string(),
+                    carrier: None,
+                    rungs: vec![rung("물때는")],
+                },
+                LadderImport {
+                    section_id: "nope".to_string(),
+                    carrier: None,
+                    rungs: vec![rung("어디에도 없는 문장")],
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(unmatched, vec!["nope".to_string()]);
     }
 
     #[test]
