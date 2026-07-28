@@ -33,6 +33,7 @@
 //! phases move the anchors + source into the store (R755 Phase 3) and swap the
 //! locator to an EPUB CFI (Phase 4) — a substrate swap the abstraction absorbs.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -80,7 +81,18 @@ pub struct Passage {
     pub(crate) anchor: ContentAnchor,
     /// The authored text at the anchor: a projection of the content-SSOT, never
     /// a free string.
-    pub(crate) text: String,
+    ///
+    /// `Cow<'static, str>` since Round 793, and it is an IMPLEMENTATION DETAIL —
+    /// [`Passage::text`] still returns `&str`, so no caller sees it. What it buys
+    /// is that a baked passage POINTS at the literal in the binary instead of
+    /// copying it: measured at 98.2% of the bytes a fully borrowed passage saves
+    /// (Round 792), while [`Passage::resolve`] and [`Passage::from_excerpt`] keep
+    /// owning because they build their text at run time.
+    ///
+    /// One type with two ownership modes rather than two types, which is the
+    /// Round 785 decision on the projection axis, reached again here for the same
+    /// reason: the split would be permanent API surface for every consumer.
+    pub(crate) text: Cow<'static, str>,
 }
 
 impl Passage {
@@ -94,7 +106,10 @@ impl Passage {
     /// anchor — the prose analog of a stale fact locator, fail-loud).
     pub fn resolve(anchor: ContentAnchor, source: &impl ContentSource) -> Result<Self, ProseError> {
         let text = source.resolve(&anchor)?;
-        Ok(Self { anchor, text })
+        Ok(Self {
+            anchor,
+            text: Cow::Owned(text),
+        })
     }
 
     /// Build a passage from a store `content_excerpt` (R757 P3b) — the STORE-CACHE
@@ -108,7 +123,7 @@ impl Passage {
     pub(crate) fn from_excerpt(excerpt: &mnemosyne_atomic::ContentExcerpt) -> Self {
         Self {
             anchor: excerpt.anchor.clone(),
-            text: excerpt.text.clone(),
+            text: Cow::Owned(excerpt.text.clone()),
         }
     }
 
@@ -144,7 +159,14 @@ pub struct PassagePart {
     /// The content-SSOT anchor — the passage's provenance.
     pub anchor: ContentAnchor,
     /// The authored text at that anchor.
-    pub text: String,
+    ///
+    /// `Cow<'static, str>` since Round 793, so a BAKED part can carry
+    /// `Cow::Borrowed` of the literal the emitter wrote and the passage built
+    /// from it points at the binary rather than copying it. `Passage::to_part`
+    /// on a live passage yields `Cow::Owned`, and the two compare equal by
+    /// CONTENT, which is what keeps the live-to-baked round trip an equality
+    /// rather than a shape check.
+    pub text: Cow<'static, str>,
 }
 
 /// A whole passage set as plain data (Round 791) — what a build-time bake writes
@@ -453,7 +475,12 @@ impl ContentSource for PrefixSlices {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContentAnchor, ContentSource, Locator, Passage, PrefixSlices, ProseError};
+    use std::borrow::Cow;
+
+    use super::{
+        passages_from_parts, ContentAnchor, ContentSource, Locator, Passage, PassagePart,
+        PassagesParts, PrefixSlices, ProseError,
+    };
 
     const DOC: &str = "manuscript-part1";
     // Three ordered passages in one document; the anchors are given OUT of order
@@ -466,6 +493,75 @@ mod tests {
             source: DOC.to_string(),
             locator: Locator::Prefix(text.to_string()),
         }
+    }
+
+    /// Round 793 — the ingestion door must PRESERVE a borrow, not merely accept
+    /// one.
+    ///
+    /// This is the half that can regress in silence. `Cow` compares by CONTENT,
+    /// so every other test in this workspace — the round trip, the live-to-baked
+    /// equality, the emitter's own fixture — passes identically whether the baked
+    /// passage points at the literal or copied it. A door written
+    /// `part.text.into_owned().into()` would look correct and undo the round, and
+    /// only the discriminant says otherwise.
+    ///
+    /// The owning direction is asserted too: a part that OWNS must stay owned, or
+    /// the door is quietly leaking one representation into the other rather than
+    /// carrying what it was given.
+    #[test]
+    fn the_ingestion_door_carries_the_borrow_it_was_given() {
+        let anchor = ContentAnchor {
+            source: "M.md".to_string(),
+            locator: Locator::Prefix("이름을".to_string()),
+        };
+        let borrowed = passages_from_parts(PassagesParts {
+            passages: vec![(
+                "sc-01".to_string(),
+                PassagePart {
+                    anchor: anchor.clone(),
+                    text: Cow::Borrowed("물때가 셈한다."),
+                },
+            )],
+        });
+        assert!(
+            matches!(borrowed["sc-01"].text, Cow::Borrowed(_)),
+            "a baked passage copied the literal instead of pointing at it, which \
+             is the whole of Round 793 and no content assertion can see it"
+        );
+
+        let owned = passages_from_parts(PassagesParts {
+            passages: vec![(
+                "sc-01".to_string(),
+                PassagePart {
+                    anchor,
+                    text: Cow::Owned("물때가 셈한다.".to_string()),
+                },
+            )],
+        });
+        assert!(matches!(owned["sc-01"].text, Cow::Owned(_)));
+
+        // And the two are equal, which is exactly why the discriminant needed its
+        // own assertion.
+        assert_eq!(borrowed, owned);
+    }
+
+    /// Round 793 — the run-time constructors still OWN, because they build their
+    /// text rather than pointing at a literal. Asserted so the `Cow` cannot drift
+    /// into a claim that everything borrows.
+    #[test]
+    fn the_runtime_constructors_still_own_their_text() {
+        let excerpt = mnemosyne_atomic::ContentExcerpt {
+            anchor: ContentAnchor {
+                source: "M.md".to_string(),
+                locator: Locator::Prefix("이름을".to_string()),
+            },
+            text: "물때가 셈한다.".to_string(),
+            text_sha256: String::new(),
+        };
+        assert!(matches!(
+            Passage::from_excerpt(&excerpt).text,
+            Cow::Owned(_)
+        ));
     }
 
     #[test]

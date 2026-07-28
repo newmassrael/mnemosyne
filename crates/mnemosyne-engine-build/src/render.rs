@@ -488,6 +488,20 @@ fn string(s: &str) -> String {
     format!("{s:?}.to_string()")
 }
 
+/// The same escaping WITHOUT the `.to_string()` — a bare `&'static str` literal
+/// (Round 793), for a field that borrows rather than owns.
+///
+/// It is a separate function rather than a flag on [`string`] because the two
+/// produce different TYPES, and a boolean deciding a type at a call site is the
+/// thing that reads correct while being wrong. Also worth naming: `.to_string()`
+/// is a method call rustc resolves, typechecks and codegens once per literal —
+/// Round 782 measured that as most of the 5.5x compile gap between an owned and a
+/// borrowed artifact — so every field that moves to this form gets cheaper to
+/// compile as well as to build.
+fn str_literal(s: &str) -> String {
+    format!("{s:?}")
+}
+
 fn strings(chunks: &mut Chunks, items: &[String]) -> String {
     chunked(chunks, STRING_TY, items, |_, s| string(s))
 }
@@ -622,10 +636,10 @@ pub fn render_passages(parts: &PassagesParts) -> String {
     let mut c = Chunks::new();
     let entries = chunked(&mut c, PASSAGE_ENTRY_TY, &parts.passages, |_, (id, p)| {
         format!(
-            "({}, ::mnemosyne_engine::PassagePart {{ anchor: {}, text: {} }})",
+            "({}, ::mnemosyne_engine::PassagePart {{ anchor: {}, text: ::std::borrow::Cow::Borrowed({}) }})",
             string(id),
             anchor(&p.anchor),
-            string(&p.text)
+            str_literal(&p.text)
         )
     });
     let mut build = String::new();

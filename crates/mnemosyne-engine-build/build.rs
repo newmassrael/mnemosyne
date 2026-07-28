@@ -235,7 +235,7 @@ fn main() {
                         source: "M.md".to_string(),
                         locator: Locator::Prefix("이름을".to_string()),
                     },
-                    text: nasty.to_string(),
+                    text: nasty.into(),
                 },
             ),
             (
@@ -245,7 +245,7 @@ fn main() {
                         source: "book.epub".to_string(),
                         locator: Locator::Cfi("/6/4[c]!/4/2".to_string()),
                     },
-                    text: "plain".to_string(),
+                    text: "plain".into(),
                 },
             ),
         ],

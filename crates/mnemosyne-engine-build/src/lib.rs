@@ -711,7 +711,7 @@ mod tests {
                         source: "M.md".to_string(),
                         locator: mnemosyne_engine::Locator::Prefix("이름을".to_string()),
                     },
-                    text: "그는 \"셈\"이라 했다.".to_string(),
+                    text: "그는 \"셈\"이라 했다.".into(),
                 },
             )],
         }
