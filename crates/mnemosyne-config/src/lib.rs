@@ -1219,6 +1219,132 @@ pub fn check_tool_pin(pin: &str, stamp: Option<&str>) -> std::result::Result<(),
     })
 }
 
+/// The environment marker recording that a pin switch already happened, so a
+/// mis-installed root cannot ping-pong forever (Round 832).
+pub const PIN_EXEC_ENV: &str = "MNEMOSYNE_PIN_EXEC";
+
+/// The per-revision install root a pin resolves to — ONE definition, shared by
+/// the switch that execs out of it and the refusal that tells you to install
+/// into it.
+///
+/// Two copies of this path would drift, and the drift reads as the tool looking
+/// somewhere its own advice never named. `MN_ROOT` overrides the base because
+/// SCHEMA_GUIDE's shell recipe already documents that knob; this honours the
+/// existing one rather than inventing a second.
+#[must_use]
+pub fn pinned_root(pin: &str) -> Option<PathBuf> {
+    let base = match std::env::var_os("MN_ROOT") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => PathBuf::from(std::env::var_os("HOME")?).join(".local/mn"),
+    };
+    Some(base.join(pin))
+}
+
+/// Where the pinned build of `bin` is expected to live. `cargo install --root R`
+/// writes `R/bin/<name>`, so this is that layout read back.
+#[must_use]
+pub fn pinned_binary(pin: &str, bin: &str) -> Option<PathBuf> {
+    Some(pinned_root(pin)?.join("bin").join(bin))
+}
+
+/// Which refusals a switch could repair.
+///
+/// [`PinRefusal::Unidentified`] is NOT a wrong revision — it is this build
+/// failing to say what it is, which no installed binary repairs. Launching a
+/// second process there would hide a defect in the first, and Round 826 chose
+/// fail-closed for exactly that case. The other three all mean "this is not the
+/// pinned revision", which is precisely what another binary fixes.
+#[must_use]
+pub fn switch_can_repair(refusal: &PinRefusal) -> bool {
+    !matches!(refusal, PinRefusal::Unidentified)
+}
+
+/// The binary this process is, for both the switch target and the refusal.
+fn running_binary_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "mnemosyne-cli".to_string())
+}
+
+/// Replace this process with the pinned build when it is ALREADY INSTALLED
+/// (Round 832).
+///
+/// This is use, not procurement, and the distinction is the whole design.
+/// Resolving a revision that is already on disk costs one `exec` and reaches no
+/// network; downloading and running another version of oneself is a
+/// supply-chain hazard and stays refused — an absent build falls through to the
+/// refusal that says how to install it.
+///
+/// `exec` REPLACES the image rather than spawning a child, which is what keeps
+/// an MCP server's stdio pipes, the caller's cwd, and the exit code intact. On
+/// success this therefore does not return at all.
+///
+/// Returns `Ok(())` when no switch was possible — the caller then refuses as
+/// before. Returns `Err` when a switch was already attempted for this pin and
+/// did not take, which means the build installed at that path is not the
+/// revision the path claims, and must not be quiet.
+#[cfg(unix)]
+fn switch_to_pinned(pin: &str, refusal: &PinRefusal) -> Result<()> {
+    use std::io::Write;
+    use std::os::unix::process::CommandExt;
+
+    if !switch_can_repair(refusal) {
+        return Ok(());
+    }
+    let bin = running_binary_name();
+    let Some(target) = pinned_binary(pin, &bin) else {
+        return Ok(());
+    };
+
+    // THE LOOP GUARD. After an exec the replacement runs with the same argv and
+    // the same cwd, so it discovers the same config and reads the same pin — a
+    // second mismatch can therefore only mean the binary sitting at that path is
+    // not the revision the path names. That is a broken install, and exec'ing it
+    // again would spin forever instead of saying so.
+    if std::env::var_os(PIN_EXEC_ENV).is_some_and(|prev| prev == *std::ffi::OsStr::new(pin)) {
+        anyhow::bail!(
+            "already switched to `{}` for pin `{pin}`, and {refusal}.\n  \
+             the build installed there is not the revision that path names — reinstall it:\n    \
+             cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
+             {bin} --root {}",
+            target.display(),
+            pinned_root(pin).unwrap_or_default().display()
+        );
+    }
+    if !target.is_file() {
+        // Never procures. The refusal downstream carries the install line.
+        return Ok(());
+    }
+
+    // stderr, never stdout: an MCP server speaks its protocol on stdout and a
+    // note there would corrupt the stream. Loud either way — a tool quietly
+    // becoming a different tool is the surprise this must not be.
+    eprintln!(
+        "note: this build {refusal}; switching to the pinned build at {}",
+        target.display()
+    );
+    // `exec` discards whatever this process has buffered and not written.
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+
+    let err = std::process::Command::new(&target)
+        .args(std::env::args_os().skip(1))
+        .env(PIN_EXEC_ENV, pin)
+        .exec();
+    // `exec` returns ONLY on failure.
+    Err(anyhow::anyhow!(
+        "the pinned build at {} could not be run: {err}",
+        target.display()
+    ))
+}
+
+#[cfg(not(unix))]
+fn switch_to_pinned(_pin: &str, _refusal: &PinRefusal) -> Result<()> {
+    // No `exec` outside unix; the refusal below still names the install.
+    Ok(())
+}
+
 /// Enforce a loaded config's `[tool] pin` against this process's stamp.
 ///
 /// Called from every config load, so a pinned workspace cannot be opened by a
@@ -1238,23 +1364,26 @@ fn enforce_tool_pin(cfg: &WorkspaceConfig, config_path: &Path) -> Result<()> {
         );
         return Ok(());
     }
-    check_tool_pin(pin, tool_stamp()).map_err(|refusal| {
-        // Name the binary that is actually refusing. Both binaries reach this
-        // one message, and a remedy that says `mnemosyne-cli` to someone whose
-        // MCP server just failed to start sends them to install the wrong tool.
-        let bin = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "mnemosyne-cli".to_string());
-        anyhow::anyhow!(
-            "{} pins Mnemosyne `{pin}`, and {refusal}.\n  \
-             install the pinned revision beside the others, and point this run at it:\n    \
-             cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
-             {bin} --root ~/.local/mn/{pin}\n  \
-             to run anyway, knowing the result is not attributable to `{pin}`, set {PIN_SKIP_ENV}=1",
-            config_path.display()
-        )
-    })
+    let Err(refusal) = check_tool_pin(pin, tool_stamp()) else {
+        return Ok(());
+    };
+    // Use the pinned build if it is already here. Diverges on success.
+    switch_to_pinned(pin, &refusal)?;
+
+    // Name the binary that is actually refusing. Both binaries reach this one
+    // message, and a remedy that says `mnemosyne-cli` to someone whose MCP
+    // server just failed to start sends them to install the wrong tool.
+    let bin = running_binary_name();
+    let root =
+        pinned_root(pin).map_or_else(|| format!("~/.local/mn/{pin}"), |p| p.display().to_string());
+    Err(anyhow::anyhow!(
+        "{} pins Mnemosyne `{pin}`, and {refusal}.\n  \
+         install the pinned revision beside the others — it is then used automatically:\n    \
+         cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
+         {bin} --root {root}\n  \
+         to run anyway, knowing the result is not attributable to `{pin}`, set {PIN_SKIP_ENV}=1",
+        config_path.display()
+    ))
 }
 
 /// Parse a TOML byte slice into a config struct + validate.
@@ -2261,4 +2390,28 @@ narrative_rules_path = "narrative-rules.json"
         // this section keeps working untouched.
         assert!(parse_config("[workspace]\n").is_ok());
     }
+
+    /// Round 832 — a switch repairs a WRONG revision, never an unidentified
+    /// build. The three that mean "this is not the pin" are fixed by running the
+    /// one that is; `Unidentified` means this build never said what it is, which
+    /// is a defect in the build itself and which launching another process would
+    /// hide rather than fix.
+    #[test]
+    fn only_a_wrong_revision_is_repairable_by_switching() {
+        assert!(!switch_can_repair(&PinRefusal::Unidentified));
+        assert!(switch_can_repair(&PinRefusal::Unknown));
+        assert!(switch_can_repair(&PinRefusal::Dirty {
+            stamp: "31153157-dirty".into()
+        }));
+        assert!(switch_can_repair(&PinRefusal::Different {
+            stamp: "11d703bf".into(),
+            pin: "75eddce5".into()
+        }));
+    }
+
+    // The resolved path — that it is the layout `cargo install --root` writes,
+    // and that the refusal's install line names the same directory the switch
+    // looked in — is asserted in `tool_pin_smoke.rs` instead. It depends on
+    // process environment, and setting that here would race the other tests in
+    // this binary; the smoke test sets it on a CHILD, where it is hermetic.
 }

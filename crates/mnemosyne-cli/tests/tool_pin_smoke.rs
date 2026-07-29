@@ -12,6 +12,16 @@
 //! foreign pin with a non-zero exit, pass an unpinned workspace untouched (the
 //! opt-in half — every consumer that predates the pin), and honour the documented
 //! waiver while saying out loud that it did.
+//!
+//! Round 832 added the fourth answer, and it is the one the others cannot see:
+//! when the pinned build is ALREADY INSTALLED, the binary switches to it instead
+//! of refusing. Refusal and switching share one code path and one resolved path,
+//! so a test that only ever meets an absent build cannot tell "declined to
+//! procure" from "never looked".
+//!
+//! Every test here sets `MN_ROOT` to a temporary directory. Without that the
+//! answers depend on what the developer happens to have installed under
+//! `~/.local/mn`, which is a suite that passes for reasons outside itself.
 
 use std::path::Path;
 use std::process::Command;
@@ -102,7 +112,7 @@ fn workspace_with(toml: &str) -> tempfile::TempDir {
 /// Asking cargo makes staleness and absence alike impossible, for the same
 /// reason `scripts/mn` asks cargo rather than comparing mtimes: freshness is
 /// cargo's question, and a second answer to it is free to be wrong.
-fn run_in(bin: &str, workspace: &Path, skip: bool) -> std::process::Output {
+fn run_in(bin: &str, workspace: &Path, skip: bool, mn_root: &Path) -> std::process::Output {
     let mut cmd = Command::new(env!("CARGO"));
     // `--manifest-path` so cargo builds HERE while the child runs THERE: the
     // CLI discovers its workspace by walking up from its own directory, so
@@ -140,12 +150,38 @@ fn run_in(bin: &str, workspace: &Path, skip: bool) -> std::process::Output {
         ),
     }
     cmd.current_dir(workspace);
+    // Where a pin resolves to, held to the test's own directory so the answer
+    // does not depend on this machine's `~/.local/mn`.
+    cmd.env("MN_ROOT", mn_root);
+    // Never inherit the switch marker: a test that ran under one would read as
+    // the loop guard tripping rather than as the case it means to check.
+    cmd.env_remove(mnemosyne_config::PIN_EXEC_ENV);
     if skip {
         cmd.env(mnemosyne_config::PIN_SKIP_ENV, "1");
     } else {
         cmd.env_remove(mnemosyne_config::PIN_SKIP_ENV);
     }
     cmd.output().expect("spawn")
+}
+
+/// An empty install root — nothing is provisioned under this pin.
+fn empty_root() -> tempfile::TempDir {
+    tempfile::TempDir::new().expect("tempdir")
+}
+
+/// Install `content` as the pinned build of `bin`, at the layout
+/// `cargo install --root` writes and [`mnemosyne_config::pinned_binary`] reads.
+fn install_pinned(root: &Path, pin: &str, bin: &str, content: &[u8]) {
+    let dir = root.join(pin).join("bin");
+    std::fs::create_dir_all(&dir).expect("install dir");
+    let path = dir.join(bin);
+    std::fs::write(&path, content).expect("write pinned build");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("make executable");
+    }
 }
 
 #[test]
@@ -155,8 +191,9 @@ fn every_binary_refuses_a_workspace_pinned_to_another_revision() {
     // matters. (A local build is `-dirty` besides, and a dirty build satisfies
     // no pin at all; both paths land in the same refusal.)
     let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
     for bin in &pinned_binaries() {
-        let out = run_in(bin, ws.path(), false);
+        let out = run_in(bin, ws.path(), false, root.path());
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(
             !out.status.success(),
@@ -197,8 +234,9 @@ fn an_unpinned_workspace_is_untouched_by_any_binary() {
     // The opt-in half. If this ever fails, the pin has been made mandatory and
     // every consumer that predates it is broken.
     let ws = workspace_with("[workspace]\n");
+    let root = empty_root();
     for bin in &pinned_binaries() {
-        let out = run_in(bin, ws.path(), false);
+        let out = run_in(bin, ws.path(), false, root.path());
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(
             !err.contains("pins Mnemosyne"),
@@ -210,8 +248,9 @@ fn an_unpinned_workspace_is_untouched_by_any_binary() {
 #[test]
 fn the_waiver_is_honoured_and_never_silent() {
     let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
     for bin in &pinned_binaries() {
-        let out = run_in(bin, ws.path(), true);
+        let out = run_in(bin, ws.path(), true, root.path());
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(
             err.contains(mnemosyne_config::PIN_SKIP_ENV),
@@ -223,4 +262,112 @@ fn the_waiver_is_honoured_and_never_silent() {
             "{bin} refused despite the documented waiver: {err}"
         );
     }
+}
+
+/// The Round 832 answer: an installed pin is USED, not refused.
+///
+/// The stand-in is a shell script rather than a real Mnemosyne build because
+/// what is under test is the switch, not the switched-to: a script that prints
+/// a sentinel and exits 0 proves the exec happened, reached the right path, and
+/// carried the arguments — none of which a second copy of the real binary would
+/// show more clearly.
+#[test]
+fn an_installed_pinned_build_is_used_instead_of_refused() {
+    let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        install_pinned(
+            root.path(),
+            "deadbeef",
+            bin,
+            b"#!/bin/sh\necho SWITCHED-TO-PINNED\nexit 0\n",
+        );
+    }
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("SWITCHED-TO-PINNED"),
+            "{bin} did not run the installed pinned build\nstdout: {stdout}\nstderr: {err}"
+        );
+        assert!(
+            out.status.success(),
+            "{bin} switched but did not carry the replacement's exit code\nstderr: {err}"
+        );
+        assert!(
+            !err.contains("pins Mnemosyne `deadbeef`, and"),
+            "{bin} refused a pin it could have satisfied by switching: {err}"
+        );
+        // Loud, and on stderr — an MCP server speaks its protocol on stdout, so
+        // a note there would corrupt the stream of the very thing being fixed.
+        assert!(
+            err.contains("switching to the pinned build"),
+            "{bin} became a different tool without saying so: {err}"
+        );
+    }
+}
+
+/// The boundary the switch must NOT cross: an absent build is refused, never
+/// fetched. Enforcement and procurement stay separate.
+#[test]
+fn an_absent_pinned_build_is_refused_and_never_procured() {
+    let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{bin} proceeded with no pinned build installed: {err}"
+        );
+        assert!(
+            err.contains("cargo install --git"),
+            "{bin} refused without the line that installs the build it wants: {err}"
+        );
+        // The refusal must name the place the switch actually looked, or the
+        // reader installs into a directory the tool will not read.
+        assert!(
+            err.contains(&root.path().display().to_string()),
+            "{bin}'s remedy names a root other than the one it resolved: {err}"
+        );
+        assert!(
+            root.path().join("deadbeef").metadata().is_err(),
+            "{bin} provisioned a build under the pin — enforcement must not procure"
+        );
+    }
+}
+
+/// The loop guard. A build installed under a pin that is not that revision would
+/// otherwise exec itself forever; it must stop after one hop and say why.
+///
+/// The stand-in here IS the real CLI — `CARGO_BIN_EXE_*`, this crate's own
+/// binary, which cargo builds before the test — because only a build that
+/// re-checks the pin can reach the guard at all. (The file doc's warning about
+/// paths into `target/` is about reaching for a SIBLING crate's binary, which
+/// cargo has not been asked to build; this one it guarantees.)
+#[test]
+fn a_mis_installed_pin_stops_after_one_switch() {
+    let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
+    let real = std::fs::read(env!("CARGO_BIN_EXE_mnemosyne-cli")).expect("read built cli");
+    install_pinned(root.path(), "deadbeef", "mnemosyne-cli", &real);
+
+    let out = run_in("mnemosyne-cli", ws.path(), false, root.path());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a build that is not the revision its path names was accepted: {err}"
+    );
+    assert!(
+        err.contains("already switched to"),
+        "the second mismatch was not reported as a broken install, so the \
+         reader cannot tell it from a first refusal: {err}"
+    );
+    // Exactly one hop: a second note would mean the guard let it go round again.
+    assert_eq!(
+        err.matches("switching to the pinned build").count(),
+        1,
+        "the switch ran more than once: {err}"
+    );
 }

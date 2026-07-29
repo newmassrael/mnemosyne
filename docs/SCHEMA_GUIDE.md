@@ -523,12 +523,22 @@ the workspace itself, where the tool reads it:
 pin = "75eddce5"   # the Mnemosyne revision this workspace is validated by
 ```
 
-Every Mnemosyne binary — the CLI and the MCP server alike — refuses to
-open a workspace whose declared pin is not the revision it was built
-from, and says so with the revision it *is*, the revision you asked for,
-and the command that installs the right one. This reaches surfaces the
-recipe above cannot: an MCP server is launched by a host config that is
-not yours to script, but `--workspace` already points here.
+Every Mnemosyne binary — the CLI and the MCP server alike — checks the
+declared pin against the revision it was built from. If the pinned build
+is already installed under the per-rev root, **it switches to it and runs
+that** (Round 832); if it is not installed, it refuses, and says so with
+the revision it *is*, the revision you asked for, and the command that
+installs the right one. This reaches surfaces the recipe above cannot: an
+MCP server is launched by a host config that is not yours to script, but
+`--workspace` already points here.
+
+So one declaration is enough. You do not need a wrapper script per repo,
+and the host config that launches an MCP server can keep naming whatever
+binary it already names — that binary reads your pin and hands over to
+the right one. The switch replaces the process rather than spawning a
+child, so stdio, working directory and exit code all survive it; a server
+mid-handshake does not notice. It announces itself on stderr, never
+stdout, because stdout is where the server's protocol lives.
 
 **Adopt in this order: UPGRADE FIRST, THEN DECLARE (Round 828).** A
 binary built before this section existed cannot read a config that has
@@ -574,11 +584,26 @@ The rules, so nothing is surprising:
   which is not the same as verified-and-wrong.
 - **`MNEMOSYNE_PIN_SKIP=1` waives it**, and warns on every use. A result
   produced under the waiver is not attributable to the pinned revision.
+- **An unidentified build is refused, never switched away from.** A build
+  that never declared which revision it is has a defect no installed
+  binary repairs, and handing off would hide it in a second process.
+- **The switch happens at most once.** If the build sitting under a pin
+  is not the revision that path names, the second check says so and
+  stops, rather than exec'ing in a circle.
 
-This does NOT provision the binary — installing the pinned revision is
-still the per-rev `--root` recipe above. Enforcement and provisioning are
-deliberately separate: a tool that downloaded and ran another version of
-itself would be a supply-chain hazard, not a convenience.
+**Using an installed revision is not procuring one, and the difference is
+the whole boundary.** The switch resolves a build that is already on
+disk: no network, no compile, one `exec`. Downloading and running another
+version of itself is what a tool must not do, so an absent build is still
+refused with the install line — provisioning stays the per-rev `--root`
+recipe above, or an explicit command you run on purpose.
+
+Where a pin resolves to is `$MN_ROOT/<pin>/bin/<binary>`, defaulting to
+`~/.local/mn` — the same `MN_ROOT` the shell recipe above uses, and the
+same path the refusal prints. The lookup and the advice are one
+definition on purpose: two spellings of it would drift, and the drift
+would read as the tool searching where its own instructions never
+pointed.
 
 `[tool] pin` and `schema_version` do not overlap. The store's schema
 version guards the SHAPE of what is written, and its monotone guard
