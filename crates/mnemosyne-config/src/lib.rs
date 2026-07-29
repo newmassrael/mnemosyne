@@ -176,6 +176,38 @@ pub struct WorkspaceConfig {
     /// pays no cost).
     #[serde(default)]
     pub continuity: Option<ContinuitySection>,
+
+    /// `[tool]` — which Mnemosyne revision may act on this workspace (Round
+    /// 825). Opt-in: absent means unpinned, which is every workspace that
+    /// existed before this section did.
+    #[serde(default)]
+    pub tool: Option<ToolSection>,
+}
+
+/// `[tool]` table — the tool pin (Round 825).
+///
+/// Cargo pins a consumer's LIBRARY dependencies through `Cargo.lock` and pins
+/// nothing about a binary they invoke by name, so a consumer's gates run with
+/// whatever tool happens to be resolvable. This is the declaration that closes
+/// that: the workspace states which revision of Mnemosyne is allowed to act on
+/// it, and every Mnemosyne binary refuses while carrying a different stamp.
+///
+/// It lives in `mnemosyne.toml` rather than beside whatever launches the tool
+/// because that file is the consumer's own, versioned with the store — and
+/// because the host config that launches an MCP server is not ours to change,
+/// while `--workspace` already points here.
+///
+/// This does NOT overlap `schema_version`: that guards the shape of what is
+/// written and is enforced by the store's monotone guard, while this guards the
+/// judgement that produced it. Round 821 and Round 822 changed no schema and
+/// changed what `validate-continuity` reports.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ToolSection {
+    /// The Mnemosyne git revision this workspace is validated by — any prefix
+    /// of at least seven hex characters, git's own abbreviation floor.
+    #[serde(default)]
+    pub pin: Option<String>,
 }
 
 /// `[atomic]` table — atomic store path override (Round 279).
@@ -1079,6 +1111,152 @@ pub struct LoadedConfig {
     pub config_path: PathBuf,
 }
 
+/// The identity of the running binary — its `BUILD_GIT_HASH` — registered once
+/// at startup so a config load can prove which tool is opening the workspace.
+static TOOL_STAMP: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// The environment variable that waives the tool pin.
+pub const PIN_SKIP_ENV: &str = "MNEMOSYNE_PIN_SKIP";
+
+/// Declare which Mnemosyne build this process is (Round 826). Call once, first
+/// thing in `main`, passing `env!("BUILD_GIT_HASH")`.
+///
+/// A process has exactly one identity, so this is process-global on purpose
+/// rather than threaded through the eighteen call sites that load a config —
+/// and threading it would also force `mnemosyne-ops`, a library with no stamp
+/// of its own, to carry one.
+///
+/// FORGETTING TO CALL THIS FAILS CLOSED. An unregistered process meeting a
+/// PINNED workspace cannot prove itself and is refused; it is not waved
+/// through. That is what made this the chosen enforcement shape: a mistake
+/// surfaces as a loud stop rather than a silent pass. An unpinned workspace is
+/// unaffected either way.
+///
+/// Calling it twice with the same value is fine; a second, DIFFERENT value is a
+/// bug in the caller (one process, one identity) and is ignored rather than
+/// silently replacing the first.
+pub fn register_tool_stamp(stamp: &str) {
+    let _ = TOOL_STAMP.set(stamp.to_string());
+}
+
+/// What this process registered, if anything — for diagnostics and tests.
+#[must_use]
+pub fn tool_stamp() -> Option<&'static str> {
+    TOOL_STAMP.get().map(String::as_str)
+}
+
+/// Why a stamp does not satisfy a declared pin. Each variant is a DIFFERENT
+/// repair, which is why they are not one "mismatch" (the Round 817 rule: naming
+/// one failure when it is another lies about what has to be fixed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PinRefusal {
+    /// The process never declared what it is, so nothing can be compared.
+    Unidentified,
+    /// The binary was built from a tree with uncommitted changes, so it
+    /// corresponds to no revision at all.
+    Dirty { stamp: String },
+    /// The binary was built without git, so its revision is unknowable —
+    /// distinct from being known and wrong.
+    Unknown,
+    /// Both are revisions and they are different ones.
+    Different { stamp: String, pin: String },
+}
+
+impl std::fmt::Display for PinRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unidentified => write!(
+                f,
+                "this build did not declare which revision it is, so the pin cannot be checked"
+            ),
+            Self::Dirty { stamp } => write!(
+                f,
+                "this build is `{stamp}` — built from a tree with uncommitted changes, \
+                 so it is not any revision"
+            ),
+            Self::Unknown => write!(
+                f,
+                "this build carries no revision (built without git), so the pin cannot be checked"
+            ),
+            Self::Different { stamp, pin } => {
+                write!(f, "this build is `{stamp}`, and the workspace pins `{pin}`")
+            }
+        }
+    }
+}
+
+/// THE tool-pin comparison (Round 825). `Ok(())` when `stamp` satisfies `pin`.
+///
+/// A stamp is `git describe --always --dirty --abbrev=8`: at least eight hex
+/// characters, possibly more, with an optional `-dirty` suffix. A declared pin
+/// is hand-written at whatever length its author chose — the first playable
+/// consumer writes eight, a Cargo.toml rev is forty — so the comparison is a
+/// PREFIX one on the shorter of the two, which is how a human reads two
+/// revisions for equality.
+///
+/// A `-dirty` or `unknown` stamp satisfies NOTHING. A dirty build corresponds to
+/// no revision, and telling a pinned consumer otherwise is the exact lie the pin
+/// exists to prevent.
+pub fn check_tool_pin(pin: &str, stamp: Option<&str>) -> std::result::Result<(), PinRefusal> {
+    let Some(stamp) = stamp else {
+        return Err(PinRefusal::Unidentified);
+    };
+    if stamp.ends_with("-dirty") {
+        return Err(PinRefusal::Dirty {
+            stamp: stamp.to_string(),
+        });
+    }
+    if stamp == "unknown" {
+        return Err(PinRefusal::Unknown);
+    }
+    let shorter = stamp.len().min(pin.len());
+    if stamp[..shorter].eq_ignore_ascii_case(&pin[..shorter]) {
+        return Ok(());
+    }
+    Err(PinRefusal::Different {
+        stamp: stamp.to_string(),
+        pin: pin.to_string(),
+    })
+}
+
+/// Enforce a loaded config's `[tool] pin` against this process's stamp.
+///
+/// Called from every config load, so a pinned workspace cannot be opened by a
+/// tool that has not proven itself — see [`register_tool_stamp`] for why the
+/// identity is process-global and why forgetting it fails closed.
+fn enforce_tool_pin(cfg: &WorkspaceConfig, config_path: &Path) -> Result<()> {
+    let Some(pin) = cfg.tool.as_ref().and_then(|t| t.pin.as_deref()) else {
+        return Ok(());
+    };
+    if std::env::var_os(PIN_SKIP_ENV).is_some() {
+        // Loud on EVERY use, never once: a silent waiver is how a waiver
+        // becomes permanent, and this one disables the guarantee outright.
+        eprintln!(
+            "warning: {PIN_SKIP_ENV} is set — the tool pin `{pin}` declared by {} is NOT enforced; \
+             results from this run are not attributable to that revision",
+            config_path.display()
+        );
+        return Ok(());
+    }
+    check_tool_pin(pin, tool_stamp()).map_err(|refusal| {
+        // Name the binary that is actually refusing. Both binaries reach this
+        // one message, and a remedy that says `mnemosyne-cli` to someone whose
+        // MCP server just failed to start sends them to install the wrong tool.
+        let bin = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "mnemosyne-cli".to_string());
+        anyhow::anyhow!(
+            "{} pins Mnemosyne `{pin}`, and {refusal}.\n  \
+             install the pinned revision beside the others, and point this run at it:\n    \
+             cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
+             {bin} --root ~/.local/mn/{pin}\n  \
+             to run anyway, knowing the result is not attributable to `{pin}`, set {PIN_SKIP_ENV}=1",
+            config_path.display()
+        )
+    })
+}
+
 /// Parse a TOML byte slice into a config struct + validate.
 pub fn parse_config(content: &str) -> Result<WorkspaceConfig> {
     let cfg: WorkspaceConfig = toml::from_str(content).context("mnemosyne.toml parse failed")?;
@@ -1194,6 +1372,17 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
             }
         }
     }
+    // Round 826 — the tool pin's SHAPE, checked at load like every other pin in
+    // this file. Seven is git's own abbreviation floor; below it a prefix stops
+    // naming one commit, and a pin that matches several revisions pins none.
+    if let Some(pin) = cfg.tool.as_ref().and_then(|t| t.pin.as_deref()) {
+        if pin.len() < 7 || !pin.chars().all(|c| c.is_ascii_hexdigit()) {
+            bail!(
+                "mnemosyne.toml: `tool.pin` must be at least 7 hex characters of a git revision \
+                 (got `{pin}`)"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -1204,6 +1393,11 @@ pub fn load_config(config_path: &Path) -> Result<LoadedConfig> {
     let content = std::fs::read_to_string(config_path)
         .with_context(|| format!("read {}", config_path.display()))?;
     let config = parse_config(&content)?;
+    // Round 826 — the tool pin is enforced HERE, the one place a workspace is
+    // opened, so every one of the eighteen call sites that reach a config is
+    // covered by construction rather than by each remembering to ask.
+    // `discover_config` routes through this too.
+    enforce_tool_pin(&config, config_path)?;
 
     let config_dir = config_path
         .parent()
@@ -2009,5 +2203,62 @@ narrative_rules_path = "narrative-rules.json"
             "[workspace]\n\n[continuity]\ncanon_order_path = \"canon-order.json\"\nrules_path = \"narrative-rules.json\"\n",
         );
         assert!(ok.is_ok(), "correct keys must still parse: {ok:?}");
+    }
+
+    /// Round 826 — the tool-pin comparison, across every way a stamp can fail to
+    /// be a revision. The refusals are separate variants because each is a
+    /// different repair, so the test reads them rather than only `is_err`.
+    #[test]
+    fn a_stamp_satisfies_a_pin_only_by_being_that_revision() {
+        // A pin is written at whatever length its author chose and a stamp is
+        // at least eight characters, so the comparison is a prefix one on the
+        // shorter side — in BOTH directions.
+        assert!(check_tool_pin("75eddce5", Some("75eddce58b3c")).is_ok());
+        assert!(check_tool_pin("75eddce58b3c10532b2e", Some("75eddce5")).is_ok());
+        assert!(
+            check_tool_pin("75EDDCE5", Some("75eddce5")).is_ok(),
+            "hex case"
+        );
+        // A DIRTY build is not any revision, which is the whole reason the pin
+        // exists — the shared slot held exactly this for a whole session.
+        assert_eq!(
+            check_tool_pin("75eddce5", Some("75eddce5-dirty")),
+            Err(PinRefusal::Dirty {
+                stamp: "75eddce5-dirty".to_string()
+            }),
+            "a dirty build must not satisfy the pin it was built from"
+        );
+        // Built without git: unknowable, which is not the same as known-wrong.
+        assert_eq!(
+            check_tool_pin("75eddce5", Some("unknown")),
+            Err(PinRefusal::Unknown)
+        );
+        // FAIL-CLOSED: a process that never said what it is cannot be waved
+        // through. This is the property that chose this enforcement shape.
+        assert_eq!(
+            check_tool_pin("75eddce5", None),
+            Err(PinRefusal::Unidentified)
+        );
+        assert!(matches!(
+            check_tool_pin("75eddce5", Some("11d703bf")),
+            Err(PinRefusal::Different { .. })
+        ));
+    }
+
+    /// A pin too short to name one commit is a config error, not a loose match.
+    #[test]
+    fn a_pin_must_be_hex_and_long_enough_to_name_one_commit() {
+        assert!(parse_config("[workspace]\n\n[tool]\npin = \"75eddce5\"\n").is_ok());
+        for bad in ["75edd", "nothexx", ""] {
+            let err = parse_config(&format!("[workspace]\n\n[tool]\npin = \"{bad}\"\n"))
+                .expect_err("must reject {bad}");
+            assert!(
+                format!("{err:#}").contains("tool.pin"),
+                "the message must name the key: {err:#}"
+            );
+        }
+        // No [tool] at all is the OPT-IN half: every workspace that predates
+        // this section keeps working untouched.
+        assert!(parse_config("[workspace]\n").is_ok());
     }
 }

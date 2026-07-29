@@ -1113,6 +1113,7 @@ dependencies = [
  "anyhow",
  "mnemosyne-atomic",
  "mnemosyne-build-stamp",
+ "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-ops",
  "mnemosyne-projection",

@@ -136,6 +136,10 @@ fn build_symbol_resolver_map(
 }
 
 fn main() -> ExitCode {
+    // Round 826 — say which build this is BEFORE anything can open a workspace.
+    // A workspace that declares `[tool] pin` is refused by a build that is not
+    // it, and a build that never says who it is gets refused too (fail-closed).
+    mnemosyne_config::register_tool_stamp(env!("BUILD_GIT_HASH"));
     let args: Vec<String> = env::args().collect();
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,

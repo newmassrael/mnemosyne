@@ -57,12 +57,46 @@ pub fn emit() {
         .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=BUILD_GIT_HASH={hash}");
 
-    // No git dir means there is nothing to watch and no stamp to keep current;
-    // emitting nothing lets cargo fall back to rerunning when a file in the
-    // calling package changes.
-    if let Some(git_dir) = run_git(&["rev-parse", "--absolute-git-dir"]) {
-        println!("cargo:rerun-if-changed={git_dir}/HEAD");
-        println!("cargo:rerun-if-changed={git_dir}/index");
+    // WHAT MOVES THE ANSWER (Round 826 — Round 823 watched two of these four
+    // and the two it picked do not include the commonest event of all):
+    //
+    //   HEAD        a checkout or a detach rewrites it — but NOT a commit,
+    //               because on a branch HEAD is a symref whose bytes are the
+    //               branch NAME and do not change when the branch moves;
+    //   the branch  a commit rewrites THIS. Watching only HEAD meant a commit
+    //               left the binary stamped with the previous revision, and
+    //               with no `-dirty` to betray it on a clean tree — a build
+    //               claiming to be a revision it is not, which is the exact lie
+    //               the stamp exists to prevent;
+    //   packed-refs where that ref lives when it is packed and has no loose file;
+    //   index       staging flips the `-dirty` suffix, and a commit rewrites it.
+    //
+    // Every path comes from `git rev-parse --git-path`, which resolves each one
+    // for the CURRENT worktree — a linked worktree keeps its own HEAD and index
+    // while sharing refs with the main git dir, so joining them onto one
+    // directory would be wrong for exactly the setup that most needs them right.
+    for path in ["HEAD", "index", "packed-refs"] {
+        watch(path);
+    }
+    // Empty on a detached HEAD, where there is no branch to move.
+    if let Some(branch_ref) = run_git(&["symbolic-ref", "--quiet", "HEAD"]) {
+        watch(&branch_ref);
+    }
+}
+
+/// Register `git_relative_path` as an input, if git can place it and it exists.
+///
+/// The existence check is not defensive noise: cargo treats a MISSING
+/// `rerun-if-changed` path as changed, so naming a file that is not there turns
+/// the stamp into an unconditional rebuild of every crate that carries it —
+/// which is precisely the defect Round 823 measured at 46.5s per build. A repo
+/// with packed refs has no loose ref file, and one with no commits yet has no
+/// `packed-refs`; both are ordinary, and neither should cost anything.
+fn watch(git_relative_path: &str) {
+    if let Some(path) = run_git(&["rev-parse", "--git-path", git_relative_path]) {
+        if std::path::Path::new(&path).exists() {
+            println!("cargo:rerun-if-changed={path}");
+        }
     }
 }
 

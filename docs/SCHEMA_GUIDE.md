@@ -512,6 +512,50 @@ A build script and a test harness that resolve the tool differently will
 eventually measure with different tools, and the numbers they report are
 then not comparable — put both halves behind one resolver.
 
+### `[tool]` — declare the pin and let the tool enforce it (Round 826)
+
+Everything above is the consumer doing the enforcing, which means every
+place that runs the tool has to remember to. `[tool]` moves the pin into
+the workspace itself, where the tool reads it:
+
+```toml
+[tool]
+pin = "75eddce5"   # the Mnemosyne revision this workspace is validated by
+```
+
+Every Mnemosyne binary — the CLI and the MCP server alike — refuses to
+open a workspace whose declared pin is not the revision it was built
+from, and says so with the revision it *is*, the revision you asked for,
+and the command that installs the right one. This reaches surfaces the
+recipe above cannot: an MCP server is launched by a host config that is
+not yours to script, but `--workspace` already points here.
+
+The rules, so nothing is surprising:
+
+- **Opt-in.** No `[tool]` section means no check, which is every
+  workspace that predates this one.
+- **Any prefix of at least seven hex characters** — git's own
+  abbreviation floor. Shorter stops naming one commit.
+- **A `-dirty` build satisfies no pin at all.** It was built from a tree
+  with uncommitted changes, so it is not any revision, and saying
+  otherwise is the exact lie the pin exists to prevent. A binary built
+  without git (`unknown`) is refused for the same reason: unverifiable,
+  which is not the same as verified-and-wrong.
+- **`MNEMOSYNE_PIN_SKIP=1` waives it**, and warns on every use. A result
+  produced under the waiver is not attributable to the pinned revision.
+
+This does NOT provision the binary — installing the pinned revision is
+still the per-rev `--root` recipe above. Enforcement and provisioning are
+deliberately separate: a tool that downloaded and ran another version of
+itself would be a supply-chain hazard, not a convenience.
+
+`[tool] pin` and `schema_version` do not overlap. The store's schema
+version guards the SHAPE of what is written, and its monotone guard
+already refuses a backwards step; the pin guards the JUDGEMENT that wrote
+it. Rounds 821 and 822 changed no schema and changed what
+`validate-continuity` reports — a schema-only pin would not have moved
+while the verdicts did.
+
 To bind a section to a code file (so the binding axis recognizes the cite
 as backed), use `add-section-binding` with an explicit `--kind`:
 

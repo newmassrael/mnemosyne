@@ -3136,6 +3136,12 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
+    // Round 826 — say which build this is BEFORE the workspace is opened. If it
+    // declares `[tool] pin` and this is not that revision, the server does not
+    // start: a gate that cannot answer must not answer, and a server that came
+    // up while unusable would report health it does not have.
+    mnemosyne_config::register_tool_stamp(env!("BUILD_GIT_HASH"));
+
     let workspace = parse_workspace_arg()?;
     if !workspace.exists() {
         anyhow::bail!("workspace path does not exist: {}", workspace.display());

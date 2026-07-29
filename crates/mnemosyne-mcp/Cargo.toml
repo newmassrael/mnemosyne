@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 mnemosyne-ops = { path = "../mnemosyne-ops" }
+mnemosyne-config = { path = "../mnemosyne-config" }
 # Round 690 — enable the atomic/core `schemars` feature so the manifest / fact
 # DTOs derive JsonSchema and the authoring tools type them directly (no mirror).
 mnemosyne-atomic = { path = "../mnemosyne-atomic", features = ["schemars"] }
