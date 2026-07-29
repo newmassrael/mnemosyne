@@ -7630,10 +7630,17 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     out.extend(branch_lineage_cycle_violations(store));
     // Round 506 disclosure override refs (the override's fact-id key + its
     // first_at branch/coord + surface scene/object) re-checked at the scan
-    // boundary — the LAST member of the ref-emitting-field class. The write path
-    // (apply_disclosure_override) forbids a dangling ref, so this fires only on a
-    // raw-JSON edit.
+    // boundary. The write path (apply_disclosure_override) forbids a dangling
+    // ref, so this fires only on a raw-JSON edit.
     out.extend(disclosure_ref_violations(store));
+    // Round 833 section-ladder refs (carrier, each rung's needs/reveals facts
+    // and object) re-checked at the scan boundary. This comment used to call
+    // disclosure overrides the LAST member of the ref-emitting-field class, and
+    // Round 765 falsified that a class-member later by adding four refs nested
+    // inside a section — so the claim is gone rather than moved onto this line.
+    // The write path (import_ladders) forbids all four, so this fires only on a
+    // raw-JSON edit.
+    out.extend(ladder_ref_violations(store));
     for (id, fact) in &store.narrative_facts {
         // Ref resolution: the ONE enumeration + resolver, shared with the write
         // path (Round 688 — DEBT-DUP-REGISTRY). The typed leg's predicate and
@@ -8594,6 +8601,100 @@ pub fn disclosure_ref_violations(store: &AtomicStore) -> Vec<String> {
                 ));
             }
             out.extend(disclosure_override_ref_violations(store, &ctx, ov));
+        }
+    }
+    out
+}
+
+/// Every section ladder still resolves ALL its registry refs, and still carries
+/// the rungs a ladder is defined by (Round 833).
+///
+/// The out-of-band scan twin of the write path ([`import_ladders`], which
+/// validates the same four refs), so this fires ONLY on a raw-JSON edit. It is
+/// the ref-emitting-field parity that Round 765 opened and left open: the class
+/// generalised off predicate endpoints (R742) through branch edges (R743) to
+/// disclosure overrides (R506), each time re-checking at the boundary what a
+/// write path already refused — and then ladders arrived carrying four refs of
+/// their own and got no boundary twin.
+///
+/// WHY THE CLASS'S OWN TRIPWIRE DID NOT CATCH IT: the forced field enumeration
+/// in `every_side_table_detector_is_wired_into_the_aggregate` stops compiling
+/// when a field is added to `AtomicStore`, and classifies `sections` as content.
+/// That was true when it was written and is what a ladder falsified — `ladder`
+/// is a ref-emitting field NESTED inside a section, so no top-level field was
+/// ever added and the tripwire never fired. A completeness guard that watches
+/// one depth reports "complete" about the depth it does not watch.
+///
+/// SCOPE, kept apart from the axes that are NOT this boundary's: a rung's ANCHOR
+/// is prose resolution, re-checked against the section's current excerpt by
+/// `scan_continuity` (R817) with its ORDER (R821) and DUPLICATE (R822) legs.
+/// Those need the resolver and the prose; this needs the registries. Naming the
+/// division here rather than leaving each side to assume the other has it.
+pub fn ladder_ref_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (section_id, section) in &store.sections {
+        let Some(ladder) = section.ladder.as_ref() else {
+            continue;
+        };
+        let ctx = format!("section `{section_id}` ladder");
+        // A ladder with no rungs is not an empty ladder, it is not a ladder:
+        // `import_ladders` rejects it outright, so parity is re-checking it here
+        // rather than only the refs (the R729/R730 precedent — a boundary that
+        // re-checks a write path's refs but not its structural invariants is
+        // parity-complete on paper only).
+        if ladder.rungs.is_empty() {
+            out.push(format!(
+                "{ctx}: declares no rungs (out-of-band edit; the write path \
+                 enforces this — a ladder with no holds is not a ladder)"
+            ));
+        }
+        // Blank and unregistered are reported apart, because they are different
+        // repairs: one is a value that was emptied, the other a value that names
+        // something absent (the Round 817 rule — one message for two failures
+        // lies about which to fix). A blank would resolve as unregistered too,
+        // so the order here is what keeps them distinguishable.
+        match ladder.carrier.as_deref() {
+            Some(carrier) if carrier.trim().is_empty() => out.push(format!(
+                "{ctx}: carrier blanked out-of-band (omit it for an observation ladder)"
+            )),
+            Some(carrier) if !store.entities.contains_key(carrier) => out.push(format!(
+                "{ctx}: carrier `{carrier}` is not in the entity registry \
+                 (out-of-band edit; the write path enforces this)"
+            )),
+            _ => {}
+        }
+        for (i, rung) in ladder.rungs.iter().enumerate() {
+            // The rung's own coordinate is what identifies it to a reader — the
+            // index alone would move the moment a rung is inserted above it.
+            let rctx = format!("{ctx} rung {i} (`{}`)", rung.anchor.source);
+            for (leg, fact) in rung
+                .needs
+                .iter()
+                .map(|f| ("needs", f))
+                .chain(rung.reveals.iter().map(|f| ("reveals", f)))
+            {
+                if fact.trim().is_empty() {
+                    out.push(format!(
+                        "{rctx}: {leg} names a blank fact (out-of-band edit)"
+                    ));
+                } else if !store.narrative_facts.contains_key(fact) {
+                    out.push(format!(
+                        "{rctx}: {leg} fact `{fact}` is not in narrative_facts \
+                         (out-of-band edit; the write path enforces this — a gate \
+                         on a fact that does not exist never opens)"
+                    ));
+                }
+            }
+            match rung.object.as_deref() {
+                Some(object) if object.trim().is_empty() => out.push(format!(
+                    "{rctx}: object blanked out-of-band (omit it for a spoken rung)"
+                )),
+                Some(object) if !store.entities.contains_key(object) => out.push(format!(
+                    "{rctx}: object `{object}` is not in the entity registry \
+                     (out-of-band edit; the write path enforces this)"
+                )),
+                _ => {}
+            }
         }
     }
     out
@@ -10628,6 +10729,171 @@ mod tests {
             add_fact(store, sidecar, &sample_fact(id, "gt")).unwrap();
         }
         seed_ladder_prose(store, sidecar, "d02-nat");
+    }
+
+    /// Round 833 — the scan-boundary twin of `import_ladders`' four registry
+    /// refs, plus the structural invariant that a ladder has rungs.
+    ///
+    /// EVERY arm here is UNREACHABLE through the write path — that is the point
+    /// of the class, and it is why each corrupt state is built by mutating the
+    /// stored ladder directly rather than by importing one. A test that could
+    /// reach these through `import_ladders` would be testing the wrong boundary.
+    ///
+    /// The CLEAN case is asserted first and again after each arm is repaired: a
+    /// detector that flagged everything would satisfy every violation assertion
+    /// below without distinguishing anything.
+    #[test]
+    fn a_stored_ladder_still_resolves_every_registry_ref_r833() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+        let mut good = rung("셈은");
+        good.needs = vec!["f-tide".to_string()];
+        good.reveals = vec!["f-name".to_string()];
+        good.object = Some("ent-ledger".to_string());
+        import_ladders(
+            &mut store,
+            &sidecar,
+            &[LadderImport {
+                section_id: "d02-nat".to_string(),
+                carrier: Some("ent-jongdeuk".to_string()),
+                rungs: vec![good],
+            }],
+        )
+        .unwrap();
+        // A ladder carrying all four refs, every one of them registered, is
+        // silent — so the arms below fire on the corruption and not on the shape.
+        assert!(
+            ladder_ref_violations(&store).is_empty(),
+            "a fully-resolved ladder must be silent: {:?}",
+            ladder_ref_violations(&store)
+        );
+
+        // Each arm: corrupt out-of-band, assert what it says, restore. The
+        // SUBSTRING asserted is the one a reader acts on — which ref, and which
+        // repair — because a detector that fires with the wrong reason sends the
+        // reader to fix something that is not broken (the Round 817 rule).
+        // A fn, not a closure: the borrow returned must be tied to the argument,
+        // which closure inference cannot express here.
+        fn ladder_mut(s: &mut AtomicStore) -> &mut SectionLadder {
+            s.sections
+                .get_mut("d02-nat")
+                .unwrap()
+                .ladder
+                .as_mut()
+                .unwrap()
+        }
+        /// One arm: what it corrupts, the substring the reader must be given,
+        /// and the out-of-band edit itself.
+        struct Arm {
+            name: &'static str,
+            expected: &'static str,
+            corrupt: fn(&mut AtomicStore),
+        }
+        let arm = |name, expected, corrupt| Arm {
+            name,
+            expected,
+            corrupt,
+        };
+        let arms: Vec<Arm> = vec![
+            arm(
+                "carrier naming an absent entity",
+                "carrier `ent-ghost` is not in the entity registry",
+                |s| ladder_mut(s).carrier = Some("ent-ghost".to_string()),
+            ),
+            arm("carrier emptied", "carrier blanked out-of-band", |s| {
+                ladder_mut(s).carrier = Some("  ".to_string())
+            }),
+            arm(
+                "needs naming an absent fact",
+                "needs fact `f-ghost` is not in narrative_facts",
+                |s| ladder_mut(s).rungs[0].needs = vec!["f-ghost".to_string()],
+            ),
+            arm(
+                "reveals naming an absent fact",
+                "reveals fact `f-ghost` is not in narrative_facts",
+                |s| ladder_mut(s).rungs[0].reveals = vec!["f-ghost".to_string()],
+            ),
+            arm("a blanked fact", "needs names a blank fact", |s| {
+                ladder_mut(s).rungs[0].needs = vec![String::new()]
+            }),
+            arm(
+                "object naming an absent entity",
+                "object `ent-ghost` is not in the entity registry",
+                |s| ladder_mut(s).rungs[0].object = Some("ent-ghost".to_string()),
+            ),
+            arm("object emptied", "object blanked out-of-band", |s| {
+                ladder_mut(s).rungs[0].object = Some(" ".to_string())
+            }),
+            arm("every rung removed", "declares no rungs", |s| {
+                ladder_mut(s).rungs.clear()
+            }),
+        ];
+        for Arm {
+            name,
+            expected,
+            corrupt,
+        } in arms
+        {
+            let pristine = store.sections.get("d02-nat").unwrap().ladder.clone();
+            corrupt(&mut store);
+            let found = ladder_ref_violations(&store);
+            assert!(
+                found.iter().any(|v| v.contains(expected)),
+                "{name}: expected a violation naming `{expected}`, got {found:?}"
+            );
+            // The section is named, or a reader with many ladders cannot find it.
+            assert!(
+                found.iter().all(|v| v.contains("d02-nat")),
+                "{name}: a violation that does not name its section: {found:?}"
+            );
+            store.sections.get_mut("d02-nat").unwrap().ladder = pristine;
+            assert!(
+                ladder_ref_violations(&store).is_empty(),
+                "{name}: repairing the arm did not silence the detector"
+            );
+        }
+    }
+
+    /// Round 833 — the aggregate CALLS the ladder detector, which is what a
+    /// consumer running `validate-workspace` actually reaches. The wiring
+    /// tripwire asserts the call textually; this asserts the violation arrives.
+    #[test]
+    fn a_corrupt_ladder_reaches_the_aggregate_r833() {
+        let dir = TempDir::new().unwrap();
+        let sidecar = dir.path().join("store.json");
+        let mut store = AtomicStore::default();
+        seed_ladder_referents(&mut store, &sidecar);
+        import_ladders(
+            &mut store,
+            &sidecar,
+            &[LadderImport {
+                section_id: "d02-nat".to_string(),
+                carrier: Some("ent-jongdeuk".to_string()),
+                rungs: vec![rung("셈은")],
+            }],
+        )
+        .unwrap();
+        assert!(
+            store_registry_violations(&store).is_empty(),
+            "the seeded store must be clean before the corruption"
+        );
+        store
+            .sections
+            .get_mut("d02-nat")
+            .unwrap()
+            .ladder
+            .as_mut()
+            .unwrap()
+            .carrier = Some("ent-ghost".to_string());
+        assert!(
+            store_registry_violations(&store)
+                .iter()
+                .any(|v| v.contains("carrier `ent-ghost`")),
+            "a corrupt ladder validated clean through the aggregate — the \
+             detector exists but nothing a consumer runs reaches it"
+        );
     }
 
     /// Round 815 — the store RESOLVES a rung's coordinate instead of only shaping
@@ -12855,16 +13121,31 @@ mod tests {
         // is NOT a `*_violations` fn (e.g. `unregistered_entity_kinds`) is a
         // different class, caught only by enumeration (1) forcing a human to
         // classify a new field.
+        //
+        // THE LIMIT THAT ACTUALLY BIT (Round 833): enumeration (1) watches ONE
+        // DEPTH. It stops compiling when a field joins `AtomicStore`, and says
+        // nothing when a ref-emitting field is nested inside an existing one —
+        // which is how `AtomicSection::ladder` (R765) carried four registry refs
+        // for sixty-eight rounds with no boundary twin while this test stayed
+        // green. `sections` was classified as content and the classification was
+        // true when written; nothing re-asked it. A completeness guard reports
+        // "complete" about the depth it watches, so read its verdict as scoped.
 
         // (1) FORCED FIELD ENUMERATION — this exhaustive destructure (no `..`)
-        // stops compiling the day a field is added, so a new side-table cannot
-        // be introduced without classifying it HERE as detector-guarded or not.
+        // stops compiling the day a TOP-LEVEL field is added, so a new side-table
+        // cannot be introduced without classifying it HERE as detector-guarded or
+        // not. Nested fields are NOT reached by it (see above).
         let AtomicStore {
             // Identity registries / content: refs INTO these are checked inline by
             // `store_registry_violations` (via `fact_registry_refs` /
             // `unregistered_entity_kinds`) or they are content, NOT a value
             // side-table with a dedicated `*_violations` scan.
             schema_version: _,
+            // CONTENT that also CARRIES a ref-emitting field: `AtomicSection::
+            // ladder` (R765) points at the entity and fact registries, and is
+            // scanned by `ladder_ref_violations` (R833). Adding another such
+            // nested field needs a detector too, and this destructure will NOT
+            // remind you — that is what made ladders slip.
             sections: _,
             changelog_entries: _,
             inventory_entries: _,
@@ -12934,8 +13215,8 @@ mod tests {
         // Non-vacuity guard: the family is non-empty (the scan actually found the
         // detectors), so a silent regex-miss cannot pass this as trivially equal.
         assert!(
-            detectors.len() >= 10,
-            "expected the ten known guarded-field detectors, found {}: {detectors:?}",
+            detectors.len() >= 11,
+            "expected the eleven known guarded-field detectors, found {}: {detectors:?}",
             detectors.len()
         );
     }
