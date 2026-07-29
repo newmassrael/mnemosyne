@@ -263,7 +263,10 @@ impl Line {
                 .map(|t| Cow::Owned(t.predicate.clone())),
             typed_quantity: begin.typed.as_ref().and_then(|t| match &t.object {
                 mnemosyne_core::TypedObject::Quantity { n, unit } => {
-                    Some((*n, Cow::Owned(unit.clone())))
+                    // The baked projection carries TEXT, not store ids — the
+                    // engine's `LinePart` is a render surface, so the id becomes
+                    // a string at this boundary like every other output.
+                    Some((*n, Cow::Owned(unit.to_string())))
                 }
                 _ => None,
             }),

@@ -56,6 +56,9 @@ pub use content_anchor::{
 mod scene;
 pub use scene::Modality;
 
+mod ids;
+pub use ids::{ParameterId, UnitId};
+
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 

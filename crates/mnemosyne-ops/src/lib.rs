@@ -1432,7 +1432,9 @@ pub fn parameter_economy_report(
                 })
                 .collect();
             ParameterEconomyRow {
-                parameter: param.clone(),
+                // Report rows stay `String` — an id becomes text at the OUTPUT
+                // boundary, the mirror of the input conversion.
+                parameter: param.to_string(),
                 description: decl.description.clone(),
                 delta_count,
                 sum_positive,

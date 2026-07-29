@@ -112,6 +112,16 @@ const SOURCES: &[(&str, &str)] = &[
     ),
 ];
 
+/// The registry id types (Round 838/839). A field of one of these is a ref whose
+/// TARGET REGISTRY the compiler now holds, so it can no longer be misclassified
+/// as to ref-ness — but WHICH gate checks it is still a human answer, so it stays
+/// in the table. Dropping a field from here the moment it gains a type would
+/// trade one blind spot for another.
+///
+/// This list grows by one line per migration round; the endgame is that it
+/// replaces the `String` scan entirely and `NotARef` disappears.
+const REF_ID_TYPES: &[&str] = &["UnitId", "ParameterId"];
+
 /// Container names that are never a type to walk into.
 const CONTAINERS: &[&str] = &[
     "String", "Vec", "Option", "BTreeMap", "BTreeSet", "HashMap", "HashSet", "Cow", "Box",
@@ -257,7 +267,9 @@ fn derived_pairs() -> BTreeSet<(String, String)> {
             continue; // not one of ours (an external or primitive type)
         };
         for (place, ty) in body {
-            if ty.contains("String") {
+            // A String place, OR a place already migrated to a ref id type —
+            // both must stay classified by covering gate.
+            if ty.contains("String") || REF_ID_TYPES.iter().any(|t| ty.contains(t)) {
                 pairs.insert((ty_name.clone(), place.clone()));
             }
             for next in referenced(ty) {
@@ -322,7 +334,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("DisclosureReveal", "coords", Coverage::Detector, "section refs - disclosure_ref_violations"),
     ("DisclosureSurface", "object", Coverage::Detector, "entity ref - disclosure_ref_violations"),
     ("DisclosureSurface", "scene", Coverage::Detector, "section ref - disclosure_ref_violations"),
-    ("EdgeCost", "unit", Coverage::Detector, "unit ref - edge_cost_violations"),
+    ("EdgeCost", "unit", Coverage::Detector, "UnitId (R839) - edge_cost_violations"),
     ("EdgeGuard", "conditions", Coverage::Detector, "fact refs - edge_guard_violations"),
     ("Entity", "description", Coverage::NotARef, "authored prose"),
     ("Entity", "kind", Coverage::Detector, "entity-kind ref - unregistered_entity_kinds"),
@@ -355,7 +367,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("NormativeExcerpt", "anchor_url", Coverage::NotARef, "upstream provenance, not a store key"),
     ("NormativeExcerpt", "source_revision", Coverage::NotARef, "upstream provenance, not a store key"),
     ("Parameter", "description", Coverage::NotARef, "authored prose"),
-    ("ParameterGate", "parameter", Coverage::Detector, "parameter ref - parameter_gate_violations"),
+    ("ParameterGate", "parameter", Coverage::Detector, "ParameterId (R839) - parameter_gate_violations"),
     ("Predicate", "description", Coverage::NotARef, "authored prose"),
     ("Predicate", "object_entity_kind", Coverage::Detector, "entity-kind ref - predicate_kind_ref_violations"),
     ("Predicate", "object_tokens", Coverage::NotARef, "the declared vocabulary, not a ref into one"),
@@ -371,7 +383,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("TypedClaim", "subject", Coverage::Detector, "entity ref - TypedSubject facet"),
     ("TypedObject", "Entity.id", Coverage::Detector, "entity ref - TypedObject facet"),
     ("TypedObject", "Fact.id", Coverage::WritePathOnly, "phase-2 fact ref (store union staged); excluded from the facets"),
-    ("TypedObject", "Quantity.unit", Coverage::Detector, "unit ref - TypedUnit facet"),
+    ("TypedObject", "Quantity.unit", Coverage::Detector, "UnitId (R839) - TypedUnit facet"),
     ("TypedObject", "Token.token", Coverage::WritePathOnly, "checked against the predicate's declared tokens; excluded from the facets"),
     ("Unit", "description", Coverage::NotARef, "authored prose"),
 ];

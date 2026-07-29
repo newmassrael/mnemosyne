@@ -871,7 +871,7 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     match o {
         mnemosyne_core::TypedObject::Entity { id } => id,
         mnemosyne_core::TypedObject::Token { token } => token,
-        mnemosyne_core::TypedObject::Quantity { unit, .. } => unit,
+        mnemosyne_core::TypedObject::Quantity { unit, .. } => unit.as_str(),
         // A `Fact` object's key is the referenced fact id (a single string,
         // unlike Quantity) — reachable only via a map/keying rule mis-declared
         // on a fact-kind predicate (garbage-in, as above).
@@ -6535,10 +6535,13 @@ mod tests {
             })
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .map(|unit_id| mnemosyne_atomic::UnitImport {
-                unit_id,
-                description: String::new(),
-            })
+            .map(
+                |unit_id: mnemosyne_core::UnitId| mnemosyne_atomic::UnitImport {
+                    // UnitImport is a wire/import DTO — ids become text at the boundary.
+                    unit_id: unit_id.into_inner(),
+                    description: String::new(),
+                },
+            )
             .collect();
         // Round 708 — a token object needs its value in the predicate's declared
         // vocabulary (build_predicate rejects an empty token vocab), so gather
@@ -8920,7 +8923,7 @@ mod tests {
                 "altitude",
                 TypedObject::Quantity {
                     n: 5,
-                    unit: "floor".to_string(),
+                    unit: "floor".into(),
                 },
             ),
             typed_fact(
@@ -8931,7 +8934,7 @@ mod tests {
                 "altitude",
                 TypedObject::Quantity {
                     n: 3,
-                    unit: "floor".to_string(),
+                    unit: "floor".into(),
                 },
             ),
             // A `contains` fact only so the predicate is registered (unrelated to
@@ -14288,7 +14291,7 @@ mod tests {
         };
         let qty = |n: i64| TypedObject::Quantity {
             n,
-            unit: "day".to_string(),
+            unit: "day".into(),
         };
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let short = store_with(vec![
@@ -14331,10 +14334,7 @@ mod tests {
                 bound: IntervalBound::Const(6.0),
             },
         };
-        let qty = |n: i64, u: &str| TypedObject::Quantity {
-            n,
-            unit: u.to_string(),
-        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity { n, unit: u.into() };
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         // Mismatched units: day vs hour → Unverifiable, no violation.
         let mixed = store_with(vec![
@@ -14412,10 +14412,7 @@ mod tests {
                 bound: IntervalBound::Const(6.0),
             },
         };
-        let qty = |n: i64, u: &str| TypedObject::Quantity {
-            n,
-            unit: u.to_string(),
-        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity { n, unit: u.into() };
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         // Two DISTINCT right values (10 day, 10 minute) hold together → ambiguous.
         let store = store_with(vec![
@@ -14509,10 +14506,7 @@ mod tests {
                 bound: IntervalBound::Predicate("min-gap".to_string()),
             },
         };
-        let qty = |n: i64, u: &str| TypedObject::Quantity {
-            n,
-            unit: u.to_string(),
-        };
+        let qty = |n: i64, u: &str| TypedObject::Quantity { n, unit: u.into() };
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         // diff is in `day`; the bound is in `hour` → mismatch → Unverifiable.
         let store = store_with(vec![

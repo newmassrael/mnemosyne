@@ -641,7 +641,7 @@ impl IntervalOp {
 pub struct ParameterGate {
     /// The gated meter — a `parameters` registry ref (fail-loud at the write
     /// path AND the scan boundary).
-    pub parameter: String,
+    pub parameter: crate::ParameterId,
     /// The comparison operator (`>=` is the measured case; the full
     /// [`IntervalOp`] set is a cheap declaration — karma `<=`, currency `>=`
     /// both occur).
@@ -671,7 +671,7 @@ pub struct EdgeCost {
     /// The cost amount — an exact positive integer (e.g. walk minutes).
     pub n: i64,
     /// A ref into the `units` registry (e.g. `minute`), fail-loud.
-    pub unit: String,
+    pub unit: crate::UnitId,
 }
 
 /// Declared object shape of a [`Predicate`] (Round 446, design sec 7.12).
@@ -801,7 +801,7 @@ pub enum TypedObject {
     /// is a ref into the store's `units` registry (fail-loud, never free text —
     /// invariant 4); the write path rejects an unregistered unit. The interval
     /// evaluator (R489) reads `n` for its arithmetic.
-    Quantity { n: i64, unit: String },
+    Quantity { n: i64, unit: crate::UnitId },
     /// A reference to another FACT of this store (Round 707 — `opened_by = f-*`
     /// and the reification class). Distinct from `Entity`: the referent is a
     /// fact, not an entity, so existence is checked in PHASE 2 against
@@ -837,7 +837,12 @@ impl TypedObject {
         let candidates: Vec<TypedObject> = [
             entity.map(|id| TypedObject::Entity { id }),
             token.map(|token| TypedObject::Token { token }),
-            quantity.map(|(n, unit)| TypedObject::Quantity { n, unit }),
+            // The boundary conversion: wire/CLI args stay `String` and become
+            // ids HERE, once, where the value enters the store's vocabulary.
+            quantity.map(|(n, unit)| TypedObject::Quantity {
+                n,
+                unit: unit.into(),
+            }),
             fact.map(|id| TypedObject::Fact { id }),
         ]
         .into_iter()

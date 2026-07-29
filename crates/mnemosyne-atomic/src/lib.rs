@@ -819,7 +819,7 @@ pub struct AtomicStore {
     /// compat carry — an empty registry plus a Quantity fact whose unit is
     /// unregistered is a boundary REJECT.
     #[serde(default)]
-    pub units: BTreeMap<String, Unit>,
+    pub units: BTreeMap<mnemosyne_core::UnitId, Unit>,
     /// Predicate registry (Round 446) — the FOURTH registry, keyed by
     /// predicate id. Every `TypedClaim.predicate` must name a key here
     /// (fail-loud at the mutate primitives). Predicates are load-bearing
@@ -884,7 +884,7 @@ pub struct AtomicStore {
     /// (invariant 4, never a core enum). Empty on pre-v34 stores via
     /// `#[serde(default)]`.
     #[serde(default)]
-    pub parameters: BTreeMap<String, Parameter>,
+    pub parameters: BTreeMap<mnemosyne_core::ParameterId, Parameter>,
     /// Per-beat parameter DELTAS side-table (Round 728 design → Round 729 build,
     /// DEBT-K) — keyed by the FACT ID of the beat that grants the change, value =
     /// a map from parameter id to a SIGNED delta (`+2` a gift, `-1` an insult).
@@ -900,7 +900,7 @@ pub struct AtomicStore {
     /// the authored delta; it NEVER computes a running sum along a playthrough
     /// (the consumer's job — the R712 layering line). Empty on pre-v34 stores.
     #[serde(default)]
-    pub parameter_deltas: BTreeMap<String, BTreeMap<String, i64>>,
+    pub parameter_deltas: BTreeMap<String, BTreeMap<mnemosyne_core::ParameterId, i64>>,
     /// Per-CHOICE numeric-threshold GATES side-table (Round 728 design → Round 730
     /// build, DEBT-K) — keyed by the CHOICE EDGE fact id, value = a
     /// [`ParameterGate`] (`{parameter, op, threshold}`). The thing K-of-N
@@ -5578,7 +5578,7 @@ fn build_typed_claim(
             // fuzz. Resolved through the SHARED `fact_ref_resolves`
             // (`FactRefFacet::TypedUnit`) so the write path and the out-of-band
             // detector cannot disagree on what "a registered unit" means.
-            let unit = unit.trim();
+            let unit = unit.as_str().trim();
             if unit.is_empty() {
                 return Err(format!(
                     "fact `{fact_id}`: quantity unit mandatory (non-empty)"
@@ -5593,7 +5593,7 @@ fn build_typed_claim(
             }
             TypedObject::Quantity {
                 n: *n,
-                unit: unit.to_string(),
+                unit: unit.into(),
             }
         }
         (TypedObject::Fact { id }, PredicateObjectKind::Fact) => {
@@ -5842,13 +5842,20 @@ fn check_typed_fact_ref(
 /// reuse for receipts); registry-specific prechecks (the `MAIN_BRANCH`
 /// reject, fork shaping, object_kind parsing) stay with their callers —
 /// this helper owns only the verdict every registry shares.
-fn stage_registry_entry<T: PartialEq>(
-    map: &mut BTreeMap<String, T>,
+fn stage_registry_entry<K, T: PartialEq>(
+    map: &mut BTreeMap<K, T>,
     context: &str,
     kind: &str,
     id: &str,
     candidate: T,
-) -> Result<bool, String> {
+) -> Result<bool, String>
+where
+    // Round 839 — the key is a registry id type, not a bare `String`. Bounded
+    // rather than concrete so ONE helper serves every registry as each is
+    // migrated: `Borrow<str>` is the lookup this body does, `From<String>` the
+    // construction, `Ord` the map.
+    K: Ord + std::borrow::Borrow<str> + From<String>,
+{
     if id.is_empty() {
         return Err(format!(
             "{context}: {kind}_id mandatory (non-empty after trim)"
@@ -5856,7 +5863,7 @@ fn stage_registry_entry<T: PartialEq>(
     }
     match map.get(id) {
         None => {
-            map.insert(id.to_string(), candidate);
+            map.insert(K::from(id.to_string()), candidate);
             Ok(true)
         }
         Some(existing) if *existing == candidate => Ok(false),
@@ -6693,7 +6700,7 @@ pub fn add_edge_cost(
     }
     let candidate = EdgeCost {
         n,
-        unit: unit.to_string(),
+        unit: unit.into(),
     };
     let created = stage_registry_entry(
         &mut store.edge_costs,
@@ -6753,7 +6760,7 @@ pub fn edge_cost_violations(store: &AtomicStore) -> Vec<String> {
                  cascade-drops the cost, so a live store never holds this)"
             ));
         }
-        if !unit_registered(store, &cost.unit) {
+        if !unit_registered(store, cost.unit.as_str()) {
             out.push(format!(
                 "edge_cost `{fid}`: unit `{}` not in the units registry (out-of-band edit; \
                  add-unit first)",
@@ -7107,7 +7114,7 @@ pub fn add_parameter_delta(
     let created = match store
         .parameter_deltas
         .get(&fact)
-        .and_then(|m| m.get(&param))
+        .and_then(|m| m.get(param.as_str()))
     {
         Some(existing) if *existing == delta => false,
         Some(existing) => {
@@ -7121,7 +7128,7 @@ pub fn add_parameter_delta(
                 .parameter_deltas
                 .entry(fact.clone())
                 .or_default()
-                .insert(param.clone(), delta);
+                .insert(param.clone().into(), delta);
             true
         }
     };
@@ -7149,8 +7156,8 @@ pub fn remove_parameter_delta(
     let fact = fact_id.trim().to_string();
     let param = parameter.trim().to_string();
     match store.parameter_deltas.get_mut(&fact) {
-        Some(m) if m.contains_key(&param) => {
-            m.remove(&param);
+        Some(m) if m.contains_key(param.as_str()) => {
+            m.remove(param.as_str());
         }
         _ => {
             return Err(AtomicMutateError::Validation(format!(
@@ -7201,7 +7208,7 @@ pub fn parameter_delta_violations(store: &AtomicStore) -> Vec<String> {
             ));
         }
         for (param, delta) in deltas {
-            if !parameter_registered(store, param) {
+            if !parameter_registered(store, param.as_str()) {
                 out.push(format!(
                     "parameter_delta `{fact}`: parameter `{param}` not in the parameters registry \
                      (out-of-band edit; add-parameter first)"
@@ -7260,7 +7267,7 @@ pub fn add_parameter_gate(
         )));
     }
     let candidate = ParameterGate {
-        parameter: param,
+        parameter: param.into(),
         op,
         threshold,
     };
@@ -7330,7 +7337,7 @@ pub fn parameter_gate_violations(store: &AtomicStore) -> Vec<String> {
                  cascade-drops the gate, so a live store never holds this)"
             ));
         }
-        if !parameter_registered(store, &gate.parameter) {
+        if !parameter_registered(store, gate.parameter.as_str()) {
             out.push(format!(
                 "parameter_gate `{fact}`: parameter `{}` not in the parameters registry \
                  (out-of-band edit; add-parameter first)",
@@ -17220,7 +17227,7 @@ mod tests {
                 predicate: "signed-on-day".to_string(),
                 object: TypedObject::Quantity {
                     n,
-                    unit: unit.to_string(),
+                    unit: unit.into(),
                 },
             }),
             ..sample_fact(id, "gt")
@@ -17349,7 +17356,7 @@ mod tests {
             "f-orphan".to_string(),
             EdgeCost {
                 n: 3,
-                unit: "minute".to_string(),
+                unit: "minute".into(),
             },
         );
         remove_edge_cost(&mut store, &path, "f-orphan").unwrap();
@@ -17739,7 +17746,7 @@ mod tests {
             "f-orphan".to_string(),
             EdgeCost {
                 n: 3,
-                unit: "minute".to_string(),
+                unit: "minute".into(),
             },
         );
         let v = store_registry_violations(&store);
@@ -17757,7 +17764,7 @@ mod tests {
             "f-live".to_string(),
             EdgeCost {
                 n: 3,
-                unit: "fortnight".to_string(),
+                unit: "fortnight".into(),
             },
         );
         let v = store_registry_violations(&store);
@@ -17899,7 +17906,7 @@ mod tests {
             .parameter_deltas
             .get_mut("f-beat")
             .unwrap()
-            .insert("affection".to_string(), 0);
+            .insert("affection".into(), 0);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
@@ -17911,12 +17918,12 @@ mod tests {
             .parameter_deltas
             .get_mut("f-beat")
             .unwrap()
-            .insert("affection".to_string(), 2);
+            .insert("affection".into(), 2);
         store
             .parameter_deltas
             .get_mut("f-beat")
             .unwrap()
-            .insert("karma".to_string(), 1);
+            .insert("karma".into(), 1);
         let v = store_registry_violations(&store);
         assert!(
             v.iter().any(|m| m.contains("f-beat")
@@ -17953,7 +17960,7 @@ mod tests {
 
         // Out-of-band: a delta map whose beat fact is gone is named.
         let mut orphan = BTreeMap::new();
-        orphan.insert("affection".to_string(), 2i64);
+        orphan.insert(mnemosyne_core::ParameterId::from("affection"), 2i64);
         store
             .parameter_deltas
             .insert("f-orphan".to_string(), orphan);
@@ -18010,7 +18017,7 @@ mod tests {
         store.parameter_gates.insert(
             "f-choice".to_string(),
             ParameterGate {
-                parameter: "karma".to_string(),
+                parameter: "karma".into(),
                 op: IntervalOp::Ge,
                 threshold: 1,
             },
@@ -18026,7 +18033,7 @@ mod tests {
         store.parameter_gates.insert(
             "f-orphan".to_string(),
             ParameterGate {
-                parameter: "affection".to_string(),
+                parameter: "affection".into(),
                 op: IntervalOp::Ge,
                 threshold: 4,
             },
@@ -18076,7 +18083,7 @@ mod tests {
         store.parameter_gates.insert(
             "f-orphan".to_string(),
             ParameterGate {
-                parameter: "affection".to_string(),
+                parameter: "affection".into(),
                 op: IntervalOp::Ge,
                 threshold: 4,
             },
@@ -21369,7 +21376,7 @@ mod tests {
         });
         let with_quantity = base(TypedObject::Quantity {
             n: 1,
-            unit: "day".to_string(),
+            unit: "day".into(),
         });
         let seen: std::collections::HashSet<FactRefFacet> = fact_registry_refs(&with_entity)
             .into_iter()
