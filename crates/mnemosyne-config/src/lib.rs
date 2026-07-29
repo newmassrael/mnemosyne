@@ -1111,6 +1111,34 @@ pub struct LoadedConfig {
     pub config_path: PathBuf,
 }
 
+impl LoadedConfig {
+    /// The resolved root AND where it came from, for a failure that must not
+    /// read as an accusation against the reader's config (Round 835).
+    ///
+    /// A path alone does not tell a reader whether the tool honoured their
+    /// `[workspace] root` or silently used the directory they happened to
+    /// stand in — and those two answers demand opposite repairs. A consumer
+    /// hit exactly that: `configured scan paths resolve to nothing under
+    /// <toml dir>` was read as "your paths are wrong", and the cause was that
+    /// the declared root had been ignored. One definition, so a second caller
+    /// cannot describe the same provenance a different way.
+    #[must_use]
+    pub fn root_provenance(&self) -> String {
+        match &self.config.workspace.root {
+            Some(declared) => format!(
+                "{} — from `[workspace] root = \"{declared}\"` in {}",
+                self.workspace_root.display(),
+                self.config_path.display()
+            ),
+            None => format!(
+                "{} — the directory holding {} ([workspace] root is unset)",
+                self.workspace_root.display(),
+                self.config_path.display()
+            ),
+        }
+    }
+}
+
 /// The identity of the running binary — its `BUILD_GIT_HASH` — registered once
 /// at startup so a config load can prove which tool is opening the workspace.
 static TOOL_STAMP: std::sync::OnceLock<String> = std::sync::OnceLock::new();

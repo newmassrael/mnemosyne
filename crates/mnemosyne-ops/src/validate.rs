@@ -233,6 +233,17 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // declared out. Round 777 derived the scan set inside `crates/`, which left
     // the claim about WHICH trees hold citations still a hand list — and it had
     // drifted, silently, by four build scripts and all of `tools/`.
+    //
+    // Round 835 — the CODE root, not the anchor. `workspace_root` here is the
+    // directory a command was invoked from; scan paths are declared relative to
+    // `[workspace] root`, which is what `loaded.workspace_root` holds and what
+    // every other path in the tool resolves against (the rule is stated on
+    // `cascade::workspace_root_from`, whose own doc names `root = "../../.."`
+    // as the case). Passing the anchor made this gate reject every external
+    // workspace whose ledger lives in a subdirectory — reported from the field,
+    // where five enrolled workspaces all failed on paths the SAME BINARY
+    // resolved correctly in `validate-code-refs` one command over.
+    let code_root = &loaded.workspace_root;
     let scan = {
         let cfg = loaded
             .config
@@ -241,15 +252,21 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             .and_then(|p| p.set_equality_validator.as_ref());
         let paths = cfg.map(|c| c.paths.clone()).unwrap_or_default();
         let exclusions = cfg.map(|c| c.scan_exclusions.clone()).unwrap_or_default();
-        mnemosyne_validate::code_refs::scan_coverage(workspace_root, &paths, &exclusions)
-            .map_err(|e| OpError::from(anyhow::anyhow!("scan coverage: {e}")))?
+        mnemosyne_validate::code_refs::scan_coverage(code_root, &paths, &exclusions).map_err(
+            |e| {
+                // Say WHICH root was used and WHERE IT CAME FROM. Without this
+                // the message reads as an accusation against the consumer's
+                // `paths`, and the obvious repair is to start editing correct
+                // entries — the field report's diagnosis took three commands
+                // because nothing in the failure named a root at all.
+                OpError::from(anyhow::anyhow!(
+                    "scan coverage: {e}\n  scan paths are resolved against {}",
+                    loaded.root_provenance()
+                ))
+            },
+        )?
     };
-    let rel = |p: &std::path::Path| {
-        p.strip_prefix(workspace_root)
-            .unwrap_or(p)
-            .display()
-            .to_string()
-    };
+    let rel = |p: &std::path::Path| p.strip_prefix(code_root).unwrap_or(p).display().to_string();
     let scan_unscanned: Vec<String> = scan.unscanned.iter().map(|p| rel(p)).collect();
 
     // Failure aggregation.
@@ -456,5 +473,149 @@ impl ValidateWorkspaceReport {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// A workspace whose ledger lives BELOW the code it documents — the shape
+    /// every external adopter has and this repo does not.
+    ///
+    /// Returns `(tempdir, toml_dir)`. The tree is:
+    /// ```text
+    /// <repo>/crates/alpha/src/lib.rs      <- the code the scan must find
+    /// <repo>/docs/spec/mnemosyne.toml     <- [workspace] root = "../.."
+    /// ```
+    fn nested_ledger_workspace() -> (tempfile::TempDir, std::path::PathBuf) {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = tmp.path();
+        let src = repo.join("crates/alpha/src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("lib.rs"), "// Round 835\npub fn f() {}\n").expect("lib.rs");
+        let toml_dir = repo.join("docs/spec");
+        fs::create_dir_all(toml_dir.join(".atomic")).expect("toml dir");
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            "[workspace]\nroot = \"../..\"\n\n\
+             [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+             [plugins.set_equality_validator]\npaths = [\"crates/*/src/\"]\n",
+        )
+        .expect("write config");
+        fs::write(
+            toml_dir.join(".atomic/store.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":{{}}}}",
+                mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("write store");
+        (tmp, toml_dir)
+    }
+
+    /// Round 835 — the baseline gate resolves scan paths against `[workspace]
+    /// root`, like every other path in the tool.
+    ///
+    /// Reported from the field, not found here: five enrolled workspaces of an
+    /// external consumer were all rejected by `validate-workspace` on scan
+    /// paths that `validate-code-refs` — the SAME binary, one command over —
+    /// resolved correctly. This repo never saw it because its own config
+    /// declares no `[workspace] root`, so the anchor and the code root are the
+    /// same directory and the bug is invisible by construction. That is why the
+    /// fixture below is a NESTED ledger: the defect only exists where the two
+    /// differ, so a fixture where they agree would pass either way.
+    #[test]
+    fn scan_coverage_resolves_against_the_declared_root_not_the_anchor() {
+        let (_tmp, toml_dir) = nested_ledger_workspace();
+        let report = validate_workspace(&toml_dir).expect(
+            "validate-workspace must resolve scan paths against [workspace] root; \
+             a scan-coverage error here is the field-reported defect",
+        );
+        // NON-VACUITY: the axis actually saw the file. Without this the test
+        // would also pass against a gate that scanned nothing and said nothing,
+        // which is the failure mode the Round 783 check exists to prevent.
+        assert_eq!(
+            report.scan_considered, 1,
+            "the scan found no Rust source under the declared root — the axis is \
+             empty, so its silence proves nothing"
+        );
+        assert_eq!(report.scan_scanned, 1, "the file was found but not scanned");
+        assert!(
+            report.scan_unscanned.is_empty(),
+            "unscanned: {:?}",
+            report.scan_unscanned
+        );
+    }
+
+    /// Round 835 — the baseline gate and the citation gate agree on the root.
+    ///
+    /// This is the comparison the consumer had to make BY HAND to diagnose the
+    /// defect: run the two subcommands and notice they disagree about the same
+    /// configured paths. Encoding it means any future divergence in how the two
+    /// resolve a root fails here, rather than in someone else's CI.
+    #[test]
+    fn the_baseline_gate_and_the_citation_gate_scan_the_same_files() {
+        let (_tmp, toml_dir) = nested_ledger_workspace();
+        let loaded = mnemosyne_config::discover_config(&toml_dir)
+            .expect("discover")
+            .expect("config present");
+        let paths = loaded
+            .config
+            .plugins
+            .as_ref()
+            .and_then(|p| p.set_equality_validator.as_ref())
+            .map(|c| c.paths.clone())
+            .expect("the fixture configures scan paths");
+
+        // What the CITATION gate walks, through its own resolved root.
+        let citation_files =
+            mnemosyne_validate::code_refs::walk_paths(&loaded.workspace_root, &paths)
+                .expect("citation-gate walk");
+        // What the BASELINE gate counts.
+        let report = validate_workspace(&toml_dir).expect("baseline gate");
+
+        assert!(
+            !citation_files.is_empty(),
+            "the citation gate walked nothing — the comparison below would be \
+             between two zeroes"
+        );
+        assert_eq!(
+            report.scan_scanned,
+            citation_files.len(),
+            "the two gates disagree about which files the SAME configured paths \
+             cover — the exact symptom the field report diagnosed by running \
+             both commands"
+        );
+    }
+
+    /// Round 835 — the failure names the root AND where it came from.
+    ///
+    /// Read cold, `configured scan paths resolve to nothing under <dir>` accuses
+    /// the reader's `paths`, and the obvious repair is to edit correct entries.
+    /// The clause under test is what makes the message self-diagnosing.
+    #[test]
+    fn a_scan_coverage_failure_names_the_root_and_its_provenance() {
+        let (_tmp, toml_dir) = nested_ledger_workspace();
+        // A path that exists under the ANCHOR but not under the declared root,
+        // so the failure is reached with the fix in place.
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            "[workspace]\nroot = \"../..\"\n\n\
+             [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+             [plugins.set_equality_validator]\npaths = [\"no/such/tree/\"]\n",
+        )
+        .expect("rewrite config");
+        let err = validate_workspace(&toml_dir).expect_err("an empty scan set must fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("[workspace] root = \"../..\""),
+            "the failure must name the declaration that chose the root: {msg}"
+        );
+        assert!(
+            msg.contains("mnemosyne.toml"),
+            "the failure must name the file that declared it: {msg}"
+        );
     }
 }
