@@ -27,6 +27,15 @@
 # mtimes: freshness is the build system's question and a second answer to it is
 # free to be wrong.
 #
+# BEFORE REACHING FOR SOMETHING CLEVERER, read Round 830. The obvious next idea
+# — target/ is huge, so shrink what is built — was measured and refused twice:
+# debug info is not the cost (a `line-tables-only` dev profile produced
+# BYTE-IDENTICAL test binaries), and consolidating mnemosyne-server's 22
+# integration tests into one binary is forbidden rather than merely risky, since
+# the per-file split is what places a process boundary between tracing state
+# spaces. Roughly 7.5G of the steady-state tree is structural: isolation-mandated
+# test binaries plus the RocksDB C++ build. The tree is CYCLED, not shrunk.
+#
 # WHAT --deep KEEPS is whatever it builds, so that is the whole policy: a debug
 # build of every target in the workspace — the profile the hooks, `scripts/mn`
 # and `cargo test` all use. RELEASE ARTIFACTS ARE NOT KEPT, deliberately: since
