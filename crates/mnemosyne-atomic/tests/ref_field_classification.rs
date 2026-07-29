@@ -127,6 +127,7 @@ const REF_ID_TYPES: &[&str] = &[
     "EntityKindId",
     "FrameId",
     "EntityId",
+    "BranchId",
 ];
 
 /// Container names that are never a type to walk into.
@@ -321,7 +322,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("Binding", "symbol", Coverage::NotARef, "a code symbol name"),
     ("Branch", "description", Coverage::NotARef, "authored prose (the choice label)"),
     ("BranchFork", "at", Coverage::Detector, "section ref - branch_ref_violations"),
-    ("BranchFork", "branch", Coverage::Detector, "branch ref - branch_ref_violations"),
+    ("BranchFork", "branch", Coverage::Detector, "BranchId (R845) - branch_ref_violations"),
     ("ConfirmationClaim", "SectionCompleteness.section_id", Coverage::WritePathOnly, "section ref; no re-check found"),
     ("ConfirmationClaim", "file", Coverage::NotARef, "a workspace-relative path"),
     ("ConfirmationClaim", "section_id", Coverage::WritePathOnly, "section ref; no re-check found"),
@@ -335,7 +336,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("ConflictAssertion", "target", Coverage::Continuity, "fact ref - ConflictTargetMissing"),
     ("ContentAnchor", "source", Coverage::NotARef, "a document name, not a registry key"),
     ("ContentExcerpt", "text", Coverage::NotARef, "projected prose"),
-    ("DisclosureOverride", "first_at", Coverage::Detector, "branch keys - disclosure_ref_violations"),
+    ("DisclosureOverride", "first_at", Coverage::Detector, "BranchId (R845) keys - disclosure_ref_violations"),
     ("DisclosurePlan", "description", Coverage::NotARef, "authored prose"),
     ("DisclosurePlan", "overrides", Coverage::Detector, "fact-id keys - disclosure_ref_violations"),
     ("DisclosureReveal", "coords", Coverage::Detector, "section refs - disclosure_ref_violations"),
@@ -362,7 +363,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("LadderRung", "reveals", Coverage::Detector, "fact refs - ladder_ref_violations (R833)"),
     ("Locator", "Cfi", Coverage::NotARef, "coordinate text"),
     ("Locator", "Prefix", Coverage::NotARef, "coordinate text"),
-    ("NarrativeFact", "branch", Coverage::Detector, "branch ref - fact_registry_refs Branch facet"),
+    ("NarrativeFact", "branch", Coverage::Detector, "BranchId (R845) - fact_registry_refs Branch facet"),
     ("NarrativeFact", "canon_from", Coverage::Detector, "section ref - fact_registry_refs CanonFrom facet"),
     ("NarrativeFact", "canon_to", Coverage::Detector, "section ref - fact_registry_refs CanonTo facet"),
     ("NarrativeFact", "claim", Coverage::NotARef, "the authored assertion itself"),

@@ -183,6 +183,17 @@ ref_id! {
     EntityId
 }
 
+ref_id! {
+    /// A key of the branches registry ([`crate::Branch`]) — one world-line of
+    /// the playthrough graph.
+    ///
+    /// [`crate::MAIN_BRANCH`] stays a `&str` const: it is the DEFAULT axis
+    /// value, known by construction and never registered, so there is no
+    /// registry entry for it to be a key of. `PartialEq<&str>` is what keeps
+    /// `branch == MAIN_BRANCH` readable at the ~40 sites that ask it.
+    BranchId
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

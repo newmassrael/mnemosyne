@@ -859,10 +859,10 @@ pub fn authoring_frontier_report(
     // 619): main + every registered branch, owned facts over the FULL road the
     // world travels. Pure read — never gated, so it does NOT feed total_gaps.
     let mut branch_owned_density: BTreeMap<String, BranchDensity> = BTreeMap::new();
-    for world in std::iter::once(mnemosyne_core::MAIN_BRANCH)
-        .chain(store.branches.keys().map(String::as_str))
+    for world in std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
+        .chain(store.branches.keys().cloned())
     {
-        let road_scenes = order.linearize(world).len();
+        let road_scenes = order.linearize(&world).len();
         let owned_facts = store
             .narrative_facts
             .values()
@@ -934,11 +934,12 @@ pub fn continuity_frame_view(
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
     let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
-    // Entry into the store vocabulary: `frame` arrives as a raw CLI/MCP
-    // argument and becomes a registry id here, once, for both wires.
+    // Entry into the store vocabulary: `frame` and `branch` arrive as raw
+    // CLI/MCP arguments and become registry ids here, once, for both wires.
     let frame = mnemosyne_core::FrameId::from(frame);
+    let branch = mnemosyne_core::BranchId::from(branch);
     let view =
-        mnemosyne_validate::continuity::frame_view(&store, &order, &frame, branch, entity, at)
+        mnemosyne_validate::continuity::frame_view(&store, &order, &frame, &branch, entity, at)
             .map_err(OpError::Other)?;
     Ok(FrameViewReport {
         frame: view.frame,
@@ -1118,9 +1119,15 @@ pub fn playthrough_manuscript_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    let mut report =
-        mnemosyne_validate::continuity::playthrough_manuscript(&store, &order, world, telling)
-            .map_err(OpError::Other)?;
+    // Entry into the store vocabulary, once, for both wires.
+    let world = world.map(mnemosyne_core::BranchId::from);
+    let mut report = mnemosyne_validate::continuity::playthrough_manuscript(
+        &store,
+        &order,
+        world.as_ref(),
+        telling,
+    )
+    .map_err(OpError::Other)?;
     // Round 509 — the reading-walk projection: prune each world to its
     // content scenes (those where a world-visible fact begins). The structural
     // manuscript (the verb default) keeps every order node; a READING copy
@@ -1172,7 +1179,9 @@ pub fn playable_world_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    mnemosyne_validate::continuity::playable_world(&store, &order, world, telling)
+    // Entry into the store vocabulary, once, for both wires.
+    let world = world.map(mnemosyne_core::BranchId::from);
+    mnemosyne_validate::continuity::playable_world(&store, &order, world.as_ref(), telling)
         .map_err(OpError::Other)
 }
 
@@ -1195,7 +1204,9 @@ pub fn quest_graph_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    mnemosyne_validate::continuity::quest_graph(&store, &order, world, telling)
+    // Entry into the store vocabulary, once, for both wires.
+    let world = world.map(mnemosyne_core::BranchId::from);
+    mnemosyne_validate::continuity::quest_graph(&store, &order, world.as_ref(), telling)
         .map_err(OpError::Other)
 }
 
@@ -1238,6 +1249,8 @@ pub fn disclosure_leak_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let authored = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &authored)?;
+    // Entry into the store vocabulary, once, for both wires.
+    let world = &mnemosyne_core::BranchId::from(world);
     if !mnemosyne_core::is_known_world(&authored.branches, world) {
         return Err(OpError::Other(format!(
             "world `{world}` not present in the branch registry (fail-loud)"
@@ -1279,6 +1292,8 @@ pub fn render_fidelity_report(
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let authored = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &authored)?;
+    // Entry into the store vocabulary, once, for both wires.
+    let world = &mnemosyne_core::BranchId::from(world);
     if !mnemosyne_core::is_known_world(&authored.branches, world) {
         return Err(OpError::Other(format!(
             "world `{world}` not present in the branch registry (fail-loud)"
@@ -1545,7 +1560,7 @@ pub fn entity_dossier(
         .map(|(fid, f)| EntityFactRow {
             fact_id: fid.clone(),
             frame: f.frame.to_string(),
-            branch: f.branch.clone(),
+            branch: f.branch.to_string(),
             claim: f.claim.clone(),
             canon_from: f.canon_from.clone(),
             canon_to: f.canon_to.clone(),

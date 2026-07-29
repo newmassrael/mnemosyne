@@ -790,7 +790,7 @@ pub struct AtomicStore {
     /// is known by construction and never registered. Empty on pre-v14
     /// stores via `#[serde(default)]`.
     #[serde(default)]
-    pub branches: BTreeMap<String, Branch>,
+    pub branches: BTreeMap<mnemosyne_core::BranchId, Branch>,
     /// Narrative entity registry (Round 437) — keyed by entity id. Every
     /// `NarrativeFact.entities` ref must name a key here (fail-loud at the
     /// mutate primitives; frames/branches symmetry). The retrieval key for
@@ -5283,7 +5283,7 @@ fn build_candidate_fact(
         ));
     }
     let branch = match entry.branch.as_deref().map(str::trim) {
-        None => mnemosyne_core::MAIN_BRANCH.to_string(),
+        None => mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH),
         Some("") => {
             return Err(format!(
                 "fact `{fact_id}`: branch must be non-empty when present (omit it for `{}`)",
@@ -5298,7 +5298,8 @@ fn build_candidate_fact(
                      must not silently create a world)"
                 ));
             }
-            b.to_string()
+            // Entry into the store vocabulary, once, after the registry check.
+            b.into()
         }
     };
     // Entry into the store vocabulary: `FactImport.entities` is a wire DTO list
@@ -5676,10 +5677,10 @@ fn build_typed_claim(
 fn check_succession_edge(
     fact_id: &str,
     frame: &mnemosyne_core::FrameId,
-    branch: &str,
+    branch: &mnemosyne_core::BranchId,
     target: &str,
     visible: &BTreeMap<String, NarrativeFact>,
-    branches: &BTreeMap<String, Branch>,
+    branches: &BTreeMap<mnemosyne_core::BranchId, Branch>,
     staged_edges: &BTreeMap<String, String>,
 ) -> Result<(), String> {
     match visible.get(target) {
@@ -5698,7 +5699,7 @@ fn check_succession_edge(
             ));
         }
         Some(t)
-            if t.branch != branch
+            if &t.branch != branch
                 && !mnemosyne_core::succession_branch_inherits(branches, branch, &t.branch)? =>
         {
             return Err(format!(
@@ -5766,7 +5767,7 @@ fn validate_and_stamp_fact_refs(
     fact_id: &str,
     fact: &mut NarrativeFact,
     visible: &BTreeMap<String, NarrativeFact>,
-    branches: &BTreeMap<String, Branch>,
+    branches: &BTreeMap<mnemosyne_core::BranchId, Branch>,
 ) -> Result<(), String> {
     for c in &mut fact.conflicts_with {
         let Some(target) = visible.get(&c.target) else {
@@ -5934,7 +5935,7 @@ pub fn add_frame(
 /// ancestry is a forest by construction.
 fn build_branch_fork(
     store: &AtomicStore,
-    branch_id: &str,
+    branch_id: &mnemosyne_core::BranchId,
     forks_from: Option<(&str, &str)>,
 ) -> Result<Option<BranchFork>, String> {
     let Some((parent, at)) = forks_from else {
@@ -5947,17 +5948,19 @@ fn build_branch_fork(
             "branch `{branch_id}`: forks_from needs both a parent branch and a canon point"
         ));
     }
-    if parent == branch_id {
+    if branch_id == parent {
         return Err(format!("branch `{branch_id}`: cannot fork from itself"));
     }
-    if let Some(msg) = branch_edge_ref_violations(store, "fork", branch_id, parent, at)
+    // Entry into the store vocabulary: the parent arrives as a raw argument.
+    let parent = mnemosyne_core::BranchId::from(parent);
+    if let Some(msg) = branch_edge_ref_violations(store, "fork", branch_id, &parent, at)
         .into_iter()
         .next()
     {
         return Err(msg);
     }
     Ok(Some(BranchFork {
-        branch: parent.to_string(),
+        branch: parent,
         at: at.to_string(),
     }))
 }
@@ -5969,7 +5972,7 @@ fn build_branch_fork(
 /// 1-parent merge is just a fork). Empty input = not a confluence.
 fn build_branch_converges(
     store: &AtomicStore,
-    branch_id: &str,
+    branch_id: &mnemosyne_core::BranchId,
     converges_from: &[(&str, &str)],
 ) -> Result<Vec<BranchFork>, String> {
     if converges_from.is_empty() {
@@ -5982,7 +5985,8 @@ fn build_branch_converges(
         ));
     }
     let mut out = Vec::with_capacity(converges_from.len());
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut seen: std::collections::BTreeSet<mnemosyne_core::BranchId> =
+        std::collections::BTreeSet::new();
     for &(parent, at) in converges_from {
         let parent = parent.trim();
         let at = at.trim();
@@ -5991,22 +5995,24 @@ fn build_branch_converges(
                 "branch `{branch_id}`: converges_from needs both a parent branch and a canon point"
             ));
         }
-        if parent == branch_id {
+        if branch_id == parent {
             return Err(format!("branch `{branch_id}`: cannot converge from itself"));
         }
-        if let Some(msg) = branch_edge_ref_violations(store, "converge", branch_id, parent, at)
+        // Entry into the store vocabulary: the parent arrives as a raw argument.
+        let parent = mnemosyne_core::BranchId::from(parent);
+        if let Some(msg) = branch_edge_ref_violations(store, "converge", branch_id, &parent, at)
             .into_iter()
             .next()
         {
             return Err(msg);
         }
-        if !seen.insert(parent.to_string()) {
+        if !seen.insert(parent.clone()) {
             return Err(format!(
                 "branch `{branch_id}`: converges_from names parent `{parent}` more than once"
             ));
         }
         out.push(BranchFork {
-            branch: parent.to_string(),
+            branch: parent,
             at: at.to_string(),
         });
     }
@@ -6018,7 +6024,7 @@ fn build_branch_converges(
 /// (`converges_from`), never both. Shared by [`add_branch`] and `import_facts`.
 fn build_branch_candidate(
     store: &AtomicStore,
-    branch_id: &str,
+    branch_id: &mnemosyne_core::BranchId,
     description: &str,
     forks_from: Option<(&str, &str)>,
     converges_from: &[(&str, &str)],
@@ -6048,8 +6054,8 @@ fn build_branch_candidate(
 fn branch_edge_ref_violations(
     store: &AtomicStore,
     kind: &str,
-    owner: &str,
-    parent: &str,
+    owner: &mnemosyne_core::BranchId,
+    parent: &mnemosyne_core::BranchId,
     at: &str,
 ) -> Vec<String> {
     let mut out = Vec::new();
@@ -6178,12 +6184,26 @@ pub fn add_branch(
              never registered"
         )));
     }
-    let candidate = build_branch_candidate(store, id, description, forks_from, converges_from)
+    // Entry into the store vocabulary: `branch_id` is a raw CLI argument.
+    let id = mnemosyne_core::BranchId::from(id);
+    let candidate = build_branch_candidate(store, &id, description, forks_from, converges_from)
         .map_err(AtomicMutateError::Validation)?;
-    let id = id.to_string();
-    let created = stage_registry_entry(&mut store.branches, "add_branch", "branch", &id, candidate)
-        .map_err(AtomicMutateError::Validation)?;
-    registry_receipt(store, sidecar_path, "add_branch", "branch", &id, created)
+    let created = stage_registry_entry(
+        &mut store.branches,
+        "add_branch",
+        "branch",
+        id.as_str(),
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
+    registry_receipt(
+        store,
+        sidecar_path,
+        "add_branch",
+        "branch",
+        id.as_str(),
+        created,
+    )
 }
 
 /// Register one entity kind — the vocabulary [`Entity::kind`] refs. The
@@ -7547,7 +7567,12 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
 pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) -> bool {
     match facet {
         FactRefFacet::Frame => store.frames.contains_key(value),
-        FactRefFacet::Branch => mnemosyne_core::is_known_world(&store.branches, value),
+        // The generic resolver takes one `&str` for every facet, so the branch
+        // arm constructs the id it looks up — the lookup-position concession
+        // this migration records rather than pretends away.
+        FactRefFacet::Branch => {
+            mnemosyne_core::is_known_world(&store.branches, &mnemosyne_core::BranchId::from(value))
+        }
         FactRefFacet::Entity | FactRefFacet::TypedSubject | FactRefFacet::TypedObject => {
             store.entities.contains_key(value)
         }
@@ -8453,7 +8478,8 @@ pub(crate) fn apply_disclosure_override(
     // drops the branch key (never a vacuous pin); each coord non-empty. The
     // DisclosureReveal threshold discipline runs through the ONE shared helper
     // the granular `set_disclosure_reveal_threshold` also uses (parity).
-    let mut acc: BTreeMap<String, (BTreeSet<String>, Option<usize>)> = BTreeMap::new();
+    let mut acc: BTreeMap<mnemosyne_core::BranchId, (BTreeSet<String>, Option<usize>)> =
+        BTreeMap::new();
     for reveal in first_at {
         let branch = reveal.branch.trim();
         if branch.is_empty() {
@@ -8461,7 +8487,7 @@ pub(crate) fn apply_disclosure_override(
                 "set_disclosure: each first_at needs a branch (non-empty)".to_string(),
             ));
         }
-        let entry = acc.entry(branch.to_string()).or_default();
+        let entry = acc.entry(branch.into()).or_default();
         for coord in &reveal.coords {
             let coord = coord.trim();
             if coord.is_empty() {
@@ -8475,7 +8501,7 @@ pub(crate) fn apply_disclosure_override(
             entry.1 = reveal.threshold; // last-write-wins per branch
         }
     }
-    let mut first_at_map: BTreeMap<String, DisclosureReveal> = BTreeMap::new();
+    let mut first_at_map: BTreeMap<mnemosyne_core::BranchId, DisclosureReveal> = BTreeMap::new();
     for (branch, (coords, requested)) in acc {
         if coords.is_empty() {
             // A dropped (emptied) branch: a threshold naming no coords is
@@ -8779,7 +8805,7 @@ pub fn add_disclosure_reveal_coord(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
     let fact = fact_id.trim().to_string();
-    let branch = branch.trim().to_string();
+    let branch = mnemosyne_core::BranchId::from(branch.trim());
     let coord = coord.trim().to_string();
     if branch.is_empty() || coord.is_empty() {
         return Err(AtomicMutateError::Validation(
@@ -8855,7 +8881,7 @@ pub fn remove_disclosure_reveal_coord(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
     let fact = fact_id.trim().to_string();
-    let branch = branch.trim().to_string();
+    let branch = mnemosyne_core::BranchId::from(branch.trim());
     let coord = coord.trim().to_string();
     let ov = disclosure_override_mut(store, "remove_disclosure_reveal_coord", &telling, &fact)?;
     let reveal = match ov.first_at.get_mut(&branch) {
@@ -8912,7 +8938,7 @@ pub fn set_disclosure_reveal_threshold(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
     let fact = fact_id.trim().to_string();
-    let branch = branch.trim().to_string();
+    let branch = mnemosyne_core::BranchId::from(branch.trim());
     let ov = disclosure_override_mut(store, "set_disclosure_reveal_threshold", &telling, &fact)?;
     let reveal = ov.first_at.get_mut(&branch).ok_or_else(|| {
         AtomicMutateError::Validation(format!(
@@ -9140,9 +9166,16 @@ pub fn apply_facts_manifest(
             .iter()
             .map(|c| (c.branch.as_str(), c.at.as_str()))
             .collect();
-        let candidate =
-            build_branch_candidate(store, id, &b.description, fork_pair, &converge_pairs)
-                .map_err(AtomicMutateError::Validation)?;
+        // Entry into the store vocabulary: the manifest row is a wire DTO.
+        let branch_id = mnemosyne_core::BranchId::from(id);
+        let candidate = build_branch_candidate(
+            store,
+            &branch_id,
+            &b.description,
+            fork_pair,
+            &converge_pairs,
+        )
+        .map_err(AtomicMutateError::Validation)?;
         let created = stage_registry_entry(
             &mut store.branches,
             &format!("import_facts: manifest branch {idx}"),
@@ -18686,11 +18719,11 @@ mod tests {
         // SCAN BOUNDARY flags an out-of-band FORK edge at a phantom parent AND a
         // phantom section (both legs — unreachable via any write path).
         store.branches.insert(
-            "rogue-fork".to_string(),
+            "rogue-fork".into(),
             Branch {
                 description: String::new(),
                 forks_from: Some(BranchFork {
-                    branch: "gone-parent".to_string(),
+                    branch: "gone-parent".into(),
                     at: "gone-section".to_string(),
                 }),
                 converges_from: Vec::new(),
@@ -18711,12 +18744,12 @@ mod tests {
 
         // SCAN BOUNDARY flags an out-of-band CONVERGE edge with a phantom parent.
         store.branches.insert(
-            "rogue-merge".to_string(),
+            "rogue-merge".into(),
             Branch {
                 description: String::new(),
                 forks_from: None,
                 converges_from: vec![BranchFork {
-                    branch: "gone-a".to_string(),
+                    branch: "gone-a".into(),
                     at: "gone-sec".to_string(),
                 }],
             },
@@ -18765,7 +18798,7 @@ mod tests {
         // known world, ch-2 a section), so the DANGLING detector stays clean — the
         // cycle detector is the one that catches it (cycle != dangling).
         store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
-            branch: "ride".to_string(),
+            branch: "ride".into(),
             at: "ch-2".to_string(),
         });
         assert!(
@@ -18788,7 +18821,7 @@ mod tests {
         );
         // The read path already fails loud on the SAME lineage — the scan's SSOT.
         assert!(
-            mnemosyne_core::world_membership(&store.branches, "sluice").is_err(),
+            mnemosyne_core::world_membership(&store.branches, &"sluice".into()).is_err(),
             "the read path fails loud on the cyclic lineage (the scan's derivation source)"
         );
 
@@ -18799,11 +18832,11 @@ mod tests {
         // loop-CLOSING branch (`sluice`) here instead — never `tail` — and would
         // duplicate that name across the reaching branches; both are locked out.
         store.branches.insert(
-            "tail".to_string(),
+            "tail".into(),
             Branch {
                 description: String::new(),
                 forks_from: Some(BranchFork {
-                    branch: "sluice".to_string(),
+                    branch: "sluice".into(),
                     at: "ch-2".to_string(),
                 }),
                 converges_from: Vec::new(),
@@ -18830,24 +18863,24 @@ mod tests {
         add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
         add_branch(&mut store, &path, "ride", "", Some(("main", "ch-2")), &[]).unwrap();
         store.branches.insert(
-            "mouth".to_string(),
+            "mouth".into(),
             Branch {
                 description: String::new(),
                 forks_from: None,
                 converges_from: vec![
                     BranchFork {
-                        branch: "sluice".to_string(),
+                        branch: "sluice".into(),
                         at: "ch-3".to_string(),
                     },
                     BranchFork {
-                        branch: "ride".to_string(),
+                        branch: "ride".into(),
                         at: "ch-3".to_string(),
                     },
                 ],
             },
         );
         store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
-            branch: "mouth".to_string(),
+            branch: "mouth".into(),
             at: "ch-2".to_string(),
         });
         assert!(
@@ -18863,7 +18896,7 @@ mod tests {
         );
         // The innocent parent `ride` is NOT on the loop — no false positive.
         assert!(
-            mnemosyne_core::world_membership(&store.branches, "ride").is_ok(),
+            mnemosyne_core::world_membership(&store.branches, &"ride".into()).is_ok(),
             "a branch that neither is on nor reaches the cycle stays clean"
         );
     }
@@ -18987,7 +19020,7 @@ mod tests {
             DisclosureOverride {
                 mode: DisclosureMode::State,
                 first_at: BTreeMap::from([(
-                    "gone-branch".to_string(),
+                    "gone-branch".into(),
                     DisclosureReveal {
                         coords: BTreeSet::from(["gone-sec".to_string()]),
                         threshold: None,
@@ -20550,7 +20583,7 @@ mod tests {
         store.frames.insert("gt".into(), Frame::default());
         store
             .branches
-            .insert("vampire-route".to_string(), Branch::default());
+            .insert("vampire-route".into(), Branch::default());
         add_fact(&mut store, &path, &sample_fact("f-main", "gt")).unwrap();
         add_fact(
             &mut store,
@@ -20596,8 +20629,7 @@ mod tests {
         for s in [&mut store_a, &mut store_b] {
             seed_chapters(s);
             s.frames.insert("gt".into(), Frame::default());
-            s.branches
-                .insert("vampire-route".to_string(), Branch::default());
+            s.branches.insert("vampire-route".into(), Branch::default());
         }
         let predecessor = sample_fact("f-old", "gt");
         let successor = FactImport {
@@ -21450,7 +21482,7 @@ mod tests {
     fn fact_registry_refs_enumerates_every_facet() {
         let base = |object: TypedObject| NarrativeFact {
             frame: "gt".into(),
-            branch: mnemosyne_core::MAIN_BRANCH.to_string(),
+            branch: mnemosyne_core::MAIN_BRANCH.into(),
             entities: vec!["a".into()],
             claim: "c".to_string(),
             canon_from: "ch-1".to_string(),

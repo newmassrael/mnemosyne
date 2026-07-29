@@ -186,10 +186,10 @@ pub struct CanonOrder {
     base: BTreeMap<String, BTreeSet<String>>,
     /// Per-branch closure of (base ∪ contributors' edges ∪ own), keyed by branch id.
     /// The PRECEDENCE axis — generous by design (see the type doc).
-    branch_reach: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    branch_reach: BTreeMap<mnemosyne_core::BranchId, BTreeMap<String, BTreeSet<String>>>,
     /// The ROAD of each world: the coordinates it actually travels ([`road_of`]).
     /// Keyed for `MAIN_BRANCH` and every registered branch.
-    road: BTreeMap<String, BTreeSet<String>>,
+    road: BTreeMap<mnemosyne_core::BranchId, BTreeSet<String>>,
     /// Worlds that declare no road segment of their own, so their road — and
     /// therefore their ENDING — is their lineage's (Round 614). Not an error: a
     /// world-line that diverges only in FACTS and rides the trunk on is a real and
@@ -197,7 +197,7 @@ pub struct CanonOrder {
     /// that simply forgot to declare its road. Surfaced LOUDLY rather than guessed
     /// (`undeclared_roads` → the CLI notice), because silently assuming EITHER
     /// reading is how the render-fidelity gate came to reward a drifted render.
-    undeclared_roads: BTreeSet<String>,
+    undeclared_roads: BTreeSet<mnemosyne_core::BranchId>,
 }
 
 /// The branches whose declared edge sets can carry `world`'s road, each with its
@@ -224,12 +224,12 @@ pub struct CanonOrder {
 /// an out-edge. Siblings are never members — which is what keeps a sibling's exclusive
 /// coordinate off this world's road.
 fn road_lineage(
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-    world: &str,
-) -> Result<BTreeMap<String, usize>, String> {
+    branches: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
+    world: &mnemosyne_core::BranchId,
+) -> Result<BTreeMap<mnemosyne_core::BranchId, usize>, String> {
     // Backward closure: nearest-first depth over forks_from + converges_from.
-    let mut backward: BTreeMap<String, usize> = BTreeMap::new();
-    let mut frontier = vec![(world.to_string(), 0usize)];
+    let mut backward: BTreeMap<mnemosyne_core::BranchId, usize> = BTreeMap::new();
+    let mut frontier = vec![(world.clone(), 0usize)];
     while let Some((b, depth)) = frontier.pop() {
         match backward.get(&b) {
             Some(seen) if *seen <= depth => continue,
@@ -286,17 +286,17 @@ fn road_lineage(
 /// are legitimately incomparable rather than past (the R456 idiom).
 fn road_of(
     decl: &CanonOrderFile,
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-    world: &str,
+    branches: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
+    world: &mnemosyne_core::BranchId,
 ) -> Result<BTreeSet<String>, String> {
     let lineage = road_lineage(branches, world)?;
     // Out-edges per member branch (MAIN_BRANCH's segment IS the base edge set —
     // `from_declaration` rejects a `branches.main` declaration for exactly this reason).
-    let segment = |b: &str| -> &[[String; 2]] {
+    let segment = |b: &mnemosyne_core::BranchId| -> &[[String; 2]] {
         if b == mnemosyne_core::MAIN_BRANCH {
             &decl.edges
         } else {
-            decl.branches.get(b).map_or(&[][..], Vec::as_slice)
+            decl.branches.get(b.as_str()).map_or(&[][..], Vec::as_slice)
         }
     };
     // SEEDS: the sources of the ROOT of this world's lineage — `main`'s base for any
@@ -393,7 +393,7 @@ impl CanonOrder {
     /// never declared — so it is surfaced, never guessed.
     pub fn from_declaration(
         decl: &CanonOrderFile,
-        branches: &BTreeMap<String, mnemosyne_core::Branch>,
+        branches: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
     ) -> Result<Self, String> {
         let composition = &world_order_composition(branches)?;
         let base = closure_of(&decl.edges, "base")?;
@@ -410,34 +410,34 @@ impl CanonOrder {
             }
         }
         let mut branch_reach = BTreeMap::new();
-        let all_branches: BTreeSet<&str> = decl
+        let all_branches: BTreeSet<mnemosyne_core::BranchId> = decl
             .branches
             .keys()
-            .map(String::as_str)
-            .chain(composition.keys().map(String::as_str))
+            .map(|b| mnemosyne_core::BranchId::from(b.as_str()))
+            .chain(composition.keys().cloned())
             .collect();
         for branch in all_branches {
             let mut combined = decl.edges.clone();
-            for contributor in composition.get(branch).into_iter().flatten() {
-                if let Some(edges) = decl.branches.get(contributor) {
+            for contributor in composition.get(&branch).into_iter().flatten() {
+                if let Some(edges) = decl.branches.get(contributor.as_str()) {
                     combined.extend(edges.iter().cloned());
                 }
             }
-            if let Some(edges) = decl.branches.get(branch) {
+            if let Some(edges) = decl.branches.get(branch.as_str()) {
                 combined.extend(edges.iter().cloned());
             }
             branch_reach.insert(
-                branch.to_string(),
+                branch.clone(),
                 closure_of(&combined, &format!("branch `{branch}`"))?,
             );
         }
         // The ROAD axis (Round 614) — computed for `main` and every registered branch.
         let mut road = BTreeMap::new();
         let mut undeclared_roads = BTreeSet::new();
-        for world in
-            std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
+        for world in std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
+            .chain(branches.keys().cloned())
         {
-            if world != mnemosyne_core::MAIN_BRANCH && !decl.branches.contains_key(&world) {
+            if world != mnemosyne_core::MAIN_BRANCH && !decl.branches.contains_key(world.as_str()) {
                 undeclared_roads.insert(world.clone());
             }
             road.insert(world.clone(), road_of(decl, branches, &world)?);
@@ -449,7 +449,7 @@ impl CanonOrder {
         // axis made it consequential — so it fails LOUD rather than quietly truncating a
         // world-line. A branch's edge set must ATTACH to the road it rides in on.
         for (branch, edges) in &decl.branches {
-            let Some(r) = road.get(branch) else {
+            let Some(r) = road.get(branch.as_str()) else {
                 continue; // an edge set for an unregistered branch — the R607 guard's job
             };
             for e in edges {
@@ -476,14 +476,14 @@ impl CanonOrder {
 
     /// The reach relation governing `branch` — its declared composition, or
     /// the base for an undeclared branch. THE PRECEDENCE AXIS (generous).
-    fn reach_for(&self, branch: &str) -> &BTreeMap<String, BTreeSet<String>> {
+    fn reach_for(&self, branch: &mnemosyne_core::BranchId) -> &BTreeMap<String, BTreeSet<String>> {
         self.branch_reach.get(branch).unwrap_or(&self.base)
     }
 
     /// The coordinates `branch` actually TRAVELS — THE ROAD AXIS (Round 614, bounded).
     /// A world with no computed road (an unregistered id, or a pre-branch store) falls
     /// back to the base spine, which is `main`'s road.
-    fn road_for(&self, branch: &str) -> BTreeSet<&str> {
+    fn road_for(&self, branch: &mnemosyne_core::BranchId) -> BTreeSet<&str> {
         match self.road.get(branch) {
             Some(r) => r.iter().map(String::as_str).collect(),
             None => self.base.keys().map(String::as_str).collect(),
@@ -495,17 +495,17 @@ impl CanonOrder {
     /// substrate cannot tell a facts-only divergence (rides the trunk on, correct) from
     /// a divergent ending whose road was never declared (whose terminal gates are then
     /// measuring the TRUNK's ending, not its own).
-    pub fn undeclared_roads(&self) -> impl Iterator<Item = &str> {
-        self.undeclared_roads.iter().map(String::as_str)
+    pub fn undeclared_roads(&self) -> impl Iterator<Item = &mnemosyne_core::BranchId> {
+        self.undeclared_roads.iter()
     }
 
     /// Declared-or-equal precedence under `branch`'s order.
-    pub fn le(&self, branch: &str, a: &str, b: &str) -> bool {
+    pub fn le(&self, branch: &mnemosyne_core::BranchId, a: &str, b: &str) -> bool {
         a == b || self.reach_for(branch).get(a).is_some_and(|d| d.contains(b))
     }
 
     /// Comparable under `branch`'s declared order (either direction, or equal).
-    pub fn comparable(&self, branch: &str, a: &str, b: &str) -> bool {
+    pub fn comparable(&self, branch: &mnemosyne_core::BranchId, a: &str, b: &str) -> bool {
         self.le(branch, a, b) || self.le(branch, b, a)
     }
 
@@ -531,13 +531,13 @@ impl CanonOrder {
     /// declared — including a SIBLING's exclusive scene, smuggled in by the merge edge a
     /// downstream confluence declares from it — so the guard went silent on exactly the
     /// error it exists to catch.
-    pub fn names(&self, branch: &str, node: &str) -> bool {
+    pub fn names(&self, branch: &mnemosyne_core::BranchId, node: &str) -> bool {
         self.road_for(branch).contains(node)
     }
 
     /// Branch ids carrying a declared edge set.
-    pub fn declared_branches(&self) -> impl Iterator<Item = &str> {
-        self.branch_reach.keys().map(String::as_str)
+    pub fn declared_branches(&self) -> impl Iterator<Item = &mnemosyne_core::BranchId> {
+        self.branch_reach.keys()
     }
 
     /// `node` is an END of `branch`'s ROAD — on it, with no successor the world
@@ -548,13 +548,13 @@ impl CanonOrder {
     /// the set. Round 614 moved it off the composed order: a divergent world used to
     /// report the TRUNK's terminal as its own, which is how `reached_terminal` came to
     /// pass a render that delivered the wrong ending.
-    pub fn is_maximal(&self, branch: &str, node: &str) -> bool {
+    pub fn is_maximal(&self, branch: &mnemosyne_core::BranchId, node: &str) -> bool {
         self.terminals(branch).contains(node)
     }
 
     /// Every END of `branch`'s road (Round 614) — the world-line's terminal SET. A road
     /// node with no successor ON THE ROAD. Empty only for a world with no road at all.
-    pub fn terminals(&self, branch: &str) -> BTreeSet<&str> {
+    pub fn terminals(&self, branch: &mnemosyne_core::BranchId) -> BTreeSet<&str> {
         let road = self.road_for(branch);
         let reach = self.reach_for(branch);
         road.iter()
@@ -577,7 +577,7 @@ impl CanonOrder {
     /// Round 614 restricted it to the road. Walking the composed ORDER made a divergent
     /// world's manuscript (and the `playable_world` pinion seam) render PHANTOM scenes:
     /// the trunk tail past its fork, and a sibling's exclusive road.
-    pub fn linearize(&self, branch: &str) -> Vec<String> {
+    pub fn linearize(&self, branch: &mnemosyne_core::BranchId) -> Vec<String> {
         let reach = self.reach_for(branch);
         let road = self.road_for(branch);
         let mut pred_count: BTreeMap<&str, usize> = road.iter().map(|n| (*n, 0usize)).collect();
@@ -2007,8 +2007,8 @@ pub struct ContinuityReport {
 /// 611). The write path (`succession_branch_inherits`) and every read surface
 /// here resolve membership through that one function, so they cannot drift.
 pub fn lineage_of(
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-    world: &str,
+    branches: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
+    world: &mnemosyne_core::BranchId,
 ) -> Result<mnemosyne_core::WorldMembership, String> {
     mnemosyne_core::world_membership(branches, world)
 }
@@ -2039,16 +2039,17 @@ pub fn lineage_of(
 /// the base, reached via the `reach_for` fallback — byte-stable for a
 /// pre-fork/pre-confluence store).
 pub fn world_order_composition(
-    branches: &BTreeMap<String, mnemosyne_core::Branch>,
-) -> Result<BTreeMap<String, Vec<String>>, String> {
+    branches: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
+) -> Result<BTreeMap<mnemosyne_core::BranchId, Vec<mnemosyne_core::BranchId>>, String> {
     let mut out = BTreeMap::new();
-    for world in
-        std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()).chain(branches.keys().cloned())
+    for world in std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
+        .chain(branches.keys().cloned())
     {
-        let contributors: Vec<String> = mnemosyne_core::world_membership(branches, &world)?
-            .into_keys()
-            .filter(|b| *b != world)
-            .collect();
+        let contributors: Vec<mnemosyne_core::BranchId> =
+            mnemosyne_core::world_membership(branches, &world)?
+                .into_keys()
+                .filter(|b| *b != world)
+                .collect();
         if !contributors.is_empty() {
             out.insert(world, contributors);
         }
@@ -2078,7 +2079,7 @@ enum Vis {
 /// bound the declared order cannot compare against yields `Unknown`, never a
 /// guess.
 fn visibility(
-    world: &str,
+    world: &mnemosyne_core::BranchId,
     membership: &mnemosyne_core::WorldMembership,
     order: &CanonOrder,
     fact: &NarrativeFact,
@@ -2135,24 +2136,24 @@ fn visibility(
 fn join_world(
     a: &NarrativeFact,
     b: &NarrativeFact,
-    worlds: &[&str],
-    memberships: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    worlds: &[mnemosyne_core::BranchId],
+    memberships: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
-) -> Option<String> {
+) -> Option<mnemosyne_core::BranchId> {
     if a.frame != b.frame {
         return None;
     }
-    let both_in = |world: &str| -> bool {
+    let both_in = |world: &mnemosyne_core::BranchId| -> bool {
         let Some(m) = memberships.get(world) else {
             return false;
         };
         visibility(world, m, order, a) == Vis::In && visibility(world, m, order, b) == Vis::In
     };
-    std::iter::once(a.branch.as_str())
-        .chain(std::iter::once(b.branch.as_str()))
-        .chain(worlds.iter().copied())
+    std::iter::once(&a.branch)
+        .chain(std::iter::once(&b.branch))
+        .chain(worlds.iter())
         .find(|w| both_in(w))
-        .map(str::to_string)
+        .cloned()
 }
 
 /// One query world's evaluation context (Round 440): the world id, its
@@ -2160,7 +2161,7 @@ fn join_world(
 /// the holds-semantics reads as a judgment about a world rather than a
 /// seven-argument shuffle.
 struct WorldCtx<'a> {
-    world: &'a str,
+    world: &'a mnemosyne_core::BranchId,
     membership: &'a mnemosyne_core::WorldMembership,
     order: &'a CanonOrder,
     successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
@@ -2268,8 +2269,8 @@ fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), S
 /// empty there, so `lineage_of("main") == Lineage::default()`.
 fn query_world_lineages(
     store: &AtomicStore,
-) -> Result<BTreeMap<String, mnemosyne_core::WorldMembership>, String> {
-    std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string())
+) -> Result<BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>, String> {
+    std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
         .chain(store.branches.keys().cloned())
         .map(|world| {
             let lineage = lineage_of(&store.branches, &world)?;
@@ -2292,8 +2293,11 @@ fn query_world_lineages(
 /// set must be total even though the iteration set is not. Pre-confluence
 /// stores: identical to the old `main + every branch` (no branch is a
 /// confluence), so the sweep is byte-stable.
-fn query_worlds(store: &AtomicStore) -> Vec<&str> {
-    std::iter::once(mnemosyne_core::MAIN_BRANCH)
+fn query_worlds(store: &AtomicStore) -> Vec<mnemosyne_core::BranchId> {
+    // Owned rather than borrowed since Round 845: `MAIN_BRANCH` is a `&str`
+    // const with no registry entry to borrow an id from, so the default world
+    // is constructed here — the one place that knows main belongs in the list.
+    std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
         .chain(
             store
                 .branches
@@ -2301,7 +2305,7 @@ fn query_worlds(store: &AtomicStore) -> Vec<&str> {
                 // Exclude confluences (a merge node is not its own playable
                 // world-line) — the shared `is_confluence` definition, Round 747.
                 .filter(|(_, b)| !b.is_confluence())
-                .map(|(id, _)| id.as_str()),
+                .map(|(id, _)| id.clone()),
         )
         .collect()
 }
@@ -2314,8 +2318,8 @@ fn query_worlds(store: &AtomicStore) -> Vec<&str> {
 /// the world is part of the finding. Cross-frame pairs never visit
 /// (data, never gated — the North-Star sentence).
 fn for_each_world_pair<'a>(
-    worlds: &[&'a str],
-    lineages: &'a BTreeMap<String, mnemosyne_core::WorldMembership>,
+    worlds: &'a [mnemosyne_core::BranchId],
+    lineages: &'a BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &'a CanonOrder,
     successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
     typed: &[(&'a String, &'a NarrativeFact)],
@@ -2324,7 +2328,7 @@ fn for_each_world_pair<'a>(
     for world in worlds {
         let ctx = WorldCtx {
             world,
-            membership: &lineages[*world],
+            membership: &lineages[world],
             order,
             successors,
         };
@@ -2639,8 +2643,8 @@ fn scan_interval_rule(
     op: IntervalOp,
     bound: &IntervalBound,
     facts: &BTreeMap<String, NarrativeFact>,
-    worlds: &[&str],
-    lineages: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    worlds: &[mnemosyne_core::BranchId],
+    lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
     successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
 ) -> Vec<IntervalOutcome> {
@@ -2648,7 +2652,7 @@ fn scan_interval_rule(
     for world in worlds {
         let ctx = WorldCtx {
             world,
-            membership: &lineages[*world],
+            membership: &lineages[world],
             order,
             successors,
         };
@@ -2862,7 +2866,7 @@ pub fn scan_continuity(
         // because the substrate cannot tell "diverges in facts only" from "divergent
         // ending, road not yet declared" and the terminal gates mean different things
         // under the two readings.
-        undeclared_roads: order.undeclared_roads().map(str::to_string).collect(),
+        undeclared_roads: order.undeclared_roads().map(ToString::to_string).collect(),
         ..Default::default()
     };
     // Canon-coordinate integrity (Round 488): a fact's canon coordinate must be
@@ -2881,7 +2885,7 @@ pub fn scan_continuity(
                     .violations
                     .push(ContinuityViolation::FactCanonOffBranch {
                         fact: id.clone(),
-                        branch: fact.branch.clone(),
+                        branch: fact.branch.to_string(),
                         coord: coord.clone(),
                     });
             }
@@ -2942,8 +2946,9 @@ pub fn scan_continuity(
             }
             // "Could this world have SEEN that scene, by now?" = it TRAVELS it
             // (`names` — the road) AND it is at-or-before this fact (`le`).
-            let could_have_seen =
-                |world: &str| order.names(world, e) && order.le(world, e, &fact.canon_from);
+            let could_have_seen = |world: &mnemosyne_core::BranchId| {
+                order.names(world, e) && order.le(world, e, &fact.canon_from)
+            };
             match confluence_parents {
                 None => {
                     if !could_have_seen(&fact.branch) {
@@ -2951,7 +2956,7 @@ pub fn scan_continuity(
                             .violations
                             .push(ContinuityViolation::EvidenceUnreachable {
                                 fact: id.clone(),
-                                branch: fact.branch.clone(),
+                                branch: fact.branch.to_string(),
                                 evidence: e.to_string(),
                                 canon_from: fact.canon_from.clone(),
                             });
@@ -2963,8 +2968,8 @@ pub fn scan_continuity(
                             report.violations.push(
                                 ContinuityViolation::ConfluenceEvidenceUnreconciled {
                                     fact: id.clone(),
-                                    confluence: fact.branch.clone(),
-                                    parent: parent.branch.clone(),
+                                    confluence: fact.branch.to_string(),
+                                    parent: parent.branch.to_string(),
                                     evidence: e.to_string(),
                                     canon_from: fact.canon_from.clone(),
                                 },
@@ -3008,8 +3013,8 @@ pub fn scan_continuity(
                         .push(ContinuityViolation::SuccessionCrossBranch {
                             successor: sid.clone(),
                             predecessor: t_id.clone(),
-                            successor_branch: s.branch.clone(),
-                            predecessor_branch: t.branch.clone(),
+                            successor_branch: s.branch.to_string(),
+                            predecessor_branch: t.branch.to_string(),
                         })
                 }
                 Some(t) => {
@@ -3356,7 +3361,7 @@ pub fn scan_continuity(
                 .violations
                 .push(ContinuityViolation::FrameConflictOverlap {
                     frame: a.frame.to_string(),
-                    branch: world.clone(),
+                    branch: world.to_string(),
                     fact_a: aid.clone(),
                     fact_b: bid.clone(),
                     at: p.clone(),
@@ -3823,8 +3828,8 @@ pub fn scan_continuity(
 fn scan_containment_tree(
     cont_pred: &str,
     store: &AtomicStore,
-    worlds: &[&str],
-    lineages: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    worlds: &[mnemosyne_core::BranchId],
+    lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
     successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
     report: &mut ContinuityReport,
@@ -3832,7 +3837,7 @@ fn scan_containment_tree(
     for world in worlds {
         let ctx = WorldCtx {
             world,
-            membership: &lineages[*world],
+            membership: &lineages[world],
             order,
             successors,
         };
@@ -3977,8 +3982,8 @@ fn scan_spatial_map(
     undirected: bool,
     containment: Option<&str>,
     store: &AtomicStore,
-    worlds: &[&str],
-    lineages: &BTreeMap<String, mnemosyne_core::WorldMembership>,
+    worlds: &[mnemosyne_core::BranchId],
+    lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
     successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
     report: &mut ContinuityReport,
@@ -3992,7 +3997,7 @@ fn scan_spatial_map(
     for world in worlds {
         let ctx = WorldCtx {
             world,
-            membership: &lineages[*world],
+            membership: &lineages[world],
             order,
             successors,
         };
@@ -4291,7 +4296,7 @@ pub fn frame_view(
     store: &AtomicStore,
     order: &CanonOrder,
     frame: &mnemosyne_core::FrameId,
-    branch: &str,
+    branch: &mnemosyne_core::BranchId,
     entity: Option<&str>,
     at: &str,
 ) -> Result<FrameView, String> {
@@ -4515,10 +4520,7 @@ pub fn payoff_coverage(
         })
         .collect();
     let mut undecidable: BTreeSet<(String, String)> = BTreeSet::new();
-    let worlds: Vec<String> = query_worlds(store)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let worlds: Vec<mnemosyne_core::BranchId> = query_worlds(store);
     for world in worlds {
         let lineage = lineage_of(&store.branches, &world)?;
         let mut vis_by_id: BTreeMap<&str, Vis> = BTreeMap::new();
@@ -4606,7 +4608,7 @@ pub fn payoff_coverage(
                 None => cov.dangling.push((*id).to_string()),
             }
         }
-        report.worlds.insert(world, cov);
+        report.worlds.insert(world.to_string(), cov);
     }
     let (undecided, dead): (Vec<_>, Vec<_>) = never_credited
         .into_iter()
@@ -4845,10 +4847,7 @@ pub fn irony_intervals(
         same_frame_edges: same.len(),
         ..Default::default()
     };
-    let worlds: Vec<String> = query_worlds(store)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let worlds: Vec<mnemosyne_core::BranchId> = query_worlds(store);
     for world in worlds {
         let lineage = lineage_of(&store.branches, &world)?;
         let ctx = WorldCtx {
@@ -4905,7 +4904,7 @@ pub fn irony_intervals(
                 open,
             });
         }
-        report.worlds.insert(world, out);
+        report.worlds.insert(world.to_string(), out);
     }
     Ok(report)
 }
@@ -5082,7 +5081,7 @@ pub struct PlaythroughManuscriptReport {
 pub fn playthrough_manuscript(
     store: &AtomicStore,
     order: &CanonOrder,
-    world: Option<&str>,
+    world: Option<&mnemosyne_core::BranchId>,
     telling: Option<&str>,
 ) -> Result<PlaythroughManuscriptReport, String> {
     check_store_boundary(store, order)?;
@@ -5118,12 +5117,9 @@ pub fn playthrough_manuscript(
     // (Round 533 `query_worlds` — a confluence's shared suffix already renders
     // WITHIN each parent's manuscript via forward visibility, so it is not also
     // a standalone world).
-    let worlds: Vec<String> = match world {
-        Some(w) => vec![w.to_string()],
-        None => query_worlds(store)
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+    let worlds: Vec<mnemosyne_core::BranchId> = match world {
+        Some(w) => vec![w.clone()],
+        None => query_worlds(store),
     };
     for world in worlds {
         let lineage = lineage_of(&store.branches, &world)?;
@@ -5261,7 +5257,7 @@ pub fn playthrough_manuscript(
             }
             out.scenes.push(scene);
         }
-        report.worlds.insert(world, out);
+        report.worlds.insert(world.to_string(), out);
     }
     Ok(report)
 }
@@ -5273,7 +5269,7 @@ pub fn playthrough_manuscript(
 /// override-vs-default rule).
 fn resolve_fact_disclosure(
     plan: &mnemosyne_core::DisclosurePlan,
-    world: &str,
+    world: &mnemosyne_core::BranchId,
     fact_id: &str,
 ) -> FactDisclosure {
     let effective = plan.effective(fact_id, world);
@@ -5412,7 +5408,7 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
                 .entry(edge.branch.as_str())
                 .or_default()
                 .push(ForkTreeRejoin {
-                    into: confluence_id.clone(),
+                    into: confluence_id.to_string(),
                     at: edge.at.clone(),
                     // The SAME resolution the converge side reports, against the
                     // merge parent's order — which is this branch's own. Not
@@ -5434,10 +5430,10 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
                 // duplicate enforcement the boundary's own contract avoids.
                 let at_placed = order.names(&f.branch, &f.at);
                 if !at_placed {
-                    report.unplaced_fork_points.push(branch_id.clone());
+                    report.unplaced_fork_points.push(branch_id.to_string());
                 }
                 Some(ForkTreeEdge {
-                    parent: f.branch.clone(),
+                    parent: f.branch.to_string(),
                     at: f.at.clone(),
                     at_placed,
                 })
@@ -5458,13 +5454,13 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
             let at_placed = order.names(&edge.branch, &edge.at);
             converge_unplaced |= !at_placed;
             converges.push(ForkTreeEdge {
-                parent: edge.branch.clone(),
+                parent: edge.branch.to_string(),
                 at: edge.at.clone(),
                 at_placed,
             });
         }
         if converge_unplaced {
-            report.unplaced_fork_points.push(branch_id.clone());
+            report.unplaced_fork_points.push(branch_id.to_string());
         }
         // An unplaced REJOIN is the same edge the converge side already counted,
         // so it does not push again — the branch would otherwise be listed twice
@@ -5473,7 +5469,7 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
             .remove(branch_id.as_str())
             .unwrap_or_default();
         report.branches.push(ForkTreeBranch {
-            branch_id: branch_id.clone(),
+            branch_id: branch_id.to_string(),
             description: branch.description.clone(),
             fork,
             converges,
@@ -5592,7 +5588,7 @@ pub struct PlayableWorldReport {
 pub fn playable_world(
     store: &AtomicStore,
     order: &CanonOrder,
-    world: Option<&str>,
+    world: Option<&mnemosyne_core::BranchId>,
     telling: &str,
 ) -> Result<PlayableWorldReport, String> {
     let manuscript = playthrough_manuscript(store, order, world, Some(telling))?;
@@ -5985,7 +5981,7 @@ pub struct QuestGraphReport {
 pub fn quest_graph(
     store: &AtomicStore,
     order: &CanonOrder,
-    world: Option<&str>,
+    world: Option<&mnemosyne_core::BranchId>,
     telling: &str,
 ) -> Result<QuestGraphReport, String> {
     // R676 — the DERIVED quest set, the shared `quest_ids` kernel (which also
@@ -6250,7 +6246,7 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
         .map(|(id, f)| TypingCandidate {
             fact_id: id.clone(),
             frame: f.frame.to_string(),
-            branch: f.branch.clone(),
+            branch: f.branch.to_string(),
             claim: f.claim.clone(),
             claim_sha256: claim_sha256_hex(&f.claim),
             canon_from: f.canon_from.clone(),
@@ -6394,7 +6390,7 @@ pub fn edge_candidates(
         .map(|(id, f)| EdgeCandidateFact {
             fact_id: id.clone(),
             frame: f.frame.to_string(),
-            branch: f.branch.clone(),
+            branch: f.branch.to_string(),
             entities: f.entities.iter().map(ToString::to_string).collect(),
             claim: f.claim.clone(),
             claim_sha256: claim_sha256_hex(&f.claim),
@@ -6484,7 +6480,7 @@ mod tests {
     fn fork_at(at: &str) -> mnemosyne_core::Branch {
         mnemosyne_core::Branch {
             forks_from: Some(mnemosyne_core::BranchFork {
-                branch: MAIN_BRANCH.to_string(),
+                branch: MAIN_BRANCH.into(),
                 at: at.to_string(),
             }),
             ..Default::default()
@@ -6946,7 +6942,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             None,
             "ch-2",
         )
@@ -6963,7 +6959,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             None,
             "ch-3",
         )
@@ -6985,11 +6981,27 @@ mod tests {
         let other = fact("f-x", "jonathan", "ch-1", None);
         let store = store_with(vec![bounded, other]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let at3 = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-3").unwrap();
+        let at3 = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-3",
+        )
+        .unwrap();
         assert!(at3.holding.is_empty());
         assert_eq!(at3.not_holding, 1);
         // jonathan's fact never appears in seward's view.
-        let at1 = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap();
+        let at1 = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-1",
+        )
+        .unwrap();
         assert_eq!(at1.holding.len(), 1);
         assert_eq!(at1.holding[0].fact_id, "f-b");
     }
@@ -7004,7 +7016,15 @@ mod tests {
         ])
         .unwrap();
         let store = store_with(vec![fact("f-arm", "seward", "ch-2", None)]);
-        let view = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-3").unwrap();
+        let view = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-3",
+        )
+        .unwrap();
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-arm".to_string()]);
         assert_eq!(view.not_holding, 0);
@@ -7021,13 +7041,20 @@ mod tests {
         store.fact_counts.insert("f-hold".to_string(), 5);
         let order = chain(&["ch-1", "ch-2"]);
         let count_of = |store: &AtomicStore, id: &str| -> Option<i64> {
-            frame_view(store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1")
-                .unwrap()
-                .holding
-                .into_iter()
-                .find(|e| e.fact_id == id)
-                .unwrap_or_else(|| panic!("{id} should be holding"))
-                .count
+            frame_view(
+                store,
+                &order,
+                &"seward".into(),
+                &MAIN_BRANCH.into(),
+                None,
+                "ch-1",
+            )
+            .unwrap()
+            .holding
+            .into_iter()
+            .find(|e| e.fact_id == id)
+            .unwrap_or_else(|| panic!("{id} should be holding"))
+            .count
         };
         assert_eq!(
             count_of(&store, "f-hold"),
@@ -7054,11 +7081,25 @@ mod tests {
     fn frame_view_fail_loud_boundaries() {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let order = chain(&["ch-1", "ch-2"]);
-        let err =
-            frame_view(&store, &order, &"nobody".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"nobody".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-1",
+        )
+        .unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
-        let err =
-            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-99").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-99",
+        )
+        .unwrap_err();
         assert!(err.contains("ch-99"), "{err}");
     }
 
@@ -7075,7 +7116,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             None,
             "ch-2",
         )
@@ -7087,7 +7128,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            "sea-route",
+            &"sea-route".into(),
             None,
             "ch-2",
         )
@@ -7099,7 +7140,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            "sea-rotue",
+            &"sea-rotue".into(),
             None,
             "ch-2",
         )
@@ -7124,8 +7165,15 @@ mod tests {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
-        let err =
-            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-1",
+        )
+        .unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
     }
 
@@ -7187,13 +7235,21 @@ mod tests {
             st
         };
         let order = chain(&["ch-1", "ch-2"]);
-        let all = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-2").unwrap();
+        let all = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert_eq!(all.holding.len(), 2);
         let filtered = frame_view(
             &store,
             &order,
             &"seward".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             Some("lucy"),
             "ch-2",
         )
@@ -7207,7 +7263,7 @@ mod tests {
             &store,
             &order,
             &"seward".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             Some("lucyy"),
             "ch-2",
         )
@@ -7313,12 +7369,19 @@ mod tests {
         let late = fact("f-late", "gt", "ch-3", None);
         let store = store_with_forks(vec![early, late], &[("route", MAIN_BRANCH, "ch-2")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let view = frame_view(&store, &order, &"gt".into(), "route", None, "ch-3").unwrap();
+        let view = frame_view(&store, &order, &"gt".into(), &"route".into(), None, "ch-3").unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert_eq!(held, vec!["f-early"], "unknown={:?}", view.unknown);
         // Main's own view still sees both.
-        let main_view =
-            frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, "ch-3").unwrap();
+        let main_view = frame_view(
+            &store,
+            &order,
+            &"gt".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-3",
+        )
+        .unwrap();
         assert_eq!(main_view.holding.len(), 2);
     }
 
@@ -7369,7 +7432,15 @@ mod tests {
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         // Route at ch-3: revised belief holds, inherited one derived-closed.
-        let route = frame_view(&store, &order, &"jonathan".into(), "route", None, "ch-3").unwrap();
+        let route = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            &"route".into(),
+            None,
+            "ch-3",
+        )
+        .unwrap();
         let held: Vec<&str> = route.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert_eq!(held, vec!["f-new"]);
         // Main at ch-3: the original belief STILL holds — no leak-back.
@@ -7377,7 +7448,7 @@ mod tests {
             &store,
             &order,
             &"jonathan".into(),
-            MAIN_BRANCH,
+            &MAIN_BRANCH.into(),
             None,
             "ch-3",
         )
@@ -7400,7 +7471,7 @@ mod tests {
             &store,
             &CanonOrder::empty(),
             &"gt".into(),
-            "route",
+            &"route".into(),
             None,
             "ch-2",
         )
@@ -7433,13 +7504,16 @@ mod tests {
         // fork_chain walk happened to emit them nearest-first).
         assert_eq!(
             composition["deep"].iter().collect::<BTreeSet<_>>(),
-            BTreeSet::from([&"route".to_string(), &MAIN_BRANCH.to_string()])
+            BTreeSet::from([
+                &mnemosyne_core::BranchId::from("route"),
+                &mnemosyne_core::BranchId::from(MAIN_BRANCH)
+            ])
         );
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         // ch-2 -> ch-3 was declared on `route`; `deep` inherits it.
-        assert!(order.le("deep", "ch-2", "ch-3"));
-        assert!(!order.le(MAIN_BRANCH, "ch-2", "ch-3"));
-        let view = frame_view(&store, &order, &"gt".into(), "deep", None, "ch-4").unwrap();
+        assert!(order.le(&"deep".into(), "ch-2", "ch-3"));
+        assert!(!order.le(&MAIN_BRANCH.into(), "ch-2", "ch-3"));
+        let view = frame_view(&store, &order, &"gt".into(), &"deep".into(), None, "ch-4").unwrap();
         // f-deep starts at ch-3; ch-3 vs ch-4 undeclared everywhere -> not
         // holding at ch-4 is undecidable => unknown (honesty).
         assert_eq!(view.unknown, vec!["f-deep".to_string()]);
@@ -8197,11 +8271,18 @@ mod tests {
         let order = chain(&["ch-1", "ch-2"]);
         // Unregistered branch on a fact (hand-edited store).
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
-        store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".to_string();
+        store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".into();
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
-        let err =
-            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-1",
+        )
+        .unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
         // Unregistered frame.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
@@ -8241,7 +8322,15 @@ mod tests {
         else {
             panic!("expected overlap");
         };
-        let view = frame_view(&store, &order, &frame.as_str().into(), branch, None, at).unwrap();
+        let view = frame_view(
+            &store,
+            &order,
+            &frame.as_str().into(),
+            &branch.as_str().into(),
+            None,
+            at,
+        )
+        .unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains(&fact_a.as_str()) && held.contains(&fact_b.as_str()));
     }
@@ -8451,7 +8540,7 @@ mod tests {
             // `spine` is a STANDALONE trunk world-line (its own road; the base is
             // empty), which is exactly the shape that made a fact defaulting to
             // `main` a silent wrong-branch error.
-            &BTreeMap::from([("spine".to_string(), mnemosyne_core::Branch::default())]),
+            &BTreeMap::from([("spine".into(), mnemosyne_core::Branch::default())]),
         )
         .unwrap();
         // ch-3 is positioned in `spine`; a fact on `main` (the default) does not
@@ -8514,8 +8603,8 @@ mod tests {
                 ..Default::default()
             },
             &BTreeMap::from([
-                ("left".to_string(), fork_at("ch-2")),
-                ("right".to_string(), fork_at("ch-2")),
+                ("left".into(), fork_at("ch-2")),
+                ("right".into(), fork_at("ch-2")),
             ]),
         )
         .unwrap();
@@ -10636,7 +10725,15 @@ mod tests {
                 _ => None,
             })
             .expect("overlap expected");
-        let view = frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, &at_point).unwrap();
+        let view = frame_view(
+            &store,
+            &order,
+            &"gt".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            &at_point,
+        )
+        .unwrap();
         let held: BTreeSet<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains("l2") && held.contains("bad"), "{held:?}");
     }
@@ -11146,7 +11243,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(
-            order.linearize(MAIN_BRANCH),
+            order.linearize(&MAIN_BRANCH.into()),
             ["ch-1", "ch-2", "ch-3", "ch-4"]
         );
         let store = store_with(vec![fact("fa", "gt", "ch-1", None)]);
@@ -11313,10 +11410,10 @@ mod tests {
         let order = chain(&["ch-1", "ch-2"]);
         let all = playthrough_manuscript(&store, &order, None, None).unwrap();
         assert_eq!(all.worlds.len(), 2);
-        let one = playthrough_manuscript(&store, &order, Some("route"), None).unwrap();
+        let one = playthrough_manuscript(&store, &order, Some(&"route".into()), None).unwrap();
         assert_eq!(one.worlds.len(), 1);
         assert!(one.worlds.contains_key("route"));
-        let err = playthrough_manuscript(&store, &order, Some("nope"), None).unwrap_err();
+        let err = playthrough_manuscript(&store, &order, Some(&"nope".into()), None).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
     }
 
@@ -11352,9 +11449,10 @@ mod tests {
             ],
             &[("route", MAIN_BRANCH, "ch-2")],
         );
-        let mut first_at = BTreeMap::new();
+        let mut first_at: BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::DisclosureReveal> =
+            BTreeMap::new();
         first_at.insert(
-            "route".to_string(),
+            "route".into(),
             mnemosyne_core::DisclosureReveal {
                 coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
                 threshold: None,
@@ -11388,7 +11486,8 @@ mod tests {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         // No telling → no disclosure annotation.
-        let plain = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), None).unwrap();
+        let plain =
+            playthrough_manuscript(&store, &order, Some(&MAIN_BRANCH.into()), None).unwrap();
         let plain_ev = plain.worlds[MAIN_BRANCH]
             .scenes
             .iter()
@@ -11399,7 +11498,8 @@ mod tests {
 
         // With the telling: f-main overridden (state); no first_at for main;
         // the surface rides through verbatim.
-        let main = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), Some("t1")).unwrap();
+        let main =
+            playthrough_manuscript(&store, &order, Some(&MAIN_BRANCH.into()), Some("t1")).unwrap();
         let ev = main.worlds[MAIN_BRANCH]
             .scenes
             .iter()
@@ -11416,7 +11516,8 @@ mod tests {
 
         // The route world resolves f-main's per-world-line first_at, and
         // f-rev (no override) falls to the plan default (withhold).
-        let route = playthrough_manuscript(&store, &order, Some("route"), Some("t1")).unwrap();
+        let route =
+            playthrough_manuscript(&store, &order, Some(&"route".into()), Some("t1")).unwrap();
         let route_begins: Vec<&ManuscriptFactEvent> = route.worlds["route"]
             .scenes
             .iter()
@@ -11460,9 +11561,10 @@ mod tests {
             ],
             &[("route", MAIN_BRANCH, "ch-2")],
         );
-        let mut first_at = BTreeMap::new();
+        let mut first_at: BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::DisclosureReveal> =
+            BTreeMap::new();
         first_at.insert(
-            "route".to_string(),
+            "route".into(),
             mnemosyne_core::DisclosureReveal {
                 coords: std::collections::BTreeSet::from(["ch-3".to_string()]),
                 threshold: None,
@@ -12134,7 +12236,7 @@ mod tests {
     fn quest_graph_world_filter_scopes_per_world_keeps_fork_tree_full() {
         let store = quest_store();
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = quest_graph(&store, &order, Some("win"), "t1").unwrap();
+        let report = quest_graph(&store, &order, Some(&"win".into()), "t1").unwrap();
 
         assert_eq!(report.worlds, vec!["win".to_string()]);
         assert!(report
@@ -12261,11 +12363,11 @@ mod tests {
                 .insert(s.to_string(), AtomicSection::default());
         }
         store.branches.insert(
-            "alt".to_string(),
+            "alt".into(),
             mnemosyne_core::Branch {
                 description: "take the side door".to_string(),
                 forks_from: Some(mnemosyne_core::BranchFork {
-                    branch: MAIN_BRANCH.to_string(),
+                    branch: MAIN_BRANCH.into(),
                     at: "s1".to_string(),
                 }),
                 converges_from: vec![],
@@ -12287,11 +12389,11 @@ mod tests {
     fn fork_tree_fails_loud_on_unregistered_parent() {
         let mut store = AtomicStore::new();
         store.branches.insert(
-            "child".to_string(),
+            "child".into(),
             mnemosyne_core::Branch {
                 description: String::new(),
                 forks_from: Some(mnemosyne_core::BranchFork {
-                    branch: "ghost".to_string(),
+                    branch: "ghost".into(),
                     at: "s1".to_string(),
                 }),
                 converges_from: vec![],
@@ -12319,11 +12421,11 @@ mod tests {
         }
         for b in ["sluice", "ride"] {
             store.branches.insert(
-                b.to_string(),
+                b.into(),
                 mnemosyne_core::Branch {
                     description: String::new(),
                     forks_from: Some(mnemosyne_core::BranchFork {
-                        branch: MAIN_BRANCH.to_string(),
+                        branch: MAIN_BRANCH.into(),
                         at: "s1".to_string(),
                     }),
                     converges_from: vec![],
@@ -12331,17 +12433,17 @@ mod tests {
             );
         }
         store.branches.insert(
-            "dawn".to_string(),
+            "dawn".into(),
             mnemosyne_core::Branch {
                 description: "the shared dawn".to_string(),
                 forks_from: None,
                 converges_from: vec![
                     mnemosyne_core::BranchFork {
-                        branch: "sluice".to_string(),
+                        branch: "sluice".into(),
                         at: "s2".to_string(),
                     },
                     mnemosyne_core::BranchFork {
-                        branch: "ride".to_string(),
+                        branch: "ride".into(),
                         at: "s2".to_string(),
                     },
                 ],
@@ -12384,21 +12486,21 @@ mod tests {
         let fork_at = |at: &str| mnemosyne_core::Branch {
             description: String::new(),
             forks_from: Some(mnemosyne_core::BranchFork {
-                branch: MAIN_BRANCH.to_string(),
+                branch: MAIN_BRANCH.into(),
                 at: at.to_string(),
             }),
             converges_from: vec![],
         };
         // Two forks that come back, and one that never does.
-        store.branches.insert("sluice".to_string(), fork_at("s1"));
-        store.branches.insert("ride".to_string(), fork_at("s1"));
-        store.branches.insert("drown".to_string(), fork_at("s2"));
+        store.branches.insert("sluice".into(), fork_at("s1"));
+        store.branches.insert("ride".into(), fork_at("s1"));
+        store.branches.insert("drown".into(), fork_at("s2"));
         let merge = |b: &str, at: &str| mnemosyne_core::BranchFork {
-            branch: b.to_string(),
+            branch: b.into(),
             at: at.to_string(),
         };
         store.branches.insert(
-            "dawn".to_string(),
+            "dawn".into(),
             mnemosyne_core::Branch {
                 description: String::new(),
                 forks_from: None,
@@ -12409,7 +12511,7 @@ mod tests {
         );
         // A confluence that itself flows on into a later one.
         store.branches.insert(
-            "noon".to_string(),
+            "noon".into(),
             mnemosyne_core::Branch {
                 description: String::new(),
                 forks_from: None,
@@ -12487,11 +12589,11 @@ mod tests {
         let mut store = store_with(vec![fact("f-seed", "gt", "ch-1", None)]);
         for b in ["sluice", "ride"] {
             store.branches.insert(
-                b.to_string(),
+                b.into(),
                 mnemosyne_core::Branch {
                     description: String::new(),
                     forks_from: Some(mnemosyne_core::BranchFork {
-                        branch: MAIN_BRANCH.to_string(),
+                        branch: MAIN_BRANCH.into(),
                         at: "ch-1".to_string(),
                     }),
                     converges_from: vec![],
@@ -12499,17 +12601,17 @@ mod tests {
             );
         }
         store.branches.insert(
-            "dawn".to_string(),
+            "dawn".into(),
             mnemosyne_core::Branch {
                 description: String::new(),
                 forks_from: None,
                 converges_from: vec![
                     mnemosyne_core::BranchFork {
-                        branch: "sluice".to_string(),
+                        branch: "sluice".into(),
                         at: "ch-2".to_string(),
                     },
                     mnemosyne_core::BranchFork {
-                        branch: "ride".to_string(),
+                        branch: "ride".into(),
                         at: "ch-2".to_string(),
                     },
                 ],
@@ -12528,31 +12630,53 @@ mod tests {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         // (1) THE PREDICATE — the SSOT truth table.
-        assert!(mnemosyne_core::is_confluence(&store.branches, "dawn"));
-        assert!(!mnemosyne_core::is_confluence(&store.branches, "sluice"));
-        assert!(!mnemosyne_core::is_confluence(&store.branches, MAIN_BRANCH));
-        assert!(!mnemosyne_core::is_confluence(&store.branches, "ghost"));
+        assert!(mnemosyne_core::is_confluence(
+            &store.branches,
+            &"dawn".into()
+        ));
+        assert!(!mnemosyne_core::is_confluence(
+            &store.branches,
+            &"sluice".into()
+        ));
+        assert!(!mnemosyne_core::is_confluence(
+            &store.branches,
+            &MAIN_BRANCH.into()
+        ));
+        assert!(!mnemosyne_core::is_confluence(
+            &store.branches,
+            &"ghost".into()
+        ));
 
         // (2) FRAME-VIEW — the R741-named residual, a NEW derivation via the predicate.
-        let fv_conf = frame_view(&store, &order, &"gt".into(), "dawn", None, "ch-2").unwrap();
+        let fv_conf =
+            frame_view(&store, &order, &"gt".into(), &"dawn".into(), None, "ch-2").unwrap();
         assert!(
             fv_conf.confluence_fragment,
             "a --branch <confluence> view is a fragment"
         );
-        let fv_fork = frame_view(&store, &order, &"gt".into(), "sluice", None, "ch-2").unwrap();
+        let fv_fork =
+            frame_view(&store, &order, &"gt".into(), &"sluice".into(), None, "ch-2").unwrap();
         assert!(
             !fv_fork.confluence_fragment,
             "a fork playthrough is not a fragment"
         );
-        let fv_main = frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, "ch-2").unwrap();
+        let fv_main = frame_view(
+            &store,
+            &order,
+            &"gt".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert!(!fv_main.confluence_fragment);
 
         // (3) PLAYABLE-WORLD — rides the manuscript flag verbatim (no re-derivation).
-        let pw = playable_world(&store, &order, Some("dawn"), "t").unwrap();
+        let pw = playable_world(&store, &order, Some(&"dawn".into()), "t").unwrap();
         assert!(pw.worlds["dawn"].manuscript.confluence_fragment);
 
         // (4) QUEST-GRAPH — reads that same flag into confluence_fragment_worlds.
-        let qg = quest_graph(&store, &order, Some("dawn"), "t").unwrap();
+        let qg = quest_graph(&store, &order, Some(&"dawn".into()), "t").unwrap();
         assert_eq!(qg.confluence_fragment_worlds, vec!["dawn".to_string()]);
         // Non-vacuity: the default cross-world dump EXCLUDES confluences, so the
         // list is empty there — a hardcoded-non-empty would fail this leg.
@@ -12582,11 +12706,11 @@ mod tests {
         }
         // `braid` forks off the main road at s2; main keeps going on its own.
         store.branches.insert(
-            "braid".to_string(),
+            "braid".into(),
             mnemosyne_core::Branch {
                 description: String::new(),
                 forks_from: Some(mnemosyne_core::BranchFork {
-                    branch: MAIN_BRANCH.to_string(),
+                    branch: MAIN_BRANCH.into(),
                     at: "s2".to_string(),
                 }),
                 converges_from: vec![],
@@ -12594,17 +12718,17 @@ mod tests {
         );
         // `weave` reweaves the two roads — ONE converging parent is `main`.
         store.branches.insert(
-            "weave".to_string(),
+            "weave".into(),
             mnemosyne_core::Branch {
                 description: "the reweave".to_string(),
                 forks_from: None,
                 converges_from: vec![
                     mnemosyne_core::BranchFork {
-                        branch: MAIN_BRANCH.to_string(),
+                        branch: MAIN_BRANCH.into(),
                         at: "s3".to_string(),
                     },
                     mnemosyne_core::BranchFork {
-                        branch: "braid".to_string(),
+                        branch: "braid".into(),
                         at: "s3b".to_string(),
                     },
                 ],
@@ -12818,7 +12942,7 @@ mod tests {
         let store = diamond_store(vec![]);
         let order = diamond_order(&store);
         let holding = |branch: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, &"gt".into(), branch, None, at)
+            frame_view(&store, &order, &"gt".into(), &branch.into(), None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -12863,7 +12987,7 @@ mod tests {
                     .unwrap_or_default()
             };
         for world in ["sluice", "ride"] {
-            let m = playthrough_manuscript(&store, &order, Some(world), None).unwrap();
+            let m = playthrough_manuscript(&store, &order, Some(&world.into()), None).unwrap();
             assert!(
                 begins(&m, world, "rk").contains(&"f-reckon".to_string()),
                 "{world} must begin the shared reckoning authored on `dawn`"
@@ -12874,9 +12998,9 @@ mod tests {
             );
         }
         // No middle leaks across the exclusive parents.
-        let sl = playthrough_manuscript(&store, &order, Some("sluice"), None).unwrap();
+        let sl = playthrough_manuscript(&store, &order, Some(&"sluice".into()), None).unwrap();
         assert!(sl.worlds["sluice"].scenes.iter().all(|s| s.section != "rd"));
-        let rd = playthrough_manuscript(&store, &order, Some("ride"), None).unwrap();
+        let rd = playthrough_manuscript(&store, &order, Some(&"ride".into()), None).unwrap();
         assert!(rd.worlds["ride"].scenes.iter().all(|s| s.section != "sl"));
     }
 
@@ -13157,7 +13281,7 @@ mod tests {
         // frame_view: main HOLDS the suffix fact at rv, and does NOT see braid's
         // exclusive middle (scoping intact).
         let holding = |at: &str| -> Vec<String> {
-            frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, at)
+            frame_view(&store, &order, &"gt".into(), &MAIN_BRANCH.into(), None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13175,7 +13299,7 @@ mod tests {
 
         // playthrough_manuscript: main renders the suffix scene, beginning the
         // suffix fact authored once on the confluence.
-        let m = playthrough_manuscript(&store, &order, Some(MAIN_BRANCH), None).unwrap();
+        let m = playthrough_manuscript(&store, &order, Some(&MAIN_BRANCH.into()), None).unwrap();
         let begins: Vec<String> = m.worlds[MAIN_BRANCH]
             .scenes
             .iter()
@@ -13316,7 +13440,7 @@ mod tests {
         );
 
         let holding = |world: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, &"gt".into(), world, None, at)
+            frame_view(&store, &order, &"gt".into(), &world.into(), None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13332,7 +13456,7 @@ mod tests {
         // BOUNDED regression: the shared tail PAST the fork is NOT stolen, and it
         // is DEFINITIVELY excluded (Out, not Unknown) — the order-composition leg
         // makes s4 comparable to the fork point s3.
-        let at_s4 = frame_view(&store, &order, &"gt".into(), "ending", None, "s4").unwrap();
+        let at_s4 = frame_view(&store, &order, &"gt".into(), &"ending".into(), None, "s4").unwrap();
         assert!(
             !at_s4.holding.iter().any(|e| e.fact_id == "f-tail"),
             "ending does not steal the shared tail past its fork"
@@ -13511,7 +13635,7 @@ mod tests {
         );
 
         let held = |at: &str| -> Vec<String> {
-            frame_view(&store, &order, &"gt".into(), "ending", None, at)
+            frame_view(&store, &order, &"gt".into(), &"ending".into(), None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13530,7 +13654,8 @@ mod tests {
         }
         // BOUNDED still: the shared tail past the fork is not stolen, and neither
         // braid's exclusive middle ever crosses into the divergent world.
-        let at_end = frame_view(&store, &order, &"gt".into(), "ending", None, "s6").unwrap();
+        let at_end =
+            frame_view(&store, &order, &"gt".into(), &"ending".into(), None, "s6").unwrap();
         let holding: Vec<&str> = at_end.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(holding.contains(&"f-end-beat"));
         for f in ["f-tail", "f-alt1", "f-alt2"] {
@@ -13630,7 +13755,7 @@ mod tests {
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let holding = |world: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, &"gt".into(), world, None, at)
+            frame_view(&store, &order, &"gt".into(), &world.into(), None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13770,67 +13895,68 @@ mod tests {
     fn road_axis_override_walk_bounds_each_world_line() {
         let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
         let converge = |b: &str, at: &str| mnemosyne_core::BranchFork {
-            branch: b.to_string(),
+            branch: b.into(),
             at: at.to_string(),
         };
         let fork = |from: &str, at: &str| mnemosyne_core::Branch {
             forks_from: Some(mnemosyne_core::BranchFork {
-                branch: from.to_string(),
+                branch: from.into(),
                 at: at.to_string(),
             }),
             ..Default::default()
         };
-        let branches = BTreeMap::from([
-            ("braid1".to_string(), fork(MAIN_BRANCH, "s1")),
-            (
-                "weave1".to_string(),
-                mnemosyne_core::Branch {
-                    converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
-                    ..Default::default()
-                },
-            ),
-            ("braid2".to_string(), fork("weave1", "s3")),
-            (
-                "weave2".to_string(),
-                mnemosyne_core::Branch {
-                    converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
-                    ..Default::default()
-                },
-            ),
-            ("ending".to_string(), fork(MAIN_BRANCH, "s3")),
-        ]);
+        let branches: BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch> =
+            BTreeMap::from([
+                ("braid1".into(), fork(MAIN_BRANCH, "s1")),
+                (
+                    "weave1".into(),
+                    mnemosyne_core::Branch {
+                        converges_from: vec![converge("main", "s2"), converge("braid1", "s2")],
+                        ..Default::default()
+                    },
+                ),
+                ("braid2".into(), fork("weave1", "s3")),
+                (
+                    "weave2".into(),
+                    mnemosyne_core::Branch {
+                        converges_from: vec![converge("weave1", "s4"), converge("braid2", "s4b")],
+                        ..Default::default()
+                    },
+                ),
+                ("ending".into(), fork(MAIN_BRANCH, "s3")),
+            ]);
         let decl = CanonOrderFile {
             edges: vec![e("s1", "s2")],
             branches: BTreeMap::from([
-                ("weave1".to_string(), vec![e("s2", "s3"), e("s3", "s4")]),
-                ("braid2".to_string(), vec![e("s3", "s4b")]),
+                ("weave1".into(), vec![e("s2", "s3"), e("s3", "s4")]),
+                ("braid2".into(), vec![e("s3", "s4b")]),
                 // the confluence declares a merge edge FROM EACH parent — including
                 // `s4b`, which is braid2's EXCLUSIVE coordinate. Under a node-set union
                 // that smuggles `s4b` into every downstream world (the R611 leak); the
                 // override walk's `u ∈ road` requirement refuses it.
-                ("weave2".to_string(), vec![e("s4", "s5"), e("s4b", "s5")]),
-                ("ending".to_string(), vec![e("s3", "e1")]), // its OWN divergent road
+                ("weave2".into(), vec![e("s4", "s5"), e("s4b", "s5")]),
+                ("ending".into(), vec![e("s3", "e1")]), // its OWN divergent road
             ]),
             ..Default::default()
         };
         let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
         let road = |w: &str| -> Vec<String> {
-            order.linearize(w) // linearize walks exactly the road
+            order.linearize(&w.into()) // linearize walks exactly the road
         };
 
         // THE DIVERGENT ENDING: overrides the trunk at its fork and stops at its beat.
         assert_eq!(road("ending"), vec!["s1", "s2", "s3", "e1"]);
         assert!(
-            !order.names("ending", "s4"),
+            !order.names(&"ending".into(), "s4"),
             "the trunk tail is not its road"
         );
         assert!(
-            !order.names("ending", "s4b"),
+            !order.names(&"ending".into(), "s4b"),
             "a SIBLING's exclusive coordinate must never be on this road — the merge \
              edge `s4b -> s5` cannot fire from a source the world never reaches"
         );
         assert_eq!(
-            order.terminals("ending"),
+            order.terminals(&"ending".into()),
             BTreeSet::from(["e1"]),
             "its END is its OWN, not the trunk's — this is what un-blinds reached_terminal"
         );
@@ -13838,26 +13964,29 @@ mod tests {
         // FORK OFF A CONFLUENCE: rides the trunk THROUGH the merge, overrides at s3, and
         // never travels weave1's exclusive middle `s4`.
         assert!(
-            order.names("braid2", "s1"),
+            order.names(&"braid2".into(), "s1"),
             "the pre-merge trunk IS its road"
         );
-        assert!(order.names("braid2", "s4b"), "its own declared arm");
+        assert!(order.names(&"braid2".into(), "s4b"), "its own declared arm");
         assert!(
-            !order.names("braid2", "s4"),
+            !order.names(&"braid2".into(), "s4"),
             "weave1's exclusive middle is off-road — the R613 draft got this only VACUOUSLY \
              (it had collapsed braid2's whole road to one node)"
         );
-        assert_eq!(order.terminals("braid2"), BTreeSet::from(["s5"]));
+        assert_eq!(order.terminals(&"braid2".into()), BTreeSet::from(["s5"]));
 
         // NO COLLAPSE: the parents keep their full trunk and their own middles.
-        assert!(order.names("braid1", "s1") && order.names("braid1", "s2"));
-        assert!(order.names("weave1", "s3") && order.names("weave1", "s4"));
+        assert!(order.names(&"braid1".into(), "s1") && order.names(&"braid1".into(), "s2"));
+        assert!(order.names(&"weave1".into(), "s3") && order.names(&"weave1".into(), "s4"));
 
         // PRECEDENCE is untouched and still GENEROUS — a world can still COMPARE a
         // coordinate past its fork, which is what four gates (disclosure leak, typed
         // exclusivity, interval, edge candidates) rely on to decide `Out` vs `Unknown`.
-        assert!(order.le("ending", "s3", "s4"), "reach stays generous");
-        assert!(order.comparable("ending", "s1", "s5"));
+        assert!(
+            order.le(&"ending".into(), "s3", "s4"),
+            "reach stays generous"
+        );
+        assert!(order.comparable(&"ending".into(), "s1", "s5"));
     }
 
     /// Round 614 — a branch that declares NO road rides its lineage's road on, so its
@@ -13869,44 +13998,45 @@ mod tests {
     #[test]
     fn undeclared_road_rides_the_trunk_and_is_surfaced_not_rejected() {
         let e = |a: &str, b: &str| [a.to_string(), b.to_string()];
-        let branches = BTreeMap::from([
-            (
-                "braid".to_string(),
-                mnemosyne_core::Branch {
-                    forks_from: Some(mnemosyne_core::BranchFork {
-                        branch: MAIN_BRANCH.to_string(),
-                        at: "s1".to_string(),
-                    }),
-                    ..Default::default()
-                },
-            ),
-            (
-                "weave".to_string(),
-                mnemosyne_core::Branch {
-                    converges_from: vec![
-                        mnemosyne_core::BranchFork {
-                            branch: "main".to_string(),
-                            at: "s2".to_string(),
-                        },
-                        mnemosyne_core::BranchFork {
-                            branch: "braid".to_string(),
-                            at: "s2".to_string(),
-                        },
-                    ],
-                    ..Default::default()
-                },
-            ),
-            (
-                "ending".to_string(),
-                mnemosyne_core::Branch {
-                    forks_from: Some(mnemosyne_core::BranchFork {
-                        branch: MAIN_BRANCH.to_string(),
-                        at: "s3".to_string(),
-                    }),
-                    ..Default::default()
-                },
-            ),
-        ]);
+        let branches: BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch> =
+            BTreeMap::from([
+                (
+                    "braid".into(),
+                    mnemosyne_core::Branch {
+                        forks_from: Some(mnemosyne_core::BranchFork {
+                            branch: MAIN_BRANCH.into(),
+                            at: "s1".to_string(),
+                        }),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "weave".into(),
+                    mnemosyne_core::Branch {
+                        converges_from: vec![
+                            mnemosyne_core::BranchFork {
+                                branch: "main".into(),
+                                at: "s2".to_string(),
+                            },
+                            mnemosyne_core::BranchFork {
+                                branch: "braid".into(),
+                                at: "s2".to_string(),
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "ending".into(),
+                    mnemosyne_core::Branch {
+                        forks_from: Some(mnemosyne_core::BranchFork {
+                            branch: MAIN_BRANCH.into(),
+                            at: "s3".to_string(),
+                        }),
+                        ..Default::default()
+                    },
+                ),
+            ]);
         // Base-declared: the whole spine lives in `edges`, nobody declares a road.
         let decl = CanonOrderFile {
             edges: vec![e("s1", "s2"), e("s2", "s3"), e("s3", "s4")],
@@ -13920,15 +14050,18 @@ mod tests {
         for world in ["ending", "weave", "braid"] {
             for coord in ["s1", "s2", "s3", "s4"] {
                 assert!(
-                    order.names(world, coord),
+                    order.names(&world.into(), coord),
                     "{world} rides the trunk while it declares no road: {coord}"
                 );
             }
         }
         // ...and the ambiguity is NAMED, so an author who meant a divergent ending is
         // told why the terminal gates cannot yet tell its ending from the trunk's.
-        let named: BTreeSet<&str> = order.undeclared_roads().collect();
-        assert_eq!(named, BTreeSet::from(["braid", "ending", "weave"]));
+        let named: BTreeSet<&mnemosyne_core::BranchId> = order.undeclared_roads().collect();
+        let expected: Vec<mnemosyne_core::BranchId> = ["braid", "ending", "weave"]
+            .map(mnemosyne_core::BranchId::from)
+            .into();
+        assert_eq!(named, expected.iter().collect());
     }
 
     /// Round 615 — EVIDENCE is a ROAD question. "Could this world have SEEN that
@@ -14028,9 +14161,9 @@ mod tests {
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         // `ending` declares no road: it rides the trunk, which does NOT include `s4b`.
-        assert!(order.names("ending", "s5"), "the trunk IS its road");
+        assert!(order.names(&"ending".into(), "s5"), "the trunk IS its road");
         assert!(
-            !order.names("ending", "s4b"),
+            !order.names(&"ending".into(), "s4b"),
             "the sibling's exclusive scene is not"
         );
 

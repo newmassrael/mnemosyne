@@ -45,7 +45,7 @@ use crate::continuity::CanonOrder;
 /// player's actual non-linear path at runtime from the same declaration.
 pub fn resolve_reveal_pin(
     reveal: &DisclosureReveal,
-    world: &str,
+    world: &mnemosyne_core::BranchId,
     order: &CanonOrder,
 ) -> Option<String> {
     let k = reveal.threshold.unwrap_or(1);
@@ -220,7 +220,7 @@ pub fn disclosure_leak(
     reextracted: &AtomicStore,
     order: &CanonOrder,
     telling: &str,
-    world: &str,
+    world: &mnemosyne_core::BranchId,
     truth_frame: &mnemosyne_core::FrameId,
 ) -> Result<DisclosureLeakReport, String> {
     let plan = authored.disclosure_plans.get(telling).ok_or_else(|| {
@@ -383,7 +383,7 @@ pub struct RenderFidelityReport {
 pub fn render_fidelity(
     reextracted: &AtomicStore,
     order: &CanonOrder,
-    world: &str,
+    world: &mnemosyne_core::BranchId,
 ) -> RenderFidelityReport {
     let nodes: BTreeSet<&str> = order.nodes().collect();
     let mut report = RenderFidelityReport {
@@ -458,7 +458,7 @@ mod tests {
     fn nf(frame: &str, canon_from: &str, typed: Option<TypedClaim>) -> NarrativeFact {
         NarrativeFact {
             frame: frame.into(),
-            branch: MAIN_BRANCH.to_string(),
+            branch: MAIN_BRANCH.into(),
             entities: vec![],
             claim: "c".to_string(),
             canon_from: canon_from.to_string(),
@@ -483,7 +483,7 @@ mod tests {
                 .iter()
                 .map(|(b, c)| {
                     (
-                        b.to_string(),
+                        (*b).into(),
                         DisclosureReveal {
                             coords: BTreeSet::from([c.to_string()]),
                             threshold: None,
@@ -502,9 +502,9 @@ mod tests {
         coords: &[&str],
         threshold: Option<usize>,
     ) -> DisclosureOverride {
-        let mut first_at = BTreeMap::new();
+        let mut first_at: BTreeMap<mnemosyne_core::BranchId, DisclosureReveal> = BTreeMap::new();
         first_at.insert(
-            branch.to_string(),
+            branch.into(),
             DisclosureReveal {
                 coords: coords.iter().map(|c| c.to_string()).collect(),
                 threshold,
@@ -586,7 +586,8 @@ mod tests {
         clean
             .narrative_facts
             .insert("x".into(), nf("gt", "ch-3", Some(typed("pike", "fell"))));
-        let r = disclosure_leak(&authored, &clean, &order, "t", "main", &"gt".into()).unwrap();
+        let r =
+            disclosure_leak(&authored, &clean, &order, "t", &"main".into(), &"gt".into()).unwrap();
         assert_eq!(r.targeted, 2);
         assert!(r.leaks.is_empty(), "{:?}", r.leaks);
 
@@ -598,7 +599,8 @@ mod tests {
         leaky
             .narrative_facts
             .insert("b".into(), nf("gt", "ch-1", Some(typed("pike", "fell"))));
-        let r = disclosure_leak(&authored, &leaky, &order, "t", "main", &"gt".into()).unwrap();
+        let r =
+            disclosure_leak(&authored, &leaky, &order, "t", &"main".into(), &"gt".into()).unwrap();
         assert_eq!(r.leaks.len(), 2);
         assert!(r
             .leaks
@@ -615,7 +617,15 @@ mod tests {
             "c".into(),
             nf("hale", "ch-1", Some(typed("pike", "climbed"))),
         );
-        let r = disclosure_leak(&authored, &belief, &order, "t", "main", &"gt".into()).unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &belief,
+            &order,
+            "t",
+            &"main".into(),
+            &"gt".into(),
+        )
+        .unwrap();
         assert!(
             r.leaks.is_empty(),
             "belief-frame is not the reader's established truth"
@@ -668,7 +678,7 @@ mod tests {
             &match_at("r-1"),
             &order,
             "t",
-            "main",
+            &"main".into(),
             &"gt".into(),
         )
         .unwrap();
@@ -688,7 +698,7 @@ mod tests {
             &match_at("m-3"),
             &order,
             "t",
-            "main",
+            &"main".into(),
             &"gt".into(),
         )
         .unwrap();
@@ -705,7 +715,7 @@ mod tests {
             &match_at("m-3"),
             &order,
             "t",
-            "main",
+            &"main".into(),
             &"gt".into(),
         )
         .unwrap();
@@ -743,7 +753,15 @@ mod tests {
             "g".into(),
             nf("gt", "ch-2", Some(typed("STRANGER", "climbed"))),
         );
-        let r = disclosure_leak(&authored, &foreign, &order, "t", "main", &"gt".into()).unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &foreign,
+            &order,
+            "t",
+            &"main".into(),
+            &"gt".into(),
+        )
+        .unwrap();
         assert_eq!(r.targeted, 1);
         assert!(r.leaks.is_empty());
         assert_eq!(r.truth_frame_typed_facts, 1);
@@ -755,7 +773,15 @@ mod tests {
         shared
             .narrative_facts
             .insert("g".into(), nf("gt", "ch-2", Some(typed("pike", "spoke"))));
-        let r = disclosure_leak(&authored, &shared, &order, "t", "main", &"gt".into()).unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &shared,
+            &order,
+            "t",
+            &"main".into(),
+            &"gt".into(),
+        )
+        .unwrap();
         assert!(r.leaks.is_empty());
         assert_eq!(r.vocabulary_shared, 1, "shared vocab ⇒ a real clean pass");
     }
@@ -781,15 +807,16 @@ mod tests {
         // a fork rides the trunk in to its fork point, a standalone does not.
         let fork_at_ch2 = || mnemosyne_core::Branch {
             forks_from: Some(mnemosyne_core::BranchFork {
-                branch: mnemosyne_core::MAIN_BRANCH.to_string(),
+                branch: mnemosyne_core::MAIN_BRANCH.into(),
                 at: "ch-2".to_string(),
             }),
             ..Default::default()
         };
-        let branches = BTreeMap::from([
-            ("route".to_string(), fork_at_ch2()),
-            ("other".to_string(), fork_at_ch2()),
-        ]);
+        let branches: BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch> =
+            BTreeMap::from([
+                ("route".into(), fork_at_ch2()),
+                ("other".into(), fork_at_ch2()),
+            ]);
         let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
 
         // ON-PATH: route prose visits ch-1 then r-1 (route's terminal).
@@ -797,7 +824,7 @@ mod tests {
         on.narrative_facts
             .insert("p".into(), nf("gt", "ch-1", None));
         on.narrative_facts.insert("q".into(), nf("gt", "r-1", None));
-        let r = render_fidelity(&on, &order, "route");
+        let r = render_fidelity(&on, &order, &"route".into());
         assert!(r.off_path.is_empty());
         assert!(r.reached_terminal, "r-1 is route's maximal node");
 
@@ -807,7 +834,7 @@ mod tests {
             .insert("p".into(), nf("gt", "ch-1", None));
         off.narrative_facts
             .insert("bad".into(), nf("gt", "b-1", None));
-        let r = render_fidelity(&off, &order, "route");
+        let r = render_fidelity(&off, &order, &"route".into());
         assert_eq!(r.off_path.len(), 1);
         assert_eq!(r.off_path[0].coord, "b-1");
 
@@ -815,7 +842,7 @@ mod tests {
         let mut un = AtomicStore::new();
         un.narrative_facts
             .insert("ghost".into(), nf("gt", "zzz", None));
-        let r = render_fidelity(&un, &order, "route");
+        let r = render_fidelity(&un, &order, &"route".into());
         assert_eq!(r.unplaced.len(), 1);
     }
 }

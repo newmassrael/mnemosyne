@@ -38,11 +38,11 @@ use serde::{Deserialize, Serialize};
 /// change.
 pub const MAIN_BRANCH: &str = "main";
 
-fn default_branch() -> String {
-    MAIN_BRANCH.to_string()
+fn default_branch() -> crate::BranchId {
+    MAIN_BRANCH.into()
 }
 
-fn is_main_branch(branch: &str) -> bool {
+fn is_main_branch(branch: &crate::BranchId) -> bool {
     branch == MAIN_BRANCH
 }
 
@@ -117,7 +117,7 @@ impl Branch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BranchFork {
     /// Parent world-line (`MAIN_BRANCH` or a registered branch).
-    pub branch: String,
+    pub branch: crate::BranchId,
     /// Canon point of divergence — facts on the parent starting at or
     /// before this point are part of this world's inherited history.
     pub at: String,
@@ -138,7 +138,7 @@ pub struct BranchFork {
 /// write path (`succession_branch_inherits`) and the read path (the continuity
 /// gate's visibility) — the one-invariant discipline. The canon order compares
 /// `canon_from` against each bound later, at visibility time.
-pub type WorldMembership = BTreeMap<String, BTreeSet<String>>;
+pub type WorldMembership = BTreeMap<crate::BranchId, BTreeSet<String>>;
 
 /// Compute [`WorldMembership`] for `world` (Round 612 — the series-parallel
 /// lattice that replaced the enumerated `cut` / `forward` / `cut_forward`
@@ -170,10 +170,10 @@ pub type WorldMembership = BTreeMap<String, BTreeSet<String>>;
 /// Acyclic by write-path construction (a parent must pre-exist registration); the
 /// recursion stack fails loud on an out-of-band cyclic edit instead of looping.
 pub fn world_membership(
-    branches: &BTreeMap<String, Branch>,
-    world: &str,
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
 ) -> Result<WorldMembership, String> {
-    let mut memo: BTreeMap<String, WorldMembership> = BTreeMap::new();
+    let mut memo: BTreeMap<crate::BranchId, WorldMembership> = BTreeMap::new();
     world_membership_memoized(branches, world, &mut memo)
 }
 
@@ -194,24 +194,24 @@ pub fn world_membership(
 /// CONTRACT: the `memo` is keyed by world id for ONE `branches` map — do not reuse
 /// it across different registries.
 pub fn world_membership_memoized(
-    branches: &BTreeMap<String, Branch>,
-    world: &str,
-    memo: &mut BTreeMap<String, WorldMembership>,
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
+    memo: &mut BTreeMap<crate::BranchId, WorldMembership>,
 ) -> Result<WorldMembership, String> {
-    let mut on_stack: BTreeSet<String> = BTreeSet::new();
+    let mut on_stack: BTreeSet<crate::BranchId> = BTreeSet::new();
     membership_of(branches, world, memo, &mut on_stack)
 }
 
 fn membership_of(
-    branches: &BTreeMap<String, Branch>,
-    world: &str,
-    memo: &mut BTreeMap<String, WorldMembership>,
-    on_stack: &mut BTreeSet<String>,
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
+    memo: &mut BTreeMap<crate::BranchId, WorldMembership>,
+    on_stack: &mut BTreeSet<crate::BranchId>,
 ) -> Result<WorldMembership, String> {
     if let Some(done) = memo.get(world) {
         return Ok(done.clone());
     }
-    if !on_stack.insert(world.to_string()) {
+    if !on_stack.insert(world.clone()) {
         return Err(format!(
             "branch lineage of `{world}` is cyclic — out-of-band edit \
              (the mutate API cannot write a cycle: a parent must pre-exist)"
@@ -219,7 +219,7 @@ fn membership_of(
     }
     // Own branch, and every confluence this world flows INTO: unconditional.
     let mut out: WorldMembership = BTreeMap::new();
-    out.insert(world.to_string(), BTreeSet::new());
+    out.insert(world.clone(), BTreeSet::new());
     for confluence in forward_confluences(branches, world) {
         out.insert(confluence, BTreeSet::new());
     }
@@ -249,7 +249,7 @@ fn membership_of(
         }
     }
     on_stack.remove(world);
-    memo.insert(world.to_string(), out.clone());
+    memo.insert(world.clone(), out.clone());
     Ok(out)
 }
 
@@ -291,28 +291,28 @@ fn intersect(a: WorldMembership, mut b: WorldMembership) -> WorldMembership {
 /// re-expands — so the walk is bounded by the registry size by construction,
 /// the dual of a linear fork-chain's hop cap (a chain is not deduplicated, so
 /// it needs the explicit guard; a deduplicated frontier cannot loop).
-pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> Vec<String> {
+pub fn forward_confluences(
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
+) -> Vec<crate::BranchId> {
     // Reverse adjacency: parent branch -> the confluences converging FROM it.
     // (`converges_from` points child->parents; the forward walk needs
     // parent->children.)
-    let mut downstream: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut downstream: BTreeMap<&crate::BranchId, Vec<&crate::BranchId>> = BTreeMap::new();
     for (id, b) in branches {
         for parent in &b.converges_from {
-            downstream
-                .entry(parent.branch.as_str())
-                .or_default()
-                .push(id.as_str());
+            downstream.entry(&parent.branch).or_default().push(id);
         }
     }
-    let mut out: BTreeSet<String> = BTreeSet::new();
-    let mut frontier: Vec<String> = vec![world.to_string()];
+    let mut out: BTreeSet<crate::BranchId> = BTreeSet::new();
+    let mut frontier: Vec<crate::BranchId> = vec![world.clone()];
     while let Some(cur) = frontier.pop() {
-        let Some(confluences) = downstream.get(cur.as_str()) else {
+        let Some(confluences) = downstream.get(&cur) else {
             continue;
         };
-        for &c in confluences {
-            if out.insert(c.to_string()) {
-                frontier.push(c.to_string());
+        for c in confluences {
+            if out.insert((*c).clone()) {
+                frontier.push((*c).clone());
             }
         }
     }
@@ -332,7 +332,10 @@ pub fn forward_confluences(branches: &BTreeMap<String, Branch>, world: &str) -> 
 /// them name the fragment identically without the discriminator drifting across
 /// four copies — the [`is_known_world`] single-definition discipline applied to
 /// the confluence axis (Round 746 folded the inline manuscript copy into it).
-pub fn is_confluence(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
+pub fn is_confluence(
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
+) -> bool {
     branches.get(world).is_some_and(Branch::is_confluence)
 }
 
@@ -343,7 +346,10 @@ pub fn is_confluence(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
 /// at a dozen sites is how one forgotten copy false-rejected a `main`-as-
 /// confluence-parent store (the R607 boundary bug); routing every site through
 /// this predicate makes an Nth site physically unable to drop the exemption.
-pub fn is_known_world(branches: &BTreeMap<String, Branch>, world: &str) -> bool {
+pub fn is_known_world(
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    world: &crate::BranchId,
+) -> bool {
     world == MAIN_BRANCH || branches.contains_key(world)
 }
 
@@ -385,9 +391,9 @@ pub fn is_known_world(branches: &BTreeMap<String, Branch>, world: &str) -> bool 
 /// Graph-level only, deliberately: it authorizes the EDGE; it does not evaluate
 /// the departure bound (that needs the canon order, which lives with the reader).
 pub fn succession_branch_inherits(
-    branches: &BTreeMap<String, Branch>,
-    successor_branch: &str,
-    predecessor_branch: &str,
+    branches: &BTreeMap<crate::BranchId, Branch>,
+    successor_branch: &crate::BranchId,
+    predecessor_branch: &crate::BranchId,
 ) -> Result<bool, String> {
     if successor_branch == predecessor_branch {
         return Ok(true);
@@ -954,7 +960,7 @@ pub struct NarrativeFact {
     /// data, not succession). Serialization skips the default branch so
     /// pre-branch stores stay byte-stable.
     #[serde(default = "default_branch", skip_serializing_if = "is_main_branch")]
-    pub branch: String,
+    pub branch: crate::BranchId,
     /// Entity ids this claim is about (Round 437) — the retrieval key for
     /// entity-scoped verification ("does this scene contradict X's
     /// background"). Multi-ref by design: a relation involves two or more
@@ -1135,7 +1141,7 @@ pub struct DisclosureOverride {
     /// Empty = no timing pin (a pure `withhold`, or timing left to the fact's
     /// own coordinate).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub first_at: BTreeMap<String, DisclosureReveal>,
+    pub first_at: BTreeMap<crate::BranchId, DisclosureReveal>,
     /// Optional scene/object the disclosure rides on (render-brief craft hint;
     /// NOT gated).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1213,7 +1219,7 @@ impl DisclosurePlan {
     /// The full effective disclosure of a fact for one world-line — the mode
     /// ([`Self::effective_mode`]) plus the world's `first_at` pin and the
     /// surface (both override-only). The single resolver the carrier consumes.
-    pub fn effective(&self, fact_id: &str, world: &str) -> EffectiveDisclosure {
+    pub fn effective(&self, fact_id: &str, world: &crate::BranchId) -> EffectiveDisclosure {
         let (mode, is_override) = self.effective_mode(fact_id);
         let ov = self.overrides.get(fact_id);
         EffectiveDisclosure {
@@ -1234,13 +1240,13 @@ mod tests {
     /// unknown id is not — and an empty registry still knows `main`.
     #[test]
     fn is_known_world_covers_main_and_registered_only() {
-        let mut branches = BTreeMap::new();
-        assert!(is_known_world(&branches, MAIN_BRANCH));
-        assert!(!is_known_world(&branches, "braid"));
-        branches.insert("braid".to_string(), Branch::default());
-        assert!(is_known_world(&branches, "braid"));
-        assert!(is_known_world(&branches, MAIN_BRANCH));
-        assert!(!is_known_world(&branches, "ghost"));
+        let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
+        assert!(is_known_world(&branches, &MAIN_BRANCH.into()));
+        assert!(!is_known_world(&branches, &"braid".into()));
+        branches.insert("braid".into(), Branch::default());
+        assert!(is_known_world(&branches, &"braid".into()));
+        assert!(is_known_world(&branches, &MAIN_BRANCH.into()));
+        assert!(!is_known_world(&branches, &"ghost".into()));
     }
 
     /// Round 747 — the confluence predicate has ONE definition
@@ -1250,7 +1256,7 @@ mod tests {
     #[test]
     fn is_confluence_has_one_definition_shared_by_method_and_free_fn() {
         let edge = |b: &str, at: &str| BranchFork {
-            branch: b.to_string(),
+            branch: b.into(),
             at: at.to_string(),
         };
         // The method IS the definition: a non-empty converges_from is a confluence.
@@ -1270,16 +1276,16 @@ mod tests {
 
         // The free fn delegates: it agrees with the method for every registered
         // id, and answers false for main (never registered) and an unknown id.
-        let mut branches = BTreeMap::new();
-        branches.insert("dawn".to_string(), merge);
-        branches.insert("sluice".to_string(), fork);
+        let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
+        branches.insert("dawn".into(), merge);
+        branches.insert("sluice".into(), fork);
         for (id, b) in &branches {
             assert_eq!(is_confluence(&branches, id), b.is_confluence());
         }
-        assert!(is_confluence(&branches, "dawn"));
-        assert!(!is_confluence(&branches, "sluice"));
-        assert!(!is_confluence(&branches, MAIN_BRANCH));
-        assert!(!is_confluence(&branches, "ghost"));
+        assert!(is_confluence(&branches, &"dawn".into()));
+        assert!(!is_confluence(&branches, &"sluice".into()));
+        assert!(!is_confluence(&branches, &MAIN_BRANCH.into()));
+        assert!(!is_confluence(&branches, &"ghost".into()));
     }
 
     /// Round 748 — the shared-memo entry point is TRANSPARENT: sweeping every
@@ -1290,27 +1296,27 @@ mod tests {
     #[test]
     fn world_membership_memoized_is_transparent_and_still_fails_loud_on_a_cycle() {
         let edge = |b: &str, at: &str| BranchFork {
-            branch: b.to_string(),
+            branch: b.into(),
             at: at.to_string(),
         };
         // A diamond: sluice/ride fork main at s1; dawn converges both at s2.
-        let mut branches = BTreeMap::new();
+        let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
         branches.insert(
-            "sluice".to_string(),
+            "sluice".into(),
             Branch {
                 forks_from: Some(edge(MAIN_BRANCH, "s1")),
                 ..Branch::default()
             },
         );
         branches.insert(
-            "ride".to_string(),
+            "ride".into(),
             Branch {
                 forks_from: Some(edge(MAIN_BRANCH, "s1")),
                 ..Branch::default()
             },
         );
         branches.insert(
-            "dawn".to_string(),
+            "dawn".into(),
             Branch {
                 converges_from: vec![edge("sluice", "s2"), edge("ride", "s2")],
                 ..Branch::default()
@@ -1320,6 +1326,7 @@ mod tests {
         // Transparency: one shared memo over the whole sweep == a fresh call per world.
         let mut memo = BTreeMap::new();
         for w in [MAIN_BRANCH, "sluice", "ride", "dawn"] {
+            let w = &crate::BranchId::from(w);
             let shared = world_membership_memoized(&branches, w, &mut memo).unwrap();
             let fresh = world_membership(&branches, w).unwrap();
             assert_eq!(
@@ -1331,24 +1338,24 @@ mod tests {
         assert!(memo.contains_key(MAIN_BRANCH) && memo.contains_key("dawn"));
 
         // A cycle still fails loud under a shared memo (a <-> b), for every root.
-        let mut cyc = BTreeMap::new();
+        let mut cyc: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
         cyc.insert(
-            "a".to_string(),
+            "a".into(),
             Branch {
                 forks_from: Some(edge("b", "s1")),
                 ..Branch::default()
             },
         );
         cyc.insert(
-            "b".to_string(),
+            "b".into(),
             Branch {
                 forks_from: Some(edge("a", "s1")),
                 ..Branch::default()
             },
         );
         let mut memo2 = BTreeMap::new();
-        assert!(world_membership_memoized(&cyc, "a", &mut memo2).is_err());
-        assert!(world_membership_memoized(&cyc, "b", &mut memo2).is_err());
+        assert!(world_membership_memoized(&cyc, &"a".into(), &mut memo2).is_err());
+        assert!(world_membership_memoized(&cyc, &"b".into(), &mut memo2).is_err());
     }
 
     /// Round 535 — the cross-branch succession legitimacy predicate, the SINGLE
@@ -1358,37 +1365,38 @@ mod tests {
     #[test]
     fn succession_inherits_in_both_lineage_directions() {
         let fork = |at: &str| BranchFork {
-            branch: MAIN_BRANCH.to_string(),
+            branch: MAIN_BRANCH.into(),
             at: at.to_string(),
         };
         let converge = |b: &str, at: &str| BranchFork {
-            branch: b.to_string(),
+            branch: b.into(),
             at: at.to_string(),
         };
-        let mut branches = BTreeMap::new();
+        let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
         branches.insert(
-            "sluice".to_string(),
+            "sluice".into(),
             Branch {
                 forks_from: Some(fork("tr")),
                 ..Branch::default()
             },
         );
         branches.insert(
-            "ride".to_string(),
+            "ride".into(),
             Branch {
                 forks_from: Some(fork("tr")),
                 ..Branch::default()
             },
         );
         branches.insert(
-            "dawn".to_string(),
+            "dawn".into(),
             Branch {
                 converges_from: vec![converge("sluice", "sl"), converge("ride", "rd")],
                 ..Branch::default()
             },
         );
-        let inherits =
-            |succ: &str, pred: &str| succession_branch_inherits(&branches, succ, pred).unwrap();
+        let inherits = |succ: &str, pred: &str| {
+            succession_branch_inherits(&branches, &succ.into(), &pred.into()).unwrap()
+        };
         // BACKWARD: a fork inherits its ancestor's belief (R438).
         assert!(inherits("sluice", MAIN_BRANCH));
         // FORWARD: the merge reconciles a parent's belief (R535).
@@ -1410,9 +1418,9 @@ mod tests {
     #[test]
     fn disclosure_plan_effective_resolver() {
         let mut overrides = BTreeMap::new();
-        let mut first_at = BTreeMap::new();
+        let mut first_at: BTreeMap<crate::BranchId, DisclosureReveal> = BTreeMap::new();
         first_at.insert(
-            "w1".to_string(),
+            "w1".into(),
             DisclosureReveal {
                 coords: BTreeSet::from(["ch-3".to_string()]),
                 threshold: None,
@@ -1437,7 +1445,7 @@ mod tests {
 
         // Override wins; first_at is per world-line; is_override = true.
         assert_eq!(plan.effective_mode("shown"), (DisclosureMode::State, true));
-        let e_w1 = plan.effective("shown", "w1");
+        let e_w1 = plan.effective("shown", &"w1".into());
         assert_eq!(e_w1.mode, DisclosureMode::State);
         assert!(e_w1.is_override);
         assert_eq!(
@@ -1450,14 +1458,14 @@ mod tests {
         );
         assert!(e_w1.surface.is_some());
         // No pin for another world-line.
-        assert_eq!(plan.effective("shown", "w2").first_at, None);
+        assert_eq!(plan.effective("shown", &"w2".into()).first_at, None);
 
         // Defaulted fact: the plan default, no override data.
         assert_eq!(
             plan.effective_mode("absent"),
             (DisclosureMode::Withhold, false)
         );
-        let e_def = plan.effective("absent", "w1");
+        let e_def = plan.effective("absent", &"w1".into());
         assert_eq!(e_def.mode, DisclosureMode::Withhold);
         assert!(!e_def.is_override);
         assert_eq!(e_def.first_at, None);
@@ -1465,7 +1473,10 @@ mod tests {
 
         // Parity: effective().mode is exactly effective_mode().0 (one source).
         for fact in ["shown", "absent"] {
-            assert_eq!(plan.effective(fact, "w1").mode, plan.effective_mode(fact).0);
+            assert_eq!(
+                plan.effective(fact, &"w1".into()).mode,
+                plan.effective_mode(fact).0
+            );
         }
     }
 
@@ -1515,35 +1526,35 @@ mod tests {
     /// A subway-braid trunk: `main` + `braid1` (fork at s1) reconverge into the
     /// confluence `weave1` at s2; `braid2` forks OFF THE CONFLUENCE at s3; and a
     /// divergent `ending` forks off `main` at s3, downstream of the merge.
-    fn braid_chain() -> BTreeMap<String, Branch> {
+    fn braid_chain() -> BTreeMap<crate::BranchId, Branch> {
         let fork = |from: &str, at: &str| BranchFork {
-            branch: from.to_string(),
+            branch: from.into(),
             at: at.to_string(),
         };
         BTreeMap::from([
             (
-                "braid1".to_string(),
+                "braid1".into(),
                 Branch {
                     forks_from: Some(fork(MAIN_BRANCH, "s1")),
                     ..Branch::default()
                 },
             ),
             (
-                "weave1".to_string(),
+                "weave1".into(),
                 Branch {
                     converges_from: vec![fork(MAIN_BRANCH, "s2"), fork("braid1", "s2")],
                     ..Branch::default()
                 },
             ),
             (
-                "braid2".to_string(),
+                "braid2".into(),
                 Branch {
                     forks_from: Some(fork("weave1", "s3")),
                     ..Branch::default()
                 },
             ),
             (
-                "ending".to_string(),
+                "ending".into(),
                 Branch {
                     forks_from: Some(fork(MAIN_BRANCH, "s3")),
                     ..Branch::default()
@@ -1562,7 +1573,7 @@ mod tests {
     #[test]
     fn confluence_membership_is_the_intersection_of_its_parents() {
         let b = braid_chain();
-        let weave = world_membership(&b, "weave1").unwrap();
+        let weave = world_membership(&b, &"weave1".into()).unwrap();
         assert!(weave["weave1"].is_empty(), "own branch is unbounded");
         // `main` survives the merge — but BOUNDED by both roads' cuts, which is
         // exactly what excludes main's own exclusive middle downstream of s1.
@@ -1586,7 +1597,7 @@ mod tests {
     #[test]
     fn fork_off_a_confluence_inherits_the_pre_merge_trunk() {
         let b = braid_chain();
-        let braid2 = world_membership(&b, "braid2").unwrap();
+        let braid2 = world_membership(&b, &"braid2".into()).unwrap();
         assert!(braid2["braid2"].is_empty());
         assert!(
             braid2.contains_key("weave1"),
@@ -1608,19 +1619,19 @@ mod tests {
     #[test]
     fn non_monotone_fork_chain_conjoins_every_cut() {
         let fork = |from: &str, at: &str| BranchFork {
-            branch: from.to_string(),
+            branch: from.into(),
             at: at.to_string(),
         };
         let b = BTreeMap::from([
             (
-                "late".to_string(),
+                "late".into(),
                 Branch {
                     forks_from: Some(fork(MAIN_BRANCH, "s4")),
                     ..Branch::default()
                 },
             ),
             (
-                "early".to_string(),
+                "early".into(),
                 Branch {
                     forks_from: Some(fork("late", "s1")),
                     ..Branch::default()
@@ -1628,7 +1639,7 @@ mod tests {
             ),
         ]);
         assert_eq!(
-            world_membership(&b, "early").unwrap()["main"],
+            world_membership(&b, &"early".into()).unwrap()["main"],
             BTreeSet::from(["s1".to_string(), "s4".to_string()]),
             "BOTH departures bind — the order then enforces the tighter one"
         );
@@ -1643,7 +1654,9 @@ mod tests {
     #[test]
     fn succession_follows_the_membership_in_both_directions_only_downstream() {
         let b = braid_chain();
-        let inherits = |succ: &str, pred: &str| succession_branch_inherits(&b, succ, pred).unwrap();
+        let inherits = |succ: &str, pred: &str| {
+            succession_branch_inherits(&b, &succ.into(), &pred.into()).unwrap()
+        };
         // BACKWARD, through a merge (the R611 hole this closes).
         assert!(
             inherits("ending", "weave1"),
@@ -1666,25 +1679,27 @@ mod tests {
     #[test]
     fn cyclic_branch_lineage_fails_loud() {
         let fork = |from: &str| BranchFork {
-            branch: from.to_string(),
+            branch: from.into(),
             at: "s1".to_string(),
         };
-        let b = BTreeMap::from([
+        let b: BTreeMap<crate::BranchId, Branch> = BTreeMap::from([
             (
-                "a".to_string(),
+                "a".into(),
                 Branch {
                     forks_from: Some(fork("b")),
                     ..Branch::default()
                 },
             ),
             (
-                "b".to_string(),
+                "b".into(),
                 Branch {
                     forks_from: Some(fork("a")),
                     ..Branch::default()
                 },
             ),
         ]);
-        assert!(world_membership(&b, "a").unwrap_err().contains("cyclic"));
+        assert!(world_membership(&b, &"a".into())
+            .unwrap_err()
+            .contains("cyclic"));
     }
 }
