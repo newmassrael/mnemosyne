@@ -181,7 +181,7 @@ not the whole schema — `WorkspaceConfig` also carries these, and a gate
 | `[[orphan_ledger]]` | the known-stale allow-list (array of tables) |
 | `[[publishable_override_ledger]]` | recorded audit/publishable divergences |
 | `[terminology]` | `[terminology.glossary]` term normalization |
-| `[tool]` | **`pin` — which Mnemosyne revision may act on this workspace.** Cargo pins your library dependencies and pins nothing about a binary you invoke by name, so without this your gates run with whatever tool is resolvable. Set it and every Mnemosyne binary refuses to open this workspace while carrying a different revision |
+| `[tool]` | **`pin` — which Mnemosyne revision may act on this workspace.** Cargo pins your library dependencies and pins nothing about a binary you invoke by name, so without this your gates run with whatever tool is resolvable. Set it and every Mnemosyne binary refuses to open this workspace while carrying a different revision. **Upgrade before declaring**: a binary older than this section denies the unknown field and dies at TOML parse, saying nothing about revisions — including the very binary you pinned, if the revision you named predates `[tool]` |
 
 Full field-level reference: `docs/SCHEMA_GUIDE.md` in the repo. This page is
 the orientation, not the copy — where the two disagree, the guide and the

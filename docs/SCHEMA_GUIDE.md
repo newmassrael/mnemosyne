@@ -530,6 +530,37 @@ and the command that installs the right one. This reaches surfaces the
 recipe above cannot: an MCP server is launched by a host config that is
 not yours to script, but `--workspace` already points here.
 
+**Adopt in this order: UPGRADE FIRST, THEN DECLARE (Round 828).** A
+binary built before this section existed cannot read a config that has
+it. `WorkspaceConfig` denies unknown fields — deliberately, so a typo'd
+key is a loud error rather than a silently ignored one — so an older
+binary stops at TOML parse:
+
+```
+error: mnemosyne.toml parse failed: TOML parse error at line 3, column 2
+  |
+3 | [tool]
+```
+
+Refusing is CORRECT: a tool that cannot enforce a pin has no business
+opening a pinned workspace. The message is what fails you — it says
+nothing about revisions, so nothing tells you the fix is a newer
+Mnemosyne. And the trap is circular in a way no other section's is: the
+pin exists to name which binary may act here, and if the revision you
+name predates `[tool]`, the very binary you pinned is the one that cannot
+read the pin naming it.
+
+Measured on two real pre-`[tool]` binaries, each without and with the
+section: a consumer's pinned CLI at `75eddce5` and an installed MCP
+server at `25d30d16` both run normally without it and both exit 1 at the
+parse error with it.
+
+So: move the pin you intend to declare to a revision at or after the one
+that introduced `[tool]`, install that, confirm `--version` reports it,
+and only then add the section. If you pin an older revision on purpose,
+do not declare it here — keep using the `MN`-style resolution above,
+which needs no cooperation from the binary.
+
 The rules, so nothing is surprising:
 
 - **Opt-in.** No `[tool]` section means no check, which is every
