@@ -1007,6 +1007,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-build-stamp"
+version = "0.1.0"
+
+[[package]]
 name = "mnemosyne-cascade"
 version = "0.1.0"
 dependencies = [
@@ -1020,6 +1024,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mnemosyne-atomic",
+ "mnemosyne-build-stamp",
  "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-ops",
@@ -1107,6 +1112,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mnemosyne-atomic",
+ "mnemosyne-build-stamp",
  "mnemosyne-core",
  "mnemosyne-ops",
  "mnemosyne-projection",

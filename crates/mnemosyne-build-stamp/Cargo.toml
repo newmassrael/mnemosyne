@@ -1,0 +1,12 @@
+[package]
+name = "mnemosyne-build-stamp"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — the build-time git stamp every Mnemosyne binary carries, so a consumer can tell WHICH tool they are holding"
+keywords = ["build", "provenance", "version"]
+categories = ["development-tools::build-utils"]
+
+[dependencies]

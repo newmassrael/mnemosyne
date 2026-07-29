@@ -21,6 +21,7 @@ members = [
  "crates/mnemosyne-engine",
  "crates/mnemosyne-engine-build",
  "crates/mnemosyne-render",
+ "crates/mnemosyne-build-stamp",
 ]
 
 [workspace.package]

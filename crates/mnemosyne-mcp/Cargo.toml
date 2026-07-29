@@ -31,3 +31,6 @@ tempfile = { workspace = true }
 
 [lints]
 workspace = true
+
+[build-dependencies]
+mnemosyne-build-stamp = { path = "../mnemosyne-build-stamp" }
